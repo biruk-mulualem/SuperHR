@@ -42,6 +42,7 @@ uploadDirs.forEach(dir => {
 const userRoutes = require('./routes/userRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const settingRoutes = require('./routes/settingRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -82,6 +83,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/users', userRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT

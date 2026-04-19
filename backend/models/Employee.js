@@ -9,7 +9,7 @@ module.exports = (sequelize, DataTypes) => {
       Employee.belongsTo(models.Position, { foreignKey: 'positionId' });
       Employee.belongsTo(models.Employee, { foreignKey: 'managerId', as: 'manager' });
       Employee.hasMany(models.Employee, { foreignKey: 'managerId', as: 'subordinates' });
-      Employee.hasMany(models.Attendance, { foreignKey: 'employeeId' });
+      Employee.hasMany(models.AttendanceLog, { foreignKey: 'employeeId' });
       Employee.hasMany(models.LeaveRequest, { foreignKey: 'employeeId' });
       Employee.hasMany(models.LeaveBalance, { foreignKey: 'employeeId' });
       Employee.hasMany(models.Salary, { foreignKey: 'employeeId' });
@@ -61,6 +61,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'date_of_birth',
       },
+      // Add to your existing Employee model init
+shiftType: {
+  type: DataTypes.ENUM('day', 'night'),
+  defaultValue: 'day',
+  field: 'shift_type',
+},
       gender: {
         type: DataTypes.ENUM('male', 'female', 'other'),
         allowNull: true,
