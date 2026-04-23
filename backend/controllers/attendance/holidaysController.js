@@ -37,7 +37,36 @@ exports.createHoliday = async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Access denied. Admin only.' });
     }
-    const holiday = await Holiday.create(req.body);
+    
+    console.log('Creating holiday with data:', req.body);
+    
+    const { name, holidayDate, ethiopianDate, holidayType, overtimeRate, isRecurring } = req.body;
+    
+    // Validation
+    if (!name || !holidayDate) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Name and holiday date are required' 
+      });
+    }
+    
+    const holidayData = {
+      name,
+      holidayDate,
+      ethiopianDate: ethiopianDate || null,
+      holidayType: holidayType || 'public',
+      overtimeRate: overtimeRate || 2.5,
+      isRecurring: isRecurring || false,
+    };
+    
+    // Set year based on recurring flag
+    if (holidayData.isRecurring) {
+      holidayData.year = null;
+    } else {
+      holidayData.year = new Date(holidayData.holidayDate).getFullYear();
+    }
+    
+    const holiday = await Holiday.create(holidayData);
     res.status(201).json({ success: true, data: holiday });
   } catch (error) {
     console.error('Create holiday error:', error);
@@ -50,9 +79,31 @@ exports.updateHoliday = async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Access denied. Admin only.' });
     }
+    
     const holiday = await Holiday.findByPk(req.params.id);
-    if (!holiday) return res.status(404).json({ success: false, error: 'Holiday not found' });
-    await holiday.update(req.body);
+    if (!holiday) {
+      return res.status(404).json({ success: false, error: 'Holiday not found' });
+    }
+    
+    const { name, holidayDate, ethiopianDate, holidayType, overtimeRate, isRecurring } = req.body;
+    
+    const updateData = {
+      name: name || holiday.name,
+      holidayDate: holidayDate || holiday.holidayDate,
+      ethiopianDate: ethiopianDate !== undefined ? ethiopianDate : holiday.ethiopianDate,
+      holidayType: holidayType || holiday.holidayType,
+      overtimeRate: overtimeRate || holiday.overtimeRate,
+      isRecurring: isRecurring !== undefined ? isRecurring : holiday.isRecurring,
+    };
+    
+    // Set year based on recurring flag
+    if (updateData.isRecurring) {
+      updateData.year = null;
+    } else {
+      updateData.year = new Date(updateData.holidayDate).getFullYear();
+    }
+    
+    await holiday.update(updateData);
     res.status(200).json({ success: true, data: holiday });
   } catch (error) {
     console.error('Update holiday error:', error);
@@ -65,8 +116,12 @@ exports.deleteHoliday = async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Access denied. Admin only.' });
     }
+    
     const holiday = await Holiday.findByPk(req.params.id);
-    if (!holiday) return res.status(404).json({ success: false, error: 'Holiday not found' });
+    if (!holiday) {
+      return res.status(404).json({ success: false, error: 'Holiday not found' });
+    }
+    
     await holiday.destroy();
     res.status(200).json({ success: true, message: 'Holiday deleted successfully' });
   } catch (error) {

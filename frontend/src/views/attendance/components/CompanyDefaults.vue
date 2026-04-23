@@ -187,14 +187,14 @@ const fetchWorkingDays = async () => {
   workingDaysLoading.value = true
   try {
     const data = await attendanceService.getWorkingDaysConfig()
-    console.log('Working days data received:', data)
+
     
     if (data && Array.isArray(data)) {
       allWorkingDays.value = data
     } else {
       allWorkingDays.value = []
     }
-    console.log('Filtered working days:', filteredWorkingDays.value)
+  
   } catch (err) {
     console.error('Failed to fetch working days:', err)
     showToast('Failed to load working days configuration', 'error')

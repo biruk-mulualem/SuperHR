@@ -88,6 +88,20 @@ const router = createRouter({
           component: () => import("@/views/attendance/attendanceConfig.vue"),
           meta: { title: "HR attendance Config", roles: ["admin", "hr","attendance"] },
         },
+           {
+          path: "PendingAbsentees",
+          name: "PendingAbsentees",
+          component: () => import("@/views/attendance/PendingAbsentees.vue"),
+          meta: { title: "Pending Absentees", roles: ["admin", "hr","attendance"] },
+        },
+           {
+          path: "LunchTracking",
+          name: "LunchTracking",
+          component: () => import("@/views/attendance/LunchTracking.vue"),
+          meta: { title: "Pending Absentees", roles: ["admin", "hr","attendance"] },
+        },
+
+        
         {
           path: "",
           redirect: "/dashboard",

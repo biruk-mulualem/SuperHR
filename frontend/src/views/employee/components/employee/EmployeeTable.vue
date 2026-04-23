@@ -18,8 +18,8 @@
           <td class="employee-cell">
             <!-- Try to load image first, fallback to colored avatar -->
             <img 
-              v-if="emp.profilePicture" 
-              :src="emp.profilePicture" 
+              v-if="emp.profilePictureUrl" 
+              :src="emp.profilePictureUrl" 
               class="employee-avatar" 
               @error="handleImageError($event, emp.fullName)"
               :alt="emp.fullName"

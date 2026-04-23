@@ -157,7 +157,6 @@ exports.createEmployee = async (req, res) => {
     
     let user = null;
     let isNewUser = false;
-    let temporaryPassword = null;
     
     // Check if user already exists with this email in USERS table
     if (email) {
@@ -170,9 +169,9 @@ exports.createEmployee = async (req, res) => {
       // Generate unique username
       const username = await generateUniqueUsername(email, firstName, lastName);
       
-      // Generate random temporary password
-      temporaryPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
-      const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+      // Use default password "password123"
+      const defaultPassword = 'password123';
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
       
       // Get role ID for 'employee'
       const employeeRole = await Role.findOne({ where: { name: 'employee' } });
@@ -190,7 +189,7 @@ exports.createEmployee = async (req, res) => {
         createdBy: req.user.userId
       });
       
-      console.log(`✅ Created new user: ${username} (ID: ${user.userId})`);
+      console.log(`✅ Created new user: ${username} (ID: ${user.userId}) with default password`);
     } else {
       console.log(`⚠️ User already exists with email: ${email}, linking to employee`);
     }
@@ -262,10 +261,9 @@ exports.createEmployee = async (req, res) => {
       }
     };
     
-    // If new user was created, include temporary password
-    if (isNewUser && temporaryPassword) {
-      responseData.user.temporaryPassword = temporaryPassword;
-      responseData.message = `Employee created successfully. Temporary password for ${user.username}: ${temporaryPassword}`;
+    // If new user was created, include default password message
+    if (isNewUser) {
+      responseData.message = `Employee created successfully. Default password is "password123". User should change password after first login.`;
     } else {
       responseData.message = 'Employee created and linked to existing user successfully';
     }
@@ -922,21 +920,45 @@ exports.getEmployees = async (req, res) => {
       positionId = 'all'
     } = req.query;
 
-    // Build search conditions - search by multiple fields
+    // Build search conditions - improved full name search
     let searchCondition = {};
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      searchCondition = {
-        [Op.or]: [
-          { employeeCode: { [Op.like]: `%${searchTerm}%` } },
-          { firstName: { [Op.like]: `%${searchTerm}%` } },
-          { lastName: { [Op.like]: `%${searchTerm}%` } },
-          { workEmail: { [Op.like]: `%${searchTerm}%` } },
-          { phoneNumber: { [Op.like]: `%${searchTerm}%` } },
-          { '$Department.name$': { [Op.like]: `%${searchTerm}%` } },
-          { '$Position.title$': { [Op.like]: `%${searchTerm}%` } }
-        ]
-      };
+      const searchWords = searchTerm.toLowerCase().split(' ').filter(word => word.length > 0);
+      
+      if (searchWords.length === 1) {
+        // Single word search
+        searchCondition = {
+          [Op.or]: [
+            { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
+            { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+            { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+            { middleName: { [Op.iLike]: `%${searchTerm}%` } },
+            { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
+            { phoneNumber: { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
+          ]
+        };
+      } else {
+        // Multiple words - each word must match at least one field
+        const wordConditions = searchWords.map(word => ({
+          [Op.or]: [
+            { firstName: { [Op.iLike]: `%${word}%` } },
+            { lastName: { [Op.iLike]: `%${word}%` } },
+            { middleName: { [Op.iLike]: `%${word}%` } },
+            { employeeCode: { [Op.iLike]: `%${word}%` } },
+            { workEmail: { [Op.iLike]: `%${word}%` } },
+            { phoneNumber: { [Op.iLike]: `%${word}%` } },
+            { '$Department.name$': { [Op.iLike]: `%${word}%` } },
+            { '$Position.title$': { [Op.iLike]: `%${word}%` } }
+          ]
+        }));
+        
+        searchCondition = {
+          [Op.and]: wordConditions
+        };
+      }
     }
 
     // Build filter conditions
@@ -1011,9 +1033,10 @@ exports.getEmployees = async (req, res) => {
     const formattedEmployees = employees.map(emp => ({
       id: emp.employeeId,
       employeeId: emp.employeeCode,
-      fullName: `${emp.firstName} ${emp.lastName}`,
+      fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
       firstName: emp.firstName,
       lastName: emp.lastName,
+      middleName: emp.middleName,
       email: emp.workEmail,
       phone: emp.phoneNumber,
       departmentId: emp.departmentId,
@@ -1025,7 +1048,7 @@ exports.getEmployees = async (req, res) => {
       status: emp.employmentStatus,
       hireDate: emp.hireDate,
       salary: emp.basicSalary,
-      profilePicture: emp.profilePictureUrl,
+      profilePictureUrl: emp.profilePictureUrl,
       managerName: emp.manager ? `${emp.manager.firstName} ${emp.manager.lastName}` : null
     }));
 
@@ -1066,7 +1089,7 @@ exports.getEmployees = async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error: ' + error.message });
   }
 };
-// In employeeController.js - Update getEmployeeById
+    
 exports.getEmployeeById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1254,15 +1277,38 @@ exports.deleteEmployee = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findByPk(id);
+    const employee = await Employee.findByPk(id, {
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['userId', 'roleId']
+      }]
+    });
+    
     if (!employee) {
       return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    
+    // Check if the employee is an admin (roleId = 1 typically for admin)
+    if (employee.user && employee.user.roleId === 1) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Cannot delete or terminate an admin user. Admin accounts cannot be removed.' 
+      });
+    }
+    
+    // Prevent admin from deleting themselves
+    if (employee.userId === req.user.userId) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Cannot delete your own account.' 
+      });
     }
     
     await employee.update({ 
       employmentStatus: 'terminated', 
       isActive: false,
-      terminationDate: new Date()  // ✅ ADD THIS LINE
+      terminationDate: new Date()
     });
     
     res.status(200).json({ 

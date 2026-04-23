@@ -2,9 +2,80 @@
 const { 
   Employee, 
   Department,
-  FieldWorkAssignment
+  FieldWorkAssignment,
+  Op 
 } = require('../../models');
 const attendanceService = require('../../service/attendanceConfig.service');
+
+// Helper function to clean up expired field work
+// Replace your cleanupExpiredFieldWork function with this debug version
+
+const cleanupExpiredFieldWork = async () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  console.log('=== CLEANUP START ===');
+  console.log('Today (UTC):', today.toISOString());
+  console.log('Today (Local):', today.toLocaleString());
+  
+  // First, find ALL active assignments to see what's there
+  const allActive = await FieldWorkAssignment.findAll({
+    where: { status: 'active' }
+  });
+  
+  console.log(`Total active assignments: ${allActive.length}`);
+  
+  for (const assignment of allActive) {
+    console.log(`Assignment ${assignment.id}: type=${assignment.assignmentType}, start=${assignment.startDate}, end=${assignment.endDate}`);
+    
+    let isExpired = false;
+    
+    if (assignment.assignmentType === 'today') {
+      const startDate = new Date(assignment.startDate);
+      startDate.setHours(0, 0, 0, 0);
+      console.log(`  Today assignment - Start: ${startDate.toISOString().split('T')[0]}, Today: ${today.toISOString().split('T')[0]}`);
+      if (startDate < today) {
+        isExpired = true;
+        console.log(`  → EXPIRED (start date before today)`);
+      }
+    } 
+    else if (assignment.assignmentType === 'range' && assignment.endDate) {
+      const endDate = new Date(assignment.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      console.log(`  Range assignment - End: ${endDate.toISOString().split('T')[0]}, Today: ${today.toISOString().split('T')[0]}`);
+      if (endDate < today) {
+        isExpired = true;
+        console.log(`  → EXPIRED (end date before today)`);
+      }
+    }
+    
+    if (isExpired) {
+      await assignment.update({
+        status: 'expired',
+        notes: assignment.notes ? `${assignment.notes} - Auto-expired on ${today.toISOString().split('T')[0]}` : `Auto-expired on ${today.toISOString().split('T')[0]}`
+      });
+      console.log(`  ✅ Updated assignment ${assignment.id} to expired`);
+    }
+  }
+  
+  const expiredCount = await FieldWorkAssignment.count({
+    where: { status: 'expired' }
+  });
+  
+  console.log(`Total expired assignments: ${expiredCount}`);
+  console.log('=== CLEANUP END ===');
+  
+  return expiredCount;
+};
+
+// Call cleanup on each request to ensure data is fresh
+const ensureCleanup = async () => {
+  try {
+    await cleanupExpiredFieldWork();
+  } catch (error) {
+    console.error('Error cleaning up expired field work:', error);
+  }
+};
 
 exports.registerFieldWork = async (req, res) => {
   try {
@@ -24,9 +95,34 @@ exports.registerFieldWork = async (req, res) => {
       });
     }
     
+    // Validate date ranges
+    const startDateObj = new Date(startDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (assignmentType === 'today' && startDateObj < today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot create field work for a past date'
+      });
+    }
+    
+    if (assignmentType === 'range' && endDate) {
+      const endDateObj = new Date(endDate);
+      if (endDateObj < startDateObj) {
+        return res.status(400).json({
+          success: false,
+          error: 'End date must be after start date'
+        });
+      }
+    }
+    
     const assignment = await attendanceService.registerFieldWork(
       employeeId, assignmentType, new Date(startDate), endDate ? new Date(endDate) : null, location, notes
     );
+    
+    // Clean up expired assignments after creating new one
+    await ensureCleanup();
     
     res.status(201).json({
       success: true,
@@ -67,6 +163,9 @@ exports.getActiveFieldWork = async (req, res) => {
   try {
     const { employeeId } = req.params;
     
+    // Clean up expired assignments first
+    await ensureCleanup();
+    
     if (req.user.role !== 'admin' && req.user.role !== 'hr' && req.user.userId != employeeId) {
       return res.status(403).json({ 
         success: false, 
@@ -91,6 +190,9 @@ exports.getAllFieldWork = async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Access denied. Admin only.' });
     }
+    
+    // Clean up expired assignments first
+    await ensureCleanup();
     
     const fieldWork = await FieldWorkAssignment.findAll({
       where: { status: 'active' },
@@ -146,6 +248,30 @@ exports.updateFieldWork = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Field work assignment not found' });
     }
     
+    // Validate date ranges for update
+    if (startDate && assignmentType === 'today') {
+      const startDateObj = new Date(startDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (startDateObj < today) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot update field work to a past date'
+        });
+      }
+    }
+    
+    if (assignmentType === 'range' && endDate && startDate) {
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      if (endDateObj < startDateObj) {
+        return res.status(400).json({
+          success: false,
+          error: 'End date must be after start date'
+        });
+      }
+    }
+    
     await fieldWork.update({
       assignmentType: assignmentType || fieldWork.assignmentType,
       startDate: startDate || fieldWork.startDate,
@@ -163,6 +289,9 @@ exports.updateFieldWork = async (req, res) => {
       const dept = await Department.findByPk(updatedFieldWork.employee.departmentId);
       departmentName = dept?.name || 'Unknown';
     }
+    
+    // Clean up expired assignments after update
+    await ensureCleanup();
     
     res.status(200).json({
       success: true,
@@ -197,6 +326,10 @@ exports.deleteFieldWork = async (req, res) => {
     }
     
     await fieldWork.destroy();
+    
+    // Clean up after deletion
+    await ensureCleanup();
+    
     res.status(200).json({ success: true, message: 'Field work deleted successfully' });
   } catch (error) {
     console.error('Delete field work error:', error);
@@ -238,3 +371,6 @@ exports.getFieldWorkHistory = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// Export cleanup function for scheduled tasks
+exports.cleanupExpiredFieldWork = cleanupExpiredFieldWork;

@@ -90,8 +90,11 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
     { name: 'Salary', path: '/salary', icon: 'CurrencyDollarIcon', badge: null },
-    { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null },
-    { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null }
+    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null },
+    { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
+        { name: 'attendance Config', path: '/attendanceConfig', icon: 'CogIcon', badge: null }
+  // { name: 'Pending Absentees ', path: '/PendingAbsentees', icon: 'CogIcon', badge: null }
+        
   ],
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },

@@ -131,6 +131,51 @@ app.use((err, req, res, next) => {
   });
 });
 
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================================
+// START CRON JOBS (Only in production/development, not in test)
+// ============================================================================
+if (process.env.NODE_ENV !== 'test') {
+    try {
+        const { startAttendanceJobs } = require('./jobs');
+        startAttendanceJobs();
+    } catch (error) {
+        console.error('Failed to start cron jobs:', error.message);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================================
 // 404 HANDLER
 // ============================================================================

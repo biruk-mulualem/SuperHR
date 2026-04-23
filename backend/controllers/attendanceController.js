@@ -77,6 +77,14 @@ exports.recordCheckOut = attendanceLogsController.recordCheckOut;
 exports.getAttendanceReport = attendanceLogsController.getAttendanceReport;
 exports.getMyAttendance = attendanceLogsController.getMyAttendance;
 exports.getAttendanceSummary = attendanceLogsController.getAttendanceSummary;
+exports.getTodayAttendance = attendanceLogsController.getTodayAttendance;  // ✅ ADD THIS
+exports.getTodayStatus = attendanceLogsController.getTodayStatus;          // ✅ ADD THIS
+exports.getAllAttendanceByDate = attendanceLogsController.getAllAttendanceByDate;  // ✅ ADD THIS LINE
+exports.getPendingAbsentees = attendanceLogsController.getPendingAbsentees;  // ✅ ADD THIS LINE
+exports.massUpdateAttendance = attendanceLogsController.massUpdateAttendance;  // ✅ ADD THIS LINE
+exports.getExpiredPendingLate = attendanceLogsController.getExpiredPendingLate;  // ✅ ADD THIS LINE
+exports.markExpiredAsAbsent = attendanceLogsController.markExpiredAsAbsent;  // ✅ ADD THIS LINE
+exports.revertAttendanceUpdate = attendanceLogsController.revertAttendanceUpdate;  // ✅ ADD THIS LINE
 
 // Overrides
 exports.getCompanyDefaults = overridesController.getCompanyDefaults;

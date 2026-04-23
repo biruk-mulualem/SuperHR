@@ -55,7 +55,7 @@ module.exports = (sequelize, DataTypes) => {
         field: 'no_office_checkin',
       },
       status: {
-        type: DataTypes.ENUM('active', 'completed', 'cancelled'),
+        type: DataTypes.ENUM('active', 'completed', 'cancelled', 'expired'),
         defaultValue: 'active',
       },
       location: {
