@@ -29,7 +29,7 @@ const workingDaysController = require('./attendance/workingDaysController');
 const adminController = require('./attendance/adminController');
 const bulkController = require('./attendance/bulkController');
 const schedulesController = require('./attendance/schedulesController');
-
+ const importController = require('./attendance/importController');
 // ============================================================================
 // HELPER FUNCTIONS (kept here as requested)
 // ============================================================================
@@ -85,6 +85,32 @@ exports.massUpdateAttendance = attendanceLogsController.massUpdateAttendance;  /
 exports.getExpiredPendingLate = attendanceLogsController.getExpiredPendingLate;  // ✅ ADD THIS LINE
 exports.markExpiredAsAbsent = attendanceLogsController.markExpiredAsAbsent;  // ✅ ADD THIS LINE
 exports.revertAttendanceUpdate = attendanceLogsController.revertAttendanceUpdate;  // ✅ ADD THIS LINE
+
+
+//-----------------------------------------------------------------
+//the manual attandacce import controller
+//----------------------------------------------------------------
+exports.getDailyAttendance = importController.getDailyAttendance;  // ✅ ADD THIS LINE
+exports.reprocessFailedRows = importController.reprocessFailedRows;  // ✅ ADD THIS LINE
+exports.getImportStatus = importController.getImportStatus;  // ✅ ADD THIS LINE
+exports.importAttendanceFile = importController.importAttendanceFile;  // ✅ ADD THIS LINE
+
+exports.getWeeklyAttendance = importController.getWeeklyAttendance;  // ✅ ADD THIS LINE
+exports.getMonthlyAttendance = importController.getMonthlyAttendance;  // ✅ ADD THIS LINE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Overrides
 exports.getCompanyDefaults = overridesController.getCompanyDefaults;

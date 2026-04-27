@@ -1352,6 +1352,450 @@ class AttendanceService {
       };
     }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  // =============================================
+// IMPORT ATTENDANCE METHODS
+// =============================================
+
+/**
+ * Import attendance from machine export file
+ * @param file - The CSV/Excel file to import
+ * @param importType - 'daily', 'weekly', 'monthly'
+ * @returns Import results
+ */
+async importAttendanceFile(file: File, importType: string = 'daily'): Promise<any> {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('import_type', importType);
+        
+        const response = await api.post('/attendance/import', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Import attendance error:', error);
+        throw error;
+    }
 }
+
+/**
+ * Get import status by batch ID
+ * @param batchId - The import batch ID
+ * @returns Import status
+ */
+async getImportStatus(batchId: number): Promise<any> {
+    try {
+        const response = await api.get(`/import/status/${batchId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Get import status error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Reprocess failed rows from an import batch
+ * @param batchId - The import batch ID
+ * @returns Reprocess results
+ */
+async reprocessFailedRows(batchId: number): Promise<any> {
+    try {
+        const response = await api.post(`/import/reprocess/${batchId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Reprocess failed rows error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get daily attendance records
+ * @param params - Query parameters (startDate, endDate, employeeId)
+ * @returns Daily attendance records
+ */
+async getDailyAttendance(params: { 
+    startDate?: string; 
+    endDate?: string; 
+    employeeId?: number;
+    search?: string;
+    departmentId?: number | null;
+    status?: string;
+    page?: number;
+    limit?: number;
+} = {}): Promise<any> {
+    try {
+        const queryParams = new URLSearchParams();
+        
+        if (params.startDate) queryParams.append('startDate', params.startDate);
+        if (params.endDate) queryParams.append('endDate', params.endDate);
+        if (params.employeeId) queryParams.append('employeeId', params.employeeId.toString());
+        if (params.search) queryParams.append('search', params.search);
+        
+        // Only append if departmentId is a valid number
+        if (params.departmentId !== null && params.departmentId !== undefined && params.departmentId > 0) {
+            queryParams.append('departmentId', params.departmentId.toString());
+            console.log('Service sending departmentId:', params.departmentId);
+        }
+        
+        if (params.status && params.status !== '') {
+            queryParams.append('status', params.status);
+        }
+        
+        if (params.page) queryParams.append('page', params.page.toString());
+        if (params.limit) queryParams.append('limit', params.limit.toString());
+        
+        const url = `/attendance/import/daily-attendance${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        console.log('Final URL:', url);
+        
+        const response = await api.get(url);
+        return response.data;
+    } catch (error) {
+        console.error('Get daily attendance error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get weekly attendance summary
+ * @param params - Query parameters (startDate, endDate, employeeId, departmentId, search, page, limit)
+ * @returns Weekly summary with pagination
+ */
+async getWeeklyAttendance(params: { 
+    startDate?: string; 
+    endDate?: string; 
+    employeeId?: number;
+    departmentId?: number | null;
+    search?: string;
+    page?: number;
+    limit?: number;
+} = {}): Promise<any> {
+    try {
+        const queryParams = new URLSearchParams();
+        
+        if (params.startDate) queryParams.append('startDate', params.startDate);
+        if (params.endDate) queryParams.append('endDate', params.endDate);
+        if (params.employeeId) queryParams.append('employeeId', params.employeeId.toString());
+        if (params.search) queryParams.append('search', params.search);
+        
+        // Only append departmentId if it's a valid number
+        if (params.departmentId !== null && params.departmentId !== undefined && params.departmentId > 0) {
+            queryParams.append('departmentId', params.departmentId.toString());
+        }
+        
+        if (params.page) queryParams.append('page', params.page.toString());
+        if (params.limit) queryParams.append('limit', params.limit.toString());
+        
+        const url = `/attendance/import/weekly-summary${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        console.log('Weekly summary URL:', url);
+        
+        const response = await api.get(url);
+        return response.data;
+    } catch (error) {
+        console.error('Get weekly attendance error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get monthly attendance summary
+ * @param params - Query parameters (year, month, employeeId, departmentId, search, page, limit)
+ * @returns Monthly summary with pagination
+ */
+async getMonthlyAttendance(params: { 
+    year?: number; 
+    month?: number; 
+    employeeId?: number;
+    departmentId?: number | null;
+    search?: string;
+    page?: number;
+    limit?: number;
+} = {}): Promise<any> {
+    try {
+        const queryParams = new URLSearchParams();
+        
+        if (params.year) queryParams.append('year', params.year.toString());
+        if (params.month) queryParams.append('month', params.month.toString());
+        if (params.employeeId) queryParams.append('employeeId', params.employeeId.toString());
+        if (params.search) queryParams.append('search', params.search);
+        
+        // Only append departmentId if it's a valid number
+        if (params.departmentId !== null && params.departmentId !== undefined && params.departmentId > 0) {
+            queryParams.append('departmentId', params.departmentId.toString());
+        }
+        
+        if (params.page) queryParams.append('page', params.page.toString());
+        if (params.limit) queryParams.append('limit', params.limit.toString());
+        
+        const url = `/attendance/import/monthly-summary${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        console.log('Monthly summary URL:', url);
+        
+        const response = await api.get(url);
+        return response.data;
+    } catch (error) {
+        console.error('Get monthly attendance error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get employee weekly summary (single employee)
+ * @param employeeId - Employee ID
+ * @param year - Year
+ * @returns Weekly summary for employee
+ */
+async getEmployeeWeeklySummary(employeeId: number, year: number): Promise<any> {
+    try {
+        const startDate = `${year}-01-01`;
+        const endDate = `${year}-12-31`;
+        
+        const response = await this.getWeeklyAttendance({
+            employeeId,
+            startDate,
+            endDate,
+            limit: 100 // Get all weeks for the year
+        });
+        
+        return response;
+    } catch (error) {
+        console.error('Get employee weekly summary error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get employee monthly summary (single employee)
+ * @param employeeId - Employee ID
+ * @param year - Year
+ * @returns Monthly summary for employee
+ */
+async getEmployeeMonthlySummary(employeeId: number, year: number): Promise<any> {
+    try {
+        const response = await this.getMonthlyAttendance({
+            employeeId,
+            year,
+            limit: 12 // Get all months of the year
+        });
+        
+        return response;
+    } catch (error) {
+        console.error('Get employee monthly summary error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get department summary
+ * @param params - Query parameters (startDate, endDate, departmentId)
+ * @returns Department summary statistics
+ */
+async getDepartmentSummary(params: {
+    startDate: string;
+    endDate: string;
+    departmentId: number;
+}): Promise<any> {
+    try {
+        const response = await this.getWeeklyAttendance({
+            startDate: params.startDate,
+            endDate: params.endDate,
+            departmentId: params.departmentId,
+            limit: 1000
+        });
+        
+        const records = response.data || [];
+        
+        // Calculate department totals
+        const departmentSummary = {
+            department_id: params.departmentId,
+            total_employees: records.length,
+            total_hours: records.reduce((sum: number, r: any) => sum + (r.total_hours || 0), 0),
+            total_late_minutes: records.reduce((sum: number, r: any) => sum + (r.total_late_minutes || 0), 0),
+            avg_attendance_rate: records.length > 0 
+                ? (records.reduce((sum: number, r: any) => sum + parseFloat(r.attendance_rate || 0), 0) / records.length).toFixed(1)
+                : 0,
+            total_present_days: records.reduce((sum: number, r: any) => sum + (r.days_present || 0), 0),
+            total_absent_days: records.reduce((sum: number, r: any) => sum + (r.absent_days || 0), 0)
+        };
+        
+        return departmentSummary;
+    } catch (error) {
+        console.error('Get department summary error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get yearly summary
+ * @param year - Year
+ * @param departmentId - Optional department ID filter
+ * @returns Yearly summary statistics
+ */
+async getYearlySummary(year: number, departmentId?: number | null): Promise<any> {
+    try {
+        const response = await this.getMonthlyAttendance({
+            year,
+            departmentId,
+            limit: 100
+        });
+        
+        const records = response.data || [];
+        
+        // Calculate yearly totals
+        const yearlySummary = {
+            year,
+            total_employees: records.length,
+            total_hours: records.reduce((sum: number, r: any) => sum + (r.total_hours || 0), 0),
+            total_late_minutes: records.reduce((sum: number, r: any) => sum + (r.total_late_minutes || 0), 0),
+            avg_attendance_rate: records.length > 0
+                ? (records.reduce((sum: number, r: any) => sum + parseFloat(r.attendance_rate || 0), 0) / records.length).toFixed(1)
+                : 0,
+            total_present_days: records.reduce((sum: number, r: any) => sum + (r.days_present || 0), 0),
+            total_absent_days: records.reduce((sum: number, r: any) => sum + (r.absent_days || 0), 0),
+            best_month: records.reduce((best: any, current: any) => 
+                parseFloat(current.attendance_rate || 0) > parseFloat(best?.attendance_rate || 0) ? current : best, null
+            ),
+            worst_month: records.reduce((worst: any, current: any) => 
+                parseFloat(current.attendance_rate || 0) < parseFloat(worst?.attendance_rate || 100) ? current : worst, null
+            )
+        };
+        
+        return yearlySummary;
+    } catch (error) {
+        console.error('Get yearly summary error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Download import template
+ * @returns Template file blob
+ */
+async downloadImportTemplate(): Promise<Blob> {
+    try {
+        const response = await api.get('/import/template', {
+            responseType: 'blob'
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Download template error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Check if there's already an import today
+ * @returns Today's import status
+ */
+async checkTodayImport(): Promise<any> {
+    try {
+        const response = await api.get('/attendance/check-today-import');
+        return response.data;
+    } catch (error) {
+        console.error('Check today import error:', error);
+        return { has_import: false };
+    }
+}
+
+/**
+ * Export attendance data to CSV/Excel
+ * @param params - Export parameters
+ * @returns Blob for download
+ */
+async exportAttendance(params: {
+    startDate: string;
+    endDate: string;
+    departmentId?: number | null;
+    format?: 'csv' | 'excel';
+}): Promise<Blob> {
+    try {
+        const queryParams = new URLSearchParams();
+        queryParams.append('startDate', params.startDate);
+        queryParams.append('endDate', params.endDate);
+        queryParams.append('format', params.format || 'csv');
+        
+        if (params.departmentId && params.departmentId > 0) {
+            queryParams.append('departmentId', params.departmentId.toString());
+        }
+        
+        const response = await api.get(`/attendance/export?${queryParams.toString()}`, {
+            responseType: 'blob'
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Export attendance error:', error);
+        throw error;
+    }
+}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export default new AttendanceService();

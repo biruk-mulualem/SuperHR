@@ -1,0 +1,2 @@
+firstName,lastName,middleName,email,personalEmail,phone,dob,gender,maritalStatus,nationality,departmentId,positionId,managerId,employmentType,hireDate,salary,address,workLocation
+John,Doe,,johndoe@company.com,,2.51911E+11,1/1/1990,male,single,Ethiopian,1,1,,full-time,1/1/2024,15000,"Addis Ababa, Ethiopia",Head Office

@@ -3,6 +3,8 @@ const express = require("express");
 const router = express.Router();
 const attendanceController = require("../controllers/attendanceController");
 const { authMiddleware } = require("../middleware/authMiddleware");
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/imports/' });
 
 // =============================================
 // PUBLIC ROUTES (No authentication required)
@@ -373,6 +375,7 @@ router.get(
   attendanceController.getLateNightAdjustments,
 );
 
+
 router.put(
   "/late-night-adjustments/:adjustmentId",
   authMiddleware("admin"),
@@ -445,5 +448,47 @@ router.post(
   authMiddleware("admin"),
   attendanceController.processDailyAttendance,
 );
+
+
+// =============================================
+// 14. Import Controller routes
+// =============================================
+
+// =============================================
+// Import Controller routes
+// =============================================
+
+router.post(
+    '/import',  // ← Change from '/attendance' to '/import'
+    authMiddleware('admin'),
+    upload.single('file'),
+    attendanceController.importAttendanceFile
+);
+
+// Get import status
+router.get(
+    '/import/status/:batchId',
+    authMiddleware('admin'),
+    attendanceController.getImportStatus
+);
+
+// Reprocess failed rows
+router.post(
+    '/import/reprocess/:batchId',
+    authMiddleware('admin'),
+    attendanceController.reprocessFailedRows
+);
+
+// Get daily attendance
+router.get(
+    '/import/daily-attendance',
+    authMiddleware(),
+    attendanceController.getDailyAttendance
+);
+
+
+// In your attendance routes file
+router.get('/import/weekly-summary', attendanceController.getWeeklyAttendance);
+router.get('/import/monthly-summary', attendanceController.getMonthlyAttendance);
 
 module.exports = router;
