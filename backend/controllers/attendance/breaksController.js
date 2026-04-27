@@ -40,32 +40,46 @@ exports.issueBreakTicket = async (req, res) => {
       });
     }
 
-    // ✅ CHECK IF EMPLOYEE HAS CHECKED IN TODAY
-    const today = new Date().toISOString().split("T")[0];
-    const attendance = await AttendanceLog.findOne({
+    // ✅ FIND ATTENDANCE RECORD (supports night shift cross-day)
+    const checkInDate = new Date();
+    let todayStr = checkInDate.toISOString().split("T")[0];
+    
+    let attendance = await AttendanceLog.findOne({
       where: {
         employeeId: employeeId,
-        attendanceDate: today,
+        attendanceDate: todayStr,
       },
     });
+
+    // For night shift: check-in might be yesterday
+    if (!attendance) {
+      const yesterday = new Date(checkInDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      
+      attendance = await AttendanceLog.findOne({
+        where: {
+          employeeId: employeeId,
+          attendanceDate: yesterdayStr,
+        },
+      });
+    }
 
     if (!attendance) {
       return res.status(400).json({
         success: false,
-        error:
-          "Cannot take break. You have not checked in today. Please check in first.",
+        error: "Cannot take break. You have not checked in today. Please check in first.",
       });
     }
 
     if (!attendance.checkInTime) {
       return res.status(400).json({
         success: false,
-        error:
-          "Cannot take break. You have not checked in yet. Please check in first.",
+        error: "Cannot take break. You have not checked in yet. Please check in first.",
       });
     }
 
-    // Get lunch end time from company defaults
+    // Get company defaults
     const companyDefault = await CompanyShiftDefault.findOne({
       where: {
         shiftType: attendance.shiftType || "day",
@@ -74,39 +88,101 @@ exports.issueBreakTicket = async (req, res) => {
       order: [["effectiveFrom", "DESC"]],
     });
 
-    if (companyDefault) {
-      const lunchStartTime = companyDefault.lunchStartTime || "12:00";
-      const lunchDurationMinutes = companyDefault.lunchDurationMinutes || 60;
+    const addMinutesToTime = (timeStr, minutes) => {
+      const [hours, mins] = timeStr.split(":");
+      let totalMinutes = parseInt(hours) * 60 + parseInt(mins) + minutes;
+      totalMinutes = totalMinutes % (24 * 60);
+      const newHours = Math.floor(totalMinutes / 60);
+      const newMins = totalMinutes % 60;
+      return `${newHours.toString().padStart(2, "0")}:${newMins.toString().padStart(2, "0")}`;
+    };
 
-      // Calculate lunch end time
-      const addMinutesToTime = (timeStr, minutes) => {
-        const [hours, mins] = timeStr.split(":");
-        const totalMinutes = parseInt(hours) * 60 + parseInt(mins) + minutes;
-        const newHours = Math.floor(totalMinutes / 60);
-        const newMins = totalMinutes % 60;
-        return `${newHours.toString().padStart(2, "0")}:${newMins.toString().padStart(2, "0")}`;
-      };
-
-      const lunchEndTime = addMinutesToTime(
-        lunchStartTime,
-        lunchDurationMinutes,
-      );
-      const lunchEndMinutes =
-        parseInt(lunchEndTime.split(":")[0]) * 60 +
-        parseInt(lunchEndTime.split(":")[1] || 0);
+    // =============================================
+    // LUNCH BREAK VALIDATIONS (DAY SHIFT)
+    // =============================================
+    if (breakType === "lunch") {
+      const lunchStartTime = companyDefault?.lunchStartTime || "12:00";
+      const lunchDurationMinutes = companyDefault?.lunchDurationMinutes || 60;
+      const lunchEndTime = addMinutesToTime(lunchStartTime, lunchDurationMinutes);
+      const lunchEndMinutes = parseInt(lunchEndTime.split(":")[0]) * 60 + parseInt(lunchEndTime.split(":")[1] || 0);
 
       const checkInTime = new Date(attendance.checkInTime);
-      const checkInMinutes =
-        checkInTime.getHours() * 60 + checkInTime.getMinutes();
+      const checkInMinutes = checkInTime.getHours() * 60 + checkInTime.getMinutes();
 
-      // If employee checked in after lunch end, they cannot take lunch break
-      if (breakType === "lunch" && checkInMinutes >= lunchEndMinutes) {
+      // Day shift employees who checked in after lunch cannot take lunch
+      if (checkInMinutes >= lunchEndMinutes) {
         return res.status(400).json({
           success: false,
-          error: `Cannot take lunch break. You checked in after lunch time (after ${lunchEndTime}). Lunch break is only for employees who checked-in in the morning.`,
+          error: `Cannot take lunch break. You checked in after lunch time (after ${lunchEndTime}). Lunch break is only for employees who checked in during morning session.`,
         });
       }
     }
+
+    // =============================================
+    // DINNER BREAK VALIDATIONS (NIGHT SHIFT)
+    // =============================================
+// =============================================
+// DINNER BREAK VALIDATIONS (NIGHT SHIFT)
+// =============================================
+if (breakType === "dinner") {
+  const dinnerStartTime = companyDefault?.dinnerStartTime || "20:00";
+  const dinnerDurationMinutes = companyDefault?.dinnerDurationMinutes || 60;
+  
+  const currentTime = new Date();
+  let currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+  
+  // Parse dinner start time
+  const [dinnerStartHour, dinnerStartMinute] = dinnerStartTime.split(":").map(Number);
+  const dinnerStartMinutes = dinnerStartHour * 60 + dinnerStartMinute;
+  
+  // Get shift end time
+  const effectiveSchedule = await attendanceService.getEffectiveSchedule(
+    employeeId,
+    currentTime,
+  );
+  const effectiveCheckOutTime = effectiveSchedule.checkOutTime;
+  const [checkOutHour, checkOutMinute] = effectiveCheckOutTime.split(":").map(Number);
+  let checkOutMinutes = checkOutHour * 60 + checkOutMinute;
+  
+  // Handle overnight shift
+  const [checkInHour, checkInMinute] = effectiveSchedule.checkInTime.split(":").map(Number);
+  let checkInMinutes = checkInHour * 60 + checkInMinute;
+  if (checkOutMinutes <= checkInMinutes) {
+    checkOutMinutes += 1440;
+  }
+  
+  // Adjust current time for overnight
+  let adjustedCurrentMinutes = currentMinutes;
+  if (adjustedCurrentMinutes < checkInMinutes) {
+    adjustedCurrentMinutes += 1440;
+  }
+  
+  // Calculate adjusted dinner start time
+  let adjustedDinnerStartMinutes = dinnerStartMinutes;
+  if (dinnerStartMinutes < checkInMinutes) {
+    adjustedDinnerStartMinutes += 1440;
+  }
+  
+  // ✅ Check if current time is BEFORE dinner start time
+  if (adjustedCurrentMinutes < adjustedDinnerStartMinutes) {
+    const waitMinutes = adjustedDinnerStartMinutes - adjustedCurrentMinutes;
+    const waitHours = Math.floor(waitMinutes / 60);
+    const waitMins = waitMinutes % 60;
+    return res.status(400).json({
+      success: false,
+      error: `Too early for dinner break. Dinner break starts at ${dinnerStartTime}. Please wait ${waitHours}h ${waitMins}m.`,
+    });
+  }
+  
+  // ✅ Check if there's enough time left in shift after dinner
+  const latestDinnerStart = checkOutMinutes - dinnerDurationMinutes;
+  if (adjustedCurrentMinutes > latestDinnerStart) {
+    return res.status(400).json({
+      success: false,
+      error: `Too late for dinner break. You need at least ${dinnerDurationMinutes} minutes remaining in your shift. Shift ends at ${effectiveCheckOutTime}.`,
+    });
+  }
+}
 
     // ✅ CHECK IF ALREADY ON BREAK
     const existingBreak = await BreakTicket.findOne({
@@ -133,15 +209,30 @@ exports.issueBreakTicket = async (req, res) => {
 
     console.log(`✅ Break ticket created: ID ${ticket.id}`);
 
-    // UPDATE ATTENDANCE LOG - Mark afternoon as pending for lunch break
+    // =============================================
+    // UPDATE ATTENDANCE LOG BASED ON BREAK TYPE
+    // =============================================
+    const breakStartTimeFormatted = new Date(ticket.breakOutTime).toLocaleTimeString();
+    
     if (breakType === "lunch" && attendance) {
+      // Day shift - update afternoon status
       await attendance.update({
         afternoonStatus: "pending",
         notes: attendance.notes
-          ? `${attendance.notes} | Lunch break started at ${new Date(ticket.breakOutTime).toLocaleTimeString()}`
-          : `Lunch break started at ${new Date(ticket.breakOutTime).toLocaleTimeString()}`,
+          ? `${attendance.notes} | 🍽️ Lunch break started at ${breakStartTimeFormatted}`
+          : `🍽️ Lunch break started at ${breakStartTimeFormatted}`,
       });
-      console.log(`✅ Attendance updated: afternoonStatus = pending`);
+      console.log(`✅ Day shift: afternoonStatus = pending`);
+    } 
+    else if (breakType === "dinner" && attendance) {
+      // Night shift - reuse afternoonStatus for dinner tracking
+      await attendance.update({
+        afternoonStatus: "pending",
+        notes: attendance.notes
+          ? `${attendance.notes} | 🌙 Dinner break started at ${breakStartTimeFormatted}`
+          : `🌙 Dinner break started at ${breakStartTimeFormatted}`,
+      });
+      console.log(`✅ Night shift: dinner break tracked in afternoonStatus`);
     }
 
     res.status(201).json({
@@ -179,17 +270,31 @@ exports.returnFromBreak = async (req, res) => {
     }
 
     // =============================================
-    // UPDATE ATTENDANCE LOG BASED ON BREAK RETURN
+    // FIND ATTENDANCE RECORD (supports night shift cross-day)
     // =============================================
-    const today = new Date().toISOString().split("T")[0];
-
-    // ✅ Find attendance record - MUST exist
-    const attendance = await AttendanceLog.findOne({
+    const returnDate = new Date();
+    let todayStr = returnDate.toISOString().split("T")[0];
+    
+    let attendance = await AttendanceLog.findOne({
       where: {
         employeeId: ticket.employeeId,
-        attendanceDate: today,
+        attendanceDate: todayStr,
       },
     });
+
+    // For night shift: check-in might be yesterday
+    if (!attendance) {
+      const yesterday = new Date(returnDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      
+      attendance = await AttendanceLog.findOne({
+        where: {
+          employeeId: ticket.employeeId,
+          attendanceDate: yesterdayStr,
+        },
+      });
+    }
 
     if (!attendance) {
       return res.status(400).json({
@@ -198,9 +303,9 @@ exports.returnFromBreak = async (req, res) => {
       });
     }
 
-    // Get company defaults for thresholds
+    // Get company defaults
     const companyDefault = await CompanyShiftDefault.findOne({
-      where: { shiftType: "day", isActive: true },
+      where: { shiftType: attendance.shiftType || "day", isActive: true },
       order: [["effectiveFrom", "DESC"]],
     });
 
@@ -231,64 +336,48 @@ exports.returnFromBreak = async (req, res) => {
     let finalStatus = attendance.status;
     let notes = "";
 
+    // =============================================
+    // LUNCH BREAK RETURN (DAY SHIFT)
+    // =============================================
     if (ticket.breakType === "lunch") {
-      console.log(
-        `🔄 Updating attendance for employee ${ticket.employeeId}...`,
-      );
+      console.log(`🔄 Updating day shift attendance for lunch return...`);
       console.log(`Existing late minutes: ${existingLateMinutes}, isLate: ${existingIsLate}`);
 
       if (actualReturn <= expectedReturn) {
-        // =============================================
         // CASE 1: ON TIME or EARLY
-        // =============================================
         afternoonStatus = "present";
-        // Keep existing isLate and lateMinutes (preserve morning lateness)
         isLate = existingIsLate;
         lateMinutes = existingLateMinutes;
         notes = `Lunch break returned on time at ${actualReturn.toLocaleTimeString()}`;
 
-        if (
-          attendance.morningStatus === "present" ||
-          attendance.morningStatus === "late"
-        ) {
+        if (attendance.morningStatus === "present" || attendance.morningStatus === "late") {
           sessionType = "full_day";
           finalStatus = "FULL_DAY";
         }
-        console.log(`✅ Case: ON TIME - afternoonStatus = ${afternoonStatus}`);
-
-      } else if (breakLateMinutes > absentAfterMinutes) {
-        // =============================================
+        console.log(`✅ Case: ON TIME`);
+      } 
+      else if (breakLateMinutes > absentAfterMinutes) {
         // CASE 2: VERY LATE - Mark afternoon as ABSENT
-        // =============================================
         afternoonStatus = "absent";
-        // PRESERVE morning lateness - don't reset
         isLate = existingIsLate;
         lateMinutes = existingLateMinutes;
         sessionType = "morning_only";
         finalStatus = "HALF_DAY";
         notes = `Lunch break returned ${breakLateMinutes} minutes late - Afternoon marked as absent`;
-        console.log(`❌ Case: VERY LATE - afternoonStatus = ${afternoonStatus}`);
-
-      } else {
-        // =============================================
+        console.log(`❌ Case: VERY LATE - Afternoon marked absent`);
+      } 
+      else {
         // CASE 3: LATE but within threshold
-        // =============================================
         afternoonStatus = "present";
-        // ADD break late minutes to existing late minutes
-        isLate = true;  // Either morning or break was late
+        isLate = true;
         lateMinutes = existingLateMinutes + breakLateMinutes;
         notes = `Lunch break returned ${breakLateMinutes} minutes late`;
 
-        if (
-          attendance.morningStatus === "present" ||
-          attendance.morningStatus === "late"
-        ) {
+        if (attendance.morningStatus === "present" || attendance.morningStatus === "late") {
           sessionType = "full_day";
           finalStatus = "FULL_DAY";
         }
-        console.log(
-          `⚠️ Case: LATE - afternoonStatus = ${afternoonStatus}, total lateMinutes = ${lateMinutes} (${existingLateMinutes} + ${breakLateMinutes})`,
-        );
+        console.log(`⚠️ Case: LATE - Total late minutes: ${lateMinutes}`);
       }
 
       await attendance.update({
@@ -300,14 +389,47 @@ exports.returnFromBreak = async (req, res) => {
         notes: attendance.notes ? `${attendance.notes} | ${notes}` : notes,
       });
 
-      console.log(`✅ Attendance updated! New values:`, {
-        afternoonStatus: afternoonStatus,
-        isLate: isLate,
-        lateMinutes: lateMinutes,
-        sessionType: sessionType,
-        status: finalStatus,
-      });
+      console.log(`✅ Day shift attendance updated!`);
     }
+
+    // =============================================
+    // DINNER BREAK RETURN (NIGHT SHIFT)
+    // =============================================
+else if (ticket.breakType === "dinner") {
+  console.log(`🔄 Updating night shift attendance for dinner return...`);
+  
+  if (actualReturn <= expectedReturn) {
+    // ON TIME
+    afternoonStatus = "present";
+    isLate = existingIsLate;
+    lateMinutes = existingLateMinutes;
+    notes = `Dinner break returned on time at ${actualReturn.toLocaleTimeString()}`;
+    console.log(`✅ Case: ON TIME`);
+  } 
+  else if (breakLateMinutes > absentAfterMinutes) {
+    // VERY LATE - Mark night shift as ABSENT for remaining
+    afternoonStatus = "absent";  // ✅ Mark as absent
+    isLate = existingIsLate;
+    lateMinutes = existingLateMinutes;
+    notes = `Dinner break returned ${breakLateMinutes} minutes late - Remaining night shift marked as absent`;
+    console.log(`❌ Case: VERY LATE - Night shift marked absent for remaining`);
+  } 
+  else {
+    // LATE but within threshold
+    afternoonStatus = "present";
+    isLate = true;
+    lateMinutes = existingLateMinutes + breakLateMinutes;
+    notes = `Dinner break returned ${breakLateMinutes} minutes late`;
+    console.log(`⚠️ Case: LATE - Total late minutes: ${lateMinutes}`);
+  }
+
+  await attendance.update({
+    afternoonStatus: afternoonStatus,
+    isLate: isLate,
+    lateMinutes: lateMinutes,
+    notes: attendance.notes ? `${attendance.notes} | ${notes}` : notes,
+  });
+}
 
     res.status(200).json({
       success: true,
@@ -330,6 +452,9 @@ exports.returnFromBreak = async (req, res) => {
 exports.getActiveBreaks = async (req, res) => {
   try {
     const { employeeId } = req.query;
+
+    // ✅ First, auto-expire any overdue breaks
+    await attendanceService.checkExpiredBreaks();
 
     let breaks = await BreakTicket.findAll({
       where: { status: ["active", "late"] },
@@ -416,6 +541,7 @@ exports.getBreakHistory = async (req, res) => {
 exports.getLunchHistory = async (req, res) => {
   console.log("=== getLunchHistory START ===");
   try {
+     await attendanceService.checkExpiredBreaks();
     const {
       employeeId,
       page = 1,
@@ -673,9 +799,11 @@ exports.getLunchHistory = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 exports.getDinnerHistory = async (req, res) => {
   console.log("=== getDinnerHistory START ===");
   try {
+     await attendanceService.checkExpiredBreaks();
     const {
       employeeId,
       page = 1,

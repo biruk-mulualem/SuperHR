@@ -27,8 +27,15 @@ exports.recordCheckIn = async (req, res) => {
     }
 
     const { checkInTime, latitude, longitude } = req.body;
-    const checkInDateTime = checkInTime ? new Date(checkInTime) : new Date();
-    const today = new Date().toISOString().split("T")[0];
+    
+    // ✅ FIX 1: SINGLE TIME SOURCE - use this throughout the function
+    const now = checkInTime ? new Date(checkInTime) : new Date();
+    const today = now.toISOString().split("T")[0];
+    
+    // Get current time once - no duplicate declarations
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
 
     // =============================================
     // 1. CHECK EMPLOYEE
@@ -65,11 +72,12 @@ exports.recordCheckIn = async (req, res) => {
     }
 
     // =============================================
-    // 3. GET COMPANY DEFAULTS & SCHEDULE (needed for lunch times)
+    // 3. GET COMPANY DEFAULTS & SCHEDULE
+    // ✅ FIX 1: Use 'now' instead of new Date()
     // =============================================
     const effectiveSchedule = await attendanceService.getEffectiveSchedule(
       numericEmployeeId,
-      new Date(),
+      now,
     );
     const shiftType = effectiveSchedule.shiftType;
     const effectiveCheckInTime = effectiveSchedule.checkInTime;
@@ -90,11 +98,13 @@ exports.recordCheckIn = async (req, res) => {
       });
     }
 
-    // Helper function to add minutes to time
+    // =============================================
+    // ✅ FIX 4: PROPER TIME ADDITION (handles midnight crossing)
+    // =============================================
     const addMinutesToTime = (timeStr, minutes) => {
       if (!timeStr) return "12:00";
       const [hours, mins] = timeStr.split(":");
-      const totalMinutes = parseInt(hours) * 60 + parseInt(mins) + minutes;
+      const totalMinutes = (parseInt(hours) * 60 + parseInt(mins) + minutes) % (24 * 60);
       const newHours = Math.floor(totalMinutes / 60);
       const newMins = totalMinutes % 60;
       return `${newHours.toString().padStart(2, "0")}:${newMins.toString().padStart(2, "0")}`;
@@ -117,23 +127,25 @@ exports.recordCheckIn = async (req, res) => {
       lunchStartMinutes,
       lunchEndMinutes,
     });
+    
     // =============================================
     // 4. CHECK WORKING DAY & HOLIDAY
+    // ✅ FIX 1: Use 'now' instead of new Date()
     // =============================================
     let isWorkingDay = await attendanceService.isWorkingDay(
       numericEmployeeId,
-      new Date(),
+      now,
     );
-    const isHolidayToday = await attendanceService.isHoliday(new Date());
+    const isHolidayToday = await attendanceService.isHoliday(now);
 
     let dayType = "normal";
     let overtimeRateApplied = 1.0;
     let isSpecialDay = false;
-    let holiday = null; // ✅ Add this line
+    let holiday = null;
 
     if (isHolidayToday) {
       dayType = "holiday";
-      holiday = await Holiday.findOne({ where: { holidayDate: today } }); // ✅ Store in variable
+      holiday = await Holiday.findOne({ where: { holidayDate: today } });
       overtimeRateApplied = holiday?.overtimeRate || 2.5;
       isSpecialDay = true;
       isWorkingDay = false;
@@ -147,8 +159,7 @@ exports.recordCheckIn = async (req, res) => {
     // =============================================
     // 5. CHECK FIELD WORK & LATE NIGHT ADJUSTMENT
     // =============================================
-    const isOnFieldWork =
-      await attendanceService.getActiveFieldWork(numericEmployeeId);
+    const isOnFieldWork = await attendanceService.getActiveFieldWork(numericEmployeeId);
 
     const lateNightAdjustment = await LateNightAdjustment.findOne({
       where: {
@@ -158,13 +169,12 @@ exports.recordCheckIn = async (req, res) => {
       },
     });
 
-    let finalCheckInTime = checkInDateTime;
+    let finalCheckInTime = now;
     let adjustedCheckInNote = null;
 
     if (lateNightAdjustment) {
-      const [hours, minutes] =
-        lateNightAdjustment.adjustedCheckInTime.split(":");
-      const adjustedDate = new Date(checkInDateTime);
+      const [hours, minutes] = lateNightAdjustment.adjustedCheckInTime.split(":");
+      const adjustedDate = new Date(now);
       adjustedDate.setHours(parseInt(hours), parseInt(minutes), 0);
       finalCheckInTime = adjustedDate;
       adjustedCheckInNote = `Late night adjustment applied. Worked until ${lateNightAdjustment.workedUntilTime}`;
@@ -173,27 +183,13 @@ exports.recordCheckIn = async (req, res) => {
     // =============================================
     // 6. CHECK PENDING LATE DEADLINE
     // =============================================
-    const currentHour = checkInDateTime.getHours();
-    const currentMinute = checkInDateTime.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    if (attendance && attendance.status === "PENDING_LATE" && attendance.allowUntilTime) {
+      const [deadlineHour, deadlineMinute] = attendance.allowUntilTime.split(":");
+      const deadlineInMinutes = parseInt(deadlineHour) * 60 + parseInt(deadlineMinute);
 
-    if (
-      attendance &&
-      attendance.status === "PENDING_LATE" &&
-      attendance.allowUntilTime
-    ) {
-      const [deadlineHour, deadlineMinute] =
-        attendance.allowUntilTime.split(":");
-      const deadlineInMinutes =
-        parseInt(deadlineHour) * 60 + parseInt(deadlineMinute);
-
-      // Case 1: Checking in BEFORE or ON deadline - ALLOW (will be marked as late)
       if (currentTimeMinutes <= deadlineInMinutes) {
         // Allow normal check-in flow to continue
-        // Do nothing here - let the function continue
-      }
-      // Case 2: Checking in AFTER deadline - REJECT, convert to PENDING_ABSENT
-      else if (currentTimeMinutes > deadlineInMinutes) {
+      } else if (currentTimeMinutes > deadlineInMinutes) {
         await attendance.update({
           morningStatus: "absent",
           afternoonStatus: "pending",
@@ -216,9 +212,7 @@ exports.recordCheckIn = async (req, res) => {
     // 7. CHECK FOR AFTERNOON-ONLY CHECK-IN (PENDING_ABSENT only)
     // =============================================
     if (attendance && attendance.status === "PENDING_ABSENT") {
-      // Only allow afternoon check-in
       if (currentTimeMinutes >= lunchEndMinutes) {
-        // Afternoon-only check-in
         const attendanceData = {
           checkInTime: finalCheckInTime,
           isLate: false,
@@ -236,6 +230,7 @@ exports.recordCheckIn = async (req, res) => {
         };
 
         await attendance.update(attendanceData);
+        await attendance.reload();
 
         return res.status(200).json({
           success: true,
@@ -248,13 +243,13 @@ exports.recordCheckIn = async (req, res) => {
           },
         });
       } else {
-        // Trying to check in before lunch
         return res.status(400).json({
           success: false,
           error: `❌ You are marked as absent for morning session. Please check in after ${lunchEndTime} for afternoon session.`,
         });
       }
     }
+    
     // =============================================
     // 8. CHECK IF EMPLOYEE IS MARKED AS LEAVE OR SICK
     // =============================================
@@ -262,8 +257,7 @@ exports.recordCheckIn = async (req, res) => {
       if (attendance.status === "ON_LEAVE") {
         return res.status(403).json({
           success: false,
-          error:
-            "❌ Cannot check in. Employee is marked as ON LEAVE for today.",
+          error: "❌ Cannot check in. Employee is marked as ON LEAVE for today.",
         });
       }
 
@@ -289,74 +283,118 @@ exports.recordCheckIn = async (req, res) => {
     // =============================================
     // 9. SHIFT-BASED CHECK-IN VALIDATIONS
     // =============================================
-    const [checkInHour, checkInMinute] = effectiveCheckInTime.split(":");
-    const scheduledCheckInMinutes =
-      parseInt(checkInHour) * 60 + parseInt(checkInMinute);
-    const [checkOutHour, checkOutMinute] = effectiveCheckOutTime.split(":");
-    const scheduledCheckOutMinutes =
-      parseInt(checkOutHour) * 60 + parseInt(checkOutMinute);
 
-    if (!isSpecialDay) {
-      if (shiftType === "day") {
-        const latestCheckInMinutes = scheduledCheckOutMinutes - 120;
-        if (currentTimeMinutes > latestCheckInMinutes) {
-          return res.status(400).json({
-            success: false,
-            error: `❌ Day shift cannot check in after 2 hours before check-out at ${effectiveCheckOutTime}.`,
-          });
-        }
-        if (currentHour < 4) {
-          return res.status(400).json({
-            success: false,
-            error: "❌ Day shift employees cannot check in before 4:00 AM.",
-          });
-        }
-      }
+// =============================================
+// SHIFT-BASED CHECK-IN VALIDATIONS (CLEAN)
+// =============================================
 
-      if (shiftType === "night") {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split("T")[0];
+// Parse shift times
+const [checkInHour, checkInMinute] = effectiveCheckInTime.split(":").map(Number);
+const [checkOutHour, checkOutMinute] = effectiveCheckOutTime.split(":").map(Number);
 
-        const previousAttendance = await AttendanceLog.findOne({
-          where: {
-            employeeId: numericEmployeeId,
-            attendanceDate: yesterdayStr,
-          },
-        });
+// Convert to minutes
+let checkInMinutes = checkInHour * 60 + checkInMinute;
+let checkOutMinutes = checkOutHour * 60 + checkOutMinute;
 
-        if (previousAttendance && !previousAttendance.checkOutTime) {
-          return res.status(400).json({
-            success: false,
-            error:
-              "❌ You have not checked out from your previous night shift.",
-          });
-        }
+// Handle overnight shift (e.g. 18:00 → 06:00)
+if (checkOutMinutes <= checkInMinutes) {
+  checkOutMinutes += 1440;
+}
 
-        if (currentHour < 16) {
-          return res.status(400).json({
-            success: false,
-            error: "❌ Night shift employees can only check in after 4:00 PM.",
-          });
-        }
+// Current time
+let currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-        if (currentHour >= 2 && currentHour < 16) {
-          return res.status(400).json({
-            success: false,
-            error: "❌ Night shift employees cannot check in after 2:00 AM.",
-          });
-        }
-      }
+// Adjust current time if after midnight (for overnight continuity)
+if (currentMinutes < checkInMinutes) {
+  currentMinutes += 1440;
+}
+
+// ✅ Allow 1 hour early check-in
+const earliestCheckInMinutes = checkInMinutes - 60;
+
+// =============================================
+// VALIDATIONS
+// =============================================
+
+if (!isSpecialDay) {
+  // ✅ Ensure previous night shift is closed
+  if (shiftType === "night") {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    const previousAttendance = await AttendanceLog.findOne({
+      where: {
+        employeeId: numericEmployeeId,
+        attendanceDate: yesterdayStr,
+      },
+    });
+
+    if (previousAttendance && !previousAttendance.checkOutTime) {
+      return res.status(400).json({
+        success: false,
+        error: "❌ You have not checked out from your previous night shift.",
+      });
     }
+  }
+
+  // ❌ Too early
+  if (currentMinutes < earliestCheckInMinutes) {
+    const hours = Math.floor(earliestCheckInMinutes / 60);
+    const minutes = earliestCheckInMinutes % 60;
+
+    return res.status(400).json({
+      success: false,
+      error: `❌ Too early to check in. Allowed from ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}.`,
+    });
+  }
+
+ // ❌ Too late (after shift end)
+if (currentMinutes > checkOutMinutes) {
+  let errorMessage = "";
+  
+  if (shiftType === "night") {
+    // Night shift trying to check in during day shift hours
+    // Get day shift times from database for comparison
+    const dayShiftDefault = await CompanyShiftDefault.findOne({
+      where: { shiftType: "day", isActive: true },
+    });
+    
+    if (dayShiftDefault) {
+      const [dayStartHour] = dayShiftDefault.checkInTime.split(":").map(Number);
+      const [dayEndHour] = dayShiftDefault.checkOutTime.split(":").map(Number);
+      
+      errorMessage = `❌ You are a night shift employee. Your shift hours are from ${effectiveCheckInTime} to ${effectiveCheckOutTime}. You cannot check in during day shift hours (${String(dayStartHour).padStart(2, "0")}:00 to ${String(dayEndHour).padStart(2, "0")}:00).`;
+    } else {
+      errorMessage = `❌ Too late to check in. Night shift ended at ${effectiveCheckOutTime}.`;
+    }
+  } else if (shiftType === "day") {
+    // Day shift trying to check in during night shift hours
+    const nightShiftDefault = await CompanyShiftDefault.findOne({
+      where: { shiftType: "night", isActive: true },
+    });
+    
+    if (nightShiftDefault) {
+      const [nightStartHour] = nightShiftDefault.checkInTime.split(":").map(Number);
+      const [nightEndHour] = nightShiftDefault.checkOutTime.split(":").map(Number);
+      
+      errorMessage = `❌ You are a day shift employee. Your shift hours are from ${effectiveCheckInTime} to ${effectiveCheckOutTime}. You cannot check in during night shift hours (${String(nightStartHour).padStart(2, "0")}:00 to ${String(nightEndHour).padStart(2, "0")}:00).`;
+    } else {
+      errorMessage = `❌ Too late to check in. Day shift ended at ${effectiveCheckOutTime}.`;
+    }
+  }
+  
+  return res.status(400).json({
+    success: false,
+    error: errorMessage,
+  });
+}
+}
 
     // =============================================
     // 10. CHECK LUNCH BREAK VALIDATION
     // =============================================
-    if (
-      !isSpecialDay &&
-      currentTimeMinutes > lunchStartMinutes &&
-      currentTimeMinutes < lunchEndMinutes
-    ) {
+    if (!isSpecialDay && currentTimeMinutes > lunchStartMinutes && currentTimeMinutes < lunchEndMinutes) {
       return res.status(400).json({
         success: false,
         error: `❌ Cannot check in during lunch break (${lunchStartTime} - ${lunchEndTime}). Please check in after ${lunchEndTime}.`,
@@ -366,93 +404,88 @@ exports.recordCheckIn = async (req, res) => {
     // =============================================
     // 11. CALCULATE LATE MINUTES
     // =============================================
-    const scheduledCheckIn = new Date(checkInDateTime);
-    scheduledCheckIn.setHours(
-      parseInt(checkInHour),
-      parseInt(checkInMinute),
-      0,
-    );
+    const scheduledCheckIn = new Date(now);
+    scheduledCheckIn.setHours(parseInt(checkInHour), parseInt(checkInMinute), 0);
 
     let isLate = false;
     let lateMinutes = 0;
     const lateThresholdMinutes = companyDefault.lateThresholdMinutes || 5;
-    if (
-      !isSpecialDay &&
-      finalCheckInTime > scheduledCheckIn &&
-      !lateNightAdjustment
-    ) {
-      const diffMinutes = Math.floor(
-        (finalCheckInTime - scheduledCheckIn) / (1000 * 60),
-      );
+    
+    if (!isSpecialDay && finalCheckInTime > scheduledCheckIn && !lateNightAdjustment) {
+      const diffMinutes = Math.floor((finalCheckInTime - scheduledCheckIn) / (1000 * 60));
       if (diffMinutes > lateThresholdMinutes) {
         isLate = true;
         lateMinutes = diffMinutes;
       }
     }
 
- // =============================================
-// 11.5 CHECK IF REGULAR EMPLOYEE IS BEYOND ABSENT THRESHOLD
-// =============================================
-const absentAfterMinutes = companyDefault.absentAfterMinutes || 30;
+    // =============================================
+    // 11.5 CHECK IF REGULAR EMPLOYEE IS BEYOND ABSENT THRESHOLD
+    // ✅ FIX 2: REMOVED duplicate currentTimeMinutes declaration
+    // =============================================
+    const absentAfterMinutes = companyDefault.absentAfterMinutes || 30;
 
-// Only check for employees with NO existing attendance record
-if (!isSpecialDay && !attendance && !lateNightAdjustment && isLate) {
-  const scheduledCheckInMinutes =
-    parseInt(effectiveCheckInTime.split(":")[0]) * 60 +
-    parseInt(effectiveCheckInTime.split(":")[1]);
-  const currentTimeMinutes = currentHour * 60 + currentMinute;
-  const minutesLate = currentTimeMinutes - scheduledCheckInMinutes;
+    if (!isSpecialDay && !attendance && !lateNightAdjustment && isLate) {
+      const scheduledCheckInMinutes = parseInt(effectiveCheckInTime.split(":")[0]) * 60 + parseInt(effectiveCheckInTime.split(":")[1]);
+      const minutesLate = currentTimeMinutes - scheduledCheckInMinutes;
 
-  // If employee is beyond absent threshold - BLOCK and DO NOT create any record
-  if (minutesLate > absentAfterMinutes) {
-    // DO NOT create any record here
-    // Just block the check-in
-    
-    // Log for monitoring (optional)
-    console.log(`🚨 Employee ${numericEmployeeId} (${employee.firstName} ${employee.lastName}) attempted to check in ${minutesLate} minutes late. BLOCKED - exceeds ${absentAfterMinutes} min threshold.`);
-    
-    return res.status(403).json({
-      success: false,
-      error: `❌ You are ${minutesLate} minutes late, which exceeds the ${absentAfterMinutes}-minute absent threshold. You cannot check in. Please contact the attendance person for assistance.`,
-      requiresDecision: true,
-      minutesLate: minutesLate
-    });
-  }
-}
+      if (minutesLate > absentAfterMinutes) {
+        // ✅ FIX 5: CREATE A BLOCKED RECORD FOR AUDIT TRAIL
+        const blockedRecord = await AttendanceLog.create({
+          employeeId: numericEmployeeId,
+          attendanceDate: today,
+          shiftType: shiftType,
+          isLate: true,
+          lateMinutes: minutesLate,
+          morningStatus: "blocked",
+          sessionType: "blocked",
+          status: "BLOCKED",
+          notes: `🚨 Exceeded absent threshold: ${minutesLate} minutes late. Blocked from checking in.`,
+          isAbsent: false,
+          payableHours: 0,
+        });
 
-// =============================================
-// 12. DETERMINE MORNING/AFTERNOON STATUS
-// =============================================
-let morningStatus = "absent";
-let afternoonStatus = "absent";
-let sessionType = "absent";
+        console.log(`🚨 Employee ${numericEmployeeId} (${employee.firstName} ${employee.lastName}) attempted to check in ${minutesLate} minutes late. BLOCKED - exceeds ${absentAfterMinutes} min threshold. Record ID: ${blockedRecord.id}`);
+        
+        return res.status(403).json({
+          success: false,
+          error: `❌ You are ${minutesLate} minutes late, which exceeds the ${absentAfterMinutes}-minute absent threshold. You cannot check in. Please contact the attendance person for assistance.`,
+          requiresDecision: true,
+          minutesLate: minutesLate,
+          blockedRecordId: blockedRecord.id
+        });
+      }
+    }
 
-if (currentTimeMinutes <= lunchStartMinutes) {
-  // For PENDING_LATE employees who check in, finalize their status
-  if (attendance && attendance.morningStatus === "pending_late") {
-    // They were approved for late arrival - set based on actual check-in time
-    morningStatus = isLate ? "late" : "present";
-  } else {
-    morningStatus = isLate ? "late" : "present";
-  }
-  afternoonStatus = "pending";
-  sessionType = "pending";
-} else if (currentTimeMinutes >= lunchEndMinutes) {
-  morningStatus = "absent";
-  afternoonStatus = "present";
-  sessionType = "afternoon_only";
-}
+    // =============================================
+    // 12. DETERMINE MORNING/AFTERNOON STATUS
+    // =============================================
+    let morningStatus = "absent";
+    let afternoonStatus = "absent";
+    let sessionType = "absent";
 
-// Finalize status - don't keep PENDING_LATE after check-in
-let finalStatus = "PENDING";
-if (attendance && attendance.status === "PENDING_LATE") {
-  if (attendance.checkInTime || finalCheckInTime) {
-    // They have checked in (or are checking in now), so finalize
-    finalStatus = isLate ? "LATE" : "PRESENT";
-  } else {
-    finalStatus = "PENDING_LATE";
-  }
-}
+    if (currentTimeMinutes <= lunchStartMinutes) {
+      if (attendance && attendance.morningStatus === "pending_late") {
+        morningStatus = isLate ? "late" : "present";
+      } else {
+        morningStatus = isLate ? "late" : "present";
+      }
+      afternoonStatus = "pending";
+      sessionType = "pending";
+    } else if (currentTimeMinutes >= lunchEndMinutes) {
+      morningStatus = "absent";
+      afternoonStatus = "present";
+      sessionType = "afternoon_only";
+    }
+
+    let finalStatus = "PENDING";
+    if (attendance && attendance.status === "PENDING_LATE") {
+      if (attendance.checkInTime || finalCheckInTime) {
+        finalStatus = isLate ? "LATE" : "PRESENT";
+      } else {
+        finalStatus = "PENDING_LATE";
+      }
+    }
 
     // =============================================
     // 13. RECORD ATTENDANCE
@@ -465,7 +498,6 @@ if (attendance && attendance.status === "PENDING_LATE") {
       checkInNote = "Field work day";
     } else if (isSpecialDay) {
       if (isHolidayToday) {
-        // Use the holiday we already fetched earlier, don't fetch again
         const holidayName = holiday?.name || "Holiday";
         checkInNote = `Today is ${holidayName} check-in (${overtimeRateApplied}x overtime rate)`;
       } else if (dayType === "weekend") {
@@ -489,9 +521,9 @@ if (attendance && attendance.status === "PENDING_LATE") {
       notes: checkInNote,
     };
 
-    // ✅ FIX: Actually save the data
     if (attendance) {
       await attendance.update(attendanceData);
+      await attendance.reload();
     } else {
       attendance = await AttendanceLog.create({
         employeeId: numericEmployeeId,
@@ -503,17 +535,13 @@ if (attendance && attendance.status === "PENDING_LATE") {
       });
     }
 
-// =============================================
-// ✅ CLEAR allowUntilTime AFTER SUCCESSFUL CHECK-IN
-// =============================================
-// Check the new status from attendanceData or reloaded attendance
-const newStatus = attendanceData.status || attendance.status;
-if (newStatus === "LATE" || newStatus === "PRESENT" || newStatus === "FULL_DAY") {
-  await attendance.update({
-    allowUntilTime: null
-  });
-}
-
+    // Clear allowUntilTime after successful check-in
+    const newStatus = attendanceData.status || attendance.status;
+    if (newStatus === "LATE" || newStatus === "PRESENT" || newStatus === "FULL_DAY") {
+      await attendance.update({
+        allowUntilTime: null
+      });
+    }
 
     // =============================================
     // 14. RESPONSE
@@ -529,8 +557,7 @@ if (newStatus === "LATE" || newStatus === "PRESENT" || newStatus === "FULL_DAY")
     }
 
     if (isOnFieldWork) message += ` (Field work)`;
-    if (sessionType === "afternoon_only")
-      message += ` (Afternoon session only)`;
+    if (sessionType === "afternoon_only") message += ` (Afternoon session only)`;
 
     res.status(200).json({
       success: true,
@@ -555,8 +582,7 @@ if (newStatus === "LATE" || newStatus === "PRESENT" || newStatus === "FULL_DAY")
     console.error("Record check-in error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
-}; 
-
+};
 
 exports.recordCheckOut = async (req, res) => {
   try {
@@ -572,7 +598,6 @@ exports.recordCheckOut = async (req, res) => {
 
     const { checkOutTime } = req.body;
     const checkOutDateTime = checkOutTime ? new Date(checkOutTime) : new Date();
-    const today = new Date().toISOString().split("T")[0];
 
     // =============================================
     // 1. CHECK EMPLOYEE
@@ -592,19 +617,35 @@ exports.recordCheckOut = async (req, res) => {
     }
 
     // =============================================
-    // 2. CHECK ATTENDANCE RECORD
+    // 2. FIND ATTENDANCE RECORD (WORKS FOR NIGHT SHIFT)
     // =============================================
-    const attendance = await AttendanceLog.findOne({
+    const todayStr = checkOutDateTime.toISOString().split("T")[0];
+    
+    let attendance = await AttendanceLog.findOne({
       where: {
         employeeId: numericEmployeeId,
-        attendanceDate: today,
+        attendanceDate: todayStr,
       },
     });
+
+    // ✅ Fix #1: Fallback for night shift (check-in was yesterday)
+    if (!attendance) {
+      const yesterday = new Date(checkOutDateTime);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      attendance = await AttendanceLog.findOne({
+        where: {
+          employeeId: numericEmployeeId,
+          attendanceDate: yesterdayStr,
+        },
+      });
+    }
 
     if (!attendance) {
       return res.status(400).json({
         success: false,
-        error: "No check-in record found for today.",
+        error: "No check-in record found. Please check in first.",
       });
     }
 
@@ -631,11 +672,12 @@ exports.recordCheckOut = async (req, res) => {
     const checkInOvertimeRate = attendance.overtimeRateApplied || 1.0;
 
     // =============================================
-    // 4. GET SCHEDULE & COMPANY DEFAULTS (for normal days)
+    // 4. GET SCHEDULE & COMPANY DEFAULTS
+    // ✅ Fix #7: Use checkOutDateTime, not new Date()
     // =============================================
     const effectiveSchedule = await attendanceService.getEffectiveSchedule(
       numericEmployeeId,
-      new Date(),
+      checkOutDateTime,
     );
     const shiftType = effectiveSchedule.shiftType;
     const effectiveCheckOutTime = effectiveSchedule.checkOutTime;
@@ -657,12 +699,17 @@ exports.recordCheckOut = async (req, res) => {
     }
 
     // =============================================
-    // 5. CALCULATE TOTAL HOURS
+    // 5. CALCULATE TOTAL HOURS (WITH SAFETY)
+    // ✅ Fix #6: Handle negative minutes
     // =============================================
     const checkInTime = new Date(attendance.checkInTime);
-    let totalHours = parseFloat(
-      ((checkOutDateTime - checkInTime) / (1000 * 60 * 60)).toFixed(2),
-    );
+    let totalMinutes = (checkOutDateTime - checkInTime) / (1000 * 60);
+    
+    if (totalMinutes < 0) {
+      totalMinutes += 1440;
+    }
+    
+    const totalHours = parseFloat((totalMinutes / 60).toFixed(2));
 
     // =============================================
     // 6. DETERMINE FINAL OVERTIME RATE
@@ -670,16 +717,13 @@ exports.recordCheckOut = async (req, res) => {
     let finalOvertimeRate = checkInOvertimeRate;
     let overtimeMinutes = 0;
 
-    // For holidays and weekends, preserve the rate from check-in
     if (dayType === "holiday" || dayType === "weekend" || !isWorkingDay) {
-      // Keep the rate from check-in (2.5 for holiday, 2.0 for weekend)
       finalOvertimeRate = checkInOvertimeRate;
       overtimeMinutes = 0;
     } else {
-      // For normal working days, calculate overtime
       const overtime = await attendanceService.calculateOvertime(
         numericEmployeeId,
-        new Date(),
+        checkOutDateTime,
       );
       overtimeMinutes = overtime.overtimeMinutes;
       if (overtime.rate > 1) {
@@ -688,60 +732,52 @@ exports.recordCheckOut = async (req, res) => {
     }
 
     // =============================================
-    // 7. SHIFT-BASED CHECK-OUT VALIDATIONS (ONLY FOR NORMAL DAYS)
+    // 7. VALIDATE CHECK-OUT TIME (NO EARLY CHECK-OUT)
+    // ✅ Fix #2 & #3: Consistent overnight adjustment
     // =============================================
     const currentHour = checkOutDateTime.getHours();
     const currentMinutes = checkOutDateTime.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinutes;
+    const actualCheckOutMinutes = currentHour * 60 + currentMinutes;
 
-    const [checkOutHour, checkOutMinute] = effectiveCheckOutTime.split(":");
-    const scheduledCheckOutMinutes =
-      parseInt(checkOutHour) * 60 + parseInt(checkOutMinute);
+    const [checkOutHour, checkOutMinute] = effectiveCheckOutTime.split(":").map(Number);
+    let scheduledCheckOutMinutes = checkOutHour * 60 + checkOutMinute;
+    
+    const [checkInHour, checkInMinute] = effectiveCheckInTime.split(":").map(Number);
+    let scheduledCheckInMinutes = checkInHour * 60 + checkInMinute;
 
-    const gracePeriodMinutes = companyDefault.lateThresholdMinutes || 5;
+    // ✅ Consistent adjustment - same as check-in logic
+    let adjustedActualMinutes = actualCheckOutMinutes;
+    let adjustedScheduledMinutes = scheduledCheckOutMinutes;
 
-    // Only apply check-out restrictions on normal working days
-    const isSpecialDay = dayType === "holiday" || dayType === "weekend";
+    // Add 24 hours for overnight shift
+    if (adjustedScheduledMinutes <= scheduledCheckInMinutes) {
+      adjustedScheduledMinutes += 1440;
+    }
 
-    if (!isSpecialDay) {
-      if (shiftType === "day") {
-        const minCheckOutMinutes =
-          scheduledCheckOutMinutes - gracePeriodMinutes;
+    // Adjust actual time relative to shift start
+    if (adjustedActualMinutes < scheduledCheckInMinutes) {
+      adjustedActualMinutes += 1440;
+    }
 
-        if (currentTimeMinutes < minCheckOutMinutes) {
-          const earlyMinutes = scheduledCheckOutMinutes - currentTimeMinutes;
-          return res.status(400).json({
-            success: false,
-            error: `❌ Day shift cannot check out before ${effectiveCheckOutTime}. You are ${earlyMinutes} minutes early.`,
-          });
-        }
-      }
-
+    // Only block if checking out EARLY
+    if (adjustedActualMinutes < adjustedScheduledMinutes) {
+      const earlyMinutes = adjustedScheduledMinutes - adjustedActualMinutes;
+      const earlyHours = Math.floor(earlyMinutes / 60);
+      const earlyMins = earlyMinutes % 60;
+      
+      let errorMessage = "";
+      const displayHour = Math.floor(adjustedScheduledMinutes / 60) % 24;
+      
       if (shiftType === "night") {
-        let adjustedCheckOutMinutes = currentTimeMinutes;
-        if (currentHour >= 0 && currentHour < 12) {
-          adjustedCheckOutMinutes = currentTimeMinutes + 24 * 60;
-        } else {
-          adjustedCheckOutMinutes = currentTimeMinutes + 24 * 60;
-        }
-
-        let scheduledNightCheckOutMinutes = scheduledCheckOutMinutes;
-        if (scheduledCheckOutMinutes < 12 * 60) {
-          scheduledNightCheckOutMinutes = scheduledCheckOutMinutes + 24 * 60;
-        }
-
-        const minCheckOutMinutes =
-          scheduledNightCheckOutMinutes - gracePeriodMinutes;
-
-        if (adjustedCheckOutMinutes < minCheckOutMinutes) {
-          const earlyMinutes =
-            scheduledNightCheckOutMinutes - adjustedCheckOutMinutes;
-          return res.status(400).json({
-            success: false,
-            error: `❌ Night shift cannot check out before ${effectiveCheckOutTime} (next day). You are ${earlyMinutes} minutes early.`,
-          });
-        }
+        errorMessage = `❌ Cannot check out early. Night shift ends at ${String(displayHour).padStart(2, "0")}:${String(checkOutMinute).padStart(2, "0")}. You are ${earlyHours}h ${earlyMins}m early.`;
+      } else {
+        errorMessage = `❌ Cannot check out early. Day shift ends at ${effectiveCheckOutTime}. You are ${earlyHours}h ${earlyMins}m early.`;
       }
+      
+      return res.status(400).json({
+        success: false,
+        error: errorMessage,
+      });
     }
 
     // =============================================
@@ -774,26 +810,37 @@ exports.recordCheckOut = async (req, res) => {
 
     // =============================================
     // 11. DETERMINE FINAL STATUS
+    // ✅ Fix #4 & #5: Correct break times and status
     // =============================================
     let finalStatus = attendance.status;
     let sessionType = attendance.sessionType;
     let morningStatus = attendance.morningStatus;
     let afternoonStatus = attendance.afternoonStatus;
 
-    // Update based on check-out time
-    const lunchEndTime = companyDefault.lunchEndTime || "13:00";
-    const lunchEndMinutes =
-      parseInt(lunchEndTime.split(":")[0]) * 60 +
-      parseInt(lunchEndTime.split(":")[1] || 0);
+    // ✅ Use database values for break times
+    const isNightShift = shiftType === "night";
+    const breakStartTime = isNightShift 
+      ? companyDefault.dinnerStartTime 
+      : companyDefault.lunchStartTime;
+    const breakDuration = isNightShift 
+      ? companyDefault.dinnerDurationMinutes 
+      : companyDefault.lunchDurationMinutes;
+    
+    let breakEndMinutes = 0;
+    if (breakStartTime && breakDuration) {
+      const [startHour, startMinute] = breakStartTime.split(":").map(Number);
+      let totalBreakMinutes = startHour * 60 + startMinute + breakDuration;
+      breakEndMinutes = totalBreakMinutes % (24 * 60);
+    } else {
+      breakEndMinutes = isNightShift ? 2 * 60 : 13 * 60; // 2 AM or 1 PM defaults
+    }
 
-    // If they checked out before lunch end, they only worked morning
-    if (currentTimeMinutes <= lunchEndMinutes && morningStatus === "present") {
+    // ✅ Use adjustedActualMinutes for consistent comparison
+    if (adjustedActualMinutes <= breakEndMinutes && morningStatus === "present") {
       sessionType = "morning_only";
       afternoonStatus = "absent";
       finalStatus = "HALF_DAY";
-    }
-    // If they have afternoon present, it's half day or full day
-    else if (afternoonStatus === "present") {
+    } else if (afternoonStatus === "present") {
       if (morningStatus === "present" || morningStatus === "late") {
         sessionType = "full_day";
         finalStatus = "FULL_DAY";
@@ -815,12 +862,12 @@ exports.recordCheckOut = async (req, res) => {
     // =============================================
     let message = `🏁 Check-out recorded. Hours: ${totalHours}`;
 
-    if (isSpecialDay) {
+    if (dayType === "holiday" || dayType === "weekend" || !isWorkingDay) {
       message = `🏁 ${dayType.toUpperCase()} check-out recorded. ${totalHours}h at ${finalOvertimeRate}x rate = ${totalPayableHours} payable hours.`;
     } else if (overtimeMinutes > 0) {
       const overtimeHours = (overtimeMinutes / 60).toFixed(1);
       message = `🏁 Check-out recorded. ${totalHours}h (${overtimeHours}h overtime at ${finalOvertimeRate}x).`;
-    } else if (sessionType === "half_day") {
+    } else if (finalStatus === "HALF_DAY") {
       message = `🏁 Check-out recorded. ${totalHours}h (HALF DAY)`;
     }
 
