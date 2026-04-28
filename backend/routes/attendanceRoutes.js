@@ -1,494 +1,101 @@
-// routes/attendanceRoutes.js
 const express = require("express");
 const router = express.Router();
 const attendanceController = require("../controllers/attendanceController");
 const { authMiddleware } = require("../middleware/authMiddleware");
-const multer = require('multer');
-const upload = multer({ dest: 'uploads/imports/' });
+const { uploadSingleAttendance } = require("../middleware/uploadMiddleware");
+// ============================================
+// ATTENDANCE IMPORT SYSTEM ROUTES
+// ============================================
 
-// =============================================
-// PUBLIC ROUTES (No authentication required)
-// =============================================
-// None for attendance - all attendance routes require authentication
-
-// =============================================
-// PROTECTED ROUTES (Authentication required)
-// =============================================
-
-// =============================================
-// 1. EFFECTIVE SCHEDULE
-// =============================================
-router.get(
-  "/schedule/:employeeId",
-  authMiddleware(),
-  attendanceController.getEffectiveSchedule,
-);
-
-// =============================================
-// 2. COMPANY SHIFT DEFAULTS (Admin only)
-// =============================================
-router.get(
-  "/company-defaults",
-  authMiddleware("admin"),
-  attendanceController.getCompanyDefaults,
-);
-router.get(
-  "/company-defaults/:id",
-  authMiddleware("admin"),
-  attendanceController.getCompanyDefaultById,
-);
+// 1. Import attendance file (CSV/Excel)
 router.post(
-  "/company-defaults",
-  authMiddleware("admin"),
-  attendanceController.createCompanyDefault,
-);
-router.put(
-  "/company-defaults/:id",
-  authMiddleware("admin"),
-  attendanceController.updateCompanyDefault,
-);
-router.delete(
-  "/company-defaults/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteCompanyDefault,
-);
-
-router.get(
-  "/lunch-history",
-  authMiddleware(),
-  attendanceController.getLunchHistory,
-);
-// Add this route after your lunch-history route
-router.get(
-  "/dinner-history",
-  authMiddleware(),
-  attendanceController.getDinnerHistory,
-);
-// =============================================
-// 3. DEPARTMENT OVERRIDES (Admin/HR only)
-// =============================================
-router.get(
-  "/department-overrides",
-  authMiddleware(),
-  attendanceController.getDepartmentOverrides,
-);
-router.get(
-  "/department-overrides/:id",
-  authMiddleware(),
-  attendanceController.getDepartmentOverrideById,
-);
-router.post(
-  "/department-overrides",
-  authMiddleware("admin"),
-  attendanceController.createDepartmentOverride,
-);
-router.put(
-  "/department-overrides/:id",
-  authMiddleware("admin"),
-  attendanceController.updateDepartmentOverride,
-);
-router.delete(
-  "/department-overrides/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteDepartmentOverride,
-);
-
-// =============================================
-// 4. EMPLOYEE OVERRIDES (Admin/HR only)
-// =============================================
-router.get(
-  "/employee-overrides",
-  authMiddleware(),
-  attendanceController.getEmployeeOverrides,
-);
-router.get(
-  "/employee-overrides/:id",
-  authMiddleware(),
-  attendanceController.getEmployeeOverrideById,
-);
-router.post(
-  "/employee-overrides",
-  authMiddleware("admin"),
-  attendanceController.createEmployeeOverride,
-);
-router.put(
-  "/employee-overrides/:id",
-  authMiddleware("admin"),
-  attendanceController.updateEmployeeOverride,
-);
-router.delete(
-  "/employee-overrides/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteEmployeeOverride,
-);
-
-// =============================================
-// 5. BREAK TICKETS (Lunch/Dinner Tracking)
-// =============================================
-router.post(
-  "/breaks/issue",
-  authMiddleware(),
-  attendanceController.issueBreakTicket,
-);
-router.put(
-  "/breaks/:ticketId/return",
-  authMiddleware(),
-  attendanceController.returnFromBreak,
-);
-router.get(
-  "/breaks/active",
-  authMiddleware(),
-  attendanceController.getActiveBreaks,
-);
-router.get(
-  "/breaks/history/:employeeId",
-  authMiddleware(),
-  attendanceController.getBreakHistory,
-);
-
-// =============================================
-// 6. ATTENDANCE LOGS (Check-in/out) - ADD THESE
-// =============================================
-router.get(
-  "/all",
-  authMiddleware(),
-  attendanceController.getAllAttendanceByDate,
-);
-router.post(
-  "/:employeeId/check-in",
-  authMiddleware(),
-  attendanceController.recordCheckIn,
-);
-router.put(
-  "/:employeeId/check-out",
-  authMiddleware(),
-  attendanceController.recordCheckOut,
-);
-router.get(
-  "/:employeeId/report",
-  authMiddleware(),
-  attendanceController.getAttendanceReport,
-);
-
-// Add these routes (before any :employeeId parameter routes)
-
-// Get pending absentees for attendance person dashboard
-router.get(
-  "/pending-absentees",
-  authMiddleware(),
-  attendanceController.getPendingAbsentees,
-);
-
-
-
-// GET /api/attendance/expired-pending-late
-router.get(
-    '/expired-pending-late',
-    authMiddleware(),
-    attendanceController.getExpiredPendingLate
-);
-
-// POST /api/attendance/mark-expired-as-absent
-router.post(
-    '/mark-expired-as-absent',
-    authMiddleware(),
-    attendanceController.markExpiredAsAbsent
-);
-
-
-
-
-
-
-
-
-
-// Revert attendance update (undo action)
-router.post(
-  "/revert-update",
-  authMiddleware("admin"),
-  attendanceController.revertAttendanceUpdate,
-);
-
-// Mass update attendance (Admin only)
-router.post(
-  "/mass-update",
-  authMiddleware("admin"),
-  attendanceController.massUpdateAttendance,
-);
-router.get(
-  "/me/report",
-  authMiddleware(),
-  attendanceController.getMyAttendance,
-);
-router.get(
-  "/summary/:employeeId",
-  authMiddleware(),
-  attendanceController.getAttendanceSummary,
-);
-
-// ✅ ADD THESE TWO NEW ROUTES:
-router.get(
-  "/:employeeId/today",
-  authMiddleware(),
-  attendanceController.getTodayAttendance,
-);
-router.get(
-  "/:employeeId/status",
-  authMiddleware(),
-  attendanceController.getTodayStatus,
-);
-
-// =============================================
-// 7. OVERTIME
-// =============================================
-router.get(
-  "/overtime/:employeeId/calculate",
-  authMiddleware(),
-  attendanceController.calculateOvertime,
-);
-router.get(
-  "/overtime/rates",
-  authMiddleware(),
-  attendanceController.getOvertimeRates,
-);
-router.post(
-  "/overtime/rates",
-  authMiddleware("admin"),
-  attendanceController.createOvertimeRate,
-);
-router.put(
-  "/overtime/rates/:id",
-  authMiddleware("admin"),
-  attendanceController.updateOvertimeRate,
-);
-router.delete(
-  "/overtime/rates/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteOvertimeRate,
-);
-
-router.put(
-  "/field-work/:id",
-  authMiddleware("admin"),
-  attendanceController.updateFieldWork,
-);
-
-// Get all field work assignments (Admin only)
-router.get(
-  "/field-work/all",
-  authMiddleware("admin"),
-  attendanceController.getAllFieldWork,
-);
-
-// =============================================
-// 8. FIELD WORK
-// =============================================
-router.post(
-  "/field-work",
-  authMiddleware(),
-  attendanceController.registerFieldWork,
-);
-
-router.put(
-  "/field-work/:assignmentId/complete",
-  authMiddleware(),
-  attendanceController.completeFieldWork,
-);
-
-router.get(
-  "/field-work/:employeeId/active",
-  authMiddleware(),
-  attendanceController.getActiveFieldWork,
-);
-
-router.get(
-  "/field-work/history/:employeeId",
-  authMiddleware(),
-  attendanceController.getFieldWorkHistory,
-);
-
-router.delete(
-  "/field-work/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteFieldWork,
-);
-
-// Get all field work assignments (Admin only)
-router.get(
-  "/field-work/all",
-  authMiddleware("admin"),
-  attendanceController.getAllFieldWork,
-);
-
-// Update field work (Admin only)
-router.put(
-  "/field-work/:id",
-  authMiddleware("admin"),
-  attendanceController.updateFieldWork,
-);
-
-// =============================================
-// 9. HOLIDAYS
-// =============================================
-router.get("/holidays", authMiddleware(), attendanceController.getHolidays);
-router.get(
-  "/holidays/check",
-  authMiddleware(),
-  attendanceController.checkHoliday,
-);
-router.post(
-  "/holidays",
-  authMiddleware("admin"),
-  attendanceController.createHoliday,
-);
-router.put(
-  "/holidays/:id",
-  authMiddleware("admin"),
-  attendanceController.updateHoliday,
-);
-router.delete(
-  "/holidays/:id",
-  authMiddleware("admin"),
-  attendanceController.deleteHoliday,
-);
-
-// =============================================
-// 10. LATE NIGHT ADJUSTMENTS
-// =============================================
-
-router.get(
-  "/late-night-adjustments/all",
-  authMiddleware("admin"),
-  attendanceController.getAllLateNightAdjustments,
-);
-
-router.post(
-  "/late-night-adjustments",
-  authMiddleware(),
-  attendanceController.addLateNightAdjustment,
-);
-
-router.get(
-  "/late-night-adjustments/:employeeId",
-  authMiddleware(),
-  attendanceController.getLateNightAdjustments,
-);
-
-
-router.put(
-  "/late-night-adjustments/:adjustmentId",
-  authMiddleware("admin"),
-  attendanceController.updateLateNightAdjustment,
-);
-
-router.delete(
-  "/late-night-adjustments/:adjustmentId",
-  authMiddleware("admin"),
-  attendanceController.deleteLateNightAdjustment,
-);
-
-// =============================================
-// 11. WORKING DAYS CONFIGURATION
-// =============================================
-router.get(
-  "/working-days/:employeeId/check",
-  authMiddleware(),
-  attendanceController.checkWorkingDay,
-);
-router.get(
-  "/working-days-config",
-  authMiddleware("admin"),
-  attendanceController.getWorkingDaysConfig,
-);
-router.put(
-  "/working-days-config/:id",
-  authMiddleware("admin"),
-  attendanceController.updateWorkingDaysConfig,
-);
-
-// =============================================
-// 12. WORKING HOURS & BREAK CONFIGURATION
-// =============================================
-router.get(
-  "/working-hours/:employeeId",
-  authMiddleware(),
-  attendanceController.getEffectiveWorkingHours,
-);
-
-// =============================================
-// 13. ADMIN DASHBOARD & STATISTICS
-// =============================================
-router.get(
-  "/admin/dashboard/stats",
-  authMiddleware("admin"),
-  attendanceController.getDashboardStats,
-);
-router.get(
-  "/admin/attendance/summary",
-  authMiddleware("admin"),
-  attendanceController.getAdminAttendanceSummary,
-);
-router.get(
-  "/admin/attendance/export",
-  authMiddleware("admin"),
-  attendanceController.exportAttendanceReport,
-);
-
-// =============================================
-// 14. BULK OPERATIONS (Admin only)
-// =============================================
-router.post(
-  "/bulk/breaks/complete",
-  authMiddleware("admin"),
-  attendanceController.completeAllExpiredBreaks,
-);
-router.post(
-  "/bulk/attendance/process",
-  authMiddleware("admin"),
-  attendanceController.processDailyAttendance,
-);
-
-
-// =============================================
-// 14. Import Controller routes
-// =============================================
-
-// =============================================
-// Import Controller routes
-// =============================================
-
-router.post(
-    '/import',  // ← Change from '/attendance' to '/import'
+    '/import',
     authMiddleware('admin'),
-    upload.single('file'),
+    uploadSingleAttendance,
     attendanceController.importAttendanceFile
 );
 
-// Get import status
+// 2. Get all attendance records (with filters)
 router.get(
-    '/import/status/:batchId',
-    authMiddleware('admin'),
-    attendanceController.getImportStatus
-);
-
-// Reprocess failed rows
-router.post(
-    '/import/reprocess/:batchId',
-    authMiddleware('admin'),
-    attendanceController.reprocessFailedRows
-);
-
-// Get daily attendance
-router.get(
-    '/import/daily-attendance',
+    '/records',
     authMiddleware(),
-    attendanceController.getDailyAttendance
+    attendanceController.getAttendanceRecords
 );
 
+// Update attendance record (Edit)
+router.put(
+    '/records/:id',
+    authMiddleware('admin'),
+    attendanceController.updateAttendanceRecord
+);
 
-// In your attendance routes file
-router.get('/import/weekly-summary', attendanceController.getWeeklyAttendance);
-router.get('/import/monthly-summary', attendanceController.getMonthlyAttendance);
+// Add this route before the module.exports
+router.get(
+    '/monthly-summary',
+    authMiddleware(),
+    attendanceController.getMonthlySummary
+);
+// 3. Get salary data for payroll
+router.get(
+    '/salary',
+    authMiddleware(),
+    attendanceController.getSalaryData
+);
+
+// 4. Get all import batches
+router.get(
+    '/imports',
+    authMiddleware('admin'),
+    attendanceController.getImportBatches
+);
+
+// 5. Get import batch details by ID
+router.get(
+    '/imports/:id',
+    authMiddleware('admin'),
+    attendanceController.getImportBatchDetails
+);
+
+// 6. Get import errors (with optional batch filter)
+router.get(
+    '/errors',
+    authMiddleware('admin'),
+    attendanceController.getImportErrors
+);
+
+// 7. Resolve an import error
+router.put(
+    '/errors/:id/resolve',
+    authMiddleware('admin'),
+    attendanceController.resolveImportError
+);
+
+// 8. Delete an attendance record
+router.delete(
+    '/records/:id',
+    authMiddleware('admin'),
+    attendanceController.deleteAttendanceRecord
+);
+
+// 9. Get employee attendance summary
+router.get(
+    '/summary/employee/:employeeId',
+    authMiddleware(),
+    attendanceController.getEmployeeAttendanceSummary
+);
+
+// 10. Get department attendance summary
+router.get(
+    '/summary/department/:departmentId',
+    authMiddleware(),
+    attendanceController.getDepartmentAttendanceSummary
+);
+
+// 11. Get attendance statistics
+router.get(
+    '/statistics',
+    authMiddleware(),
+    attendanceController.getAttendanceStatistics
+);
 
 module.exports = router;

@@ -158,10 +158,79 @@ const uploadMultipleDocuments = (req, res, next) => {
   });
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Add to your existing uploadConfig.js file
+
+// ============================================================================
+// ATTENDANCE IMPORT STORAGE
+// ============================================================================
+const attendanceStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/attendance/';
+    ensureDirectoryExists(dir);
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'attendance-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const attendanceFileFilter = (req, file, cb) => {
+  const allowedTypes = /csv|xlsx|xls/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+  
+  if (mimetype && extname) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only CSV and Excel files are allowed (.csv, .xlsx, .xls)'));
+  }
+};
+
+const uploadAttendance = multer({
+  storage: attendanceStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: attendanceFileFilter
+});
+
+const uploadSingleAttendance = (req, res, next) => {
+  uploadAttendance.single('file')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+};
+
+// Export the new upload middleware
 module.exports = {
   uploadSingleProfile,
   uploadSingleDocument,
   uploadMultipleDocuments,
   uploadProfile,
-  uploadDocument
+  uploadDocument,
+  uploadSingleAttendance,  // Add this
+  uploadAttendance          // Add this
 };
+

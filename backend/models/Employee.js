@@ -9,16 +9,21 @@ module.exports = (sequelize, DataTypes) => {
       Employee.belongsTo(models.Position, { foreignKey: 'positionId' });
       Employee.belongsTo(models.Employee, { foreignKey: 'managerId', as: 'manager' });
       Employee.hasMany(models.Employee, { foreignKey: 'managerId', as: 'subordinates' });
-      Employee.hasMany(models.AttendanceLog, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.LeaveRequest, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.LeaveBalance, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.Salary, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.Payroll, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.PerformanceReview, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.PerformanceReview, { foreignKey: 'reviewerId', as: 'givenReviews' });
+      // Employee.hasMany(models.AttendanceLog, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.LeaveRequest, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.LeaveBalance, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.Salary, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.Payroll, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.PerformanceReview, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.PerformanceReview, { foreignKey: 'reviewerId', as: 'givenReviews' });
       Employee.hasMany(models.EmployeeDocument, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.Complaint, { foreignKey: 'employeeId' });
-      Employee.hasMany(models.Complaint, { foreignKey: 'againstEmployeeId', as: 'complaintsAgainst' });
+      // Employee.hasMany(models.Complaint, { foreignKey: 'employeeId' });
+      // Employee.hasMany(models.Complaint, { foreignKey: 'againstEmployeeId', as: 'complaintsAgainst' });
+
+        Employee.hasMany(models.AttendanceRecord, { 
+        foreignKey: 'employee_id',
+        as: 'attendance_records'
+    });
     }
   }
 

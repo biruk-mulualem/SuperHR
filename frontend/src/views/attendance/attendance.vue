@@ -1,128 +1,21 @@
 <template>
-  <div class="attendance-management-page">
+  <div class="attendance-management">
     <!-- Page Header -->
     <div class="page-header">
       <div class="header-left">
         <span class="header-icon">📊</span>
         <div>
           <h1>Attendance Management</h1>
-          <p>Import attendance records and view daily, weekly & monthly attendance</p>
+          <p>Import and manage monthly attendance records</p>
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn-import" @click="showImportModal = true">
+        <button class="btn-primary" @click="showImportModal = true">
           <span>📥</span> Import Attendance
         </button>
-        <button class="btn-help" @click="showHelp = true">
-          <span>❓</span> Help
+        <button class="btn-secondary" @click="refreshData">
+          <span>🔄</span> Refresh
         </button>
-      </div>
-    </div>
-
-    <!-- Help Modal -->
-    <div v-if="showHelp" class="modal-overlay" @click.self="showHelp = false">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>📖 Import Guide</h3>
-          <button class="close-btn" @click="showHelp = false">✕</button>
-        </div>
-        <div class="modal-body">
-          <h4>Supported File Formats:</h4>
-          <ul>
-            <li>Excel (.xlsx, .xls)</li>
-            <li>CSV (.csv)</li>
-          </ul>
-          <h4>Required Columns:</h4>
-          <ul>
-            <li><strong>Employee ID</strong> - Employee code in the system</li>
-            <li><strong>Punch Time</strong> - Date and time of punch</li>
-            <li><strong>Punch State</strong> - Check In, Check Out, Break Out, Break In</li>
-          </ul>
-          <h4>Working Days:</h4>
-          <ul>
-            <li><strong>Ethiopian Work Week:</strong> Monday to Saturday (6 days/week)</li>
-            <li><strong>Sunday:</strong> Non-working day</li>
-            <li><strong>Attendance Rate = (Days Present / Total Working Days) × 100%</strong></li>
-          </ul>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showHelp = false">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Import Modal -->
-    <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
-      <div class="modal-content import-modal">
-        <div class="modal-header">
-          <h3>📥 Import Attendance Records</h3>
-          <button class="close-btn" @click="showImportModal = false">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="import-type-section">
-            <label>Import Type</label>
-            <div class="type-cards">
-              <div class="type-card" :class="{ active: importType === 'daily' }" @click="importType = 'daily'">
-                <span class="type-icon">📅</span>
-                <span>Daily</span>
-              </div>
-              <div class="type-card" :class="{ active: importType === 'weekly' }" @click="importType = 'weekly'">
-                <span class="type-icon">📆</span>
-                <span>Weekly</span>
-              </div>
-              <div class="type-card" :class="{ active: importType === 'monthly' }" @click="importType = 'monthly'">
-                <span class="type-icon">📊</span>
-                <span>Monthly</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="upload-area" :class="{ dragging: isDragging, hasFile: selectedFile }"
-               @dragover.prevent="isDragging = true" 
-               @dragleave.prevent="isDragging = false" 
-               @drop.prevent="handleDrop">
-            <div v-if="!selectedFile" class="upload-placeholder">
-              <span class="upload-icon">📂</span>
-              <p>Drag & drop your file here</p>
-              <button class="btn-primary" @click="$refs.fileInput.click()">Browse</button>
-            </div>
-            <div v-else class="file-preview">
-              <span class="file-icon">📄</span>
-              <div class="file-info">
-                <p class="file-name">{{ selectedFile.name }}</p>
-                <p class="file-size">{{ formatFileSize(selectedFile.size) }}</p>
-              </div>
-              <button class="btn-remove" @click="clearFile">✕</button>
-            </div>
-            <input type="file" ref="fileInput" @change="handleFileSelect" accept=".xlsx,.xls,.csv" style="display: none" />
-          </div>
-
-          <div v-if="importResults" class="import-results">
-            <div class="results-summary">
-              <div class="stat success">
-                <span class="stat-value">{{ importResults.data?.success || 0 }}</span>
-                <span class="stat-label">Success</span>
-              </div>
-              <div class="stat failed">
-                <span class="stat-value">{{ importResults.data?.failed || 0 }}</span>
-                <span class="stat-label">Failed</span>
-              </div>
-              <div class="stat total">
-                <span class="stat-value">{{ importResults.data?.total || 0 }}</span>
-                <span class="stat-label">Total</span>
-              </div>
-            </div>
-            <div v-if="importResults.message" class="success-message">{{ importResults.message }}</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showImportModal = false">Cancel</button>
-          <button class="btn-primary" @click="processImport" :disabled="!selectedFile || importing">
-            <span v-if="importing" class="spinner"></span>
-            <span v-else>🚀</span>
-            {{ importing ? 'Importing...' : 'Import' }}
-          </button>
-        </div>
       </div>
     </div>
 
@@ -139,21 +32,29 @@
       </button>
     </div>
 
-    <!-- Filter Bar -->
+    <!-- Year/Month Filter -->
     <div class="filter-bar">
-      <div class="filter-group" v-if="activeTab === 'daily'">
-        <label>Date Range</label>
-        <div class="date-range">
-          <input type="date" v-model="filters.startDate" @change="loadData" />
-          <span>to</span>
-          <input type="date" v-model="filters.endDate" @change="loadData" />
-        </div>
-      </div>
-      
-      <div class="filter-group" v-if="activeTab !== 'daily'">
+      <div class="filter-group">
         <label>Year</label>
         <select v-model="selectedYear" @change="loadData">
-          <option v-for="year in availableYears" :key="year" :value="year">{{ year }}</option>
+          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label>Month</label>
+        <select v-model="selectedMonth" @change="loadData">
+          <option v-for="(m, idx) in months" :key="idx" :value="idx + 1">{{ m }}</option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label>Department</label>
+        <select v-model="filters.departmentId" @change="loadData">
+          <option :value="null">All Departments</option>
+          <option v-for="dept in departments" :key="dept.department_id" :value="dept.department_id">
+            {{ dept.name }}
+          </option>
         </select>
       </div>
       
@@ -162,111 +63,110 @@
         <input type="text" v-model="filters.search" placeholder="Employee name or code..." @input="debounceLoad" />
       </div>
       
-      <div class="filter-group">
-        <label>Department</label>
-        <select v-model="filters.departmentId" @change="loadData">
-          <option :value="null">All Departments</option>
-          <option v-for="dept in departments" :key="dept.departmentId" :value="Number(dept.departmentId)">
-            {{ dept.name }}
-          </option>
-        </select>
-      </div>
-      
-      <div class="filter-group" v-if="activeTab === 'daily'">
-        <label>Status</label>
-        <select v-model="filters.status" @change="loadData">
-          <option value="">All Status</option>
-          <option value="present">Present</option>
-          <option value="late">Late</option>
-          <option value="half_day">Half Day</option>
-          <option value="absent">Absent</option>
-        </select>
-      </div>
-      
-      <button class="btn-refresh" @click="resetFilters">
-        <span>🔄</span> Reset
-      </button>
-      
+      <button class="btn-reset" @click="resetFilters">Reset</button>
       <button class="btn-export" @click="exportData">📊 Export</button>
     </div>
 
     <!-- Stats Cards -->
-    <div class="stats-cards">
+    <div class="stats-cards" v-if="statistics">
       <div class="stat-card">
-        <div class="stat-value">{{ summary.total_records || 0 }}</div>
-        <div class="stat-label">{{ summaryLabel }}</div>
+        <div class="stat-value">{{ statistics.total_employees || 0 }}</div>
+        <div class="stat-label">Total Employees</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value text-green">{{ summary.total_hours || '0.0' }}</div>
-        <div class="stat-label">Total Hours</div>
+        <div class="stat-value">{{ monthInfo.total_days_in_month || 0 }}</div>
+        <div class="stat-label">Days in Month</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value text-orange">{{ summary.total_late_minutes || 0 }}</div>
-        <div class="stat-label">Late Minutes</div>
+        <div class="stat-value text-green">{{ monthInfo.total_working_days || 0 }}</div>
+        <div class="stat-label">Working Days</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value text-red">{{ summary.half_days || 0 }}</div>
-        <div class="stat-label">Half Days</div>
+        <div class="stat-value text-blue">{{ statistics.total_submitted_days || 0 }}</div>
+        <div class="stat-label">Submitted Days</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-orange">{{ formatTime(statistics.total_late_minutes || 0) }}</div>
+        <div class="stat-label">Late Hours</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value text-purple">{{ statistics.total_weekend_ot_hours || 0 }}h</div>
+        <div class="stat-label">Weekend OT</div>
       </div>
     </div>
 
-    <!-- Daily Attendance Table -->
-    <div class="attendance-table-container" v-if="activeTab === 'daily'">
+    <!-- Month Info Banner -->
+    <div class="month-info" v-if="monthInfo">
+      <div class="info-badge">
+        <span class="info-icon">📅</span>
+        <span>{{ monthInfo.month_name }} {{ monthInfo.year }} - {{ monthInfo.total_days_in_month }} days total, {{ monthInfo.total_working_days }} working days (Mon-Sat)</span>
+      </div>
+    </div>
+
+    <!-- Attendance Records Table -->
+    <div class="data-table-container" v-if="activeTab === 'records'">
       <div class="table-header">
-        <h3>Daily Attendance Records</h3>
+        <h3>Attendance Records</h3>
       </div>
 
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <span>Loading attendance data...</span>
+        <span>Loading records...</span>
       </div>
 
       <div v-else-if="attendanceRecords.length === 0" class="empty-state">
         <span class="empty-icon">📭</span>
-        <p>No attendance records found</p>
-        <button class="btn-primary" @click="showImportModal = true">Import First Records</button>
+        <p>No attendance records found for {{ monthInfo.month_name }} {{ selectedYear }}</p>
+        <button class="btn-primary" @click="showImportModal = true">Import Attendance</button>
       </div>
 
       <div v-else class="table-wrapper">
         <table class="data-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Department</th>
-              <th>Date</th>
-              <th>Check In</th>
-              <th>Check Out</th>
-              <th>Break Out</th>
-              <th>Break In</th>
-              <th>Hours</th>
-              <th>Late</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="record in attendanceRecords" :key="record.id">
-              <td class="employee-cell">
-                <div class="employee-info">
-                  <strong>{{ record.employee_name }}</strong>
-                  <span class="employee-code">{{ record.employee_code }}</span>
-                </div>
-              </td>
-              <td>{{ record.department }}</td>
-              <td class="date-cell">{{ formatDate(record.attendance_date) }}</td>
-              <td class="time-cell">{{ formatTime(record.first_check_in) }}</td>
-              <td class="time-cell">{{ formatTime(record.last_check_out) }}</td>
-              <td class="time-cell">{{ formatTime(record.break_out_time) }}</td>
-              <td class="time-cell">{{ formatTime(record.break_in_time) }}</td>
-              <td class="text-center">{{ record.total_hours }}</td>
-              <td class="text-center">
-                <span v-if="record.late_minutes > 0" class="late-badge">{{ record.late_minutes }} min</span>
-                <span v-else class="on-time-badge">On Time</span>
-              </td>
-              <td class="text-center">
-                <span :class="getStatusClass(record)">{{ getStatusText(record) }}</span>
-              </td>
-              </tr>
-          </tbody>
+<thead>
+  <tr>
+    <th>Employee</th>
+    <th>Department</th>
+    <th>Submitted Days</th>
+    <th>Present</th>
+    <th>Absent</th>
+    <th>Late (min)</th>
+    <th>Weekend OT</th>
+    <th>Holiday OT</th>
+    <th>Attendance %</th>
+  
+    <th>Actions</th>
+  </tr>
+</thead>
+<tbody>
+  <tr v-for="record in attendanceRecords" :key="record.employee_id">
+    <td class="employee-cell">
+      <div class="employee-info">
+        <strong>{{ record.employee_name }}</strong>
+        <span class="employee-code">{{ record.employee_code }}</span>
+      </div>
+    </td>
+    <td class="dept-cell">{{ record.department_name || '-' }}</td>
+    <td class="text-center">
+{{ record.submitted_days || record.imported_days }}/{{ record.total_days_in_month }}
+
+    </td>
+    <td class="text-center text-green"><strong>{{ record.days_present }}</strong></td>
+    <td class="text-center text-red">{{ record.days_absent }}</td>
+    <td class="text-center">{{ record.late_minutes }}</td>
+    <td class="text-center">{{ record.weekend_ot_hours }}h</td>
+    <td class="text-center">{{ record.holiday_ot_hours }}h</td>
+    <td class="text-center">
+      <span :class="getRateClass(record.attendance_rate)">
+        {{ record.attendance_rate }}%
+      </span>
+    </td>
+ 
+    <td class="text-center">
+      <button class="btn-icon btn-edit" @click="editRecord(record)" title="Edit">✏️</button>
+      <button class="btn-icon btn-delete" @click="deleteRecord(record.employee_id)" title="Delete">🗑️</button>
+    </td>
+  </tr>
+</tbody>
         </table>
       </div>
 
@@ -275,74 +175,60 @@
         <button class="page-btn" :disabled="pagination.page === 1" @click="changePage(pagination.page - 1)">← Previous</button>
         <span class="page-info">Page {{ pagination.page }} of {{ pagination.totalPages }}</span>
         <button class="page-btn" :disabled="pagination.page === pagination.totalPages" @click="changePage(pagination.page + 1)">Next →</button>
+        <select v-model="pagination.limit" @change="changeLimit" class="limit-select">
+          <option :value="10">10 per page</option>
+          <option :value="20">20 per page</option>
+          <option :value="50">50 per page</option>
+          <option :value="100">100 per page</option>
+        </select>
       </div>
     </div>
 
-    <!-- Weekly Summary Table -->
-    <div class="attendance-table-container" v-if="activeTab === 'weekly'">
+    <!-- Import Batches Table -->
+    <div class="data-table-container" v-if="activeTab === 'imports'">
       <div class="table-header">
-        <h3>Weekly Attendance Summary (Mon-Sat Working Days)</h3>
+        <h3>Import History</h3>
       </div>
 
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <span>Loading weekly summary...</span>
+        <span>Loading imports...</span>
       </div>
 
-      <div v-else-if="weeklyRecords.length === 0" class="empty-state">
+      <div v-else-if="importBatches.length === 0" class="empty-state">
         <span class="empty-icon">📭</span>
-        <p>No weekly summary found</p>
+        <p>No imports found</p>
+        <button class="btn-primary" @click="showImportModal = true">Start Your First Import</button>
       </div>
 
       <div v-else class="table-wrapper">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Employee</th>
-              <th>Department</th>
-              <th>Week</th>
-             
-              <th>Working Days</th>
-              <th>Days Present</th>
-                <th>Absent Days</th>
-                    <th>Late Days</th>
-              <th>Total Working Hours</th>
-              
-              <th>Late Minutes</th>
-         
-            
-              <th>Attendance Rate</th>
+              <th>File Name</th>
+              <th>Import Date</th>
+              <th>Period</th>
+              <th>Total</th>
+              <th>Success</th>
+              <th>Errors</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(record, index) in weeklyRecords" :key="`${record.employee_id}-${record.week_number}-${index}`">
-              <td class="employee-cell">
-                <div class="employee-info">
-                  <strong>{{ record.employee_name }}</strong>
-                  <span class="employee-code">{{ record.employee_code }}</span>
-                </div>
-              </td>
-              <td>{{ record.department }}</td>
-              <td class="week-cell">
-                Week {{ record.week_number }}<br>
-                <small>{{ formatDate(record.week_start) }} - {{ formatDate(record.week_end) }}</small>
-              </td>
-       
-              <td class="text-center">{{ record.total_working_days || 6 }}</td>
-              <td class="text-center">{{ record.effective_days }}</td>
-              <td class="text-center">{{ record.days_absent }}</td>
-                     <td class="text-center">{{ record.late_days }}</td>
-              <td class="text-center">{{ record.total_hours }}</td>
-              
-              <td class="text-center">{{ record.total_late_minutes }}</td>
-       
-            
-              
+            <tr v-for="batch in importBatches" :key="batch.id">
+              <td class="file-name-cell">{{ batch.file_name }}</td>
+              <td>{{ formatDateTime(batch.import_date) }}</td>
+              <td>{{ formatDate(batch.period_start) }} - {{ formatDate(batch.period_end) }}</td>
+              <td class="text-center">{{ batch.total_rows }}</td>
+              <td class="text-center text-green">{{ batch.success_rows }}</td>
+              <td class="text-center text-red">{{ batch.error_rows }}</td>
               <td class="text-center">
-                <span :class="getAttendanceRateClass(record.attendance_rate)">
-                  {{ record.attendance_rate }}%
-                </span>
-                
+                <span :class="getStatusClass(batch.status)">{{ batch.status }}</span>
+              </td>
+              <td class="text-center">
+                <button class="btn-icon" @click="viewBatchDetails(batch)" title="View Details">👁️</button>
+                <button v-if="batch.error_rows > 0" class="btn-icon" @click="viewBatchErrors(batch.id)" title="View Errors">⚠️</button>
               </td>
             </tr>
           </tbody>
@@ -350,219 +236,279 @@
       </div>
 
       <!-- Pagination -->
-      <div class="pagination" v-if="weeklyPagination.totalPages > 1">
-        <button class="page-btn" :disabled="weeklyPagination.page === 1" @click="changeWeeklyPage(weeklyPagination.page - 1)">← Previous</button>
-        <span class="page-info">Page {{ weeklyPagination.page }} of {{ weeklyPagination.totalPages }}</span>
-        <button class="page-btn" :disabled="weeklyPagination.page === weeklyPagination.totalPages" @click="changeWeeklyPage(weeklyPagination.page + 1)">Next →</button>
+      <div class="pagination" v-if="importPagination.totalPages > 1">
+        <button class="page-btn" :disabled="importPagination.page === 1" @click="changeImportPage(importPagination.page - 1)">← Previous</button>
+        <span class="page-info">Page {{ importPagination.page }} of {{ importPagination.totalPages }}</span>
+        <button class="page-btn" :disabled="importPagination.page === importPagination.totalPages" @click="changeImportPage(importPagination.page + 1)">Next →</button>
       </div>
     </div>
 
-    <!-- Monthly Summary Table -->
-    <div class="attendance-table-container" v-if="activeTab === 'monthly'">
-      <div class="table-header">
-        <h3>Monthly Attendance Summary (Mon-Sat Working Days)</h3>
-      </div>
+    <!-- Import Modal -->
+    <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
+      <div class="modal-content modal-import">
+        <div class="modal-header">
+          <h3>📥 Import Attendance Data</h3>
+          <button class="close-btn" @click="showImportModal = false">✕</button>
+        </div>
+        <div class="modal-body no-scroll">
+          <div class="alert-info">
+            <span>ℹ️</span>
+            <div>You can only import attendance for the <strong>current month</strong>. The period must be within the same month.</div>
+          </div>
 
-      <div v-if="loading" class="loading-state">
-        <div class="spinner"></div>
-        <span>Loading monthly summary...</span>
-      </div>
-
-      <div v-else-if="monthlyRecords.length === 0" class="empty-state">
-        <span class="empty-icon">📭</span>
-        <p>No monthly summary found</p>
-      </div>
-
-      <div v-else class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Department</th>
-              <th>Month</th>
-                         <th>Total Days in Month</th>
-                                     <th>Total Working Days</th>
-              <th>Days Present</th>
-              
-              <th>Absent Days</th>
-                <th>Late Days</th>
-  
-   
-              
-              <th>Total Working Hours</th>
+          <div class="form-group">
+            <label>Period Start Date <span class="required">*</span></label>
+            <input type="date" v-model="importPeriod.startDate" required />
+          </div>
           
-              <th>Late Minutes</th>
-            
+          <div class="form-group">
+            <label>Period End Date <span class="required">*</span></label>
+            <input type="date" v-model="importPeriod.endDate" required />
+          </div>
           
-              <th>Attendance Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(record, index) in monthlyRecords" :key="`${record.employee_id}-${record.year}-${record.month}-${index}`">
-              <td class="employee-cell">
-                <div class="employee-info">
-                  <strong>{{ record.employee_name }}</strong>
-                  <span class="employee-code">{{ record.employee_code }}</span>
-                </div>
-              </td>
-              <td>{{ record.department }}</td>
-              <td class="month-cell">
-                {{ record.month_name }} {{ record.year }}<br>
-                <small>{{ formatDate(record.month_start) }} - {{ formatDate(record.month_end) }}</small>
-              </td>
-               <td class="text-center">{{ record.total_days_in_month }}</td>
-                      <td class="text-center"><strong>{{ record.total_working_days }}</strong></td>
-              <td class="text-center"><strong>{{ record.effective_days }}</strong></td>
-       
-               
-              <td class="text-center">{{ record.days_absent }}</td>
-                         <td class="text-center">{{ record.late_days }}</td>
-        
-              <td class="text-center">{{ record.total_hours }}</td>
-              
-              <td class="text-center">{{ record.total_late_minutes }}</td>
-   
+          <div class="upload-area" :class="{ dragging: isDragging, hasFile: selectedFile }"
+               @dragover.prevent="isDragging = true" 
+               @dragleave.prevent="isDragging = false" 
+               @drop.prevent="handleDrop">
+            <div v-if="!selectedFile" class="upload-placeholder">
+              <span class="upload-icon">📂</span>
+              <p>Drag & drop your CSV/Excel file here</p>
+              <button class="btn-secondary" @click="$refs.fileInput.click()">Browse Files</button>
+              <p class="upload-hint"><a href="#" @click.prevent="downloadTemplate">Download Template</a></p>
+            </div>
+            <div v-else class="file-preview">
+              <span class="file-icon">📄</span>
+              <div class="file-info">
+                <p class="file-name">{{ selectedFile.name }}</p>
+                <p class="file-size">{{ formatFileSize(selectedFile.size) }}</p>
+              </div>
+              <button class="btn-remove" @click="clearFile">✕</button>
+            </div>
+            <input type="file" ref="fileInput" @change="handleFileSelect" accept=".csv,.xlsx,.xls" style="display: none" />
+          </div>
           
-              <td class="text-center">
-                <span :class="getAttendanceRateClass(record.attendance_rate)">
-                  {{ record.attendance_rate }}%
-                </span>
-       
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <div v-if="importResult" class="import-result">
+            <div class="result-success" v-if="importResult.success">
+              <span>✅ Import completed!</span>
+              <p>{{ importResult.data?.success || 0 }} records imported, {{ importResult.data?.failed || 0 }} failed</p>
+            </div>
+            <div class="result-error" v-else>
+              <span>❌ {{ importResult.message }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showImportModal = false">Cancel</button>
+          <button class="btn-primary" @click="processImport" :disabled="!selectedFile || importing">
+            <span v-if="importing" class="spinner-small"></span>
+            {{ importing ? 'Importing...' : 'Import' }}
+          </button>
+        </div>
       </div>
+    </div>
 
-      <!-- Pagination -->
-      <div class="pagination" v-if="monthlyPagination.totalPages > 1">
-        <button class="page-btn" :disabled="monthlyPagination.page === 1" @click="changeMonthlyPage(monthlyPagination.page - 1)">← Previous</button>
-        <span class="page-info">Page {{ monthlyPagination.page }} of {{ monthlyPagination.totalPages }}</span>
-        <button class="page-btn" :disabled="monthlyPagination.page === monthlyPagination.totalPages" @click="changeMonthlyPage(monthlyPagination.page + 1)">Next →</button>
+    <!-- Edit Record Modal -->
+    <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>✏️ Edit Attendance Record</h3>
+          <button class="close-btn" @click="showEditModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Employee</label>
+            <input type="text" :value="editRecordData.employee_name" disabled />
+          </div>
+          <div class="form-group">
+            <label>Period</label>
+            <input type="text" :value="`${monthInfo.month_name} ${selectedYear}`" disabled />
+          </div>
+          <div class="form-group">
+            <label>Submitted Days</label>
+            <input type="text" :value="editRecordData.submitted_days || editRecordData.imported_days" disabled />
+          </div>
+          <div class="form-group">
+            <label>Late Minutes</label>
+            <input type="number" v-model.number="editRecordData.late_minutes" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Absence Days (including half days as 0.5)</label>
+            <input type="number" step="0.5" v-model.number="editRecordData.days_absent" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Weekend OT Minutes</label>
+            <input type="number" v-model.number="editRecordData.weekend_ot_minutes" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Holiday OT Minutes</label>
+            <input type="number" v-model.number="editRecordData.holiday_ot_minutes" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Present Days (auto-calculated)</label>
+            <input type="text" :value="(editRecordData.submitted_days || editRecordData.imported_days) - editRecordData.days_absent" disabled />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showEditModal = false">Cancel</button>
+          <button class="btn-primary" @click="saveEditRecord">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import Batch Details Modal -->
+    <div v-if="showBatchDetailsModal" class="modal-overlay" @click.self="showBatchDetailsModal = false">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3>📦 Import Batch Details</h3>
+          <button class="close-btn" @click="showBatchDetailsModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="batch-info" v-if="selectedBatch">
+            <div class="info-row"><strong>File:</strong> {{ selectedBatch.file_name }}</div>
+            <div class="info-row"><strong>Imported:</strong> {{ formatDateTime(selectedBatch.import_date) }}</div>
+            <div class="info-row"><strong>Period:</strong> {{ formatDate(selectedBatch.period_start) }} - {{ formatDate(selectedBatch.period_end) }}</div>
+            <div class="info-row"><strong>Status:</strong> <span :class="getStatusClass(selectedBatch.status)">{{ selectedBatch.status }}</span></div>
+            <div class="info-row"><strong>Total Rows:</strong> {{ selectedBatch.total_rows }}</div>
+            <div class="info-row"><strong>Successful:</strong> {{ selectedBatch.success_rows }}</div>
+            <div class="info-row"><strong>Failed:</strong> {{ selectedBatch.error_rows }}</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showBatchDetailsModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Details Modal -->
+    <div v-if="showErrorsModal" class="modal-overlay" @click.self="showErrorsModal = false">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3>⚠️ Import Errors (Batch #{{ currentBatchId }})</h3>
+          <button class="close-btn" @click="showErrorsModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="error-summary">
+            <p>Total errors: <strong>{{ importErrors.length }}</strong></p>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Employee ID</th>
+                  <th>Error Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="error in importErrors" :key="error.id">
+                  <td class="text-center">{{ error.row_number }}</td>
+                  <td class="text-center">{{ error.employee_id || '-' }}</td>
+                  <td class="error-message">{{ error.error_message }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="downloadTemplate">Download Template</button>
+          <button class="btn-primary" @click="showErrorsModal = false; showImportModal = true">Re-import</button>
+          <button class="btn-secondary" @click="showErrorsModal = false">Close</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import attendanceService from '@/stores/attendanceService'
 import employeeService from '@/stores/employee'
 
-// ============== Configuration ==============
-const tabs = [
-  { value: 'daily', label: 'Daily', icon: '📅' },
-  { value: 'weekly', label: 'Weekly', icon: '📆' },
-  { value: 'monthly', label: 'Monthly', icon: '📊' }
-]
-
-const availableYears = ref([2024, 2025, 2026, 2027])
-
 // ============== State ==============
-// UI State
-const showHelp = ref(false)
-const showImportModal = ref(false)
-const activeTab = ref('daily')
+const activeTab = ref('records')
 const loading = ref(false)
 const importing = ref(false)
 const isDragging = ref(false)
-
-// Data State
-const attendanceRecords = ref([])
-const weeklyRecords = ref([])
-const monthlyRecords = ref([])
-const departments = ref([])
-
-// Import State
-const importType = ref('daily')
+const showImportModal = ref(false)
+const showErrorsModal = ref(false)
+const showBatchDetailsModal = ref(false)
+const showEditModal = ref(false)
 const selectedFile = ref(null)
-const importResults = ref(null)
 const fileInput = ref(null)
+const importResult = ref(null)
+const importErrors = ref([])
+const currentBatchId = ref(null)
+const selectedBatch = ref(null)
+const editRecordData = ref({})
 
-// Filter State
+const tabs = [
+  { value: 'records', label: 'Attendance', icon: '📋' },
+  { value: 'imports', label: 'Import History', icon: '📦' }
+]
+
+const availableYears = ref([2024, 2025, 2026, 2027])
+const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+// Data
+const attendanceRecords = ref([])
+const importBatches = ref([])
+const departments = ref([])
+const statistics = ref(null)
+const monthInfo = ref({})
+
+// Filters
 const selectedYear = ref(new Date().getFullYear())
+const selectedMonth = ref(new Date().getMonth() + 1)
 const filters = ref({
-  startDate: getFirstDayOfMonth(),
-  endDate: getToday(),
-  search: '',
-  status: '',
-  departmentId: null
+  departmentId: null,
+  search: ''
 })
 
-// Pagination State
+const importPeriod = ref({
+  startDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`,
+  endDate: new Date().toISOString().split('T')[0]
+})
+
+// Pagination
 const pagination = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
-const weeklyPagination = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
-const monthlyPagination = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
+const importPagination = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
 
 let debounceTimer = null
 
 // ============== Helper Functions ==============
-function getToday() {
-  return new Date().toISOString().split('T')[0]
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString()
 }
 
-function getFirstDayOfMonth() {
-  const date = new Date()
-  return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0]
+function formatDateTime(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleString()
 }
 
-// ============== Computed ==============
-const summaryLabel = computed(() => {
-  const labels = { daily: 'Total Records', weekly: 'Total Weeks', monthly: 'Total Months' }
-  return labels[activeTab.value] || 'Total Records'
-})
+function formatTime(minutes) {
+  if (!minutes) return '0h'
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours}h ${mins}m`
+}
 
-const summary = computed(() => {
-  if (activeTab.value === 'daily') {
-    const records = attendanceRecords.value
-    return {
-      total_records: records.length,
-      total_hours: records.reduce((sum, r) => sum + (parseFloat(r.total_hours) || 0), 0).toFixed(1),
-      total_late_minutes: records.reduce((sum, r) => sum + (r.late_minutes || 0), 0),
-      half_days: records.filter(r => r.is_half_day).length
-    }
-  }
-  
-  const records = activeTab.value === 'weekly' ? weeklyRecords.value : monthlyRecords.value
-  return {
-    total_records: records.length,
-    total_hours: records.reduce((sum, r) => sum + (parseFloat(r.total_hours) || 0), 0).toFixed(1),
-    total_late_minutes: records.reduce((sum, r) => sum + (r.total_late_minutes || 0), 0),
-    half_days: records.reduce((sum, r) => sum + (r.half_days || 0), 0)
-  }
-})
+function getCompletionClass(record) {
+  const percent = ((record.submitted_days || record.imported_days) / record.total_days_in_month) * 100
+  if (percent >= 100) return 'completion-full'
+  if (percent >= 75) return 'completion-high'
+  if (percent >= 50) return 'completion-medium'
+  if (percent >= 25) return 'completion-low'
+  return 'completion-minimal'
+}
 
-// ============== Formatting Functions ==============
-const formatFileSize = (bytes) => {
+function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString()
-}
-
-const formatTime = (timestamp) => {
-  if (!timestamp) return '—'
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-const getStatusClass = (record) => {
-  if (record.is_half_day) return 'status-half-day'
-  if (record.late_minutes > 30) return 'status-late'
-  if (record.late_minutes > 0) return 'status-minor-late'
-  return 'status-present'
-}
-
-const getStatusText = (record) => {
-  if (record.is_half_day) return 'Half Day'
-  if (record.late_minutes > 30) return 'Late'
-  if (record.late_minutes > 0) return `${record.late_minutes} min late`
-  return 'Present'
-}
-
-const getAttendanceRateClass = (rate) => {
+function getRateClass(rate) {
   const numRate = parseFloat(rate)
   if (numRate >= 90) return 'rate-excellent'
   if (numRate >= 75) return 'rate-good'
@@ -570,8 +516,40 @@ const getAttendanceRateClass = (rate) => {
   return 'rate-poor'
 }
 
-// ============== Data Loading Functions ==============
-const loadDepartments = async () => {
+function getStatusClass(status) {
+  const classes = {
+    completed: 'status-success',
+    processing: 'status-warning',
+    failed: 'status-danger'
+  }
+  return classes[status] || 'status-info'
+}
+
+// Template Download
+function downloadTemplate() {
+  const headers = ['Employee ID', 'Late Minutes', 'Half Day Absence', 'Absence Days', 'Weekend OT Minutes', 'Holiday OT Minutes']
+  const sampleRows = [
+    ['44', '15', '0', '2', '0', '0'],
+    ['45', '30', '0', '1', '60', '0'],
+    ['46', '0', '0', '0', '0', '0']
+  ]
+  
+  let csvContent = headers.join(',') + '\n'
+  sampleRows.forEach(row => {
+    csvContent += row.join(',') + '\n'
+  })
+  
+  const blob = new Blob([csvContent], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'attendance_import_template.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// Load departments
+async function loadDepartments() {
   try {
     const res = await employeeService.getDepartments()
     if (res.success) departments.value = res.data
@@ -580,172 +558,165 @@ const loadDepartments = async () => {
   }
 }
 
-const loadDailyAttendance = async () => {
-  try {
-    const params = {
-      startDate: filters.value.startDate,
-      endDate: filters.value.endDate,
-      page: pagination.value.page,
-      limit: pagination.value.limit,
-      ...(filters.value.search && { search: filters.value.search.trim() }),
-      ...(filters.value.departmentId && { departmentId: Number(filters.value.departmentId) }),
-      ...(filters.value.status && { status: filters.value.status })
-    }
-    
-    const res = await attendanceService.getDailyAttendance(params)
-    
-    if (res.success) {
-      attendanceRecords.value = (res.data || []).map(record => ({
-        ...record,
-        employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim() || 'N/A',
-        department: record.department || record.department_name || 'N/A',
-        total_hours: record.total_hours || '0.0',
-        late_minutes: record.late_minutes || 0
-      }))
-      
-      pagination.value = res.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 }
-    }
-  } catch (error) {
-    console.error('Failed to load daily attendance:', error)
-  }
-}
-
-const loadWeeklySummary = async () => {
-  try {
-    const params = {
-      startDate: `${selectedYear.value}-01-01`,
-      endDate: `${selectedYear.value}-12-31`,
-      page: weeklyPagination.value.page,
-      limit: weeklyPagination.value.limit,
-      ...(filters.value.search && { search: filters.value.search.trim() }),
-      ...(filters.value.departmentId && { departmentId: Number(filters.value.departmentId) })
-    }
-    
-    const res = await attendanceService.getWeeklyAttendance(params)
-    
-    if (res.success) {
-      weeklyRecords.value = res.data || []
-      weeklyPagination.value = res.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 }
-    }
-  } catch (error) {
-    console.error('Failed to load weekly summary:', error)
-  }
-}
-
-const loadMonthlySummary = async () => {
+// Load attendance records (using monthly summary)
+async function loadAttendanceRecords() {
+  loading.value = true
   try {
     const params = {
       year: selectedYear.value,
-      page: monthlyPagination.value.page,
-      limit: monthlyPagination.value.limit,
-      ...(filters.value.search && { search: filters.value.search.trim() }),
-      ...(filters.value.departmentId && { departmentId: Number(filters.value.departmentId) })
+      month: selectedMonth.value,
+      page: pagination.value.page,
+      limit: pagination.value.limit,
+      ...(filters.value.departmentId && { departmentId: filters.value.departmentId }),
+      ...(filters.value.search && { search: filters.value.search })
     }
     
-    const res = await attendanceService.getMonthlyAttendance(params)
+    const res = await attendanceService.getMonthlySummary(params)
     
     if (res.success) {
-      monthlyRecords.value = res.data || []
-      monthlyPagination.value = res.pagination || { page: 1, limit: 20, total: 0, totalPages: 1 }
+      attendanceRecords.value = res.data
+      pagination.value = res.pagination
+      monthInfo.value = res.month_info || {}
+      
+      // Calculate statistics from records
+      const stats = {
+        total_employees: attendanceRecords.value.length,
+        total_submitted_days: attendanceRecords.value.reduce((sum, r) => sum + (r.submitted_days || r.imported_days || 0), 0),
+        total_late_minutes: attendanceRecords.value.reduce((sum, r) => sum + (r.late_minutes || 0), 0),
+        total_absence_days: attendanceRecords.value.reduce((sum, r) => sum + parseFloat(r.days_absent || 0), 0),
+        total_weekend_ot_hours: attendanceRecords.value.reduce((sum, r) => sum + parseFloat(r.weekend_ot_hours || 0), 0),
+        total_holiday_ot_hours: attendanceRecords.value.reduce((sum, r) => sum + parseFloat(r.holiday_ot_hours || 0), 0)
+      }
+      statistics.value = stats
     }
   } catch (error) {
-    console.error('Failed to load monthly summary:', error)
+    console.error('Failed to load attendance records:', error)
+  } finally {
+    loading.value = false
   }
 }
 
-const loadData = () => {
-  if (activeTab.value === 'daily') loadDailyAttendance()
-  else if (activeTab.value === 'weekly') loadWeeklySummary()
-  else loadMonthlySummary()
+// Load import batches
+async function loadImportBatches() {
+  loading.value = true
+  try {
+    const res = await attendanceService.getImportBatches({
+      page: importPagination.value.page,
+      limit: importPagination.value.limit
+    })
+    
+    if (res.success) {
+      importBatches.value = res.data
+      importPagination.value = res.pagination
+    }
+  } catch (error) {
+    console.error('Failed to load import batches:', error)
+  } finally {
+    loading.value = false
+  }
 }
 
-// ============== Event Handlers ==============
-const switchTab = (tab) => {
-  activeTab.value = tab
-  resetPagination()
-  loadData()
+async function loadData() {
+  if (activeTab.value === 'records') {
+    await loadAttendanceRecords()
+  } else {
+    await loadImportBatches()
+  }
 }
 
-const resetPagination = () => {
-  pagination.value.page = 1
-  weeklyPagination.value.page = 1
-  monthlyPagination.value.page = 1
-}
-
-const debounceLoad = () => {
+function debounceLoad() {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    resetPagination()
+    pagination.value.page = 1
     loadData()
   }, 500)
 }
 
-const resetFilters = () => {
-  filters.value = {
-    startDate: getFirstDayOfMonth(),
-    endDate: getToday(),
-    search: '',
-    status: '',
-    departmentId: null
-  }
-  selectedYear.value = new Date().getFullYear()
-  resetPagination()
+// Event Handlers
+function switchTab(tab) {
+  activeTab.value = tab
   loadData()
 }
 
-const changePage = (page) => {
+function resetFilters() {
+  filters.value = {
+    departmentId: null,
+    search: ''
+  }
+  pagination.value.page = 1
+  loadData()
+}
+
+function changePage(page) {
   pagination.value.page = page
-  loadDailyAttendance()
+  loadAttendanceRecords()
 }
 
-const changeWeeklyPage = (page) => {
-  weeklyPagination.value.page = page
-  loadWeeklySummary()
+function changeLimit() {
+  pagination.value.page = 1
+  loadAttendanceRecords()
 }
 
-const changeMonthlyPage = (page) => {
-  monthlyPagination.value.page = page
-  loadMonthlySummary()
+function changeImportPage(page) {
+  importPagination.value.page = page
+  loadImportBatches()
 }
 
-// ============== Import Functions ==============
-const handleFileSelect = (event) => {
+function refreshData() {
+  loadData()
+}
+
+// Import Functions
+function handleFileSelect(event) {
   const file = event.target.files[0]
-  if (file) selectedFile.value = file
+  if (file) {
+    selectedFile.value = file
+    importResult.value = null
+  }
 }
 
-const handleDrop = (event) => {
+function handleDrop(event) {
   isDragging.value = false
   const file = event.dataTransfer.files[0]
-  if (file) selectedFile.value = file
+  if (file) {
+    selectedFile.value = file
+    importResult.value = null
+  }
 }
 
-const clearFile = () => {
+function clearFile() {
   selectedFile.value = null
-  importResults.value = null
+  importResult.value = null
   if (fileInput.value) fileInput.value.value = ''
 }
 
-const processImport = async () => {
-  if (!selectedFile.value) return
-
+async function processImport() {
+  if (!selectedFile.value) {
+    alert('Please select a file to import')
+    return
+  }
+  
+  if (!importPeriod.value.startDate || !importPeriod.value.endDate) {
+    alert('Please select period start and end dates')
+    return
+  }
+  
   importing.value = true
-  importResults.value = null
-
+  importResult.value = null
+  
   try {
-    const result = await attendanceService.importAttendanceFile(selectedFile.value, importType.value)
-    importResults.value = result
+    const result = await attendanceService.importAttendanceFile(selectedFile.value, importPeriod.value)
+    importResult.value = result
     
-    if (result.success) {
-      await loadData()
+    if (result.success && result.data?.success > 0) {
       setTimeout(() => {
         showImportModal.value = false
         clearFile()
+        loadData()
       }, 2000)
     }
   } catch (error) {
-    console.error('Import failed:', error)
-    importResults.value = {
+    importResult.value = {
       success: false,
       message: error.response?.data?.error || 'Import failed',
       data: { success: 0, failed: 0, total: 0 }
@@ -755,74 +726,109 @@ const processImport = async () => {
   }
 }
 
-// ============== Export Functions ==============
-const exportData = () => {
-  let csvData = []
-  let filename = ''
-  
-  if (activeTab.value === 'daily') {
-    csvData = attendanceRecords.value.map(record => ({
-      'Employee Code': record.employee_code,
-      'Employee Name': record.employee_name,
-      'Department': record.department,
-      'Date': record.attendance_date,
-      'Check In': formatTime(record.first_check_in),
-      'Check Out': formatTime(record.last_check_out),
-      'Break Out': formatTime(record.break_out_time),
-      'Break In': formatTime(record.break_in_time),
-      'Total Hours': record.total_hours,
-      'Late Minutes': record.late_minutes,
-      'Status': getStatusText(record)
-    }))
-    filename = `daily_attendance_${filters.value.startDate}_to_${filters.value.endDate}.csv`
-  } else if (activeTab.value === 'weekly') {
-    csvData = weeklyRecords.value.map(record => ({
-      'Employee Code': record.employee_code,
-      'Employee Name': record.employee_name,
-      'Department': record.department,
-      'Week': `Week ${record.week_number}`,
-      'Week Start': record.week_start,
-      'Week End': record.week_end,
-      'Days Present': record.days_present,
-      'Total Working Days': record.total_working_days || 6,
-      'Effective Days': record.effective_days,
-      'Total Hours': record.total_hours,
-      'Late Minutes': record.total_late_minutes,
-      'Attendance Rate': `${record.attendance_rate}%`
-    }))
-    filename = `weekly_attendance_${selectedYear.value}.csv`
-  } else {
-    csvData = monthlyRecords.value.map(record => ({
-      'Employee Code': record.employee_code,
-      'Employee Name': record.employee_name,
-      'Department': record.department,
-      'Month': `${record.month_name} ${record.year}`,
-      'Days Present': record.days_present,
-      'Total Working Days': record.total_working_days,
-      'Total Days in Month': record.total_days_in_month,
-      'Effective Days': record.effective_days,
-      'Total Hours': record.total_hours,
-      'Late Minutes': record.total_late_minutes,
-      'Attendance Rate': `${record.attendance_rate}%`
-    }))
-    filename = `monthly_attendance_${selectedYear.value}.csv`
+// Edit Functions
+function editRecord(record) {
+  editRecordData.value = { 
+    ...record,
+    absence_days: parseFloat(record.days_absent) || 0,
+    weekend_ot_minutes: parseFloat(record.weekend_ot_hours) * 60 || 0,
+    holiday_ot_minutes: parseFloat(record.holiday_ot_hours) * 60 || 0
   }
+  showEditModal.value = true
+}
+
+async function saveEditRecord() {
+  try {
+    const payload = {
+      late_minutes: editRecordData.value.late_minutes,
+      absence_days: editRecordData.value.absence_days,
+      weekend_ot_minutes: editRecordData.value.weekend_ot_minutes,
+      holiday_ot_minutes: editRecordData.value.holiday_ot_minutes
+    }
+    
+    await attendanceService.updateAttendanceRecord(editRecordData.value.id, payload)
+    showEditModal.value = false
+    await loadAttendanceRecords()
+    alert('Record updated successfully')
+  } catch (error) {
+    console.error('Failed to update record:', error)
+    alert('Failed to update record')
+  }
+}
+
+// Batch Functions
+async function viewBatchDetails(batch) {
+  selectedBatch.value = batch
+  showBatchDetailsModal.value = true
+}
+
+async function viewBatchErrors(batchId) {
+  try {
+    const res = await attendanceService.getImportErrors({ batchId, resolved: false })
+    if (res.success) {
+      importErrors.value = res.data
+      currentBatchId.value = batchId
+      showErrorsModal.value = true
+    }
+  } catch (error) {
+    console.error('Failed to load errors:', error)
+  }
+}
+
+async function deleteRecord(employeeId) {
+  if (confirm('Are you sure you want to delete this record?')) {
+    try {
+      // Find the record by employee_id and current month/year
+      const record = attendanceRecords.value.find(r => r.employee_id === employeeId)
+      if (record) {
+        await attendanceService.deleteAttendanceRecord(record.id)
+        await loadAttendanceRecords()
+      }
+    } catch (error) {
+      console.error('Failed to delete record:', error)
+      alert('Failed to delete record')
+    }
+  }
+}
+
+function exportData() {
+  if (attendanceRecords.value.length === 0) return
   
-  if (csvData.length === 0) return
+  const headers = ['Employee Code', 'Employee Name', 'Department', 'Days in Month', 'Working Days', 'Submitted', 'Present', 'Absent', 'Missing', 'Late Minutes', 'Weekend OT (h)', 'Holiday OT (h)', 'Attendance Rate (%)', 'Status']
+  const rows = attendanceRecords.value.map(record => [
+    record.employee_code,
+    record.employee_name,
+    record.department_name,
+    record.total_days_in_month,
+    record.total_working_days,
+    record.submitted_days || record.imported_days,
+    record.days_present,
+    record.days_absent,
+    record.missing_days,
+    record.late_minutes,
+    record.weekend_ot_hours,
+    record.holiday_ot_hours,
+    record.attendance_rate,
+    record.is_complete ? 'Complete' : 'Partial'
+  ])
   
-  const headers = Object.keys(csvData[0])
-  const csv = [headers.join(','), ...csvData.map(row => headers.map(h => JSON.stringify(row[h] || '')).join(','))].join('\n')
-  
-  const blob = new Blob([csv], { type: 'text/csv' })
+  const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n')
+  const blob = new Blob([csvContent], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `attendance_${selectedYear.value}_${selectedMonth.value}.csv`
+  link.click()
   URL.revokeObjectURL(url)
 }
 
-// ============== Lifecycle ==============
+// Watchers
+watch(() => selectedYear.value, () => loadData())
+watch(() => selectedMonth.value, () => loadData())
+watch(() => filters.value.departmentId, () => loadData())
+watch(() => filters.value.search, () => debounceLoad())
+
+// Lifecycle
 onMounted(() => {
   loadDepartments()
   loadData()
@@ -830,94 +836,94 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Tabs */
-.tabs-container {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-  background: white;
-  padding: 8px;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 20px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: #64748b;
-}
-
-.tab-btn:hover {
-  background: #f1f5f9;
-}
-
-.tab-btn.active {
-  background: #3b82f6;
-  color: white;
-}
-
-/* Week and Month cells */
-.week-cell, .month-cell {
-  font-size: 12px;
-}
-
-.week-cell small, .month-cell small {
-  color: #94a3b8;
-  font-size: 10px;
-}
-
-/* Attendance rate colors */
-.rate-excellent {
-  background: #d1fae5;
-  color: #059669;
-  padding: 4px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.rate-good {
-  background: #dbeafe;
-  color: #2563eb;
-  padding: 4px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.rate-average {
+/* Add these new styles */
+.partial-badge {
   background: #fef3c7;
   color: #d97706;
   padding: 4px 8px;
   border-radius: 20px;
+  font-size: 11px;
   font-weight: 600;
   display: inline-block;
 }
 
-.rate-poor {
+.text-blue {
+  color: #3b82f6;
+}
+
+/* Keep all existing styles from your original file */
+.alert-info {
+  background: #eff6ff;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.month-info {
+  margin-bottom: 20px;
+}
+
+.completion-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.completion-full {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.completion-high {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.completion-medium {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.completion-low {
+  background: #fed7aa;
+  color: #ea580c;
+}
+
+.completion-minimal {
   background: #fee2e2;
   color: #dc2626;
-  padding: 4px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  display: inline-block;
 }
 
-.rate-detail {
-  font-size: 10px;
-  color: #64748b;
-  margin-left: 4px;
+.info-badge {
+  background: #e0e7ff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e40af;
 }
 
-/* Keep all your existing styles below */
-.attendance-management-page {
+.info-icon {
+  font-size: 16px;
+}
+
+.btn-edit:hover {
+  background: #dbeafe;
+}
+
+/* Keep all existing styles from your original file */
+.attendance-management {
   min-height: 100vh;
   background: #f5f7fa;
   padding: 24px;
@@ -961,31 +967,36 @@ onMounted(() => {
   gap: 12px;
 }
 
-.btn-import, .btn-help {
-  background: white;
-  border: 1px solid #e2e8f0;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
+.tabs-container {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
+  gap: 8px;
+  margin-bottom: 20px;
+  background: white;
+  padding: 8px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.btn-import {
+.tab-btn {
+  flex: 1;
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #64748b;
+}
+
+.tab-btn:hover {
+  background: #f1f5f9;
+}
+
+.tab-btn.active {
   background: #3b82f6;
   color: white;
-  border-color: #3b82f6;
-}
-
-.btn-import:hover {
-  background: #2563eb;
-}
-
-.btn-help:hover {
-  background: #f8fafc;
 }
 
 .filter-bar {
@@ -1003,7 +1014,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 150px;
+  min-width: 130px;
 }
 
 .filter-group label {
@@ -1013,13 +1024,7 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.date-range {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.date-range input, .filter-group input, .filter-group select {
+.filter-group select, .filter-group input {
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -1027,39 +1032,54 @@ onMounted(() => {
   background: white;
 }
 
-.btn-refresh {
+.btn-reset {
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 13px;
   height: 38px;
 }
 
-.btn-refresh:hover {
-  background: #e2e8f0;
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .btn-export {
-  background: none;
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 6px;
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 12px;
-}
-
-.btn-export:hover {
-  background: #f8fafc;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .stats-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1073,22 +1093,23 @@ onMounted(() => {
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: #1e293b;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
 }
 
 .text-green { color: #10b981; }
 .text-orange { color: #f59e0b; }
 .text-red { color: #ef4444; }
+.text-purple { color: #8b5cf6; }
 
-.stat-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 4px;
-}
-
-.attendance-table-container {
+.data-table-container {
   background: white;
   border-radius: 16px;
   padding: 20px;
@@ -1135,6 +1156,10 @@ onMounted(() => {
   vertical-align: middle;
 }
 
+.text-center {
+  text-align: center;
+}
+
 .employee-cell .employee-info {
   display: flex;
   flex-direction: column;
@@ -1143,10 +1168,6 @@ onMounted(() => {
 .employee-code {
   font-size: 11px;
   color: #94a3b8;
-}
-
-.text-center {
-  text-align: center;
 }
 
 .late-badge {
@@ -1169,44 +1190,98 @@ onMounted(() => {
   display: inline-block;
 }
 
-.status-half-day {
-  background: #fef3c7;
-  color: #d97706;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.status-late {
+.absence-badge {
   background: #fee2e2;
   color: #dc2626;
-  padding: 4px 10px;
+  padding: 2px 8px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
   display: inline-block;
 }
 
-.status-minor-late {
-  background: #fed7aa;
-  color: #ea580c;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-  display: inline-block;
-}
-
-.status-present {
+.rate-excellent {
   background: #d1fae5;
   color: #059669;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 20px;
-  font-size: 11px;
   font-weight: 600;
   display: inline-block;
+}
+
+.rate-good {
+  background: #dbeafe;
+  color: #2563eb;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.rate-average {
+  background: #fef3c7;
+  color: #d97706;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.rate-poor {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.status-success {
+  background: #d1fae5;
+  color: #059669;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  display: inline-block;
+}
+
+.status-warning {
+  background: #fef3c7;
+  color: #d97706;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  display: inline-block;
+}
+
+.status-danger {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  display: inline-block;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.btn-icon:hover {
+  background: #f1f5f9;
+}
+
+.btn-delete:hover {
+  background: #fee2e2;
+}
+
+.btn-edit:hover {
+  background: #dbeafe;
 }
 
 .pagination {
@@ -1228,18 +1303,18 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.page-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-
 .page-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.page-info {
-  font-size: 13px;
-  color: #64748b;
+.limit-select {
+  margin-left: 16px;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
 }
 
 .loading-state, .empty-state {
@@ -1258,6 +1333,16 @@ onMounted(() => {
   margin: 0 auto 12px;
 }
 
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
 .empty-icon {
   font-size: 48px;
   display: block;
@@ -1265,46 +1350,89 @@ onMounted(() => {
   opacity: 0.5;
 }
 
-.import-modal {
-  max-width: 500px;
-}
-
-.import-type-section {
-  margin-bottom: 20px;
-}
-
-.import-type-section label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.type-cards {
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
   display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 85vh;
+  overflow: auto;
+}
+
+.modal-large {
+  max-width: 800px;
+}
+
+.modal-import {
+  max-width: 550px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eef2ff;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(85vh - 120px);
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #eef2ff;
+  display: flex;
+  justify-content: flex-end;
   gap: 12px;
 }
 
-.type-card {
-  flex: 1;
-  background: #f8fafc;
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #94a3b8;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #1e293b;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 10px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 10px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.type-card.active {
-  border-color: #3b82f6;
-  background: #eff6ff;
-  color: #3b82f6;
-}
-
-.type-icon {
-  font-size: 20px;
-  margin-right: 6px;
+  font-size: 13px;
 }
 
 .upload-area {
@@ -1312,7 +1440,7 @@ onMounted(() => {
   border-radius: 12px;
   padding: 30px;
   text-align: center;
-  margin-bottom: 20px;
+  margin-top: 16px;
   transition: all 0.2s;
 }
 
@@ -1368,158 +1496,78 @@ onMounted(() => {
   color: #ef4444;
 }
 
-.import-results {
-  background: #f8fafc;
-  border-radius: 8px;
+.import-result {
+  margin-top: 16px;
   padding: 12px;
+  border-radius: 8px;
 }
 
-.results-summary {
-  display: flex;
-  justify-content: space-around;
-  margin-bottom: 10px;
-}
-
-.stat {
-  text-align: center;
-}
-
-.stat .stat-value {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.stat.success .stat-value { color: #10b981; }
-.stat.failed .stat-value { color: #ef4444; }
-.stat.total .stat-value { color: #3b82f6; }
-
-.stat .stat-label {
-  font-size: 10px;
-}
-
-.success-message {
+.result-success {
   background: #d1fae5;
   color: #059669;
-  padding: 8px;
-  border-radius: 6px;
+}
+
+.result-error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.error-message {
+  color: #dc2626;
   font-size: 12px;
-  text-align: center;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 16px;
-  width: 90%;
-  max-width: 600px;
-  max-height: 85vh;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #eef2ff;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  max-height: calc(85vh - 120px);
-}
-
-.modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #eef2ff;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: white;
-  border: 1px solid #e2e8f0;
-  padding: 8px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
+.upload-hint {
+  font-size: 12px;
   color: #94a3b8;
+  margin-top: 8px;
+}
+
+.upload-hint a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.upload-hint a:hover {
+  text-decoration: underline;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.batch-info {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.info-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.error-summary {
+  background: #fef2f2;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.file-name-cell {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 12px;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-
-@media (max-width: 768px) {
-  .attendance-management-page {
-    padding: 16px;
-  }
-  
-  .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .date-range {
-    flex-wrap: wrap;
-  }
-  
-  .filter-group {
-    width: 100%;
-  }
-  
-  .data-table {
-    font-size: 11px;
-  }
-  
-  .data-table th, .data-table td {
-    padding: 8px 6px;
-  }
-} 
 </style>
