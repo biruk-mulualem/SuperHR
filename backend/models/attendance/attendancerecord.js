@@ -54,6 +54,11 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: 0,
             field: 'early_leave_days'
         },
+        imported_dates: {
+  type: DataTypes.JSONB,
+  defaultValue: {},
+  field: 'imported_dates'
+},
         absence_days: {
             type: DataTypes.DECIMAL(5, 1),
             defaultValue: 0,

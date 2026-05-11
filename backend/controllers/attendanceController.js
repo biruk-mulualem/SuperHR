@@ -38,6 +38,76 @@ const parseExcel = (filePath) => {
   return xlsx.utils.sheet_to_json(worksheet);
 };
 
+// ============================================
+// ADD THESE HELPER FUNCTIONS
+// ============================================
+
+// Helper function for safe number conversion
+const toNumber = (val, fallback = 0) => {
+  const num = Number(val);
+  return isNaN(num) ? fallback : num;
+};
+
+// Helper for safe rounding
+const round = (num) => Math.round(num * 100) / 100;
+
+// Helper for safe file deletion
+const safeDelete = (filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+};
+
+// Helper to get all dates in a range (without mutation)
+const getDatesInRange = (startDate, endDate) => {
+  const dates = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Reset time to midnight UTC to avoid timezone issues
+  start.setUTCHours(0, 0, 0, 0);
+  end.setUTCHours(0, 0, 0, 0);
+  
+  let current = new Date(start);
+  
+  while (current <= end) {
+    const year = current.getUTCFullYear();
+    const month = String(current.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(current.getUTCDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  
+  return dates;
+};
+
+// Helper to batch load employees for performance
+const getEmployeeMap = async (employeeIds) => {
+  if (!employeeIds || employeeIds.length === 0) {
+    return new Set();
+  }
+  
+  // Convert all IDs to numbers
+  const numericIds = employeeIds.map(id => Number(id)).filter(id => !isNaN(id) && id > 0);
+  
+  console.log('Looking for employee IDs:', numericIds);
+  
+  const employees = await Employee.findAll({
+    where: {
+      employee_id: { [Op.in]: numericIds },
+      is_active: true
+    },
+    attributes: ['employee_id']
+  });
+  
+  console.log('Found employees:', employees.map(e => e.employee_id));
+  
+  // Store as numbers
+  const employeeSet = new Set(employees.map(e => Number(e.employee_id)));
+  
+  return employeeSet;
+};
+
 // Validate employee exists
 const validateEmployee = async (employeeId) => {
   try {
@@ -70,10 +140,14 @@ const getWorkingDaysInMonth = (year, month) => {
 };
 
 // ============================================
-// 1. IMPORT ATTENDANCE FILE
+// 1. IMPORT ATTENDANCE FILE (SIMPLIFIED & FIXED)
+// ============================================
+// ============================================
+// 1. IMPORT ATTENDANCE FILE (FULLY FIXED)
 // ============================================
 exports.importAttendanceFile = async (req, res) => {
   const transaction = await sequelize.transaction();
+  let processedEmployees = new Set();
 
   try {
     if (!req.file) {
@@ -86,45 +160,55 @@ exports.importAttendanceFile = async (req, res) => {
     const { period_start, period_end, period_type, imported_by } = req.body;
 
     if (!period_start || !period_end) {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      safeDelete(req.file.path);
       return res.status(400).json({
         success: false,
         error: 'Period start and end dates are required',
       });
     }
 
-    // Calculate year and month from period_start
+    // Validate date range
+    if (new Date(period_start) > new Date(period_end)) {
+      safeDelete(req.file.path);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid period range: start date cannot be after end date',
+      });
+    }
+
     const periodYear = new Date(period_start).getFullYear();
     const periodMonth = new Date(period_start).getMonth() + 1;
 
-    // VALIDATION: Period must be within the same month
-    const startMonth = new Date(period_start).getMonth();
-    const endMonth = new Date(period_end).getMonth();
-
-    if (startMonth !== endMonth) {
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    // Validate same month
+    if (new Date(period_start).getMonth() !== new Date(period_end).getMonth()) {
+      safeDelete(req.file.path);
       return res.status(400).json({
         success: false,
-        error: 'Import period must be within the same month. Cannot span across months.',
+        error: 'Import period must be within the same month',
+      });
+    }
+
+    // Generate dates in this period
+    const newDates = getDatesInRange(period_start, period_end);
+    if (newDates.length === 0) {
+      safeDelete(req.file.path);
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date range',
       });
     }
 
     // Create import batch
-    const batch = await ImportBatch.create(
-      {
-        file_name: req.file.originalname,
-        file_path: req.file.path,
-        period_start: period_start,
-        period_end: period_end,
-        period_type: period_type || 'custom',
-        imported_by: imported_by || (req.user ? req.user.employee_id : null),
-        status: 'processing',
-        started_at: new Date(),
-      },
-      { transaction },
-    );
+    const batch = await ImportBatch.create({
+      file_name: req.file.originalname,
+      file_path: req.file.path,
+      period_start,
+      period_end,
+      period_type: period_type || 'custom',
+      imported_by: imported_by || (req.user ? req.user.employee_id : null),
+      status: 'processing',
+      started_at: new Date(),
+    }, { transaction });
 
     // Parse file
     const fileExt = path.extname(req.file.originalname).toLowerCase();
@@ -136,15 +220,15 @@ exports.importAttendanceFile = async (req, res) => {
       } else if (fileExt === '.xlsx' || fileExt === '.xls') {
         rawData = parseExcel(req.file.path);
       } else {
-        throw new Error('Unsupported file format. Please upload CSV or Excel file.');
+        throw new Error('Unsupported file format');
       }
     } catch (parseError) {
       await batch.update({ status: 'failed' }, { transaction });
       throw parseError;
     }
 
-    let successCount = 0;
-    let errorCount = 0;
+    let successCount = 0, errorCount = 0, skippedCount = 0;
+    processedEmployees.clear();
 
     // Process each row
     for (let i = 0; i < rawData.length; i++) {
@@ -152,258 +236,213 @@ exports.importAttendanceFile = async (req, res) => {
       const rowNumber = i + 2;
 
       try {
-        const employeeId =
-          row['Employee ID'] ||
-          row['employee_id'] ||
-          row['EmployeeId'] ||
-          row['Emp ID'];
+        // Get employee ID from CSV
+        const employeeIdRaw = row['Employee ID'] || row['employee_id'] || row['EmployeeId'] || row['Emp ID'];
+        const employeeId = parseInt(employeeIdRaw);
+        
+        console.log(`Processing row ${rowNumber}: Employee ID = ${employeeId}`);
 
-        // Parse values as numbers
-        const lateMinutes = parseInt(
-          String(row['Late Minutes'] || row['late_minutes'] || row['Late In (M)'] || '0'),
-          10,
-        );
-        const halfDayAbsence = parseFloat(
-          String(
-            row['Half Day Absence'] ||
-              row['half_day_absence'] ||
-              row['Morning Absence (D)'] ||
-              '0',
-          ),
-        );
-        const absenceDays = parseFloat(
-          String(row['Absence Days'] || row['absence_days'] || row['Absence (D)'] || '0'),
-        );
-        const weekendOtMinutes = parseInt(
-          String(
-            row['Weekend OT Minutes'] ||
-              row['weekend_ot_minutes'] ||
-              row['Weekend OT (M)'] ||
-              '0',
-          ),
-          10,
-        );
-        const holidayOtMinutes = parseInt(
-          String(
-            row['Holiday OT Minutes'] ||
-              row['holiday_ot_minutes'] ||
-              row['Holiday OT (M)'] ||
-              '0',
-          ),
-          10,
-        );
-
-        // Check for NaN
-        if (isNaN(lateMinutes))
-          throw new Error(`Invalid Late Minutes value: ${row['Late Minutes']}`);
-        if (isNaN(halfDayAbsence))
-          throw new Error(`Invalid Half Day Absence value: ${row['Half Day Absence']}`);
-        if (isNaN(absenceDays))
-          throw new Error(`Invalid Absence Days value: ${row['Absence Days']}`);
-        if (isNaN(weekendOtMinutes))
-          throw new Error(`Invalid Weekend OT Minutes value: ${row['Weekend OT Minutes']}`);
-        if (isNaN(holidayOtMinutes))
-          throw new Error(`Invalid Holiday OT Minutes value: ${row['Holiday OT Minutes']}`);
-
-        if (!employeeId) {
-          throw new Error('Employee ID missing');
+        if (isNaN(employeeId) || employeeId <= 0) {
+          throw new Error('Invalid Employee ID');
         }
 
-        // Validate employee exists
-        const employee = await validateEmployee(parseInt(employeeId));
+        // Skip duplicate employees in same file
+        if (processedEmployees.has(employeeId)) {
+          skippedCount++;
+          continue;
+        }
+
+        // ✅ FIX 1: Validate employee exists - DON'T use getEmployeeMap
+        const employee = await Employee.findOne({
+          where: {
+            employee_id: employeeId,
+            is_active: true
+          }
+        });
 
         if (!employee) {
-          throw new Error(`Employee with ID ${employeeId} not found or inactive`);
+          // Don't throw - just log error and continue
+          await ImportError.create({
+            import_batch_id: batch.id,
+            row_number: rowNumber,
+            employee_id: employeeId,
+            error_type: 'validation_error',
+            error_message: `Employee with ID ${employeeId} not found or inactive`,
+            raw_data: row,
+            is_resolved: false,
+          }, { transaction });
+          errorCount++;
+          continue;
         }
 
-        // Calculate total absence days (half day = 0.5)
-        const totalAbsenceDays = (absenceDays || 0) + (halfDayAbsence || 0) * 0.5;
+        // ✅ FIX 2: Parse values as numbers using parseFloat
+        const lateMinutes = parseFloat(row['Late Minutes'] || row['late_minutes'] || row['Late In (M)'] || 0);
+        const halfDayAbsence = parseFloat(row['Half Day Absence'] || row['half_day_absence'] || row['Morning Absence (D)'] || 0);
+        const absenceDays = parseFloat(row['Absence Days'] || row['absence_days'] || row['Absence (D)'] || 0);
+        const weekendOtMinutes = parseFloat(row['Weekend OT Minutes'] || row['weekend_ot_minutes'] || row['Weekend OT (M)'] || 0);
+        const holidayOtMinutes = parseFloat(row['Holiday OT Minutes'] || row['holiday_ot_minutes'] || row['Holiday OT (M)'] || 0);
 
-        // Generate list of dates in this import period
-        const startDate = new Date(period_start);
-        const endDate = new Date(period_end);
-        const newDates = [];
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          newDates.push(d.toISOString().split('T')[0]);
-        }
+        // Validate numbers
+        if (isNaN(lateMinutes)) throw new Error(`Invalid Late Minutes: ${row['Late Minutes']}`);
+        if (isNaN(halfDayAbsence)) throw new Error(`Invalid Half Day Absence: ${row['Half Day Absence']}`);
+        if (isNaN(absenceDays)) throw new Error(`Invalid Absence Days: ${row['Absence Days']}`);
+        if (isNaN(weekendOtMinutes)) throw new Error(`Invalid Weekend OT Minutes: ${row['Weekend OT Minutes']}`);
+        if (isNaN(holidayOtMinutes)) throw new Error(`Invalid Holiday OT Minutes: ${row['Holiday OT Minutes']}`);
+
+        // ✅ FIX 3: Calculate total absence days correctly
+        const totalAbsenceDays = (absenceDays || 0) + ((halfDayAbsence || 0) * 0.5);
+
+        processedEmployees.add(employeeId);
 
         // Find existing record for this employee and month
         const existingRecord = await AttendanceRecord.findOne({
           where: {
-            employee_id: parseInt(employeeId),
+            employee_id: employeeId,
             period_year: periodYear,
             period_month: periodMonth,
           },
+          transaction,
         });
 
         if (existingRecord) {
-          // Get already imported dates
+          // Get existing imported dates
           const existingDates = existingRecord.imported_dates || {};
           const alreadyImportedDates = Object.keys(existingDates);
           
-          // Find NEW dates (not already imported)
+          // Find NEW dates
           const datesToAdd = newDates.filter(date => !alreadyImportedDates.includes(date));
           
           if (datesToAdd.length === 0) {
-            // All dates already imported - skip
             console.log(`Employee ${employeeId}: All dates already imported. Skipping.`);
-            successCount++;
+            skippedCount++;
             continue;
           }
           
-          // Calculate per-day values
-          const perDayLate = lateMinutes / newDates.length;
-          const perDayAbsence = totalAbsenceDays / newDates.length;
-          const perDayWeekendOt = weekendOtMinutes / newDates.length;
-          const perDayHolidayOt = holidayOtMinutes / newDates.length;
-          
-          // Calculate values for new dates only
-          const addedLateMinutes = perDayLate * datesToAdd.length;
-          const addedAbsenceDays = perDayAbsence * datesToAdd.length;
-          const addedWeekendOt = perDayWeekendOt * datesToAdd.length;
-          const addedHolidayOt = perDayHolidayOt * datesToAdd.length;
-          
-          // Update imported_dates
+          // Merge imported dates
           const newImportedDates = { ...existingDates };
           datesToAdd.forEach(date => {
-            newImportedDates[date] = {
-              late_minutes: perDayLate,
-              absence_days: perDayAbsence,
-              weekend_ot_minutes: perDayWeekendOt,
-              holiday_ot_minutes: perDayHolidayOt
-            };
+            newImportedDates[date] = true;
           });
           
           // Update date range
-          const allDates = [...alreadyImportedDates, ...datesToAdd];
-          const mergedStartDate = allDates.sort()[0];
-          const mergedEndDate = allDates.sort()[allDates.length - 1];
+          const allDates = Object.keys(newImportedDates).sort();
+          const mergedStartDate = allDates[0];
+          const mergedEndDate = allDates[allDates.length - 1];
           const mergedPeriodDays = allDates.length;
           
-          // Accumulate only new values
-          const currentLateMinutes = parseFloat(existingRecord.late_minutes) || 0;
-          const currentAbsenceDays = parseFloat(existingRecord.absence_days) || 0;
+          // Get current values as numbers
+          const currentLate = parseFloat(existingRecord.late_minutes) || 0;
+          const currentAbsence = parseFloat(existingRecord.absence_days) || 0;
           const currentWeekendOt = parseFloat(existingRecord.weekend_ot_minutes) || 0;
           const currentHolidayOt = parseFloat(existingRecord.holiday_ot_minutes) || 0;
           
-          await existingRecord.update(
-            {
-              period_start_date: mergedStartDate,
-              period_end_date: mergedEndDate,
-              period_days: mergedPeriodDays,
-              late_minutes: currentLateMinutes + addedLateMinutes,
-              absence_days: currentAbsenceDays + addedAbsenceDays,
-              weekend_ot_minutes: currentWeekendOt + addedWeekendOt,
-              holiday_ot_minutes: currentHolidayOt + addedHolidayOt,
-              imported_dates: newImportedDates,
-              updated_at: new Date(),
-            },
-            { transaction },
-          );
+          // ✅ FIX 4: ADD to existing values (accumulate)
+          const newLate = currentLate + lateMinutes;
+          const newAbsence = currentAbsence + totalAbsenceDays;
+          const newWeekendOt = currentWeekendOt + weekendOtMinutes;
+          const newHolidayOt = currentHolidayOt + holidayOtMinutes;
+          
+          console.log(`Employee ${employeeId}: Updated - Late: ${currentLate} + ${lateMinutes} = ${newLate}`);
+          console.log(`Employee ${employeeId}: Updated - Absence: ${currentAbsence} + ${totalAbsenceDays} = ${newAbsence}`);
+          
+          await existingRecord.update({
+            period_start_date: mergedStartDate,
+            period_end_date: mergedEndDate,
+            period_days: mergedPeriodDays,
+            late_minutes: newLate,
+            absence_days: newAbsence,
+            weekend_ot_minutes: newWeekendOt,
+            holiday_ot_minutes: newHolidayOt,
+            imported_dates: newImportedDates,
+            updated_at: new Date(),
+          }, { transaction });
           
           successCount++;
         } else {
-          // CREATE new record with imported_dates tracking
+          // Create new record
           const importedDates = {};
-          const perDayLate = lateMinutes / newDates.length;
-          const perDayAbsence = totalAbsenceDays / newDates.length;
-          const perDayWeekendOt = weekendOtMinutes / newDates.length;
-          const perDayHolidayOt = holidayOtMinutes / newDates.length;
-          
           newDates.forEach(date => {
-            importedDates[date] = {
-              late_minutes: perDayLate,
-              absence_days: perDayAbsence,
-              weekend_ot_minutes: perDayWeekendOt,
-              holiday_ot_minutes: perDayHolidayOt
-            };
+            importedDates[date] = true;
           });
           
-          await AttendanceRecord.create(
-            {
-              import_batch_id: batch.id,
-              employee_id: parseInt(employeeId),
-              late_minutes: lateMinutes,
-              half_day_absence: 0,
-              early_leave_days: 0,
-              absence_days: totalAbsenceDays,
-              weekend_ot_minutes: weekendOtMinutes,
-              holiday_ot_minutes: holidayOtMinutes,
-              period_start_date: period_start,
-              period_end_date: period_end,
-              period_days: newDates.length,
-              period_year: periodYear,
-              period_month: periodMonth,
-              imported_dates: importedDates,
-              raw_data: row,
-              is_valid: true,
-            },
-            { transaction },
-          );
+          console.log(`Employee ${employeeId}: Creating new record with ${lateMinutes} late, ${totalAbsenceDays} absence`);
+          
+          await AttendanceRecord.create({
+            import_batch_id: batch.id,
+            employee_id: employeeId,
+            late_minutes: lateMinutes,
+            half_day_absence: 0,
+            early_leave_days: 0,
+            absence_days: totalAbsenceDays,
+            weekend_ot_minutes: weekendOtMinutes,
+            holiday_ot_minutes: holidayOtMinutes,
+            period_start_date: period_start,
+            period_end_date: period_end,
+            period_days: newDates.length,
+            period_year: periodYear,
+            period_month: periodMonth,
+            imported_dates: importedDates,
+            raw_data: row,
+            is_valid: true,
+          }, { transaction });
           
           successCount++;
         }
       } catch (rowError) {
         errorCount++;
-
-        await ImportError.create(
-          {
+        console.error(`Row ${rowNumber} error:`, rowError.message);
+        
+        // Don't let the transaction abort - just log the error
+        try {
+          await ImportError.create({
             import_batch_id: batch.id,
             row_number: rowNumber,
-            employee_id: row['Employee ID'] || row['employee_id'] || row['EmployeeId'],
+            employee_id: parseInt(row['Employee ID'] || row['employee_id'] || row['EmployeeId'] || 0),
             error_type: 'validation_error',
             error_message: rowError.message,
             raw_data: row,
             is_resolved: false,
-          },
-          { transaction },
-        );
+          }, { transaction });
+        } catch (importError) {
+          console.error(`Failed to log error for row ${rowNumber}:`, importError.message);
+        }
       }
     }
 
-    // Update batch record
-    await batch.update(
-      {
-        total_rows: rawData.length,
-        success_rows: successCount,
-        error_rows: errorCount,
-        status: 'completed',
-        completed_at: new Date(),
-      },
-      { transaction },
-    );
+    await batch.update({
+      total_rows: rawData.length,
+      success_rows: successCount,
+      error_rows: errorCount,
+      status: 'completed',
+      completed_at: new Date(),
+    }, { transaction });
 
     await transaction.commit();
-
-    // Clean up uploaded file
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    safeDelete(req.file.path);
 
     res.status(200).json({
       success: true,
-      message: `Import completed: ${successCount} successful, ${errorCount} failed`,
+      message: `Import completed: ${successCount} successful, ${errorCount} failed, ${skippedCount} skipped`,
       data: {
         batch_id: batch.id,
         total: rawData.length,
         success: successCount,
         failed: errorCount,
+        skipped: skippedCount,
       },
     });
   } catch (error) {
     await transaction.rollback();
     console.error('Import error:', error);
-
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
+    safeDelete(req.file.path);
     res.status(500).json({
       success: false,
       error: error.message,
     });
   }
 };
+
+
 
 // ============================================
 // 2. GET ATTENDANCE RECORDS (Grouped by Month/Year)
@@ -417,7 +456,7 @@ exports.getAttendanceRecords = async (req, res) => {
       department_id,
       search,
       page = 1,
-      limit = 20,
+      limit = 10,
     } = req.query;
 
     let whereClause = {};
@@ -567,7 +606,7 @@ exports.getMonthlySummary = async (req, res) => {
             department_id,
             search,
             page = 1,
-            limit = 20
+            limit = 10
         } = req.query;
 
         const targetYear = year ? parseInt(year) : new Date().getFullYear();
@@ -681,7 +720,7 @@ exports.getMonthlySummary = async (req, res) => {
 // ============================================
 exports.getImportBatches = async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -738,7 +777,7 @@ exports.getImportBatchDetails = async (req, res) => {
 // ============================================
 exports.getImportErrors = async (req, res) => {
   try {
-    const { batch_id, resolved = false, page = 1, limit = 20 } = req.query;
+    const { batch_id, resolved = false, page = 1, limit = 10 } = req.query;
 
     let whereClause = { is_resolved: resolved === "true" };
 

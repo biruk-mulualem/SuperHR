@@ -82,26 +82,18 @@ const router = createRouter({
           component: () => import("@/views/settings/settings.vue"),
           meta: { title: "HR settings", roles: ["admin"] },
         },
-        {
-          path: "attendanceConfig",
-          name: "attendanceConfig",
-          component: () => import("@/views/attendance/attendanceConfig.vue"),
-          meta: { title: "HR attendance Config", roles: ["admin", "hr","attendance"] },
-        },
-           {
-          path: "PendingAbsentees",
-          name: "PendingAbsentees",
-          component: () => import("@/views/attendance/PendingAbsentees.vue"),
-          meta: { title: "Pending Absentees", roles: ["admin", "hr","attendance"] },
-        },
-           {
-          path: "LunchTracking",
-          name: "LunchTracking",
-          component: () => import("@/views/attendance/LunchTracking.vue"),
-          meta: { title: "Pending Absentees", roles: ["admin", "hr","attendance"] },
-        },
-
-        
+         {
+          path: "leaves",
+          name: "leaves",
+          component: () => import("@/views/leaveRequest/leaves.vue"),
+          meta: { title: " leaves", roles: ["admin"] },
+        },  
+       {
+  path: "leave-detail/:id",
+  name: "leave-detail",
+  component: () => import("@/views/leaveRequest/leaveDetail.vue"),
+  meta: { title: "Leave Detail", roles: ["admin", "hr"] },
+},
         {
           path: "",
           redirect: "/dashboard",
