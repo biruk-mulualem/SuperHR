@@ -96,12 +96,12 @@ export interface AttendanceRules {
   };
   overtimeRules: {
     threshold: number;
-    weekdayRate: number;
-    weekendRate: number;
-    holidayRate: number;
+    normalOTRate: number;
+    weekendOTRate: number;
+    holidayOTRate: number;
     maxPerDay: number;
     maxPerWeek: number;
-    approvalRequired: boolean;
+   
     eligiblePositions: number[];
   };
   leaveRules: {
@@ -490,12 +490,12 @@ class SettingService {
       },
       overtimeRules: {
         threshold: 8,
-        weekdayRate: 1.5,
-        weekendRate: 2.0,
-        holidayRate: 2.5,
+        normalOTRate: 1.5,
+        weekendOTRate: 2.0,
+        holidayOTRate: 2.5,
         maxPerDay: 4,
         maxPerWeek: 20,
-        approvalRequired: true,
+      
         eligiblePositions: []
       },
       leaveRules: {

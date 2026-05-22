@@ -89,11 +89,10 @@ const roleMenus = {
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
-    { name: 'Salary', path: '/salary', icon: 'CurrencyDollarIcon', badge: null },
+    { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
     // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
-        // { name: 'attendance Config', path: '/attendanceConfig', icon: 'CogIcon', badge: null }
-  // { name: 'Pending Absentees ', path: '/PendingAbsentees', icon: 'CogIcon', badge: null }
+     
         
   ],
   hr: [
@@ -101,28 +100,29 @@ const roleMenus = {
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
-    { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
+    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
   ],
   finance: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
-    { name: 'Salary', path: '/salary', icon: 'CurrencyDollarIcon', badge: null },
-    { name: 'Payroll', path: '/payroll', icon: 'BanknotesIcon', badge: null },
-    { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
+      { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
+    { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
+  
+    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
   ],
   employee: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     { name: 'My Attendance', path: '/my-attendance', icon: 'ClockIcon', badge: null },
     { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
-    { name: 'My Salary', path: '/my-salary', icon: 'CurrencyDollarIcon', badge: null }
+    { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
   ],
     attendance: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
-    { name: 'My Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
-    // { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
-    // { name: 'My Salary', path: '/my-salary', icon: 'CurrencyDollarIcon', badge: null }
+    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
+    { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
+    // { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
   ]
 
 }

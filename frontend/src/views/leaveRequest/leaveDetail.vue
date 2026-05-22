@@ -34,6 +34,11 @@
               🔄 Re-initialize Request
             </button>
             
+            <!-- For Approved Leaves - Confirm Return button -->
+            <button v-if="leaveRequest.status === 'approved' && !leaveRequest.actual_return_date && leaveRequest.return_date <= today" class="btn-success" @click="openReturnConfirmModal">
+              ✅ Confirm Return
+            </button>
+            
             <button class="btn-secondary" @click="exportToCSV">📄 Export CSV</button>
           </div>
         </div>
@@ -53,10 +58,14 @@
             <span>Rejected:</span>
             <strong>{{ formatDate(leaveRequest.rejection_date) || formatDate(leaveRequest.approved_date) || 'N/A' }}</strong>
           </div>
+          <div class="status-date" v-if="leaveRequest.actual_return_date">
+            <span>Returned on:</span>
+            <strong>{{ formatDate(leaveRequest.actual_return_date) }}</strong>
+          </div>
         </div>
       </div>
 
-      <!-- Main Content Grid (keep the same) -->
+      <!-- Main Content Grid -->
       <div class="detail-main">
         <!-- Left Column - Leave Information -->
         <div class="detail-card">
@@ -89,8 +98,18 @@
                 <span class="date-highlight">{{ formatDate(leaveRequest.end_date) }}</span>
               </div>
               <div class="info-row">
+                <label>Return Date</label>
+                <span class="date-highlight">{{ formatDate(leaveRequest.return_date) }}</span>
+              </div>
+              <div class="info-row">
                 <label>Total Days</label>
                 <span class="days-number">{{ leaveRequest.total_days }} days</span>
+              </div>
+              <div class="info-row full-width">
+                <label>Return Status</label>
+                <span :class="getReturnStatusClass(leaveRequest)">
+                  {{ getReturnStatusText(leaveRequest) }}
+                </span>
               </div>
               <div class="info-row full-width">
                 <label>Reason for Leave</label>
@@ -132,6 +151,10 @@
                 <label>Join Date</label>
                 <span>{{ formatDate(employeeDetails?.join_date) || 'N/A' }}</span>
               </div>
+              <div class="info-row">
+                <label>Years of Service</label>
+                <span>{{ employeeDetails?.years_of_service || 0 }} years</span>
+              </div>
             </div>
           </div>
         </div>
@@ -146,19 +169,38 @@
         <div class="card-body">
           <div class="balance-container">
             <!-- Annual Leave Balance -->
-            <div v-if="leaveRequest.leave_type_name === 'Annual Leave'" class="balance-card">
-              <div class="balance-header">
-                <span class="balance-title">Annual Leave Balance</span>
-                <span class="balance-used">{{ employeeBalance?.annual_used || 0 }} / {{ employeeBalance?.annual_total || 22 }} days used</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: ((employeeBalance?.annual_used || 0) / 22 * 100) + '%' }"></div>
-              </div>
-              <div class="balance-footer">
-                <span>✅ Remaining: <strong>{{ (employeeBalance?.annual_total || 22) - (employeeBalance?.annual_used || 0) }} days</strong></span>
-                <span v-if="((employeeBalance?.annual_total || 22) - (employeeBalance?.annual_used || 0)) < 5" class="warning-text">⚠️ Low balance</span>
-              </div>
-            </div>
+           <!-- Annual Leave Balance - Updated to show correct values -->
+<div v-if="leaveRequest.leave_type_name === 'Annual Leave'" class="balance-card">
+  <div class="balance-header">
+    <span class="balance-title">Annual Leave Balance</span>
+    <span class="balance-used">{{ employeeBalance?.annual_used || 0 }} / {{ employeeBalance?.annual_total || 16 }} days used</span>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-fill" :style="{ width: ((employeeBalance?.annual_used || 0) / (employeeBalance?.annual_total || 16) * 100) + '%' }"></div>
+  </div>
+  <div class="balance-details">
+    <div class="balance-row">
+      <span>📊 Total Accrued:</span>
+      <strong>{{ employeeBalance?.annual_total || 16 }} days</strong>
+    </div>
+    <div class="balance-row">
+      <span>✅ Used:</span>
+      <strong>{{ employeeBalance?.annual_used || 0 }} days</strong>
+    </div>
+    <div class="balance-row" v-if="employeeBalance?.carried_over > 0">
+      <span>📦 Carried Over:</span>
+      <strong class="text-purple">{{ employeeBalance?.carried_over }} days</strong>
+    </div>
+    <div class="balance-row">
+      <span>🎯 Current Period Entitlement:</span>
+      <strong>{{ employeeBalance?.currentPeriodEntitlement || 16 }} days/year</strong>
+    </div>
+    <div class="balance-footer">
+      <span>✨ Remaining: <strong class="text-success">{{ employeeBalance?.available_days || employeeBalance?.availableDays || 0 }} days</strong></span>
+      <span v-if="(employeeBalance?.available_days || employeeBalance?.availableDays || 0) < 5" class="warning-text">⚠️ Low balance</span>
+    </div>
+  </div>
+</div>
 
             <!-- Sick Leave Usage -->
             <div v-else-if="leaveRequest.leave_type_name === 'Sick Leave'" class="balance-card sick-card">
@@ -183,7 +225,6 @@
               </div>
               <div class="balance-info">
                 This leave type has a fixed duration of {{ getLeaveTypeDays() }} days.
-                <span v-if="(employeeBalance?.other_used || 0) > 0">Employee has used {{ employeeBalance?.other_used }} days of this leave type.</span>
               </div>
             </div>
           </div>
@@ -329,6 +370,40 @@
       </div>
     </div>
 
+    <!-- Return Confirmation Modal -->
+    <div v-if="showReturnConfirmModal" class="modal-overlay" @click.self="showReturnConfirmModal = false">
+      <div class="modal-content return-modal">
+        <div class="modal-header">
+          <h3>✅ Confirm Employee Return</h3>
+          <button class="close-btn" @click="showReturnConfirmModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="return-info">
+            <div class="return-icon">🔄</div>
+            <div class="return-details">
+              <p><strong>{{ leaveRequest?.employee_name }}</strong> ({{ leaveRequest?.employee_code }})</p>
+              <p class="return-period">{{ leaveRequest?.leave_type_name }} • {{ formatDate(leaveRequest?.start_date) }} - {{ formatDate(leaveRequest?.end_date) }}</p>
+            </div>
+          </div>
+          <div class="return-dates">
+            <div class="date-box">
+              <label>Expected Return</label>
+              <div class="date-value">{{ formatDate(leaveRequest?.return_date) }}</div>
+            </div>
+            <div class="date-arrow">→</div>
+            <div class="date-box">
+              <label>Actual Return</label>
+              <input type="date" v-model="actualReturnDate" class="form-input" :max="today" />
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showReturnConfirmModal = false">Cancel</button>
+          <button class="btn-primary" @click="processConfirmReturn">Confirm Return</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Approve Confirmation Modal -->
     <div v-if="showApproveConfirmModal" class="modal-overlay" @click.self="showApproveConfirmModal = false">
       <div class="modal-content modal-small">
@@ -423,7 +498,7 @@
       </div>
     </div>
 
-    <!-- Success Modal -->
+    <!-- Success Toast -->
     <div v-if="showSuccessModal" class="modal-overlay" @click.self="showSuccessModal = false">
       <div class="modal-content modal-small">
         <div class="modal-header">
@@ -434,20 +509,22 @@
           <p>{{ successMessage }}</p>
         </div>
         <div class="modal-footer">
-          <button class="btn-primary" @click="closeSuccessAndGoBack">OK</button>
+          <button class="btn-primary" @click="closeSuccessModal">OK</button>
         </div>
       </div>
     </div>
   </div>
 </template>
-
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import leaveService from '@/stores/leaveService'
+import employeeService from '@/stores/employee'
 
 const route = useRoute()
 const router = useRouter()
 const leaveId = route.params.id
+const today = new Date().toISOString().split('T')[0]
 
 // State
 const loading = ref(false)
@@ -460,8 +537,10 @@ const showExtensionModal = ref(false)
 const showApproveConfirmModal = ref(false)
 const showRejectConfirmModal = ref(false)
 const showReinitializeConfirmModal = ref(false)
+const showReturnConfirmModal = ref(false)
 const showSuccessModal = ref(false)
 const successMessage = ref('')
+const actualReturnDate = ref(today)
 
 const extensionDays = ref(1)
 const extensionReason = ref('')
@@ -469,41 +548,26 @@ const approvalNotes = ref('')
 const rejectionReason = ref('')
 const rejectionNotes = ref('')
 
-// Mock data
-const mockLeaveRequests = [
-  { id: 1, employee_id: 44, employee_name: 'Nuru Seid', employee_code: 'EMP006', department_name: 'Finance', leave_type_id: 1, leave_type_name: 'Annual Leave', start_date: '2026-05-10', end_date: '2026-05-14', total_days: 5, reason: 'Family vacation to Dubai', status: 'pending', requested_date: '2026-04-15' },
-  { id: 2, employee_id: 39, employee_name: 'Biruk Mulualem', employee_code: 'EMP001', department_name: 'IT', leave_type_id: 2, leave_type_name: 'Sick Leave', start_date: '2026-05-20', end_date: '2026-05-22', total_days: 3, reason: 'Medical checkup and treatment', status: 'pending', requested_date: '2026-05-18' },
-  { id: 3, employee_id: 45, employee_name: 'Tadese Jemberu', employee_code: 'EMP007', department_name: 'IT', leave_type_id: 2, leave_type_name: 'Sick Leave', start_date: '2026-05-05', end_date: '2026-05-06', total_days: 2, reason: 'Flu symptoms', status: 'approved', requested_date: '2026-05-03', approved_by: 'HR Manager', approved_date: '2026-05-04', extensions: [{ id: 1, requested_date: '2026-05-06', additional_days: 3, reason: 'Still have fever', status: 'approved', new_end_date: '2026-05-09' }] },
-  { id: 4, employee_id: 47, employee_name: 'Haymanot Abebaw', employee_code: 'EMP009', department_name: 'IT', leave_type_id: 3, leave_type_name: 'Maternity Leave', start_date: '2026-05-01', end_date: '2026-07-29', total_days: 90, reason: 'Maternity leave', status: 'approved', requested_date: '2026-03-01', approved_by: 'HR Manager', approved_date: '2026-03-05' },
-  { id: 5, employee_id: 40, employee_name: 'Dagmawi Hadgu', employee_code: 'EMP002', department_name: 'IT', leave_type_id: 1, leave_type_name: 'Annual Leave', start_date: '2026-06-01', end_date: '2026-06-10', total_days: 8, reason: 'Wedding ceremony', status: 'pending', requested_date: '2026-05-01' },
-  { id: 6, employee_id: 46, employee_name: 'Eshete Worke', employee_code: 'EMP008', department_name: 'IT', leave_type_id: 1, leave_type_name: 'Annual Leave', start_date: '2026-05-15', end_date: '2026-05-19', total_days: 5, reason: 'Family visit', status: 'approved', requested_date: '2026-04-20', approved_by: 'HR Manager', approved_date: '2026-04-22' },
-  { id: 7, employee_id: 41, employee_name: 'Melkamu Zewdu', employee_code: 'EMP003', department_name: 'IT', leave_type_id: 4, leave_type_name: 'Paternity Leave', start_date: '2026-06-15', end_date: '2026-06-24', total_days: 10, reason: 'New baby arrival', status: 'pending', requested_date: '2026-05-10' },
-  { id: 8, employee_id: 42, employee_name: 'Melaku Tewodros', employee_code: 'EMP004', department_name: 'IT', leave_type_id: 5, leave_type_name: 'Bereavement Leave', start_date: '2026-05-08', end_date: '2026-05-12', total_days: 5, reason: 'Family funeral', status: 'rejected', requested_date: '2026-05-07', rejection_reason: 'Insufficient documentation, please provide death certificate', rejection_date: '2026-05-07', approved_by: 'HR Manager', approved_date: '2026-05-07' }
-]
+// ==================== HELPER FUNCTIONS ====================
 
-const mockEmployeeBalances = [
-  { id: 39, name: 'Biruk Mulualem', code: 'EMP001', department: 'IT', annual_total: 22, annual_used: 7, sick_used: 5, other_used: 0 },
-  { id: 40, name: 'Dagmawi Hadgu', code: 'EMP002', department: 'IT', annual_total: 22, annual_used: 12, sick_used: 3, other_used: 0 },
-  { id: 41, name: 'Melkamu Zewdu', code: 'EMP003', department: 'IT', annual_total: 22, annual_used: 5, sick_used: 2, other_used: 0 },
-  { id: 42, name: 'Melaku Tewodros', code: 'EMP004', department: 'IT', annual_total: 22, annual_used: 18, sick_used: 8, other_used: 5 },
-  { id: 44, name: 'Nuru Seid', code: 'EMP006', department: 'Finance', annual_total: 22, annual_used: 5, sick_used: 1, other_used: 0 },
-  { id: 45, name: 'Tadese Jemberu', code: 'EMP007', department: 'IT', annual_total: 22, annual_used: 8, sick_used: 9, other_used: 0 },
-  { id: 46, name: 'Eshete Worke', code: 'EMP008', department: 'IT', annual_total: 22, annual_used: 15, sick_used: 4, other_used: 0 },
-  { id: 47, name: 'Haymanot Abebaw', code: 'EMP009', department: 'IT', annual_total: 22, annual_used: 2, sick_used: 0, other_used: 90 }
-]
-
-// Computed
-const pendingExtensions = computed(() => {
-  if (leaveRequest.value?.extensions) {
-    return leaveRequest.value.extensions.filter(ext => ext.status === 'pending')
-  }
-  return []
-})
-
-// Methods
 function formatDate(dateStr) {
   if (!dateStr) return 'N/A'
-  return new Date(dateStr).toLocaleDateString()
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return 'N/A'
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  } catch (error) {
+    return 'N/A'
+  }
+}
+
+function getAnnualEntitlement(yearsOfService) {
+  if (yearsOfService <= 2) return 16
+  return 16 + Math.ceil((yearsOfService - 2) / 2)
 }
 
 function getLeaveTypeClass(type) {
@@ -521,7 +585,8 @@ function getStatusClass(status) {
   const classes = {
     pending: 'status-pending',
     approved: 'status-approved',
-    rejected: 'status-rejected'
+    rejected: 'status-rejected',
+    cancelled: 'status-cancelled'
   }
   return classes[status] || 'status-default'
 }
@@ -530,7 +595,8 @@ function getStatusIcon(status) {
   const icons = {
     pending: '⏳',
     approved: '✅',
-    rejected: '❌'
+    rejected: '❌',
+    cancelled: '🚫'
   }
   return icons[status] || '📋'
 }
@@ -544,11 +610,350 @@ function getLeaveTypeDays() {
   return days[leaveRequest.value?.leave_type_name] || 'N/A'
 }
 
-function goBack() {
-  router.push('/leaves')
+function getReturnStatusClass(request) {
+  if (!request) return 'status-info'
+  if (request.actual_return_date) {
+    const expectedReturn = new Date(request.return_date)
+    const actual = new Date(request.actual_return_date)
+    if (actual > expectedReturn) return 'status-warning'
+    return 'status-success'
+  }
+  const currentDate = new Date()
+  const returnDate = new Date(request.return_date)
+  if (currentDate > returnDate) return 'status-danger'
+  if (currentDate.toDateString() === returnDate.toDateString()) return 'status-warning'
+  return 'status-info'
+}
+
+function getReturnStatusText(request) {
+  if (!request) return 'N/A'
+  if (request.actual_return_date) {
+    const expectedReturn = new Date(request.return_date)
+    const actual = new Date(request.actual_return_date)
+    if (actual > expectedReturn) {
+      const daysLate = Math.ceil((actual - expectedReturn) / (1000 * 60 * 60 * 24))
+      return `Returned ${daysLate} days late`
+    }
+    return 'Returned on time'
+  }
+  const currentDate = new Date()
+  const returnDate = new Date(request.return_date)
+  if (currentDate > returnDate) {
+    const daysOverdue = Math.ceil((currentDate - returnDate) / (1000 * 60 * 60 * 24))
+    return `Overdue by ${daysOverdue} days`
+  }
+  if (currentDate.toDateString() === returnDate.toDateString()) return 'Expected today'
+  return `Returns ${formatDate(request.return_date)}`
+}
+
+function showToastMessage(message, type = 'success') {
+  successMessage.value = message
+  showSuccessModal.value = true
+}
+
+// ==================== API CALLS ====================
+
+async function loadLeaveData() {
+  loading.value = true
+  try {
+    const result = await leaveService.getLeaveRequestById(parseInt(leaveId))
+    console.log('API Response:', result)
+    
+    if (result.success && result.data) {
+      const data = result.data
+      
+      // Map the API response to snake_case for template compatibility
+      leaveRequest.value = {
+        id: data.leaveRequestId,
+        employee_id: data.employeeId,
+        employee_name: data.employee ? `${data.employee.firstName} ${data.employee.lastName}` : 'N/A',
+        employee_code: data.employee?.employeeCode || 'N/A',
+        department_name: data.department?.name || 'N/A',
+        leave_type_id: data.leaveTypeId,
+        leave_type_name: data.leaveTypeName,
+        start_date: data.startDate,
+        end_date: data.endDate,
+        return_date: data.returnDate,
+        total_days: data.totalDays,
+        reason: data.reason,
+        status: data.status,
+        requested_date: data.requestedDate,
+        approved_by: data.approvedBy,
+        approved_date: data.approvedDate,
+        rejection_reason: data.rejectionReason,
+        rejection_date: data.rejectedDate,
+        hr_notes: data.hrNotes,
+        return_status: data.returnStatus,
+        actual_return_date: data.actualReturnDate,
+        days_late: data.daysLate,
+        extensions: data.extensions || []
+      }
+      
+      console.log('Mapped leave request:', leaveRequest.value)
+      
+      // Load employee balance and details
+      if (data.employeeId) {
+        await Promise.all([
+          loadEmployeeBalance(data.employeeId),
+          loadEmployeeDetails(data.employeeId)
+        ])
+      }
+    } else {
+      console.error('Failed to load leave request:', result.error)
+      showToastMessage(result.error || 'Failed to load leave request', 'error')
+    }
+  } catch (error) {
+    console.error('Error loading leave data:', error)
+    showToastMessage('Error loading leave request details', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadEmployeeBalance(employeeId) {
+  try {
+    const result = await leaveService.getEmployeeBalance(employeeId, new Date().getFullYear())
+    console.log('Balance API Response:', result)
+    
+    if (result.success && result.data) {
+      const balance = result.data
+      
+      // FIXED: Use the correct field names from your API response
+      employeeBalance.value = {
+        // Total days available = totalAccrued (includes carry over)
+        annual_total: balance.totalAccrued || balance.totalAllocation || balance.yearlyEntitlement || 16,
+        // Days used = totalUsed
+        annual_used: balance.totalUsed || balance.usedThisYear || 0,
+        // Available days
+        available_days: balance.availableDays || 0,
+        // Years of service
+        years_of_service: balance.yearsOfService || 
+          (balance.anniversaryPeriods ? balance.anniversaryPeriods.length - 1 : 1),
+        // Carried over days
+        carried_over: balance.carryOverDetails?.reduce((sum, detail) => sum + detail.carriedOver, 0) || 0,
+        // Sick leave used
+        sick_used: balance.sickUsedThisYear || 0,
+        // Additional details for better display
+        currentPeriodEntitlement: balance.currentPeriodEntitlement,
+        currentPeriodUsed: balance.currentPeriodUsed,
+        currentPeriodAccrued: balance.currentPeriodAccrued,
+        totalAccrued: balance.totalAccrued,
+        totalUsed: balance.totalUsed
+      }
+      
+      // Debug log to verify values
+      console.log('Mapped employee balance:', {
+        annual_total: employeeBalance.value.annual_total,
+        annual_used: employeeBalance.value.annual_used,
+        available_days: employeeBalance.value.available_days,
+        carried_over: employeeBalance.value.carried_over
+      })
+      
+    } else {
+      employeeBalance.value = {
+        annual_total: 16,
+        annual_used: 0,
+        available_days: 16,
+        years_of_service: 1,
+        carried_over: 0,
+        sick_used: 0
+      }
+    }
+  } catch (error) {
+    console.error('Error loading employee balance:', error)
+    employeeBalance.value = {
+      annual_total: 16,
+      annual_used: 0,
+      available_days: 16,
+      years_of_service: 1,
+      carried_over: 0,
+      sick_used: 0
+    }
+  }
+}
+
+async function loadEmployeeDetails(employeeId) {
+  try {
+    const result = await employeeService.getEmployeeById(employeeId)
+    console.log('Employee Details API Response:', result)
+    
+    if (result.success && result.data) {
+      const emp = result.data
+      
+      // Calculate years of service from hireDate
+      let yearsOfService = 0
+      if (emp.hireDate) {
+        const hireDate = new Date(emp.hireDate)
+        const todayDate = new Date()
+        yearsOfService = Math.floor((todayDate - hireDate) / (1000 * 60 * 60 * 24 * 365))
+      }
+      
+      employeeDetails.value = {
+        position: emp.position || emp.Position?.title || 'N/A',
+        email: emp.email || emp.workEmail || emp.personalEmail || 'N/A',
+        join_date: emp.hireDate,
+        years_of_service: yearsOfService
+      }
+    } else {
+      employeeDetails.value = {
+        position: 'N/A',
+        email: 'N/A',
+        join_date: null,
+        years_of_service: 0
+      }
+    }
+  } catch (error) {
+    console.error('Error loading employee details:', error)
+    employeeDetails.value = {
+      position: 'N/A',
+      email: 'N/A',
+      join_date: null,
+      years_of_service: 0
+    }
+  }
+}
+
+// ==================== ACTION FUNCTIONS ====================
+
+async function confirmApprove() {
+  try {
+    const result = await leaveService.approveLeave(leaveRequest.value.id, approvalNotes.value)
+    if (result.success) {
+      leaveRequest.value.status = 'approved'
+      leaveRequest.value.approved_date = new Date().toISOString().split('T')[0]
+      leaveRequest.value.approved_by = 'HR Manager'
+      if (approvalNotes.value) {
+        leaveRequest.value.hr_notes = approvalNotes.value
+      }
+      
+      showApproveConfirmModal.value = false
+      showToastMessage(result.message || 'Leave request approved successfully!', 'success')
+      await loadLeaveData()
+    } else {
+      showToastMessage(result.error || 'Failed to approve leave request', 'error')
+    }
+  } catch (error) {
+    console.error('Error approving leave:', error)
+    showToastMessage('Failed to approve leave request', 'error')
+  }
+}
+
+async function confirmReject() {
+  if (!rejectionReason.value) {
+    showToastMessage('Please provide a rejection reason', 'error')
+    return
+  }
+  
+  try {
+    const result = await leaveService.rejectLeave(leaveRequest.value.id, rejectionReason.value, rejectionNotes.value)
+    if (result.success) {
+      leaveRequest.value.status = 'rejected'
+      leaveRequest.value.rejection_reason = rejectionReason.value
+      leaveRequest.value.rejection_date = new Date().toISOString().split('T')[0]
+      if (rejectionNotes.value) {
+        leaveRequest.value.hr_notes = rejectionNotes.value
+      }
+      
+      showRejectConfirmModal.value = false
+      showToastMessage(result.message || 'Leave request rejected', 'success')
+      await loadLeaveData()
+    } else {
+      showToastMessage(result.error || 'Failed to reject leave request', 'error')
+    }
+  } catch (error) {
+    console.error('Error rejecting leave:', error)
+    showToastMessage('Failed to reject leave request', 'error')
+  }
+}
+
+async function confirmExtension() {
+  if (!extensionDays.value || extensionDays.value < 1) {
+    showToastMessage('Please enter a valid number of days', 'error')
+    return
+  }
+  if (!extensionReason.value) {
+    showToastMessage('Please provide a reason for the extension', 'error')
+    return
+  }
+  
+  try {
+    const result = await leaveService.requestExtension(leaveRequest.value.id, extensionDays.value, extensionReason.value)
+    if (result.success) {
+      const extension = result.data
+      if (!leaveRequest.value.extensions) {
+        leaveRequest.value.extensions = []
+      }
+      leaveRequest.value.extensions.push({
+        requested_date: extension.requestedDate,
+        additional_days: extension.additionalDays,
+        reason: extension.reason,
+        status: extension.status,
+        new_end_date: extension.newEndDate,
+        approved_by: extension.approvedBy,
+        approved_date: extension.approvedDate,
+        rejection_reason: extension.rejectionReason
+      })
+      
+      showExtensionModal.value = false
+      showToastMessage(`Extension request submitted for ${extensionDays.value} days. HR will review it.`, 'success')
+    } else {
+      showToastMessage(result.error || 'Failed to submit extension request', 'error')
+    }
+  } catch (error) {
+    console.error('Error requesting extension:', error)
+    showToastMessage('Failed to submit extension request', 'error')
+  }
+}
+
+async function processConfirmReturn() {
+  try {
+    const result = await leaveService.confirmReturn(leaveRequest.value.id, actualReturnDate.value)
+    if (result.success) {
+      const expectedReturn = new Date(leaveRequest.value.return_date)
+      const actual = new Date(actualReturnDate.value)
+      const daysLate = Math.max(0, Math.ceil((actual - expectedReturn) / (1000 * 60 * 60 * 24)))
+      
+      leaveRequest.value.return_status = daysLate > 0 ? 'returned_late' : 'returned'
+      leaveRequest.value.actual_return_date = actualReturnDate.value
+      leaveRequest.value.days_late = daysLate
+      
+      showReturnConfirmModal.value = false
+      showToastMessage(daysLate > 0 
+        ? `${leaveRequest.value.employee_name} returned ${daysLate} days late` 
+        : `${leaveRequest.value.employee_name} returned on time`, 'success')
+      await loadLeaveData()
+    } else {
+      showToastMessage(result.error || 'Failed to confirm return', 'error')
+    }
+  } catch (error) {
+    console.error('Error confirming return:', error)
+    showToastMessage('Failed to confirm return', 'error')
+  }
+}
+
+async function confirmReinitialize() {
+  try {
+    const result = await leaveService.updateLeaveRequest(leaveRequest.value.id, { status: 'pending' })
+    if (result.success) {
+      leaveRequest.value.status = 'pending'
+      leaveRequest.value.rejection_reason = null
+      leaveRequest.value.rejection_date = null
+      
+      showReinitializeConfirmModal.value = false
+      showToastMessage('Request has been re-initialized and moved to pending for approval.', 'success')
+      await loadLeaveData()
+    } else {
+      showToastMessage(result.error || 'Failed to re-initialize request', 'error')
+    }
+  } catch (error) {
+    console.error('Error re-initializing leave:', error)
+    showToastMessage('Failed to re-initialize request', 'error')
+  }
 }
 
 function exportToCSV() {
+  if (!leaveRequest.value) return
+  
   const data = [{
     'Request ID': leaveRequest.value.id,
     'Employee Name': leaveRequest.value.employee_name,
@@ -557,13 +962,16 @@ function exportToCSV() {
     'Leave Type': leaveRequest.value.leave_type_name,
     'Start Date': leaveRequest.value.start_date,
     'End Date': leaveRequest.value.end_date,
+    'Return Date': leaveRequest.value.return_date,
     'Total Days': leaveRequest.value.total_days,
     'Reason': leaveRequest.value.reason,
     'Status': leaveRequest.value.status,
     'Requested Date': leaveRequest.value.requested_date,
     'Approved/Rejected Date': leaveRequest.value.approved_date || leaveRequest.value.rejection_date || '',
     'Approved/Rejected By': leaveRequest.value.approved_by || '',
-    'Rejection Reason': leaveRequest.value.rejection_reason || ''
+    'Rejection Reason': leaveRequest.value.rejection_reason || '',
+    'Return Status': leaveRequest.value.return_status || '',
+    'Actual Return Date': leaveRequest.value.actual_return_date || ''
   }]
   
   const headers = Object.keys(data[0])
@@ -587,162 +995,394 @@ function exportToCSV() {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
   
-  successMessage.value = 'CSV exported successfully!'
-  showSuccessModal.value = true
+  showToastMessage('CSV exported successfully!', 'success')
 }
 
-// Extension functions
-function openExtensionModal() {
-  extensionDays.value = 1
-  extensionReason.value = ''
-  showExtensionModal.value = true
-}
-
-function confirmExtension() {
-  if (!extensionDays.value || extensionDays.value < 1) {
-    successMessage.value = 'Please enter a valid number of days'
-    showSuccessModal.value = true
-    return
-  }
-  if (!extensionReason.value) {
-    successMessage.value = 'Please provide a reason for the extension'
-    showSuccessModal.value = true
-    return
-  }
-  
-  const extension = {
-    id: Date.now(),
-    requested_date: new Date().toISOString().split('T')[0],
-    additional_days: extensionDays.value,
-    reason: extensionReason.value,
-    status: 'pending'
-  }
-  
-  if (!leaveRequest.value.extensions) {
-    leaveRequest.value.extensions = []
-  }
-  leaveRequest.value.extensions.push(extension)
-  
-  showExtensionModal.value = false
-  successMessage.value = `Extension request submitted for ${extensionDays.value} days. HR will review it.`
-  showSuccessModal.value = true
-}
-
-// Approve functions
+// Modal open functions
 function openApproveModal() {
   approvalNotes.value = ''
   showApproveConfirmModal.value = true
 }
 
-function confirmApprove() {
-  // Process pending extensions
-  if (leaveRequest.value.extensions && leaveRequest.value.extensions.length > 0) {
-    for (const ext of leaveRequest.value.extensions) {
-      if (ext.status === 'pending') {
-        ext.status = 'approved'
-        ext.approved_date = new Date().toISOString().split('T')[0]
-        ext.approved_by = 'HR Manager'
-        
-        const currentEnd = new Date(leaveRequest.value.end_date)
-        currentEnd.setDate(currentEnd.getDate() + ext.additional_days)
-        ext.new_end_date = currentEnd.toISOString().split('T')[0]
-        leaveRequest.value.end_date = ext.new_end_date
-        leaveRequest.value.total_days += ext.additional_days
-      }
-    }
-  }
-  
-  leaveRequest.value.status = 'approved'
-  leaveRequest.value.approved_by = 'HR Manager'
-  leaveRequest.value.approved_date = new Date().toISOString().split('T')[0]
-  leaveRequest.value.hr_notes = approvalNotes.value
-  
-  showApproveConfirmModal.value = false
-  successMessage.value = 'Leave request approved successfully!'
-  showSuccessModal.value = true
-}
-
-// Reject functions
 function openRejectModal() {
   rejectionReason.value = ''
   rejectionNotes.value = ''
   showRejectConfirmModal.value = true
 }
 
-function confirmReject() {
-  if (!rejectionReason.value) {
-    successMessage.value = 'Please provide a rejection reason'
-    showSuccessModal.value = true
-    return
-  }
-  
-  leaveRequest.value.status = 'rejected'
-  leaveRequest.value.rejection_reason = rejectionReason.value
-  leaveRequest.value.rejection_date = new Date().toISOString().split('T')[0]
-  leaveRequest.value.hr_notes = rejectionNotes.value
-  
-  showRejectConfirmModal.value = false
-  successMessage.value = 'Leave request rejected'
-  showSuccessModal.value = true
-}
-
-// Re-initialize functions
 function openReinitializeModal() {
   showReinitializeConfirmModal.value = true
 }
 
-function confirmReinitialize() {
-  const index = mockLeaveRequests.findIndex(r => r.id == leaveId)
-  if (index !== -1) {
-    mockLeaveRequests[index].status = 'pending'
-    delete mockLeaveRequests[index].rejection_reason
-    delete mockLeaveRequests[index].rejection_date
-    
-    leaveRequest.value.status = 'pending'
-    leaveRequest.value.rejection_reason = null
-  }
-  
-  showReinitializeConfirmModal.value = false
-  successMessage.value = 'Request has been re-initialized and moved to pending for approval.'
-  showSuccessModal.value = true
+function openExtensionModal() {
+  extensionDays.value = 1
+  extensionReason.value = ''
+  showExtensionModal.value = true
 }
 
-function closeSuccessAndGoBack() {
+function openReturnConfirmModal() {
+  actualReturnDate.value = today
+  showReturnConfirmModal.value = true
+}
+
+function closeSuccessModal() {
   showSuccessModal.value = false
-  goBack()
 }
 
-// Load leave data
-function loadLeaveData() {
-  loading.value = true
-  
-  setTimeout(() => {
-    const found = mockLeaveRequests.find(l => l.id == leaveId)
-    if (found) {
-      leaveRequest.value = JSON.parse(JSON.stringify(found))
-      const empBalance = mockEmployeeBalances.find(e => e.id === found.employee_id)
-      if (empBalance) {
-        employeeBalance.value = empBalance
-        employeeDetails.value = {
-          position: empBalance.name.includes('Biruk') ? 'Senior Developer' : 
-                    empBalance.name.includes('Dagmawi') ? 'Team Lead' :
-                    empBalance.name.includes('Nuru') ? 'Finance Manager' : 'Staff',
-          email: `${empBalance.name.toLowerCase().replace(' ', '.')}@company.com`,
-          join_date: '2020-01-15'
-        }
-      }
-    }
-    loading.value = false
-  }, 500)
+function goBack() {
+  router.push('/leaves')
 }
+
+// ==================== INITIALIZATION ====================
 
 onMounted(() => {
   loadLeaveData()
 })
 </script>
-
-
 <style scoped>
+/* Keep all existing styles and add these */
+
+.warning-text {
+  color: #ef4444;
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.balance-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+  color: #475569;
+}
+
+.balance-row span {
+  color: #64748b;
+}
+
+.text-success {
+  color: #10b981;
+}
+
+.text-purple {
+  color: #8b5cf6;
+}
+
+.balance-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.return-modal {
+  max-width: 450px;
+}
+
+.return-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.return-icon {
+  font-size: 32px;
+}
+
+.return-details p {
+  margin: 0;
+}
+
+.return-details p:first-child {
+  font-weight: 600;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.return-period {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.return-dates {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.date-box {
+  flex: 1;
+}
+
+.date-box label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.date-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  padding: 8px 0;
+}
+
+.date-arrow {
+  font-size: 20px;
+  color: #94a3b8;
+}
+
+.status-success { background: #d1fae5; color: #059669; padding: 4px 8px; border-radius: 20px; font-size: 11px; display: inline-block; }
+.status-warning { background: #fef3c7; color: #d97706; padding: 4px 8px; border-radius: 20px; font-size: 11px; display: inline-block; }
+.status-danger { background: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 20px; font-size: 11px; display: inline-block; }
+.status-info { background: #dbeafe; color: #2563eb; padding: 4px 8px; border-radius: 20px; font-size: 11px; display: inline-block; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .return-dates {
+    flex-direction: column;
+  }
+  .date-arrow {
+    transform: rotate(90deg);
+  }
+}
+
+.leave-detail-page {
+  min-height: 100vh;
+  background: #f0f2f5;
+  padding: 24px;
+}
+
+/* Header */
+.detail-header {
+  margin-bottom: 24px;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #3b82f6;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.back-btn:hover { background: #f1f5f9; }
+
+.header-actions { display: flex; gap: 12px; }
+
+/* Status Banner */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.status-banner.status-pending { border-left: 4px solid #f59e0b; }
+.status-banner.status-approved { border-left: 4px solid #10b981; }
+.status-banner.status-rejected { border-left: 4px solid #ef4444; }
+
+.status-icon { font-size: 32px; }
+.status-info { flex: 1; }
+.status-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+.status-value { font-size: 20px; font-weight: 700; }
+.status-banner.status-pending .status-value { color: #f59e0b; }
+.status-banner.status-approved .status-value { color: #10b981; }
+.status-banner.status-rejected .status-value { color: #ef4444; }
+.status-date { font-size: 13px; color: #64748b; }
+
+/* Detail Cards */
+.detail-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.detail-card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #eef2ff;
+}
+
+.card-icon { font-size: 24px; }
+.card-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1e293b; }
+
+.card-body { padding: 24px; }
+
+.info-group { display: flex; flex-direction: column; gap: 16px; }
+.info-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.info-row label { font-size: 12px; font-weight: 600; color: #64748b; min-width: 120px; }
+.info-row span { font-size: 14px; color: #1e293b; }
+.info-row.full-width { flex-direction: column; gap: 8px; }
+
+.request-id { font-family: monospace; font-weight: 600; color: #3b82f6; }
+.date-highlight { font-weight: 600; color: #3b82f6; }
+.days-number { font-size: 24px; font-weight: 700; color: #3b82f6; }
+.reason-box, .rejection-box, .notes-box { background: #f8fafc; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+
+.leave-type-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.type-annual { background: #d1fae5; color: #059669; }
+.type-sick { background: #fee2e2; color: #dc2626; }
+.type-maternity { background: #fef3c7; color: #d97706; }
+.type-paternity { background: #dbeafe; color: #2563eb; }
+.type-bereavement { background: #f3e8ff; color: #9333ea; }
+
+.department-badge { background: #e0e7ff; color: #1e40af; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+.employee-name { font-size: 16px; font-weight: 700; color: #1e293b; }
+
+/* Balance Section */
+.balance-container { display: flex; flex-direction: column; gap: 16px; }
+.balance-card { background: #f8fafc; border-radius: 12px; padding: 16px; }
+.balance-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.balance-title { font-weight: 600; color: #1e293b; }
+.balance-used { font-size: 14px; color: #64748b; }
+.progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+.progress-fill { height: 100%; background: #10b981; border-radius: 4px; }
+.balance-footer { display: flex; justify-content: space-between; font-size: 13px; }
+.balance-note { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.balance-warning { background: #fef3c7; color: #d97706; padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-top: 12px; }
+
+/* Extension Timeline */
+.extension-timeline { margin-top: 8px; }
+.timeline-item { display: flex; gap: 16px; margin-bottom: 20px; position: relative; }
+.timeline-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 24px;
+  bottom: -20px;
+  width: 2px;
+  background: #e2e8f0;
+}
+.timeline-dot { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.timeline-dot.pending { background: #f59e0b; }
+.timeline-dot.approved { background: #10b981; }
+.timeline-dot.rejected { background: #ef4444; }
+.timeline-content { flex: 1; background: #f8fafc; border-radius: 12px; padding: 12px 16px; }
+.timeline-header { display: flex; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; }
+.timeline-date { font-size: 12px; color: #64748b; }
+.timeline-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+.timeline-status.pending { background: #fef3c7; color: #d97706; }
+.timeline-status.approved { background: #d1fae5; color: #059669; }
+.timeline-status.rejected { background: #fee2e2; color: #dc2626; }
+.timeline-body { font-size: 13px; color: #475569; }
+.timeline-field { margin-bottom: 6px; }
+.timeline-field.highlight { color: #3b82f6; }
+.days-badge { background: #dbeafe; color: #2563eb; padding: 2px 6px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.btn-extension { background: #f59e0b; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: auto; }
+.btn-extension:hover { background: #d97706; }
+.no-extensions { text-align: center; padding: 40px; color: #94a3b8; }
+.no-extensions-icon { font-size: 48px; opacity: 0.5; display: block; margin-bottom: 12px; }
+.sub-text { font-size: 12px; margin-top: 8px; }
+
+/* Loading & Not Found */
+.loading-container, .not-found-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; }
+.spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.not-found-icon { font-size: 64px; opacity: 0.5; margin-bottom: 20px; }
+
+/* Buttons */
+.btn-primary { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-primary:hover { background: #2563eb; }
+.btn-secondary { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-secondary:hover { background: #e2e8f0; }
+.btn-danger { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-danger:hover { background: #dc2626; }
+.btn-approve { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-approve:hover { background: #059669; }
+.btn-reject { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-reject:hover { background: #dc2626; }
+.btn-warning { background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-warning:hover { background: #d97706; }
+
+/* Modals */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-content { background: white; border-radius: 16px; width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #eef2ff; }
+.modal-header h3 { margin: 0; font-size: 18px; }
+.close-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #94a3b8; }
+.modal-body { padding: 20px; }
+.modal-footer { padding: 16px 20px; border-top: 1px solid #eef2ff; display: flex; justify-content: flex-end; gap: 12px; }
+.info-group-modal { background: #f8fafc; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+.info-row-modal { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid #e2e8f0; }
+.info-row-modal:last-child { border-bottom: none; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #1e293b; }
+.form-input, .form-textarea { width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; font-family: inherit; }
+.form-input:focus, .form-textarea:focus { outline: none; border-color: #3b82f6; }
+.required { color: #ef4444; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .leave-detail-page { padding: 16px; }
+  .detail-main { grid-template-columns: 1fr; }
+  .header-top { flex-direction: column; align-items: flex-start; }
+  .status-banner { flex-direction: column; align-items: flex-start; }
+  .info-row { flex-direction: column; gap: 4px; }
+  .info-row label { min-width: auto; }
+}
+
 .warning-text {
   color: #ef4444;
 }

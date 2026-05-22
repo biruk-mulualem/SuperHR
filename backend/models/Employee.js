@@ -9,21 +9,25 @@ module.exports = (sequelize, DataTypes) => {
       Employee.belongsTo(models.Position, { foreignKey: 'positionId' });
       Employee.belongsTo(models.Employee, { foreignKey: 'managerId', as: 'manager' });
       Employee.hasMany(models.Employee, { foreignKey: 'managerId', as: 'subordinates' });
-      // Employee.hasMany(models.AttendanceLog, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.LeaveRequest, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.LeaveBalance, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.Salary, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.Payroll, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.PerformanceReview, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.PerformanceReview, { foreignKey: 'reviewerId', as: 'givenReviews' });
       Employee.hasMany(models.EmployeeDocument, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.Complaint, { foreignKey: 'employeeId' });
-      // Employee.hasMany(models.Complaint, { foreignKey: 'againstEmployeeId', as: 'complaintsAgainst' });
+      Employee.hasMany(models.AttendanceRecord, { foreignKey: 'employee_id', as: 'attendance_records' });
+    }
 
-        Employee.hasMany(models.AttendanceRecord, { 
-        foreignKey: 'employee_id',
-        as: 'attendance_records'
-    });
+    // Helper method to calculate total allowances
+    getTotalAllowances() {
+      return (this.housingAllowance || 0) + 
+             (this.positionAllowance || 0) + 
+             (this.transportAllowance || 0);
+    }
+
+    // Helper method to calculate gross pay (without overtime)
+    getGrossPay() {
+      return (this.basicSalary || 0) + this.getTotalAllowances();
+    }
+
+    // Helper method to get full name
+    getFullName() {
+      return `${this.firstName} ${this.middleName ? this.middleName + ' ' : ''}${this.lastName}`;
     }
   }
 
@@ -66,12 +70,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'date_of_birth',
       },
-      // Add to your existing Employee model init
-shiftType: {
-  type: DataTypes.ENUM('day', 'night'),
-  defaultValue: 'day',
-  field: 'shift_type',
-},
+      shiftType: {
+        type: DataTypes.ENUM('day', 'night'),
+        defaultValue: 'day',
+        field: 'shift_type',
+      },
       gender: {
         type: DataTypes.ENUM('male', 'female', 'other'),
         allowNull: true,
@@ -160,6 +163,27 @@ shiftType: {
         defaultValue: 0,
         field: 'basic_salary',
       },
+      
+      // ========== ALLOWANCES ==========
+      housingAllowance: {
+        type: DataTypes.DECIMAL(15, 2),
+        defaultValue: 0,
+        field: 'housing_allowance',
+        comment: 'Housing allowance (typically 20% of basic salary)'
+      },
+      positionAllowance: {
+        type: DataTypes.DECIMAL(15, 2),
+        defaultValue: 0,
+        field: 'position_allowance',
+        comment: 'Position allowance (typically 15% of basic salary)'
+      },
+      transportAllowance: {
+        type: DataTypes.DECIMAL(15, 2),
+        defaultValue: 0,
+        field: 'transport_allowance',
+        comment: 'Transport allowance (typically 10% of basic salary)'
+      },
+      
       bankAccount: {
         type: DataTypes.JSONB,
         defaultValue: {},
@@ -170,7 +194,6 @@ shiftType: {
         allowNull: true,
         field: 'work_location',
       },
-      // Profile Picture Fields
       profilePicture: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -199,6 +222,8 @@ shiftType: {
       timestamps: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at',
+      
+  
     }
   );
 

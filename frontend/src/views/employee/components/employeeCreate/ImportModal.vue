@@ -8,7 +8,8 @@
       </div>
       <div class="modal-body">
         <div class="csv-info">
-          <span>Required columns: firstName, lastName, email, phone, departmentId, positionId, employmentType, hireDate</span>
+          <strong>Required columns:</strong> firstName, lastName, email, phone, departmentId, positionId, employmentType, hireDate<br>
+          <strong>Optional columns:</strong> middleName, personalEmail, dob, gender, maritalStatus, nationality, managerId, salary, address, workLocation, <span class="highlight">housingAllowance, positionAllowance, transportAllowance</span>
         </div>
         <div class="upload-zone" @click="triggerCsvInput">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -88,22 +89,28 @@ const importEmployees = async () => {
     const employeesToImport = csvData.value.map(row => ({
       firstName: row.firstName?.trim(),
       lastName: row.lastName?.trim(),
-      middleName: row.middleName?.trim() || '',
+      middleName: row.middleName?.trim() || null,
       email: row.email?.trim(),
-      personalEmail: row.personalEmail?.trim() || '',
+      personalEmail: row.personalEmail?.trim() || null,
       phone: row.phone?.trim(),
       dob: row.dob || null,
-      gender: row.gender || '',
-      maritalStatus: row.maritalStatus || '',
-      nationality: row.nationality || '',
+      // Fix for enum fields: convert empty strings to null
+      gender: row.gender === '' ? null : (row.gender || null),
+      maritalStatus: row.maritalStatus === '' ? null : (row.maritalStatus || null),
+      nationality: row.nationality === '' ? null : (row.nationality || null),
       departmentId: parseInt(row.departmentId),
       positionId: parseInt(row.positionId),
       managerId: row.managerId ? parseInt(row.managerId) : null,
       employmentType: row.employmentType,
       hireDate: row.hireDate,
       salary: row.salary ? parseFloat(row.salary) : 0,
-      address: row.address?.trim() || '',
-      workLocation: row.workLocation?.trim() || ''
+      // ========== ADDED ALLOWANCE FIELDS ==========
+      housingAllowance: row.housingAllowance ? parseFloat(row.housingAllowance) : 0,
+      positionAllowance: row.positionAllowance ? parseFloat(row.positionAllowance) : 0,
+      transportAllowance: row.transportAllowance ? parseFloat(row.transportAllowance) : 0,
+      // ===========================================
+      address: row.address?.trim() || null,
+      workLocation: row.workLocation?.trim() || null
     }))
     
     const result = await EmployeesService.importEmployees(employeesToImport)
@@ -137,8 +144,8 @@ const importEmployees = async () => {
 
 const downloadTemplate = () => {
   const template = [
-    'firstName,lastName,middleName,email,personalEmail,phone,dob,gender,maritalStatus,nationality,departmentId,positionId,managerId,employmentType,hireDate,salary,address,workLocation',
-    'John,Doe,,john.doe@company.com,,+251911000001,1990-01-01,male,single,Ethiopian,1,1,,full-time,2024-01-01,15000,"Addis Ababa, Ethiopia","Head Office"'
+    'firstName,lastName,middleName,email,personalEmail,phone,dob,gender,maritalStatus,nationality,departmentId,positionId,managerId,employmentType,hireDate,salary,housingAllowance,positionAllowance,transportAllowance,address,workLocation',
+    'John,Doe,,john.doe@company.com,,+251911000001,1990-01-01,male,single,Ethiopian,1,1,,full-time,2024-01-01,15000,3000,2250,1500,"Addis Ababa, Ethiopia","Head Office"'
   ].join('\n')
   
   const blob = new Blob([template], { type: 'text/csv' })
@@ -168,7 +175,7 @@ const downloadTemplate = () => {
 .modal-container {
   background: white;
   border-radius: 16px;
-  width: 500px;
+  width: 550px;
   max-width: 90%;
   max-height: 80vh;
   overflow: auto;
@@ -215,6 +222,11 @@ const downloadTemplate = () => {
   margin-bottom: 16px;
   font-size: 13px;
   color: #92400e;
+}
+
+.csv-info .highlight {
+  color: #059669;
+  font-weight: 500;
 }
 
 .upload-zone {
@@ -279,7 +291,7 @@ const downloadTemplate = () => {
   background: #4f46e5;
 }
 
-.b  tn-primary:disabled {
+.btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

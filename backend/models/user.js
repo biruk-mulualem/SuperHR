@@ -27,23 +27,8 @@ module.exports = (sequelize, DataTypes) => {
         as: "uploadedDocuments" 
       });
       
-      // Salaries created by user
-      User.hasMany(models.Salary, { 
-        foreignKey: "createdBy", 
-        as: "createdSalaries" 
-      });
-      
-      // Payrolls processed by user
-      User.hasMany(models.Payroll, { 
-        foreignKey: "processedBy", 
-        as: "processedPayrolls" 
-      });
-      
-      // Performance reviews given by user
-      User.hasMany(models.PerformanceReview, { 
-        foreignKey: "reviewerId", 
-        as: "givenReviews" 
-      });
+    
+    
     }
 
     // Instance method to validate password

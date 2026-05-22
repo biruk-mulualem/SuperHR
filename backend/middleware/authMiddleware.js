@@ -5,7 +5,7 @@ require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // Authentication middleware - verifies token and attaches user to request
-const authMiddleware = (requiredRole = null) => {
+const authMiddleware = (...allowedRoles) => {
   return (req, res, next) => {
     try {
       const authHeader = req.headers.authorization;
@@ -35,12 +35,12 @@ const authMiddleware = (requiredRole = null) => {
       req.user = decoded;
       
       // Check role if required
-      if (requiredRole && decoded.role !== requiredRole) {
-        console.log(`Role check failed: required ${requiredRole}, got ${decoded.role}`);
-        return res.status(403).json({ 
-          error: `${requiredRole} access required. Your role: ${decoded.role}` 
-        });
-      }
+    if (allowedRoles.length > 0 && !allowedRoles.includes(decoded.role)) {
+  console.log(`Role check failed: required ${allowedRoles.join(', ')}, got ${decoded.role}`);
+  return res.status(403).json({ 
+    error: `Access denied. Required roles: ${allowedRoles.join(', ')}. Your role: ${decoded.role}` 
+  });
+}
       
       console.log('Auth successful for user:', decoded.username);
       next();

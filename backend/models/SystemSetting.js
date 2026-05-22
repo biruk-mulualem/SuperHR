@@ -81,28 +81,242 @@ module.exports = (sequelize, DataTypes) => {
         // Overtime Rules
         overtimeRules: {
           threshold: 8,
-          weekdayRate: 1.5,
-          weekendRate: 2.0,
-          holidayRate: 2.5,
+          normalOTRate: 1.5,
+          weekendOTRate: 2.0,
+          holidayOTRate: 2.5,
           maxPerDay: 4,
           maxPerWeek: 20,
-          approvalRequired: true,
+       
           eligiblePositions: []
         },
         
         // Leave Rules
-        leaveRules: {
-          annual: 20,
-          sick: 10,
-          maternity: 90,
-          paternity: 10,
-          bereavement: 5,
-          unpaid: true,
-          maxConsecutive: 30,
-          noticeDays: 3,
-          carryover: true,
-          maxCarryover: 30
+   // Updated comprehensive structure
+
+  "leave.rules": {
+    // ========== LEAVE TYPE CONFIGURATIONS ==========
+    "annualLeave": {
+      "baseDays": 16,
+      "incrementInterval": 2,
+      "incrementAmount": 1,
+      "maxDays": null,
+      "carryOverLimit": 10,
+      "carryOverExpiryYears": 2,
+      "minMonthsBeforeRequest": 6,
+      "accrualType": "anniversary",
+      "requiresApproval": true,
+      "minNoticeDays": 7,
+      "maxConsecutiveDays": 30
+    },
+    "sickLeave": {
+      "hasFixedLimit": false,
+      "requiresDoctorNoteAfter": 3,
+      "alertThreshold": 15,
+      "resetFrequency": "yearly",
+      "requiresApproval": false,
+      "minNoticeDays": 0
+    },
+    "maternityLeave": {
+      "defaultDays": 90,
+      "isPaid": true,
+      "requiresApproval": true,
+      "requiresDocumentation": true,
+      "minNoticeDays": 30,
+      "isOneTime": true,
+      "genderRestriction": "female",
+      "extensionAllowed": true,
+      "maxExtensionDays": 30
+    },
+    "paternityLeave": {
+      "defaultDays": 3,
+      "isPaid": true,
+      "requiresApproval": true,
+      "minNoticeDays": 14,
+      "isOneTime": true,
+      "genderRestriction": "male",
+      "mustTakeWithinDays": 30
+    },
+    "bereavementLeave": {
+      "defaultDays": 3,
+      "isPaid": true,
+      "requiresApproval": true,
+      "requiresDocumentation": true,
+      "minNoticeDays": 0,
+      "eligibleRelationships": ["spouse", "parent", "child", "sibling"],
+      "immediateFamilyDays": 5,
+      "isOneTime": false,
+      "maxPerYear": 10
+    },
+    "unpaidLeave": {
+      "isPaid": false,
+      "requiresApproval": true,
+      "requiresDirectorApproval": true,
+      "minNoticeDays": 14,
+      "maxConsecutiveDays": 30,
+      "maxPerYear": 60,
+      "requiresReason": true
+    },
+
+    // ========== YEAR-END PROCESSING ==========
+    "yearEndProcessing": {
+      "processingDate": "2026-12-31",
+      "carryOverDeadline": "2026-12-15",
+      "expiryNotificationDays": [60, 30, 14, 7, 3, 1],
+      "autoCarryOver": true,
+      "resetSickLeave": true,
+      "notificationRecipients": ["hr", "employee", "manager"]
+    },
+
+    // ========== APPROVAL WORKFLOW ==========
+    "approvalWorkflow": {
+      "requiresManagerApproval": true,
+      "requiresHrApproval": true,
+      "autoApproveThresholdDays": 3,
+      "autoApproveLeaveTypes": ["sick_leave"],
+      "escalationDays": 7,
+      "approvalChain": ["manager", "hr", "director"],
+      "allowSelfCancellation": true,
+      "cancellationDeadlineDays": 2,
+      "rejectionReasonRequired": true
+    },
+
+    // ========== RETURN TRACKING ==========
+    "returnTracking": {
+      "enabled": true,
+      "returnConfirmationRequired": true,
+      "gracePeriodHours": 24,
+      "overdueAlertDays": [1, 3, 5, 7],
+      "allowEarlyReturn": true,
+      "allowLateReturn": true,
+      "requireReturnNotes": false,
+      "autoMarkReturned": false,
+      "overdueAction": "notify",
+      "overdueEscalationDays": [1, 3, 5, 7]
+    },
+
+    // ========== NOTIFICATIONS ==========
+    "notifications": {
+      "reminderDaysBefore": [30, 14, 7, 3, 1],
+      "overdueAlertDays": [1, 3, 5, 7],
+      "expiryAlertDays": [60, 30, 14, 7],
+      "pendingApprovalReminderDays": [3, 5, 7],
+      "channels": ["email", "in_app"],
+      "notifyOn": {
+        "requestSubmitted": ["manager", "hr"],
+        "requestApproved": ["employee"],
+        "requestRejected": ["employee"],
+        "extensionRequested": ["manager", "hr"],
+        "extensionApproved": ["employee"],
+        "extensionRejected": ["employee"],
+        "returnOverdue": ["employee", "manager", "hr"],
+        "balanceLow": ["employee"],
+        "leaveExpiring": ["employee"],
+        "carryOverApplied": ["employee"]
+      }
+    },
+
+    // ========== BLACKOUT PERIODS ==========
+    "blackoutPeriods": {
+      "enabled": true,
+      "global": [
+        { "start": "2026-01-01", "end": "2026-01-07", "reason": "Year-end closing", "departments": ["all"] },
+        { "start": "2026-03-15", "end": "2026-03-30", "reason": "Annual audit", "departments": ["all"] }
+      ],
+      "departmentSpecific": {
+        "finance": [
+          { "start": "2026-03-01", "end": "2026-03-31", "reason": "Tax filing period" },
+          { "start": "2026-12-01", "end": "2026-12-31", "reason": "Year-end closing" }
+        ],
+        "operations": [
+          { "start": "2026-06-01", "end": "2026-06-15", "reason": "System upgrade" }
+        ]
+      },
+      "exceptionAllowed": true,
+      "exceptionRequiresDirectorApproval": true
+    },
+
+    // ========== EXTENSIONS ==========
+    "extensions": {
+      "maxExtensionsPerLeave": 2,
+      "maxTotalExtensionDays": 30,
+      "extensionRequiresApproval": true,
+      "extensionApprovalChain": ["manager", "hr"],
+      "autoApproveExtensionDays": 2,
+      "extensionReasonRequired": true,
+      "doctorNoteRequiredForExtension": true,
+      "allowedLeaveTypesForExtension": ["sick_leave"]
+    },
+
+    // ========== VALIDATION RULES ==========
+    "validation": {
+      "minDaysPerRequest": 1,
+      "maxDaysPerRequest": 30,
+      "minNoticeDaysPerType": {
+        "annual": 7,
+        "sick": 0,
+        "maternity": 30,
+        "paternity": 14,
+        "bereavement": 0,
+        "unpaid": 14
+      },
+      "overlapAllowed": false,
+      "concurrentLeavesAllowed": true,
+      "maxConcurrentEmployees": 3,
+      "pendingRequestsBlockNew": true,
+      "futureDateOnly": true,
+      "maxFutureDays": 365,
+      "weekendCounting": true,
+      "holidayCounting": false
+    }
+  },
+
+  // ========== ADD TAX RULES HERE ==========
+    "tax.rules": {
+      version: "1.0",
+      effectiveFrom: "2024-01-01",
+      legalReference: {
+        incomeTaxProclamation: "No. 286/2002 as amended",
+        pensionProclamation: "No. 715/2011 as amended by No. 908/2015"
+      },
+      employmentTax: {
+        brackets: [
+          { min: 0, max: 2000, rate: 0, deduction: 0, description: "Exempt" },
+          { min: 2001, max: 4000, rate: 15, deduction: 0, description: "15% on amount over 2,000" },
+          { min: 4001, max: 7000, rate: 20, deduction: 200, description: "20% minus 200" },
+          { min: 7001, max: 10000, rate: 25, deduction: 550, description: "25% minus 550" },
+          { min: 10001, max: 14000, rate: 30, deduction: 1050, description: "30% minus 1,050" },
+          { min: 14001, max: null, rate: 35, deduction: 1750, description: "35% minus 1,750" }
+        ],
+        calculationFormula: "Tax = (Income × Rate ÷ 100) - Deduction",
+        roundingMethod: "floor"
+      },
+      pension: {
+        employeeRate: 7,
+        employerRate: 11,
+        monthlyCap: 15000,
+        maxEmployeeContribution: 1050,
+        maxEmployerContribution: 1650,
+        calculationBase: "basic_salary_only",
+        notes: "Any salary above 15,000 ETB is not subject to pension contribution"
+      },
+      exemptions: {
+        transportAllowance: {
+          isExempt: true,
+          maxExemptAmount: 2200,
+          alternativeLimit: "25_percent_of_salary",
+          calculationMethod: "min_of_fixed_or_percentage"
         },
+        medicalReimbursement: { isExempt: true },
+        hardshipAllowance: { isExempt: true },
+        travelReimbursement: { isExempt: true }
+      },
+      deadlines: {
+        taxRemittanceDay: 8,
+        pensionRemittanceDay: 10
+      }
+    },
+  
+
         
         // Holiday Rules
         holidayRules: {
@@ -156,6 +370,9 @@ module.exports = (sequelize, DataTypes) => {
         }
       };
     }
+
+
+
   }
 
   SystemSetting.init(

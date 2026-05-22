@@ -140,9 +140,6 @@ const getWorkingDaysInMonth = (year, month) => {
 };
 
 // ============================================
-// 1. IMPORT ATTENDANCE FILE (SIMPLIFIED & FIXED)
-// ============================================
-// ============================================
 // 1. IMPORT ATTENDANCE FILE (FULLY FIXED)
 // ============================================
 exports.importAttendanceFile = async (req, res) => {
@@ -442,8 +439,6 @@ exports.importAttendanceFile = async (req, res) => {
   }
 };
 
-
-
 // ============================================
 // 2. GET ATTENDANCE RECORDS (Grouped by Month/Year)
 // ============================================
@@ -596,7 +591,7 @@ exports.getAttendanceRecords = async (req, res) => {
 };
 
 // ============================================
-// GET MONTHLY SUMMARY (Only employees with attendance)
+// GET MONTHLY SUMMARY (WITH NORMAL OT)
 // ============================================
 exports.getMonthlySummary = async (req, res) => {
     try {
@@ -616,7 +611,7 @@ exports.getMonthlySummary = async (req, res) => {
         const totalDaysInMonth = new Date(targetYear, targetMonth, 0).getDate();
         const totalWorkingDays = getWorkingDaysInMonth(targetYear, targetMonth);
 
-        // Build query for attendance records with employee join
+        // Build query for attendance records with employee join - ADD normal_ot_minutes
         let query = `
             SELECT 
                 ar.employee_id,
@@ -626,6 +621,7 @@ exports.getMonthlySummary = async (req, res) => {
                 d.name as department_name,
                 COALESCE(ar.late_minutes, 0) as late_minutes,
                 COALESCE(ar.absence_days, 0) as absence_days,
+                COALESCE(ar.normal_ot_minutes, 0) as normal_ot_minutes,
                 COALESCE(ar.weekend_ot_minutes, 0) as weekend_ot_minutes,
                 COALESCE(ar.holiday_ot_minutes, 0) as holiday_ot_minutes,
                 ar.period_start_date,
@@ -657,7 +653,7 @@ exports.getMonthlySummary = async (req, res) => {
 
         const [records] = await sequelize.query(query, { replacements });
 
-        // Format the response
+        // Format the response - ADD normal_ot_hours
         const formattedRows = records.map(record => {
             const importedDays = record.period_days || 0;
             const absenceDays = parseFloat(record.absence_days) || 0;
@@ -681,7 +677,11 @@ exports.getMonthlySummary = async (req, res) => {
                 days_absent: absenceDays.toFixed(1),
                 missing_days: missingDays,
                 late_minutes: parseInt(record.late_minutes) || 0,
+                normal_ot_minutes: parseInt(record.normal_ot_minutes) || 0,
+                normal_ot_hours: ((parseInt(record.normal_ot_minutes) || 0) / 60).toFixed(1),
+                weekend_ot_minutes: parseInt(record.weekend_ot_minutes) || 0,
                 weekend_ot_hours: ((parseInt(record.weekend_ot_minutes) || 0) / 60).toFixed(1),
+                holiday_ot_minutes: parseInt(record.holiday_ot_minutes) || 0,
                 holiday_ot_hours: ((parseInt(record.holiday_ot_minutes) || 0) / 60).toFixed(1),
                 attendance_rate: attendanceRate,
                 is_complete: importedDays === totalDaysInMonth
@@ -886,7 +886,7 @@ exports.deleteAttendanceRecord = async (req, res) => {
 };
 
 // ============================================
-// 9. UPDATE ATTENDANCE RECORD (EDIT)
+// 9. UPDATE ATTENDANCE RECORD (EDIT) - WITH NORMAL OT
 // ============================================
 exports.updateAttendanceRecord = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -896,6 +896,7 @@ exports.updateAttendanceRecord = async (req, res) => {
     const {
       late_minutes,
       absence_days,
+      normal_ot_minutes,      // ADD THIS
       weekend_ot_minutes,
       holiday_ot_minutes,
     } = req.body;
@@ -909,14 +910,13 @@ exports.updateAttendanceRecord = async (req, res) => {
       });
     }
 
-    // Update only provided fields
+    // Update only provided fields - ADD normal_ot_minutes
     const updateData = {};
     if (late_minutes !== undefined) updateData.late_minutes = late_minutes;
     if (absence_days !== undefined) updateData.absence_days = absence_days;
-    if (weekend_ot_minutes !== undefined)
-      updateData.weekend_ot_minutes = weekend_ot_minutes;
-    if (holiday_ot_minutes !== undefined)
-      updateData.holiday_ot_minutes = holiday_ot_minutes;
+    if (normal_ot_minutes !== undefined) updateData.normal_ot_minutes = normal_ot_minutes;
+    if (weekend_ot_minutes !== undefined) updateData.weekend_ot_minutes = weekend_ot_minutes;
+    if (holiday_ot_minutes !== undefined) updateData.holiday_ot_minutes = holiday_ot_minutes;
 
     await record.update(updateData, { transaction });
 
@@ -1277,3 +1277,5 @@ exports.getAttendanceStatistics = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+
+

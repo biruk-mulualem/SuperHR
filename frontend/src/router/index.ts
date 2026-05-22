@@ -22,7 +22,7 @@ const router = createRouter({
           component: () => import("@/views/dashboard/Dashboard.vue"),
           meta: {
             title: "Dashboard",
-            roles: ["admin", "hr", "finance", "employee","attendance"],
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
           },
         },
         {
@@ -31,69 +31,89 @@ const router = createRouter({
           component: () => import("@/views/employee/Profile.vue"),
           meta: {
             title: "My Profile",
-            roles: ["admin", "hr", "finance", "employee","attendance"],
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
           },
         },
         {
           path: "employees",
           name: "employees",
           component: () => import("@/views/employee/Employees.vue"),
-          meta: { title: "Employees Management", roles: ["admin"] },
+          meta: { title: "Employees Management", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "employees/create",
           name: "employee-create",
           component: () => import("@/views/employee/EmployeeCreate.vue"),
-          meta: { title: "Create Employee", roles: ["admin"] },
+          meta: { title: "Create Employee", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "employees/:id",
           name: "employee-detail",
           component: () => import("@/views/employee/EmployeeDetail.vue"),
-          meta: { title: "Employee Details", roles: ["admin"] },
+          meta: { title: "Employee Details", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "employees/:id/edit",
           name: "employee-edit",
           component: () => import("@/views/employee/EmployeeEdit.vue"),
-          meta: { title: "Edit Employee", roles: ["admin"] },
+          meta: { title: "Edit Employee", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "users",
           name: "users",
           component: () => import("@/views/users/Users.vue"),
-          meta: { title: "Users Management", roles: ["admin"] },
+          meta: { title: "Users Management", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "analytics",
           name: "analytics",
           component: () => import("@/views/analytics/Analytics.vue"),
-          meta: { title: "HR Analytics", roles: ["admin", "hr"] },
+          meta: { title: "HR Analytics", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "attendance",
           name: "attendance",
           component: () => import("@/views/attendance/attendance.vue"),
-          meta: { title: "HR attendance", roles: ["admin", "hr","attendance"] },
+          meta: {
+            title: "HR attendance",
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
+          },
         },
         {
           path: "settings",
           name: "settings",
           component: () => import("@/views/settings/settings.vue"),
-          meta: { title: "HR settings", roles: ["admin"] },
+          meta: { title: "HR settings", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
-         {
+        {
           path: "leaves",
           name: "leaves",
           component: () => import("@/views/leaveRequest/leaves.vue"),
-          meta: { title: " leaves", roles: ["admin"] },
-        },  
-       {
-  path: "leave-detail/:id",
-  name: "leave-detail",
-  component: () => import("@/views/leaveRequest/leaveDetail.vue"),
-  meta: { title: "Leave Detail", roles: ["admin", "hr"] },
-},
+          meta: { title: " leaves", roles: ["admin", "hr", "finance", "employee", "attendance"] },
+        },
+        {
+          path: "payroll",
+          name: "payroll",
+          component: () => import("@/views/payroll/payroll.vue"),
+          meta: { title: "Payroll Management", roles: ["admin", "finance", "hr", "employee", "attendance"] },
+        },
+
+        {
+          path: "approved-leaves-list",
+          name: "approved-leaves-list",
+          component: () =>
+            import("@/views/leaveRequest/approvedLeavesList.vue"),
+          meta: {
+            title: "Approved Leave Requests",
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
+          },
+        },
+        {
+          path: "leave-detail/:id",
+          name: "leave-detail",
+          component: () => import("@/views/leaveRequest/leaveDetail.vue"),
+          meta: { title: "Leave Detail", roles: ["admin", "hr", "finance", "employee", "attendance"] },
+        },
         {
           path: "",
           redirect: "/dashboard",

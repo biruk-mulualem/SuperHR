@@ -22,6 +22,8 @@
         :employees="employeeList"
       />
       
+      
+      
       <AdditionalInfoForm 
         v-model:emergency="emergencyContact"
         v-model:bank="bankAccount"
@@ -36,7 +38,7 @@
       
       <div class="form-actions">
         <router-link to="/employees" class="btn-outline">Cancel</router-link>
-        <button type="submit" class="btn-primary" :disabled="isSubmitting">
+        <button type="submit" class="btn-primary" :disabled="isSubmitting || !isFormValid">
           {{ isSubmitting ? 'Creating...' : 'Create Employee' }}
         </button>
       </div>
@@ -61,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import EmployeesService from '@/stores/employee'
 import UsersService from '@/stores/users'
@@ -107,6 +109,7 @@ const bankAccount = reactive({
   branch: ''
 })
 
+// Form with allowance fields
 const form = ref({
   firstName: '',
   lastName: '',
@@ -124,11 +127,104 @@ const form = ref({
   employmentType: '',
   hireDate: '',
   salary: '',
+  basicSalary: '',
+  housingAllowance: '',
+  positionAllowance: '',
+  transportAllowance: '',
   address: '',
   workLocation: ''
 })
 
+// Validation errors
+const allowanceErrors = ref({
+  basicSalary: '',
+  housingAllowance: '',
+  positionAllowance: '',
+  transportAllowance: ''
+})
+
 const errors = ref({})
+
+// Computed properties for allowances
+const basicSalaryAmount = computed(() => parseFloat(form.value.basicSalary) || 0)
+const housingAllowanceAmount = computed(() => parseFloat(form.value.housingAllowance) || 0)
+const positionAllowanceAmount = computed(() => parseFloat(form.value.positionAllowance) || 0)
+const transportAllowanceAmount = computed(() => parseFloat(form.value.transportAllowance) || 0)
+const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value)
+const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
+
+// Form validation - check if all fields are valid
+const isFormValid = computed(() => {
+  return basicSalaryAmount.value > 0 &&
+         housingAllowanceAmount.value >= 0 &&
+         positionAllowanceAmount.value >= 0 &&
+         transportAllowanceAmount.value >= 0 &&
+         !allowanceErrors.value.basicSalary &&
+         !allowanceErrors.value.housingAllowance &&
+         !allowanceErrors.value.positionAllowance &&
+         !allowanceErrors.value.transportAllowance
+})
+
+// Validation functions
+const validateBasicSalary = () => {
+  const value = parseFloat(form.value.basicSalary)
+  if (isNaN(value) || value <= 0) {
+    allowanceErrors.value.basicSalary = 'Basic salary must be greater than 0'
+    return false
+  }
+  allowanceErrors.value.basicSalary = ''
+  return true
+}
+
+const validateHousingAllowance = () => {
+  const value = parseFloat(form.value.housingAllowance)
+  if (isNaN(value)) {
+    form.value.housingAllowance = 0
+    allowanceErrors.value.housingAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    allowanceErrors.value.housingAllowance = 'Housing allowance cannot be negative'
+    return false
+  }
+  allowanceErrors.value.housingAllowance = ''
+  return true
+}
+
+const validatePositionAllowance = () => {
+  const value = parseFloat(form.value.positionAllowance)
+  if (isNaN(value)) {
+    form.value.positionAllowance = 0
+    allowanceErrors.value.positionAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    allowanceErrors.value.positionAllowance = 'Position allowance cannot be negative'
+    return false
+  }
+  allowanceErrors.value.positionAllowance = ''
+  return true
+}
+
+const validateTransportAllowance = () => {
+  const value = parseFloat(form.value.transportAllowance)
+  if (isNaN(value)) {
+    form.value.transportAllowance = 0
+    allowanceErrors.value.transportAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    allowanceErrors.value.transportAllowance = 'Transport allowance cannot be negative'
+    return false
+  }
+  allowanceErrors.value.transportAllowance = ''
+  return true
+}
+
+const formatCurrency = (value) => {
+  if (!value && value !== 0) return '—'
+  return `ETB ${Number(value).toLocaleString()}`
+}
 
 const countries = [
   { code: 'ET', name: 'Ethiopian' },
@@ -158,6 +254,8 @@ const getErrorMessage = (error) => {
 
 const validateForm = () => {
   const newErrors = {}
+  
+  // Basic Info validation
   if (!form.value.firstName?.trim()) newErrors.firstName = 'First name is required'
   if (!form.value.lastName?.trim()) newErrors.lastName = 'Last name is required'
   if (!form.value.email?.trim()) newErrors.email = 'Email is required'
@@ -167,13 +265,39 @@ const validateForm = () => {
   if (!form.value.employmentType) newErrors.employmentType = 'Employment type is required'
   if (!form.value.hireDate) newErrors.hireDate = 'Hire date is required'
   
+  // Email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (form.value.email && !emailRegex.test(form.value.email)) {
     newErrors.email = 'Valid email is required'
   }
   
+  // Allowance validations
+  const basicSalaryValid = validateBasicSalary()
+  const housingValid = validateHousingAllowance()
+  const positionValid = validatePositionAllowance()
+  const transportValid = validateTransportAllowance()
+  
+  if (!basicSalaryValid) {
+    newErrors.basicSalary = allowanceErrors.value.basicSalary
+  }
+  if (!housingValid) {
+    newErrors.housingAllowance = allowanceErrors.value.housingAllowance
+  }
+  if (!positionValid) {
+    newErrors.positionAllowance = allowanceErrors.value.positionAllowance
+  }
+  if (!transportValid) {
+    newErrors.transportAllowance = allowanceErrors.value.transportAllowance
+  }
+  
+  // Fix for enum error: Convert empty strings to null for enum fields
+  if (form.value.gender === '') form.value.gender = null
+  if (form.value.maritalStatus === '') form.value.maritalStatus = null
+  if (form.value.nationality === '') form.value.nationality = null
+  if (form.value.employmentType === '') form.value.employmentType = null
+  
   errors.value = newErrors
-  return Object.keys(newErrors).length === 0
+  return Object.keys(newErrors).length === 0 && basicSalaryValid && housingValid && positionValid && transportValid
 }
 
 const addToast = (message, type = 'success') => {
@@ -187,11 +311,18 @@ const removeToast = (id) => {
 }
 
 const createEmployee = async () => {
-  if (!validateForm()) return
+  if (!validateForm()) {
+    addToast('Please fix validation errors before submitting', 'error')
+    return
+  }
   
   isSubmitting.value = true
   
   try {
+    // Use basicSalary as the primary salary field
+    const finalSalary = form.value.basicSalary || form.value.salary
+    
+    // Prepare data - convert empty strings to null for enum fields
     const employeeData = {
       firstName: form.value.firstName?.trim(),
       lastName: form.value.lastName?.trim(),
@@ -201,16 +332,20 @@ const createEmployee = async () => {
       positionId: form.value.positionId,
       employmentType: form.value.employmentType,
       hireDate: form.value.hireDate,
-      middleName: form.value.middleName?.trim(),
-      personalEmail: form.value.personalEmail?.trim(),
-      dob: form.value.dob,
-      gender: form.value.gender,
-      maritalStatus: form.value.maritalStatus,
-      nationality: form.value.nationality,
-      managerId: form.value.managerId,
-      salary: form.value.salary,
-      address: form.value.address?.trim(),
-      workLocation: form.value.workLocation?.trim(),
+      middleName: form.value.middleName?.trim() || null,
+      personalEmail: form.value.personalEmail?.trim() || null,
+      dob: form.value.dob || null,
+      gender: form.value.gender || null,
+      maritalStatus: form.value.maritalStatus || null,
+      nationality: form.value.nationality || null,
+      managerId: form.value.managerId || null,
+      salary: finalSalary,
+      basicSalary: finalSalary,
+      housingAllowance: form.value.housingAllowance || 0,
+      positionAllowance: form.value.positionAllowance || 0,
+      transportAllowance: form.value.transportAllowance || 0,
+      address: form.value.address?.trim() || null,
+      workLocation: form.value.workLocation?.trim() || null,
       emergencyContact: JSON.stringify(emergencyContact),
       bankAccount: JSON.stringify(bankAccount)
     }
@@ -230,7 +365,7 @@ const createEmployee = async () => {
     let successCount = 0
     let totalFiles = 0
     
-    // Upload profile picture - using profileFile.value (File object)
+    // Upload profile picture
     if (profileFile.value) {
       totalFiles++
       addToast('Uploading profile picture...', 'info')
@@ -354,6 +489,158 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* Allowances Card */
+.allowances-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px;
+  background: #fafcfc;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.card-header-icon {
+  width: 32px;
+  height: 32px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-header-icon svg {
+  width: 16px;
+  height: 16px;
+  color: #6366f1;
+}
+
+.card-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.allowances-content {
+  padding: 20px 24px;
+}
+
+.allowance-field {
+  margin-bottom: 16px;
+}
+
+.allowance-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.allowance-field input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.allowance-field input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.allowance-field small {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.allowance-field.has-error label {
+  color: #ef4444;
+}
+
+.error-input {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+}
+
+.error-text {
+  color: #ef4444;
+  font-size: 11px;
+  margin-top: 4px;
+  display: block;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.field-hint {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.allowance-summary {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid #eef2ff;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.summary-row strong {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.summary-row.total {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.summary-row.total strong {
+  color: #f59e0b;
+}
+
+.summary-row.gross {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.summary-row.gross strong {
+  color: #10b981;
+  font-size: 16px;
+}
+
+.summary-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 8px 0;
 }
 
 .form-actions {

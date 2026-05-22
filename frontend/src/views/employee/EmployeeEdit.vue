@@ -14,7 +14,7 @@
           </svg>
           Back to List
         </router-link>
-        <button @click="saveEmployee" class="action-btn primary" :disabled="saving">
+        <button @click="saveEmployee" class="action-btn primary" :disabled="saving || !isFormValid">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
             <polyline points="17 21 17 13 7 13 7 21" />
@@ -78,7 +78,7 @@
         </div>
         <div class="stat-card">
           <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z" /><path d="M12 2v2M22 12h-2M4 12H2M12 22v2" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">Salary</span><span class="stat-number">{{ form.salary ? `ETB ${Number(form.salary).toLocaleString()}` : '—' }}</span></div>
+          <div class="stat-card-info"><span class="stat-label">Basic Salary</span><span class="stat-number">{{ form.basicSalary ? `ETB ${Number(form.basicSalary).toLocaleString()}` : '—' }}</span></div>
         </div>
       </div>
 
@@ -101,32 +101,7 @@
               <div class="info-item"><span class="info-label">Phone</span><div class="info-value"><input type="tel" v-model="form.phone" placeholder="+251 911 000 000"></div></div>
               <div class="info-item"><span class="info-label">Date of Birth</span><div class="info-value"><input type="date" v-model="form.dob"></div></div>
               <div class="info-item"><span class="info-label">Gender</span><div class="info-value"><select v-model="form.gender"><option value="">Select</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div></div>
-              
-              <!-- Nationality Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Nationality</span>
-                <div class="info-value">
-                  <select v-model="form.nationality">
-                    <option value="">Select Nationality</option>
-                    <option value="Ethiopian">Ethiopian</option>
-                    <option value="American">American</option>
-                    <option value="British">British</option>
-                    <option value="Canadian">Canadian</option>
-                    <option value="Australian">Australian</option>
-                    <option value="German">German</option>
-                    <option value="French">French</option>
-                    <option value="Italian">Italian</option>
-                    <option value="Spanish">Spanish</option>
-                    <option value="Chinese">Chinese</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Indian">Indian</option>
-                    <option value="Kenyan">Kenyan</option>
-                    <option value="Nigerian">Nigerian</option>
-                    <option value="South African">South African</option>
-                  </select>
-                </div>
-              </div>
-              
+              <div class="info-item"><span class="info-label">Nationality</span><div class="info-value"><select v-model="form.nationality"><option value="">Select Nationality</option><option value="Ethiopian">Ethiopian</option><option value="American">American</option><option value="British">British</option><option value="Canadian">Canadian</option><option value="Australian">Australian</option><option value="German">German</option><option value="French">French</option><option value="Italian">Italian</option><option value="Spanish">Spanish</option></select></div></div>
               <div class="info-item"><span class="info-label">Marital Status</span><div class="info-value"><select v-model="form.maritalStatus"><option value="">Select</option><option value="single">Single</option><option value="married">Married</option><option value="divorced">Divorced</option><option value="widowed">Widowed</option></select></div></div>
             </div>
           </div>
@@ -152,22 +127,7 @@
               <div class="info-item"><span class="info-label">Contact Name</span><div class="info-value"><input type="text" v-model="form.emergencyContactName" placeholder="Full name"></div></div>
               <div class="info-item"><span class="info-label">Phone</span><div class="info-value"><input type="tel" v-model="form.emergencyContactPhone" placeholder="Phone number"></div></div>
               <div class="info-item"><span class="info-label">Alternative Phone</span><div class="info-value"><input type="tel" v-model="form.emergencyContactAltPhone" placeholder="Alternative phone"></div></div>
-              
-              <!-- Relationship Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Relationship</span>
-                <div class="info-value">
-                  <select v-model="form.emergencyContactRelation">
-                    <option value="">Select Relationship</option>
-                    <option value="Spouse">Spouse</option>
-                    <option value="Parent">Parent</option>
-                    <option value="Child">Child</option>
-                    <option value="Sibling">Sibling</option>
-                    <option value="Relative">Relative</option>
-                    <option value="Friend">Friend</option>
-                  </select>
-                </div>
-              </div>
+              <div class="info-item"><span class="info-label">Relationship</span><div class="info-value"><select v-model="form.emergencyContactRelation"><option value="">Select Relationship</option><option value="Spouse">Spouse</option><option value="Parent">Parent</option><option value="Child">Child</option><option value="Sibling">Sibling</option><option value="Relative">Relative</option><option value="Friend">Friend</option></select></div></div>
             </div>
           </div>
         </div>
@@ -181,95 +141,106 @@
               <h3>Employment Information</h3>
             </div>
             <div class="info-list">
-              <!-- Department Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Department</span>
-                <div class="info-value">
-                  <select v-model="form.departmentId" @change="onDepartmentChange">
-                    <option :value="null">Select Department</option>
-                    <option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">
-                      {{ dept.name }}
-                    </option>
-                  </select>
-                </div>
-              </div>
+              <div class="info-item"><span class="info-label">Department</span><div class="info-value"><select v-model="form.departmentId" @change="onDepartmentChange"><option :value="null">Select Department</option><option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">{{ dept.name }}</option></select></div></div>
+              <div class="info-item"><span class="info-label">Position</span><div class="info-value"><select v-model="form.positionId"><option :value="null">Select Position</option><option v-for="pos in positions" :key="pos.positionId" :value="pos.positionId">{{ pos.title }}</option></select></div></div>
+              <div class="info-item"><span class="info-label">Employment Type</span><div class="info-value"><select v-model="form.employmentType"><option value="full-time">Full Time</option><option value="part-time">Part Time</option><option value="contract">Contract</option><option value="intern">Intern</option></select></div></div>
+              <div class="info-item"><span class="info-label">Hire Date</span><div class="info-value"><input type="date" v-model="form.hireDate"></div></div>
+              <div class="info-item"><span class="info-label">Confirmation Date</span><div class="info-value"><input type="date" v-model="form.confirmationDate"></div></div>
+              <div class="info-item"><span class="info-label">Termination Date</span><div class="info-value"><input type="date" v-model="form.terminationDate"></div></div>
+              <div class="info-item"><span class="info-label">Manager</span><div class="info-value"><select v-model="form.managerId"><option :value="null">None</option><option v-for="mgr in managers" :key="mgr.id" :value="mgr.id">{{ mgr.fullName }} ({{ mgr.employeeId }})</option></select></div></div>
+              <div class="info-item"><span class="info-label">Work Location</span><div class="info-value"><input type="text" v-model="form.workLocation" placeholder="Head Office, Branch Name"></div></div>
+            </div>
+          </div>
 
-              <!-- Position Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Position</span>
-                <div class="info-value">
-                  <select v-model="form.positionId">
-                    <option :value="null">Select Position</option>
-                    <option v-for="pos in positions" :key="pos.positionId" :value="pos.positionId">
-                      {{ pos.title }}
-                    </option>
-                  </select>
-                </div>
+          <!-- Compensation & Allowances Card - WITH VALIDATION -->
+          <div class="info-card allowances-card">
+            <div class="card-header">
+              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></div>
+              <h3>Compensation & Allowances</h3>
+            </div>
+            <div class="allowances-content">
+              <div class="allowance-field" :class="{ 'has-error': validationErrors.basicSalary }">
+                <label>Basic Salary (ETB) <span class="required">*</span></label>
+                <input 
+                  type="number" 
+                  v-model="form.basicSalary" 
+                  @input="validateBasicSalary"
+                  step="100" 
+                  placeholder="0.00"
+                  :class="{ 'error-input': validationErrors.basicSalary }"
+                >
+                <small class="error-text" v-if="validationErrors.basicSalary">{{ validationErrors.basicSalary }}</small>
+                <small class="field-hint" v-else>Basic salary cannot be zero</small>
               </div>
-
-              <!-- Employment Type -->
-              <div class="info-item">
-                <span class="info-label">Employment Type</span>
-                <div class="info-value">
-                  <select v-model="form.employmentType">
-                    <option value="full-time">Full Time</option>
-                    <option value="part-time">Part Time</option>
-                    <option value="contract">Contract</option>
-                    <option value="intern">Intern</option>
-                  </select>
-                </div>
+              
+              <div class="allowance-field" :class="{ 'has-error': validationErrors.housingAllowance }">
+                <label>Housing Allowance (ETB)</label>
+                <input 
+                  type="number" 
+                  v-model="form.housingAllowance" 
+                  @input="validateHousingAllowance"
+                  step="100" 
+                  placeholder="0.00"
+                  :class="{ 'error-input': validationErrors.housingAllowance }"
+                >
+                <small class="error-text" v-if="validationErrors.housingAllowance">{{ validationErrors.housingAllowance }}</small>
+                <small class="field-hint" v-else>Housing allowance amount (cannot be negative)</small>
               </div>
-
-              <!-- Hire Date -->
-              <div class="info-item">
-                <span class="info-label">Hire Date</span>
-                <div class="info-value">
-                  <input type="date" v-model="form.hireDate">
-                </div>
+              
+              <div class="allowance-field" :class="{ 'has-error': validationErrors.positionAllowance }">
+                <label>Position Allowance (ETB)</label>
+                <input 
+                  type="number" 
+                  v-model="form.positionAllowance" 
+                  @input="validatePositionAllowance"
+                  step="100" 
+                  placeholder="0.00"
+                  :class="{ 'error-input': validationErrors.positionAllowance }"
+                >
+                <small class="error-text" v-if="validationErrors.positionAllowance">{{ validationErrors.positionAllowance }}</small>
+                <small class="field-hint" v-else>Position allowance amount (cannot be negative)</small>
               </div>
-
-              <!-- Confirmation Date -->
-              <div class="info-item">
-                <span class="info-label">Confirmation Date</span>
-                <div class="info-value">
-                  <input type="date" v-model="form.confirmationDate">
-                </div>
+              
+              <div class="allowance-field" :class="{ 'has-error': validationErrors.transportAllowance }">
+                <label>Transport Allowance (ETB)</label>
+                <input 
+                  type="number" 
+                  v-model="form.transportAllowance" 
+                  @input="validateTransportAllowance"
+                  step="100" 
+                  placeholder="0.00"
+                  :class="{ 'error-input': validationErrors.transportAllowance }"
+                >
+                <small class="error-text" v-if="validationErrors.transportAllowance">{{ validationErrors.transportAllowance }}</small>
+                <small class="field-hint" v-else>Transport allowance amount (cannot be negative)</small>
               </div>
-
-              <!-- Termination Date -->
-              <div class="info-item">
-                <span class="info-label">Termination Date</span>
-                <div class="info-value">
-                  <input type="date" v-model="form.terminationDate">
+              
+              <!-- Allowance Summary -->
+              <div class="allowance-summary" v-if="totalAllowances > 0 || basicSalaryAmount > 0">
+                <div class="summary-row">
+                  <span>Basic Salary:</span>
+                  <strong>{{ formatCurrency(basicSalaryAmount) }}</strong>
                 </div>
-              </div>
-
-              <!-- Salary -->
-              <div class="info-item">
-                <span class="info-label">Salary (ETB)</span>
-                <div class="info-value">
-                  <input type="number" v-model="form.salary" step="1000" placeholder="0.00">
+                <div class="summary-row">
+                  <span>Housing:</span>
+                  <strong>{{ formatCurrency(housingAllowanceAmount) }}</strong>
                 </div>
-              </div>
-
-              <!-- Manager Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Manager</span>
-                <div class="info-value">
-                  <select v-model="form.managerId">
-                    <option :value="null">None</option>
-                    <option v-for="mgr in managers" :key="mgr.id" :value="mgr.id">
-                      {{ mgr.fullName }} ({{ mgr.employeeId }})
-                    </option>
-                  </select>
+                <div class="summary-row">
+                  <span>Position:</span>
+                  <strong>{{ formatCurrency(positionAllowanceAmount) }}</strong>
                 </div>
-              </div>
-
-              <!-- Work Location -->
-              <div class="info-item">
-                <span class="info-label">Work Location</span>
-                <div class="info-value">
-                  <input type="text" v-model="form.workLocation" placeholder="Head Office, Branch Name">
+                <div class="summary-row">
+                  <span>Transport:</span>
+                  <strong>{{ formatCurrency(transportAllowanceAmount) }}</strong>
+                </div>
+                <div class="summary-divider"></div>
+                <div class="summary-row total">
+                  <span>Total Allowances:</span>
+                  <strong>{{ formatCurrency(totalAllowances) }}</strong>
+                </div>
+                <div class="summary-row gross">
+                  <span>Gross Monthly Pay:</span>
+                  <strong>{{ formatCurrency(grossPay) }}</strong>
                 </div>
               </div>
             </div>
@@ -282,25 +253,7 @@
               <h3>Bank Account</h3>
             </div>
             <div class="info-list">
-              <!-- Bank Name Dropdown -->
-              <div class="info-item">
-                <span class="info-label">Bank Name</span>
-                <div class="info-value">
-                  <select v-model="form.bankName">
-                    <option value="">Select Bank</option>
-                    <option value="Commercial Bank of Ethiopia">Commercial Bank of Ethiopia</option>
-                    <option value="Awash Bank">Awash Bank</option>
-                    <option value="Dashen Bank">Dashen Bank</option>
-                    <option value="United Bank">United Bank</option>
-                    <option value="Nib International Bank">Nib International Bank</option>
-                    <option value="Hibret Bank">Hibret Bank</option>
-                    <option value="Wegagen Bank">Wegagen Bank</option>
-                    <option value="Oromia Bank">Oromia Bank</option>
-                    <option value="Bank of Abyssinia">Bank of Abyssinia</option>
-                    <option value="Zemen Bank">Zemen Bank</option>
-                  </select>
-                </div>
-              </div>
+              <div class="info-item"><span class="info-label">Bank Name</span><div class="info-value"><select v-model="form.bankName"><option value="">Select Bank</option><option value="Commercial Bank of Ethiopia">Commercial Bank of Ethiopia</option><option value="Awash Bank">Awash Bank</option><option value="Dashen Bank">Dashen Bank</option><option value="United Bank">United Bank</option><option value="Nib International Bank">Nib International Bank</option><option value="Hibret Bank">Hibret Bank</option><option value="Wegagen Bank">Wegagen Bank</option></select></div></div>
               <div class="info-item"><span class="info-label">Account Number</span><div class="info-value"><input type="text" v-model="form.accountNumber" placeholder="Account number"></div></div>
               <div class="info-item"><span class="info-label">Account Holder</span><div class="info-value"><input type="text" v-model="form.accountHolderName" placeholder="Account holder name"></div></div>
               <div class="info-item"><span class="info-label">Branch</span><div class="info-value"><input type="text" v-model="form.branch" placeholder="Branch name"></div></div>
@@ -410,6 +363,14 @@ const showGuaranteeModal = ref(false)
 const profilePreview = ref(null)
 const pendingGuarantees = ref([])
 
+// Validation errors
+const validationErrors = ref({
+  basicSalary: '',
+  housingAllowance: '',
+  positionAllowance: '',
+  transportAllowance: ''
+})
+
 // Dropdown data
 const departments = ref([])
 const positions = ref([])
@@ -429,6 +390,82 @@ const documents = ref({
   degree: null,
   guarantee_letters: []
 })
+
+// Computed properties for allowances
+const basicSalaryAmount = computed(() => parseFloat(form.value.basicSalary) || 0)
+const housingAllowanceAmount = computed(() => parseFloat(form.value.housingAllowance) || 0)
+const positionAllowanceAmount = computed(() => parseFloat(form.value.positionAllowance) || 0)
+const transportAllowanceAmount = computed(() => parseFloat(form.value.transportAllowance) || 0)
+const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value)
+const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
+
+// Form validation - check if all fields are valid
+const isFormValid = computed(() => {
+  return basicSalaryAmount.value > 0 &&
+         housingAllowanceAmount.value >= 0 &&
+         positionAllowanceAmount.value >= 0 &&
+         transportAllowanceAmount.value >= 0 &&
+         !validationErrors.value.basicSalary &&
+         !validationErrors.value.housingAllowance &&
+         !validationErrors.value.positionAllowance &&
+         !validationErrors.value.transportAllowance
+})
+
+// Validation functions
+const validateBasicSalary = () => {
+  const value = parseFloat(form.value.basicSalary)
+  if (isNaN(value) || value <= 0) {
+    validationErrors.value.basicSalary = 'Basic salary must be greater than 0'
+    return false
+  }
+  validationErrors.value.basicSalary = ''
+  return true
+}
+
+const validateHousingAllowance = () => {
+  const value = parseFloat(form.value.housingAllowance)
+  if (isNaN(value)) {
+    form.value.housingAllowance = 0
+    validationErrors.value.housingAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    validationErrors.value.housingAllowance = 'Housing allowance cannot be negative'
+    return false
+  }
+  validationErrors.value.housingAllowance = ''
+  return true
+}
+
+const validatePositionAllowance = () => {
+  const value = parseFloat(form.value.positionAllowance)
+  if (isNaN(value)) {
+    form.value.positionAllowance = 0
+    validationErrors.value.positionAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    validationErrors.value.positionAllowance = 'Position allowance cannot be negative'
+    return false
+  }
+  validationErrors.value.positionAllowance = ''
+  return true
+}
+
+const validateTransportAllowance = () => {
+  const value = parseFloat(form.value.transportAllowance)
+  if (isNaN(value)) {
+    form.value.transportAllowance = 0
+    validationErrors.value.transportAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    validationErrors.value.transportAllowance = 'Transport allowance cannot be negative'
+    return false
+  }
+  validationErrors.value.transportAllowance = ''
+  return true
+}
 
 // Computed properties for display
 const getDepartmentName = computed(() => {
@@ -464,7 +501,10 @@ const form = ref({
   hireDate: '',
   confirmationDate: '',
   terminationDate: '',
-  salary: '',
+  basicSalary: '',
+  housingAllowance: '',
+  positionAllowance: '',
+  transportAllowance: '',
   workLocation: '',
   address: '',
   permanentAddress: '',
@@ -478,7 +518,12 @@ const form = ref({
   emergencyContactRelation: ''
 })
 
-// Load employee data
+const formatCurrency = (value) => {
+  if (!value && value !== 0) return '—'
+  return `ETB ${Number(value).toLocaleString()}`
+}
+
+// Load employee data - ensure empty strings are handled
 const loadEmployeeData = async () => {
   try {
     loading.value = true
@@ -488,24 +533,10 @@ const loadEmployeeData = async () => {
       const emp = response.data
       employeeData.value = emp
       
-      // Parse address correctly - FIXED
       let addressStr = ''
-      let permanentAddressStr = ''
-      
       if (emp.address) {
-        if (typeof emp.address === 'string') {
-          addressStr = emp.address
-        } else if (emp.address.street) {
-          addressStr = emp.address.street
-        }
-      }
-      
-      if (emp.permanentAddress) {
-        if (typeof emp.permanentAddress === 'string') {
-          permanentAddressStr = emp.permanentAddress
-        } else if (emp.permanentAddress.street) {
-          permanentAddressStr = emp.permanentAddress.street
-        }
+        if (typeof emp.address === 'string') addressStr = emp.address
+        else if (emp.address.street) addressStr = emp.address.street
       }
       
       form.value = {
@@ -516,9 +547,11 @@ const loadEmployeeData = async () => {
         personalEmail: emp.personalEmail || '',
         phone: emp.phone || '',
         dob: emp.dob ? emp.dob.split('T')[0] : '',
+        // ========== FIX: Set empty string for null values in selects ==========
         gender: emp.gender || '',
         maritalStatus: emp.maritalStatus || '',
         nationality: emp.nationality || '',
+        // ========== END OF FIX ==========
         departmentId: emp.departmentId || null,
         departmentName: emp.departmentName || '',
         positionId: emp.positionId || null,
@@ -530,10 +563,13 @@ const loadEmployeeData = async () => {
         hireDate: emp.hireDate ? emp.hireDate.split('T')[0] : '',
         confirmationDate: emp.confirmationDate ? emp.confirmationDate.split('T')[0] : '',
         terminationDate: emp.terminationDate ? emp.terminationDate.split('T')[0] : '',
-        salary: emp.salary || '',
+        basicSalary: emp.basicSalary || emp.salary || '',
+        housingAllowance: emp.housingAllowance || 0,
+        positionAllowance: emp.positionAllowance || 0,
+        transportAllowance: emp.transportAllowance || 0,
         workLocation: emp.workLocation || '',
         address: addressStr,
-        permanentAddress: permanentAddressStr,
+        permanentAddress: emp.permanentAddress || '',
         bankName: emp.bankAccount?.bankName || '',
         accountNumber: emp.bankAccount?.accountNumber || '',
         accountHolderName: emp.bankAccount?.accountHolderName || '',
@@ -543,6 +579,12 @@ const loadEmployeeData = async () => {
         emergencyContactAltPhone: emp.emergencyContact?.alternatePhone || '',
         emergencyContactRelation: emp.emergencyContact?.relationship || ''
       }
+      
+      // Validate after loading
+      validateBasicSalary()
+      validateHousingAllowance()
+      validatePositionAllowance()
+      validateTransportAllowance()
       
       if (emp.documents) {
         documents.value = emp.documents
@@ -562,19 +604,13 @@ const loadEmployeeData = async () => {
 const loadDropdownData = async () => {
   try {
     const deptResponse = await EmployeesService.getDepartments()
-    if (deptResponse.success) {
-      departments.value = deptResponse.data
-    }
+    if (deptResponse.success) departments.value = deptResponse.data
     
     const posResponse = await EmployeesService.getPositions()
-    if (posResponse.success) {
-      positions.value = posResponse.data
-    }
+    if (posResponse.success) positions.value = posResponse.data
     
     const empResponse = await EmployeesService.getEmployees({ limit: 100 })
-    if (empResponse.success) {
-      managers.value = empResponse.data.filter(e => e.id != employeeId)
-    }
+    if (empResponse.success) managers.value = empResponse.data.filter(e => e.id != employeeId)
   } catch (error) {
     console.error('Load dropdown error:', error)
   }
@@ -585,9 +621,7 @@ const onDepartmentChange = async () => {
   if (form.value.departmentId) {
     try {
       const response = await EmployeesService.getPositionsByDepartment?.(form.value.departmentId)
-      if (response?.success) {
-        positions.value = response.data
-      }
+      if (response?.success) positions.value = response.data
     } catch (error) {
       console.error('Load positions error:', error)
     }
@@ -657,7 +691,7 @@ const handleFileUpload = async (type, event) => {
   event.target.value = ''
 }
 
-// Guarantee letter handlers - FIXED (staged upload)
+// Guarantee letter handlers
 const openGuaranteeModal = () => {
   pendingGuarantees.value = documents.value.guarantee_letters.map(doc => ({
     ...doc,
@@ -694,14 +728,12 @@ const saveGuarantees = async () => {
   try {
     const keptIds = pendingGuarantees.value.filter(g => !g.isNew).map(g => g.id)
     
-    // Delete removed files
     for (const existing of documents.value.guarantee_letters) {
       if (!keptIds.includes(existing.id)) {
         await EmployeesService.deleteDocument(employeeId, existing.id)
       }
     }
     
-    // Upload new files
     for (const pending of pendingGuarantees.value) {
       if (pending.isNew && pending.file) {
         await EmployeesService.uploadGuaranteeLetter(employeeId, pending.file)
@@ -716,21 +748,39 @@ const saveGuarantees = async () => {
   }
 }
 
-// Save employee - FIXED with null values for empty dates
+// Save employee - WITH VALIDATION AND ENUM FIX
 const saveEmployee = async () => {
+  // Run all validations before saving
+  const isBasicSalaryValid = validateBasicSalary()
+  const isHousingValid = validateHousingAllowance()
+  const isPositionValid = validatePositionAllowance()
+  const isTransportValid = validateTransportAllowance()
+  
+  if (!isBasicSalaryValid || !isHousingValid || !isPositionValid || !isTransportValid) {
+    addToast('Please fix validation errors before saving', 'error')
+    return
+  }
+  
+  if (basicSalaryAmount.value <= 0) {
+    addToast('Basic salary must be greater than 0', 'error')
+    return
+  }
+  
   saving.value = true
   try {
     const updateData = {
       firstName: form.value.firstName,
       lastName: form.value.lastName,
-      middleName: form.value.middleName,
+      middleName: form.value.middleName || null,
       email: form.value.email,
-      personalEmail: form.value.personalEmail,
+      personalEmail: form.value.personalEmail || null,
       phone: form.value.phone,
+      // ========== FIX: Convert empty strings to null for enum fields ==========
       dob: form.value.dob || null,
-      gender: form.value.gender,
-      maritalStatus: form.value.maritalStatus,
-      nationality: form.value.nationality,
+      gender: form.value.gender === '' ? null : form.value.gender,
+      maritalStatus: form.value.maritalStatus === '' ? null : form.value.maritalStatus,
+      nationality: form.value.nationality === '' ? null : form.value.nationality,
+      // ========== END OF FIX ==========
       departmentId: form.value.departmentId,
       positionId: form.value.positionId,
       managerId: form.value.managerId,
@@ -739,21 +789,25 @@ const saveEmployee = async () => {
       hireDate: form.value.hireDate || null,
       confirmationDate: form.value.confirmationDate || null,
       terminationDate: form.value.terminationDate || null,
-      salary: form.value.salary,
-      workLocation: form.value.workLocation,
-      address: form.value.address,
-      permanentAddress: form.value.permanentAddress,
+      salary: form.value.basicSalary,
+      basicSalary: form.value.basicSalary,
+      housingAllowance: form.value.housingAllowance || 0,
+      positionAllowance: form.value.positionAllowance || 0,
+      transportAllowance: form.value.transportAllowance || 0,
+      workLocation: form.value.workLocation || null,
+      address: form.value.address || null,
+      permanentAddress: form.value.permanentAddress || null,
       bankAccount: {
-        bankName: form.value.bankName,
-        accountNumber: form.value.accountNumber,
-        accountHolderName: form.value.accountHolderName,
-        branch: form.value.branch
+        bankName: form.value.bankName || null,
+        accountNumber: form.value.accountNumber || null,
+        accountHolderName: form.value.accountHolderName || null,
+        branch: form.value.branch || null
       },
       emergencyContact: {
-        name: form.value.emergencyContactName,
-        phone: form.value.emergencyContactPhone,
-        alternatePhone: form.value.emergencyContactAltPhone,
-        relationship: form.value.emergencyContactRelation
+        name: form.value.emergencyContactName || null,
+        phone: form.value.emergencyContactPhone || null,
+        alternatePhone: form.value.emergencyContactAltPhone || null,
+        relationship: form.value.emergencyContactRelation || null
       }
     }
     
@@ -791,6 +845,37 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Add validation error styles */
+.allowance-field.has-error label {
+  color: #ef4444;
+}
+
+.error-input {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+}
+
+.error-text {
+  color: #ef4444;
+  font-size: 11px;
+  margin-top: 4px;
+  display: block;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.field-hint {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+/* Rest of your existing styles remain the same */
+/* ... all your existing CSS styles ... */
+
 /* ============================================
    MAIN CONTAINER
    ============================================ */
@@ -940,13 +1025,6 @@ onMounted(async () => {
   width: 32px;
   height: 32px;
   color: white;
-}
-
-.employee-basic h1 {
-  font-size: 28px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 10px 0;
 }
 
 .edit-name-container {
@@ -1175,6 +1253,101 @@ onMounted(async () => {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+/* ============================================
+   ALLOWANCES CARD
+   ============================================ */
+.allowances-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.allowances-content {
+  padding: 20px 24px;
+}
+
+.allowance-field {
+  margin-bottom: 16px;
+}
+
+.allowance-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.allowance-field input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.allowance-field input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.allowance-field small {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.allowance-summary {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  border: 1px solid #eef2ff;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.summary-row strong {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.summary-row.total {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.summary-row.total strong {
+  color: #f59e0b;
+}
+
+.summary-row.gross {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.summary-row.gross strong {
+  color: #10b981;
+  font-size: 16px;
+}
+
+.summary-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 8px 0;
 }
 
 /* ============================================

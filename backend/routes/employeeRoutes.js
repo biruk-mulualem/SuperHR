@@ -16,21 +16,21 @@ router.use(authMiddleware());
 // ============================================================================
 // EMPLOYEE CRUD
 // ============================================================================
-router.get('/', authMiddleware('admin'), employeeController.getEmployees);
+router.get('/', authMiddleware('admin','hr','finance','attendance'), employeeController.getEmployees);
 router.get('/:id', employeeController.getEmployeeById);
 
 // ✅ REMOVED uploadSingleProfile from POST - profile picture is separate
 router.post('/', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.createEmployee
 );
 
 router.put('/:id', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.updateEmployee
 );
 
-router.delete('/:id', authMiddleware('admin'), employeeController.deleteEmployee);
+router.delete('/:id', authMiddleware('admin','hr','finance','attendance'), employeeController.deleteEmployee);
 
 // ============================================================================
 // ANALYTICS STATS ENDPOINTS (Separate for each section)
@@ -38,43 +38,43 @@ router.delete('/:id', authMiddleware('admin'), employeeController.deleteEmployee
 
 // 1. KPI Cards - Basic Overview Stats
 router.get('/stats/kpi', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getKpiStats
 );
 
 // 2. Hiring Trends
 router.get('/stats/hiring-trends', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getHiringTrends
 );
 
 // 3. Department Distribution
 router.get('/stats/departments', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getDepartmentDistribution
 );
 
 // 4. Employment Type Distribution
 router.get('/stats/employment-types', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getEmploymentTypeDistribution
 );
 
 // 5. Recent Hires
 router.get('/stats/recent-hires', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getRecentHires
 );
 
 // 6. Salary Analysis
 router.get('/stats/salary', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getSalaryAnalysis
 );
 
 // 7. Document Compliance
 router.get('/stats/compliance', 
-  authMiddleware('admin'), 
+  authMiddleware('admin','hr','finance','attendance'), 
   employeeController.getDocumentCompliance
 );
 
@@ -85,16 +85,16 @@ router.get('/stats/compliance',
 // Profile Picture
 router.post(
   '/:id/profile-picture',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr'),
   uploadSingleProfile,
   employeeController.uploadProfilePicture
 );
-router.delete('/:id/profile-picture', authMiddleware('admin'), employeeController.deleteProfilePicture);
+router.delete('/:id/profile-picture', authMiddleware('admin','hr','finance','attendance'), employeeController.deleteProfilePicture);
 
 // ID Card
 router.post(
   '/:id/id-card',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   (req, res, next) => { req.params.type = 'id_card'; next(); },
   uploadSingleDocument,
   employeeController.uploadIdCard
@@ -103,7 +103,7 @@ router.post(
 // CV/Resume
 router.post(
   '/:id/cv',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   (req, res, next) => { req.params.type = 'cv'; next(); },
   uploadSingleDocument,
   employeeController.uploadCv
@@ -112,7 +112,7 @@ router.post(
 // Degree/Certificate
 router.post(
   '/:id/degree',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   (req, res, next) => { req.params.type = 'degree'; next(); },
   uploadSingleDocument,
   employeeController.uploadDegree
@@ -121,7 +121,7 @@ router.post(
 // Guarantee Letter
 router.post(
   '/:id/guarantee-letter',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   (req, res, next) => { req.params.type = 'guarantee_letter'; next(); },
   uploadSingleDocument,
   employeeController.uploadGuaranteeLetter
@@ -133,14 +133,14 @@ router.get('/:id/documents', employeeController.getAllDocuments);
 // Delete specific document
 router.delete(
   '/:id/documents/:documentId',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   employeeController.deleteDocument
 );
 
 // Import employees (bulk create)
 router.post(
   '/import',
-  authMiddleware('admin'),
+  authMiddleware('admin','hr','finance','attendance'),
   employeeController.importEmployees
 );
 

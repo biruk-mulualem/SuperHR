@@ -50,22 +50,22 @@
           </select>
         </div>
         
-<div class="filter-group">
-  <label>Department</label>
-  <select 
-    v-model="selectedDepartmentId" 
-    @change="onDepartmentChange"
-  >
-    <option :value="null">All Departments</option>
-    <option 
-      v-for="dept in departments" 
-      :key="dept.departmentId" 
-      :value="dept.departmentId"
-    >
-      {{ dept.name }}
-    </option>
-  </select>
-</div>
+        <div class="filter-group">
+          <label>Department</label>
+          <select 
+            v-model="selectedDepartmentId" 
+            @change="onDepartmentChange"
+          >
+            <option :value="null">All Departments</option>
+            <option 
+              v-for="dept in departments" 
+              :key="dept.departmentId" 
+              :value="dept.departmentId"
+            >
+              {{ dept.name }}
+            </option>
+          </select>
+        </div>
         
         <button class="btn-reset" @click="resetFilters">Reset</button>
         <button class="btn-export" @click="exportData">📊 Export</button>
@@ -92,11 +92,6 @@
           <div class="stat-label">Has OT</div>
           <div class="stat-percent">{{ attendanceStats.total_ot_hours }} total OT hours</div>
         </div>
-        <!-- <div class="stat-card">
-          <div class="stat-value text-blue">{{ attendanceStats.employees_half_day || 0 }}</div>
-          <div class="stat-label">Half Day</div>
-          <div class="stat-percent">(Exactly 0.5 days)</div>
-        </div> -->
         <div class="stat-card">
           <div class="stat-value">{{ attendanceStats.avg_attendance_rate || 0 }}%</div>
           <div class="stat-label">Avg Attendance</div>
@@ -111,7 +106,7 @@
         </div>
       </div>
 
-      <!-- Attendance Records Table with Search inside -->
+      <!-- Attendance Records Table -->
       <div class="data-table-container">
         <div class="table-header">
           <h3>Attendance Records</h3>
@@ -147,6 +142,7 @@
                 <th>Present</th>
                 <th>Absent</th>
                 <th>Late (min)</th>
+                <th>Normal OT</th>
                 <th>Weekend OT</th>
                 <th>Holiday OT</th>
                 <th>Attendance %</th>
@@ -166,6 +162,7 @@
                 <td class="text-center text-green"><strong>{{ record.days_present }}</strong></td>
                 <td class="text-center text-red">{{ record.days_absent }}</td>
                 <td class="text-center">{{ record.late_minutes }}</td>
+                <td class="text-center">{{ record.normal_ot_hours || '0' }}h</td>
                 <td class="text-center">{{ record.weekend_ot_hours }}h</td>
                 <td class="text-center">{{ record.holiday_ot_hours }}h</td>
                 <td class="text-center">
@@ -288,7 +285,7 @@
       </div>
     </template>
 
-    <!-- Import Modal (No Scroll) -->
+    <!-- Import Modal -->
     <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
       <div class="modal-content modal-import modal-no-scroll">
         <div class="modal-header">
@@ -354,7 +351,7 @@
       </div>
     </div>
 
-    <!-- Correction Modal (No Scroll) -->
+    <!-- Correction Modal (with Normal OT) -->
     <div v-if="showCorrectionModal" class="modal-overlay" @click.self="showCorrectionModal = false">
       <div class="modal-content modal-no-scroll">
         <div class="modal-header">
@@ -397,9 +394,16 @@
 
           <div class="form-row">
             <div class="form-group half">
+              <label>Normal OT Minutes</label>
+              <input type="number" v-model.number="correctionData.normal_ot_minutes" min="0" />
+            </div>
+            <div class="form-group half">
               <label>Weekend OT Minutes</label>
               <input type="number" v-model.number="correctionData.weekend_ot_minutes" min="0" />
             </div>
+          </div>
+
+          <div class="form-row">
             <div class="form-group half">
               <label>Holiday OT Minutes</label>
               <input type="number" v-model.number="correctionData.holiday_ot_minutes" min="0" />
@@ -518,32 +522,8 @@ const selectedYear = ref(new Date().getFullYear())
 const selectedMonth = ref(new Date().getMonth() + 1)
 const selectedDepartmentId = ref(null)
 const filters = ref({
-
   search: ''
 })
-
-// Add this method to your component
-function onDepartmentChange(event) {
-  
-    
-    // Get the value from event or from the ref
-    let newValue = event?.target?.value;
-  
-    
-    // Handle null/undefined/empty string
-    if (newValue === 'null' || newValue === '' || newValue === undefined) {
-      selectedDepartmentId.value = null;
-    } else {
-      const numValue = Number(newValue);
-      selectedDepartmentId.value = isNaN(numValue) ? null : numValue;
-    }
-    
-
-    
-    // Reset to first page and reload
-    pagination.value.page = 1;
-    loadData();
-}
 
 const importPeriod = ref({
   startDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`,
@@ -597,13 +577,25 @@ function getStatusClass(status) {
   return classes[status] || 'status-info'
 }
 
-// Template Download
+function onDepartmentChange(event) {
+  let newValue = event?.target?.value;
+  if (newValue === 'null' || newValue === '' || newValue === undefined) {
+    selectedDepartmentId.value = null;
+  } else {
+    const numValue = Number(newValue);
+    selectedDepartmentId.value = isNaN(numValue) ? null : numValue;
+  }
+  pagination.value.page = 1;
+  loadData();
+}
+
+// Template Download with Normal OT
 function downloadTemplate() {
-  const headers = ['Employee ID', 'Late Minutes', 'Half Day Absence', 'Absence Days', 'Weekend OT Minutes', 'Holiday OT Minutes']
+  const headers = ['Employee ID', 'Late Minutes', 'Half Day Absence', 'Absence Days', 'Normal OT Minutes', 'Weekend OT Minutes', 'Holiday OT Minutes']
   const sampleRows = [
-    ['44', '15', '0', '2', '0', '0'],
-    ['45', '30', '0', '1', '60', '0'],
-    ['46', '0', '0', '0', '0', '0']
+    ['44', '15', '0', '2', '30', '0', '0'],
+    ['45', '30', '0', '1', '60', '60', '0'],
+    ['46', '0', '0', '0', '0', '0', '0']
   ]
   
   let csvContent = headers.join(',') + '\n'
@@ -634,7 +626,6 @@ async function loadDepartments() {
 async function loadAttendanceRecords() {
   loading.value = true
   try {
-    // Build params object
     const params = {
       year: selectedYear.value,
       month: selectedMonth.value,
@@ -642,21 +633,15 @@ async function loadAttendanceRecords() {
       limit: pagination.value.limit
     }
     
-    // Add search if present
     if (filters.value.search && filters.value.search.trim()) {
       params.search = filters.value.search.trim()
     }
     
-    // ✅ FIX: Properly check for valid department ID (not null, not NaN, not undefined)
     const deptId = selectedDepartmentId.value;
     if (deptId !== null && deptId !== undefined && !isNaN(deptId) && deptId !== '') {
       params.departmentId = Number(deptId);
-  
-    } else {
-
     }
 
-    
     const res = await attendanceService.getMonthlySummary(params)
     
     if (res.success) {
@@ -670,6 +655,7 @@ async function loadAttendanceRecords() {
     loading.value = false
   }
 }
+
 // Load import batches
 async function loadImportBatches() {
   loading.value = true
@@ -713,7 +699,7 @@ function switchTab(tab) {
 }
 
 function resetFilters() {
-  selectedDepartmentId.value = null;  // Reset to null, not 0 or NaN
+  selectedDepartmentId.value = null;
   filters.value.search = ''
   pagination.value.page = 1
   loadData()
@@ -808,6 +794,7 @@ function openCorrectionModal(record) {
     submitted_days: record.submitted_days || record.imported_days,
     days_present: record.days_present,
     absence_days: parseFloat(record.days_absent) || 0,
+    normal_ot_minutes: parseFloat(record.normal_ot_hours) * 60 || 0,
     weekend_ot_minutes: parseFloat(record.weekend_ot_hours) * 60 || 0,
     holiday_ot_minutes: parseFloat(record.holiday_ot_hours) * 60 || 0
   }
@@ -819,6 +806,7 @@ async function saveCorrection() {
     const payload = {
       late_minutes: correctionData.value.late_minutes,
       absence_days: correctionData.value.absence_days,
+      normal_ot_minutes: correctionData.value.normal_ot_minutes,
       weekend_ot_minutes: correctionData.value.weekend_ot_minutes,
       holiday_ot_minutes: correctionData.value.holiday_ot_minutes
     }
@@ -855,7 +843,7 @@ async function viewBatchErrors(batchId) {
 function exportData() {
   if (attendanceRecords.value.length === 0) return
   
-  const headers = ['Employee Code', 'Employee Name', 'Department', 'Days in Month', 'Working Days', 'Submitted', 'Present', 'Absent', 'Missing', 'Late Minutes', 'Weekend OT (h)', 'Holiday OT (h)', 'Attendance Rate (%)']
+  const headers = ['Employee Code', 'Employee Name', 'Department', 'Days in Month', 'Working Days', 'Submitted', 'Present', 'Absent', 'Missing', 'Late Minutes', 'Normal OT (h)', 'Weekend OT (h)', 'Holiday OT (h)', 'Attendance Rate (%)']
   const rows = attendanceRecords.value.map(record => [
     record.employee_code,
     record.employee_name,
@@ -867,6 +855,7 @@ function exportData() {
     record.days_absent,
     record.missing_days,
     record.late_minutes,
+    record.normal_ot_hours || '0',
     record.weekend_ot_hours,
     record.holiday_ot_hours,
     record.attendance_rate
@@ -885,9 +874,7 @@ function exportData() {
 // Watchers
 watch(() => selectedYear.value, () => loadData())
 watch(() => selectedMonth.value, () => loadData())
-// Add this watcher to debug and trigger load
 watch(selectedDepartmentId, (newVal, oldVal) => {
-
   if (newVal !== oldVal) {
     pagination.value.page = 1;
     loadData();
@@ -901,25 +888,23 @@ onMounted(() => {
   loadData()
 })
 
-// Computed Stats - Corrected absent logic
+// Computed Stats
+// Computed Stats - Fix the missing halfDayPercent
 const attendanceStats = computed(() => {
   const records = attendanceRecords.value
   const totalEmployees = records.length
   
-  // ✅ FIXED: Absent = employees with absence_days >= 0.5 (including half days)
   const employeesAbsent = records.filter(r => {
     const absenceDays = parseFloat(r.days_absent) || 0
     return absenceDays >= 0.5
   }).length
   const absentPercent = totalEmployees > 0 ? Math.round((employeesAbsent / totalEmployees) * 100) : 0
   
-  // Late: employees with late minutes > 0
   const employeesLate = records.filter(r => (r.late_minutes || 0) > 0).length
   const latePercent = totalEmployees > 0 ? Math.round((employeesLate / totalEmployees) * 100) : 0
   
-  // OT: employees with any OT
-  const employeesWithOT = records.filter(r => (parseFloat(r.weekend_ot_hours) > 0 || parseFloat(r.holiday_ot_hours) > 0)).length
-  const totalOtHours = records.reduce((sum, r) => sum + parseFloat(r.weekend_ot_hours) + parseFloat(r.holiday_ot_hours), 0).toFixed(1)
+  const employeesWithOT = records.filter(r => (parseFloat(r.normal_ot_hours) > 0 || parseFloat(r.weekend_ot_hours) > 0 || parseFloat(r.holiday_ot_hours) > 0)).length
+  const totalOtHours = records.reduce((sum, r) => sum + parseFloat(r.normal_ot_hours || 0) + parseFloat(r.weekend_ot_hours) + parseFloat(r.holiday_ot_hours), 0).toFixed(1)
   
   // Half Day: employees with exact half day absence (0.5)
   const employeesHalfDay = records.filter(r => {
@@ -969,100 +954,14 @@ const importStats = computed(() => {
 </script>
 
 <style scoped>
-/* Form row with two columns */
-.form-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.form-group.half {
-  flex: 1;
-  min-width: 0;
-}
-
-/* No scroll modals */
-.modal-no-scroll .modal-body {
-  overflow: visible !important;
-  max-height: none !important;
-  padding-bottom: 0;
-}
-
-.modal-no-scroll {
-  overflow: visible;
-}
-
-.modal-no-scroll .modal-content {
-  overflow: visible;
-}
-
-/* Table search */
-.table-search {
-  display: flex;
-  align-items: center;
-}
-
-.search-input {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  width: 250px;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-/* Correction button style */
-.btn-correction {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.btn-correction:hover {
-  background: #fde68a;
-}
-
+/* Add these styles for Normal OT */
 .stat-percent {
   font-size: 10px;
   color: #94a3b8;
   margin-top: 4px;
 }
 
-.alert-info {
-  background: #eff6ff;
-  border-left: 4px solid #3b82f6;
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-}
-
-.month-info {
-  margin-bottom: 20px;
-}
-
-.info-badge {
-  background: #e0e7ff;
-  border-radius: 8px;
-  padding: 8px 16px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e40af;
-}
-
-.info-icon {
-  font-size: 16px;
-}
-
+/* Rest of your existing styles remain the same */
 .attendance-management {
   min-height: 100vh;
   background: #f5f7fa;
@@ -1195,6 +1094,15 @@ const importStats = computed(() => {
   gap: 6px;
 }
 
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .btn-secondary {
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
@@ -1202,6 +1110,10 @@ const importStats = computed(() => {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
 }
 
 .btn-export {
@@ -1215,6 +1127,10 @@ const importStats = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.btn-export:hover {
+  background: #059669;
 }
 
 .stats-cards {
@@ -1253,7 +1169,7 @@ const importStats = computed(() => {
 .data-table-container {
   background: white;
   border-radius: 16px;
-  padding: 20px;
+  padding: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
@@ -1270,6 +1186,24 @@ const importStats = computed(() => {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
+}
+
+.table-search {
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  width: 250px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
 }
 
 .table-wrapper {
@@ -1387,6 +1321,15 @@ const importStats = computed(() => {
   background: #f1f5f9;
 }
 
+.btn-correction {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.btn-correction:hover {
+  background: #fde68a;
+}
+
 .pagination {
   display: flex;
   justify-content: center;
@@ -1451,6 +1394,10 @@ const importStats = computed(() => {
   display: block;
   margin-bottom: 12px;
   opacity: 0.5;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .modal-overlay {
@@ -1670,7 +1617,60 @@ const importStats = computed(() => {
   font-size: 12px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.alert-info {
+  background: #eff6ff;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.month-info {
+  margin-bottom: 20px;
+}
+
+.info-badge {
+  background: #e0e7ff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e40af;
+}
+
+.info-icon {
+  font-size: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-group.half {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-no-scroll .modal-body {
+  overflow: visible !important;
+  max-height: none !important;
+  padding-bottom: 0;
+}
+
+.modal-no-scroll {
+  overflow: visible;
+}
+
+.modal-no-scroll .modal-content {
+  overflow: visible;
 }
 </style>

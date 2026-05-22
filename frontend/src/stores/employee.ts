@@ -5,6 +5,7 @@ import api from './interceptor'
 // TYPES
 // ============================================================================
 
+
 export interface Employee {
   id: number
   employeeId: string
@@ -33,6 +34,13 @@ export interface Employee {
   confirmationDate?: string
   terminationDate?: string
   salary?: number
+  basicSalary?: number
+  // NEW: Allowance fields
+  housingAllowance?: number
+  positionAllowance?: number
+  transportAllowance?: number
+  totalAllowances?: number
+  grossPay?: number
   workLocation?: string
   address?: any
   permanentAddress?: any
@@ -43,6 +51,7 @@ export interface Employee {
   createdAt?: string
   updatedAt?: string
 }
+
 
 // ============================================================================
 // SEPARATE STATS TYPES
@@ -345,45 +354,103 @@ class EmployeesService {
     }
   }
 
-  /**
-   * Create new employee (NO files)
-   */
-  async createEmployee(employeeData: any) {
-    try {
-      const response = await api.post('/employees', employeeData)
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Create employee error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to create employee'
-      }
-    }
-  }
 
   /**
-   * Update employee
-   */
-  async updateEmployee(id: number, employeeData: any) {
-    try {
-      const response = await api.put(`/employees/${id}`, employeeData)
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Update employee error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to update employee'
-      }
+ * Create new employee (WITH ALLOWANCES)
+ */
+async createEmployee(employeeData: any) {
+  try {
+    const payload = {
+      firstName: employeeData.firstName,
+      lastName: employeeData.lastName,
+      middleName: employeeData.middleName,
+      email: employeeData.email,
+      personalEmail: employeeData.personalEmail,
+      phone: employeeData.phone,
+      dob: employeeData.dob,
+      gender: employeeData.gender,
+      maritalStatus: employeeData.maritalStatus,
+      nationality: employeeData.nationality,
+      departmentId: employeeData.departmentId,
+      positionId: employeeData.positionId,
+      managerId: employeeData.managerId,
+      employmentType: employeeData.employmentType,
+      hireDate: employeeData.hireDate,
+      salary: employeeData.basicSalary || employeeData.salary,
+      basicSalary: employeeData.basicSalary || employeeData.salary,
+      housingAllowance: employeeData.housingAllowance || 0,
+      positionAllowance: employeeData.positionAllowance || 0,
+      transportAllowance: employeeData.transportAllowance || 0,
+      address: employeeData.address,
+      workLocation: employeeData.workLocation,
+      emergencyContact: employeeData.emergencyContact,
+      bankAccount: employeeData.bankAccount
+    }
+    
+    const response = await api.post('/employees', payload)
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Create employee error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to create employee'
     }
   }
+}
+
+/**
+ * Update employee (WITH ALLOWANCES)
+ */
+async updateEmployee(id: number, employeeData: any) {
+  try {
+    const payload = {
+      firstName: employeeData.firstName,
+      lastName: employeeData.lastName,
+      middleName: employeeData.middleName,
+      email: employeeData.email,
+      personalEmail: employeeData.personalEmail,
+      phone: employeeData.phone,
+      dob: employeeData.dob,
+      gender: employeeData.gender,
+      maritalStatus: employeeData.maritalStatus,
+      nationality: employeeData.nationality,
+      departmentId: employeeData.departmentId,
+      positionId: employeeData.positionId,
+      managerId: employeeData.managerId,
+      employmentType: employeeData.employmentType,
+      status: employeeData.status,
+      hireDate: employeeData.hireDate,
+      confirmationDate: employeeData.confirmationDate,
+      terminationDate: employeeData.terminationDate,
+      basicSalary: employeeData.basicSalary || employeeData.salary,
+      housingAllowance: employeeData.housingAllowance || 0,
+      positionAllowance: employeeData.positionAllowance || 0,
+      transportAllowance: employeeData.transportAllowance || 0,
+      workLocation: employeeData.workLocation,
+      address: employeeData.address,
+      permanentAddress: employeeData.permanentAddress,
+      bankAccount: employeeData.bankAccount,
+      emergencyContact: employeeData.emergencyContact
+    }
+    
+    const response = await api.put(`/employees/${id}`, payload)
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Update employee error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to update employee'
+    }
+  }
+}
 
   /**
    * Delete employee (soft delete - terminate)
@@ -410,32 +477,39 @@ class EmployeesService {
   // BULK IMPORT
   // ============================================================================
 
-  /**
-   * Import employees in bulk (creates user accounts automatically)
-   * @param employees - Array of employee objects with required fields
-   */
-  async importEmployees(employees: any[]): Promise<{ 
-    success: boolean; 
-    data?: any; 
-    message?: string; 
-    error?: string 
-  }> {
-    try {
-      const response = await api.post('/employees/import', { employees })
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message
-      }
-    } catch (error: any) {
-      console.error('Import employees error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to import employees'
-      }
+ /**
+ * Import employees in bulk (WITH ALLOWANCES)
+ * Supports allowance fields: housingAllowance, positionAllowance, transportAllowance
+ * If allowances not provided, they are auto-calculated as 20%, 15%, 10% of basic salary
+ */
+async importEmployees(employees: any[]): Promise<{ 
+  success: boolean; 
+  data?: any; 
+  message?: string; 
+  error?: string 
+}> {
+  try {
+    const formattedEmployees = employees.map(emp => ({
+      ...emp,
+      housingAllowance: emp.housingAllowance,
+      positionAllowance: emp.positionAllowance,
+      transportAllowance: emp.transportAllowance
+    }))
+    
+    const response = await api.post('/employees/import', { employees: formattedEmployees })
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message
+    }
+  } catch (error: any) {
+    console.error('Import employees error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to import employees'
     }
   }
-
+}
   // ============================================================================
   // SEPARATE ANALYTICS STATS METHODS
   // ============================================================================

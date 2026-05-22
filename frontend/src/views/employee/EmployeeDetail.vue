@@ -6,7 +6,7 @@
     </div>
 
     <div v-else-if="employee" class="detail-wrapper">
-      <!-- Header Actions (same) -->
+      <!-- Header Actions -->
       <div class="action-bar">
         <router-link to="/employees" class="action-btn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -22,7 +22,7 @@
         </router-link>
       </div>
 
-      <!-- Hero Section (same) -->
+      <!-- Hero Section -->
       <div class="hero-section">
         <div class="hero-left">
           <div class="employee-avatar-large">
@@ -48,7 +48,7 @@
         </div>
       </div>
       
-      <!-- Stats Cards (same) -->
+      <!-- Stats Cards - Updated to include allowances -->
       <div class="stats-cards">
         <div class="stat-card">
           <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div>
@@ -64,7 +64,7 @@
         </div>
         <div class="stat-card">
           <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z" /><path d="M12 2v2M22 12h-2M4 12H2M12 22v2" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">Salary</span><span class="stat-number">{{ employee.salary ? `ETB ${employee.salary.toLocaleString()}` : '—' }}</span></div>
+          <div class="stat-card-info"><span class="stat-label">Basic Salary</span><span class="stat-number">{{ employee.basicSalary ? `ETB ${employee.basicSalary.toLocaleString()}` : '—' }}</span></div>
         </div>
       </div>
 
@@ -90,21 +90,20 @@
             </div>
           </div>
 
-          <!-- Address Card -->
-          <div class="info-card address-card">
+        
+   <!-- Bank Account Card -->
+          <div class="info-card bank-card">
             <div class="card-header">
-              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg></div>
-              <h3>Address Information</h3>
+              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /></svg></div>
+              <h3>Bank Account</h3>
             </div>
-            <div class="address-content">
-              <div v-if="employee.address" class="address-display">
-                <div class="address-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg></div>
-                <div class="address-text"><p>{{ employee.address }}</p></div>
-              </div>
-              <div v-else class="address-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg><span>No address provided</span></div>
+            <div class="info-list">
+              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /></svg></span><span class="info-label">Bank Name</span><span class="info-value">{{ employee.bankAccount?.bankName || '—' }}</span></div>
+              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 6L12 13 2 6m20 0v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6m20 0-10 7L2 6" /></svg></span><span class="info-label">Account Number</span><span class="info-value">{{ employee.bankAccount?.accountNumber || '—' }}</span></div>
+              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z" /><circle cx="12" cy="9" r="2" /><path d="M16 17v-1a3 3 0 0 0-3-3h-2a3 3 0 0 0-3 3v1" /></svg></span><span class="info-label">Account Holder</span><span class="info-value">{{ employee.bankAccount?.accountHolderName || '—' }}</span></div>
+              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4M18 12h4M12 3v4M12 18v4" /></svg></span><span class="info-label">Branch</span><span class="info-value">{{ employee.bankAccount?.branch || '—' }}</span></div>
             </div>
           </div>
-
           <!-- Emergency Contact Card -->
           <div class="info-card emergency-card">
             <div class="card-header">
@@ -118,11 +117,28 @@
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h2l4-8 4 8h2" /><path d="M5 12h2l3-6 3 6h2" /></svg></span><span class="info-label">Relationship</span><span class="info-value">{{ employee.emergencyContact?.relationship || '—' }}</span></div>
             </div>
           </div>
+
+         
+
+            <!-- Address Card -->
+          <div class="info-card address-card">
+            <div class="card-header">
+              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg></div>
+              <h3>Address Information</h3>
+            </div>
+            <div class="address-content">
+              <div v-if="employee.address" class="address-display">
+                <div class="address-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg></div>
+                <div class="address-text"><p>{{ employee.address }}</p></div>
+              </div>
+              <div v-else class="address-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg><span>No address provided</span></div>
+            </div>
+          </div>
         </div>
 
         <!-- Right Column -->
         <div class="right-column">
-          <!-- Employment Card (Enhanced) -->
+          <!-- Employment Card (Enhanced with Allowances) -->
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div>
@@ -133,26 +149,52 @@
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></svg></span><span class="info-label">Position</span><span class="info-value">{{ employee.position || 'N/A' }}</span></div>
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg></span><span class="info-label">Employment Type</span><span class="info-value">{{ getEmploymentTypeLabel(employee.employmentType) }}</span></div>
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></svg></span><span class="info-label">Hire Date</span><span class="info-value">{{ formatDate(employee.hireDate) }}</span></div>
-              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg></span><span class="info-label">Salary</span><span class="info-value">{{ employee.salary ? `ETB ${employee.salary.toLocaleString()}` : '—' }}</span></div>
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7C16 4.79 14.21 3 12 3S8 4.79 8 7" /><path d="M12 12v4" /></svg></span><span class="info-label">Manager</span><span class="info-value">{{ employee.managerName || '—' }}</span></div>
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4M18 12h4M12 3v4M12 18v4" /></svg></span><span class="info-label">Work Location</span><span class="info-value">{{ employee.workLocation || '—' }}</span></div>
               <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></svg></span><span class="info-label">Confirmation Date</span><span class="info-value">{{ formatDate(employee.confirmationDate) || '—' }}</span></div>
             </div>
           </div>
 
-          <!-- Bank Account Card -->
-          <div class="info-card bank-card">
+          
+
+
+          <!-- Compensation & Allowances Card - NEW -->
+          <div class="info-card allowances-card">
             <div class="card-header">
-              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /></svg></div>
-              <h3>Bank Account</h3>
+              <div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></div>
+              <h3>Compensation & Allowances</h3>
             </div>
-            <div class="info-list">
-              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /></svg></span><span class="info-label">Bank Name</span><span class="info-value">{{ employee.bankAccount?.bankName || '—' }}</span></div>
-              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 6L12 13 2 6m20 0v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6m20 0-10 7L2 6" /></svg></span><span class="info-label">Account Number</span><span class="info-value">{{ employee.bankAccount?.accountNumber || '—' }}</span></div>
-              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z" /><circle cx="12" cy="9" r="2" /><path d="M16 17v-1a3 3 0 0 0-3-3h-2a3 3 0 0 0-3 3v1" /></svg></span><span class="info-label">Account Holder</span><span class="info-value">{{ employee.bankAccount?.accountHolderName || '—' }}</span></div>
-              <div class="info-item"><span class="info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4M18 12h4M12 3v4M12 18v4" /></svg></span><span class="info-label">Branch</span><span class="info-value">{{ employee.bankAccount?.branch || '—' }}</span></div>
+            <div class="allowances-content">
+              <div class="allowance-item basic">
+                <div class="allowance-label">Basic Salary</div>
+                <div class="allowance-value">{{ formatCurrency(employee.basicSalary) }}</div>
+              </div>
+              <div class="allowance-divider"></div>
+              <div class="allowance-item">
+                <div class="allowance-label">Housing Allowance</div>
+                <div class="allowance-value">{{ formatCurrency(employee.housingAllowance) }}</div>
+              </div>
+              <div class="allowance-item">
+                <div class="allowance-label">Position Allowance</div>
+                <div class="allowance-value">{{ formatCurrency(employee.positionAllowance) }}</div>
+              </div>
+              <div class="allowance-item">
+                <div class="allowance-label">Transport Allowance</div>
+                <div class="allowance-value">{{ formatCurrency(employee.transportAllowance) }}</div>
+              </div>
+              <div class="allowance-divider"></div>
+              <div class="allowance-item total">
+                <div class="allowance-label">Total Allowances</div>
+                <div class="allowance-value">{{ formatCurrency(totalAllowances) }}</div>
+              </div>
+              <div class="allowance-item gross">
+                <div class="allowance-label">Gross Monthly Pay</div>
+                <div class="allowance-value gross-amount">{{ formatCurrency(grossPay) }}</div>
+              </div>
             </div>
           </div>
+
+        
 
           <!-- Documents Card -->
           <div class="info-card documents-card">
@@ -180,7 +222,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import EmployeesService from '@/stores/employee'
 
@@ -195,6 +237,24 @@ const documents = ref({
 const loading = ref(true)
 
 const employeeId = route.params.id
+
+// Computed properties for allowances
+const totalAllowances = computed(() => {
+  const housing = parseFloat(employee.value?.housingAllowance) || 0
+  const position = parseFloat(employee.value?.positionAllowance) || 0
+  const transport = parseFloat(employee.value?.transportAllowance) || 0
+  return housing + position + transport
+})
+
+const grossPay = computed(() => {
+  const basic = parseFloat(employee.value?.basicSalary) || 0
+  return basic + totalAllowances.value
+})
+
+const formatCurrency = (value) => {
+  if (!value && value !== 0) return '—'
+  return `ETB ${Number(value).toLocaleString()}`
+}
 
 const getEmploymentTypeLabel = (type) => {
   const labels = { 'full-time': 'Full Time', 'part-time': 'Part Time', 'contract': 'Contract', 'intern': 'Intern' }
@@ -253,7 +313,12 @@ const loadEmployeeData = async () => {
         status: empData.status,
         hireDate: empData.hireDate,
         confirmationDate: empData.confirmationDate,
+        basicSalary: empData.basicSalary || empData.salary,
         salary: empData.salary,
+        // Allowance fields
+        housingAllowance: empData.allowances?.housing || empData.housingAllowance,
+        positionAllowance: empData.allowances?.position || empData.positionAllowance,
+        transportAllowance: empData.allowances?.transport || empData.transportAllowance,
         address: empData.address?.street || empData.address,
         workLocation: empData.workLocation,
         managerName: empData.managerName,
@@ -292,6 +357,65 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
+/* Allowances Card Styles */
+.allowances-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.allowances-content {
+  padding: 20px 24px;
+}
+
+.allowance-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.allowance-item.basic {
+  margin-bottom: 4px;
+}
+
+.allowance-label {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.allowance-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.allowance-item.total .allowance-value {
+  color: #f59e0b;
+  font-size: 16px;
+}
+
+.allowance-item.gross {
+  margin-top: 4px;
+}
+
+.allowance-item.gross .allowance-label {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.allowance-value.gross-amount {
+  font-size: 18px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.allowance-divider {
+  height: 1px;
+  background: #eef2ff;
+  margin: 8px 0;
+}
 
 .employee-detail {
   max-width: 1200px;

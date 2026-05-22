@@ -32,6 +32,7 @@ export interface MonthlySummaryRecord {
     days_present: number;
     days_absent: string;
     late_minutes: number;
+    normal_ot_hours: string;
     weekend_ot_hours: string;
     holiday_ot_hours: string;
     attendance_rate: string;
@@ -122,6 +123,7 @@ export interface PaginatedResponse<T> {
 export interface UpdateAttendancePayload {
     late_minutes?: number;
     absence_days?: number;
+    normal_ot_minutes?: number;
     weekend_ot_minutes?: number;
     holiday_ot_minutes?: number;
 }
@@ -274,31 +276,28 @@ class AttendanceService {
     /**
      * Get current date in YYYY-MM-DD format
      */
-  /**
- * Get current date in YYYY-MM-DD format
- */
-getToday(): string {
-    const date = new Date().toISOString().split('T')[0];
-    return date || '';
-}
+    getToday(): string {
+        const date = new Date().toISOString().split('T')[0];
+        return date || '';
+    }
 
-/**
- * Get first day of current month
- */
-getFirstDayOfMonth(): string {
-    const date = new Date();
-    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
-    return firstDay || '';
-}
+    /**
+     * Get first day of current month
+     */
+    getFirstDayOfMonth(): string {
+        const date = new Date();
+        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+        return firstDay || '';
+    }
 
-/**
- * Get month name from month number
- */
-getMonthName(month: number): string {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                    'July', 'August', 'September', 'October', 'November', 'December'];
-    return months[month - 1] || '';
-}
+    /**
+     * Get month name from month number
+     */
+    getMonthName(month: number): string {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+        return months[month - 1] || '';
+    }
 }
 
 export default new AttendanceService();
