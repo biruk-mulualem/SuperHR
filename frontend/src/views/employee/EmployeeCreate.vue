@@ -131,6 +131,7 @@ const form = ref({
   housingAllowance: '',
   positionAllowance: '',
   transportAllowance: '',
+  mobileAllowance: '',
   address: '',
   workLocation: ''
 })
@@ -140,7 +141,8 @@ const allowanceErrors = ref({
   basicSalary: '',
   housingAllowance: '',
   positionAllowance: '',
-  transportAllowance: ''
+  transportAllowance: '',
+   mobileAllowance: '',
 })
 
 const errors = ref({})
@@ -150,7 +152,8 @@ const basicSalaryAmount = computed(() => parseFloat(form.value.basicSalary) || 0
 const housingAllowanceAmount = computed(() => parseFloat(form.value.housingAllowance) || 0)
 const positionAllowanceAmount = computed(() => parseFloat(form.value.positionAllowance) || 0)
 const transportAllowanceAmount = computed(() => parseFloat(form.value.transportAllowance) || 0)
-const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value)
+const mobileAllowanceAmount = computed(() => parseFloat(form.value.mobileAllowance) || 0)
+const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value + mobileAllowanceAmount.value)
 const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
 
 // Form validation - check if all fields are valid
@@ -159,10 +162,12 @@ const isFormValid = computed(() => {
          housingAllowanceAmount.value >= 0 &&
          positionAllowanceAmount.value >= 0 &&
          transportAllowanceAmount.value >= 0 &&
+         mobileAllowanceAmount.value >= 0 &&
          !allowanceErrors.value.basicSalary &&
          !allowanceErrors.value.housingAllowance &&
          !allowanceErrors.value.positionAllowance &&
-         !allowanceErrors.value.transportAllowance
+         !allowanceErrors.value.transportAllowance &&
+         !allowanceErrors.value.mobileAllowance
 })
 
 // Validation functions
@@ -221,6 +226,22 @@ const validateTransportAllowance = () => {
   return true
 }
 
+const validateMobileAllowance = () => {
+  const value = parseFloat(form.value.mobileAllowance)
+  if (isNaN(value)) {
+    form.value.mobileAllowance = 0
+    allowanceErrors.value.mobileAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    allowanceErrors.value.mobileAllowance = 'Mobile allowance cannot be negative'
+    return false
+  }
+  allowanceErrors.value.mobileAllowance = ''
+  return true
+}
+
+
 const formatCurrency = (value) => {
   if (!value && value !== 0) return '—'
   return `ETB ${Number(value).toLocaleString()}`
@@ -276,7 +297,8 @@ const validateForm = () => {
   const housingValid = validateHousingAllowance()
   const positionValid = validatePositionAllowance()
   const transportValid = validateTransportAllowance()
-  
+  const mobileValid = validateMobileAllowance()
+
   if (!basicSalaryValid) {
     newErrors.basicSalary = allowanceErrors.value.basicSalary
   }
@@ -289,7 +311,10 @@ const validateForm = () => {
   if (!transportValid) {
     newErrors.transportAllowance = allowanceErrors.value.transportAllowance
   }
-  
+  if (!mobileValid) {
+    newErrors.mobileAllowance = allowanceErrors.value.mobileAllowance
+  }
+
   // Fix for enum error: Convert empty strings to null for enum fields
   if (form.value.gender === '') form.value.gender = null
   if (form.value.maritalStatus === '') form.value.maritalStatus = null
@@ -297,7 +322,7 @@ const validateForm = () => {
   if (form.value.employmentType === '') form.value.employmentType = null
   
   errors.value = newErrors
-  return Object.keys(newErrors).length === 0 && basicSalaryValid && housingValid && positionValid && transportValid
+  return Object.keys(newErrors).length === 0 && basicSalaryValid && housingValid && positionValid && transportValid && mobileValid
 }
 
 const addToast = (message, type = 'success') => {
@@ -344,6 +369,7 @@ const createEmployee = async () => {
       housingAllowance: form.value.housingAllowance || 0,
       positionAllowance: form.value.positionAllowance || 0,
       transportAllowance: form.value.transportAllowance || 0,
+      mobileAllowance: form.value.mobileAllowance || 0,
       address: form.value.address?.trim() || null,
       workLocation: form.value.workLocation?.trim() || null,
       emergencyContact: JSON.stringify(emergencyContact),

@@ -1,4 +1,4 @@
-const { Employee, Department, Position, User, EmployeeDocument, Role ,sequelize } = require('../models');
+const { Employee, Department, Position, User, EmployeeDocument,CompensationHistory, Role ,sequelize } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
@@ -118,8 +118,10 @@ exports.createEmployee = async (req, res) => {
       maritalStatus, nationality, departmentId, positionId, managerId,
       employmentType, hireDate, salary, address, workLocation,
       personalEmail, emergencyContact, bankAccount,
-      housingAllowance, positionAllowance, transportAllowance  // NEW FIELDS
+        housingAllowance, positionAllowance, transportAllowance, mobileAllowance  
     } = req.body;
+
+    
 
     // Validate required fields
     if (!firstName || !lastName || !departmentId || !positionId || !employmentType || !hireDate) {
@@ -179,6 +181,7 @@ exports.createEmployee = async (req, res) => {
     const finalHousingAllowance = housingAllowance !== undefined && housingAllowance !== '' ? parseFloat(housingAllowance) : 0;
     const finalPositionAllowance = positionAllowance !== undefined && positionAllowance !== '' ? parseFloat(positionAllowance) : 0;
     const finalTransportAllowance = transportAllowance !== undefined && transportAllowance !== '' ? parseFloat(transportAllowance) : 0;
+    const finalMobileAllowance = mobileAllowance !== undefined && mobileAllowance !== '' ? parseFloat(mobileAllowance) : 0;
 
     // Parse JSON strings
     let parsedEmergencyContact = emergencyContact;
@@ -216,6 +219,7 @@ exports.createEmployee = async (req, res) => {
       housingAllowance: finalHousingAllowance,
       positionAllowance: finalPositionAllowance,
       transportAllowance: finalTransportAllowance,
+      mobileAllowance: finalMobileAllowance, 
       currentAddress: address ? { street: address } : {},
       workLocation: workLocation || null,
       emergencyContact: parsedEmergencyContact || {},
@@ -236,7 +240,8 @@ exports.createEmployee = async (req, res) => {
         transport: parseFloat(employee.transportAllowance) || 0,
         total: (parseFloat(employee.housingAllowance) || 0) + 
                (parseFloat(employee.positionAllowance) || 0) + 
-               (parseFloat(employee.transportAllowance) || 0)
+               (parseFloat(employee.transportAllowance) || 0)+
+               (parseFloat(employee.mobileAllowance) || 0),
       },
       user: {
         id: user.userId,
@@ -260,9 +265,54 @@ exports.createEmployee = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Create employee error:', error);
-    res.status(500).json({ success: false, error: error.message });
+  console.error('=== CREATE EMPLOYEE ERROR DETAILS ===');
+  console.error('Error name:', error.name);
+  console.error('Error message:', error.message);
+  
+  // Log Sequelize validation errors
+  if (error.name === 'SequelizeValidationError') {
+    console.error('Validation errors:');
+    error.errors.forEach((err, index) => {
+      console.error(`  ${index + 1}. Field: ${err.path}`);
+      console.error(`     Message: ${err.message}`);
+      console.error(`     Value:`, err.value);
+      console.error(`     Type: ${err.type}`);
+    });
+    return res.status(400).json({
+      success: false,
+      error: 'Validation error',
+      details: error.errors.map(e => ({
+        field: e.path,
+        message: e.message
+      }))
+    });
   }
+  
+  // Log unique constraint errors
+  if (error.name === 'SequelizeUniqueConstraintError') {
+    console.error('Unique constraint violation:');
+    error.errors.forEach((err, index) => {
+      console.error(`  ${index + 1}. ${err.message}`);
+    });
+    return res.status(400).json({
+      success: false,
+      error: 'Duplicate entry error',
+      details: error.errors.map(e => e.message)
+    });
+  }
+  
+  // Log other errors
+  console.error('Full error object:', JSON.stringify(error, null, 2));
+  if (error.parent) {
+    console.error('Database error:', error.parent.message);
+  }
+  
+  res.status(500).json({ 
+    success: false, 
+    error: error.message,
+    details: error.parent?.message || null
+  });
+}
 };
 
 // ============================================================================
@@ -350,20 +400,33 @@ exports.deleteProfilePicture = async (req, res) => {
   }
 };
 
+
 // ============================================================================
-// UPDATE EMPLOYEE (WITH ALLOWANCES)
+// UPDATE EMPLOYEE (WITH ALLOWANCES & COMPENSATION HISTORY)
 // ============================================================================
 exports.updateEmployee = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
     
     const employee = await Employee.findByPk(id);
     if (!employee) {
       if (req.file) deleteFile(req.file.path);
+      await transaction.rollback();
       return res.status(404).json({ success: false, error: 'Employee not found' });
     }
 
     const updates = req.body;
+
+    // Store old values for compensation tracking
+    const oldValues = {
+      basicSalary: employee.basicSalary,
+      housingAllowance: employee.housingAllowance,
+      positionAllowance: employee.positionAllowance,
+      transportAllowance: employee.transportAllowance,
+      mobileAllowance: employee.mobileAllowance
+    };
 
     // Handle profile picture update if file is uploaded
     let profilePictureUrl = employee.profilePictureUrl;
@@ -433,22 +496,47 @@ exports.updateEmployee = async (req, res) => {
     if (updates.workLocation !== undefined) updateData.workLocation = updates.workLocation;
     if (updates.permanentAddress !== undefined) updateData.permanentAddress = updates.permanentAddress;
     
-    // Compensation & Allowances (NO auto-calculation - use provided values or keep existing)
+    // ==============================================
+    // COMPENSATION & ALLOWANCES
+    // ==============================================
+    
+    let newBasicSalary = oldValues.basicSalary;
+    let newHousingAllowance = oldValues.housingAllowance;
+    let newPositionAllowance = oldValues.positionAllowance;
+    let newTransportAllowance = oldValues.transportAllowance;
+    let newMobileAllowance = oldValues.mobileAllowance;
+    
+    // Basic Salary
     if (updates.basicSalary !== undefined) {
-      updateData.basicSalary = parseFloat(updates.basicSalary);
+      newBasicSalary = parseFloat(updates.basicSalary);
+      updateData.basicSalary = newBasicSalary;
     } else if (updates.salary !== undefined) {
-      updateData.basicSalary = parseFloat(updates.salary);
+      newBasicSalary = parseFloat(updates.salary);
+      updateData.basicSalary = newBasicSalary;
     }
     
-    // Manual allowance updates (use provided values, default to 0 if not provided)
+    // Housing Allowance
     if (updates.housingAllowance !== undefined) {
-      updateData.housingAllowance = parseFloat(updates.housingAllowance) || 0;
+      newHousingAllowance = parseFloat(updates.housingAllowance) || 0;
+      updateData.housingAllowance = newHousingAllowance;
     }
+    
+    // Position Allowance
     if (updates.positionAllowance !== undefined) {
-      updateData.positionAllowance = parseFloat(updates.positionAllowance) || 0;
+      newPositionAllowance = parseFloat(updates.positionAllowance) || 0;
+      updateData.positionAllowance = newPositionAllowance;
     }
+    
+    // Transport Allowance
     if (updates.transportAllowance !== undefined) {
-      updateData.transportAllowance = parseFloat(updates.transportAllowance) || 0;
+      newTransportAllowance = parseFloat(updates.transportAllowance) || 0;
+      updateData.transportAllowance = newTransportAllowance;
+    }
+    
+    // Mobile Allowance
+    if (updates.mobileAllowance !== undefined) {
+      newMobileAllowance = parseFloat(updates.mobileAllowance) || 0;
+      updateData.mobileAllowance = newMobileAllowance;
     }
     
     // Set complex objects
@@ -457,20 +545,140 @@ exports.updateEmployee = async (req, res) => {
     updateData.emergencyContact = emergencyContact;
     if (profilePictureUrl !== employee.profilePictureUrl) updateData.profilePictureUrl = profilePictureUrl;
 
-    await employee.update(updateData);
+    // Update employee
+    await employee.update(updateData, { transaction });
+
+    // ==============================================
+    // LOG COMPENSATION CHANGES TO HISTORY TABLE
+    // ONLY IF THERE IS AN ACTUAL CHANGE
+    // ==============================================
+    const userId = req.user?.userId;
+    const changes = [];
+
+    // Helper function to compare if values actually changed
+    const hasChanged = (oldVal, newVal) => {
+      const oldNum = parseFloat(oldVal) || 0;
+      const newNum = parseFloat(newVal) || 0;
+      return oldNum !== newNum;
+    };
+
+    // Helper function to safely calculate percentage change (prevents Infinity)
+    const calculateChangePercent = (oldVal, newVal) => {
+      const oldNum = parseFloat(oldVal) || 0;
+      const newNum = parseFloat(newVal) || 0;
+      
+      // If old value is 0, percentage change is 100% if new > 0, or 0 if new is also 0
+      if (oldNum === 0) {
+        return newNum > 0 ? 100 : 0;
+      }
+      
+      return ((newNum - oldNum) / oldNum) * 100;
+    };
+
+    // Check Basic Salary change
+    if (hasChanged(oldValues.basicSalary, newBasicSalary)) {
+      const changePercent = calculateChangePercent(oldValues.basicSalary, newBasicSalary);
+      
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Basic Salary',
+        old_value: oldValues.basicSalary,
+        new_value: newBasicSalary,
+        change_percent: changePercent,
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Basic salary updated from ${oldValues.basicSalary} to ${newBasicSalary}`,
+        approved_by: userId
+      }, { transaction });
+      
+      changes.push('Basic Salary');
+    }
+    
+    // Check Housing Allowance change
+    if (hasChanged(oldValues.housingAllowance, newHousingAllowance)) {
+      const changePercent = calculateChangePercent(oldValues.housingAllowance, newHousingAllowance);
+      
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Housing Allowance',
+        old_value: oldValues.housingAllowance,
+        new_value: newHousingAllowance,
+        change_percent: changePercent,
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Housing allowance updated from ${oldValues.housingAllowance} to ${newHousingAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      
+      changes.push('Housing Allowance');
+    }
+    
+    // Check Position Allowance change
+    if (hasChanged(oldValues.positionAllowance, newPositionAllowance)) {
+      const changePercent = calculateChangePercent(oldValues.positionAllowance, newPositionAllowance);
+      
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Position Allowance',
+        old_value: oldValues.positionAllowance,
+        new_value: newPositionAllowance,
+        change_percent: changePercent,
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Position allowance updated from ${oldValues.positionAllowance} to ${newPositionAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      
+      changes.push('Position Allowance');
+    }
+    
+    // Check Transport Allowance change
+    if (hasChanged(oldValues.transportAllowance, newTransportAllowance)) {
+      const changePercent = calculateChangePercent(oldValues.transportAllowance, newTransportAllowance);
+      
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Transport Allowance',
+        old_value: oldValues.transportAllowance,
+        new_value: newTransportAllowance,
+        change_percent: changePercent,
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Transport allowance updated from ${oldValues.transportAllowance} to ${newTransportAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      
+      changes.push('Transport Allowance');
+    }
+    
+    // Check Mobile Allowance change
+    if (hasChanged(oldValues.mobileAllowance, newMobileAllowance)) {
+      const changePercent = calculateChangePercent(oldValues.mobileAllowance, newMobileAllowance);
+      
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Mobile Allowance',
+        old_value: oldValues.mobileAllowance,
+        new_value: newMobileAllowance,
+        change_percent: changePercent,
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Mobile allowance updated from ${oldValues.mobileAllowance} to ${newMobileAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      
+      changes.push('Mobile Allowance');
+    }
 
     // Also update User's email and fullName if changed
     if (updates.email || updates.firstName || updates.lastName) {
-      const user = await User.findByPk(employee.userId);
+      const user = await User.findByPk(employee.userId, { transaction });
       if (user) {
         const userUpdates = {};
         if (updates.email) userUpdates.email = updates.email;
         if (updates.firstName || updates.lastName) {
           userUpdates.fullName = `${updates.firstName || employee.firstName} ${updates.lastName || employee.lastName}`;
         }
-        await user.update(userUpdates);
+        await user.update(userUpdates, { transaction });
       }
     }
+
+    await transaction.commit();
 
     // Fetch updated employee data
     const updatedEmployee = await Employee.findByPk(id, {
@@ -484,11 +692,20 @@ exports.updateEmployee = async (req, res) => {
     const housing = parseFloat(updatedEmployee.housingAllowance) || 0;
     const position = parseFloat(updatedEmployee.positionAllowance) || 0;
     const transport = parseFloat(updatedEmployee.transportAllowance) || 0;
-    const totalAllowances = housing + position + transport;
+    const mobile = parseFloat(updatedEmployee.mobileAllowance) || 0;
+    const totalAllowances = housing + position + transport + mobile;
+
+    // Build response message
+    let message = 'Employee updated successfully';
+    if (changes.length > 0) {
+      message += ` and ${changes.join(', ')} change(s) logged to compensation history`;
+    } else {
+      message += ' (no compensation changes detected)';
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Employee updated successfully',
+      message: message,
       data: { 
         id: updatedEmployee.employeeId,
         employeeId: updatedEmployee.employeeCode,
@@ -499,12 +716,15 @@ exports.updateEmployee = async (req, res) => {
           housing: housing,
           position: position,
           transport: transport,
+          mobile: mobile,
           total: totalAllowances
-        }
+        },
+        changesLogged: changes
       }
     });
     
   } catch (error) {
+    await transaction.rollback();
     if (req.file) deleteFile(req.file.path);
     console.error('Update employee error:', error);
     res.status(500).json({ 
@@ -975,7 +1195,7 @@ exports.getEmployees = async (req, res) => {
       attributes: [
         'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName',
         'workEmail', 'phoneNumber', 'employmentType', 'employmentStatus',
-        'hireDate', 'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId'
+        'hireDate', 'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId', 'mobileAllowance'
       ],
       include: [
         { 
@@ -1021,6 +1241,7 @@ exports.getEmployees = async (req, res) => {
       status: emp.employmentStatus,
       hireDate: emp.hireDate,
       salary: emp.basicSalary,
+      mobileAllowance: emp.mobileAllowance,
       profilePictureUrl: emp.profilePictureUrl,
       managerName: emp.manager ? `${emp.manager.firstName} ${emp.manager.lastName}` : null
     }));
@@ -1075,7 +1296,7 @@ exports.getEmployeeById = async (req, res) => {
         'currentAddress', 'permanentAddress', 'departmentId', 'positionId',
         'managerId', 'employmentType', 'employmentStatus', 'hireDate',
         'confirmationDate', 'terminationDate', 'basicSalary',
-        'housingAllowance', 'positionAllowance', 'transportAllowance',
+        'housingAllowance', 'positionAllowance', 'transportAllowance','mobileAllowance',
         'bankAccount', 'workLocation', 'profilePictureUrl', 'isActive'
       ],
       include: [
@@ -1165,7 +1386,8 @@ exports.getEmployeeById = async (req, res) => {
     const housingAllowance = parseFloat(employee.housingAllowance) || 0;
     const positionAllowance = parseFloat(employee.positionAllowance) || 0;
     const transportAllowance = parseFloat(employee.transportAllowance) || 0;
-    const totalAllowances = housingAllowance + positionAllowance + transportAllowance;
+    const mobileAllowance = parseFloat(employee.mobileAllowance) || 0; 
+    const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
     const grossPay = (parseFloat(employee.basicSalary) || 0) + totalAllowances;
 
     res.status(200).json({
@@ -1213,6 +1435,7 @@ exports.getEmployeeById = async (req, res) => {
         housingAllowance: housingAllowance,
         positionAllowance: positionAllowance,
         transportAllowance: transportAllowance,
+        mobileAllowance: mobileAllowance,
         totalAllowances: totalAllowances,
         grossPay: grossPay,
         
@@ -1510,10 +1733,14 @@ exports.getHiringTrends = async (req, res) => {
 // ============================================================================
 // 3. DEPARTMENT DISTRIBUTION
 // ============================================================================
+// ============================================================================
+// 3. DEPARTMENT DISTRIBUTION (WITH PAGINATION)
+// ============================================================================
 exports.getDepartmentDistribution = async (req, res) => {
   try {
-   
-
+    const { page = 1, limit = 20, departmentFilter } = req.query;
+    
+    // Get department stats (overview - no pagination needed)
     const departmentStats = await Employee.findAll({
       attributes: [
         'departmentId',
@@ -1533,14 +1760,26 @@ exports.getDepartmentDistribution = async (req, res) => {
       percentage: totalActive > 0 ? ((parseInt(stat.dataValues.count) / totalActive) * 100).toFixed(1) : '0'
     }));
 
-    // Get employees by department
-    const employeesList = await Employee.findAll({
-      where: { employmentStatus: 'active' },
+    // Build filter for employees list
+    let whereCondition = { employmentStatus: 'active' };
+    if (departmentFilter && departmentFilter !== 'all') {
+      whereCondition.departmentId = parseInt(departmentFilter);
+    }
+
+    // Get paginated employees list
+    const { limit: queryLimit, offset } = getPagination(page, limit, 20, 100);
+    
+    const { count, rows: employeesList } = await Employee.findAndCountAll({
+      where: whereCondition,
       attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'workEmail', 'departmentId'],
       include: [{ model: Department, attributes: ['name'] }],
-      order: [['departmentId', 'ASC'], ['firstName', 'ASC']]
+      order: [['departmentId', 'ASC'], ['firstName', 'ASC']],
+      limit: queryLimit,
+      offset: offset,
+      distinct: true
     });
 
+    // Format employees by department for the paginated list
     const employeesByDepartment = {};
     employeesList.forEach(emp => {
       const deptName = emp.Department?.name || 'Unknown';
@@ -1553,9 +1792,23 @@ exports.getDepartmentDistribution = async (req, res) => {
       });
     });
 
+    const totalPages = Math.ceil(count / queryLimit);
+    const currentPage = parseInt(page);
+
     res.json({
       success: true,
-      data: { departments, employeesByDepartment }
+      data: {
+        departments, // Summary stats
+        employeesByDepartment, // Paginated employees
+        pagination: {
+          total: count,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages: totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      }
     });
   } catch (error) {
     console.error('Get department distribution error:', error);
@@ -1563,13 +1816,15 @@ exports.getDepartmentDistribution = async (req, res) => {
   }
 };
 
+
 // ============================================================================
-// 4. EMPLOYMENT TYPE DISTRIBUTION
+// 4. EMPLOYMENT TYPE DISTRIBUTION (WITH PAGINATION & FILTER)
 // ============================================================================
 exports.getEmploymentTypeDistribution = async (req, res) => {
   try {
-  
+    const { page = 1, limit = 20, employmentTypeFilter = 'all' } = req.query;
 
+    // Get type stats (overview - no pagination needed)
     const typeStats = await Employee.findAll({
       attributes: [
         'employmentType',
@@ -1587,13 +1842,26 @@ exports.getEmploymentTypeDistribution = async (req, res) => {
       percentage: totalActive > 0 ? ((parseInt(stat.dataValues.count) / totalActive) * 100).toFixed(1) : '0'
     }));
 
-    // Get employees by employment type
-    const employeesList = await Employee.findAll({
-      where: { employmentStatus: 'active' },
+    // Build filter for employees list
+    let whereCondition = { employmentStatus: 'active' };
+    if (employmentTypeFilter && employmentTypeFilter !== 'all') {
+      whereCondition.employmentType = employmentTypeFilter;
+    }
+
+    // Get paginated employees list
+    const { limit: queryLimit, offset } = getPagination(page, limit, 20, 100);
+    
+    const { count, rows: employeesList } = await Employee.findAndCountAll({
+      where: whereCondition,
       attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'workEmail', 'employmentType'],
-      order: [['employmentType', 'ASC'], ['firstName', 'ASC']]
+      include: [{ model: Department, attributes: ['name'] }],
+      order: [['employmentType', 'ASC'], ['firstName', 'ASC']],
+      limit: queryLimit,
+      offset: offset,
+      distinct: true
     });
 
+    // Format employees by type for the paginated list
     const employeesByType = {};
     employeesList.forEach(emp => {
       const type = emp.employmentType || 'Unknown';
@@ -1602,13 +1870,28 @@ exports.getEmploymentTypeDistribution = async (req, res) => {
         id: emp.employeeId,
         employeeId: emp.employeeCode,
         fullName: `${emp.firstName} ${emp.lastName}`,
-        email: emp.workEmail
+        email: emp.workEmail,
+        department: emp.Department?.name || 'Unknown'
       });
     });
 
+    const totalPages = Math.ceil(count / queryLimit);
+    const currentPage = parseInt(page);
+
     res.json({
       success: true,
-      data: { types, employeesByType }
+      data: {
+        types, // Summary stats
+        employeesByType, // Paginated employees
+        pagination: {
+          total: count,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages: totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      }
     });
   } catch (error) {
     console.error('Get employment type distribution error:', error);
@@ -1667,14 +1950,14 @@ exports.getRecentHires = async (req, res) => {
   }
 };
 
+
 // ============================================================================
-// 6. SALARY ANALYSIS
+// 6. SALARY ANALYSIS (WITH PAGINATION FOR EMPLOYEE LIST)
 // ============================================================================
 exports.getSalaryAnalysis = async (req, res) => {
   try {
-   
+    const { departmentId, page = 1, limit = 20, salaryRange } = req.query;
 
-    const { departmentId } = req.query;
     let deptCondition = '';
     if (departmentId && departmentId !== 'all') {
       deptCondition = `AND department_id = ${parseInt(departmentId)}`;
@@ -1726,8 +2009,8 @@ exports.getSalaryAnalysis = async (req, res) => {
       ORDER BY MIN(basic_salary)
     `, { type: sequelize.QueryTypes.SELECT });
 
-    // Highest Paid
-    const highestPaid = await sequelize.query(`
+    // Highest Paid (with pagination)
+    const highestPaidQuery = `
       SELECT 
         e.employee_id,
         e.employee_code,
@@ -1738,8 +2021,61 @@ exports.getSalaryAnalysis = async (req, res) => {
       LEFT JOIN departments d ON e.department_id = d.department_id
       WHERE e.employment_status = 'active' AND e.basic_salary > 0 ${deptCondition}
       ORDER BY e.basic_salary DESC
-      LIMIT 10
-    `, { type: sequelize.QueryTypes.SELECT });
+    `;
+    
+    // Apply salary range filter if provided
+    let salaryRangeCondition = '';
+    if (salaryRange && salaryRange !== 'all') {
+      switch(salaryRange) {
+        case 'Under 5K':
+          salaryRangeCondition = 'AND e.basic_salary < 5000';
+          break;
+        case '5K - 10K':
+          salaryRangeCondition = 'AND e.basic_salary BETWEEN 5000 AND 10000';
+          break;
+        case '10K - 20K':
+          salaryRangeCondition = 'AND e.basic_salary BETWEEN 10001 AND 20000';
+          break;
+        case '20K - 30K':
+          salaryRangeCondition = 'AND e.basic_salary BETWEEN 20001 AND 30000';
+          break;
+        case '30K - 50K':
+          salaryRangeCondition = 'AND e.basic_salary BETWEEN 30001 AND 50000';
+          break;
+        case '50K - 75K':
+          salaryRangeCondition = 'AND e.basic_salary BETWEEN 50001 AND 75000';
+          break;
+        case '75K+':
+          salaryRangeCondition = 'AND e.basic_salary > 75000';
+          break;
+      }
+    }
+    
+    const { limit: queryLimit, offset } = getPagination(page, limit, 20, 100);
+    
+    const paginatedHighestPaidQuery = `
+      ${highestPaidQuery}
+      ${salaryRangeCondition}
+      LIMIT ${queryLimit} OFFSET ${offset}
+    `;
+    
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM employees e
+      WHERE e.employment_status = 'active' AND e.basic_salary > 0 ${deptCondition} ${salaryRangeCondition}
+    `;
+    
+    const highestPaid = await sequelize.query(paginatedHighestPaidQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+    
+    const countResult = await sequelize.query(countQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+    
+    const total = parseInt(countResult[0]?.total || 0);
+    const totalPages = Math.ceil(total / queryLimit);
+    const currentPage = parseInt(page);
 
     res.json({
       success: true,
@@ -1747,7 +2083,15 @@ exports.getSalaryAnalysis = async (req, res) => {
         overview: salaryOverview[0] || {},
         byDepartment: salaryByDepartment,
         distribution: salaryDistribution,
-        highestPaid
+        highestPaid,
+        pagination: {
+          total: total,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages: totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
       }
     });
   } catch (error) {
@@ -1755,142 +2099,202 @@ exports.getSalaryAnalysis = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 // ============================================================================
-// 7. DOCUMENT COMPLIANCE
+// 7. DOCUMENT COMPLIANCE - REDESIGNED VERSION
 // ============================================================================
 exports.getDocumentCompliance = async (req, res) => {
   try {
-   
-
     const { documentType, departmentId, guaranteeMonths } = req.query;
-    const oldGuaranteeMonths = guaranteeMonths ? Math.min(parseInt(guaranteeMonths), 60) : 6;
 
-    let deptCondition = '';
     let deptWhere = {};
     if (departmentId && departmentId !== 'all') {
-      deptCondition = `AND e.department_id = ${parseInt(departmentId)}`;
       deptWhere.departmentId = parseInt(departmentId);
     }
 
-    // Get active employees
     const activeEmployees = await Employee.findAll({
       where: { employmentStatus: 'active', ...deptWhere },
       attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'workEmail', 'departmentId'],
-      include: [{ model: Department, attributes: ['name'] }]
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] },
+        { 
+          model: EmployeeDocument,
+          as: 'EmployeeDocuments',
+          required: false,
+          separate: true
+        }
+      ]
     });
 
-    const employeeIds = activeEmployees.map(emp => emp.employeeId);
-    
-    // Get all documents
-    const allDocuments = await EmployeeDocument.findAll({
-      where: {
-        employeeId: { [Op.in]: employeeIds },
-        documentType: { [Op.in]: ['guarantee_letter', 'id_card', 'cv', 'degree'] }
-      },
-      attributes: ['employeeId', 'documentType']
-    });
-
-    // Map documents to employees
-    const employeeDocsMap = {};
-    allDocuments.forEach(doc => {
-      if (!employeeDocsMap[doc.employeeId]) employeeDocsMap[doc.employeeId] = new Set();
-      employeeDocsMap[doc.employeeId].add(doc.documentType);
-    });
-
-    const requiredDocs = ['guarantee_letter', 'id_card', 'cv', 'degree'];
-    const docLabels = {
-      'guarantee_letter': 'Guarantee Letter',
-      'id_card': 'ID Card',
-      'cv': 'CV/Resume',
-      'degree': 'Degree/Certificate'
+    const result = {
+      id_card: { submitted: [], missing: [] },
+      cv: { submitted: [], missing: [] },
+      degree: { submitted: [], missing: [] },
+      guarantee_letter: { all: [], missing: [], needSecond: [], withTwo: [] },
+      summary: {
+        activeEmployees: activeEmployees.length,
+        fullyCompliant: 0,
+        missingDocuments: 0,
+        complianceRate: '0'
+      }
     };
 
-    // Calculate compliance per document type
-    const docCompliance = {};
-    requiredDocs.forEach(docType => {
-      const submitted = allDocuments.filter(d => d.documentType === docType).length;
-      docCompliance[docType] = {
-        submitted,
-        pending: activeEmployees.length - submitted,
-        submissionRate: activeEmployees.length ? ((submitted / activeEmployees.length) * 100).toFixed(1) : '0'
-      };
-    });
-
-    // Find employees with missing documents
-    let employeesWithMissingDocs = [];
     let fullyCompliantCount = 0;
 
     activeEmployees.forEach(emp => {
-      const docs = employeeDocsMap[emp.employeeId] || new Set();
-      const missingDocs = requiredDocs.filter(doc => !docs.has(doc));
+      const employeeData = {
+        id: emp.employeeId,
+        employeeId: emp.employeeCode,
+        fullName: `${emp.firstName} ${emp.lastName}`,
+        department: emp.Department?.name || 'Unknown',
+        position: emp.Position?.title || 'Unknown',
+        email: emp.workEmail
+      };
+
+      const allDocs = emp.EmployeeDocuments || [];
       
-      if (missingDocs.length === 0) {
-        fullyCompliantCount++;
-      }
-      
-      let shouldInclude = missingDocs.length > 0;
-      if (documentType && documentType !== 'all') {
-        shouldInclude = shouldInclude && missingDocs.includes(documentType);
-      }
-      
-      if (shouldInclude) {
-        employeesWithMissingDocs.push({
-          id: emp.employeeId,
-          employeeId: emp.employeeCode,
-          fullName: `${emp.firstName} ${emp.lastName}`,
-          email: emp.workEmail,
-          department: emp.Department?.name || 'Unknown',
-          missingList: missingDocs.map(d => docLabels[d]).join(', ')
+      // Process ID Card
+      const idCard = allDocs.find(d => d.documentType === 'id_card');
+      if (idCard) {
+        const monthsOld = calculateMonthsOld(idCard.created_at);
+        result.id_card.submitted.push({
+          ...employeeData,
+          submittedDate: idCard.created_at,
+          monthsOld: monthsOld,
+          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
         });
+      } else {
+        result.id_card.missing.push({
+          ...employeeData,
+          status: 'missing'  // ✅ ADD STATUS
+        });
+      }
+
+      // Process CV
+      const cv = allDocs.find(d => d.documentType === 'cv');
+      if (cv) {
+        const monthsOld = calculateMonthsOld(cv.created_at);
+        result.cv.submitted.push({
+          ...employeeData,
+          submittedDate: cv.created_at,
+          monthsOld: monthsOld,
+          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
+        });
+      } else {
+        result.cv.missing.push({
+          ...employeeData,
+          status: 'missing'  // ✅ ADD STATUS
+        });
+      }
+
+      // Process Degree
+      const degree = allDocs.find(d => d.documentType === 'degree');
+      if (degree) {
+        const monthsOld = calculateMonthsOld(degree.created_at);
+        result.degree.submitted.push({
+          ...employeeData,
+          submittedDate: degree.created_at,
+          monthsOld: monthsOld,
+          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
+        });
+      } else {
+        result.degree.missing.push({
+          ...employeeData,
+          status: 'missing'  // ✅ ADD STATUS
+        });
+      }
+
+      // Process Guarantee Letters
+      const guarantees = allDocs.filter(d => d.documentType === 'guarantee_letter');
+      const guaranteeCount = guarantees.length;
+      const latestGuarantee = guarantees[0];
+      const latestAge = latestGuarantee ? calculateMonthsOld(latestGuarantee.created_at) : null;
+      
+      const guaranteeData = {
+        ...employeeData,
+        guaranteeCount: guaranteeCount,
+        latestDate: latestGuarantee?.created_at || null,
+        latestAge: latestAge,
+        status: getGuaranteeStatus(guaranteeCount, latestAge),  // ✅ ADD STATUS
+        guarantees: guarantees.map(g => ({
+          id: g.documentId,
+          submittedDate: g.created_at,
+          monthsOld: calculateMonthsOld(g.created_at)
+        }))
+      };
+
+      result.guarantee_letter.all.push(guaranteeData);
+      
+      if (guaranteeCount === 0) {
+        result.guarantee_letter.missing.push(guaranteeData);
+      }
+      if (guaranteeCount === 1) {
+        result.guarantee_letter.needSecond.push(guaranteeData);
+      }
+      if (guaranteeCount >= 2) {
+        result.guarantee_letter.withTwo.push(guaranteeData);
+      }
+
+      // Check if fully compliant
+      const hasAllDocuments = idCard && cv && degree && guaranteeCount >= 2;
+      if (hasAllDocuments) {
+        fullyCompliantCount++;
       }
     });
 
-    // Old guarantee alerts
-    const oldGuaranteeAlerts = await sequelize.query(`
-      SELECT 
-        e.employee_id,
-        e.employee_code,
-        e.first_name,
-        e.last_name,
-        d.name as department_name,
-        ed.created_at as submitted_date,
-        EXTRACT(MONTH FROM AGE(NOW(), ed.created_at)) + (EXTRACT(YEAR FROM AGE(NOW(), ed.created_at)) * 12) as months_old,
-        CASE 
-          WHEN EXTRACT(MONTH FROM AGE(NOW(), ed.created_at)) + (EXTRACT(YEAR FROM AGE(NOW(), ed.created_at)) * 12) >= 12 THEN 'critical'
-          WHEN EXTRACT(MONTH FROM AGE(NOW(), ed.created_at)) + (EXTRACT(YEAR FROM AGE(NOW(), ed.created_at)) * 12) >= 9 THEN 'warning'
-          WHEN EXTRACT(MONTH FROM AGE(NOW(), ed.created_at)) + (EXTRACT(YEAR FROM AGE(NOW(), ed.created_at)) * 12) >= 6 THEN 'attention'
-          ELSE 'ok'
-        END as urgency_level
-      FROM employee_documents ed
-      INNER JOIN employees e ON ed.employee_id = e.employee_id
-      LEFT JOIN departments d ON e.department_id = d.department_id
-      WHERE ed.document_type = 'guarantee_letter'
-        AND e.employment_status = 'active'
-        AND ed.created_at <= NOW() - INTERVAL '${oldGuaranteeMonths} months'
-        ${deptCondition}
-      ORDER BY ed.created_at ASC
-    `, { type: sequelize.QueryTypes.SELECT });
+    const complianceRate = activeEmployees.length > 0 
+      ? ((fullyCompliantCount / activeEmployees.length) * 100).toFixed(1) 
+      : '0';
+
+    result.summary = {
+      activeEmployees: activeEmployees.length,
+      fullyCompliant: fullyCompliantCount,
+      missingDocuments: activeEmployees.length - fullyCompliantCount,
+      complianceRate: complianceRate
+    };
 
     res.json({
       success: true,
-      data: {
-        summary: {
-          activeEmployees: activeEmployees.length,
-          fullyCompliant: fullyCompliantCount,
-          missingDocuments: employeesWithMissingDocs.length,
-          complianceRate: activeEmployees.length ? ((fullyCompliantCount / activeEmployees.length) * 100).toFixed(1) + '%' : '0%'
-        },
-        byDocumentType: docCompliance,
-        employeesWithMissingDocs,
-        oldGuaranteeAlerts
-      }
+      data: result
     });
+
   } catch (error) {
     console.error('Get document compliance error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// Helper function for document status
+function getDocumentStatus(monthsOld) {
+  if (!monthsOld && monthsOld !== 0) return 'missing';
+  if (monthsOld > 12) return 'expired';
+  if (monthsOld > 6) return 'expiring_soon';
+  if (monthsOld > 3) return 'recent';
+  return 'valid';
+}
+
+// Helper function for guarantee status
+function getGuaranteeStatus(guaranteeCount, latestAge) {
+  if (guaranteeCount === 0) return 'no_guarantee';
+  if (guaranteeCount === 1) return 'need_second';
+  if (guaranteeCount >= 2) {
+    if (latestAge > 12) return 'expired';
+    if (latestAge > 6) return 'expiring_soon';
+    return 'compliant';
+  }
+  return 'unknown';
+}
+
+function calculateMonthsOld(date) {
+  const diff = new Date() - new Date(date);
+  return Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
+}
+
+function calculateMonthsOld(date) {
+  const diff = new Date() - new Date(date);
+  return Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
+}
+
 
 
 
@@ -1993,6 +2397,10 @@ exports.importEmployees = async (req, res) => {
           ? parseFloat(empData.transportAllowance) 
           : 0;
 
+        const mobileAllowance = empData.mobileAllowance !== undefined && empData.mobileAllowance !== ''  
+          ? parseFloat(empData.mobileAllowance) 
+          : 0;
+
         // Parse optional JSON fields
         let emergencyContact = {};
         let bankAccount = {};
@@ -2041,6 +2449,7 @@ exports.importEmployees = async (req, res) => {
           housingAllowance: housingAllowance,
           positionAllowance: positionAllowance,
           transportAllowance: transportAllowance,
+          mobileAllowance: mobileAllowance,
           currentAddress: empData.address ? { street: empData.address } : {},
           workLocation: empData.workLocation || null,
           emergencyContact: emergencyContact,
@@ -2050,7 +2459,7 @@ exports.importEmployees = async (req, res) => {
         });
 
         // Calculate total allowances for response
-        const totalAllowances = housingAllowance + positionAllowance + transportAllowance;
+        const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
 
         results.success.push({
           id: employee.employeeId,
@@ -2062,6 +2471,7 @@ exports.importEmployees = async (req, res) => {
             housing: housingAllowance,
             position: positionAllowance,
             transport: transportAllowance,
+              mobile: mobileAllowance,
             total: totalAllowances
           },
           grossPay: basicSalary + totalAllowances,
@@ -2091,3 +2501,182 @@ exports.importEmployees = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+
+
+
+
+// ==================== GET EMPLOYEE COMPENSATION HISTORY ====================
+exports.getEmployeeCompensationHistory = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    // Use CompensationHistory directly (not db.CompensationHistory)
+    const histories = await CompensationHistory.findAndCountAll({
+      where: { employee_id: employeeId },
+      include: [
+        {
+          model: Employee,
+          as: 'employee',
+          attributes: ['employee_id', 'first_name', 'last_name', 'employee_code']
+        },
+        {
+          model: User,
+          as: 'approver',
+          attributes: ['userId', 'fullName']
+        }
+      ],
+      order: [['effective_date', 'DESC'], ['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    // Format response for frontend
+    const formattedHistories = histories.rows.map(history => ({
+      id: history.history_id,
+      employeeId: history.employee_id,
+      component: history.component_type,
+      oldValue: parseFloat(history.old_value),
+      newValue: parseFloat(history.new_value),
+      percentageChange: parseFloat(history.change_percent),
+      changeDate: history.effective_date,
+      reason: history.reason,
+      submittedBy: history.approver?.fullName || 'System',
+      changeType: history.new_value > history.old_value ? 'increase' : 'decrease',
+      difference: Math.abs(parseFloat(history.new_value) - parseFloat(history.old_value))
+    }));
+
+    res.json({
+      success: true,
+      data: formattedHistories,
+      pagination: {
+        total: histories.count,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        totalPages: Math.ceil(histories.count / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get employee compensation history error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+// ============================================================================
+// 8. GET HIRING DETAILS (HIRED & TERMINATED EMPLOYEES)
+// ============================================================================
+exports.getHiringDetails = async (req, res) => {
+  try {
+    const { departmentId, months } = req.query;
+    
+    console.log('📊 Hiring Details Request:', { departmentId, months });
+    
+    // Build department filter
+    let deptCondition = '';
+    let deptWhere = {};
+    if (departmentId && departmentId !== 'all' && departmentId !== 'null' && departmentId !== 'undefined') {
+      const deptId = parseInt(departmentId);
+      deptCondition = `AND e.department_id = ${deptId}`;
+      deptWhere.departmentId = deptId;
+    }
+
+    // Determine date range
+    let dateConditionHired = '';
+    let dateConditionTerminated = '';
+    let isAllTime = false;
+    
+    if (months && months !== 'all' && months !== 'undefined' && months !== 'null') {
+      const monthsValue = parseInt(months);
+      if (!isNaN(monthsValue)) {
+        dateConditionHired = `AND e.hire_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'`;
+        dateConditionTerminated = `AND e.termination_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'`;
+      } else {
+        isAllTime = true;
+      }
+    } else {
+      isAllTime = true;
+    }
+    
+    console.log('📊 Is All Time:', isAllTime);
+    console.log('📊 Department condition:', deptCondition);
+    
+    // Get hired employees
+    let hiredQuery = `
+      SELECT 
+        e.employee_id as id,
+        e.employee_code,
+        CONCAT(e.first_name, ' ', e.last_name) as full_name,
+        COALESCE(d.name, 'Unknown') as department,
+        COALESCE(p.title, 'Unknown') as position,
+        e.hire_date as hireDate,
+        e.work_email as email,
+        e.basic_salary as salary
+      FROM employees e
+      LEFT JOIN departments d ON e.department_id = d.department_id
+      LEFT JOIN positions p ON e.position_id = p.position_id
+      WHERE e.hire_date IS NOT NULL
+        ${deptCondition}
+        ${dateConditionHired}
+      ORDER BY e.hire_date DESC
+    `;
+    
+    // Get terminated employees
+    let terminatedQuery = `
+      SELECT 
+        e.employee_id as id,
+        e.employee_code,
+        CONCAT(e.first_name, ' ', e.last_name) as full_name,
+        COALESCE(d.name, 'Unknown') as department,
+        COALESCE(p.title, 'Unknown') as position,
+        e.termination_date as terminationDate,
+        e.work_email as email,
+        e.basic_salary as salary
+      FROM employees e
+      LEFT JOIN departments d ON e.department_id = d.department_id
+      LEFT JOIN positions p ON e.position_id = p.position_id
+      WHERE e.termination_date IS NOT NULL
+        ${deptCondition}
+        ${dateConditionTerminated}
+      ORDER BY e.termination_date DESC
+    `;
+    
+    console.log('📊 Hired Query:', hiredQuery);
+    console.log('📊 Terminated Query:', terminatedQuery);
+    
+    const hiredEmployees = await sequelize.query(hiredQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+    
+    const terminatedEmployees = await sequelize.query(terminatedQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+    
+    console.log(`📊 Found ${hiredEmployees.length} hired employees`);
+    console.log(`📊 Found ${terminatedEmployees.length} terminated employees`);
+    
+    res.json({
+      success: true,
+      data: {
+        hired: hiredEmployees,
+        terminated: terminatedEmployees,
+        summary: {
+          totalHired: hiredEmployees.length,
+          totalTerminated: terminatedEmployees.length,
+          netGrowth: hiredEmployees.length - terminatedEmployees.length
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Get hiring details error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+

@@ -8,7 +8,7 @@
       </button>
       <div class="logo-section">
    
-        <span class="system-name">SUPER HR</span>
+        <span class="system-name">SUPER SYSTEM</span>
       </div>
     </div>
     

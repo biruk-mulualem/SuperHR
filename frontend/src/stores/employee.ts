@@ -39,6 +39,7 @@ export interface Employee {
   housingAllowance?: number
   positionAllowance?: number
   transportAllowance?: number
+    mobileAllowance?: number 
   totalAllowances?: number
   grossPay?: number
   workLocation?: string
@@ -51,6 +52,7 @@ export interface Employee {
   createdAt?: string
   updatedAt?: string
 }
+
 
 
 // ============================================================================
@@ -264,6 +266,53 @@ export interface PaginatedResponse {
   }
 }
 
+
+// ==================== COMPENSATION HISTORY TYPES ====================
+export interface CompensationHistory {
+  id: number
+  employeeId: number
+  component: string
+  oldValue: number
+  newValue: number
+  percentageChange: number
+  changeDate: string
+  reason: string | null
+  changeType: 'increase' | 'decrease'
+  difference: number
+  submittedBy: string
+}
+
+export interface CompensationHistoryResponse {
+  success: boolean
+  data: CompensationHistory[]
+  pagination?: {
+    total: number
+    limit: number
+    offset: number
+    totalPages: number
+  }
+  error?: string
+}
+
+export interface CreateCompensationHistoryParams {
+  employee_id: number
+  component_type: string
+  old_value: number
+  new_value: number
+  change_percent?: number
+  effective_date?: string
+  reason?: string
+  approved_by?: number
+}
+
+interface HiringDetailsParams {
+  departmentId?: number | null;
+  months?: string | number;
+}
+
+
+
+
 // ============================================================================
 // EMPLOYEE SERVICE
 // ============================================================================
@@ -381,6 +430,7 @@ async createEmployee(employeeData: any) {
       housingAllowance: employeeData.housingAllowance || 0,
       positionAllowance: employeeData.positionAllowance || 0,
       transportAllowance: employeeData.transportAllowance || 0,
+      mobileAllowance: employeeData.mobileAllowance || 0,
       address: employeeData.address,
       workLocation: employeeData.workLocation,
       emergencyContact: employeeData.emergencyContact,
@@ -430,6 +480,7 @@ async updateEmployee(id: number, employeeData: any) {
       housingAllowance: employeeData.housingAllowance || 0,
       positionAllowance: employeeData.positionAllowance || 0,
       transportAllowance: employeeData.transportAllowance || 0,
+      mobileAllowance: employeeData.mobileAllowance || 0,
       workLocation: employeeData.workLocation,
       address: employeeData.address,
       permanentAddress: employeeData.permanentAddress,
@@ -493,7 +544,8 @@ async importEmployees(employees: any[]): Promise<{
       ...emp,
       housingAllowance: emp.housingAllowance,
       positionAllowance: emp.positionAllowance,
-      transportAllowance: emp.transportAllowance
+      transportAllowance: emp.transportAllowance,
+      mobileAllowance: emp.mobileAllowance
     }))
     
     const response = await api.post('/employees/import', { employees: formattedEmployees })
@@ -647,6 +699,110 @@ async getHiringTrends(params?: { departmentId?: string; months?: string }) {
       }
     }
   }
+
+// ============================================================================
+// PAGINATED STATS METHODS (ADD THESE - DON'T DELETE THE OLD ONES)
+// ============================================================================
+
+/**
+ * Get Department Distribution with pagination (FOR MODALS)
+ */
+async getDepartmentDistributionPaginated(params: {
+  page?: number;
+  limit?: number;
+  departmentId?: string;
+  search?: string;
+}) {
+  try {
+    const response = await api.get('/employees/stats/departments', { params })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get department distribution paginated error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch department distribution'
+    }
+  }
+}
+
+/**
+ * Get Employment Type Distribution with pagination (FOR MODALS)
+ */
+async getEmploymentTypeDistributionPaginated(params: {
+  page?: number;
+  limit?: number;
+  employmentTypeFilter?: string;
+  search?: string;
+}) {
+  try {
+    const response = await api.get('/employees/stats/employment-types', { params })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get employment type distribution paginated error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch employment type distribution'
+    }
+  }
+}
+
+/**
+ * Get Salary Analysis with pagination (FOR MODALS)
+ */
+async getSalaryAnalysisPaginated(params: {
+  page?: number;
+  limit?: number;
+  departmentId?: string;
+  salaryRange?: string;
+}) {
+  try {
+    const response = await api.get('/employees/stats/salary', { params })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get salary analysis paginated error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch salary analysis'
+    }
+  }
+}
+
+// Add this method to your EmployeesService class (around line 400-450)
+
+/**
+ * Get Department Employees (alias for getDepartmentDistributionPaginated)
+ * Used in department modal
+ */
+async getDepartmentEmployees(params: {
+  page?: number;
+  limit?: number;
+  departmentId?: string;
+  search?: string;
+}) {
+  try {
+    const response = await api.get('/employees/stats/departments', { params })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get department employees error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch department employees'
+    }
+  }
+}
+
 
   // ============================================================================
   // PROFILE PICTURE
@@ -891,6 +1047,41 @@ async getHiringTrends(params?: { departmentId?: string; months?: string }) {
       }
     }
   }
+
+
+
+  // ==================== COMPENSATION HISTORY METHODS ====================
+
+
+/**
+ * Get compensation history for a specific employee
+ */
+async getEmployeeCompensationHistory(employeeId: number, params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<CompensationHistoryResponse> {
+  try {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    
+    // ✅ FIX: Match the backend route exactly
+    const response = await api.get(`/employees/compensation/employee/${employeeId}?${queryParams.toString()}`);
+    return response.data;
+  } catch (error: any) {
+    console.error('Get employee compensation history error:', error);
+    return {
+      success: false,
+      data: [],
+      error: error.response?.data?.error || 'Failed to fetch employee compensation history'
+    };
+  }
+}
+
+
+getHiringDetails(params: HiringDetailsParams) {
+  return api.get('/employees/stats/hiring-details', { params })
+}
 
   // ============================================================================
   // UTILITY METHODS

@@ -214,6 +214,22 @@
                 <small class="error-text" v-if="validationErrors.transportAllowance">{{ validationErrors.transportAllowance }}</small>
                 <small class="field-hint" v-else>Transport allowance amount (cannot be negative)</small>
               </div>
+
+      <div class="allowance-field" :class="{ 'has-error': validationErrors.mobileAllowance }">
+                <label>Mobile Allowance (ETB)</label>
+                <input 
+                  type="number" 
+                  v-model="form.mobileAllowance" 
+                  @input="validateMobileAllowance"
+                  step="100" 
+                  placeholder="0.00"
+                  :class="{ 'error-input': validationErrors.mobileAllowance }"
+                >
+                <small class="error-text" v-if="validationErrors.mobileAllowance">{{ validationErrors.mobileAllowance }}</small>
+                <small class="field-hint" v-else>Mobile allowance amount (cannot be negative)</small>
+              </div>
+
+
               
               <!-- Allowance Summary -->
               <div class="allowance-summary" v-if="totalAllowances > 0 || basicSalaryAmount > 0">
@@ -232,6 +248,10 @@
                 <div class="summary-row">
                   <span>Transport:</span>
                   <strong>{{ formatCurrency(transportAllowanceAmount) }}</strong>
+                </div>
+                <div class="summary-row">
+                  <span>Mobile:</span>
+                  <strong>{{ formatCurrency(mobileAllowanceAmount) }}</strong>
                 </div>
                 <div class="summary-divider"></div>
                 <div class="summary-row total">
@@ -368,7 +388,8 @@ const validationErrors = ref({
   basicSalary: '',
   housingAllowance: '',
   positionAllowance: '',
-  transportAllowance: ''
+  transportAllowance: '',
+   mobileAllowance: ''
 })
 
 // Dropdown data
@@ -396,7 +417,8 @@ const basicSalaryAmount = computed(() => parseFloat(form.value.basicSalary) || 0
 const housingAllowanceAmount = computed(() => parseFloat(form.value.housingAllowance) || 0)
 const positionAllowanceAmount = computed(() => parseFloat(form.value.positionAllowance) || 0)
 const transportAllowanceAmount = computed(() => parseFloat(form.value.transportAllowance) || 0)
-const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value)
+const mobileAllowanceAmount = computed(() => parseFloat(form.value.mobileAllowance) || 0)
+const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value + mobileAllowanceAmount.value)
 const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
 
 // Form validation - check if all fields are valid
@@ -405,10 +427,12 @@ const isFormValid = computed(() => {
          housingAllowanceAmount.value >= 0 &&
          positionAllowanceAmount.value >= 0 &&
          transportAllowanceAmount.value >= 0 &&
+         mobileAllowanceAmount.value >= 0 &&
          !validationErrors.value.basicSalary &&
          !validationErrors.value.housingAllowance &&
          !validationErrors.value.positionAllowance &&
-         !validationErrors.value.transportAllowance
+         !validationErrors.value.transportAllowance &&
+         !validationErrors.value.mobileAllowance
 })
 
 // Validation functions
@@ -467,6 +491,23 @@ const validateTransportAllowance = () => {
   return true
 }
 
+
+const validateMobileAllowance = () => {
+  const value = parseFloat(form.value.mobileAllowance)
+  if (isNaN(value)) {
+    form.value.mobileAllowance = 0
+    validationErrors.value.mobileAllowance = ''
+    return true
+  }
+  if (value < 0) {
+    validationErrors.value.mobileAllowance = 'Mobile allowance cannot be negative'
+    return false
+  }
+  validationErrors.value.mobileAllowance = ''
+  return true
+}
+
+
 // Computed properties for display
 const getDepartmentName = computed(() => {
   const dept = departments.value.find(d => d.departmentId === form.value.departmentId)
@@ -505,6 +546,7 @@ const form = ref({
   housingAllowance: '',
   positionAllowance: '',
   transportAllowance: '',
+  mobileAllowance: '',
   workLocation: '',
   address: '',
   permanentAddress: '',
@@ -585,7 +627,7 @@ const loadEmployeeData = async () => {
       validateHousingAllowance()
       validatePositionAllowance()
       validateTransportAllowance()
-      
+      validateMobileAllowance()
       if (emp.documents) {
         documents.value = emp.documents
       }
@@ -755,8 +797,9 @@ const saveEmployee = async () => {
   const isHousingValid = validateHousingAllowance()
   const isPositionValid = validatePositionAllowance()
   const isTransportValid = validateTransportAllowance()
+  const isMobileValid = validateMobileAllowance()
   
-  if (!isBasicSalaryValid || !isHousingValid || !isPositionValid || !isTransportValid) {
+  if (!isBasicSalaryValid || !isHousingValid || !isPositionValid || !isTransportValid || !isMobileValid) {
     addToast('Please fix validation errors before saving', 'error')
     return
   }
@@ -794,6 +837,7 @@ const saveEmployee = async () => {
       housingAllowance: form.value.housingAllowance || 0,
       positionAllowance: form.value.positionAllowance || 0,
       transportAllowance: form.value.transportAllowance || 0,
+      mobileAllowance: form.value.mobileAllowance || 0,
       workLocation: form.value.workLocation || null,
       address: form.value.address || null,
       permanentAddress: form.value.permanentAddress || null,

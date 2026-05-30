@@ -1,527 +1,542 @@
-
+// seeders/20250101000000-employees-seed.js
 'use strict';
 const bcrypt = require('bcryptjs');
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    try {
-      console.log('🌱 Starting HR System database seeding...');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('password123', salt);
 
-      // =============================================
-      // 1. CLEAR ALL EXISTING DATA (in correct order)
-      // =============================================
-      console.log('\n🗑️  Clearing existing data...');
-      
-      await queryInterface.sequelize.query('TRUNCATE TABLE "complaints" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "performance_reviews" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "payrolls" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "salaries" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "leave_balances" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "leave_requests" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "attendances" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "employee_documents" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "employees" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "positions" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "departments" RESTART IDENTITY CASCADE');
-      await queryInterface.sequelize.query('TRUNCATE TABLE "roles" RESTART IDENTITY CASCADE');
-      
-      console.log('✅ All existing data cleared');
+    // ==================== DEPARTMENTS ====================
+    await queryInterface.bulkInsert('departments', [
+      { department_id: 1, code: 'IT', name: 'Information Technology', description: 'Software development, infrastructure, and IT support', budget: 5000000, location: '5th Floor, Main Building', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { department_id: 2, code: 'FIN', name: 'Finance', description: 'Financial management, accounting, and treasury', budget: 3000000, location: '3rd Floor, Main Building', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { department_id: 3, code: 'OPS', name: 'Operations', description: 'Daily operations and logistics', budget: 4000000, location: '2nd Floor, Main Building', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { department_id: 4, code: 'HR', name: 'Human Resources', description: 'Recruitment, payroll, and employee relations', budget: 2000000, location: '4th Floor, Main Building', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { department_id: 5, code: 'MKT', name: 'Marketing', description: 'Marketing, branding, and communications', budget: 2500000, location: '6th Floor, Main Building', is_active: true, created_at: new Date(), updated_at: new Date() }
+    ]);
 
-      // =============================================
-      // 2. SEED ROLES
-      // =============================================
-      console.log('\n📋 Seeding roles...');
-      await queryInterface.bulkInsert('roles', [
-        { name: 'admin', description: 'System Administrator - Full system access', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'hr', description: 'HR Manager - Employee management, leave approvals', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'finance', description: 'Finance Officer - Salary and payroll management', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'employee', description: 'Regular Employee - View own data', is_active: true, created_at: new Date(), updated_at: new Date() }
-      ]);
-      console.log('✅ 4 roles seeded');
+    // ==================== POSITIONS ====================
+    await queryInterface.bulkInsert('positions', [
+      { position_id: 1, code: 'CTO', title: 'Chief Technology Officer', department_id: 1, level: 'Executive', min_salary: 50000, max_salary: 80000, requirements: JSON.stringify(['Master\'s degree', '10+ years experience']), responsibilities: JSON.stringify(['Technology strategy', 'Team leadership']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 2, code: 'TL', title: 'Team Lead', department_id: 1, level: 'Senior', min_salary: 35000, max_salary: 55000, requirements: JSON.stringify(['Bachelor\'s degree', '5+ years experience']), responsibilities: JSON.stringify(['Team management', 'Code review']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 3, code: 'SD', title: 'Senior Developer', department_id: 1, level: 'Senior', min_salary: 30000, max_salary: 45000, requirements: JSON.stringify(['Bachelor\'s degree', '5+ years experience']), responsibilities: JSON.stringify(['Development', 'Mentoring']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 4, code: 'DEV', title: 'Developer', department_id: 1, level: 'Mid', min_salary: 18000, max_salary: 30000, requirements: JSON.stringify(['Bachelor\'s degree', '2+ years experience']), responsibilities: JSON.stringify(['Development', 'Testing']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 5, code: 'JDEV', title: 'Junior Developer', department_id: 1, level: 'Junior', min_salary: 10000, max_salary: 18000, requirements: JSON.stringify(['Bachelor\'s degree', 'Entry level']), responsibilities: JSON.stringify(['Development', 'Learning']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 6, code: 'FM', title: 'Finance Manager', department_id: 2, level: 'Senior', min_salary: 35000, max_salary: 55000, requirements: JSON.stringify(['Accounting degree', 'CPA preferred']), responsibilities: JSON.stringify(['Financial planning', 'Reporting']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 7, code: 'ACC', title: 'Accountant', department_id: 2, level: 'Mid', min_salary: 15000, max_salary: 25000, requirements: JSON.stringify(['Accounting degree']), responsibilities: JSON.stringify(['Bookkeeping', 'Reconciliation']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 8, code: 'OM', title: 'Operations Manager', department_id: 3, level: 'Senior', min_salary: 30000, max_salary: 50000, requirements: JSON.stringify(['Bachelor\'s degree', '5+ years experience']), responsibilities: JSON.stringify(['Operations oversight', 'Process improvement']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 9, code: 'CORD', title: 'Coordinator', department_id: 3, level: 'Mid', min_salary: 12000, max_salary: 20000, requirements: JSON.stringify(['Bachelor\'s degree', '2+ years experience']), responsibilities: JSON.stringify(['Coordination', 'Logistics']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 10, code: 'HRM', title: 'HR Manager', department_id: 4, level: 'Senior', min_salary: 30000, max_salary: 50000, requirements: JSON.stringify(['HR degree', '5+ years experience']), responsibilities: JSON.stringify(['HR strategy', 'Employee relations']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 11, code: 'HRG', title: 'HR Generalist', department_id: 4, level: 'Mid', min_salary: 12000, max_salary: 20000, requirements: JSON.stringify(['HR degree', '2+ years experience']), responsibilities: JSON.stringify(['Recruitment', 'Payroll support']), is_active: true, created_at: new Date(), updated_at: new Date() },
+      { position_id: 12, code: 'MM', title: 'Marketing Manager', department_id: 5, level: 'Senior', min_salary: 28000, max_salary: 45000, requirements: JSON.stringify(['Marketing degree', '5+ years experience']), responsibilities: JSON.stringify(['Marketing strategy', 'Campaigns']), is_active: true, created_at: new Date(), updated_at: new Date() }
+    ]);
 
-      // =============================================
-      // 3. SEED DEPARTMENTS
-      // =============================================
-      console.log('\n📋 Seeding departments...');
-      await queryInterface.bulkInsert('departments', [
-        { name: 'Information Technology', code: 'IT', description: 'Software development and IT infrastructure', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'Human Resources', code: 'HR', description: 'Employee relations and talent management', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'Finance', code: 'FIN', description: 'Financial management and accounting', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'Sales', code: 'SALES', description: 'Sales and business development', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'Marketing', code: 'MKT', description: 'Marketing and brand management', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { name: 'Customer Support', code: 'SUPPORT', description: 'Customer service and support', is_active: true, created_at: new Date(), updated_at: new Date() }
-      ]);
-      console.log('✅ 6 departments seeded');
+    // ==================== ROLES ====================
+    await queryInterface.bulkInsert('roles', [
+      { role_id: 1, name: 'admin', description: 'System Administrator - Full access', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { role_id: 2, name: 'hr', description: 'HR Manager - Payroll and employee management', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { role_id: 3, name: 'finance', description: 'Finance - Payment processing and reports', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { role_id: 4, name: 'attendance', description: 'Attendance - Track attendance and penalties', is_active: true, created_at: new Date(), updated_at: new Date() },
+      { role_id: 5, name: 'employee', description: 'Regular employee - View own data only', is_active: true, created_at: new Date(), updated_at: new Date() }
+    ]);
 
-      // =============================================
-      // 4. SEED POSITIONS
-      // =============================================
-      console.log('\n📋 Seeding positions...');
-      await queryInterface.bulkInsert('positions', [
-        { title: 'Software Engineer', code: 'SE', level: 'Senior', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { title: 'HR Generalist', code: 'HRG', level: 'Mid', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { title: 'Finance Analyst', code: 'FA', level: 'Senior', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { title: 'Sales Manager', code: 'SM', level: 'Manager', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { title: 'Marketing Specialist', code: 'MS', level: 'Mid', is_active: true, created_at: new Date(), updated_at: new Date() },
-        { title: 'Support Agent', code: 'SA', level: 'Junior', is_active: true, created_at: new Date(), updated_at: new Date() }
-      ]);
-      console.log('✅ 6 positions seeded');
+    // ==================== USERS ====================
+    await queryInterface.bulkInsert('users', [
+      { user_id: 1, username: 'admin', email: 'admin@superhr.com', password_hash: hashedPassword, full_name: 'System Administrator', role_id: 1, department_id: 1, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 2, username: 'hrmanager', email: 'hr@superhr.com', password_hash: hashedPassword, full_name: 'HR Manager', role_id: 2, department_id: 4, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 3, username: 'finance', email: 'finance@superhr.com', password_hash: hashedPassword, full_name: 'Finance Officer', role_id: 3, department_id: 2, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 4, username: 'attendance', email: 'attendance@superhr.com', password_hash: hashedPassword, full_name: 'Attendance Officer', role_id: 4, department_id: 3, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 5, username: 'biruk', email: 'biruk@superhr.com', password_hash: hashedPassword, full_name: 'Biruk Mulualem', role_id: 5, department_id: 1, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 6, username: 'dagmawi', email: 'dagmawi@superhr.com', password_hash: hashedPassword, full_name: 'Dagmawi Hadgu', role_id: 5, department_id: 1, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 7, username: 'haymanot', email: 'haymanot@superhr.com', password_hash: hashedPassword, full_name: 'Haymanot Abebaw', role_id: 5, department_id: 4, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 8, username: 'melkamu', email: 'melkamu@superhr.com', password_hash: hashedPassword, full_name: 'Melkamu Zewdu', role_id: 5, department_id: 3, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 9, username: 'melaku', email: 'melaku@superhr.com', password_hash: hashedPassword, full_name: 'Melaku Tewodros', role_id: 5, department_id: 2, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 10, username: 'tamrat', email: 'tamrat@superhr.com', password_hash: hashedPassword, full_name: 'Tamrat Zerihun', role_id: 5, department_id: 1, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 11, username: 'nuru', email: 'nuru@superhr.com', password_hash: hashedPassword, full_name: 'Nuru Seid', role_id: 5, department_id: 2, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 12, username: 'tadese', email: 'tadese@superhr.com', password_hash: hashedPassword, full_name: 'Tadese Jemberu', role_id: 5, department_id: 3, is_active: true, created_at: new Date(), updated_at: new Date() },
+      { user_id: 13, username: 'eshete', email: 'eshete@superhr.com', password_hash: hashedPassword, full_name: 'Eshete Worke', role_id: 5, department_id: 1, is_active: true, created_at: new Date(), updated_at: new Date() }
+    ]);
 
-      // =============================================
-      // 5. GET IDs FOR REFERENCES
-      // =============================================
-      const roleMap = {};
-      const roleResults = await queryInterface.sequelize.query(
-        `SELECT role_id, name FROM "roles"`,
-        { type: Sequelize.QueryTypes.SELECT }
-      );
-      roleResults.forEach(r => { roleMap[r.name] = r.role_id; });
-
-      const deptMap = {};
-      const deptResults = await queryInterface.sequelize.query(
-        `SELECT department_id, name FROM "departments"`,
-        { type: Sequelize.QueryTypes.SELECT }
-      );
-      deptResults.forEach(d => { deptMap[d.name] = d.department_id; });
-
-      const positionMap = {};
-      const positionResults = await queryInterface.sequelize.query(
-        `SELECT position_id, title FROM "positions"`,
-        { type: Sequelize.QueryTypes.SELECT }
-      );
-      positionResults.forEach(p => { positionMap[p.title] = p.position_id; });
-
-      // =============================================
-      // 6. SEED USERS
-      // =============================================
-      console.log('\n👥 Seeding users...');
-      const hashedPassword = await bcrypt.hash('password123', 10);
-      
-      await queryInterface.bulkInsert('users', [
-        // Admin
-        { username: 'admin', email: 'admin@hrsystem.com', password_hash: hashedPassword, full_name: 'Alemu Bekele', role_id: roleMap['admin'], department_id: deptMap['Information Technology'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        
-        // HR
-        { username: 'tigist_hr', email: 'tigist.hr@hrsystem.com', password_hash: hashedPassword, full_name: 'Tigist Worku', role_id: roleMap['hr'], department_id: deptMap['Human Resources'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'mekdes_hr', email: 'mekdes.hr@hrsystem.com', password_hash: hashedPassword, full_name: 'Mekdes Ayele', role_id: roleMap['hr'], department_id: deptMap['Human Resources'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        
-        // Finance
-        { username: 'girma_finance', email: 'girma.finance@hrsystem.com', password_hash: hashedPassword, full_name: 'Girma Tadesse', role_id: roleMap['finance'], department_id: deptMap['Finance'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'hiwot_finance', email: 'hiwot.finance@hrsystem.com', password_hash: hashedPassword, full_name: 'Hiwot Tesfaye', role_id: roleMap['finance'], department_id: deptMap['Finance'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        
-        // Employees
-        { username: 'abebe_dev', email: 'abebe.dev@hrsystem.com', password_hash: hashedPassword, full_name: 'Abebe Demissie', role_id: roleMap['employee'], department_id: deptMap['Information Technology'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'azeb_dev', email: 'azeb.dev@hrsystem.com', password_hash: hashedPassword, full_name: 'Azeb Mulugeta', role_id: roleMap['employee'], department_id: deptMap['Information Technology'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'bekele_sales', email: 'bekele.sales@hrsystem.com', password_hash: hashedPassword, full_name: 'Bekele Fikre', role_id: roleMap['employee'], department_id: deptMap['Sales'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'chaltu_sales', email: 'chaltu.sales@hrsystem.com', password_hash: hashedPassword, full_name: 'Chaltu Hassen', role_id: roleMap['employee'], department_id: deptMap['Sales'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'derartu_marketing', email: 'derartu.marketing@hrsystem.com', password_hash: hashedPassword, full_name: 'Derartu Tulu', role_id: roleMap['employee'], department_id: deptMap['Marketing'], is_active: true, created_at: new Date(), updated_at: new Date() },
-        { username: 'eyob_support', email: 'eyob.support@hrsystem.com', password_hash: hashedPassword, full_name: 'Eyob Girma', role_id: roleMap['employee'], department_id: deptMap['Customer Support'], is_active: true, created_at: new Date(), updated_at: new Date() }
-      ]);
-      
-      console.log('✅ 11 users seeded');
-
-      // =============================================
-      // 7. GET USER IDs
-      // =============================================
-      const userMap = {};
-      const userResults = await queryInterface.sequelize.query(
-        `SELECT user_id, username FROM "users"`,
-        { type: Sequelize.QueryTypes.SELECT }
-      );
-      userResults.forEach(u => { userMap[u.username] = u.user_id; });
-
-      // =============================================
-      // 8. SEED EMPLOYEES WITH PROFILE PICTURES
-      // =============================================
-      console.log('\n👔 Seeding employees with profile pictures...');
-      
-      // Working profile picture URLs from randomuser.me API (real working images)
-      const profilePics = [
-        'https://randomuser.me/api/portraits/men/1.jpg',
-        'https://randomuser.me/api/portraits/women/1.jpg',
-        'https://randomuser.me/api/portraits/women/2.jpg',
-        'https://randomuser.me/api/portraits/men/2.jpg',
-        'https://randomuser.me/api/portraits/women/3.jpg',
-        'https://randomuser.me/api/portraits/men/3.jpg',
-        'https://randomuser.me/api/portraits/men/4.jpg',
-        'https://randomuser.me/api/portraits/women/4.jpg',
-        'https://randomuser.me/api/portraits/men/5.jpg',
-        'https://randomuser.me/api/portraits/women/5.jpg',
-        'https://randomuser.me/api/portraits/men/6.jpg',
-        'https://randomuser.me/api/portraits/women/6.jpg',
-        'https://randomuser.me/api/portraits/men/7.jpg',
-        'https://randomuser.me/api/portraits/women/7.jpg',
-        'https://randomuser.me/api/portraits/men/8.jpg',
-        'https://randomuser.me/api/portraits/women/8.jpg',
-        'https://randomuser.me/api/portraits/men/9.jpg',
-        'https://randomuser.me/api/portraits/women/9.jpg',
-        'https://randomuser.me/api/portraits/men/10.jpg',
-        'https://randomuser.me/api/portraits/women/10.jpg'
-      ];
-      
-      await queryInterface.bulkInsert('employees', [
-        // Admin employee
-        { 
-          employee_code: 'EMP001', user_id: userMap['admin'], first_name: 'Alemu', last_name: 'Bekele',
-          date_of_birth: '1985-05-15', gender: 'male', marital_status: 'married', nationality: 'Ethiopian',
-          work_email: 'alemu.bekele@hrsystem.com', phone_number: '+251911000001',
-          department_id: deptMap['Information Technology'], position_id: positionMap['Software Engineer'],
-          hire_date: '2020-01-15', employment_type: 'full-time', employment_status: 'active', basic_salary: 25000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/men/32.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // HR employees
-        { 
-          employee_code: 'EMP002', user_id: userMap['tigist_hr'], first_name: 'Tigist', last_name: 'Worku',
-          date_of_birth: '1990-03-20', gender: 'female', marital_status: 'married', nationality: 'Ethiopian',
-          work_email: 'tigist.worku@hrsystem.com', phone_number: '+251911000002',
-          department_id: deptMap['Human Resources'], position_id: positionMap['HR Generalist'],
-          hire_date: '2021-06-10', employment_type: 'full-time', employment_status: 'active', basic_salary: 18000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/68.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        { 
-          employee_code: 'EMP003', user_id: userMap['mekdes_hr'], first_name: 'Mekdes', last_name: 'Ayele',
-          date_of_birth: '1988-11-08', gender: 'female', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'mekdes.ayele@hrsystem.com', phone_number: '+251911000003',
-          department_id: deptMap['Human Resources'], position_id: positionMap['HR Generalist'],
-          hire_date: '2022-01-20', employment_type: 'full-time', employment_status: 'active', basic_salary: 17000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/45.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // Finance employees
-        { 
-          employee_code: 'EMP004', user_id: userMap['girma_finance'], first_name: 'Girma', last_name: 'Tadesse',
-          date_of_birth: '1982-07-25', gender: 'male', marital_status: 'married', nationality: 'Ethiopian',
-          work_email: 'girma.tadesse@hrsystem.com', phone_number: '+251911000004',
-          department_id: deptMap['Finance'], position_id: positionMap['Finance Analyst'],
-          hire_date: '2019-03-01', employment_type: 'full-time', employment_status: 'active', basic_salary: 22000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/men/52.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        { 
-          employee_code: 'EMP005', user_id: userMap['hiwot_finance'], first_name: 'Hiwot', last_name: 'Tesfaye',
-          date_of_birth: '1992-09-12', gender: 'female', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'hiwot.tesfaye@hrsystem.com', phone_number: '+251911000005',
-          department_id: deptMap['Finance'], position_id: positionMap['Finance Analyst'],
-          hire_date: '2022-08-15', employment_type: 'full-time', employment_status: 'active', basic_salary: 19000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/55.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // IT employees
-        { 
-          employee_code: 'EMP006', user_id: userMap['abebe_dev'], first_name: 'Abebe', last_name: 'Demissie',
-          date_of_birth: '1995-02-18', gender: 'male', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'abebe.demissie@hrsystem.com', phone_number: '+251911000006',
-          department_id: deptMap['Information Technology'], position_id: positionMap['Software Engineer'],
-          hire_date: '2023-01-10', employment_type: 'full-time', employment_status: 'active', basic_salary: 15000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/men/75.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        { 
-          employee_code: 'EMP007', user_id: userMap['azeb_dev'], first_name: 'Azeb', last_name: 'Mulugeta',
-          date_of_birth: '1993-06-22', gender: 'female', marital_status: 'married', nationality: 'Ethiopian',
-          work_email: 'azeb.mulugeta@hrsystem.com', phone_number: '+251911000007',
-          department_id: deptMap['Information Technology'], position_id: positionMap['Software Engineer'],
-          hire_date: '2023-03-15', employment_type: 'full-time', employment_status: 'active', basic_salary: 16000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/82.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // Sales employees
-        { 
-          employee_code: 'EMP008', user_id: userMap['bekele_sales'], first_name: 'Bekele', last_name: 'Fikre',
-          date_of_birth: '1991-10-30', gender: 'male', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'bekele.fikre@hrsystem.com', phone_number: '+251911000008',
-          department_id: deptMap['Sales'], position_id: positionMap['Sales Manager'],
-          hire_date: '2022-05-20', employment_type: 'full-time', employment_status: 'active', basic_salary: 20000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/men/91.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        { 
-          employee_code: 'EMP009', user_id: userMap['chaltu_sales'], first_name: 'Chaltu', last_name: 'Hassen',
-          date_of_birth: '1994-04-05', gender: 'female', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'chaltu.hassen@hrsystem.com', phone_number: '+251911000009',
-          department_id: deptMap['Sales'], position_id: positionMap['Sales Manager'],
-          hire_date: '2023-02-01', employment_type: 'full-time', employment_status: 'active', basic_salary: 18000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/26.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // Marketing employee
-        { 
-          employee_code: 'EMP010', user_id: userMap['derartu_marketing'], first_name: 'Derartu', last_name: 'Tulu',
-          date_of_birth: '1990-12-12', gender: 'female', marital_status: 'married', nationality: 'Ethiopian',
-          work_email: 'derartu.tulu@hrsystem.com', phone_number: '+251911000010',
-          department_id: deptMap['Marketing'], position_id: positionMap['Marketing Specialist'],
-          hire_date: '2022-09-10', employment_type: 'full-time', employment_status: 'active', basic_salary: 17000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/women/33.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        },
-        
-        // Support employee
-        { 
-          employee_code: 'EMP011', user_id: userMap['eyob_support'], first_name: 'Eyob', last_name: 'Girma',
-          date_of_birth: '1996-08-19', gender: 'male', marital_status: 'single', nationality: 'Ethiopian',
-          work_email: 'eyob.girma@hrsystem.com', phone_number: '+251911000011',
-          department_id: deptMap['Customer Support'], position_id: positionMap['Support Agent'],
-          hire_date: '2023-06-01', employment_type: 'full-time', employment_status: 'active', basic_salary: 12000,
-          profile_picture_url: 'https://randomuser.me/api/portraits/men/18.jpg',
-          is_active: true, created_at: new Date(), updated_at: new Date() 
-        }
-      ]);
-      
-      console.log('✅ 11 employees seeded with profile pictures');
-
-      // =============================================
-      // 9. GET EMPLOYEE IDs
-      // =============================================
-      const employeeMap = {};
-      const employeeResults = await queryInterface.sequelize.query(
-        `SELECT employee_id, employee_code FROM "employees"`,
-        { type: Sequelize.QueryTypes.SELECT }
-      );
-      employeeResults.forEach(e => { employeeMap[e.employee_code] = e.employee_id; });
-
-      // =============================================
-      // 10. SEED LEAVE BALANCES
-      // =============================================
-      console.log('\n📅 Seeding leave balances...');
-      const currentYear = new Date().getFullYear();
-      
-      for (const employee of employeeResults) {
-        await queryInterface.bulkInsert('leave_balances', [
-          { 
-            employee_id: employee.employee_id, 
-            year: currentYear, 
-            annual: JSON.stringify({ total: 20, used: 0, remaining: 20 }), 
-            sick: JSON.stringify({ total: 12, used: 0, remaining: 12 }), 
-            casual: JSON.stringify({ total: 10, used: 0, remaining: 10 }), 
-            unpaid: JSON.stringify({ total: 0, used: 0, remaining: 0 }), 
-            carried_over: 0, 
-            created_at: new Date(), 
-            updated_at: new Date() 
-          }
-        ]);
+    // ==================== EMPLOYEES ====================
+    await queryInterface.bulkInsert('employees', [
+      {
+        employee_id: 1,
+        employee_code: 'EMP001',
+        user_id: 5,
+        first_name: 'Biruk',
+        last_name: 'Mulualem',
+        date_of_birth: '1990-05-15',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'biruk.mulualem@email.com',
+        work_email: 'biruk.mulualem@superhr.com',
+        phone_number: '0911000001',
+        emergency_contact: JSON.stringify({ name: 'Wife', phone: '0911000010' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Bole', woreda: '03' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Bole', woreda: '03' }),
+        department_id: 1,
+        position_id: 1,
+        manager_id: null,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2018-01-15',
+        confirmation_date: '2018-07-15',
+        basic_salary: 50000,
+        housing_allowance: 10000,
+        position_allowance: 7500,
+        transport_allowance: 5000,
+        bank_account: JSON.stringify({ bank: 'Commercial Bank of Ethiopia', account: '1000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 2,
+        employee_code: 'EMP002',
+        user_id: 6,
+        first_name: 'Dagmawi',
+        last_name: 'Hadgu',
+        date_of_birth: '1988-03-20',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'dagmawi.hadgu@email.com',
+        work_email: 'dagmawi.hadgu@superhr.com',
+        phone_number: '0911000002',
+        emergency_contact: JSON.stringify({ name: 'Spouse', phone: '0911000011' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kirkos', woreda: '05' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kirkos', woreda: '05' }),
+        department_id: 1,
+        position_id: 2,
+        manager_id: 1,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2019-06-01',
+        confirmation_date: '2019-12-01',
+        basic_salary: 35000,
+        housing_allowance: 7000,
+        position_allowance: 5250,
+        transport_allowance: 3500,
+        bank_account: JSON.stringify({ bank: 'Awash Bank', account: '2000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 3,
+        employee_code: 'EMP003',
+        user_id: 8,
+        first_name: 'Melkamu',
+        last_name: 'Zewdu',
+        date_of_birth: '1992-11-10',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'single',
+        nationality: 'Ethiopian',
+        personal_email: 'melkamu.zewdu@email.com',
+        work_email: 'melkamu.zewdu@superhr.com',
+        phone_number: '0911000003',
+        emergency_contact: JSON.stringify({ name: 'Sister', phone: '0911000012' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Gullele', woreda: '07' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Gullele', woreda: '07' }),
+        department_id: 3,
+        position_id: 8,
+        manager_id: null,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2020-02-10',
+        confirmation_date: '2020-08-10',
+        basic_salary: 28000,
+        housing_allowance: 5600,
+        position_allowance: 4200,
+        transport_allowance: 2800,
+        bank_account: JSON.stringify({ bank: 'Dashen Bank', account: '3000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 4,
+        employee_code: 'EMP004',
+        user_id: 9,
+        first_name: 'Melaku',
+        last_name: 'Tewodros',
+        date_of_birth: '1985-08-25',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'melaku.tewodros@email.com',
+        work_email: 'melaku.tewodros@superhr.com',
+        phone_number: '0911000004',
+        emergency_contact: JSON.stringify({ name: 'Wife', phone: '0911000013' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Yeka', woreda: '12' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Yeka', woreda: '12' }),
+        department_id: 2,
+        position_id: 6,
+        manager_id: null,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2017-04-20',
+        confirmation_date: '2017-10-20',
+        basic_salary: 32000,
+        housing_allowance: 6400,
+        position_allowance: 4800,
+        transport_allowance: 3200,
+        bank_account: JSON.stringify({ bank: 'Commercial Bank of Ethiopia', account: '4000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 5,
+        employee_code: 'EMP005',
+        user_id: 10,
+        first_name: 'Tamrat',
+        last_name: 'Zerihun',
+        date_of_birth: '1995-12-05',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'single',
+        nationality: 'Ethiopian',
+        personal_email: 'tamrat.zerihun@email.com',
+        work_email: 'tamrat.zerihun@superhr.com',
+        phone_number: '0911000005',
+        emergency_contact: JSON.stringify({ name: 'Brother', phone: '0911000014' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kolfe', woreda: '09' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kolfe', woreda: '09' }),
+        department_id: 1,
+        position_id: 4,
+        manager_id: 2,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2021-09-01',
+        confirmation_date: '2022-03-01',
+        basic_salary: 18000,
+        housing_allowance: 3600,
+        position_allowance: 2700,
+        transport_allowance: 1800,
+        bank_account: JSON.stringify({ bank: 'Awash Bank', account: '5000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 6,
+        employee_code: 'EMP006',
+        user_id: 11,
+        first_name: 'Nuru',
+        last_name: 'Seid',
+        date_of_birth: '1993-06-18',
+        shift_type: 'day',
+        gender: 'female',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'nuru.seid@email.com',
+        work_email: 'nuru.seid@superhr.com',
+        phone_number: '0911000006',
+        emergency_contact: JSON.stringify({ name: 'Husband', phone: '0911000015' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Nifas Silk', woreda: '15' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Nifas Silk', woreda: '15' }),
+        department_id: 2,
+        position_id: 7,
+        manager_id: 4,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2020-11-15',
+        confirmation_date: '2021-05-15',
+        basic_salary: 15000,
+        housing_allowance: 3000,
+        position_allowance: 2250,
+        transport_allowance: 1500,
+        bank_account: JSON.stringify({ bank: 'Dashen Bank', account: '6000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 7,
+        employee_code: 'EMP007',
+        user_id: 12,
+        first_name: 'Tadese',
+        last_name: 'Jemberu',
+        date_of_birth: '1994-09-22',
+        shift_type: 'day',
+        gender: 'male',
+        marital_status: 'single',
+        nationality: 'Ethiopian',
+        personal_email: 'tadese.jemberu@email.com',
+        work_email: 'tadese.jemberu@superhr.com',
+        phone_number: '0911000007',
+        emergency_contact: JSON.stringify({ name: 'Mother', phone: '0911000016' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Addis Ketema', woreda: '08' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Addis Ketema', woreda: '08' }),
+        department_id: 3,
+        position_id: 9,
+        manager_id: 3,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2022-01-10',
+        confirmation_date: '2022-07-10',
+        basic_salary: 12000,
+        housing_allowance: 2400,
+        position_allowance: 1800,
+        transport_allowance: 1200,
+        bank_account: JSON.stringify({ bank: 'Commercial Bank of Ethiopia', account: '7000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 8,
+        employee_code: 'EMP008',
+        user_id: 13,
+        first_name: 'Eshete',
+        last_name: 'Worke',
+        date_of_birth: '1991-07-30',
+        shift_type: 'night',
+        gender: 'male',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'eshete.worke@email.com',
+        work_email: 'eshete.worke@superhr.com',
+        phone_number: '0911000008',
+        emergency_contact: JSON.stringify({ name: 'Wife', phone: '0911000017' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Bole', woreda: '04' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Bole', woreda: '04' }),
+        department_id: 1,
+        position_id: 3,
+        manager_id: 2,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2019-03-20',
+        confirmation_date: '2019-09-20',
+        basic_salary: 22000,
+        housing_allowance: 4400,
+        position_allowance: 3300,
+        transport_allowance: 2200,
+        bank_account: JSON.stringify({ bank: 'Awash Bank', account: '8000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        employee_id: 9,
+        employee_code: 'EMP009',
+        user_id: 7,
+        first_name: 'Haymanot',
+        last_name: 'Abebaw',
+        date_of_birth: '1987-02-14',
+        shift_type: 'day',
+        gender: 'female',
+        marital_status: 'married',
+        nationality: 'Ethiopian',
+        personal_email: 'haymanot.abebaw@email.com',
+        work_email: 'haymanot.abebaw@superhr.com',
+        phone_number: '0911000009',
+        emergency_contact: JSON.stringify({ name: 'Husband', phone: '0911000018' }),
+        current_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kirkos', woreda: '02' }),
+        permanent_address: JSON.stringify({ city: 'Addis Ababa', subcity: 'Kirkos', woreda: '02' }),
+        department_id: 4,
+        position_id: 10,
+        manager_id: null,
+        employment_type: 'full-time',
+        employment_status: 'active',
+        hire_date: '2016-08-01',
+        confirmation_date: '2017-02-01',
+        basic_salary: 30000,
+        housing_allowance: 6000,
+        position_allowance: 4500,
+        transport_allowance: 3000,
+        bank_account: JSON.stringify({ bank: 'Dashen Bank', account: '9000001' }),
+        work_location: 'Main Office',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
       }
-      console.log('✅ 11 leave balances seeded');
+    ]);
 
-      // =============================================
-      // 11. SEED ATTENDANCE (Last 30 days)
-      // =============================================
-      console.log('\n📊 Seeding attendance records...');
-      const today = new Date();
-      for (let i = 1; i <= 30; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        
-        for (const employee of employeeResults) {
-          const statuses = ['present', 'present', 'present', 'present', 'late', 'absent'];
-          const status = statuses[Math.floor(Math.random() * statuses.length)];
-          
-          await queryInterface.bulkInsert('attendances', [
-            { 
-              employee_id: employee.employee_id, 
-              date: date, 
-              check_in: status !== 'absent' ? new Date(date.setHours(9, Math.floor(Math.random() * 30), 0)) : null, 
-              check_out: status !== 'absent' ? new Date(date.setHours(17, Math.floor(Math.random() * 30), 0)) : null, 
-              status: status, 
-              late_minutes: status === 'late' ? Math.floor(Math.random() * 60) : 0, 
-              created_at: new Date(), 
-              updated_at: new Date() 
-            }
-          ]);
-        }
+    // ==================== LEAVE TYPES ====================
+    await queryInterface.bulkInsert('leave_types', [
+      { leave_type_id: 1, name: 'Annual Leave', code: 'AL', description: 'Regular annual vacation leave', default_days: 16, is_paid: true, has_fixed_limit: true, is_one_time: false, requires_approval: true, min_notice_days: 7, max_consecutive_days: 30, requires_documentation: false, gender_restriction: 'none', carry_over_limit: 10, carry_over_expiry_years: 2, is_active: true, sort_order: 1, created_at: new Date(), updated_at: new Date() },
+      { leave_type_id: 2, name: 'Sick Leave', code: 'SL', description: 'Medical leave with doctor\'s note', default_days: null, is_paid: true, has_fixed_limit: false, is_one_time: false, requires_approval: false, min_notice_days: 0, max_consecutive_days: 30, requires_documentation: true, gender_restriction: 'none', carry_over_limit: 0, carry_over_expiry_years: 0, is_active: true, sort_order: 2, created_at: new Date(), updated_at: new Date() },
+      { leave_type_id: 3, name: 'Maternity Leave', code: 'ML', description: 'Maternity leave for female employees', default_days: 90, is_paid: true, has_fixed_limit: true, is_one_time: true, requires_approval: true, min_notice_days: 30, max_consecutive_days: 90, requires_documentation: true, gender_restriction: 'female', carry_over_limit: 0, carry_over_expiry_years: 0, is_active: true, sort_order: 3, created_at: new Date(), updated_at: new Date() },
+      { leave_type_id: 4, name: 'Paternity Leave', code: 'PL', description: 'Paternity leave for male employees', default_days: 3, is_paid: true, has_fixed_limit: true, is_one_time: true, requires_approval: true, min_notice_days: 14, max_consecutive_days: 3, requires_documentation: false, gender_restriction: 'male', carry_over_limit: 0, carry_over_expiry_years: 0, is_active: true, sort_order: 4, created_at: new Date(), updated_at: new Date() },
+      { leave_type_id: 5, name: 'Bereavement Leave', code: 'BL', description: 'Leave for family bereavement', default_days: 3, is_paid: true, has_fixed_limit: true, is_one_time: false, requires_approval: true, min_notice_days: 0, max_consecutive_days: 5, requires_documentation: true, gender_restriction: 'none', carry_over_limit: 0, carry_over_expiry_years: 0, is_active: true, sort_order: 5, created_at: new Date(), updated_at: new Date() },
+      { leave_type_id: 6, name: 'Unpaid Leave', code: 'UL', description: 'Unpaid leave for personal reasons', default_days: null, is_paid: false, has_fixed_limit: false, is_one_time: false, requires_approval: true, min_notice_days: 14, max_consecutive_days: 30, requires_documentation: false, gender_restriction: 'none', carry_over_limit: 0, carry_over_expiry_years: 0, is_active: true, sort_order: 6, created_at: new Date(), updated_at: new Date() }
+    ]);
+
+    // ==================== PAYROLL PERIODS ====================
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    const startDate = new Date(currentYear, currentMonth - 1, 1);
+    const endDate = new Date(currentYear, currentMonth, 0);
+    
+    await queryInterface.bulkInsert('payroll_periods', [
+      {
+        period_id: 1,
+        period_code: `${currentYear}${String(currentMonth).padStart(2, '0')}`,
+        year: currentYear,
+        month: currentMonth,
+        start_date: startDate,
+        end_date: endDate,
+        payment_date: new Date(currentYear, currentMonth, 10),
+        status: 'draft',
+        processed_by: 2,
+        total_employees: 9,
+        total_basic_salary: 0,
+        total_allowances: 0,
+        total_overtime: 0,
+        total_gross: 0,
+        total_tax: 0,
+        total_pension_employee: 0,
+        total_pension_employer: 0,
+        total_penalties: 0,
+        total_deductions: 0,
+        total_net: 0,
+        created_at: new Date(),
+        updated_at: new Date()
       }
-      console.log('✅ Attendance records seeded');
+    ]);
 
-      // =============================================
-      // 12. SEED SALARIES
-      // =============================================
-      console.log('\n💰 Seeding salary records...');
-      const salaries = [
-        { employee_code: 'EMP001', basic: 25000, housing: 5000, transport: 2000, medical: 1500 },
-        { employee_code: 'EMP002', basic: 18000, housing: 3600, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP003', basic: 17000, housing: 3400, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP004', basic: 22000, housing: 4400, transport: 1800, medical: 1500 },
-        { employee_code: 'EMP005', basic: 19000, housing: 3800, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP006', basic: 15000, housing: 3000, transport: 1200, medical: 1000 },
-        { employee_code: 'EMP007', basic: 16000, housing: 3200, transport: 1200, medical: 1000 },
-        { employee_code: 'EMP008', basic: 20000, housing: 4000, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP009', basic: 18000, housing: 3600, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP010', basic: 17000, housing: 3400, transport: 1500, medical: 1200 },
-        { employee_code: 'EMP011', basic: 12000, housing: 2400, transport: 1000, medical: 800 }
-      ];
-      
-      for (const salary of salaries) {
-        const employeeId = employeeMap[salary.employee_code];
-        const netSalary = salary.basic + salary.housing + salary.transport + salary.medical;
-        
-        await queryInterface.bulkInsert('salaries', [
-          { 
-            employee_id: employeeId, 
-            effective_date: '2024-01-01', 
-            basic_salary: salary.basic, 
-            housing_allowance: salary.housing, 
-            transport_allowance: salary.transport, 
-            medical_allowance: salary.medical, 
-            deductions: JSON.stringify({ tax: salary.basic * 0.1, pension: salary.basic * 0.07, insurance: 500 }), 
-            net_salary: netSalary - (salary.basic * 0.17 + 500), 
-            currency: 'ETB', 
-            payment_method: 'bank', 
-            created_by: userMap['admin'], 
-            created_at: new Date(), 
-            updated_at: new Date() 
-          }
-        ]);
+    // ==================== SALARY HOLDS ====================
+    await queryInterface.bulkInsert('salary_holds', [
+      {
+        hold_id: 1,
+        employee_id: 3,
+        period_id: 1,
+        hold_reason: 'Pending disciplinary investigation',
+        hold_duration_months: 2,
+        start_date: new Date(currentYear, currentMonth - 2, 15),
+        end_date: new Date(currentYear, currentMonth, 15),
+        original_amount: 28000,
+        released_amount: 0,
+        remaining_amount: 28000,
+        status: 'active',
+        created_by: 2,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        hold_id: 2,
+        employee_id: 7,
+        period_id: 1,
+        hold_reason: 'Salary dispute under review',
+        hold_duration_months: 1,
+        start_date: new Date(currentYear, currentMonth - 1, 1),
+        end_date: new Date(currentYear, currentMonth, 1),
+        original_amount: 12000,
+        released_amount: 0,
+        remaining_amount: 12000,
+        status: 'active',
+        created_by: 2,
+        created_at: new Date(),
+        updated_at: new Date()
       }
-      console.log('✅ 11 salary records seeded');
+    ]);
 
-      // =============================================
-      // 13. SEED LEAVE REQUESTS
-      // =============================================
-      console.log('\n📝 Seeding leave requests...');
-      await queryInterface.bulkInsert('leave_requests', [
-        { employee_id: employeeMap['EMP006'], leave_type: 'annual', start_date: '2024-04-10', end_date: '2024-04-15', total_days: 5, reason: 'Family vacation', status: 'pending', created_at: new Date(), updated_at: new Date() },
-        { employee_id: employeeMap['EMP007'], leave_type: 'sick', start_date: '2024-03-25', end_date: '2024-03-26', total_days: 2, reason: 'Flu', status: 'approved', approved_by: employeeMap['EMP002'], approved_at: new Date(), created_at: new Date(), updated_at: new Date() },
-        { employee_id: employeeMap['EMP008'], leave_type: 'casual', start_date: '2024-04-05', end_date: '2024-04-06', total_days: 2, reason: 'Personal matter', status: 'pending', created_at: new Date(), updated_at: new Date() },
-        { employee_id: employeeMap['EMP010'], leave_type: 'annual', start_date: '2024-05-01', end_date: '2024-05-10', total_days: 10, reason: 'Long vacation', status: 'pending', created_at: new Date(), updated_at: new Date() }
-      ]);
-      console.log('✅ 4 leave requests seeded');
-
-      // =============================================
-      // 14. SEED PERFORMANCE REVIEWS
-      // =============================================
-      console.log('\n⭐ Seeding performance reviews...');
-      await queryInterface.bulkInsert('performance_reviews', [
-        { 
-          employee_id: employeeMap['EMP006'], reviewer_id: employeeMap['EMP001'], 
-          review_period: JSON.stringify({ start: '2023-01-01', end: '2023-12-31' }), 
-          rating: 4.5, strengths: JSON.stringify(['Technical skills', 'Team player']), 
-          weaknesses: JSON.stringify(['Time management']), feedback: 'Excellent performance overall', 
-          status: 'approved', created_at: new Date(), updated_at: new Date() 
-        },
-        { 
-          employee_id: employeeMap['EMP007'], reviewer_id: employeeMap['EMP001'], 
-          review_period: JSON.stringify({ start: '2023-01-01', end: '2023-12-31' }), 
-          rating: 4.0, strengths: JSON.stringify(['Problem solving', 'Communication']), 
-          weaknesses: JSON.stringify(['Documentation']), feedback: 'Good performance, needs improvement in documentation', 
-          status: 'approved', created_at: new Date(), updated_at: new Date() 
-        },
-        { 
-          employee_id: employeeMap['EMP008'], reviewer_id: employeeMap['EMP001'], 
-          review_period: JSON.stringify({ start: '2023-01-01', end: '2023-12-31' }), 
-          rating: 4.2, strengths: JSON.stringify(['Sales skills', 'Customer relations']), 
-          weaknesses: JSON.stringify(['Reporting']), feedback: 'Strong sales performance', 
-          status: 'approved', created_at: new Date(), updated_at: new Date() 
-        }
-      ]);
-      console.log('✅ 3 performance reviews seeded');
-
-      // =============================================
-      // 15. UPDATE created_by for users
-      // =============================================
-      console.log('\n🔗 Updating user relationships...');
-      for (const user of userResults) {
-        if (user.username !== 'admin') {
-          await queryInterface.sequelize.query(
-            `UPDATE "users" SET created_by = :adminId WHERE user_id = :userId`,
-            { replacements: { adminId: userMap['admin'], userId: user.user_id }, type: Sequelize.QueryTypes.UPDATE }
-          );
-        }
+    // ==================== RECURRING DEDUCTIONS ====================
+    await queryInterface.bulkInsert('recurring_deductions', [
+      {
+        deduction_id: 1,
+        employee_id: 5,
+        deduction_type: 'Loan',
+        name: 'Housing Loan',
+        amount: 2000,
+        deduction_type_value: 'fixed',
+        start_date: new Date(currentYear, currentMonth - 3, 1),
+        end_date: new Date(currentYear, currentMonth + 9, 1),
+        total_months: 12,
+        remaining_months: 9,
+        reference_number: 'LOAN-001',
+        submitted_by: 'HR Manager',
+        status: 'active',
+        approved_by: 2,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        deduction_id: 2,
+        employee_id: 6,
+        deduction_type: 'Cooperative',
+        name: 'Cooperative Contribution',
+        amount: 5,
+        deduction_type_value: 'percent',
+        percentage_value: 5,
+        start_date: new Date(currentYear, currentMonth - 6, 1),
+        total_months: 24,
+        remaining_months: 18,
+        reference_number: 'COOP-001',
+        submitted_by: 'Finance Officer',
+        status: 'active',
+        approved_by: 3,
+        created_at: new Date(),
+        updated_at: new Date()
       }
-      console.log('✅ User relationships updated');
+    ]);
 
-      // =============================================
-      // 16. DISPLAY SUMMARY
-      // =============================================
-      const finalCounts = await queryInterface.sequelize.query(`
-        SELECT 
-          (SELECT COUNT(*) FROM "roles") as roles,
-          (SELECT COUNT(*) FROM "departments") as departments,
-          (SELECT COUNT(*) FROM "positions") as positions,
-          (SELECT COUNT(*) FROM "users") as users,
-          (SELECT COUNT(*) FROM "employees") as employees,
-          (SELECT COUNT(*) FROM "attendances") as attendances,
-          (SELECT COUNT(*) FROM "leave_requests") as leave_requests,
-          (SELECT COUNT(*) FROM "leave_balances") as leave_balances,
-          (SELECT COUNT(*) FROM "salaries") as salaries,
-          (SELECT COUNT(*) FROM "performance_reviews") as performance_reviews
-      `, { type: Sequelize.QueryTypes.SELECT });
+    // ==================== CARRY FORWARDS ====================
+    await queryInterface.bulkInsert('carry_forwards', [
+      {
+        carry_id: 1,
+        employee_id: 8,
+        period_id: 1,
+        amount: 1500,
+        status: 'pending',
+        notes: 'Carry forward from previous month due to negative net pay',
+        created_at: new Date()
+     
+      }
+    ]);
 
-      console.log('\n📊 SEED DATA SUMMARY:');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✅ Roles: ${finalCounts[0].roles}`);
-      console.log(`✅ Departments: ${finalCounts[0].departments}`);
-      console.log(`✅ Positions: ${finalCounts[0].positions}`);
-      console.log(`✅ Users: ${finalCounts[0].users}`);
-      console.log(`✅ Employees: ${finalCounts[0].employees} (with profile pictures)`);
-      console.log(`✅ Attendance Records: ${finalCounts[0].attendances}`);
-      console.log(`✅ Leave Requests: ${finalCounts[0].leave_requests}`);
-      console.log(`✅ Leave Balances: ${finalCounts[0].leave_balances}`);
-      console.log(`✅ Salary Records: ${finalCounts[0].salaries}`);
-      console.log(`✅ Performance Reviews: ${finalCounts[0].performance_reviews}`);
-      
-      console.log('\n🔐 LOGIN CREDENTIALS:');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('  Admin:');
-      console.log('    Username: admin');
-      console.log('    Password: password123');
-      console.log('    Name: Alemu Bekele');
-      console.log('\n  HR Managers:');
-      console.log('    tigist_hr / password123 (Tigist Worku)');
-      console.log('    mekdes_hr / password123 (Mekdes Ayele)');
-      console.log('\n  Finance Officers:');
-      console.log('    girma_finance / password123 (Girma Tadesse)');
-      console.log('    hiwot_finance / password123 (Hiwot Tesfaye)');
-      console.log('\n  Employees:');
-      console.log('    abebe_dev / password123 (Abebe Demissie)');
-      console.log('    azeb_dev / password123 (Azeb Mulugeta)');
-      console.log('    bekele_sales / password123 (Bekele Fikre)');
-      console.log('    chaltu_sales / password123 (Chaltu Hassen)');
-      console.log('    derartu_marketing / password123 (Derartu Tulu)');
-      console.log('    eyob_support / password123 (Eyob Girma)');
-      
-      console.log('\n🖼️  PROFILE PICTURES:');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('All employees have real profile pictures from randomuser.me API');
-      console.log('Images are working and will display in the application');
-      
-      console.log('\n🎉 All HR system data seeded successfully!');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    // ==================== PENALTY REDUCTION RULES ====================
+    await queryInterface.bulkInsert('penalty_reduction_rules', [
+      { rule_id: 1, rule_type: 'amount', min_value: 0, max_value: 1000, reduction_value: 0, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() },
+      { rule_id: 2, rule_type: 'amount', min_value: 1000, max_value: 5000, reduction_value: 500, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() },
+      { rule_id: 3, rule_type: 'amount', min_value: 5000, max_value: 999999, reduction_value: 1000, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() },
+      { rule_id: 4, rule_type: 'percent', min_value: 0, max_value: 5, reduction_value: 0, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() },
+      { rule_id: 5, rule_type: 'percent', min_value: 5, max_value: 10, reduction_value: 2, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() },
+      { rule_id: 6, rule_type: 'percent', min_value: 10, max_value: 999999, reduction_value: 5, is_active: true, created_by: 1, created_at: new Date(), updated_at: new Date() }
+    ]);
 
-    } catch (error) {
-      console.error('❌ Seeding failed:', error);
-      throw error;
-    }
+    // ==================== SYSTEM SETTINGS ====================
+    await queryInterface.bulkInsert('system_settings', [
+      { setting_id: 1, setting_key: 'company.name', setting_value: JSON.stringify('SuperHR Solutions'), category: 'company', description: 'Company name', data_type: 'string', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 2, setting_key: 'payroll.working_days', setting_value: JSON.stringify(22), category: 'payroll', description: 'Number of working days per month', data_type: 'number', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 3, setting_key: 'payroll.allowance_rate', setting_value: JSON.stringify(0.45), category: 'payroll', description: 'Total allowance rate (45% of basic salary)', data_type: 'number', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 4, setting_key: 'payroll.pension.employee_rate', setting_value: JSON.stringify(7), category: 'payroll', description: 'Employee pension contribution rate (7%)', data_type: 'number', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 5, setting_key: 'payroll.pension.employer_rate', setting_value: JSON.stringify(11), category: 'payroll', description: 'Employer pension contribution rate (11%)', data_type: 'number', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 6, setting_key: 'payroll.pension.monthly_cap', setting_value: JSON.stringify(15000), category: 'payroll', description: 'Monthly salary cap for pension calculation', data_type: 'number', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() },
+      { setting_id: 7, setting_key: 'tax.brackets', setting_value: JSON.stringify({ brackets: [{ min: 0, max: 600, rate: 0 }, { min: 601, max: 1650, rate: 10 }, { min: 1651, max: 3200, rate: 15 }, { min: 3201, max: 5250, rate: 20 }, { min: 5251, max: 7800, rate: 25 }, { min: 7801, max: 10900, rate: 30 }, { min: 10901, max: null, rate: 35 }] }), category: 'tax', description: 'Ethiopian employment tax brackets', data_type: 'json', is_editable: true, is_encrypted: false, updated_by: 1, version: 1, created_at: new Date(), updated_at: new Date() }
+    ]);
   },
 
   down: async (queryInterface, Sequelize) => {
-    console.log('\n🗑️  Removing all seeded data...');
-    
-    await queryInterface.sequelize.query('TRUNCATE TABLE "complaints" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "performance_reviews" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "payrolls" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "salaries" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "leave_balances" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "leave_requests" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "attendances" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "employee_documents" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "employees" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "users" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "positions" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "departments" RESTART IDENTITY CASCADE');
-    await queryInterface.sequelize.query('TRUNCATE TABLE "roles" RESTART IDENTITY CASCADE');
-    
-    console.log('✅ All data removed successfully');
+    // Delete in reverse order to maintain foreign key constraints
+    await queryInterface.bulkDelete('system_settings', null, {});
+    await queryInterface.bulkDelete('penalty_reduction_rules', null, {});
+    await queryInterface.bulkDelete('carry_forwards', null, {});
+    await queryInterface.bulkDelete('recurring_deductions', null, {});
+    await queryInterface.bulkDelete('salary_holds', null, {});
+    await queryInterface.bulkDelete('payroll_periods', null, {});
+    await queryInterface.bulkDelete('leave_types', null, {});
+    await queryInterface.bulkDelete('employees', null, {});
+    await queryInterface.bulkDelete('users', null, {});
+    await queryInterface.bulkDelete('roles', null, {});
+    await queryInterface.bulkDelete('positions', null, {});
+    await queryInterface.bulkDelete('departments', null, {});
   }
 };

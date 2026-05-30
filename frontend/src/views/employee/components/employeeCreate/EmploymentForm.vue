@@ -125,6 +125,17 @@
               />
               <small class="field-hint">Typically 10% of basic salary</small>
             </div>
+
+                <div class="form-field">
+              <label>Mobile Allowance (ETB)</label>
+              <input 
+                type="number" 
+                v-model="form.mobileAllowance"
+                placeholder="Auto (5%)"
+                step="100"
+              />
+              <small class="field-hint">Typically 5% of basic salary</small>
+            </div>
           </div>
           
           <!-- Allowance Summary -->
@@ -145,6 +156,11 @@
             <div class="summary-row">
               <span>Transport Allowance:</span>
               <strong>{{ formatCurrency(transportAllowanceAmount) }}</strong>
+            </div>
+
+               <div class="summary-row">
+              <span>Mobile Allowance:</span>
+              <strong>{{ formatCurrency(mobileAllowanceAmount) }}</strong>
             </div>
             <div class="summary-divider"></div>
             <div class="summary-row total">
@@ -195,7 +211,8 @@ const basicSalaryAmount = computed(() => parseFloat(props.form.basicSalary) || 0
 const housingAllowanceAmount = computed(() => parseFloat(props.form.housingAllowance) || 0)
 const positionAllowanceAmount = computed(() => parseFloat(props.form.positionAllowance) || 0)
 const transportAllowanceAmount = computed(() => parseFloat(props.form.transportAllowance) || 0)
-const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value)
+const mobileAllowanceAmount = computed(() => parseFloat(props.form.mobileAllowance) || 0)
+const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value + mobileAllowanceAmount.value)
 const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
 
 const formatCurrency = (value) => {

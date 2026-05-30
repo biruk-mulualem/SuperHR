@@ -49,6 +49,8 @@ const employeeRoutes = require("./routes/employeeRoutes");
 const settingRoutes = require("./routes/settingRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
+const payrollRoutes = require("./routes/payrollRoutes");
+const penalityRoutes = require("./routes/penalityRoutes");
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -90,7 +92,8 @@ app.use("/api/employees", employeeRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/leaves", leaveRoutes);
-
+app.use("/api/payroll", payrollRoutes);
+app.use("/api/penalties", penalityRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

@@ -183,6 +183,12 @@ module.exports = (sequelize, DataTypes) => {
         field: 'transport_allowance',
         comment: 'Transport allowance (typically 10% of basic salary)'
       },
+      mobileAllowance: {
+        type: DataTypes.DECIMAL(15, 2),
+        defaultValue: 0,
+        field: 'mobile_allowance',
+        comment: 'Mobile allowance (typically 5% of basic salary)'
+      },
       
       bankAccount: {
         type: DataTypes.JSONB,

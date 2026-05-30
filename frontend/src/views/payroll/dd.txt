@@ -215,7 +215,7 @@
                   <td>
                     <button
                       class="icon-btn"
-                      @click="editEmployeePenality(emp)"
+                      @click="editEmployeeDeductions(emp)"
                       title="Edit"
                     >
                       ✏️
@@ -419,9 +419,9 @@
                               <span class="text-info">{{ emp.taxRate }}%</span>
                             </div>
                             <div>
-                              <span>Tax Penality</span>
+                              <span>Tax Deduction</span>
                               <span class="text-info">{{
-                                formatCurrency(emp.taxPenality)
+                                formatCurrency(emp.taxDeduction)
                               }}</span>
                             </div>
                             <div>
@@ -440,7 +440,7 @@
                                     color: #666;
                                     margin-top: 8px;
                                   "
-                                  >(Gross Salary - Absent Penalty)</span
+                                  >(Base Salary - Absent Penalty)</span
                                 ></span
                               >
                               <span class="text-info">{{
@@ -521,53 +521,39 @@
                             </div>
                           </div>
 
-                       <div class="detail-card penalties-card">
-  <h4>📋 Other Penalties</h4>
-  
-  <div class="penalties-stack">
-    <div
-      v-for="ded in emp.Penality || []"
-      :key="ded.id"
-      class="penalty-stack"
-    >
-      <!-- Penalty Name & Badge -->
-      <div class="stack-header">
-        <span class="stack-name">{{ ded.name }}</span>
-        <span class="stack-badge" :class="ded.type === 'percent' ? 'badge-percent' : 'badge-fixed'">
-          {{ ded.type === "percent" ? ded.value + "%" : formatCurrency(ded.value) }}
-        </span>
-      </div>
-      
-      <!-- Amount Info (for percentage) -->
-      <div v-if="ded.type === 'percent'" class="stack-amount-info">
-        <span class="amount-label">Equals:</span>
-        <span class="amount-value">{{ formatCurrency(ded.amount) }}</span>
-      </div>
-      
-      <!-- Meta Information -->
-      <div class="stack-meta">
-        <span v-if="ded.reference" class="meta-item">📄 {{ ded.reference }}</span>
-        <span v-if="ded.submittedBy" class="meta-item">👤 {{ ded.submittedBy }}</span>
-        <span v-if="ded.contact" class="meta-item">📞 {{ ded.contact }}</span>
-        <span v-if="ded.date" class="meta-item">📅 {{ formatDate(ded.date) }}</span>
-      </div>
-      
-      <!-- Reason -->
-      <div v-if="ded.reason" class="stack-reason">
-        💬 {{ ded.reason }}
-      </div>
-    </div>
-    
-    <div v-if="!emp.Penality || emp.Penality.length === 0" class="empty-state">
-      ✨ No penalties recorded
-    </div>
-  </div>
-  
-  <div class="total-stack" v-if="emp.Penality && emp.Penality.length">
-    <span>Total Penalties</span>
-    <strong>{{ formatCurrency(emp.otherPenalityTotal || 0) }}</strong>
-  </div>
-</div>
+                          <!-- Card 4: Other Deductions -->
+                          <div class="detail-card">
+                            <h4>Other Deductions</h4>
+                            <div
+                              v-for="ded in emp.deductions"
+                              :key="ded.id"
+                              class="deduction-item-detail"
+                            >
+                              <div class="deduction-name">{{ ded.name }}</div>
+                              <div class="deduction-amount text-red">
+                                {{
+                                  ded.type === "percent" ? ded.value + "%" : ""
+                                }}{{ formatCurrency(ded.amount) }}
+                              </div>
+                              <div class="deduction-meta">
+                                Ref: {{ ded.reference || "N/A" }} | By:
+                                {{ ded.submittedBy || "HR" }} | Date:
+                                {{ ded.date || formatDate(new Date()) }}
+                              </div>
+                            </div>
+                            <div
+                              v-if="!emp.deductions.length"
+                              class="no-deductions"
+                            >
+                              No other deductions
+                            </div>
+                            <div class="total">
+                              <span>Total Other Deductions</span>
+                              <span class="text-red">{{
+                                formatCurrency(emp.otherDeductionsTotal)
+                              }}</span>
+                            </div>
+                          </div>
                         </div>
 
                         <!-- Third row: Final Net Pay Card - Full Width -->
@@ -590,19 +576,19 @@
 
                             <div
                               class="calc-row"
-                              v-if="(emp.otherPenalityTotal || 0) > 0"
+                              v-if="emp.otherDeductionsTotal >= 0"
                             >
-                              <span>Other Penality</span>
+                              <span>Other Deductions</span>
                               <span class="text-red"
                                 >-
                                 {{
-                                  formatCurrency(emp.otherPenalityTotal || 0)
+                                  formatCurrency(emp.otherDeductionsTotal)
                                 }}</span
                               >
                             </div>
                             <div
                               class="calc-row"
-                              v-if="(emp.otherPenalityTotal || 0) >= 0"
+                              v-if="emp.otherDeductionsTotal >= 0"
                             >
                               <span>Penality Summary</span>
                               <span class="text-green">+0</span>
@@ -2276,13 +2262,13 @@
       </div>
     </div>
 
-    <!-- Penality Modal -->
+    <!-- Deduction Modal -->
     <div
-      v-if="showPenalityModal"
+      v-if="showDeductionModal"
       class="modal-overlay"
-      @click.self="closePenalityModal"
+      @click.self="closeDeductionModal"
     >
-      <div class="modal-container Penality-modal">
+      <div class="modal-container deduction-modal">
         <div class="modal-header">
           <div class="employee-info-compact">
             <div class="emp-avatar">
@@ -2296,7 +2282,7 @@
               </div>
             </div>
           </div>
-          <button class="modal-close" @click="closePenalityModal">✕</button>
+          <button class="modal-close" @click="closeDeductionModal">✕</button>
         </div>
         <div class="modal-body">
           <div class="form-field">
@@ -2327,29 +2313,29 @@
             </div>
           </div>
 
-          <div class="Penality-list">
+          <div class="deductions-list">
             <div
-              v-for="(ded, idx) in employeePenality"
+              v-for="(ded, idx) in employeeDeductions"
               :key="idx"
-              class="Penality-item"
+              class="deduction-item"
             >
-              <div class="Penality-header">
-                <span>{{ ded.name || "New Penality" }}</span
-                ><button class="remove-btn" @click="removePenality(idx)">
+              <div class="deduction-header">
+                <span>{{ ded.name || "New Deduction" }}</span
+                ><button class="remove-btn" @click="removeDeduction(idx)">
                   ✕
                 </button>
               </div>
-              <div class="Penality-fields">
+              <div class="deduction-fields">
                 <select v-model="ded.name">
                   <option value="">Select penalty reason...</option>
-                  <option value="Abesent Penality">
+                  <option value="Excessive Absenteeism">
                     Abesent Penality
                   </option>
-                  <option value="Lateness">Lateness</option>
+                  <option value="Chronic Lateness">Lateness</option>
                   <option value="Unauthorized Leave">Unauthorized Leave</option>
                   <option value="Poor Performance">Poor Performance</option>
                   <option value="Policy Violation">Policy Violation</option>
-                  <option value="Asset Penality">Asset Penality</option>
+                  <option value="Equipment Damage">Asset Penality</option>
                   <option value="Misconduct">Misconduct</option>
                   <option value="Suspension">Suspension</option>
                 </select>
@@ -2375,7 +2361,7 @@
                 <input type="number" v-model="ded.value" placeholder="Amount" />
                 <textarea
                   v-model="ded.reason"
-                  placeholder="Reason for penalty/Penality..."
+                  placeholder="Reason for penalty/deduction..."
                   rows="2"
                   style="
                     width: 100%;
@@ -2389,18 +2375,20 @@
                 ></textarea>
               </div>
             </div>
-            <button class="add-btn" @click="addPenality">+ Add Penality</button>
+            <button class="add-btn" @click="addDeduction">
+              + Add Deduction
+            </button>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closePenalityModal">
+          <button class="btn-secondary" @click="closeDeductionModal">
             Cancel</button
           ><button
             class="btn-primary"
-            @click="savePenality"
-            :disabled="savingPenality"
+            @click="saveDeductions"
+            :disabled="savingDeductions"
           >
-            {{ savingPenality ? "Saving..." : "Save Changes" }}
+            {{ savingDeductions ? "Saving..." : "Save Changes" }}
           </button>
         </div>
       </div>
@@ -2634,7 +2622,7 @@ const paymentDate = ref("");
 const paymentWindowDays = ref(PAYMENT_WINDOW_DAYS);
 const unclaimedWindowDays = ref(UNCLAIMED_WINDOW_DAYS);
 const payrollData = ref([]);
-const Penality = ref([]);
+const deductions = ref([]);
 const holds = ref([]);
 const carryForward = ref([]);
 
@@ -2700,7 +2688,7 @@ const returnedPagination = ref({ page: 1, limit: 10, total: 0, totalPages: 1 });
 // ==================== MODAL STATES ====================
 const showProcessModal = ref(false);
 const showExportModal = ref(false);
-const showPenalityModal = ref(false);
+const showDeductionModal = ref(false);
 const showBatchModal = ref(false);
 const showBatchPenaltyModal = ref(false);
 const showPenaltyReductionModal = ref(false);
@@ -2710,7 +2698,7 @@ const showBulkReleaseModal = ref(false);
 
 // ==================== MODAL DATA ====================
 const editingEmployee = ref(null);
-const employeePenality = ref([]);
+const employeeDeductions = ref([]);
 const selectedPaymentItem = ref(null);
 const selectedPaymentMethod = ref("Cash");
 const transactionReference = ref("");
@@ -2740,7 +2728,7 @@ const exportingPenalty = ref(false);
 const exportingOnHold = ref(false);
 const processingPayment = ref(false);
 const applyingBatchReduction = ref(false);
-const savingPenality = ref(false);
+const savingDeductions = ref(false);
 const selectAllPayment = ref(false);
 const batchMethod = ref("Bank Transfer");
 const exportType = ref("government");
@@ -2781,8 +2769,8 @@ const employees = computed(() => payrollData.value);
 const activeHolds = computed(
   () => payrollData.value.filter((e) => e.isOnHold).length,
 );
-const currentPenalityTotal = computed(() =>
-  employeePenality.value.reduce(
+const currentDeductionsTotal = computed(() =>
+  employeeDeductions.value.reduce(
     (s, d) =>
       s +
       (d.type === "percent"
@@ -3179,13 +3167,13 @@ function calculatePayroll() {
         pension7,
         pension11,
         governmentNet,
-        totalPenality: 0,
+        totalDeductions: 0,
         finalNetPay: 0,
         isOnHold: true,
         holdDetails: activeHold,
         totalPenalties: 0,
-        Penality: [],
-        otherPenalityTotal: 0,
+        deductions: [],
+        otherDeductionsTotal: 0,
         carryForward: 0,
         absentDays: 0,
         absentPenalty: 0,
@@ -3199,57 +3187,47 @@ function calculatePayroll() {
       (c) => c.employeeId === emp.id && c.month === selectedMonth.value,
     );
     const carryAmount = existingCarry?.amount || 0;
-
-    // Get penalties from Penality ref
-    const empPenality = (Penality.value || []).filter(
-      (d) => d && d.employeeId === emp.id,
+    const empDeductions = deductions.value.filter(
+      (d) => d.employeeId === emp.id,
     );
-
-    let otherPenalityTotal = 0;
-    const PenalityDetails = empPenality.map((d) => {
-      let amount = 0;
-      if (d.type === "percent") {
-        amount = Math.floor(((governmentNet || 0) * (d.value || 0)) / 100);
-      } else {
-        amount = d.value || 0;
-      }
-      otherPenalityTotal += amount;
+    let otherDeductionsTotal = 0;
+    const deductionDetails = empDeductions.map((d) => {
+      let amount =
+        d.type === "percent"
+          ? Math.floor(governmentNet * (d.value / 100))
+          : d.value;
+      otherDeductionsTotal += amount;
       return {
         ...d,
-        amount: amount,
+        amount,
         date: d.date || new Date().toISOString().split("T")[0],
       };
     });
 
-    // Get attendance penalties (absent and late)
-    const empPenalty = (penaltiesList.value || []).find(
-      (p) => p && p.employeeId === emp.id && p.month === selectedMonth.value,
+    const empPenalty = penaltiesList.value.find(
+      (p) => p.employeeId === emp.id && p.month === selectedMonth.value,
     );
     const absentDays = empPenalty?.absentDays || 0;
     const absentPenalty = empPenalty?.absentPenalty || 0;
     const lateMinutes = empPenalty?.lateMinutes || 0;
     const latePenalty = empPenalty?.latePenalty || 0;
-
-    // Calculate final net pay - Government Net minus Other Penalties minus Late Penalty
-    // Absent penalty is already deducted from taxable income (before government net)
-    let finalNetPay = (governmentNet || 0) - otherPenalityTotal - latePenalty;
+    const totalPenalties = absentPenalty + latePenalty;
+    const totalDeductions = totalPenalties + otherDeductionsTotal;
+    let finalNetPay =
+      governmentNet - totalPenalties - otherDeductionsTotal - carryAmount;
     let newCarry = 0;
-
     if (finalNetPay < 0) {
       newCarry = Math.abs(finalNetPay);
       finalNetPay = 0;
     }
-
-    if (newCarry > 0) {
-      if (existingCarry) {
-        existingCarry.amount = newCarry;
-      } else {
+    if (newCarry) {
+      if (existingCarry) existingCarry.amount = newCarry;
+      else
         carryForward.value.push({
           employeeId: emp.id,
           month: selectedMonth.value,
           amount: newCarry,
         });
-      }
     } else if (existingCarry) {
       carryForward.value = carryForward.value.filter(
         (c) => !(c.employeeId === emp.id && c.month === selectedMonth.value),
@@ -3258,27 +3236,28 @@ function calculatePayroll() {
 
     return {
       ...emp,
-      allowancesTotal: allowancesTotal || 0,
-      housingAllowance: housingAllowance || 0,
-      transportAllowance: transportAllowance || 0,
-      positionAllowance: positionAllowance || 0,
-      mobileAllowance: mobileAllowance || 0,
-      overtimeHours: overtimeHours || 0,
-      overtimePay: overtimePay || 0,
-      grossPay: grossPay || 0,
-      tax: tax || 0,
-      pension7: pension7 || 0,
-      pension11: pension11 || 0,
-      governmentNet: governmentNet || 0,
-      Penality: PenalityDetails || [],
-      otherPenalityTotal: otherPenalityTotal || 0,
-      carryForward: carryAmount || 0,
-      absentDays: absentDays || 0,
-      absentPenalty: absentPenalty || 0,
-      lateMinutes: lateMinutes || 0,
-      latePenalty: latePenalty || 0,
-      totalPenalties: (absentPenalty || 0) + (latePenalty || 0),
-      finalNetPay: finalNetPay || 0,
+      allowancesTotal,
+      housingAllowance,
+      transportAllowance,
+      positionAllowance,
+      mobileAllowance,
+      overtimeHours,
+      overtimePay,
+      grossPay,
+      tax,
+      pension7,
+      pension11,
+      governmentNet,
+      deductions: deductionDetails,
+      otherDeductionsTotal,
+      carryForward: carryAmount,
+      absentDays,
+      absentPenalty,
+      lateMinutes,
+      latePenalty,
+      totalPenalties,
+      totalDeductions,
+      finalNetPay,
       penaltySummary: 0,
       isOnHold: false,
     };
@@ -3325,11 +3304,11 @@ function updateEmployeePayroll(emp, component, newValue) {
   emp.pension7 = Math.floor(Number(emp.basicSalary) * PENSION_RATE);
   emp.governmentNet = emp.grossPay - emp.tax - emp.pension7;
   emp.totalPenalties = (emp.absentPenalty || 0) + (emp.latePenalty || 0);
-  emp.totalPenality = emp.totalPenalties + emp.otherPenalityTotal;
+  emp.totalDeductions = emp.totalPenalties + emp.otherDeductionsTotal;
   emp.finalNetPay =
     emp.governmentNet -
     emp.totalPenalties -
-    emp.otherPenalityTotal +
+    emp.otherDeductionsTotal +
     (emp.penaltySummary || 0);
   if (emp.finalNetPay < 0) emp.finalNetPay = 0;
   showToastMessage(`${component} updated for ${emp.fullName}`, "success");
@@ -3442,11 +3421,11 @@ function applyPenaltyReductionToEmployee() {
       employee.penaltyAmount = newAmount;
       employee.penaltyFromPercent = penaltyFromPercent;
       employee.totalPenalties = penaltyFromPercent + newAmount;
-      employee.totalPenality =
-        employee.totalPenalties + (employee.otherPenalityTotal || 0);
+      employee.totalDeductions =
+        employee.totalPenalties + (employee.otherDeductionsTotal || 0);
       employee.finalNetPay =
         employee.governmentNet -
-        employee.totalPenality -
+        employee.totalDeductions -
         (employee.carryForward || 0);
       if (employee.finalNetPay < 0) employee.finalNetPay = 0;
     }
@@ -3508,9 +3487,10 @@ function applyBatchPenaltyReduction() {
         emp.penaltyAmount = empPenalty.penaltyAmount;
         emp.penaltyFromPercent = penaltyFromPercent;
         emp.totalPenalties = penaltyFromPercent + empPenalty.penaltyAmount;
-        emp.totalPenality = emp.totalPenalties + (emp.otherPenalityTotal || 0);
+        emp.totalDeductions =
+          emp.totalPenalties + (emp.otherDeductionsTotal || 0);
         emp.finalNetPay =
-          emp.governmentNet - emp.totalPenality - (emp.carryForward || 0);
+          emp.governmentNet - emp.totalDeductions - (emp.carryForward || 0);
         if (emp.finalNetPay < 0) emp.finalNetPay = 0;
       }
     });
@@ -3609,7 +3589,7 @@ function confirmSingleRelease() {
       employee.finalNetPay =
         (employee.governmentNet || 0) -
         (employee.totalPenalties || 0) -
-        (employee.otherPenalityTotal || 0);
+        (employee.otherDeductionsTotal || 0);
       if (employee.finalNetPay < 0) employee.finalNetPay = 0;
     }
   }
@@ -3656,7 +3636,7 @@ function confirmBulkRelease() {
         employee.finalNetPay =
           (employee.governmentNet || 0) -
           (employee.totalPenalties || 0) -
-          (employee.otherPenalityTotal || 0);
+          (employee.otherDeductionsTotal || 0);
         if (employee.finalNetPay < 0) employee.finalNetPay = 0;
       }
     }
@@ -3917,15 +3897,16 @@ function exportSelectedReport() {
         "Housing Allowance",
         "Transport Allowance",
         "Position Allowance",
-        "Mobile Allowance",
-        "OT Pay",
+        "Overtime Pay",
         "Gross Pay",
         "Absent Days",
         "Absent Penalty",
+        "Late Minutes",
+        "Late Penalty",
         "Tax (PAYE)",
         "Pension (7%)",
         "Pension (11%)",
-        "Net Pay",
+        "Government Net Pay",
       ];
       rows = filteredPayrollData.value.map((e) => [
         e.employeeCode,
@@ -3935,11 +3916,12 @@ function exportSelectedReport() {
         e.housingAllowance,
         e.transportAllowance,
         e.positionAllowance,
-         e.mobileAllowance,
         e.overtimePay,
         e.grossPay,
         e.absentDays || 0,
         e.absentPenalty || 0,
+        e.lateMinutes || 0,
+        e.latePenalty || 0,
         e.tax,
         e.pension7,
         e.pension11,
@@ -3955,7 +3937,7 @@ function exportSelectedReport() {
         "Tax",
         "Pension",
         "Total Penalties",
-        "Other Penality",
+        "Other Deductions",
         "Final Net Pay",
       ];
       rows = filteredPayrollData.value.map((e) => [
@@ -3967,7 +3949,7 @@ function exportSelectedReport() {
         e.tax,
         e.pension7,
         e.totalPenalties,
-        e.otherPenalityTotal,
+        e.otherDeductionsTotal,
         e.finalNetPay,
       ]);
     } else {
@@ -3979,7 +3961,7 @@ function exportSelectedReport() {
         "Gross Pay",
         "Government Net",
         "Total Penalties",
-        "Other Penality",
+        "Other Deductions",
         "Final Net Pay",
         "Difference",
       ];
@@ -3991,7 +3973,7 @@ function exportSelectedReport() {
         e.grossPay,
         e.governmentNet,
         e.totalPenalties,
-        e.otherPenalityTotal,
+        e.otherDeductionsTotal,
         e.finalNetPay,
         e.governmentNet - e.finalNetPay,
       ]);
@@ -4090,29 +4072,17 @@ function exportReturned() {
   }, 500);
 }
 
-// ==================== Penality FUNCTIONS ====================
-function editEmployeePenality(emp) {
+// ==================== DEDUCTION FUNCTIONS ====================
+function editEmployeeDeductions(emp) {
   editingEmployee.value = emp;
-
-  // Use penalties directly from employee data (already loaded from backend)
-  employeePenality.value = (emp.Penality || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    type: p.type,
-    value: p.value,
-    reference: p.reference || "",
-    submittedBy: p.submittedBy || currentUser,
-    contact: p.contact || "",
-    reason: p.reason || "",
-    date: p.date || new Date().toISOString().split("T")[0],
-  }));
-
-  // Add empty row if no penalties exist
-  if (!employeePenality.value.length) {
-    employeePenality.value.push({
+  employeeDeductions.value = JSON.parse(
+    JSON.stringify(deductions.value.filter((d) => d.employeeId === emp.id)),
+  );
+  if (!employeeDeductions.value.length) {
+    employeeDeductions.value.push({
       id: Date.now(),
       name: "",
-      type: "fixed",
+      type: "amount",
       value: 0,
       reason: "",
       reference: "",
@@ -4121,8 +4091,6 @@ function editEmployeePenality(emp) {
       date: new Date().toISOString().split("T")[0],
     });
   }
-
-  // Rest of the modal logic...
   const existingHold = holds.value.find(
     (h) => h.employeeId === emp.id && h.startMonth === selectedMonth.value,
   );
@@ -4135,10 +4103,10 @@ function editEmployeePenality(emp) {
     holdDuration.value = 1;
     holdReason.value = "";
   }
-  showPenalityModal.value = true;
+  showDeductionModal.value = true;
 }
-function addPenality() {
-  employeePenality.value.push({
+function addDeduction() {
+  employeeDeductions.value.push({
     id: Date.now(),
     name: "",
     type: "fixed",
@@ -4150,8 +4118,8 @@ function addPenality() {
     date: new Date().toISOString().split("T")[0],
   });
 }
-function removePenality(idx) {
-  employeePenality.value.splice(idx, 1);
+function removeDeduction(idx) {
+  employeeDeductions.value.splice(idx, 1);
 }
 function removeEmployeeHold() {
   holds.value = holds.value.filter(
@@ -4162,61 +4130,42 @@ function removeEmployeeHold() {
   showToastMessage("Hold removed", "success");
 }
 
-// ==================== Penality FUNCTIONS ====================
-async function savePenality() {
-  savingPenality.value = true;
-
+// ==================== DEDUCTION FUNCTIONS ====================
+async function saveDeductions() {
+  savingDeductions.value = true;
+  
   try {
-    const validPenalties = employeePenality.value.filter(
-      (d) => d.name && d.value > 0,
-    );
-
-    // FIRST: Delete all existing penalties for this employee and month
-    const existingPenalties = await employeePenaltyService.getEmployeePenalties(
-      editingEmployee.value.id,
-      { month: selectedMonth.value, status: 'active' }
-    );
+    const validPenalties = employeeDeductions.value.filter(d => d.name && d.value > 0);
     
-    if (existingPenalties.success && existingPenalties.data) {
-      for (const penalty of existingPenalties.data) {
-        await employeePenaltyService.deletePenalty(penalty.penalty_id);
-      }
-    }
-
-    // THEN: Create all penalties fresh
     for (const penalty of validPenalties) {
-      const result = await employeePenaltyService.createPenalty(
-        editingEmployee.value.id,
-        {
-          penalty_type: penalty.name,
-          calculation_type: penalty.type === "percent" ? "percent" : "fixed",
-          value: penalty.value,
-          reference: penalty.reference,
-          submitted_by: penalty.submittedBy || currentUser,
-          contact: penalty.contact,
-          reason: penalty.reason,
-          month: selectedMonth.value,
-        },
-      );
-
+      const result = await employeePenaltyService.createPenalty(editingEmployee.value.id, {
+        penalty_type: penalty.name,
+        calculation_type: penalty.type === 'percent' ? 'percent' : 'fixed',
+        value: penalty.value,
+        reference: penalty.reference,
+        submitted_by: penalty.submittedBy || currentUser,
+        contact: penalty.contact,
+        reason: penalty.reason,
+        month: selectedMonth.value
+      });
+      
       if (!result.success) {
         showToastMessage(`Failed to save: ${result.error}`, "error");
       }
     }
-
-    await loadPayrollData();
+    
+    // Update local state and recalculate...
+    // ... rest of your existing saveDeductions code
+    
     showToastMessage(`${validPenalties.length} penalty/penalties saved!`, "success");
-    closePenalityModal();
-
+    closeDeductionModal();
+    
   } catch (error) {
-    console.error("Save penalties error:", error);
     showToastMessage("Failed to save penalties", "error");
   } finally {
-    savingPenality.value = false;
+    savingDeductions.value = false;
   }
 }
-
-// Load all active penalties for current month for all employees
 
 // Helper function to recalculate payroll for a specific employee
 function calculatePayrollForEmployee(employeeId) {
@@ -4250,18 +4199,18 @@ function calculatePayrollForEmployee(employeeId) {
   // Recalculate government net
   emp.governmentNet = emp.grossPay - emp.tax - emp.pension7;
 
-  // Get Penality for this employee
-  const empPenality = Penality.value.filter((d) => d.employeeId === emp.id);
-  let otherPenalityTotal = 0;
-  emp.Penality = empPenality.map((d) => {
+  // Get deductions for this employee
+  const empDeductions = deductions.value.filter((d) => d.employeeId === emp.id);
+  let otherDeductionsTotal = 0;
+  emp.deductions = empDeductions.map((d) => {
     let amount =
       d.type === "percent"
         ? Math.floor(emp.governmentNet * (d.value / 100))
         : d.value;
-    otherPenalityTotal += amount;
+    otherDeductionsTotal += amount;
     return { ...d, amount };
   });
-  emp.otherPenalityTotal = otherPenalityTotal;
+  emp.otherDeductionsTotal = otherDeductionsTotal;
 
   // Get penalties
   const empPenalty = penaltiesList.value.find(
@@ -4280,8 +4229,9 @@ function calculatePayrollForEmployee(employeeId) {
   const carryAmount = existingCarry?.amount || 0;
   emp.carryForward = carryAmount;
 
-  // Calculate total Penality
-  emp.totalPenality = emp.totalPenalties + emp.otherPenalityTotal + carryAmount;
+  // Calculate total deductions
+  emp.totalDeductions =
+    emp.totalPenalties + emp.otherDeductionsTotal + carryAmount;
 
   // Calculate final net pay
   if (activeHold) {
@@ -4294,7 +4244,7 @@ function calculatePayrollForEmployee(employeeId) {
     let finalNetPay =
       emp.governmentNet -
       emp.totalPenalties -
-      emp.otherPenalityTotal -
+      emp.otherDeductionsTotal -
       carryAmount;
 
     // Handle negative net pay (carry forward)
@@ -4349,10 +4299,10 @@ function updateTotals() {
   activeHolds.value = payrollData.value.filter((e) => e.isOnHold).length;
 }
 
-function closePenalityModal() {
-  showPenalityModal.value = false;
+function closeDeductionModal() {
+  showDeductionModal.value = false;
   editingEmployee.value = null;
-  employeePenality.value = [];
+  employeeDeductions.value = [];
 }
 
 // ==================== UI HANDLERS ====================
@@ -4652,180 +4602,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Vertically Stacked Penalties Card */
-.penalties-card {
-  background: #ffffff;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  border: 1px solid #edeff2;
-}
-
-.penalties-card h4 {
-  margin: 0;
-  padding: 14px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a2c3e;
-  background: #fafbfc;
-  border-bottom: 1px solid #edeff2;
-}
-
-/* Stack Container */
-.penalties-stack {
-  padding: 8px 12px;
-  max-height: 360px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Custom Scrollbar */
-.penalties-stack::-webkit-scrollbar {
-  width: 4px;
-}
-
-.penalties-stack::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-
-.penalties-stack::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-/* Individual Penalty Stack */
-.penalty-stack {
-  background: #fefefe;
-  border: 1px solid #f0f0f0;
-  border-radius: 12px;
-  padding: 12px;
-  transition: all 0.2s;
-}
-
-.penalty-stack:hover {
-  border-color: #e2e8f0;
-  background: #fafafa;
-}
-
-/* Stack Header */
-.stack-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.stack-name {
-  font-weight: 700;
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.stack-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 20px;
-}
-
-.badge-fixed {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.badge-percent {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-/* Amount Info (for percentage) */
-.stack-amount-info {
-  margin-bottom: 8px;
-  padding: 6px 0 6px 8px;
-  border-left: 3px solid #f59e0b;
-  background: #fffbeb;
-  border-radius: 0 8px 8px 0;
-}
-
-.amount-label {
-  font-size: 10px;
-  color: #92400e;
-  margin-right: 6px;
-}
-
-.amount-value {
-  font-size: 13px;
-  font-weight: 700;
-  color: #d97706;
-}
-
-/* Meta Information */
-.stack-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding: 6px 0;
-  border-top: 1px dashed #f0f0f0;
-  border-bottom: 1px dashed #f0f0f0;
-}
-
-.meta-item {
-  font-size: 10px;
-  color: #64748b;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Reason */
-.stack-reason {
-  font-size: 11px;
-  color: #64748b;
-  background: #f8fafc;
-  padding: 8px 10px;
-  border-radius: 8px;
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-/* Empty State */
-.empty-state {
-  text-align: center;
-  padding: 32px 16px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-/* Total Section */
-.total-stack {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #fef2f2;
-  border-top: 1px solid #fee2e2;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.total-stack strong {
-  font-size: 16px;
-  font-weight: 700;
-  color: #dc2626;
-}
-
-
-
-
-
-
-
 /* Bulk Release Container */
 .bulk-release-container {
   margin-top: 20px;
@@ -5690,30 +5466,30 @@ onUnmounted(() => {
   font-size: 11px;
 }
 
-.Penality-item-detail {
+.deduction-item-detail {
   display: flex;
   flex-direction: column;
   padding: 6px 0;
   border-bottom: 1px solid #e2e8f0;
 }
 
-.Penality-name {
+.deduction-name {
   font-weight: 500;
   font-size: 12px;
 }
 
-.Penality-amount {
+.deduction-amount {
   font-size: 12px;
   margin-top: 2px;
 }
 
-.Penality-meta {
+.deduction-meta {
   font-size: 10px;
   color: #94a3b8;
   margin-top: 2px;
 }
 
-.no-Penality {
+.no-deductions {
   text-align: center;
   padding: 12px;
   color: #94a3b8;
@@ -6129,7 +5905,7 @@ onUnmounted(() => {
   border-bottom: 1px solid #e2e8f0;
 }
 
-.Penality-modal {
+.deduction-modal {
   max-width: 750px;
 }
 .employee-info-compact {
@@ -6173,31 +5949,31 @@ onUnmounted(() => {
   padding-top: 12px;
   font-weight: 700;
 }
-.Penality-list {
+.deductions-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.Penality-item {
+.deduction-item {
   background: #f8fafc;
   border-radius: 12px;
   padding: 12px;
   border: 1px solid #e2e8f0;
 }
-.Penality-header {
+.deduction-header {
   display: flex;
   justify-content: space-between;
   margin-bottom: 10px;
   font-weight: 500;
   font-size: 13px;
 }
-.Penality-fields {
+.deduction-fields {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
-.Penality-fields select,
-.Penality-fields input {
+.deduction-fields select,
+.deduction-fields input {
   padding: 6px 8px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -6482,7 +6258,7 @@ onUnmounted(() => {
   .settings-grid {
     grid-template-columns: 1fr;
   }
-  .Penality-fields {
+  .deduction-fields {
     grid-template-columns: 1fr;
   }
   .tab-btn {
