@@ -63,26 +63,26 @@
     <!-- Evenly Spaced Tabs -->
    <div class="tabs-container">
   <button class="tab-btn" :class="{ active: activeTab === 'pending' }" @click="switchTab('pending')">
-    <span>⏳</span> Pending
+     Pending
     <span class="tab-badge" v-if="stats.pendingRequests > 0">{{ stats.pendingRequests }}</span>
   </button>
   <button class="tab-btn" :class="{ active: activeTab === 'approved' }" @click="switchTab('approved')">
-    <span>✅</span> Approved
+     Approved
     <span class="tab-badge" v-if="stats.approvedRequests > 0">{{ stats.approvedRequests }}</span>
   </button>
   <button class="tab-btn" :class="{ active: activeTab === 'rejected' }" @click="switchTab('rejected')">
-    <span>❌</span> Rejected
+     Rejected
     <span class="tab-badge" v-if="stats.rejectedRequests > 0">{{ stats.rejectedRequests }}</span>
   </button>
   <button class="tab-btn" :class="{ active: activeTab === 'overdue' }" @click="switchTab('overdue')">
-    <span>⚠️</span> Overdue
+    Overdue
     <span class="tab-badge danger" v-if="stats.overdueReturns > 0">{{ stats.overdueReturns }}</span>
   </button>
   <button class="tab-btn" :class="{ active: activeTab === 'calendar' }" @click="switchTab('calendar')">
-    <span>📅</span> Calendar
+    Calendar
   </button>
   <button class="tab-btn" :class="{ active: activeTab === 'balance' }" @click="switchTab('balance')">
-    <span>⚖️</span> Balance
+  Balance
   </button>
 </div>
 

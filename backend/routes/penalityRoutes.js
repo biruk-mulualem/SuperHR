@@ -12,4 +12,5 @@ router.post('/employees/:employeeId/penalties', penalityController.createPenalty
 router.delete('/penalties/:penaltyId', penalityController.deletePenalty);
 router.put('/penalties/:penaltyId/reduce', penalityController.reducePenalty);
 
+
 module.exports = router;

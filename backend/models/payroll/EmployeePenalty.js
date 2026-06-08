@@ -17,6 +17,17 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'created_by',
         as: 'creator'
       });
+      // Also add association
+EmployeePenalty.associate = (db) => {
+  EmployeePenalty.belongsTo(db.Employee, {
+    foreignKey: 'employee_id',
+    as: 'employee'
+  });
+  EmployeePenalty.hasOne(db.PenaltySummary, {
+    foreignKey: 'penalty_id',
+    as: 'Summary'
+  });
+};
     }
   }
 
@@ -135,7 +146,33 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
       field: 'updated_at'
-    }
+    },
+
+penalty_date: {
+  type: DataTypes.DATEONLY,  // Use DATEONLY, not DATE
+  allowNull: true,
+  field: 'penalty_date'
+},
+  // models/PenaltySummary.js
+period_start_date: {
+  type: DataTypes.DATEONLY,  // Use DATEONLY, not DATE
+  allowNull: false
+},
+period_end_date: {
+  type: DataTypes.DATEONLY,  // Use DATEONLY, not DATE
+  allowNull: false
+},
+period_label: {
+  type: DataTypes.STRING(50),
+  allowNull: true,
+  field: 'period_label'
+},
+reduced_amount: {
+  type: DataTypes.DECIMAL(15, 2),
+  allowNull: true,
+  field: 'reduced_amount',
+  defaultValue: 0
+}
   }, {
     sequelize,
     modelName: 'EmployeePenalty',

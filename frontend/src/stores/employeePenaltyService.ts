@@ -21,6 +21,8 @@ export interface EmployeePenalty {
   reduced_at?: string;
   created_at: string;
   updated_at: string;
+  penalty_date?: string;  // Add this field
+  date?: string;          // Add this field for frontend compatibility
 }
 
 export interface CreatePenaltyParams {
@@ -32,6 +34,7 @@ export interface CreatePenaltyParams {
   contact?: string;
   reason?: string;
   month: string;
+  penalty_date: string;  // ADD THIS - required field
 }
 
 export interface PenaltyResponse {
@@ -49,9 +52,6 @@ export interface PenaltyResponse {
 class EmployeePenaltyService {
   private readonly baseUrl = '/penalties';
 
-  /**
-   * Get all penalties for an employee
-   */
   async getEmployeePenalties(employeeId: number, params?: {
     month?: string;
     status?: string;
@@ -77,17 +77,11 @@ class EmployeePenaltyService {
     }
   }
 
-  /**
-   * Get penalties for current month
-   */
   async getCurrentMonthPenalties(employeeId: number): Promise<PenaltyResponse> {
     const currentMonth = new Date().toISOString().slice(0, 7);
     return this.getEmployeePenalties(employeeId, { month: currentMonth, status: 'active' });
   }
 
-  /**
-   * Create a new penalty
-   */
   async createPenalty(employeeId: number, data: CreatePenaltyParams): Promise<{
     success: boolean;
     message?: string;
@@ -106,30 +100,23 @@ class EmployeePenaltyService {
     }
   }
 
-
-/**
- * Delete a penalty (hard delete)
- */
-async deletePenalty(penaltyId: number): Promise<{
-  success: boolean;
-  message?: string;
-  error?: string;
-}> {
-  try {
-    const response = await api.delete(`/penalties/penalties/${penaltyId}`);
-    return response.data;
-  } catch (error: any) {
-    console.error('Delete penalty error:', error);
-    return {
-      success: false,
-      error: error.response?.data?.error || 'Failed to delete penalty'
-    };
+  async deletePenalty(penaltyId: number): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      const response = await api.delete(`/penalties/penalties/${penaltyId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Delete penalty error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to delete penalty'
+      };
+    }
   }
-}
 
-  /**
-   * Reduce a penalty amount
-   */
   async reducePenalty(penaltyId: number, reductionValue: number, reductionReason: string): Promise<{
     success: boolean;
     message?: string;
@@ -151,9 +138,6 @@ async deletePenalty(penaltyId: number): Promise<{
     }
   }
 
-  /**
-   * Bulk create penalties for multiple employees
-   */
   async bulkCreatePenalties(penalties: Array<{
     employee_id: number;
     penalty_type: string;
@@ -161,6 +145,7 @@ async deletePenalty(penaltyId: number): Promise<{
     value: number;
     month: string;
     reason?: string;
+    penalty_date: string;
   }>): Promise<{
     success: boolean;
     message?: string;
@@ -179,9 +164,6 @@ async deletePenalty(penaltyId: number): Promise<{
     }
   }
 
-  /**
-   * Apply penalties for a specific payroll period
-   */
   async applyPenaltiesForPeriod(periodId: number, penaltyIds: number[]): Promise<{
     success: boolean;
     message?: string;
@@ -201,9 +183,6 @@ async deletePenalty(penaltyId: number): Promise<{
 
   // ==================== HELPER METHODS ====================
 
-  /**
-   * Get penalty type display name
-   */
   getPenaltyTypeLabel(type: string): string {
     const labels: Record<string, string> = {
       'Excessive Absenteeism': 'Excessive Absenteeism',
@@ -241,9 +220,6 @@ async deletePenalty(penaltyId: number): Promise<{
     return labels[type] || type;
   }
 
-  /**
-   * Get status badge color
-   */
   getStatusColor(status: string): string {
     const colors: Record<string, string> = {
       'active': 'warning',
@@ -254,9 +230,6 @@ async deletePenalty(penaltyId: number): Promise<{
     return colors[status] || 'default';
   }
 
-  /**
-   * Get status label
-   */
   getStatusLabel(status: string): string {
     const labels: Record<string, string> = {
       'active': 'Active',
@@ -267,9 +240,6 @@ async deletePenalty(penaltyId: number): Promise<{
     return labels[status] || status;
   }
 
-  /**
-   * Calculate actual amount based on salary
-   */
   calculatePenaltyAmount(penalty: EmployeePenalty, salary: number): number {
     if (penalty.calculation_type === 'percent') {
       return Math.floor(salary * (penalty.value / 100));
@@ -277,9 +247,6 @@ async deletePenalty(penaltyId: number): Promise<{
     return penalty.value;
   }
 
-  /**
-   * Get all penalty types for dropdown
-   */
   getPenaltyTypes(): string[] {
     return [
       'Excessive Absenteeism',
