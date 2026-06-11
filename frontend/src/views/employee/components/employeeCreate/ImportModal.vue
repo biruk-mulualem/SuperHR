@@ -3,13 +3,13 @@
   <div v-if="show" class="modal-overlay" @click="$emit('update:show', false)">
     <div class="modal-container" @click.stop>
       <div class="modal-header">
-        <h3>Import Employees</h3>
+        <h3>{{ $t('import.title') || 'Import Employees' }}</h3>
         <button class="modal-close" @click="$emit('update:show', false)">×</button>
       </div>
       <div class="modal-body">
         <div class="csv-info">
-          <strong>Required columns:</strong> firstName, lastName, email, phone, departmentId, positionId, employmentType, hireDate<br>
-          <strong>Optional columns:</strong> middleName, personalEmail, dob, gender, maritalStatus, nationality, managerId, salary, address, workLocation, <span class="highlight">housingAllowance, positionAllowance, transportAllowance</span>
+          <strong>{{ $t('import.requiredColumns') || 'Required columns:' }}</strong> firstName, lastName, email, phone, departmentId, positionId, employmentType, hireDate<br>
+          <strong>{{ $t('import.optionalColumns') || 'Optional columns:' }}</strong> middleName, personalEmail, dob, gender, maritalStatus, nationality, managerId, salary, address, workLocation, <span class="highlight">housingAllowance, positionAllowance, transportAllowance</span>
         </div>
         <div class="upload-zone" @click="triggerCsvInput">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -17,16 +17,16 @@
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          <span>Click to upload CSV file</span>
-          <small>Supported format: .csv</small>
+          <span>{{ $t('import.clickToUpload') || 'Click to upload CSV file' }}</span>
+          <small>{{ $t('import.supportedFormat') || 'Supported format: .csv' }}</small>
         </div>
         <input type="file" ref="csvFileInput" @change="handleCsvUpload" accept=".csv" style="display: none">
-        <button class="template-link" @click="downloadTemplate">Download template</button>
+        <button class="template-link" @click="downloadTemplate">{{ $t('import.downloadTemplate') || 'Download template' }}</button>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" @click="$emit('update:show', false)">Cancel</button>
+        <button class="btn-secondary" @click="$emit('update:show', false)">{{ $t('common.cancel') || 'Cancel' }}</button>
         <button class="btn-primary" @click="importEmployees" :disabled="!csvData.length || isImporting">
-          {{ isImporting ? 'Importing...' : `Import (${csvData.length})` }}
+          {{ isImporting ? ($t('common.importing') || 'Importing...') : ($t('common.import') || 'Import') }} ({{ csvData.length }})
         </button>
       </div>
     </div>

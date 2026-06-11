@@ -9,7 +9,7 @@
         type="text" 
         :value="filters.search"
         @input="$emit('update:filters', { search: $event.target.value })"
-        placeholder="Search employees..."
+        :placeholder="$t('common.searchEmployees') || 'Search employees...'"
         class="search-input"
         @keyup.enter="$emit('load-employees')"
       />
@@ -17,28 +17,28 @@
     
     <div class="filter-group">
       <select :value="filters.departmentId" @change="$emit('update:filters', { departmentId: $event.target.value })" class="filter-select">
-        <option value="">All Depts</option>
+        <option value="">{{ $t('common.allDepartments') || 'All Depts' }}</option>
         <option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">
           {{ dept.name }}
         </option>
       </select>
       
       <select :value="filters.employmentStatus" @change="$emit('update:filters', { employmentStatus: $event.target.value })" class="filter-select">
-        <option value="">All Status</option>
-        <option value="active">Active</option>
-        <option value="on-leave">On Leave</option>
-        <option value="terminated">Terminated</option>
+        <option value="">{{ $t('common.allStatus') || 'All Status' }}</option>
+        <option value="employee.active">{{ $t('employee.active') || 'Active' }}</option>
+        <option value="employee.onLeave">{{ $t('employee.onLeave') || 'On Leave' }}</option>
+        <option value="employee.terminated">{{ $t('employee.terminated') || 'Terminated' }}</option>
       </select>
       
       <select :value="filters.employmentType" @change="$emit('update:filters', { employmentType: $event.target.value })" class="filter-select">
-        <option value="">All Types</option>
-        <option value="full-time">Full Time</option>
-        <option value="part-time">Part Time</option>
-        <option value="contract">Contract</option>
-        <option value="intern">Intern</option>
+        <option value="">{{ $t('common.allTypes') || 'All Types' }}</option>
+        <option value="employee.fullTime">{{ $t('employee.fullTime') || 'Full Time' }}</option>
+        <option value="employee.partTime">{{ $t('employee.partTime') || 'Part Time' }}</option>
+        <option value="employee.contract">{{ $t('employee.contract') || 'Contract' }}</option>
+        <option value="employee.intern">{{ $t('employee.intern') || 'Intern' }}</option>
       </select>
       
-      <button class="btn-clear" @click="$emit('clear-filters')">
+      <button class="btn-clear" @click="$emit('clear-filters')" :title="$t('common.clearFilters') || 'Clear filters'">
         <svg class="btn-icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
@@ -118,6 +118,12 @@ defineEmits(['update:filters', 'clear-filters', 'load-employees'])
   cursor: pointer;
   display: flex;
   align-items: center;
+  transition: all 0.2s;
+}
+
+.btn-clear:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
 .btn-icon-small {

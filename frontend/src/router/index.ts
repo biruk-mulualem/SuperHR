@@ -58,6 +58,12 @@ const router = createRouter({
           component: () => import("@/views/employee/EmployeeEdit.vue"),
           meta: { title: "Edit Employee", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
+          {
+       path: "documents-letters",
+          name: "DocumentsLetters",
+          component: () => import("@/views/employee/DocumentsLetters.vue"),
+          meta: { title: "Documents & Letters", roles: ["admin", "hr", "finance", "employee", "attendance"] },
+        },
         {
           path: "users",
           name: "users",

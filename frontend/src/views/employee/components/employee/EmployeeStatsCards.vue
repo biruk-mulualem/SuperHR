@@ -10,11 +10,12 @@
         </svg>
       </div>
       <div class="stat-info">
-        <h3>Total Employees</h3>
+        <h3>{{ $t('stats.totalEmployees') || 'Total Employees' }}</h3>
         <p class="stat-number">{{ stats.total || 0 }}</p>
-        <span class="stat-trend">All time</span>
+        <span class="stat-trend">{{ $t('stats.allTime') || 'All time' }}</span>
       </div>
     </div>
+    
     <div class="stat-card" @click="$emit('navigate-to-analytics')">
       <div class="stat-icon green">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -23,11 +24,12 @@
         </svg>
       </div>
       <div class="stat-info">
-        <h3>Active Employees</h3>
+        <h3>{{ $t('stats.activeEmployees') || 'Active Employees' }}</h3>
         <p class="stat-number">{{ stats.active || 0 }}</p>
-        <span class="stat-trend positive">{{ calculatePercentage(stats.active, stats.total) }}% of total</span>
+        <span class="stat-trend positive">{{ calculatePercentage(stats.active, stats.total) }}% {{ $t('stats.ofTotal') || 'of total' }}</span>
       </div>
     </div>
+    
     <div class="stat-card" @click="$emit('navigate-to-analytics')">
       <div class="stat-icon purple">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -38,11 +40,12 @@
         </svg>
       </div>
       <div class="stat-info">
-        <h3>Departments</h3>
+        <h3>{{ $t('stats.departments') || 'Departments' }}</h3>
         <p class="stat-number">{{ departments.length }}</p>
-        <span class="stat-trend">Active departments</span>
+        <span class="stat-trend">{{ $t('stats.activeDepartments') || 'Active departments' }}</span>
       </div>
     </div>
+    
     <div class="stat-card" @click="$emit('navigate-to-analytics')">
       <div class="stat-icon orange">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -50,9 +53,9 @@
         </svg>
       </div>
       <div class="stat-info">
-        <h3>On Leave</h3>
+        <h3>{{ $t('stats.onLeave') || 'On Leave' }}</h3>
         <p class="stat-number">{{ stats.onLeave || 0 }}</p>
-        <span class="stat-trend warning">{{ calculatePercentage(stats.onLeave, stats.active) }}% of active</span>
+        <span class="stat-trend warning">{{ calculatePercentage(stats.onLeave, stats.active) }}% {{ $t('stats.ofActive') || 'of active' }}</span>
       </div>
     </div>
   </div>

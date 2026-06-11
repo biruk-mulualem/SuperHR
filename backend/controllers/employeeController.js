@@ -3,6 +3,8 @@ const { Op, Sequelize } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { getDocumentFolder } = require('../middleware/uploadMiddleware');
+
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -66,6 +68,233 @@ const buildFilterConditions = (filters) => {
   return conditions;
 };
 
+
+// ============================================================================
+// HELPER: UPDATE JSONB FIELD AFTER DOCUMENT UPLOAD
+// ============================================================================
+async function updateEmployeeJsonbField(employeeId, documentType, index, fileData) {
+  const employee = await Employee.findByPk(employeeId);
+  if (!employee) return;
+  
+  const updateData = {};
+  
+  switch(documentType) {
+    // ========== PROFILE ==========
+    case 'profile_picture':
+      updateData.profilePictureUrl = fileData.fileUrl;
+      break;
+      
+    // ========== NATIONAL ID / ID CARD ==========
+    case 'national_id':
+    case 'id_card':
+    case 'passport':
+      const nationalIdDoc = employee.nationalIdDocument || {};
+      nationalIdDoc.documentUrl = fileData.fileUrl;
+      nationalIdDoc.documentId = fileData.documentId;
+      nationalIdDoc.fileName = fileData.fileName;
+      nationalIdDoc.documentType = documentType;
+      updateData.nationalIdDocument = nationalIdDoc;
+      break;
+      
+    // ========== SPOUSE DOCUMENTS ==========
+    case 'spouse_profile':
+      const spouseInfo = employee.spouseInfo || {};
+      spouseInfo.profilePictureUrl = fileData.fileUrl;
+      spouseInfo.profilePictureDocumentId = fileData.documentId;
+      spouseInfo.profilePictureFileName = fileData.fileName;
+      updateData.spouseInfo = spouseInfo;
+      break;
+      
+    case 'marriage_certificate':
+      const spouseInfo2 = employee.spouseInfo || {};
+      spouseInfo2.marriageCertificateUrl = fileData.fileUrl;
+      spouseInfo2.marriageCertificateDocumentId = fileData.documentId;
+      spouseInfo2.marriageCertificateFileName = fileData.fileName;
+      updateData.spouseInfo = spouseInfo2;
+      break;
+      
+    // ========== CHILD DOCUMENTS ==========
+    case 'child_birth_certificate':
+    case 'child_medical_report':
+    case 'child_adoption_certificate':
+    case 'child_profile':
+      const children = employee.children || [];
+      const idx = parseInt(index);
+      if (children[idx]) {
+        const fieldMap = {
+          'child_birth_certificate': 'birthCertificateUrl',
+          'child_medical_report': 'medicalReportUrl',
+          'child_adoption_certificate': 'adoptionCertificateUrl',
+          'child_profile': 'profilePictureUrl'
+        };
+        const field = fieldMap[documentType];
+        children[idx][field] = fileData.fileUrl;
+        children[idx][`${field.replace('Url', 'DocumentId')}`] = fileData.documentId;
+        children[idx][`${field.replace('Url', 'FileName')}`] = fileData.fileName;
+        updateData.children = children;
+      }
+      break;
+      
+    // ========== EDUCATION & CERTIFICATES ==========
+    case 'education_certificate':
+    case 'degree':
+    case 'certificate':
+      const education = employee.education || [];
+      const eduIdx = parseInt(index);
+      if (eduIdx !== null && !isNaN(eduIdx) && education[eduIdx]) {
+        education[eduIdx].certificateUrl = fileData.fileUrl;
+        education[eduIdx].certificateDocumentId = fileData.documentId;
+        education[eduIdx].certificateFileName = fileData.fileName;
+        updateData.education = education;
+      } else if (eduIdx === -1 || (eduIdx !== null && !education[eduIdx])) {
+        const newEducation = {
+          level: documentType === 'degree' ? 'Degree' : 'Certificate',
+          institutionName: '',
+          institutionAddress: '',
+          startDate: null,
+          endDate: null,
+          isCurrent: false,
+          certificateUrl: fileData.fileUrl,
+          certificateDocumentId: fileData.documentId,
+          certificateFileName: fileData.fileName
+        };
+        education.push(newEducation);
+        updateData.education = education;
+      }
+      break;
+      
+    // ========== CV / RESUME ==========
+    case 'cv':
+    case 'resume':
+      const currentEducation = employee.education || [];
+      const cvEntry = {
+        level: 'CV/Resume',
+        institutionName: 'N/A',
+        institutionAddress: 'N/A',
+        startDate: null,
+        endDate: null,
+        isCurrent: false,
+        certificateUrl: fileData.fileUrl,
+        certificateDocumentId: fileData.documentId,
+        certificateFileName: fileData.fileName,
+        isCV: true
+      };
+      currentEducation.push(cvEntry);
+      updateData.education = currentEducation;
+      break;
+      
+    // ========== TRAINING DOCUMENTS ==========
+    case 'training_certificate':
+      const training = employee.training || [];
+      const trainIdx = parseInt(index);
+      if (training[trainIdx]) {
+        training[trainIdx].certificateUrl = fileData.fileUrl;
+        training[trainIdx].certificateDocumentId = fileData.documentId;
+        training[trainIdx].certificateFileName = fileData.fileName;
+        updateData.training = training;
+      }
+      break;
+      
+    // ========== WORK EXPERIENCE DOCUMENTS ==========
+    case 'experience_letter':
+      const workExp = employee.workExperience || [];
+      const workIdx = parseInt(index);
+      if (workExp[workIdx]) {
+        workExp[workIdx].documentUrl = fileData.fileUrl;
+        workExp[workIdx].documentId = fileData.documentId;
+        workExp[workIdx].documentFileName = fileData.fileName;
+        updateData.workExperience = workExp;
+      }
+      break;
+      
+    // ========== GUARANTEE DOCUMENTS ==========
+    case 'guarantee_letter':
+    case 'sdt_letter':
+    case 'guarantee_other':
+      const guarantees = employee.guaranteeInfo || [];
+      const guarIdx = parseInt(index);
+      if (guarantees[guarIdx]) {
+        const fieldMap = {
+          'guarantee_letter': 'guaranteeLetterUrl',
+          'sdt_letter': 'sdtLetterUrl',
+          'guarantee_other': 'otherDocumentUrl'
+        };
+        const field = fieldMap[documentType];
+        const docIdField = field.replace('Url', 'DocumentId');
+        const fileNameField = field.replace('Url', 'FileName');
+        
+        guarantees[guarIdx][field] = fileData.fileUrl;
+        guarantees[guarIdx][docIdField] = fileData.documentId;
+        guarantees[guarIdx][fileNameField] = fileData.fileName;
+        updateData.guaranteeInfo = guarantees;
+      }
+      break;
+      
+    // ========== PARENT SUPPORT DOCUMENTS ==========
+    case 'parent_support_document':
+      const parentSupport = employee.parentSupport || [];
+      const parentIdx = parseInt(index);
+      if (parentSupport[parentIdx]) {
+        parentSupport[parentIdx].documentUrl = fileData.fileUrl;
+        parentSupport[parentIdx].documentId = fileData.documentId;
+        parentSupport[parentIdx].documentFileName = fileData.fileName;
+        updateData.parentSupport = parentSupport;
+      }
+      break;
+      
+    // ========== NATIONALITY DOCUMENTS ==========
+    case 'naturalization_certificate':
+      const natAcq = employee.nationalityAcquisition || {};
+      natAcq.documentUrl = fileData.fileUrl;
+      natAcq.documentId = fileData.documentId;
+      natAcq.documentFileName = fileData.fileName;
+      updateData.nationalityAcquisition = natAcq;
+      break;
+      
+    // ========== HEALTH DOCUMENTS ==========
+    case 'health_document':
+      const healthInfo = employee.healthInfo || {};
+      healthInfo.documentUrl = fileData.fileUrl;
+      healthInfo.documentId = fileData.documentId;
+      healthInfo.documentFileName = fileData.fileName;
+      updateData.healthInfo = healthInfo;
+      break;
+      
+    // ========== LEGAL DOCUMENTS ==========
+    case 'legal_document':
+      const legalInfo = employee.legalInfo || {};
+      legalInfo.documentUrl = fileData.fileUrl;
+      legalInfo.documentId = fileData.documentId;
+      legalInfo.documentFileName = fileData.fileName;
+      updateData.legalInfo = legalInfo;
+      break;
+      
+    // ========== CONTRACT & PERFORMANCE ==========
+    case 'contract':
+    case 'performance-review':
+      // Store in a contracts array or separate JSONB field
+      const contracts = employee.contracts || [];
+      contracts.push({
+        type: documentType,
+        documentUrl: fileData.fileUrl,
+        documentId: fileData.documentId,
+        fileName: fileData.fileName,
+        uploadedAt: new Date()
+      });
+      updateData.contracts = contracts;
+      break;
+      
+    // ========== DEFAULT ==========
+    default:
+      console.warn(`Unknown document type in updateEmployeeJsonbField: ${documentType}`);
+      break;
+  }
+  
+  if (Object.keys(updateData).length > 0) {
+    await employee.update(updateData);
+  }
+}
+
 // Build sorting options
 const getSortingOptions = (sortBy, sortOrder) => {
   const allowedSortFields = ['employeeId', 'firstName', 'lastName', 'hireDate', 'employmentStatus', 'basicSalary'];
@@ -107,21 +336,24 @@ const getFileUrl = (req, filename, subfolder) => {
 };
 
 // ============================================================================
-// CREATE EMPLOYEE (WITHOUT PROFILE PICTURE)
+// CREATE EMPLOYEE (FULLY UPDATED WITH ALL JSONB FIELDS + nationalIdDocument)
 // ============================================================================
-
 exports.createEmployee = async (req, res) => {
   try {
-    // Parse form data - ADDED allowance fields
+    // Parse form data - ALL fields from frontend
     const {
-      firstName, lastName, middleName, email, phone, dob, gender,
-      maritalStatus, nationality, departmentId, positionId, managerId,
+      firstName, lastName, middleName, email, phone, dob, gender,fullNameEnglish,
+      maritalStatus, nationality, nationalId, departmentId, positionId, managerId,
       employmentType, hireDate, salary, address, workLocation,
       personalEmail, emergencyContact, bankAccount,
-        housingAllowance, positionAllowance, transportAllowance, mobileAllowance  
+      housingAllowance, positionAllowance, transportAllowance, mobileAllowance,
+      // NEW JSONB FIELDS
+      birthPlace, mothersFullName, spouseInfo, children, parentSupport,
+      education, training, workExperience, languageSkills, otherSkills,
+      nationalityAcquisition, healthInfo, legalInfo, guaranteeInfo,
+      parentsInfo, emergencyContactAddress, currentCompany, permanentAddress,
+      nationalIdDocument  // ← ADDED
     } = req.body;
-
-    
 
     // Validate required fields
     if (!firstName || !lastName || !departmentId || !positionId || !employmentType || !hireDate) {
@@ -177,7 +409,7 @@ exports.createEmployee = async (req, res) => {
     // Parse basic salary
     const basicSalary = salary ? parseFloat(salary) : 0;
     
-    // Use provided allowances or default to 0 (NO auto-calculation)
+    // Use provided allowances or default to 0
     const finalHousingAllowance = housingAllowance !== undefined && housingAllowance !== '' ? parseFloat(housingAllowance) : 0;
     const finalPositionAllowance = positionAllowance !== undefined && positionAllowance !== '' ? parseFloat(positionAllowance) : 0;
     const finalTransportAllowance = transportAllowance !== undefined && transportAllowance !== '' ? parseFloat(transportAllowance) : 0;
@@ -186,22 +418,91 @@ exports.createEmployee = async (req, res) => {
     // Parse JSON strings
     let parsedEmergencyContact = emergencyContact;
     let parsedBankAccount = bankAccount;
-    
+    let parsedBirthPlace = birthPlace;
+    let parsedSpouseInfo = spouseInfo;
+    let parsedChildren = children;
+    let parsedParentSupport = parentSupport;
+    let parsedEducation = education;
+    let parsedTraining = training;
+    let parsedWorkExperience = workExperience;
+    let parsedLanguageSkills = languageSkills;
+    let parsedNationalityAcquisition = nationalityAcquisition;
+    let parsedHealthInfo = healthInfo;
+    let parsedLegalInfo = legalInfo;
+    let parsedGuaranteeInfo = guaranteeInfo;
+    let parsedParentsInfo = parentsInfo;
+    let parsedEmergencyContactAddress = emergencyContactAddress;
+    let parsedCurrentCompany = currentCompany;
+    let parsedPermanentAddress = permanentAddress;
+    let parsedNationalIdDocument = nationalIdDocument;  // ← ADDED
+
     if (emergencyContact && typeof emergencyContact === 'string') {
       try { parsedEmergencyContact = JSON.parse(emergencyContact); } catch (e) { parsedEmergencyContact = {}; }
     }
-    
     if (bankAccount && typeof bankAccount === 'string') {
       try { parsedBankAccount = JSON.parse(bankAccount); } catch (e) { parsedBankAccount = {}; }
     }
+    if (birthPlace && typeof birthPlace === 'string') {
+      try { parsedBirthPlace = JSON.parse(birthPlace); } catch (e) { parsedBirthPlace = {}; }
+    }
+    if (spouseInfo && typeof spouseInfo === 'string') {
+      try { parsedSpouseInfo = JSON.parse(spouseInfo); } catch (e) { parsedSpouseInfo = {}; }
+    }
+    if (children && typeof children === 'string') {
+      try { parsedChildren = JSON.parse(children); } catch (e) { parsedChildren = []; }
+    }
+    if (parentSupport && typeof parentSupport === 'string') {
+      try { parsedParentSupport = JSON.parse(parentSupport); } catch (e) { parsedParentSupport = []; }
+    }
+    if (education && typeof education === 'string') {
+      try { parsedEducation = JSON.parse(education); } catch (e) { parsedEducation = []; }
+    }
+    if (training && typeof training === 'string') {
+      try { parsedTraining = JSON.parse(training); } catch (e) { parsedTraining = []; }
+    }
+    if (workExperience && typeof workExperience === 'string') {
+      try { parsedWorkExperience = JSON.parse(workExperience); } catch (e) { parsedWorkExperience = []; }
+    }
+    if (languageSkills && typeof languageSkills === 'string') {
+      try { parsedLanguageSkills = JSON.parse(languageSkills); } catch (e) { parsedLanguageSkills = []; }
+    }
+    if (nationalityAcquisition && typeof nationalityAcquisition === 'string') {
+      try { parsedNationalityAcquisition = JSON.parse(nationalityAcquisition); } catch (e) { parsedNationalityAcquisition = {}; }
+    }
+    if (healthInfo && typeof healthInfo === 'string') {
+      try { parsedHealthInfo = JSON.parse(healthInfo); } catch (e) { parsedHealthInfo = {}; }
+    }
+    if (legalInfo && typeof legalInfo === 'string') {
+      try { parsedLegalInfo = JSON.parse(legalInfo); } catch (e) { parsedLegalInfo = {}; }
+    }
+    if (guaranteeInfo && typeof guaranteeInfo === 'string') {
+      try { parsedGuaranteeInfo = JSON.parse(guaranteeInfo); } catch (e) { parsedGuaranteeInfo = []; }
+    }
+    if (parentsInfo && typeof parentsInfo === 'string') {
+      try { parsedParentsInfo = JSON.parse(parentsInfo); } catch (e) { parsedParentsInfo = {}; }
+    }
+    if (emergencyContactAddress && typeof emergencyContactAddress === 'string') {
+      try { parsedEmergencyContactAddress = JSON.parse(emergencyContactAddress); } catch (e) { parsedEmergencyContactAddress = {}; }
+    }
+    if (currentCompany && typeof currentCompany === 'string') {
+      try { parsedCurrentCompany = JSON.parse(currentCompany); } catch (e) { parsedCurrentCompany = {}; }
+    }
+    if (permanentAddress && typeof permanentAddress === 'string') {
+      try { parsedPermanentAddress = JSON.parse(permanentAddress); } catch (e) { parsedPermanentAddress = {}; }
+    }
+    if (nationalIdDocument && typeof nationalIdDocument === 'string') {  // ← ADDED
+      try { parsedNationalIdDocument = JSON.parse(nationalIdDocument); } catch (e) { parsedNationalIdDocument = {}; }
+    }
 
-    // Create employee with allowances
+    // Create employee with ALL fields
     const employee = await Employee.create({
+      // Basic Info
       employeeCode,
       userId: user.userId,
       firstName,
       lastName,
       middleName: middleName || null,
+      fullNameEnglish: fullNameEnglish || null,  // ← ADD THIS LINE - IT'S MISSING!
       workEmail: email,
       personalEmail: personalEmail || null,
       phoneNumber: phone,
@@ -209,21 +510,71 @@ exports.createEmployee = async (req, res) => {
       gender: gender || null,
       maritalStatus: maritalStatus || null,
       nationality: nationality || null,
+      nationalId: nationalId || null,
+      
+      // National ID Document
+      nationalIdDocument: parsedNationalIdDocument || {},  // ← ADDED
+      
+      // Employment
       departmentId: parseInt(departmentId),
       positionId: parseInt(positionId),
       managerId: managerId ? parseInt(managerId) : null,
       employmentType: employmentType,
       employmentStatus: 'active',
       hireDate: hireDate,
+      workLocation: workLocation || null,
+      
+      // Salary & Allowances
       basicSalary: basicSalary,
       housingAllowance: finalHousingAllowance,
       positionAllowance: finalPositionAllowance,
       transportAllowance: finalTransportAllowance,
-      mobileAllowance: finalMobileAllowance, 
+      mobileAllowance: finalMobileAllowance,
+      
+      // Addresses
       currentAddress: address ? { street: address } : {},
-      workLocation: workLocation || null,
-      emergencyContact: parsedEmergencyContact || {},
+      permanentAddress: parsedPermanentAddress || {},
+      
+      // Financial
       bankAccount: parsedBankAccount || {},
+      
+      // Emergency
+      emergencyContact: parsedEmergencyContact || {},
+      emergencyContactAddress: parsedEmergencyContactAddress || {},
+      
+      // Family
+      mothersFullName: mothersFullName || null,
+      spouseInfo: parsedSpouseInfo || {},
+      children: parsedChildren || [],
+      parentSupport: parsedParentSupport || [],
+      parentsInfo: parsedParentsInfo || {},
+      
+      // Birth Place
+      birthPlace: parsedBirthPlace || {},
+      
+      // Education & Training
+      education: parsedEducation || [],
+      training: parsedTraining || [],
+      workExperience: parsedWorkExperience || [],
+      
+      // Skills
+      languageSkills: parsedLanguageSkills || [],
+      otherSkills: otherSkills || null,
+      
+      // Nationality
+      nationalityAcquisition: parsedNationalityAcquisition || {},
+      
+      // Health & Legal
+      healthInfo: parsedHealthInfo || {},
+      legalInfo: parsedLegalInfo || {},
+      
+      // Guarantee
+      guaranteeInfo: parsedGuaranteeInfo || [],
+      
+      // Company
+      currentCompany: parsedCurrentCompany || {},
+      
+      // Profile
       profilePictureUrl: null,
       isActive: true
     });
@@ -238,9 +589,10 @@ exports.createEmployee = async (req, res) => {
         housing: parseFloat(employee.housingAllowance) || 0,
         position: parseFloat(employee.positionAllowance) || 0,
         transport: parseFloat(employee.transportAllowance) || 0,
+        mobile: parseFloat(employee.mobileAllowance) || 0,
         total: (parseFloat(employee.housingAllowance) || 0) + 
                (parseFloat(employee.positionAllowance) || 0) + 
-               (parseFloat(employee.transportAllowance) || 0)+
+               (parseFloat(employee.transportAllowance) || 0) +
                (parseFloat(employee.mobileAllowance) || 0),
       },
       user: {
@@ -265,56 +617,1012 @@ exports.createEmployee = async (req, res) => {
     });
     
   } catch (error) {
-  console.error('=== CREATE EMPLOYEE ERROR DETAILS ===');
-  console.error('Error name:', error.name);
-  console.error('Error message:', error.message);
-  
-  // Log Sequelize validation errors
-  if (error.name === 'SequelizeValidationError') {
-    console.error('Validation errors:');
-    error.errors.forEach((err, index) => {
-      console.error(`  ${index + 1}. Field: ${err.path}`);
-      console.error(`     Message: ${err.message}`);
-      console.error(`     Value:`, err.value);
-      console.error(`     Type: ${err.type}`);
-    });
-    return res.status(400).json({
-      success: false,
-      error: 'Validation error',
-      details: error.errors.map(e => ({
-        field: e.path,
-        message: e.message
-      }))
-    });
-  }
-  
-  // Log unique constraint errors
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    console.error('Unique constraint violation:');
-    error.errors.forEach((err, index) => {
-      console.error(`  ${index + 1}. ${err.message}`);
-    });
-    return res.status(400).json({
-      success: false,
-      error: 'Duplicate entry error',
-      details: error.errors.map(e => e.message)
+    console.error('=== CREATE EMPLOYEE ERROR DETAILS ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: error.errors.map(e => ({
+          field: e.path,
+          message: e.message
+        }))
+      });
+    }
+    
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Duplicate entry error',
+        details: error.errors.map(e => e.message)
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: error.message
     });
   }
-  
-  // Log other errors
-  console.error('Full error object:', JSON.stringify(error, null, 2));
-  if (error.parent) {
-    console.error('Database error:', error.parent.message);
-  }
-  
-  res.status(500).json({ 
-    success: false, 
-    error: error.message,
-    details: error.parent?.message || null
-  });
-}
 };
 
+// ============================================================================
+// UPDATE EMPLOYEE (WITH ALLOWANCES & COMPENSATION HISTORY + nationalIdDocument)
+// ============================================================================
+exports.updateEmployee = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    
+    const employee = await Employee.findByPk(id);
+    if (!employee) {
+      if (req.file) deleteFile(req.file.path);
+      await transaction.rollback();
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    const updates = req.body;
+
+    // Store old values for compensation tracking
+    const oldValues = {
+      basicSalary: employee.basicSalary,
+      housingAllowance: employee.housingAllowance,
+      positionAllowance: employee.positionAllowance,
+      transportAllowance: employee.transportAllowance,
+      mobileAllowance: employee.mobileAllowance
+    };
+
+    // Handle profile picture update if file is uploaded
+    let profilePictureUrl = employee.profilePictureUrl;
+    if (req.file) {
+      if (employee.profilePictureUrl) {
+        const oldFileName = employee.profilePictureUrl.split('/').pop();
+        const oldFilePath = path.join(__dirname, '..', 'uploads', 'profiles', oldFileName);
+        deleteFile(oldFilePath);
+      }
+      profilePictureUrl = getFileUrl(req, req.file.filename, 'profiles');
+    }
+
+    // Parse Address
+    let currentAddress = employee.currentAddress;
+    if (updates.address) {
+      if (typeof updates.address === 'string') {
+        currentAddress = { street: updates.address };
+      } else if (typeof updates.address === 'object') {
+        currentAddress = updates.address;
+      }
+    }
+
+    // Parse Bank Account
+    let bankAccount = employee.bankAccount;
+    if (updates.bankAccount) {
+      if (typeof updates.bankAccount === 'string') {
+        try { bankAccount = JSON.parse(updates.bankAccount); } catch (e) { bankAccount = {}; }
+      } else if (typeof updates.bankAccount === 'object') {
+        bankAccount = updates.bankAccount;
+      }
+    }
+
+    // Parse Emergency Contact
+    let emergencyContact = employee.emergencyContact;
+    if (updates.emergencyContact) {
+      if (typeof updates.emergencyContact === 'string') {
+        try { emergencyContact = JSON.parse(updates.emergencyContact); } catch (e) { emergencyContact = {}; }
+      } else if (typeof updates.emergencyContact === 'object') {
+        emergencyContact = updates.emergencyContact;
+      }
+    }
+
+    // Parse new JSONB fields
+    let birthPlace = employee.birthPlace;
+    if (updates.birthPlace) {
+      if (typeof updates.birthPlace === 'string') {
+        try { birthPlace = JSON.parse(updates.birthPlace); } catch (e) { birthPlace = {}; }
+      } else if (typeof updates.birthPlace === 'object') {
+        birthPlace = updates.birthPlace;
+      }
+    }
+
+    let spouseInfo = employee.spouseInfo;
+    if (updates.spouseInfo) {
+      if (typeof updates.spouseInfo === 'string') {
+        try { spouseInfo = JSON.parse(updates.spouseInfo); } catch (e) { spouseInfo = {}; }
+      } else if (typeof updates.spouseInfo === 'object') {
+        spouseInfo = updates.spouseInfo;
+      }
+    }
+
+    let children = employee.children;
+    if (updates.children) {
+      if (typeof updates.children === 'string') {
+        try { children = JSON.parse(updates.children); } catch (e) { children = []; }
+      } else if (Array.isArray(updates.children)) {
+        children = updates.children;
+      }
+    }
+
+    let parentSupport = employee.parentSupport;
+    if (updates.parentSupport) {
+      if (typeof updates.parentSupport === 'string') {
+        try { parentSupport = JSON.parse(updates.parentSupport); } catch (e) { parentSupport = []; }
+      } else if (Array.isArray(updates.parentSupport)) {
+        parentSupport = updates.parentSupport;
+      }
+    }
+
+    let education = employee.education;
+    if (updates.education) {
+      if (typeof updates.education === 'string') {
+        try { education = JSON.parse(updates.education); } catch (e) { education = []; }
+      } else if (Array.isArray(updates.education)) {
+        education = updates.education;
+      }
+    }
+
+    let training = employee.training;
+    if (updates.training) {
+      if (typeof updates.training === 'string') {
+        try { training = JSON.parse(updates.training); } catch (e) { training = []; }
+      } else if (Array.isArray(updates.training)) {
+        training = updates.training;
+      }
+    }
+
+    let workExperience = employee.workExperience;
+    if (updates.workExperience) {
+      if (typeof updates.workExperience === 'string') {
+        try { workExperience = JSON.parse(updates.workExperience); } catch (e) { workExperience = []; }
+      } else if (Array.isArray(updates.workExperience)) {
+        workExperience = updates.workExperience;
+      }
+    }
+
+    let languageSkills = employee.languageSkills;
+    if (updates.languageSkills) {
+      if (typeof updates.languageSkills === 'string') {
+        try { languageSkills = JSON.parse(updates.languageSkills); } catch (e) { languageSkills = []; }
+      } else if (Array.isArray(updates.languageSkills)) {
+        languageSkills = updates.languageSkills;
+      }
+    }
+
+    let nationalityAcquisition = employee.nationalityAcquisition;
+    if (updates.nationalityAcquisition) {
+      if (typeof updates.nationalityAcquisition === 'string') {
+        try { nationalityAcquisition = JSON.parse(updates.nationalityAcquisition); } catch (e) { nationalityAcquisition = {}; }
+      } else if (typeof updates.nationalityAcquisition === 'object') {
+        nationalityAcquisition = updates.nationalityAcquisition;
+      }
+    }
+
+    let healthInfo = employee.healthInfo;
+    if (updates.healthInfo) {
+      if (typeof updates.healthInfo === 'string') {
+        try { healthInfo = JSON.parse(updates.healthInfo); } catch (e) { healthInfo = {}; }
+      } else if (typeof updates.healthInfo === 'object') {
+        healthInfo = updates.healthInfo;
+      }
+    }
+
+    let legalInfo = employee.legalInfo;
+    if (updates.legalInfo) {
+      if (typeof updates.legalInfo === 'string') {
+        try { legalInfo = JSON.parse(updates.legalInfo); } catch (e) { legalInfo = {}; }
+      } else if (typeof updates.legalInfo === 'object') {
+        legalInfo = updates.legalInfo;
+      }
+    }
+
+    let guaranteeInfo = employee.guaranteeInfo;
+    if (updates.guaranteeInfo) {
+      if (typeof updates.guaranteeInfo === 'string') {
+        try { guaranteeInfo = JSON.parse(updates.guaranteeInfo); } catch (e) { guaranteeInfo = []; }
+      } else if (Array.isArray(updates.guaranteeInfo)) {
+        guaranteeInfo = updates.guaranteeInfo;
+      }
+    }
+
+    let parentsInfo = employee.parentsInfo;
+    if (updates.parentsInfo) {
+      if (typeof updates.parentsInfo === 'string') {
+        try { parentsInfo = JSON.parse(updates.parentsInfo); } catch (e) { parentsInfo = {}; }
+      } else if (typeof updates.parentsInfo === 'object') {
+        parentsInfo = updates.parentsInfo;
+      }
+    }
+
+    let emergencyContactAddress = employee.emergencyContactAddress;
+    if (updates.emergencyContactAddress) {
+      if (typeof updates.emergencyContactAddress === 'string') {
+        try { emergencyContactAddress = JSON.parse(updates.emergencyContactAddress); } catch (e) { emergencyContactAddress = {}; }
+      } else if (typeof updates.emergencyContactAddress === 'object') {
+        emergencyContactAddress = updates.emergencyContactAddress;
+      }
+    }
+
+    let currentCompany = employee.currentCompany;
+    if (updates.currentCompany) {
+      if (typeof updates.currentCompany === 'string') {
+        try { currentCompany = JSON.parse(updates.currentCompany); } catch (e) { currentCompany = {}; }
+      } else if (typeof updates.currentCompany === 'object') {
+        currentCompany = updates.currentCompany;
+      }
+    }
+
+    let permanentAddress = employee.permanentAddress;
+    if (updates.permanentAddress) {
+      if (typeof updates.permanentAddress === 'string') {
+        try { permanentAddress = JSON.parse(updates.permanentAddress); } catch (e) { permanentAddress = {}; }
+      } else if (typeof updates.permanentAddress === 'object') {
+        permanentAddress = updates.permanentAddress;
+      }
+    }
+
+    let nationalIdDocument = employee.nationalIdDocument;  // ← ADDED
+    if (updates.nationalIdDocument) {
+      if (typeof updates.nationalIdDocument === 'string') {
+        try { nationalIdDocument = JSON.parse(updates.nationalIdDocument); } catch (e) { nationalIdDocument = {}; }
+      } else if (typeof updates.nationalIdDocument === 'object') {
+        nationalIdDocument = updates.nationalIdDocument;
+      }
+    }
+
+    // Prepare update data
+    const updateData = {};
+    
+    // Basic info
+    if (updates.firstName !== undefined) updateData.firstName = updates.firstName;
+    
+if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.fullNameEnglish;
+    if (updates.lastName !== undefined) updateData.lastName = updates.lastName;
+    if (updates.middleName !== undefined) updateData.middleName = updates.middleName;
+    if (updates.email !== undefined) updateData.workEmail = updates.email;
+    if (updates.personalEmail !== undefined) updateData.personalEmail = updates.personalEmail;
+    if (updates.phone !== undefined) updateData.phoneNumber = updates.phone;
+    if (updates.dob !== undefined) updateData.dateOfBirth = updates.dob;
+    if (updates.gender !== undefined) updateData.gender = updates.gender;
+    if (updates.maritalStatus !== undefined) updateData.maritalStatus = updates.maritalStatus;
+    if (updates.nationality !== undefined) updateData.nationality = updates.nationality;
+    if (updates.nationalId !== undefined) updateData.nationalId = updates.nationalId;
+    
+    // Employment
+    if (updates.departmentId !== undefined) updateData.departmentId = parseInt(updates.departmentId);
+    if (updates.positionId !== undefined) updateData.positionId = parseInt(updates.positionId);
+    if (updates.managerId !== undefined) updateData.managerId = updates.managerId ? parseInt(updates.managerId) : null;
+    if (updates.employmentType !== undefined) updateData.employmentType = updates.employmentType;
+    if (updates.status !== undefined) updateData.employmentStatus = updates.status;
+    if (updates.hireDate !== undefined) updateData.hireDate = updates.hireDate;
+    if (updates.confirmationDate !== undefined) updateData.confirmationDate = updates.confirmationDate || null;
+    if (updates.terminationDate !== undefined) updateData.terminationDate = updates.terminationDate || null;
+    if (updates.workLocation !== undefined) updateData.workLocation = updates.workLocation;
+    
+    // Addresses
+    if (updates.mothersFullName !== undefined) updateData.mothersFullName = updates.mothersFullName;
+    
+    // ========== NEW JSONB FIELDS ==========
+    updateData.birthPlace = birthPlace;
+    updateData.spouseInfo = spouseInfo;
+    updateData.children = children;
+    updateData.parentSupport = parentSupport;
+    updateData.education = education;
+    updateData.training = training;
+    updateData.workExperience = workExperience;
+    updateData.languageSkills = languageSkills;
+    if (updates.otherSkills !== undefined) updateData.otherSkills = updates.otherSkills;
+    updateData.nationalityAcquisition = nationalityAcquisition;
+    updateData.healthInfo = healthInfo;
+    updateData.legalInfo = legalInfo;
+    updateData.guaranteeInfo = guaranteeInfo;
+    updateData.parentsInfo = parentsInfo;
+    updateData.emergencyContactAddress = emergencyContactAddress;
+    updateData.currentCompany = currentCompany;
+    updateData.permanentAddress = permanentAddress;
+    updateData.nationalIdDocument = nationalIdDocument;  // ← ADDED
+    
+    // ========== COMPENSATION & ALLOWANCES ==========
+    let newBasicSalary = oldValues.basicSalary;
+    let newHousingAllowance = oldValues.housingAllowance;
+    let newPositionAllowance = oldValues.positionAllowance;
+    let newTransportAllowance = oldValues.transportAllowance;
+    let newMobileAllowance = oldValues.mobileAllowance;
+    
+    if (updates.basicSalary !== undefined) {
+      newBasicSalary = parseFloat(updates.basicSalary);
+      updateData.basicSalary = newBasicSalary;
+    } else if (updates.salary !== undefined) {
+      newBasicSalary = parseFloat(updates.salary);
+      updateData.basicSalary = newBasicSalary;
+    }
+    
+    if (updates.housingAllowance !== undefined) {
+      newHousingAllowance = parseFloat(updates.housingAllowance) || 0;
+      updateData.housingAllowance = newHousingAllowance;
+    }
+    
+    if (updates.positionAllowance !== undefined) {
+      newPositionAllowance = parseFloat(updates.positionAllowance) || 0;
+      updateData.positionAllowance = newPositionAllowance;
+    }
+    
+    if (updates.transportAllowance !== undefined) {
+      newTransportAllowance = parseFloat(updates.transportAllowance) || 0;
+      updateData.transportAllowance = newTransportAllowance;
+    }
+    
+    if (updates.mobileAllowance !== undefined) {
+      newMobileAllowance = parseFloat(updates.mobileAllowance) || 0;
+      updateData.mobileAllowance = newMobileAllowance;
+    }
+    
+    // Set complex objects
+    updateData.currentAddress = currentAddress;
+    updateData.bankAccount = bankAccount;
+    updateData.emergencyContact = emergencyContact;
+    if (profilePictureUrl !== employee.profilePictureUrl) updateData.profilePictureUrl = profilePictureUrl;
+
+    // Update employee
+    await employee.update(updateData, { transaction });
+
+    // ========== LOG COMPENSATION CHANGES ==========
+    const userId = req.user?.userId;
+    const changes = [];
+
+    const hasChanged = (oldVal, newVal) => {
+      const oldNum = parseFloat(oldVal) || 0;
+      const newNum = parseFloat(newVal) || 0;
+      return oldNum !== newNum;
+    };
+
+    const calculateChangePercent = (oldVal, newVal) => {
+      const oldNum = parseFloat(oldVal) || 0;
+      const newNum = parseFloat(newVal) || 0;
+      if (oldNum === 0) return newNum > 0 ? 100 : 0;
+      return ((newNum - oldNum) / oldNum) * 100;
+    };
+
+    if (hasChanged(oldValues.basicSalary, newBasicSalary)) {
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Basic Salary',
+        old_value: oldValues.basicSalary,
+        new_value: newBasicSalary,
+        change_percent: calculateChangePercent(oldValues.basicSalary, newBasicSalary),
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Basic salary updated from ${oldValues.basicSalary} to ${newBasicSalary}`,
+        approved_by: userId
+      }, { transaction });
+      changes.push('Basic Salary');
+    }
+    
+    if (hasChanged(oldValues.housingAllowance, newHousingAllowance)) {
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Housing Allowance',
+        old_value: oldValues.housingAllowance,
+        new_value: newHousingAllowance,
+        change_percent: calculateChangePercent(oldValues.housingAllowance, newHousingAllowance),
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Housing allowance updated from ${oldValues.housingAllowance} to ${newHousingAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      changes.push('Housing Allowance');
+    }
+    
+    if (hasChanged(oldValues.positionAllowance, newPositionAllowance)) {
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Position Allowance',
+        old_value: oldValues.positionAllowance,
+        new_value: newPositionAllowance,
+        change_percent: calculateChangePercent(oldValues.positionAllowance, newPositionAllowance),
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Position allowance updated from ${oldValues.positionAllowance} to ${newPositionAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      changes.push('Position Allowance');
+    }
+    
+    if (hasChanged(oldValues.transportAllowance, newTransportAllowance)) {
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Transport Allowance',
+        old_value: oldValues.transportAllowance,
+        new_value: newTransportAllowance,
+        change_percent: calculateChangePercent(oldValues.transportAllowance, newTransportAllowance),
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Transport allowance updated from ${oldValues.transportAllowance} to ${newTransportAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      changes.push('Transport Allowance');
+    }
+    
+    if (hasChanged(oldValues.mobileAllowance, newMobileAllowance)) {
+      await CompensationHistory.create({
+        employee_id: id,
+        component_type: 'Mobile Allowance',
+        old_value: oldValues.mobileAllowance,
+        new_value: newMobileAllowance,
+        change_percent: calculateChangePercent(oldValues.mobileAllowance, newMobileAllowance),
+        effective_date: new Date().toISOString().split('T')[0],
+        reason: updates.reason || `Mobile allowance updated from ${oldValues.mobileAllowance} to ${newMobileAllowance}`,
+        approved_by: userId
+      }, { transaction });
+      changes.push('Mobile Allowance');
+    }
+
+    // Update User's email and fullName if changed
+    if (updates.email || updates.firstName || updates.lastName) {
+      const user = await User.findByPk(employee.userId, { transaction });
+      if (user) {
+        const userUpdates = {};
+        if (updates.email) userUpdates.email = updates.email;
+        if (updates.firstName || updates.lastName) {
+          userUpdates.fullName = `${updates.firstName || employee.firstName} ${updates.lastName || employee.lastName}`;
+        }
+        await user.update(userUpdates, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    // Fetch updated employee data
+    const updatedEmployee = await Employee.findByPk(id, {
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] }
+      ]
+    });
+
+    // Calculate total allowances
+    const housing = parseFloat(updatedEmployee.housingAllowance) || 0;
+    const position = parseFloat(updatedEmployee.positionAllowance) || 0;
+    const transport = parseFloat(updatedEmployee.transportAllowance) || 0;
+    const mobile = parseFloat(updatedEmployee.mobileAllowance) || 0;
+    const totalAllowances = housing + position + transport + mobile;
+
+    let message = 'Employee updated successfully';
+    if (changes.length > 0) {
+      message += ` and ${changes.join(', ')} change(s) logged to compensation history`;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: message,
+      data: { 
+        id: updatedEmployee.employeeId,
+        employeeId: updatedEmployee.employeeCode,
+        fullName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
+        profilePicture: profilePictureUrl,
+        basicSalary: updatedEmployee.basicSalary,
+        allowances: {
+          housing: housing,
+          position: position,
+          transport: transport,
+          mobile: mobile,
+          total: totalAllowances
+        },
+        changesLogged: changes
+      }
+    });
+    
+  } catch (error) {
+    await transaction.rollback();
+    if (req.file) deleteFile(req.file.path);
+    console.error('Update employee error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message
+    });
+  }
+};
+
+// ============================================================================
+// GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
+// ============================================================================
+
+// ============================================================================
+// GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
+// ============================================================================
+exports.getEmployees = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'employeeId',
+      sortOrder = 'DESC',
+      search = '',
+      departmentId = 'all',
+      employmentStatus = 'all',
+      employmentType = 'all',
+      positionId = 'all'
+    } = req.query;
+
+    // Build search conditions
+    let searchCondition = {};
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      const searchWords = searchTerm.toLowerCase().split(' ').filter(word => word.length > 0);
+      
+      if (searchWords.length === 1) {
+        searchCondition = {
+          [Op.or]: [
+            { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
+            { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+            { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+            { middleName: { [Op.iLike]: `%${searchTerm}%` } },
+            { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },  // ← ADD for search
+            { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
+            { phoneNumber: { [Op.iLike]: `%${searchTerm}%` } },
+            { nationalId: { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
+          ]
+        };
+      } else {
+        const wordConditions = searchWords.map(word => ({
+          [Op.or]: [
+            { firstName: { [Op.iLike]: `%${word}%` } },
+            { lastName: { [Op.iLike]: `%${word}%` } },
+            { middleName: { [Op.iLike]: `%${word}%` } },
+            { fullNameEnglish: { [Op.iLike]: `%${word}%` } },  // ← ADD for search
+            { employeeCode: { [Op.iLike]: `%${word}%` } }
+          ]
+        }));
+        searchCondition = { [Op.and]: wordConditions };
+      }
+    }
+
+    // Build filter conditions
+    let filterCondition = {};
+    if (departmentId && departmentId !== 'all') {
+      filterCondition.departmentId = parseInt(departmentId);
+    }
+    if (employmentStatus && employmentStatus !== 'all') {
+      filterCondition.employmentStatus = employmentStatus;
+    }
+    if (employmentType && employmentType !== 'all') {
+      filterCondition.employmentType = employmentType;
+    }
+    if (positionId && positionId !== 'all') {
+      filterCondition.positionId = parseInt(positionId);
+    }
+
+    const whereCondition = { ...searchCondition, ...filterCondition };
+
+    // Pagination
+    const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
+    
+    // Sorting
+    const allowedSortFields = ['employeeId', 'firstName', 'lastName', 'fullNameEnglish', 'hireDate', 'employmentStatus', 'basicSalary'];  // ← ADD fullNameEnglish
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'employeeId';
+    const sortDirection = sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
+    // Execute query - ADD fullNameEnglish to attributes
+    const { count, rows: employees } = await Employee.findAndCountAll({
+      where: whereCondition,
+      attributes: [
+        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish',  // ← ADD fullNameEnglish
+        'workEmail', 'phoneNumber', 'employmentType', 'employmentStatus',
+        'hireDate', 'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId',
+        'housingAllowance', 'positionAllowance', 'transportAllowance', 'mobileAllowance',
+        'nationalId', 'nationality', 'gender', 'maritalStatus', 'dateOfBirth'
+      ],
+      include: [
+        { model: Department, attributes: ['departmentId', 'name', 'code'], required: false },
+        { model: Position, attributes: ['positionId', 'title'], required: false },
+        { model: Employee, as: 'manager', attributes: ['employeeId', 'firstName', 'lastName'], required: false }
+      ],
+      limit: queryLimit,
+      offset: offset,
+      order: [[sortField, sortDirection]],
+      distinct: true,
+      subQuery: false
+    });
+
+    // Format employees - ADD fullNameEnglish to response
+    const formattedEmployees = employees.map(emp => {
+      const housing = parseFloat(emp.housingAllowance) || 0;
+      const position = parseFloat(emp.positionAllowance) || 0;
+      const transport = parseFloat(emp.transportAllowance) || 0;
+      const mobile = parseFloat(emp.mobileAllowance) || 0;
+      const totalAllowances = housing + position + transport + mobile;
+      const grossPay = (parseFloat(emp.basicSalary) || 0) + totalAllowances;
+
+      return {
+        id: emp.employeeId,
+        employeeId: emp.employeeCode,
+        fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+        fullNameEnglish: emp.fullNameEnglish,  // ← ADD THIS LINE
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        middleName: emp.middleName,
+        email: emp.workEmail,
+        phone: emp.phoneNumber,
+        nationalId: emp.nationalId,
+        nationality: emp.nationality,
+        gender: emp.gender,
+        maritalStatus: emp.maritalStatus,
+        dateOfBirth: emp.dateOfBirth,
+        departmentId: emp.departmentId,
+        departmentName: emp.Department?.name,
+        departmentCode: emp.Department?.code,
+        position: emp.Position?.title,
+        positionId: emp.positionId,
+        employmentType: emp.employmentType,
+        status: emp.employmentStatus,
+        hireDate: emp.hireDate,
+        basicSalary: emp.basicSalary,
+        housingAllowance: housing,
+        positionAllowance: position,
+        transportAllowance: transport,
+        mobileAllowance: mobile,
+        totalAllowances: totalAllowances,
+        grossPay: grossPay,
+        profilePictureUrl: emp.profilePictureUrl,
+        managerName: emp.manager ? `${emp.manager.firstName} ${emp.manager.lastName}` : null
+      };
+    });
+
+    const totalPages = Math.ceil(count / queryLimit);
+    const currentPage = parseInt(page);
+
+    res.status(200).json({
+      success: true,
+      data: formattedEmployees,
+      pagination: {
+        total: count,
+        page: currentPage,
+        limit: queryLimit,
+        totalPages: totalPages,
+        hasNextPage: currentPage < totalPages,
+        hasPrevPage: currentPage > 1
+      }
+    });
+  } catch (error) {
+    console.error('Get employees error:', error);
+    res.status(500).json({ success: false, error: 'Server error: ' + error.message });
+  }
+};
+
+// ============================================================================
+// GET EMPLOYEE BY ID - RETURN ALL FIELDS (WITH INDEXED DOCUMENTS)
+// ============================================================================
+exports.getEmployeeById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const employee = await Employee.findByPk(id, {
+      attributes: [
+        // Primary and basic info
+        'employeeId', 'employeeCode', 'userId','fullNameEnglish',
+        'firstName', 'lastName', 'middleName',
+        'dateOfBirth', 'gender', 'maritalStatus', 'nationality', 'nationalId',
+        'personalEmail', 'workEmail', 'phoneNumber',
+        
+        // Addresses
+        'currentAddress', 'permanentAddress', 'birthPlace', 'workLocation',
+        
+        // Emergency contact
+        'emergencyContact', 'emergencyContactAddress',
+        
+        // Employment
+        'departmentId', 'positionId', 'managerId',
+        'employmentType', 'employmentStatus', 'shiftType',
+        'hireDate', 'confirmationDate', 'terminationDate',
+        
+        // Salary & Allowances
+        'basicSalary', 'housingAllowance', 'positionAllowance', 
+        'transportAllowance', 'mobileAllowance',
+        
+        // Financial
+        'bankAccount', 'currentCompany',
+        
+        // Family
+        'mothersFullName', 'spouseInfo', 'children', 'parentSupport', 'parentsInfo',
+        
+        // Education & Training
+        'education', 'training', 'workExperience',
+        
+        // Skills
+        'languageSkills', 'otherSkills',
+        
+        // Nationality
+        'nationalityAcquisition',
+        
+        // Health & Legal
+        'healthInfo', 'legalInfo',
+        
+        // Guarantee
+        'guaranteeInfo',
+        
+        // National ID Document
+        'nationalIdDocument',
+        
+        // Profile
+        'profilePicture', 'profilePictureUrl', 'profilePicturePublicId',
+        
+        // Status
+        'isActive', 'created_at', 'updated_at'
+      ],
+      include: [
+        { model: Department, attributes: ['departmentId', 'name', 'code', 'description'] },
+        { model: Position, attributes: ['positionId', 'title', 'level'] },
+        { model: Employee, as: 'manager', attributes: ['employeeId', 'firstName', 'lastName', 'workEmail'] }
+      ]
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    // Fetch documents - REMOVED subType from the query
+    const documents = await EmployeeDocument.findAll({
+      where: { employeeId: employee.employeeId },
+      attributes: ['documentId', 'documentType', 'index', 'documentName', 'fileUrl', 'fileSize', 'mimeType', 'created_at'],
+      order: [['documentType', 'ASC'], ['index', 'ASC'], ['created_at', 'DESC']]
+    });
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    // Group documents by type, handling indexed documents
+    const groupedDocuments = {};
+
+    documents.forEach(doc => {
+      // Ensure full URL
+      const fullUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${baseUrl}${doc.fileUrl}`;
+      
+      const docData = {
+        id: doc.documentId,
+        type: doc.documentType,
+        index: doc.index,
+        fileName: doc.documentName,
+        fileUrl: fullUrl,
+        size: doc.fileSize,
+        mimeType: doc.mimeType,
+        uploadedAt: doc.created_at
+      };
+
+      // If document has an index (for children, education, training, work, guarantee)
+      if (doc.index !== null && doc.index !== undefined) {
+        // Create an indexed key like 'child_profile_0', 'child_birth_certificate_0', etc.
+        const indexedKey = `${doc.documentType}_${doc.index}`;
+        groupedDocuments[indexedKey] = docData;
+      } 
+      // For non-indexed documents
+      else {
+        // If multiple documents of same type (like guarantee_letters), store as array
+        if (groupedDocuments[doc.documentType] && Array.isArray(groupedDocuments[doc.documentType])) {
+          groupedDocuments[doc.documentType].push(docData);
+        } else if (groupedDocuments[doc.documentType]) {
+          // Convert to array if we already have one
+          const existing = groupedDocuments[doc.documentType];
+          groupedDocuments[doc.documentType] = [existing, docData];
+        } else {
+          groupedDocuments[doc.documentType] = docData;
+        }
+      }
+    });
+
+    // Parse JSON fields if they are stored as strings
+    let currentAddress = employee.currentAddress;
+    let permanentAddress = employee.permanentAddress;
+    let birthPlace = employee.birthPlace;
+    let emergencyContact = employee.emergencyContact;
+    let emergencyContactAddress = employee.emergencyContactAddress;
+    let bankAccount = employee.bankAccount;
+    let currentCompany = employee.currentCompany;
+    let spouseInfo = employee.spouseInfo;
+    let children = employee.children;
+    let parentSupport = employee.parentSupport;
+    let parentsInfo = employee.parentsInfo;
+    let education = employee.education;
+    let training = employee.training;
+    let workExperience = employee.workExperience;
+    let languageSkills = employee.languageSkills;
+    let nationalityAcquisition = employee.nationalityAcquisition;
+    let healthInfo = employee.healthInfo;
+    let legalInfo = employee.legalInfo;
+    let guaranteeInfo = employee.guaranteeInfo;
+    let nationalIdDocument = employee.nationalIdDocument;
+
+    // Parse stringified JSON
+    if (typeof currentAddress === 'string') {
+      try { currentAddress = JSON.parse(currentAddress); } catch (e) { currentAddress = {}; }
+    }
+    if (typeof permanentAddress === 'string') {
+      try { permanentAddress = JSON.parse(permanentAddress); } catch (e) { permanentAddress = {}; }
+    }
+    if (typeof birthPlace === 'string') {
+      try { birthPlace = JSON.parse(birthPlace); } catch (e) { birthPlace = {}; }
+    }
+    if (typeof emergencyContact === 'string') {
+      try { emergencyContact = JSON.parse(emergencyContact); } catch (e) { emergencyContact = {}; }
+    }
+    if (typeof emergencyContactAddress === 'string') {
+      try { emergencyContactAddress = JSON.parse(emergencyContactAddress); } catch (e) { emergencyContactAddress = {}; }
+    }
+    if (typeof bankAccount === 'string') {
+      try { bankAccount = JSON.parse(bankAccount); } catch (e) { bankAccount = {}; }
+    }
+    if (typeof currentCompany === 'string') {
+      try { currentCompany = JSON.parse(currentCompany); } catch (e) { currentCompany = {}; }
+    }
+    if (typeof spouseInfo === 'string') {
+      try { spouseInfo = JSON.parse(spouseInfo); } catch (e) { spouseInfo = {}; }
+    }
+    if (typeof children === 'string') {
+      try { children = JSON.parse(children); } catch (e) { children = []; }
+    }
+    if (typeof parentSupport === 'string') {
+      try { parentSupport = JSON.parse(parentSupport); } catch (e) { parentSupport = []; }
+    }
+    if (typeof parentsInfo === 'string') {
+      try { parentsInfo = JSON.parse(parentsInfo); } catch (e) { parentsInfo = {}; }
+    }
+    if (typeof education === 'string') {
+      try { education = JSON.parse(education); } catch (e) { education = []; }
+    }
+    if (typeof training === 'string') {
+      try { training = JSON.parse(training); } catch (e) { training = []; }
+    }
+    if (typeof workExperience === 'string') {
+      try { workExperience = JSON.parse(workExperience); } catch (e) { workExperience = []; }
+    }
+    if (typeof languageSkills === 'string') {
+      try { languageSkills = JSON.parse(languageSkills); } catch (e) { languageSkills = []; }
+    }
+    if (typeof nationalityAcquisition === 'string') {
+      try { nationalityAcquisition = JSON.parse(nationalityAcquisition); } catch (e) { nationalityAcquisition = {}; }
+    }
+    if (typeof healthInfo === 'string') {
+      try { healthInfo = JSON.parse(healthInfo); } catch (e) { healthInfo = {}; }
+    }
+    if (typeof legalInfo === 'string') {
+      try { legalInfo = JSON.parse(legalInfo); } catch (e) { legalInfo = {}; }
+    }
+    if (typeof guaranteeInfo === 'string') {
+      try { guaranteeInfo = JSON.parse(guaranteeInfo); } catch (e) { guaranteeInfo = []; }
+    }
+    if (typeof nationalIdDocument === 'string') {
+      try { nationalIdDocument = JSON.parse(nationalIdDocument); } catch (e) { nationalIdDocument = {}; }
+    }
+
+    // Fix profile picture URL
+    let profilePictureUrl = employee.profilePictureUrl;
+    if (profilePictureUrl && !profilePictureUrl.startsWith('http')) {
+      profilePictureUrl = `${baseUrl}${profilePictureUrl}`;
+    }
+
+    // Calculate total allowances
+    const housingAllowance = parseFloat(employee.housingAllowance) || 0;
+    const positionAllowance = parseFloat(employee.positionAllowance) || 0;
+    const transportAllowance = parseFloat(employee.transportAllowance) || 0;
+    const mobileAllowance = parseFloat(employee.mobileAllowance) || 0;
+    const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
+    const grossPay = (parseFloat(employee.basicSalary) || 0) + totalAllowances;
+
+    // ========== RETURN ALL DATA WITH INDEXED DOCUMENTS ==========
+    res.status(200).json({
+      success: true,
+      data: {
+        // IDs
+        id: employee.employeeId,
+        employeeId: employee.employeeCode,
+        employeeCode: employee.employeeCode,
+        userId: employee.userId,
+        
+        // Basic Info
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        middleName: employee.middleName,
+        fullName: `${employee.firstName} ${employee.middleName ? employee.middleName + ' ' : ''}${employee.lastName}`,
+         fullNameEnglish: employee.fullNameEnglish,  // ← ADD THIS
+        // Contact
+        email: employee.workEmail,
+        workEmail: employee.workEmail,
+        personalEmail: employee.personalEmail,
+        phone: employee.phoneNumber,
+        phoneNumber: employee.phoneNumber,
+        
+        // Personal Details
+        dob: employee.dateOfBirth,
+        dateOfBirth: employee.dateOfBirth,
+        gender: employee.gender,
+        maritalStatus: employee.maritalStatus,
+        nationality: employee.nationality,
+        nationalId: employee.nationalId,
+        
+        // National ID Document
+        nationalIdDocument: nationalIdDocument || null,
+        
+        // Addresses
+        currentAddress: currentAddress,
+        permanentAddress: permanentAddress,
+        birthPlace: birthPlace,
+        workLocation: employee.workLocation,
+        
+        // Emergency Contact
+        emergencyContact: emergencyContact,
+        emergencyContactAddress: emergencyContactAddress,
+        
+        // Employment
+        departmentId: employee.departmentId,
+        departmentName: employee.Department?.name,
+        departmentCode: employee.Department?.code,
+        positionId: employee.positionId,
+        position: employee.Position?.title,
+        positionLevel: employee.Position?.level,
+        managerId: employee.managerId,
+        managerName: employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName}` : null,
+        employmentType: employee.employmentType,
+        employmentStatus: employee.employmentStatus,
+        status: employee.employmentStatus,
+        shiftType: employee.shiftType,
+        hireDate: employee.hireDate,
+        confirmationDate: employee.confirmationDate,
+        terminationDate: employee.terminationDate,
+        
+        // Salary & Allowances
+        salary: employee.basicSalary,
+        basicSalary: employee.basicSalary,
+        housingAllowance: housingAllowance,
+        positionAllowance: positionAllowance,
+        transportAllowance: transportAllowance,
+        mobileAllowance: mobileAllowance,
+        totalAllowances: totalAllowances,
+        grossPay: grossPay,
+        
+        // Financial
+        bankAccount: bankAccount,
+        currentCompany: currentCompany,
+        
+        // Family
+        mothersFullName: employee.mothersFullName,
+        spouseInfo: spouseInfo,
+        children: children,
+        parentSupport: parentSupport,
+        parentsInfo: parentsInfo,
+        
+        // Education & Training
+        education: education,
+        training: training,
+        workExperience: workExperience,
+        
+        // Skills
+        languageSkills: languageSkills,
+        otherSkills: employee.otherSkills,
+        
+        // Nationality
+        nationalityAcquisition: nationalityAcquisition,
+        
+        // Health & Legal
+        healthInfo: healthInfo,
+        legalInfo: legalInfo,
+        
+        // Guarantee
+        guaranteeInfo: guaranteeInfo,
+        
+        // Profile
+        profilePicture: profilePictureUrl,
+        profilePictureUrl: profilePictureUrl,
+        profilePicturePublicId: employee.profilePicturePublicId,
+        
+        // Status
+        isActive: employee.isActive,
+        createdAt: employee.created_at,
+        updatedAt: employee.updated_at,
+        
+        // Documents with proper indexing
+        documents: groupedDocuments
+      }
+    });
+  } catch (error) {
+    console.error('Get employee error:', error);
+    res.status(500).json({ success: false, error: 'Server error: ' + error.message });
+  }
+};
 // ============================================================================
 // UPLOAD PROFILE
 // ============================================================================
@@ -401,338 +1709,7 @@ exports.deleteProfilePicture = async (req, res) => {
 };
 
 
-// ============================================================================
-// UPDATE EMPLOYEE (WITH ALLOWANCES & COMPENSATION HISTORY)
-// ============================================================================
-exports.updateEmployee = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  
-  try {
-    const { id } = req.params;
-    
-    const employee = await Employee.findByPk(id);
-    if (!employee) {
-      if (req.file) deleteFile(req.file.path);
-      await transaction.rollback();
-      return res.status(404).json({ success: false, error: 'Employee not found' });
-    }
 
-    const updates = req.body;
-
-    // Store old values for compensation tracking
-    const oldValues = {
-      basicSalary: employee.basicSalary,
-      housingAllowance: employee.housingAllowance,
-      positionAllowance: employee.positionAllowance,
-      transportAllowance: employee.transportAllowance,
-      mobileAllowance: employee.mobileAllowance
-    };
-
-    // Handle profile picture update if file is uploaded
-    let profilePictureUrl = employee.profilePictureUrl;
-    if (req.file) {
-      if (employee.profilePictureUrl) {
-        const oldFileName = employee.profilePictureUrl.split('/').pop();
-        const oldFilePath = path.join(__dirname, '..', 'uploads', 'profiles', oldFileName);
-        deleteFile(oldFilePath);
-      }
-      profilePictureUrl = getFileUrl(req, req.file.filename, 'profiles');
-    }
-
-    // Parse Address
-    let currentAddress = employee.currentAddress;
-    if (updates.address) {
-      if (typeof updates.address === 'string') {
-        currentAddress = { street: updates.address };
-      } else if (typeof updates.address === 'object') {
-        currentAddress = updates.address;
-      }
-    }
-
-    // Parse Bank Account
-    let bankAccount = employee.bankAccount;
-    if (updates.bankAccount) {
-      if (typeof updates.bankAccount === 'string') {
-        try { bankAccount = JSON.parse(updates.bankAccount); } catch (e) { bankAccount = {}; }
-      } else if (typeof updates.bankAccount === 'object') {
-        bankAccount = updates.bankAccount;
-      }
-    }
-
-    // Parse Emergency Contact
-    let emergencyContact = employee.emergencyContact;
-    if (updates.emergencyContact) {
-      if (typeof updates.emergencyContact === 'string') {
-        try { emergencyContact = JSON.parse(updates.emergencyContact); } catch (e) { emergencyContact = {}; }
-      } else if (typeof updates.emergencyContact === 'object') {
-        emergencyContact = updates.emergencyContact;
-      }
-    }
-
-    // Prepare update data
-    const updateData = {};
-    
-    // Basic info
-    if (updates.firstName !== undefined) updateData.firstName = updates.firstName;
-    if (updates.lastName !== undefined) updateData.lastName = updates.lastName;
-    if (updates.middleName !== undefined) updateData.middleName = updates.middleName;
-    if (updates.email !== undefined) updateData.workEmail = updates.email;
-    if (updates.personalEmail !== undefined) updateData.personalEmail = updates.personalEmail;
-    if (updates.phone !== undefined) updateData.phoneNumber = updates.phone;
-    if (updates.dob !== undefined) updateData.dateOfBirth = updates.dob;
-    if (updates.gender !== undefined) updateData.gender = updates.gender;
-    if (updates.maritalStatus !== undefined) updateData.maritalStatus = updates.maritalStatus;
-    if (updates.nationality !== undefined) updateData.nationality = updates.nationality;
-    
-    // Employment
-    if (updates.departmentId !== undefined) updateData.departmentId = parseInt(updates.departmentId);
-    if (updates.positionId !== undefined) updateData.positionId = parseInt(updates.positionId);
-    if (updates.managerId !== undefined) updateData.managerId = updates.managerId ? parseInt(updates.managerId) : null;
-    if (updates.employmentType !== undefined) updateData.employmentType = updates.employmentType;
-    if (updates.status !== undefined) updateData.employmentStatus = updates.status;
-    if (updates.hireDate !== undefined) updateData.hireDate = updates.hireDate;
-    if (updates.confirmationDate !== undefined) updateData.confirmationDate = updates.confirmationDate || null;
-    if (updates.terminationDate !== undefined) updateData.terminationDate = updates.terminationDate || null;
-    if (updates.workLocation !== undefined) updateData.workLocation = updates.workLocation;
-    if (updates.permanentAddress !== undefined) updateData.permanentAddress = updates.permanentAddress;
-    
-    // ==============================================
-    // COMPENSATION & ALLOWANCES
-    // ==============================================
-    
-    let newBasicSalary = oldValues.basicSalary;
-    let newHousingAllowance = oldValues.housingAllowance;
-    let newPositionAllowance = oldValues.positionAllowance;
-    let newTransportAllowance = oldValues.transportAllowance;
-    let newMobileAllowance = oldValues.mobileAllowance;
-    
-    // Basic Salary
-    if (updates.basicSalary !== undefined) {
-      newBasicSalary = parseFloat(updates.basicSalary);
-      updateData.basicSalary = newBasicSalary;
-    } else if (updates.salary !== undefined) {
-      newBasicSalary = parseFloat(updates.salary);
-      updateData.basicSalary = newBasicSalary;
-    }
-    
-    // Housing Allowance
-    if (updates.housingAllowance !== undefined) {
-      newHousingAllowance = parseFloat(updates.housingAllowance) || 0;
-      updateData.housingAllowance = newHousingAllowance;
-    }
-    
-    // Position Allowance
-    if (updates.positionAllowance !== undefined) {
-      newPositionAllowance = parseFloat(updates.positionAllowance) || 0;
-      updateData.positionAllowance = newPositionAllowance;
-    }
-    
-    // Transport Allowance
-    if (updates.transportAllowance !== undefined) {
-      newTransportAllowance = parseFloat(updates.transportAllowance) || 0;
-      updateData.transportAllowance = newTransportAllowance;
-    }
-    
-    // Mobile Allowance
-    if (updates.mobileAllowance !== undefined) {
-      newMobileAllowance = parseFloat(updates.mobileAllowance) || 0;
-      updateData.mobileAllowance = newMobileAllowance;
-    }
-    
-    // Set complex objects
-    updateData.currentAddress = currentAddress;
-    updateData.bankAccount = bankAccount;
-    updateData.emergencyContact = emergencyContact;
-    if (profilePictureUrl !== employee.profilePictureUrl) updateData.profilePictureUrl = profilePictureUrl;
-
-    // Update employee
-    await employee.update(updateData, { transaction });
-
-    // ==============================================
-    // LOG COMPENSATION CHANGES TO HISTORY TABLE
-    // ONLY IF THERE IS AN ACTUAL CHANGE
-    // ==============================================
-    const userId = req.user?.userId;
-    const changes = [];
-
-    // Helper function to compare if values actually changed
-    const hasChanged = (oldVal, newVal) => {
-      const oldNum = parseFloat(oldVal) || 0;
-      const newNum = parseFloat(newVal) || 0;
-      return oldNum !== newNum;
-    };
-
-    // Helper function to safely calculate percentage change (prevents Infinity)
-    const calculateChangePercent = (oldVal, newVal) => {
-      const oldNum = parseFloat(oldVal) || 0;
-      const newNum = parseFloat(newVal) || 0;
-      
-      // If old value is 0, percentage change is 100% if new > 0, or 0 if new is also 0
-      if (oldNum === 0) {
-        return newNum > 0 ? 100 : 0;
-      }
-      
-      return ((newNum - oldNum) / oldNum) * 100;
-    };
-
-    // Check Basic Salary change
-    if (hasChanged(oldValues.basicSalary, newBasicSalary)) {
-      const changePercent = calculateChangePercent(oldValues.basicSalary, newBasicSalary);
-      
-      await CompensationHistory.create({
-        employee_id: id,
-        component_type: 'Basic Salary',
-        old_value: oldValues.basicSalary,
-        new_value: newBasicSalary,
-        change_percent: changePercent,
-        effective_date: new Date().toISOString().split('T')[0],
-        reason: updates.reason || `Basic salary updated from ${oldValues.basicSalary} to ${newBasicSalary}`,
-        approved_by: userId
-      }, { transaction });
-      
-      changes.push('Basic Salary');
-    }
-    
-    // Check Housing Allowance change
-    if (hasChanged(oldValues.housingAllowance, newHousingAllowance)) {
-      const changePercent = calculateChangePercent(oldValues.housingAllowance, newHousingAllowance);
-      
-      await CompensationHistory.create({
-        employee_id: id,
-        component_type: 'Housing Allowance',
-        old_value: oldValues.housingAllowance,
-        new_value: newHousingAllowance,
-        change_percent: changePercent,
-        effective_date: new Date().toISOString().split('T')[0],
-        reason: updates.reason || `Housing allowance updated from ${oldValues.housingAllowance} to ${newHousingAllowance}`,
-        approved_by: userId
-      }, { transaction });
-      
-      changes.push('Housing Allowance');
-    }
-    
-    // Check Position Allowance change
-    if (hasChanged(oldValues.positionAllowance, newPositionAllowance)) {
-      const changePercent = calculateChangePercent(oldValues.positionAllowance, newPositionAllowance);
-      
-      await CompensationHistory.create({
-        employee_id: id,
-        component_type: 'Position Allowance',
-        old_value: oldValues.positionAllowance,
-        new_value: newPositionAllowance,
-        change_percent: changePercent,
-        effective_date: new Date().toISOString().split('T')[0],
-        reason: updates.reason || `Position allowance updated from ${oldValues.positionAllowance} to ${newPositionAllowance}`,
-        approved_by: userId
-      }, { transaction });
-      
-      changes.push('Position Allowance');
-    }
-    
-    // Check Transport Allowance change
-    if (hasChanged(oldValues.transportAllowance, newTransportAllowance)) {
-      const changePercent = calculateChangePercent(oldValues.transportAllowance, newTransportAllowance);
-      
-      await CompensationHistory.create({
-        employee_id: id,
-        component_type: 'Transport Allowance',
-        old_value: oldValues.transportAllowance,
-        new_value: newTransportAllowance,
-        change_percent: changePercent,
-        effective_date: new Date().toISOString().split('T')[0],
-        reason: updates.reason || `Transport allowance updated from ${oldValues.transportAllowance} to ${newTransportAllowance}`,
-        approved_by: userId
-      }, { transaction });
-      
-      changes.push('Transport Allowance');
-    }
-    
-    // Check Mobile Allowance change
-    if (hasChanged(oldValues.mobileAllowance, newMobileAllowance)) {
-      const changePercent = calculateChangePercent(oldValues.mobileAllowance, newMobileAllowance);
-      
-      await CompensationHistory.create({
-        employee_id: id,
-        component_type: 'Mobile Allowance',
-        old_value: oldValues.mobileAllowance,
-        new_value: newMobileAllowance,
-        change_percent: changePercent,
-        effective_date: new Date().toISOString().split('T')[0],
-        reason: updates.reason || `Mobile allowance updated from ${oldValues.mobileAllowance} to ${newMobileAllowance}`,
-        approved_by: userId
-      }, { transaction });
-      
-      changes.push('Mobile Allowance');
-    }
-
-    // Also update User's email and fullName if changed
-    if (updates.email || updates.firstName || updates.lastName) {
-      const user = await User.findByPk(employee.userId, { transaction });
-      if (user) {
-        const userUpdates = {};
-        if (updates.email) userUpdates.email = updates.email;
-        if (updates.firstName || updates.lastName) {
-          userUpdates.fullName = `${updates.firstName || employee.firstName} ${updates.lastName || employee.lastName}`;
-        }
-        await user.update(userUpdates, { transaction });
-      }
-    }
-
-    await transaction.commit();
-
-    // Fetch updated employee data
-    const updatedEmployee = await Employee.findByPk(id, {
-      include: [
-        { model: Department, attributes: ['name'] },
-        { model: Position, attributes: ['title'] }
-      ]
-    });
-
-    // Calculate total allowances
-    const housing = parseFloat(updatedEmployee.housingAllowance) || 0;
-    const position = parseFloat(updatedEmployee.positionAllowance) || 0;
-    const transport = parseFloat(updatedEmployee.transportAllowance) || 0;
-    const mobile = parseFloat(updatedEmployee.mobileAllowance) || 0;
-    const totalAllowances = housing + position + transport + mobile;
-
-    // Build response message
-    let message = 'Employee updated successfully';
-    if (changes.length > 0) {
-      message += ` and ${changes.join(', ')} change(s) logged to compensation history`;
-    } else {
-      message += ' (no compensation changes detected)';
-    }
-
-    res.status(200).json({
-      success: true,
-      message: message,
-      data: { 
-        id: updatedEmployee.employeeId,
-        employeeId: updatedEmployee.employeeCode,
-        fullName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
-        profilePicture: profilePictureUrl,
-        basicSalary: updatedEmployee.basicSalary,
-        allowances: {
-          housing: housing,
-          position: position,
-          transport: transport,
-          mobile: mobile,
-          total: totalAllowances
-        },
-        changesLogged: changes
-      }
-    });
-    
-  } catch (error) {
-    await transaction.rollback();
-    if (req.file) deleteFile(req.file.path);
-    console.error('Update employee error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message
-    });
-  }
-};
 
 // ============================================================================
 // UPLOAD ID CARD
@@ -1047,8 +2024,11 @@ exports.deleteDocument = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Document not found' });
     }
 
-    const fileName = document.fileUrl.split('/').pop();
-    deleteFile(path.join('uploads/documents/', fileName));
+    // Get the correct file path
+const fileUrl = document.fileUrl;
+const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
+const fullFilePath = path.join(__dirname, '..', relativePath);
+deleteFile(fullFilePath);
     await document.destroy();
 
     res.status(200).json({
@@ -1094,375 +2074,7 @@ exports.getEmployeeDocuments = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-// ============================================================================
-// GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
-// ============================================================================
-exports.getEmployees = async (req, res) => {
-  try {
- 
 
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'employeeId',
-      sortOrder = 'DESC',
-      search = '',
-      departmentId = 'all',
-      employmentStatus = 'all',
-      employmentType = 'all',
-      positionId = 'all'
-    } = req.query;
-
-    // Build search conditions - improved full name search
-    let searchCondition = {};
-    if (search && search.trim()) {
-      const searchTerm = search.trim();
-      const searchWords = searchTerm.toLowerCase().split(' ').filter(word => word.length > 0);
-      
-      if (searchWords.length === 1) {
-        // Single word search
-        searchCondition = {
-          [Op.or]: [
-            { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
-            { firstName: { [Op.iLike]: `%${searchTerm}%` } },
-            { lastName: { [Op.iLike]: `%${searchTerm}%` } },
-            { middleName: { [Op.iLike]: `%${searchTerm}%` } },
-            { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
-            { phoneNumber: { [Op.iLike]: `%${searchTerm}%` } },
-            { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
-            { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
-          ]
-        };
-      } else {
-        // Multiple words - each word must match at least one field
-        const wordConditions = searchWords.map(word => ({
-          [Op.or]: [
-            { firstName: { [Op.iLike]: `%${word}%` } },
-            { lastName: { [Op.iLike]: `%${word}%` } },
-            { middleName: { [Op.iLike]: `%${word}%` } },
-            { employeeCode: { [Op.iLike]: `%${word}%` } },
-            { workEmail: { [Op.iLike]: `%${word}%` } },
-            { phoneNumber: { [Op.iLike]: `%${word}%` } },
-            { '$Department.name$': { [Op.iLike]: `%${word}%` } },
-            { '$Position.title$': { [Op.iLike]: `%${word}%` } }
-          ]
-        }));
-        
-        searchCondition = {
-          [Op.and]: wordConditions
-        };
-      }
-    }
-
-    // Build filter conditions
-    let filterCondition = {};
-    if (departmentId && departmentId !== 'all') {
-      filterCondition.departmentId = parseInt(departmentId);
-    }
-    if (employmentStatus && employmentStatus !== 'all') {
-      filterCondition.employmentStatus = employmentStatus;
-    }
-    if (employmentType && employmentType !== 'all') {
-      filterCondition.employmentType = employmentType;
-    }
-    if (positionId && positionId !== 'all') {
-      filterCondition.positionId = parseInt(positionId);
-    }
-
-    const whereCondition = {
-      ...searchCondition,
-      ...filterCondition
-    };
-
-    // Remove undefined values
-    Object.keys(whereCondition).forEach(key => {
-      if (whereCondition[key] === undefined || whereCondition[key] === '') {
-        delete whereCondition[key];
-      }
-    });
-
-    // Pagination
-    const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
-    
-    // Sorting
-    const allowedSortFields = ['employeeId', 'firstName', 'lastName', 'hireDate', 'employmentStatus', 'basicSalary'];
-    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'employeeId';
-    const sortDirection = sortOrder === 'ASC' ? 'ASC' : 'DESC';
-
-    // Execute query
-    const { count, rows: employees } = await Employee.findAndCountAll({
-      where: whereCondition,
-      attributes: [
-        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName',
-        'workEmail', 'phoneNumber', 'employmentType', 'employmentStatus',
-        'hireDate', 'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId', 'mobileAllowance'
-      ],
-      include: [
-        { 
-          model: Department, 
-          attributes: ['departmentId', 'name', 'code'],
-          required: false
-        },
-        { 
-          model: Position, 
-          attributes: ['positionId', 'title'],
-          required: false
-        },
-        {
-          model: Employee,
-          as: 'manager',
-          attributes: ['employeeId', 'firstName', 'lastName'],
-          required: false
-        }
-      ],
-      limit: queryLimit,
-      offset: offset,
-      order: [[sortField, sortDirection]],
-      distinct: true,
-      subQuery: false
-    });
-
-    // Format response
-    const formattedEmployees = employees.map(emp => ({
-      id: emp.employeeId,
-      employeeId: emp.employeeCode,
-      fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
-      firstName: emp.firstName,
-      lastName: emp.lastName,
-      middleName: emp.middleName,
-      email: emp.workEmail,
-      phone: emp.phoneNumber,
-      departmentId: emp.departmentId,
-      departmentName: emp.Department?.name,
-      departmentCode: emp.Department?.code,
-      position: emp.Position?.title,
-      positionId: emp.positionId,
-      employmentType: emp.employmentType,
-      status: emp.employmentStatus,
-      hireDate: emp.hireDate,
-      salary: emp.basicSalary,
-      mobileAllowance: emp.mobileAllowance,
-      profilePictureUrl: emp.profilePictureUrl,
-      managerName: emp.manager ? `${emp.manager.firstName} ${emp.manager.lastName}` : null
-    }));
-
-    const totalPages = Math.ceil(count / queryLimit);
-    const currentPage = parseInt(page);
-    const hasNextPage = currentPage < totalPages;
-    const hasPrevPage = currentPage > 1;
-
-    res.status(200).json({
-      success: true,
-      data: formattedEmployees,
-      pagination: {
-        total: count,
-        page: currentPage,
-        limit: queryLimit,
-        totalPages: totalPages,
-        hasNextPage,
-        hasPrevPage,
-        nextPage: hasNextPage ? currentPage + 1 : null,
-        prevPage: hasPrevPage ? currentPage - 1 : null,
-        startOffset: offset + 1,
-        endOffset: Math.min(offset + queryLimit, count)
-      },
-      filters: {
-        search: search || null,
-        departmentId: departmentId !== 'all' ? departmentId : null,
-        employmentStatus: employmentStatus !== 'all' ? employmentStatus : null,
-        employmentType: employmentType !== 'all' ? employmentType : null,
-        positionId: positionId !== 'all' ? positionId : null
-      },
-      sorting: {
-        field: sortField,
-        order: sortDirection
-      }
-    });
-  } catch (error) {
-    console.error('Get employees error:', error);
-    res.status(500).json({ success: false, error: 'Server error: ' + error.message });
-  }
-};
-    
-exports.getEmployeeById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const employee = await Employee.findByPk(id, {
-      attributes: [
-        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName',
-        'dateOfBirth', 'gender', 'maritalStatus', 'nationality',
-        'personalEmail', 'workEmail', 'phoneNumber', 'emergencyContact',
-        'currentAddress', 'permanentAddress', 'departmentId', 'positionId',
-        'managerId', 'employmentType', 'employmentStatus', 'hireDate',
-        'confirmationDate', 'terminationDate', 'basicSalary',
-        'housingAllowance', 'positionAllowance', 'transportAllowance','mobileAllowance',
-        'bankAccount', 'workLocation', 'profilePictureUrl', 'isActive'
-      ],
-      include: [
-        { model: Department, attributes: ['departmentId', 'name', 'code', 'description'] },
-        { model: Position, attributes: ['positionId', 'title', 'level'] },
-        { model: Employee, as: 'manager', attributes: ['employeeId', 'firstName', 'lastName', 'workEmail'] }
-      ]
-    });
-
-    if (!employee) {
-      return res.status(404).json({ success: false, error: 'Employee not found' });
-    }
-
-    // Fetch documents
-    const documents = await EmployeeDocument.findAll({
-      where: { employeeId: employee.employeeId },
-      attributes: ['documentId', 'documentType', 'documentName', 'fileUrl', 'fileSize', 'mimeType', 'created_at'],
-      order: [['documentType', 'ASC'], ['created_at', 'DESC']]
-    });
-
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-    // Group documents by type with full URLs
-    const groupedDocuments = {
-      id_card: null,
-      cv: null,
-      degree: null,
-      guarantee_letters: []
-    };
-
-    documents.forEach(doc => {
-      const fullUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${baseUrl}${doc.fileUrl}`;
-      
-      const docData = {
-        id: doc.documentId,
-        type: doc.documentType,
-        fileName: doc.documentName,
-        fileUrl: fullUrl,
-        size: doc.fileSize,
-        mimeType: doc.mimeType,
-        uploadedAt: doc.created_at
-      };
-
-      if (doc.documentType === 'guarantee_letter') {
-        groupedDocuments.guarantee_letters.push(docData);
-      } else {
-        groupedDocuments[doc.documentType] = docData;
-      }
-    });
-
-    // Fix profile picture URL
-    let profilePictureUrl = employee.profilePictureUrl;
-    if (profilePictureUrl && !profilePictureUrl.startsWith('http')) {
-      profilePictureUrl = `${baseUrl}${profilePictureUrl}`;
-    }
-
-    // Parse JSON fields if they are stored as strings
-    let currentAddress = employee.currentAddress;
-    let bankAccount = employee.bankAccount;
-    let emergencyContact = employee.emergencyContact;
-
-    if (typeof currentAddress === 'string') {
-      try {
-        currentAddress = JSON.parse(currentAddress);
-      } catch (e) {
-        currentAddress = { street: currentAddress };
-      }
-    }
-
-    if (typeof bankAccount === 'string') {
-      try {
-        bankAccount = JSON.parse(bankAccount);
-      } catch (e) {
-        bankAccount = {};
-      }
-    }
-
-    if (typeof emergencyContact === 'string') {
-      try {
-        emergencyContact = JSON.parse(emergencyContact);
-      } catch (e) {
-        emergencyContact = {};
-      }
-    }
-
-    // Calculate total allowances
-    const housingAllowance = parseFloat(employee.housingAllowance) || 0;
-    const positionAllowance = parseFloat(employee.positionAllowance) || 0;
-    const transportAllowance = parseFloat(employee.transportAllowance) || 0;
-    const mobileAllowance = parseFloat(employee.mobileAllowance) || 0; 
-    const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
-    const grossPay = (parseFloat(employee.basicSalary) || 0) + totalAllowances;
-
-    res.status(200).json({
-      success: true,
-      data: {
-        // Basic Info
-        id: employee.employeeId,
-        employeeId: employee.employeeCode,
-        employeeCode: employee.employeeCode,
-        firstName: employee.firstName,
-        lastName: employee.lastName,
-        middleName: employee.middleName,
-        fullName: `${employee.firstName} ${employee.lastName}`,
-        
-        // Contact Info
-        email: employee.workEmail,
-        personalEmail: employee.personalEmail,
-        phone: employee.phoneNumber,
-        
-        // Personal Details
-        dob: employee.dateOfBirth,
-        gender: employee.gender,
-        maritalStatus: employee.maritalStatus,
-        nationality: employee.nationality,
-        
-        // Employment Details
-        departmentId: employee.departmentId,
-        departmentName: employee.Department?.name,
-        departmentCode: employee.Department?.code,
-        positionId: employee.positionId,
-        position: employee.Position?.title,
-        positionLevel: employee.Position?.level,
-        managerId: employee.managerId,
-        managerName: employee.manager ? `${employee.manager.firstName} ${employee.manager.lastName}` : null,
-        employmentType: employee.employmentType,
-        status: employee.employmentStatus,
-        employmentStatus: employee.employmentStatus,
-        hireDate: employee.hireDate,
-        confirmationDate: employee.confirmationDate,
-        terminationDate: employee.terminationDate,
-        
-        // Compensation & Allowances
-        salary: employee.basicSalary,
-        basicSalary: employee.basicSalary,
-        housingAllowance: housingAllowance,
-        positionAllowance: positionAllowance,
-        transportAllowance: transportAllowance,
-        mobileAllowance: mobileAllowance,
-        totalAllowances: totalAllowances,
-        grossPay: grossPay,
-        
-        // Location & Address
-        workLocation: employee.workLocation,
-        address: currentAddress?.street || '',
-        currentAddress: currentAddress,
-        permanentAddress: employee.permanentAddress,
-        
-        // Additional Info
-        emergencyContact: emergencyContact,
-        bankAccount: bankAccount,
-        
-        // Profile
-        profilePicture: profilePictureUrl,
-        profilePictureUrl: profilePictureUrl,
-        isActive: employee.isActive,
-        
-        // Documents
-        documents: groupedDocuments
-      }
-    });
-  } catch (error) {
-    console.error('Get employee error:', error);
-    res.status(500).json({ success: false, error: 'Server error: ' + error.message });
-  }
-};
 
 // ============================================================================
 // DELETE EMPLOYEE (SOFT DELETE)
@@ -2285,10 +2897,7 @@ function getGuaranteeStatus(guaranteeCount, latestAge) {
   return 'unknown';
 }
 
-function calculateMonthsOld(date) {
-  const diff = new Date() - new Date(date);
-  return Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
-}
+
 
 function calculateMonthsOld(date) {
   const diff = new Date() - new Date(date);
@@ -2432,6 +3041,7 @@ exports.importEmployees = async (req, res) => {
           firstName: empData.firstName,
           lastName: empData.lastName,
           middleName: empData.middleName || null,
+            fullNameEnglish: fullNameEnglish || null,  // ← ADD THIS LINE
           workEmail: empData.email,
           personalEmail: empData.personalEmail || null,
           phoneNumber: empData.phone,
@@ -2680,3 +3290,115 @@ exports.getHiringDetails = async (req, res) => {
 
 
 
+// ============================================================================
+// GENERIC DOCUMENT UPLOAD HANDLER (NEW ENDPOINT)
+// ============================================================================
+exports.uploadEmployeeDocument = async (req, res) => {
+  try {
+    const { id, type } = req.params;
+    const { subType, index, description } = req.body;
+    const documentType = type;
+    
+    const employee = await Employee.findByPk(id);
+    if (!employee) {
+      if (req.file) deleteFile(req.file.path);
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+    
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    
+    // ========== PROFILE PICTURES ==========
+    if (documentType === 'profile_picture') {
+      if (employee.profilePictureUrl) {
+        const oldFileName = employee.profilePictureUrl.split('/').pop();
+        const oldFilePath = path.join(__dirname, '..', 'uploads', 'profiles', oldFileName);
+        deleteFile(oldFilePath);
+      }
+      
+      // ✅ ABSOLUTE URL
+      const profilePictureUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
+      await employee.update({ profilePictureUrl });
+      
+      const document = await EmployeeDocument.create({
+        employeeId: id,
+        documentType: 'profile_picture',
+        subType: subType || null,
+        index: index ? parseInt(index) : null,
+        documentName: req.file.originalname,
+        fileName: req.file.filename,
+        fileUrl: profilePictureUrl,  // ✅ ABSOLUTE
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        description: description || null
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Profile picture uploaded successfully',
+        data: {
+          id: document.documentId,
+          type: 'profile_picture',
+          fileName: req.file.originalname,
+          fileUrl: profilePictureUrl,  // ✅ ABSOLUTE
+          uploadedAt: document.created_at
+        }
+      });
+    }
+    
+    // ========== REGULAR DOCUMENTS ==========
+    const folder = getDocumentFolder(documentType);
+    
+    if (!folder || folder === 'others') {
+      if (req.file) deleteFile(req.file.path);
+      return res.status(400).json({
+        success: false,
+        error: `Unknown document type: ${documentType}`
+      });
+    }
+    
+    // ✅ ABSOLUTE URL for regular documents
+    const relativePath = `/uploads/documents/${folder}/${req.file.filename}`;
+    const absoluteUrl = `${baseUrl}${relativePath}`;
+    
+    const document = await EmployeeDocument.create({
+      employeeId: id,
+      documentType: documentType,
+      subType: subType || null,
+      index: index ? parseInt(index) : null,
+      documentName: req.file.originalname,
+      fileName: req.file.filename,
+      fileUrl: absoluteUrl,  // ✅ ABSOLUTE
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      description: description || null
+    });
+    
+    // Update JSONB field with ABSOLUTE URL
+    await updateEmployeeJsonbField(id, documentType, index, {
+      documentId: document.documentId,
+      fileUrl: absoluteUrl,  // ✅ ABSOLUTE
+      fileName: req.file.originalname
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Document uploaded successfully',
+      data: {
+        id: document.documentId,
+        type: documentType,
+        fileName: req.file.originalname,
+        fileUrl: absoluteUrl,  // ✅ ABSOLUTE
+        uploadedAt: document.created_at
+      }
+    });
+    
+  } catch (error) {
+    if (req.file) deleteFile(req.file.path);
+    console.error('Upload document error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};

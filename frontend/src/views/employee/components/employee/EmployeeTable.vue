@@ -3,14 +3,14 @@
     <table class="employees-table">
       <thead>
         <tr>
-          <th>Employee</th>
-          <th>ID</th>
-          <th>Dept</th>
-          <th>Position</th>
-          <th>Type</th>
-          <th>Status</th>
-          <th>Hire Date</th>
-          <th>Actions</th>
+          <th>{{ $t('employee.employee') || 'Employee' }}</th>
+          <th>{{ $t('employee.id') || 'ID' }}</th>
+          <th>{{ $t('employee.dept') || 'Dept' }}</th>
+          <th>{{ $t('employee.position') || 'Position' }}</th>
+          <th>{{ $t('employee.type') || 'Type' }}</th>
+          <th>{{ $t('employee.status') || 'Status' }}</th>
+          <th>{{ $t('employee.hireDate') || 'Hire Date' }}</th>
+          <th>{{ $t('actions.actions') || 'Actions' }}</th>
         </tr>
       </thead>
       <tbody>
@@ -33,43 +33,43 @@
             </div>
             <div class="employee-info">
               <span class="employee-name">{{ emp.fullName }}</span>
-              <span class="employee-email">{{ emp.email }}</span>
+              <span class="employee-email">{{ emp.fullNameEnglish || emp.email }}</span>
             </div>
-          </td>
-          <td class="employee-id">{{ emp.employeeId }}</td>
-          <td>{{ emp.departmentName || 'N/A' }}</td>
-          <td class="position-cell">{{ emp.position || 'N/A' }}</td>
-          <td>
+           </td>
+          <td class="employee-id">{{ emp.employeeId }} </td>
+           <td>{{ emp.departmentName || 'N/A' }} </td>
+          <td class="position-cell">{{ emp.position || 'N/A' }} </td>
+           <td>
             <span :class="`type-badge type-${emp.employmentType}`">
               {{ getEmploymentTypeLabel(emp.employmentType) }}
             </span>
-          </td>
-          <td>
+           </td>
+           <td>
             <button class="status-toggle" :class="`status-${emp.status}`" @click="$emit('toggle-status', emp)">
               <span class="status-dot"></span>
               {{ getStatusLabel(emp.status) }}
             </button>
-          </td>
-          <td class="date-cell">{{ formatDate(emp.hireDate) }}</td>
+           </td>
+          <td class="date-cell">{{ formatDate(emp.hireDate) }} </td>
           <td class="actions-cell">
-            <button class="action-btn view" @click="$emit('view-employee', emp)" title="View Details">
+            <button class="action-btn view" @click="$emit('view-employee', emp)" :title="$t('actions.viewDetails') || 'View Details'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                 <circle cx="12" cy="12" r="3" />
               </svg>
             </button>
-            <button class="action-btn edit" @click="$emit('edit-employee', emp)" title="Edit Employee">
+            <button class="action-btn edit" @click="$emit('edit-employee', emp)" :title="$t('actions.editEmployee') || 'Edit Employee'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17 3l4 4-7 7H10v-4l7-7z" />
               </svg>
             </button>
-            <button v-if="emp.status !== 'terminated'" class="action-btn delete" @click="$emit('delete-employee', emp)" title="Delete">
+            <button v-if="emp.status !== 'terminated'" class="action-btn delete" @click="$emit('delete-employee', emp)" :title="$t('actions.delete') || 'Delete'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
             </button>
-          </td>
-        </tr>
+           </td>
+         </tr>
         <tr v-if="employees.length === 0">
           <td colspan="8" class="empty-state">
             <div class="empty-state-content">
@@ -79,17 +79,17 @@
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
-              <h3 class="empty-state-title">No Employee found</h3>
-              <p class="empty-state-message">Try adjusting your search or filter criteria</p>
+              <h3 class="empty-state-title">{{ $t('messages.noData') || 'No Employee found' }}</h3>
+              <p class="empty-state-message">{{ $t('messages.adjustFilters') || 'Try adjusting your search or filter criteria' }}</p>
               <button class="empty-state-btn" @click="$emit('clear-filters')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
-                Clear Filters
+                {{ $t('common.clearFilters') || 'Clear Filters' }}
               </button>
             </div>
-          </td>
-        </tr>
+           </td>
+         </tr>
       </tbody>
     </table>
 
@@ -100,7 +100,7 @@
           <path d="M15 18l-6-6 6-6" />
         </svg>
       </button>
-      <span>Page {{ pagination.page }} of {{ pagination.totalPages }}</span>
+      <span>{{ $t('common.page') || 'Page' }} {{ pagination.page }} {{ $t('common.of') || 'of' }} {{ pagination.totalPages }}</span>
       <button class="page-btn" :disabled="pagination.page === pagination.totalPages" @click="$emit('go-to-page', pagination.page + 1)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M9 18l6-6-6-6" />
@@ -142,12 +142,21 @@ const getAvatarColor = (name) => {
 }
 
 const getEmploymentTypeLabel = (type) => {
-  const labels = { 'full-time': 'Full Time', 'part-time': 'Part Time', contract: 'Contract', intern: 'Intern' }
+  const labels = { 
+    'full-time': 'Full Time', 
+    'part-time': 'Part Time', 
+    contract: 'Contract', 
+    intern: 'Intern' 
+  }
   return labels[type] || type || 'N/A'
 }
 
 const getStatusLabel = (status) => {
-  const labels = { active: 'Active', 'on-leave': 'On Leave', terminated: 'Terminated' }
+  const labels = { 
+    active: 'Active', 
+    'on-leave': 'On Leave', 
+    terminated: 'Terminated' 
+  }
   return labels[status] || status || 'N/A'
 }
 

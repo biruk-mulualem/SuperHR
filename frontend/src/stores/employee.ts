@@ -5,7 +5,157 @@ import api from './interceptor'
 // TYPES
 // ============================================================================
 
+// ============================================================================
+// NEW JSONB FIELD TYPES
+// ============================================================================
 
+export interface BirthPlace {
+  region: string
+  city: string
+  subcity: string
+  district: string
+}
+
+export interface SpouseInfo {
+  tinNumber?: string
+  fullName?: string
+  dateOfBirth?: string
+  jobStatus?: string
+  companyName?: string
+  companyAddress?: string
+  profilePictureUrl?: string
+  profilePictureDocumentId?: string
+  marriageCertificateUrl?: string
+  marriageCertificateDocumentId?: string
+}
+
+export interface Child {
+  name: string
+  dateOfBirth: string
+  hasMedicalCondition: boolean
+  medicalConditionNotes?: string
+  isAdopted: boolean
+  birthCertificateUrl?: string
+  birthCertificateDocumentId?: string
+  medicalReportUrl?: string
+  medicalReportDocumentId?: string
+  adoptionCertificateUrl?: string
+  adoptionCertificateDocumentId?: string
+  profilePictureUrl?: string
+  profilePictureDocumentId?: string
+  ageWarning?: string
+}
+
+export interface Education {
+  level: string
+  institutionName: string
+  institutionAddress: string
+  startDate: string
+  endDate: string
+  isCurrent: boolean
+  certificateUrl?: string
+  certificateDocumentId?: string
+}
+
+export interface Training {
+  trainingName: string
+  institutionName: string
+  institutionAddress: string
+  startDate: string
+  endDate: string
+  certificateUrl?: string
+  certificateDocumentId?: string
+}
+
+export interface WorkExperience {
+  position: string
+  companyName: string
+  companyTin?: string
+  companyType?: string
+  companyAddress: string
+  startDate: string
+  endDate: string
+  monthlySalary?: number
+  salaryWhenLeft?: number
+  providentFundSubmitted?: string
+  providentFundStartDate?: string
+  terminationReason?: string
+  documentUrl?: string
+  documentId?: string
+}
+
+export interface LanguageSkill {
+  language: string
+  proficiency: 'basic' | 'intermediate' | 'advanced' | 'fluent' | 'native'
+}
+
+export interface NationalityAcquisition {
+  type: 'by_birth' | 'by_law' | 'ethiopian_birth'
+  documentUrl?: string
+  documentId?: string
+}
+
+export interface HealthInfo {
+  hasPhysicalInjury: boolean
+  injuryDescription: string
+}
+
+export interface LegalInfo {
+  hasCriminalRecord: boolean
+  criminalRecordDescription: string
+}
+
+export interface Guarantor {
+  guarantorName: string
+  guarantorJob: string
+  guarantorOfficeName: string
+  guarantorOfficeAddress: string
+  guaranteeLetterNo: string
+  guaranteeLetterDate: string
+  sdtLetterNo: string
+  sdtLetterDate: string
+  confirmedDate: string
+  guaranteeLetterUrl?: string
+  guaranteeLetterDocumentId?: string
+  sdtLetterUrl?: string
+  sdtLetterDocumentId?: string
+  otherDocumentUrl?: string
+  otherDocumentId?: string
+}
+
+export interface ParentsInfo {
+  father: {
+    fullName: string
+    monthlyIncome: number
+    job: string
+  }
+  mother: {
+    fullName: string
+    monthlyIncome: number
+    job: string
+  }
+  financialSupport: string
+  otherSupport: string
+}
+
+export interface CurrentCompany {
+  companyName: string
+  companyTin: string
+  companyPhone: string
+  companyEmail: string
+  companyAddress: string
+  poBox: string
+  website: string
+}
+
+export interface EmergencyContactAddress {
+  city: string
+  subcity: string
+  district: string
+  kebele?: string
+}
+
+// Updated Employee interface with all new fields
 export interface Employee {
   id: number
   employeeId: string
@@ -13,6 +163,7 @@ export interface Employee {
   firstName: string
   lastName: string
   middleName?: string
+   fullNameEnglish?: string  // ← ADD THIS
   email: string
   personalEmail?: string
   phone: string
@@ -20,6 +171,7 @@ export interface Employee {
   gender?: 'male' | 'female' | 'other'
   maritalStatus?: 'single' | 'married' | 'divorced' | 'widowed'
   nationality?: string
+  nationalId?: string
   departmentId: number
   departmentName?: string
   departmentCode?: string
@@ -35,23 +187,43 @@ export interface Employee {
   terminationDate?: string
   salary?: number
   basicSalary?: number
-  // NEW: Allowance fields
   housingAllowance?: number
   positionAllowance?: number
   transportAllowance?: number
-    mobileAllowance?: number 
+  mobileAllowance?: number
   totalAllowances?: number
   grossPay?: number
   workLocation?: string
   address?: any
+  currentAddress?: any
   permanentAddress?: any
+  birthPlace?: BirthPlace
+  mothersFullName?: string
   emergencyContact?: any
+  emergencyContactAddress?: EmergencyContactAddress
   bankAccount?: any
   profilePicture?: string
   isActive: boolean
   createdAt?: string
   updatedAt?: string
+  
+  // NEW JSONB FIELDS
+  spouseInfo?: SpouseInfo
+  children?: Child[]
+  parentSupport?: any[]
+  education?: Education[]
+  training?: Training[]
+  workExperience?: WorkExperience[]
+  languageSkills?: LanguageSkill[]
+  otherSkills?: string
+  nationalityAcquisition?: NationalityAcquisition
+  healthInfo?: HealthInfo
+  legalInfo?: LegalInfo
+  guaranteeInfo?: Guarantor[]
+  parentsInfo?: ParentsInfo
+  currentCompany?: CurrentCompany
 }
+
 
 
 
@@ -321,7 +493,75 @@ class EmployeesService {
   // ============================================================================
   // EMPLOYEE CRUD
   // ============================================================================
+// ============================================================================
+// GENERIC DOCUMENT UPLOAD (NEW - Handles all document types)
+// ============================================================================
 
+/**
+ * Generic document upload for all document types
+ * Supports: spouse_profile, marriage_certificate, child_birth_certificate,
+ *           child_medical_report, child_adoption_certificate, child_profile,
+ *           education_certificate, training_certificate, experience_letter,
+ *           guarantee_letter, sdt_letter, parent_support_document,
+ *           naturalization_certificate, national_id
+ */
+async uploadEmployeeDocument(
+  id: number, 
+  file: File, 
+  documentType: string, 
+  options?: {
+    subType?: string
+    index?: number
+    description?: string
+  }
+) {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)  // Field name must be 'file'
+    // ✅ REMOVE: documentType is now in URL, not in body
+    // formData.append('documentType', documentType)
+    
+    if (options?.subType) formData.append('subType', options.subType)
+    if (options?.index !== undefined) formData.append('index', options.index.toString())
+    if (options?.description) formData.append('description', options.description)
+    
+    // ✅ PUT DOCUMENT TYPE IN THE URL
+    const response = await api.post(`/employees/${id}/documents/upload/${documentType}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Upload document error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to upload document'
+    }
+  }
+}
+
+/**
+ * Get all documents for an employee (detailed list, not grouped)
+ */
+async getEmployeeDocuments(id: number) {
+  try {
+    const response = await api.get(`/employees/${id}/documents/list`)
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get employee documents error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch documents'
+    }
+  }
+}
   /**
    * Get all employees with pagination and filters
    */
@@ -387,21 +627,98 @@ class EmployeesService {
   /**
    * Get employee by ID
    */
-  async getEmployeeById(id: number) {
-    try {
-      const response = await api.get(`/employees/${id}`)
-      return {
-        success: true,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Get employee error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to fetch employee'
+ /**
+ * Get employee by ID (with all JSONB fields)
+ */
+async getEmployeeById(id: number) {
+  try {
+    const response = await api.get(`/employees/${id}`)
+    return {
+      success: true,
+      data: response.data.data as {
+        // Basic info
+        id: number
+        employeeId: string
+        firstName: string
+        lastName: string
+        middleName?: string
+        fullName: string
+        fullNameEnglish?: string  // ← ADD THIS
+        email: string
+        personalEmail?: string
+        phone: string
+        dob?: string
+        gender?: string
+        maritalStatus?: string
+        nationality?: string
+        nationalId?: string
+        
+        // Employment
+        departmentId: number
+        departmentName?: string
+        positionId?: number
+        position?: string
+        managerId?: number
+        managerName?: string
+        employmentType: string
+        status: string
+        hireDate: string
+        confirmationDate?: string
+        terminationDate?: string
+        
+        // Salary & Allowances
+        basicSalary?: number
+        housingAllowance?: number
+        positionAllowance?: number
+        transportAllowance?: number
+        mobileAllowance?: number
+        totalAllowances?: number
+        grossPay?: number
+        
+        // Addresses
+        workLocation?: string
+        currentAddress?: any
+        permanentAddress?: any
+        birthPlace?: BirthPlace
+        
+        // Family
+        mothersFullName?: string
+        spouseInfo?: SpouseInfo
+        children?: Child[]
+        parentSupport?: any[]
+        parentsInfo?: ParentsInfo
+        
+        // Education & Skills
+        education?: Education[]
+        training?: Training[]
+        workExperience?: WorkExperience[]
+        languageSkills?: LanguageSkill[]
+        otherSkills?: string
+        
+        // Other
+        emergencyContact?: any
+        emergencyContactAddress?: EmergencyContactAddress
+        bankAccount?: any
+        nationalityAcquisition?: NationalityAcquisition
+        healthInfo?: HealthInfo
+        legalInfo?: LegalInfo
+        guaranteeInfo?: Guarantor[]
+        currentCompany?: CurrentCompany
+        
+        // Profile
+        profilePicture?: string
+        isActive: boolean
+        documents?: GroupedDocuments
       }
     }
+  } catch (error: any) {
+    console.error('Get employee error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch employee'
+    }
   }
+}
 
 
   /**
@@ -410,9 +727,11 @@ class EmployeesService {
 async createEmployee(employeeData: any) {
   try {
     const payload = {
+      // Basic Info
       firstName: employeeData.firstName,
       lastName: employeeData.lastName,
       middleName: employeeData.middleName,
+       fullNameEnglish: employeeData.fullNameEnglish,  // ← ADD THIS
       email: employeeData.email,
       personalEmail: employeeData.personalEmail,
       phone: employeeData.phone,
@@ -420,19 +739,50 @@ async createEmployee(employeeData: any) {
       gender: employeeData.gender,
       maritalStatus: employeeData.maritalStatus,
       nationality: employeeData.nationality,
+      nationalId: employeeData.nationalId,
+      
+      // Employment
       departmentId: employeeData.departmentId,
       positionId: employeeData.positionId,
       managerId: employeeData.managerId,
       employmentType: employeeData.employmentType,
       hireDate: employeeData.hireDate,
+      workLocation: employeeData.workLocation,
+      
+      // Salary & Allowances
       salary: employeeData.basicSalary || employeeData.salary,
       basicSalary: employeeData.basicSalary || employeeData.salary,
       housingAllowance: employeeData.housingAllowance || 0,
       positionAllowance: employeeData.positionAllowance || 0,
       transportAllowance: employeeData.transportAllowance || 0,
       mobileAllowance: employeeData.mobileAllowance || 0,
+      
+      // Address
       address: employeeData.address,
-      workLocation: employeeData.workLocation,
+      
+      // ========== ADD ALL MISSING JSONB FIELDS ==========
+      currentCompany: employeeData.currentCompany,
+      birthPlace: employeeData.birthPlace,
+      currentAddress: employeeData.currentAddress,
+      permanentAddress: employeeData.permanentAddress,
+      mothersFullName: employeeData.mothersFullName,
+      spouseInfo: employeeData.spouseInfo,
+      children: employeeData.children,
+      parentsInfo: employeeData.parentsInfo,
+      parentSupport: employeeData.parentSupport,
+      workExperience: employeeData.workExperience,
+      education: employeeData.education,
+      training: employeeData.training,
+      languageSkills: employeeData.languageSkills,
+      otherSkills: employeeData.otherSkills,
+      nationalityAcquisition: employeeData.nationalityAcquisition,
+      healthInfo: employeeData.healthInfo,
+      legalInfo: employeeData.legalInfo,
+      guaranteeInfo: employeeData.guaranteeInfo,
+      emergencyContactAddress: employeeData.emergencyContactAddress,
+      nationalIdDocument: employeeData.nationalIdDocument,
+      
+      // Stringified fields
       emergencyContact: employeeData.emergencyContact,
       bankAccount: employeeData.bankAccount
     }
@@ -451,16 +801,17 @@ async createEmployee(employeeData: any) {
     }
   }
 }
-
 /**
  * Update employee (WITH ALLOWANCES)
  */
 async updateEmployee(id: number, employeeData: any) {
   try {
     const payload = {
+      // Basic Info
       firstName: employeeData.firstName,
       lastName: employeeData.lastName,
       middleName: employeeData.middleName,
+        fullNameEnglish: employeeData.fullNameEnglish,  // ← ADD THIS
       email: employeeData.email,
       personalEmail: employeeData.personalEmail,
       phone: employeeData.phone,
@@ -468,6 +819,9 @@ async updateEmployee(id: number, employeeData: any) {
       gender: employeeData.gender,
       maritalStatus: employeeData.maritalStatus,
       nationality: employeeData.nationality,
+      nationalId: employeeData.nationalId,
+      
+      // Employment
       departmentId: employeeData.departmentId,
       positionId: employeeData.positionId,
       managerId: employeeData.managerId,
@@ -476,14 +830,41 @@ async updateEmployee(id: number, employeeData: any) {
       hireDate: employeeData.hireDate,
       confirmationDate: employeeData.confirmationDate,
       terminationDate: employeeData.terminationDate,
+      workLocation: employeeData.workLocation,
+      
+      // Salary & Allowances
       basicSalary: employeeData.basicSalary || employeeData.salary,
       housingAllowance: employeeData.housingAllowance || 0,
       positionAllowance: employeeData.positionAllowance || 0,
       transportAllowance: employeeData.transportAllowance || 0,
       mobileAllowance: employeeData.mobileAllowance || 0,
-      workLocation: employeeData.workLocation,
+      
+      // Addresses
       address: employeeData.address,
       permanentAddress: employeeData.permanentAddress,
+      
+      // ========== ADD ALL MISSING JSONB FIELDS ==========
+      currentCompany: employeeData.currentCompany,
+      birthPlace: employeeData.birthPlace,
+      currentAddress: employeeData.currentAddress,
+      mothersFullName: employeeData.mothersFullName,
+      spouseInfo: employeeData.spouseInfo,
+      children: employeeData.children,
+      parentsInfo: employeeData.parentsInfo,
+      parentSupport: employeeData.parentSupport,
+      workExperience: employeeData.workExperience,
+      education: employeeData.education,
+      training: employeeData.training,
+      languageSkills: employeeData.languageSkills,
+      otherSkills: employeeData.otherSkills,
+      nationalityAcquisition: employeeData.nationalityAcquisition,
+      healthInfo: employeeData.healthInfo,
+      legalInfo: employeeData.legalInfo,
+      guaranteeInfo: employeeData.guaranteeInfo,
+      emergencyContactAddress: employeeData.emergencyContactAddress,
+      nationalIdDocument: employeeData.nationalIdDocument,
+      
+      // Stringified fields
       bankAccount: employeeData.bankAccount,
       emergencyContact: employeeData.emergencyContact
     }
@@ -502,7 +883,6 @@ async updateEmployee(id: number, employeeData: any) {
     }
   }
 }
-
   /**
    * Delete employee (soft delete - terminate)
    */
@@ -858,113 +1238,8 @@ async getDepartmentEmployees(params: {
     }
   }
 
-  // ============================================================================
-  // DOCUMENTS
-  // ============================================================================
 
-  /**
-   * Upload ID card
-   */
-  async uploadIdCard(id: number, file: File) {
-    try {
-      const formData = new FormData()
-      formData.append('document', file)
-      
-      const response = await api.post(`/employees/${id}/id-card`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Upload ID card error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to upload ID card'
-      }
-    }
-  }
 
-  /**
-   * Upload CV/Resume
-   */
-  async uploadCv(id: number, file: File) {
-    try {
-      const formData = new FormData()
-      formData.append('document', file)
-      
-      const response = await api.post(`/employees/${id}/cv`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Upload CV error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to upload CV'
-      }
-    }
-  }
-
-  /**
-   * Upload degree/certificate
-   */
-  async uploadDegree(id: number, file: File) {
-    try {
-      const formData = new FormData()
-      formData.append('document', file)
-      
-      const response = await api.post(`/employees/${id}/degree`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Upload degree error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to upload degree'
-      }
-    }
-  }
-
-  /**
-   * Upload guarantee letter
-   */
-  async uploadGuaranteeLetter(id: number, file: File) {
-    try {
-      const formData = new FormData()
-      formData.append('document', file)
-      
-      const response = await api.post(`/employees/${id}/guarantee-letter`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      
-      return {
-        success: true,
-        message: response.data.message,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Upload guarantee letter error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to upload guarantee letter'
-      }
-    }
-  }
 
   /**
    * Get all documents grouped by type

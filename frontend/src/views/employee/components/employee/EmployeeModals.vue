@@ -4,7 +4,7 @@
     <div v-if="showDeleteModal" class="modal-overlay" @click="$emit('close-delete-modal')">
       <div class="modal-content delete-modal" @click.stop>
         <div class="modal-header">
-          <h2>Delete Employee</h2>
+          <h2>{{ $t('common.deleteEmployee') || 'Delete Employee' }}</h2>
           <button class="close-btn" @click="$emit('close-delete-modal')">×</button>
         </div>
         <div class="modal-body">
@@ -14,14 +14,14 @@
               <line x1="12" y1="8" x2="12" y2="12" />
               <circle cx="12" cy="16" r="0.5" />
             </svg>
-            <p>Delete <strong>{{ employeeToDelete?.fullName }}</strong>?</p>
-            <p class="delete-warning-text">This action cannot be undone.</p>
+            <p>{{ $t('messages.deleteConfirm') || 'Delete' }} <strong>{{ employeeToDelete?.fullName }}</strong>?</p>
+            <p class="delete-warning-text">{{ $t('messages.deleteWarning') || 'This action cannot be undone.' }}</p>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-cancel" @click="$emit('close-delete-modal')">Cancel</button>
+          <button class="btn-cancel" @click="$emit('close-delete-modal')">{{ $t('common.cancel') || 'Cancel' }}</button>
           <button class="btn-delete" @click="$emit('delete-employee')" :disabled="deleting">
-            {{ deleting ? 'Deleting...' : 'Delete' }}
+            {{ deleting ? ($t('common.deleting') || 'Deleting...') : ($t('common.delete') || 'Delete') }}
           </button>
         </div>
       </div>

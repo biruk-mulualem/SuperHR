@@ -1,11 +1,11 @@
-// In your employeeRoutes.js
+// employeeRoutes.js
 const express = require("express");
 const router = express.Router();
 const employeeController = require("../controllers/employeeController");
 const { authMiddleware } = require("../middleware/authMiddleware");
 const {
   uploadSingleProfile,
-  uploadSingleDocument,
+  uploadDynamicDocument,
 } = require("../middleware/uploadMiddleware");
 
 // ============================================================================
@@ -22,20 +22,16 @@ router.get(
   employeeController.getEmployees,
 );
 router.get("/:id", employeeController.getEmployeeById);
-
-// ✅ REMOVED uploadSingleProfile from POST - profile picture is separate
 router.post(
   "/",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.createEmployee,
 );
-
 router.put(
   "/:id",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.updateEmployee,
 );
-
 router.delete(
   "/:id",
   authMiddleware("admin", "hr", "finance", "attendance"),
@@ -43,63 +39,52 @@ router.delete(
 );
 
 // ============================================================================
-// ANALYTICS STATS ENDPOINTS (Separate for each section)
+// ANALYTICS STATS ENDPOINTS
 // ============================================================================
-
-// 1. KPI Cards - Basic Overview Stats
 router.get(
   "/stats/kpi",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getKpiStats,
 );
-
-// 2. Hiring Trends
 router.get(
   "/stats/hiring-trends",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getHiringTrends,
 );
-
-// 3. Department Distribution
 router.get(
   "/stats/departments",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getDepartmentDistribution,
 );
-
-// 4. Employment Type Distribution
 router.get(
   "/stats/employment-types",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getEmploymentTypeDistribution,
 );
-
-// 5. Recent Hires
 router.get(
   "/stats/recent-hires",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getRecentHires,
 );
-
-// 6. Salary Analysis
 router.get(
   "/stats/salary",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getSalaryAnalysis,
 );
-
-// 7. Document Compliance
 router.get(
   "/stats/compliance",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getDocumentCompliance,
 );
+router.get(
+  "/stats/hiring-details",
+  authMiddleware("admin", "hr", "finance", "attendance"),
+  employeeController.getHiringDetails,
+);
 
 // ============================================================================
-// DOCUMENT UPLOADS
+// PROFILE PICTURE (Special handling - uses uploadSingleProfile)
 // ============================================================================
-
-// Profile Picture
 router.post(
   "/:id/profile-picture",
   authMiddleware("admin", "hr"),
@@ -112,84 +97,48 @@ router.delete(
   employeeController.deleteProfilePicture,
 );
 
-// ID Card
+// ============================================================================
+// GENERIC DOCUMENT UPLOAD - Handles ALL document types
+// ============================================================================
+// This single route handles:
+// - id_card, passport, national_id
+// - spouse_profile, marriage_certificate
+// - child_birth_certificate, child_medical_report, child_adoption_certificate, child_profile
+// - education_certificate, degree, certificate, cv, resume
+// - training_certificate
+// - experience_letter
+// - guarantee_letter, sdt_letter, guarantee_other
+// - parent_support_document
+// - naturalization_certificate
+// - health_document, legal_document
+// - contract, performance-review
 router.post(
-  "/:id/id-card",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  (req, res, next) => {
-    req.params.type = "id_card";
-    next();
-  },
-  uploadSingleDocument,
-  employeeController.uploadIdCard,
+  "/:id/documents/upload/:type",
+  uploadDynamicDocument,
+  employeeController.uploadEmployeeDocument,
 );
 
-// CV/Resume
-router.post(
-  "/:id/cv",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  (req, res, next) => {
-    req.params.type = "cv";
-    next();
-  },
-  uploadSingleDocument,
-  employeeController.uploadCv,
-);
-
-// Degree/Certificate
-router.post(
-  "/:id/degree",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  (req, res, next) => {
-    req.params.type = "degree";
-    next();
-  },
-  uploadSingleDocument,
-  employeeController.uploadDegree,
-);
-
-// Guarantee Letter
-router.post(
-  "/:id/guarantee-letter",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  (req, res, next) => {
-    req.params.type = "guarantee_letter";
-    next();
-  },
-  uploadSingleDocument,
-  employeeController.uploadGuaranteeLetter,
-);
-
-// Get all documents grouped
+// ============================================================================
+// DOCUMENT MANAGEMENT
+// ============================================================================
 router.get("/:id/documents", employeeController.getAllDocuments);
-
-// Delete specific document
 router.delete(
   "/:id/documents/:documentId",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.deleteDocument,
 );
 
-// Import employees (bulk create)
+// ============================================================================
+// OTHER ROUTES
+// ============================================================================
 router.post(
   "/import",
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.importEmployees,
 );
-
-// ==================== COMPENSATION HISTORY ROUTES ====================
-
-// Get employee compensation history
 router.get(
   "/compensation/employee/:employeeId",
   employeeController.getEmployeeCompensationHistory,
 );
 
-
-// Add this route with your other analytics routes
-router.get(
-  "/stats/hiring-details",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  employeeController.getHiringDetails,
-);
 module.exports = router;

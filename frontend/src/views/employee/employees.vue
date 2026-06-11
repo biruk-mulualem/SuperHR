@@ -1,24 +1,57 @@
 <template>
   <div class="employees-page">
+    <!-- Language Switcher -->
+   <div class="language-switcher-container">
+  <div class="lang-toggle">
+    <button 
+      @click="setLanguage('en')" 
+      class="lang-option"
+      :class="{ active: currentLanguage === 'en' }"
+    >
+      EN
+    </button>
+    <button 
+      @click="setLanguage('am')" 
+      class="lang-option"
+      :class="{ active: currentLanguage === 'am' }"
+    >
+      አማ
+    </button>
+  </div>
+</div>
+
     <!-- Page Header -->
     <div class="page-header">
       <div>
-        <h1 class="page-title">Employee Management</h1>
-        <p class="page-subtitle">Manage system employees, roles, and permissions</p>
+        <h1 class="page-title">{{ $t('employee.title') || 'Employee Management' }}</h1>
+        <p class="page-subtitle">{{ $t('employee.subtitle') || 'Manage system employees, roles, and permissions' }}</p>
       </div>
       <div class="header-buttons">
+           <!-- New Guarantee & Letters Button -->
+        <router-link to="/documents-letters" class="btn-guarantee">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16v16H4z" stroke="currentColor" fill="none"/>
+            <path d="M8 8h8M8 12h6M8 16h4" stroke="currentColor" stroke-linecap="round"/>
+            <path d="M16 4v16" stroke="currentColor"/>
+            <path d="M4 8h2M4 12h2M4 16h2" stroke="currentColor"/>
+          </svg>
+          {{ $t('common.guaranteeLetters') || 'Guarantee & Letters' }}
+        </router-link>
+        
         <router-link to="/analytics" class="btn-analytics">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4-3-9s1.34-9 3-9" />
             <path d="M12 3v18" />
           </svg>
-          Analytics
+          {{ $t('common.analytics') || 'Analytics' }}
         </router-link>
+        
+     
         <router-link to="/employees/create" class="btn-primary">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
-          Add Employee
+          {{ $t('common.addEmployee') || 'Add Employee' }}
         </router-link>
       </div>
     </div>
@@ -33,7 +66,7 @@
     <!-- Loading State -->
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <p>Loading employees...</p>
+      <p>{{ $t('common.loading') || 'Loading employees...' }}</p>
     </div>
 
     <div v-else>
@@ -75,6 +108,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import EmployeesService from '@/stores/employee'
 import UsersService from '@/stores/users'
 import EmployeeStatsCards from './components/employee/EmployeeStatsCards.vue'
@@ -83,6 +117,18 @@ import EmployeeTable from './components/employee/EmployeeTable.vue'
 import EmployeeModals from './components/employee/EmployeeModals.vue'
 
 const router = useRouter()
+const { t, locale } = useI18n()
+
+// Language state
+const currentLanguage = ref(locale.value)
+
+// Toggle language function
+const setLanguage = (lang) => {
+  locale.value = lang
+  currentLanguage.value = lang
+  localStorage.setItem('language', lang)
+  addToast(lang === 'en' ? 'Switched to English' : 'ወደ አማርኛ ተቀይሯል', 'success')
+}
 
 // State
 const employees = ref([])
@@ -132,6 +178,11 @@ let searchTimeout = null
 // Navigate to analytics page
 const navigateToAnalytics = () => {
   router.push('/analytics')
+}
+
+// Navigate to guarantee and letters page
+const navigateToGuaranteeLetters = () => {
+  router.push('/documents-letters')
 }
 
 // Toast functions
@@ -188,11 +239,11 @@ const loadEmployees = async () => {
       employees.value = result.data
       pagination.value = result.pagination
     } else {
-      addToast(result.error || 'Failed to load employees', 'error')
+      addToast(result.error || t('messages.error') || 'Failed to load employees', 'error')
     }
   } catch (error) {
     console.error('Load employees error:', error)
-    addToast('Failed to load employees', 'error')
+    addToast(t('messages.error') || 'Failed to load employees', 'error')
   } finally {
     loading.value = false
   }
@@ -206,14 +257,14 @@ const toggleStatus = async (employee) => {
     
     if (result.success) {
       employee.status = newStatus
-      addToast(`${employee.fullName} status changed to ${getStatusLabel(newStatus)}`, 'success')
+      addToast(`${employee.fullName} ${t('employee.statusChanged') || 'status changed to'} ${getStatusLabel(newStatus)}`, 'success')
       loadKpiStats()
     } else {
-      addToast(result.error || 'Status update failed', 'error')
+      addToast(result.error || t('messages.error') || 'Status update failed', 'error')
     }
   } catch (error) {
     console.error('Toggle status error:', error)
-    addToast('Status update failed', 'error')
+    addToast(t('messages.error') || 'Status update failed', 'error')
   }
 }
 
@@ -234,11 +285,11 @@ const deleteEmployee = async () => {
       loadEmployees()
       loadKpiStats()
     } else {
-      addToast(result.error || 'Delete failed', 'error')
+      addToast(result.error || t('messages.error') || 'Delete failed', 'error')
     }
   } catch (error) {
     console.error('Delete employee error:', error)
-    addToast('Delete failed', 'error')
+    addToast(t('messages.error') || 'Delete failed', 'error')
   } finally {
     deleting.value = false
   }
@@ -285,7 +336,11 @@ const closeDeleteModal = () => {
 
 // Utility functions
 const getStatusLabel = (status) => {
-  const labels = { active: 'Active', 'on-leave': 'On Leave', terminated: 'Terminated' }
+  const labels = { 
+    active: t('employee.active') || 'Active', 
+    'on-leave': t('employee.onLeave') || 'On Leave', 
+    terminated: t('employee.terminated') || 'Terminated' 
+  }
   return labels[status] || status
 }
 
@@ -317,12 +372,78 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+
+/* Language Toggle - Modern Switch Style */
+.language-switcher-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.lang-toggle {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 40px;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.lang-option {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 32px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #64748b;
+}
+
+.lang-option:hover {
+  color: #1e293b;
+}
+
+.lang-option.active {
+  background: rgb(132, 219, 123);
+  color: #ededee;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
 * { box-sizing: border-box; }
 
 .employees-page {
   padding: 16px;
   min-height: 100vh;
   background: #f5f7fb;
+}
+
+/* Language Switcher */
+.language-switcher-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.lang-toggle-btn {
+  background: linear-gradient(135deg, #6a11cb, #7c3aed);
+  border: none;
+  border-radius: 30px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 4px rgba(106, 17, 203, 0.2);
+}
+
+.lang-toggle-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(106, 17, 203, 0.3);
 }
 
 /* Header */
@@ -347,7 +468,7 @@ onMounted(async () => {
   color: #64748b;
 }
 
-.btn-primary, .btn-analytics {
+.btn-primary, .btn-analytics, .btn-guarantee {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -357,6 +478,7 @@ onMounted(async () => {
   cursor: pointer;
   text-decoration: none;
   font-size: 14px;
+  transition: all 0.3s ease;
 }
 
 .btn-primary {
@@ -370,13 +492,31 @@ onMounted(async () => {
   color: white;
 }
 
+.btn-guarantee {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
 .btn-icon {
   width: 18px;
   height: 18px;
 }
 
-.btn-primary:hover, .btn-analytics:hover {
+.btn-primary:hover, .btn-analytics:hover, .btn-guarantee:hover {
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #7c3aed, #6a11cb);
+}
+
+.btn-analytics:hover {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+
+.btn-guarantee:hover {
+  background: linear-gradient(135deg, #34d399, #10b981);
 }
 
 .header-buttons {
@@ -410,6 +550,21 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .employees-page { padding: 12px; }
   .page-title { font-size: 20px; }
-  .btn-primary, .btn-analytics { padding: 8px 16px; font-size: 13px; }
+  .btn-primary, .btn-analytics, .btn-guarantee { padding: 8px 16px; font-size: 13px; }
+  .btn-guarantee svg, .btn-analytics svg, .btn-primary svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-buttons {
+    flex-wrap: wrap;
+  }
+  
+  .btn-primary, .btn-analytics, .btn-guarantee {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

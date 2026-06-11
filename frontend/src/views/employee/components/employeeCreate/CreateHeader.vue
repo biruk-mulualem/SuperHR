@@ -1,13 +1,13 @@
 <template>
   <div class="create-header">
-    <router-link to="/employees" class="back-btn">
+    <router-link to="/employees" class="back-btn" :title="$t('common.back') || 'Back'">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M15 18l-6-6 6-6" />
       </svg>
     </router-link>
     <div class="header-title">
-      <h1>New Employee</h1>
-      <p>Add employee information</p>
+      <h1>{{ $t('employee.newEmployee') || 'New Employee' }}</h1>
+      <p>{{ $t('employee.addEmployeeInfo') || 'Add employee information' }}</p>
     </div>
     <div class="header-actions">
       <button class="import-btn" @click="$emit('import-click')">
@@ -16,7 +16,7 @@
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        Import CSV
+        {{ $t('common.importCSV') || 'Import CSV' }}
       </button>
     </div>
   </div>

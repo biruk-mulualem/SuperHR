@@ -17,7 +17,8 @@ module.exports = (sequelize, DataTypes) => {
     getTotalAllowances() {
       return (this.housingAllowance || 0) + 
              (this.positionAllowance || 0) + 
-             (this.transportAllowance || 0);
+             (this.transportAllowance || 0) +
+             (this.mobileAllowance || 0);
     }
 
     // Helper method to calculate gross pay (without overtime)
@@ -50,6 +51,9 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         field: 'user_id',
       },
+
+      
+      // ========== BASIC PERSONAL INFORMATION ==========
       firstName: {
         type: DataTypes.STRING(50),
         allowNull: false,
@@ -64,16 +68,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(50),
         allowNull: true,
         field: 'middle_name',
-      },
+      },// In Employee model
+fullNameEnglish: {
+  type: DataTypes.STRING(255),
+  allowNull: true,
+  field: 'full_name_english'
+},
       dateOfBirth: {
         type: DataTypes.DATEONLY,
         allowNull: true,
         field: 'date_of_birth',
-      },
-      shiftType: {
-        type: DataTypes.ENUM('day', 'night'),
-        defaultValue: 'day',
-        field: 'shift_type',
       },
       gender: {
         type: DataTypes.ENUM('male', 'female', 'other'),
@@ -88,36 +92,71 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(50),
         allowNull: true,
       },
-      personalEmail: {
-        type: DataTypes.STRING(100),
+      nationalId: {
+        type: DataTypes.STRING(50),
         allowNull: true,
-        field: 'personal_email',
+        field: 'national_id',
       },
+      
+      // ========== NATIONAL ID DOCUMENT (NEW) ==========
+      nationalIdDocument: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'national_id_document',
+        comment: 'National ID document: documentUrl, documentId, fileName'
+      },
+      
+      // ========== CONTACT INFORMATION ==========
       workEmail: {
         type: DataTypes.STRING(100),
         allowNull: true,
         field: 'work_email',
+      },
+      personalEmail: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'personal_email',
       },
       phoneNumber: {
         type: DataTypes.STRING(20),
         allowNull: true,
         field: 'phone_number',
       },
-      emergencyContact: {
-        type: DataTypes.JSONB,
-        defaultValue: {},
-        field: 'emergency_contact',
-      },
+      
+      // ========== ADDRESSES ==========
       currentAddress: {
         type: DataTypes.JSONB,
         defaultValue: {},
         field: 'current_address',
+        comment: 'Current address: region, subcity, kebele, district, poBox, houseNumber'
       },
       permanentAddress: {
         type: DataTypes.JSONB,
         defaultValue: {},
         field: 'permanent_address',
+        comment: 'Permanent address: region, city, subcity, district, houseNumber'
       },
+      birthPlace: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'birth_place',
+        comment: 'Birth place: region, city, subcity, district'
+      },
+      workLocation: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        field: 'work_location',
+      },
+      
+      // ========== CURRENT COMPANY INFORMATION ==========
+      currentCompany: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'current_company',
+        comment: 'Current company: companyName, companyTin, companyPhone, companyEmail, companyAddress, poBox, website'
+      },
+      
+      // ========== EMPLOYMENT DETAILS ==========
       departmentId: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -158,48 +197,162 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'termination_date',
       },
+      shiftType: {
+        type: DataTypes.ENUM('day', 'night'),
+        defaultValue: 'day',
+        field: 'shift_type',
+      },
+      
+      // ========== SALARY & ALLOWANCES ==========
       basicSalary: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
         field: 'basic_salary',
       },
-      
-      // ========== ALLOWANCES ==========
       housingAllowance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
         field: 'housing_allowance',
-        comment: 'Housing allowance (typically 20% of basic salary)'
+        comment: 'Housing allowance'
       },
       positionAllowance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
         field: 'position_allowance',
-        comment: 'Position allowance (typically 15% of basic salary)'
+        comment: 'Position allowance'
       },
       transportAllowance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
         field: 'transport_allowance',
-        comment: 'Transport allowance (typically 10% of basic salary)'
+        comment: 'Transport allowance'
       },
       mobileAllowance: {
         type: DataTypes.DECIMAL(15, 2),
         defaultValue: 0,
         field: 'mobile_allowance',
-        comment: 'Mobile allowance (typically 5% of basic salary)'
+        comment: 'Mobile allowance'
       },
       
+      // ========== BANK ACCOUNT ==========
       bankAccount: {
         type: DataTypes.JSONB,
         defaultValue: {},
         field: 'bank_account',
+        comment: 'Bank account: bankName, accountNumber, accountHolderName, branch'
       },
-      workLocation: {
+      
+      // ========== EMERGENCY CONTACT ==========
+      emergencyContact: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'emergency_contact',
+        comment: 'Emergency contact: name, relationship, phone, alternatePhone'
+      },
+      emergencyContactAddress: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'emergency_contact_address',
+        comment: 'Emergency contact address: city, subcity, district, kebele'
+      },
+      
+      // ========== FAMILY INFORMATION ==========
+      mothersFullName: {
         type: DataTypes.STRING(200),
         allowNull: true,
-        field: 'work_location',
+        field: 'mothers_full_name'
       },
+      spouseInfo: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'spouse_info',
+        comment: 'Spouse: tinNumber, fullName, dateOfBirth, jobStatus, companyName, companyAddress, profilePictureDocumentId, marriageCertificateDocumentId, profilePictureUrl, marriageCertificateUrl'
+      },
+      children: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'children',
+        comment: 'Array of children: name, dateOfBirth, hasMedicalCondition, medicalConditionNotes, isAdopted, birthCertificateDocumentId, medicalReportDocumentId, adoptionCertificateDocumentId, profilePictureDocumentId, birthCertificateUrl, medicalReportUrl, adoptionCertificateUrl, profilePictureUrl'
+      },
+      parentsInfo: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'parents_info',
+        comment: 'Parents: father {fullName, monthlyIncome, job}, mother {fullName, monthlyIncome, job}, financialSupport, otherSupport'
+      },
+      parentSupport: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'parent_support',
+        comment: 'Array of parent support: parentType, supportType, amount, frequency, notes, documentId, documentUrl'
+      },
+      
+      // ========== EDUCATION & TRAINING ==========
+      education: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'education',
+        comment: 'Array of education: level, institutionName, institutionAddress, startDate, endDate, isCurrent, certificateDocumentId, certificateUrl'
+      },
+      training: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'training',
+        comment: 'Array of training: trainingName, institutionName, institutionAddress, startDate, endDate, certificateDocumentId, certificateUrl'
+      },
+      
+      // ========== WORK EXPERIENCE ==========
+      workExperience: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'work_experience',
+        comment: 'Array of work experience: position, companyName, companyTin, companyType, companyAddress, startDate, endDate, monthlySalary, salaryWhenLeft, providentFundSubmitted, providentFundStartDate, terminationReason, documentId, documentUrl'
+      },
+      
+      // ========== SKILLS ==========
+      languageSkills: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'language_skills',
+        comment: 'Array of languages: language, proficiency (basic/intermediate/advanced/fluent/native)'
+      },
+      otherSkills: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'other_skills'
+      },
+      
+      // ========== NATIONALITY ACQUISITION ==========
+      nationalityAcquisition: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'nationality_acquisition',
+        comment: 'How acquired: type (by_birth/by_law/ethiopian_birth), documentId, documentUrl'
+      },
+      
+      // ========== HEALTH & LEGAL ==========
+      healthInfo: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'health_info',
+        comment: 'Health information: hasPhysicalInjury, injuryDescription'
+      },
+      legalInfo: {
+        type: DataTypes.JSONB,
+        defaultValue: {},
+        field: 'legal_info',
+        comment: 'Legal information: hasCriminalRecord, criminalRecordDescription'
+      },
+      
+      // ========== GUARANTEE INFORMATION ==========
+      guaranteeInfo: {
+        type: DataTypes.JSONB,
+        defaultValue: [],
+        field: 'guarantee_info',
+        comment: 'Array of guarantors: guarantorName, guarantorJob, guarantorOfficeName, guarantorOfficeAddress, guaranteeLetterNo, guaranteeLetterDate, sdtLetterNo, sdtLetterDate, confirmedDate, guaranteeLetterUrl, sdtLetterUrl, otherDocumentUrl'
+      },
+      
+      // ========== PROFILE PICTURE ==========
       profilePicture: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -215,6 +368,8 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'profile_picture_public_id',
       },
+      
+      // ========== STATUS FIELDS ==========
       isActive: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -228,8 +383,6 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at',
-      
-  
     }
   );
 

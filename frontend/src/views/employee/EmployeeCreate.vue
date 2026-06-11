@@ -1,99 +1,207 @@
 <template>
   <div class="employee-create">
-    <CreateHeader @import-click="openImportModal" />
+   
+
+    <CreateHeader
+  :t="t" 
+     @import-click="openImportModal" />
     
-    <form @submit.prevent="createEmployee" class="employee-form">
-      <ProfileUpload 
-        v-model:profile-file="profileFile"
-        v-model:profile-preview="profilePreview"
-      />
+    <form @submit.prevent="saveAllData" class="employee-form">
       
       <BasicInfoForm 
-        v-model:form="form"
+        :form="form"
         :errors="errors"
         :countries="countries"
+         :t="t" 
+        :profile-preview="profilePreview"
+        @update:form="updateForm"
+        @update:profileFile="updateProfileFile"
+        @update:profilePreview="updateProfilePreview"
+        @update:nationalIdFile="updateNationalIdFile"
+        @file-selected="addToast"
+        @upload-document="openDocumentUpload"
+      />
+
+      <CurrentCompanyInfoForm 
+        :current-company="form.currentCompany"
+            :t="t" 
+        @update:currentCompany="updateCurrentCompany"
       />
       
       <EmploymentForm 
-        v-model:form="form"
+        :form="form"
+        :work-experience="form.workExperience"
         :errors="errors"
+            :t="t" 
         :departments="departments"
         :positions="positions"
         :employees="employeeList"
+        @update:form="updateForm"
+        @update:work-experience="updateWorkExperience"
+        @update:work-document="updateWorkDocument"
+        @file-selected="addToast"
+        @upload-document="openDocumentUpload"
       />
       
+      <FamilyInfoForm 
+        :spouse-info="form.spouseInfo"
+        :children="form.children"
+        :parents-info="form.parentsInfo"
+            :t="t" 
+        @update:spouseInfo="updateSpouseInfo"
+        @update:children="updateChildren"
+        @update:parentsInfo="updateParentsInfo"
+        @file-selected="addToast"
+        @upload-document="openDocumentUpload"
+      />
       
+      <EducationForm 
+        :education="form.education"
+        @update:education="updateEducation"
+            :t="t" 
+        @upload-document="openDocumentUpload"
+      />
+      
+      <TrainingForm 
+        :training="form.training"
+        @update:training="updateTraining"
+            :t="t" 
+        @upload-document="openDocumentUpload"
+      />
+      
+      <LanguageSkillsForm 
+        :language-skills="form.languageSkills"
+        :other-skills="form.otherSkills"
+            :t="t" 
+        @update:languageSkills="updateLanguageSkills"
+        @update:otherSkills="updateOtherSkills"
+      />
+      
+      <NationalityForm 
+        :nationality-acquisition="form.nationalityAcquisition"
+            :t="t" 
+        @update:nationalityAcquisition="updateNationalityAcquisition"
+        @upload-document="openDocumentUpload"
+      />
+      
+      <HealthLegalForm 
+        :health-info="form.healthInfo"
+        :legal-info="form.legalInfo"
+            :t="t" 
+        @update:healthInfo="updateHealthInfo"
+        @update:legalInfo="updateLegalInfo"
+      />
+      
+      <GuaranteeInfoForm 
+        :guarantee-info="form.guaranteeInfo"
+            :t="t" 
+        @update:guaranteeInfo="updateGuaranteeInfo"
+        @file-selected="addToast"
+        @upload-document="openDocumentUpload"
+      />
       
       <AdditionalInfoForm 
-        v-model:emergency="emergencyContact"
-        v-model:bank="bankAccount"
-        v-model:form="form"
+        :emergency="emergencyContact"
+        :emergency-address="form.emergencyContactAddress"
+        :bank="bankAccount"
         :ethiopian-banks="ethiopianBanks"
-      />
-      
-      <DocumentsUpload 
-        v-model:documents="documents"
-        @file-selected="addToast"
+            :t="t" 
+        @update:emergency="updateEmergencyContact"
+        @update:emergencyAddress="updateEmergencyAddress"
+        @update:bank="updateBankAccount"
       />
       
       <div class="form-actions">
-        <router-link to="/employees" class="btn-outline">Cancel</router-link>
-        <button type="submit" class="btn-primary" :disabled="isSubmitting || !isFormValid">
-          {{ isSubmitting ? 'Creating...' : 'Create Employee' }}
+        <router-link to="/employees" class="btn-outline">{{ $t('common.cancel') }}</router-link>
+        <button type="submit" class="btn-primary" :disabled="isSubmitting">
+          {{ isSubmitting ? $t('common.saving') : $t('common.saveEmployee') }}
         </button>
       </div>
     </form>
 
-    <div v-if="isSubmitting" class="loading-section">
-      <div class="loading-spinner"></div>
-      <p>Creating employee and uploading documents...</p>
-    </div>
+    <!-- Rest of your modals -->
+    <DocumentUploadModal 
+      v-if="showDocumentModal"
+      :context="documentUploadContext"
+          :t="t" 
+      @close="showDocumentModal = false"
+      @uploaded="handleDocumentUploaded"
+    />
 
     <ImportModal 
       v-model:show="showImportModal"
+          :t="t" 
       @import="handleImport"
       @toast="addToast"
     />
 
     <ToastContainer 
       :toasts="toasts"
+          :t="t" 
       @remove-toast="removeToast"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import EmployeesService from '@/stores/employee'
 import UsersService from '@/stores/users'
 import CreateHeader from './components/employeeCreate/CreateHeader.vue'
-import ProfileUpload from './components/employeeCreate/ProfileUpload.vue'
+
+
+
+
+
+
+
+
+
+import { useI18n } from 'vue-i18n'  // ← ADD THIS LINE
 import BasicInfoForm from './components/employeeCreate/BasicInfoForm.vue'
 import EmploymentForm from './components/employeeCreate/EmploymentForm.vue'
+import FamilyInfoForm from './components/employeeCreate/FamilyInfoForm.vue'
+import EducationForm from './components/employeeCreate/EducationForm.vue'
+import TrainingForm from './components/employeeCreate/TrainingForm.vue'
+import CurrentCompanyInfoForm from './components/employeeCreate/CurrentCompanyInfoForm.vue'
+import LanguageSkillsForm from './components/employeeCreate/LanguageSkillsForm.vue'
+import NationalityForm from './components/employeeCreate/NationalityForm.vue'
+import HealthLegalForm from './components/employeeCreate/HealthLegalForm.vue'
 import AdditionalInfoForm from './components/employeeCreate/AdditionalInfoForm.vue'
-import DocumentsUpload from './components/employeeCreate/DocumentsUpload.vue'
 import ImportModal from './components/employeeCreate/ImportModal.vue'
 import ToastContainer from './components/employeeCreate/ToastContainer.vue'
+import DocumentUploadModal from './components/employeeCreate/DocumentUploadModal.vue'
+import GuaranteeInfoForm from './components/employeeCreate/GuaranteeInfoForm.vue'
+
+
+
+const { t, locale } = useI18n()
+
+
+
+// Language state
+const currentLanguage = ref(locale.value)
+
+
+
+
+
 
 const router = useRouter()
+const route = useRoute()
 const toasts = ref([])
 const showImportModal = ref(false)
+const showDocumentModal = ref(false)
+const documentUploadContext = ref({ type: null, index: null, field: null })
 const isSubmitting = ref(false)
 const profileFile = ref(null)
 const profilePreview = ref(null)
+const nationalIdFile = ref(null)
 
 const departments = ref([])
 const positions = ref([])
 const employeeList = ref([])
-
-const documents = ref({
-  profile: { file: null },
-  id: { file: null },
-  cv: { file: null },
-  degree: { file: null },
-  guarantees: []
-})
 
 const emergencyContact = reactive({
   name: '',
@@ -102,6 +210,17 @@ const emergencyContact = reactive({
   alternatePhone: ''
 })
 
+// Toggle language function
+const toggleLanguage = () => {
+  const newLang = currentLanguage.value === 'en' ? 'am' : 'en'
+  locale.value = newLang
+  currentLanguage.value = newLang
+  localStorage.setItem('language', newLang)
+  // Optional: show a toast notification
+  addToast(newLang === 'en' ? 'Switched to English' : 'ወደ አማርኛ ተቀይሯል', 'success')
+}
+
+
 const bankAccount = reactive({
   bankName: '',
   accountNumber: '',
@@ -109,18 +228,20 @@ const bankAccount = reactive({
   branch: ''
 })
 
-// Form with allowance fields
+// Form data
 const form = ref({
   firstName: '',
   lastName: '',
   middleName: '',
   email: '',
   personalEmail: '',
+  fullNameEnglish: '',
   phone: '',
   dob: '',
   gender: '',
   maritalStatus: '',
   nationality: '',
+  nationalId: '',
   departmentId: null,
   positionId: null,
   managerId: null,
@@ -133,196 +254,422 @@ const form = ref({
   transportAllowance: '',
   mobileAllowance: '',
   address: '',
-  workLocation: ''
-})
-
-// Validation errors
-const allowanceErrors = ref({
-  basicSalary: '',
-  housingAllowance: '',
-  positionAllowance: '',
-  transportAllowance: '',
-   mobileAllowance: '',
+  workLocation: '',
+  
+  currentCompany: {
+    companyName: '',
+    companyTin: '',
+    companyPhone: '',
+    companyEmail: '',
+    companyAddress: '',
+    poBox: '',
+    website: ''
+  },
+  
+  birthPlace: {
+    region: '',
+    city: '',
+    subcity: '',
+    district: ''
+  },
+  
+  currentAddress: {
+    region: '',
+    subcity: '',
+    kebele: '',
+    district: '',
+    poBox: '',
+    houseNumber: ''
+  },
+  
+  mothersFullName: '',
+  
+  spouseInfo: {
+    tinNumber: '',
+    fullName: '',
+    dateOfBirth: '',
+    jobStatus: '',
+    companyName: '',
+    companyAddress: '',
+    profilePictureFile: null,
+    marriageCertificateFile: null
+  },
+  children: [],
+  parentsInfo: {
+    father: { fullName: '', monthlyIncome: null, job: '' },
+    mother: { fullName: '', monthlyIncome: null, job: '' },
+    financialSupport: '',
+    otherSupport: ''
+  },
+  
+  workExperience: [],
+  education: [],
+  training: [],
+  languageSkills: [],
+  otherSkills: '',
+  parentSupport: [],
+  
+  nationalityAcquisition: {
+    type: 'by_birth',
+    documentId: null,
+    documentUrl: null
+  },
+  
+  healthInfo: {
+    hasPhysicalInjury: false,
+    injuryDescription: ''
+  },
+  legalInfo: {
+    hasCriminalRecord: false,
+    criminalRecordDescription: ''
+  },
+  
+  guaranteeInfo: [],
+  
+  emergencyContactAddress: {
+    city: '',
+    subcity: '',
+    district: '',
+    kebele: ''
+  }
 })
 
 const errors = ref({})
 
-// Computed properties for allowances
-const basicSalaryAmount = computed(() => parseFloat(form.value.basicSalary) || 0)
-const housingAllowanceAmount = computed(() => parseFloat(form.value.housingAllowance) || 0)
-const positionAllowanceAmount = computed(() => parseFloat(form.value.positionAllowance) || 0)
-const transportAllowanceAmount = computed(() => parseFloat(form.value.transportAllowance) || 0)
-const mobileAllowanceAmount = computed(() => parseFloat(form.value.mobileAllowance) || 0)
-const totalAllowances = computed(() => housingAllowanceAmount.value + positionAllowanceAmount.value + transportAllowanceAmount.value + mobileAllowanceAmount.value)
-const grossPay = computed(() => basicSalaryAmount.value + totalAllowances.value)
-
-// Form validation - check if all fields are valid
-const isFormValid = computed(() => {
-  return basicSalaryAmount.value > 0 &&
-         housingAllowanceAmount.value >= 0 &&
-         positionAllowanceAmount.value >= 0 &&
-         transportAllowanceAmount.value >= 0 &&
-         mobileAllowanceAmount.value >= 0 &&
-         !allowanceErrors.value.basicSalary &&
-         !allowanceErrors.value.housingAllowance &&
-         !allowanceErrors.value.positionAllowance &&
-         !allowanceErrors.value.transportAllowance &&
-         !allowanceErrors.value.mobileAllowance
-})
-
-// Validation functions
-const validateBasicSalary = () => {
-  const value = parseFloat(form.value.basicSalary)
-  if (isNaN(value) || value <= 0) {
-    allowanceErrors.value.basicSalary = 'Basic salary must be greater than 0'
-    return false
-  }
-  allowanceErrors.value.basicSalary = ''
-  return true
+// Update methods
+const updateForm = (newForm) => {
+  form.value = newForm
 }
 
-const validateHousingAllowance = () => {
-  const value = parseFloat(form.value.housingAllowance)
-  if (isNaN(value)) {
-    form.value.housingAllowance = 0
-    allowanceErrors.value.housingAllowance = ''
-    return true
-  }
-  if (value < 0) {
-    allowanceErrors.value.housingAllowance = 'Housing allowance cannot be negative'
-    return false
-  }
-  allowanceErrors.value.housingAllowance = ''
-  return true
+const updateCurrentCompany = (newCompany) => {
+  form.value.currentCompany = newCompany
 }
 
-const validatePositionAllowance = () => {
-  const value = parseFloat(form.value.positionAllowance)
-  if (isNaN(value)) {
-    form.value.positionAllowance = 0
-    allowanceErrors.value.positionAllowance = ''
-    return true
-  }
-  if (value < 0) {
-    allowanceErrors.value.positionAllowance = 'Position allowance cannot be negative'
-    return false
-  }
-  allowanceErrors.value.positionAllowance = ''
-  return true
+const updateProfileFile = (file) => {
+  profileFile.value = file
 }
 
-const validateTransportAllowance = () => {
-  const value = parseFloat(form.value.transportAllowance)
-  if (isNaN(value)) {
-    form.value.transportAllowance = 0
-    allowanceErrors.value.transportAllowance = ''
-    return true
-  }
-  if (value < 0) {
-    allowanceErrors.value.transportAllowance = 'Transport allowance cannot be negative'
-    return false
-  }
-  allowanceErrors.value.transportAllowance = ''
-  return true
+const updateProfilePreview = (preview) => {
+  profilePreview.value = preview
 }
 
-const validateMobileAllowance = () => {
-  const value = parseFloat(form.value.mobileAllowance)
-  if (isNaN(value)) {
-    form.value.mobileAllowance = 0
-    allowanceErrors.value.mobileAllowance = ''
-    return true
-  }
-  if (value < 0) {
-    allowanceErrors.value.mobileAllowance = 'Mobile allowance cannot be negative'
-    return false
-  }
-  allowanceErrors.value.mobileAllowance = ''
-  return true
+const updateNationalIdFile = (file) => {
+  nationalIdFile.value = file
 }
 
-
-const formatCurrency = (value) => {
-  if (!value && value !== 0) return '—'
-  return `ETB ${Number(value).toLocaleString()}`
+const updateWorkExperience = (newWorkExperience) => {
+  form.value.workExperience = newWorkExperience
 }
 
-const countries = [
-  { code: 'ET', name: 'Ethiopian' },
-  { code: 'US', name: 'American' },
-  { code: 'GB', name: 'British' },
-  { code: 'CA', name: 'Canadian' },
-  { code: 'AU', name: 'Australian' },
-  { code: 'DE', name: 'German' },
-  { code: 'FR', name: 'French' },
-  { code: 'IT', name: 'Italian' },
-  { code: 'ES', name: 'Spanish' }
-]
+const updateWorkDocument = ({ index, file }) => {
+  if (form.value.workExperience[index]) {
+    form.value.workExperience[index].experienceLetterFile = file
+  }
+}
 
-const ethiopianBanks = [
-  { code: 'CBE', name: 'Commercial Bank of Ethiopia' },
-  { code: 'AWB', name: 'Awash Bank' },
-  { code: 'DB', name: 'Dashen Bank' },
-  { code: 'UB', name: 'United Bank' },
-  { code: 'NIB', name: 'Nib International Bank' },
-  { code: 'HB', name: 'Hibret Bank' },
-  { code: 'WB', name: 'Wegagen Bank' }
-]
+const updateSpouseInfo = (newSpouseInfo) => {
+  form.value.spouseInfo = newSpouseInfo
+}
 
-const getErrorMessage = (error) => {
-  return error.response?.data?.error || error.message || 'An error occurred'
+const updateChildren = (newChildren) => {
+  form.value.children = newChildren
+}
+
+const updateParentsInfo = (newParentsInfo) => {
+  form.value.parentsInfo = newParentsInfo
+}
+
+const updateGuaranteeInfo = (newGuaranteeInfo) => {
+  form.value.guaranteeInfo = newGuaranteeInfo
+}
+
+const updateEmergencyContact = (newEmergency) => {
+  Object.assign(emergencyContact, newEmergency)
+}
+
+const updateEmergencyAddress = (newAddress) => {
+  form.value.emergencyContactAddress = newAddress
+}
+
+const updateBankAccount = (newBank) => {
+  Object.assign(bankAccount, newBank)
+}
+
+const updateEducation = (newEducation) => {
+  form.value.education = newEducation
+}
+
+const updateTraining = (newTraining) => {
+  form.value.training = newTraining
+}
+
+const updateLanguageSkills = (newLanguages) => {
+  form.value.languageSkills = newLanguages
+}
+
+const updateOtherSkills = (newSkills) => {
+  form.value.otherSkills = newSkills
+}
+
+const updateNationalityAcquisition = (newData) => {
+  form.value.nationalityAcquisition = newData
+}
+
+const updateHealthInfo = (newHealth) => {
+  form.value.healthInfo = newHealth
+}
+
+const updateLegalInfo = (newLegal) => {
+  form.value.legalInfo = newLegal
+}
+
+const saveAllData = async () => {
+  if (!validateForm()) {
+    addToast('Please fix validation errors', 'error')
+    return
+  }
+  
+  console.log('=== SAVING EMPLOYEE DATA ===')
+  console.log('Required fields:', {
+    firstName: form.value.firstName,
+    lastName: form.value.lastName,
+    departmentId: form.value.departmentId,
+    positionId: form.value.positionId,
+    employmentType: form.value.employmentType,
+    hireDate: form.value.hireDate
+  })
+  
+  isSubmitting.value = true
+  
+  try {
+    const employeeData = {
+      firstName: form.value.firstName?.trim(),
+      lastName: form.value.lastName?.trim(),
+      middleName: form.value.middleName?.trim() || null,
+      fullNameEnglish: form.value.fullNameEnglish?.trim() || null, 
+      email: form.value.email?.trim(),
+      personalEmail: form.value.personalEmail?.trim() || null,
+      phone: form.value.phone?.trim(),
+      dob: form.value.dob || null,
+      gender: form.value.gender || null,
+      maritalStatus: form.value.maritalStatus || null,
+      nationality: form.value.nationality || null,
+      nationalId: form.value.nationalId || null,
+      departmentId: form.value.departmentId ? parseInt(form.value.departmentId) : null,
+      positionId: form.value.positionId ? parseInt(form.value.positionId) : null,
+      managerId: form.value.managerId ? parseInt(form.value.managerId) : null,
+      employmentType: form.value.employmentType,
+      hireDate: form.value.hireDate,
+      basicSalary: form.value.basicSalary,
+      housingAllowance: parseFloat(form.value.housingAllowance) || 0,
+      positionAllowance: parseFloat(form.value.positionAllowance) || 0,
+      transportAllowance: parseFloat(form.value.transportAllowance) || 0,
+      mobileAllowance: parseFloat(form.value.mobileAllowance) || 0,
+      workLocation: form.value.workLocation?.trim() || null,
+      currentCompany: form.value.currentCompany,
+      birthPlace: form.value.birthPlace,
+      currentAddress: form.value.currentAddress,
+      mothersFullName: form.value.mothersFullName,
+      spouseInfo: form.value.spouseInfo,
+      children: form.value.children,
+      parentsInfo: form.value.parentsInfo,
+      workExperience: form.value.workExperience,
+      education: form.value.education,
+      training: form.value.training,
+      languageSkills: form.value.languageSkills,
+      otherSkills: form.value.otherSkills,
+      parentSupport: form.value.parentSupport,
+      nationalityAcquisition: form.value.nationalityAcquisition,
+      healthInfo: form.value.healthInfo,
+      legalInfo: form.value.legalInfo,
+      guaranteeInfo: form.value.guaranteeInfo,
+      emergencyContactAddress: form.value.emergencyContactAddress,
+      emergencyContact: JSON.stringify(emergencyContact),
+      bankAccount: JSON.stringify(bankAccount)
+    }
+    
+    console.log('Sending employeeData:', employeeData)
+    
+    let employeeId
+  
+    if (route.params.id) {
+      const result = await EmployeesService.updateEmployee(route.params.id, employeeData)
+      if (!result.success) throw new Error(result.error)
+      employeeId = route.params.id
+      addToast('Employee updated successfully!', 'success')
+    } else {
+      const result = await EmployeesService.createEmployee(employeeData)
+      console.log('Create result:', result)
+      if (!result.success) throw new Error(result.error || 'Failed to create employee')
+      employeeId = result.data.id
+      addToast('Employee created successfully!', 'success')
+    }
+    
+    await uploadAllDocuments(employeeId)
+    
+    setTimeout(() => {
+      router.push('/employees')
+    }, 2000)
+    
+  } catch (error) {
+    console.error('Save error:', error)
+    addToast(error.message, 'error')
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+const uploadAllDocuments = async (employeeId) => {
+  console.log('Uploading documents for employee:', employeeId)
+  
+  // 1. Profile Picture
+  if (profileFile.value) {
+    await EmployeesService.uploadEmployeeDocument(employeeId, profileFile.value, 'profile_picture')
+  }
+  
+  // 2. National ID Document
+  if (nationalIdFile.value) {
+    await EmployeesService.uploadEmployeeDocument(employeeId, nationalIdFile.value, 'national_id')
+  }
+  
+  // 3. Spouse Profile Picture
+  if (form.value.spouseInfo?.profilePictureFile) {
+    await EmployeesService.uploadEmployeeDocument(
+      employeeId, 
+      form.value.spouseInfo.profilePictureFile, 
+      'spouse_profile'
+    )
+  }
+  
+  // 4. Marriage Certificate
+  if (form.value.spouseInfo?.marriageCertificateFile) {
+    await EmployeesService.uploadEmployeeDocument(
+      employeeId, 
+      form.value.spouseInfo.marriageCertificateFile, 
+      'marriage_certificate'
+    )
+  }
+  
+  // 5. Children Documents
+  for (let i = 0; i < form.value.children.length; i++) {
+    const child = form.value.children[i]
+    
+    if (child.birthCertificateFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, child.birthCertificateFile, 'child_birth_certificate', { index: i }
+      )
+    }
+    if (child.medicalReportFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, child.medicalReportFile, 'child_medical_report', { index: i }
+      )
+    }
+    if (child.adoptionCertificateFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, child.adoptionCertificateFile, 'child_adoption_certificate', { index: i }
+      )
+    }
+    if (child.profilePictureFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, child.profilePictureFile, 'child_profile', { index: i }
+      )
+    }
+  }
+  
+  // 6. Work Experience Documents
+  for (let i = 0; i < form.value.workExperience.length; i++) {
+    const work = form.value.workExperience[i]
+    if (work.experienceLetterFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, work.experienceLetterFile, 'experience_letter', { index: i }
+      )
+    }
+  }
+  
+  // 7. Guarantee Documents
+  for (let i = 0; i < form.value.guaranteeInfo.length; i++) {
+    const guarantee = form.value.guaranteeInfo[i]
+    
+    if (guarantee.guaranteeLetterFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, guarantee.guaranteeLetterFile, 'guarantee_letter', { index: i }
+      )
+    }
+    if (guarantee.sdtLetterFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, guarantee.sdtLetterFile, 'sdt_letter', { index: i }
+      )
+    }
+    if (guarantee.otherDocumentFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, guarantee.otherDocumentFile, 'guarantee_other', { index: i }
+      )
+    }
+  }
+  
+  // 8. Education Certificates
+  for (let i = 0; i < form.value.education.length; i++) {
+    const edu = form.value.education[i]
+    if (edu.certificateFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, edu.certificateFile, 'education_certificate', { index: i }
+      )
+    }
+  }
+  
+  // 9. Training Certificates
+  for (let i = 0; i < form.value.training.length; i++) {
+    const train = form.value.training[i]
+    if (train.certificateFile) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId, train.certificateFile, 'training_certificate', { index: i }
+      )
+    }
+  }
+  
+  // 10. Naturalization Certificate
+  if (form.value.nationalityAcquisition?.documentFile) {
+    await EmployeesService.uploadEmployeeDocument(
+      employeeId, form.value.nationalityAcquisition.documentFile, 'naturalization_certificate'
+    )
+  }
+
+  // 11. Health Document
+if (form.value.healthInfo?.documentFile) {
+  await EmployeesService.uploadEmployeeDocument(
+    employeeId, form.value.healthInfo.documentFile, 'health_document'
+  )
+}
+
+// 12. Legal Document
+if (form.value.legalInfo?.documentFile) {
+  await EmployeesService.uploadEmployeeDocument(
+    employeeId, form.value.legalInfo.documentFile, 'legal_document'
+  )
+}
+}
+
+const openDocumentUpload = (context) => {
+  documentUploadContext.value = context
+  showDocumentModal.value = true
+}
+
+const handleDocumentUploaded = async (result) => {
+  const { type, index, field, documentId, fileUrl } = documentUploadContext.value
+  
+  addToast('Document uploaded successfully', 'success')
+  showDocumentModal.value = false
 }
 
 const validateForm = () => {
   const newErrors = {}
-  
-  // Basic Info validation
   if (!form.value.firstName?.trim()) newErrors.firstName = 'First name is required'
   if (!form.value.lastName?.trim()) newErrors.lastName = 'Last name is required'
   if (!form.value.email?.trim()) newErrors.email = 'Email is required'
-  if (!form.value.phone?.trim()) newErrors.phone = 'Phone number is required'
-  if (!form.value.departmentId) newErrors.departmentId = 'Department is required'
-  if (!form.value.positionId) newErrors.positionId = 'Position is required'
-  if (!form.value.employmentType) newErrors.employmentType = 'Employment type is required'
-  if (!form.value.hireDate) newErrors.hireDate = 'Hire date is required'
-  
-  // Email format validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (form.value.email && !emailRegex.test(form.value.email)) {
-    newErrors.email = 'Valid email is required'
-  }
-  
-  // Allowance validations
-  const basicSalaryValid = validateBasicSalary()
-  const housingValid = validateHousingAllowance()
-  const positionValid = validatePositionAllowance()
-  const transportValid = validateTransportAllowance()
-  const mobileValid = validateMobileAllowance()
-
-  if (!basicSalaryValid) {
-    newErrors.basicSalary = allowanceErrors.value.basicSalary
-  }
-  if (!housingValid) {
-    newErrors.housingAllowance = allowanceErrors.value.housingAllowance
-  }
-  if (!positionValid) {
-    newErrors.positionAllowance = allowanceErrors.value.positionAllowance
-  }
-  if (!transportValid) {
-    newErrors.transportAllowance = allowanceErrors.value.transportAllowance
-  }
-  if (!mobileValid) {
-    newErrors.mobileAllowance = allowanceErrors.value.mobileAllowance
-  }
-
-  // Fix for enum error: Convert empty strings to null for enum fields
-  if (form.value.gender === '') form.value.gender = null
-  if (form.value.maritalStatus === '') form.value.maritalStatus = null
-  if (form.value.nationality === '') form.value.nationality = null
-  if (form.value.employmentType === '') form.value.employmentType = null
+  if (!form.value.phone?.trim()) newErrors.phone = 'Phone is required'
   
   errors.value = newErrors
-  return Object.keys(newErrors).length === 0 && basicSalaryValid && housingValid && positionValid && transportValid && mobileValid
+  return Object.keys(newErrors).length === 0
 }
 
 const addToast = (message, type = 'success') => {
@@ -333,129 +680,6 @@ const addToast = (message, type = 'success') => {
 
 const removeToast = (id) => {
   toasts.value = toasts.value.filter(t => t.id !== id)
-}
-
-const createEmployee = async () => {
-  if (!validateForm()) {
-    addToast('Please fix validation errors before submitting', 'error')
-    return
-  }
-  
-  isSubmitting.value = true
-  
-  try {
-    // Use basicSalary as the primary salary field
-    const finalSalary = form.value.basicSalary || form.value.salary
-    
-    // Prepare data - convert empty strings to null for enum fields
-    const employeeData = {
-      firstName: form.value.firstName?.trim(),
-      lastName: form.value.lastName?.trim(),
-      email: form.value.email?.trim(),
-      phone: form.value.phone?.trim(),
-      departmentId: form.value.departmentId,
-      positionId: form.value.positionId,
-      employmentType: form.value.employmentType,
-      hireDate: form.value.hireDate,
-      middleName: form.value.middleName?.trim() || null,
-      personalEmail: form.value.personalEmail?.trim() || null,
-      dob: form.value.dob || null,
-      gender: form.value.gender || null,
-      maritalStatus: form.value.maritalStatus || null,
-      nationality: form.value.nationality || null,
-      managerId: form.value.managerId || null,
-      salary: finalSalary,
-      basicSalary: finalSalary,
-      housingAllowance: form.value.housingAllowance || 0,
-      positionAllowance: form.value.positionAllowance || 0,
-      transportAllowance: form.value.transportAllowance || 0,
-      mobileAllowance: form.value.mobileAllowance || 0,
-      address: form.value.address?.trim() || null,
-      workLocation: form.value.workLocation?.trim() || null,
-      emergencyContact: JSON.stringify(emergencyContact),
-      bankAccount: JSON.stringify(bankAccount)
-    }
-    
-    addToast('Creating employee...', 'info')
-    const result = await EmployeesService.createEmployee(employeeData)
-    
-    if (!result.success) {
-      addToast(result.error || 'Failed to create employee', 'error')
-      isSubmitting.value = false
-      return
-    }
-    
-    const employeeId = result.data.id
-    addToast(`✅ Employee created! Now uploading files...`, 'success')
-    
-    let successCount = 0
-    let totalFiles = 0
-    
-    // Upload profile picture
-    if (profileFile.value) {
-      totalFiles++
-      addToast('Uploading profile picture...', 'info')
-      const profileResult = await EmployeesService.uploadProfilePicture(employeeId, profileFile.value)
-      if (profileResult.success) successCount++
-      else addToast('❌ Failed to upload profile picture', 'error')
-    }
-    
-    // Upload ID Card
-    if (documents.value.id && documents.value.id.file) {
-      totalFiles++
-      addToast('Uploading ID card...', 'info')
-      const idResult = await EmployeesService.uploadIdCard(employeeId, documents.value.id.file)
-      if (idResult.success) successCount++
-      else addToast('❌ Failed to upload ID Card', 'error')
-    }
-    
-    // Upload CV
-    if (documents.value.cv && documents.value.cv.file) {
-      totalFiles++
-      addToast('Uploading CV...', 'info')
-      const cvResult = await EmployeesService.uploadCv(employeeId, documents.value.cv.file)
-      if (cvResult.success) successCount++
-      else addToast('❌ Failed to upload CV', 'error')
-    }
-    
-    // Upload Degree
-    if (documents.value.degree && documents.value.degree.file) {
-      totalFiles++
-      addToast('Uploading degree...', 'info')
-      const degreeResult = await EmployeesService.uploadDegree(employeeId, documents.value.degree.file)
-      if (degreeResult.success) successCount++
-      else addToast('❌ Failed to upload Degree', 'error')
-    }
-    
-    // Upload Guarantee Letters
-    if (documents.value.guarantees && documents.value.guarantees.length > 0) {
-      for (const guarantee of documents.value.guarantees) {
-        totalFiles++
-        addToast(`Uploading guarantee letter: ${guarantee.name}...`, 'info')
-        const guaranteeResult = await EmployeesService.uploadGuaranteeLetter(employeeId, guarantee.file)
-        if (guaranteeResult.success) successCount++
-        else addToast(`❌ Failed to upload "${guarantee.name}"`, 'error')
-      }
-    }
-    
-    if (totalFiles > 0 && successCount === totalFiles) {
-      addToast(`🎉 Employee "${result.data.fullName}" created with all ${totalFiles} file(s) uploaded successfully!`, 'success')
-    } else if (totalFiles > 0) {
-      addToast(`⚠️ Employee created but ${totalFiles - successCount} file(s) failed to upload.`, 'warning')
-    } else {
-      addToast(`🎉 Employee "${result.data.fullName}" created successfully!`, 'success')
-    }
-    
-    setTimeout(() => {
-      router.push('/employees')
-    }, 3000)
-    
-  } catch (error) {
-    console.error('Error creating employee:', error)
-    addToast(getErrorMessage(error), 'error')
-  } finally {
-    isSubmitting.value = false
-  }
 }
 
 const openImportModal = () => {
@@ -495,6 +719,28 @@ const loadManagers = async () => {
   }
 }
 
+const countries = [
+  { code: 'ET', name: 'Ethiopian' },
+  { code: 'US', name: 'American' },
+  { code: 'GB', name: 'British' },
+  { code: 'CA', name: 'Canadian' },
+  { code: 'AU', name: 'Australian' },
+  { code: 'DE', name: 'German' },
+  { code: 'FR', name: 'French' },
+  { code: 'IT', name: 'Italian' },
+  { code: 'ES', name: 'Spanish' }
+]
+
+const ethiopianBanks = [
+  { code: 'CBE', name: 'Commercial Bank of Ethiopia' },
+  { code: 'AWB', name: 'Awash Bank' },
+  { code: 'DB', name: 'Dashen Bank' },
+  { code: 'UB', name: 'United Bank' },
+  { code: 'NIB', name: 'Nib International Bank' },
+  { code: 'HB', name: 'Hibret Bank' },
+  { code: 'WB', name: 'Wegagen Bank' }
+]
+
 onMounted(() => {
   loadDepartments()
   loadPositions()
@@ -503,6 +749,250 @@ onMounted(() => {
 </script>
 
 <style scoped>
+
+/* Language Toggle Button - Simple and clean */
+.language-toggle-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.lang-toggle-btn {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 30px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lang-toggle-btn:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.lang-toggle-btn:active {
+  transform: translateY(0);
+}
+
+/* Rest of your existing styles remain the same */
+.employee-create {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+
+
+
+.employee-create {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.employee-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-primary,
+.btn-outline {
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: #6366f1;
+  border: none;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: white;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.btn-outline:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+@media (max-width: 768px) {
+  .employee-create {
+    padding: 16px;
+  }
+}
+
+/* Your existing styles remain the same */
+.employee-create {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.employee-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-primary,
+.btn-outline {
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: #6366f1;
+  border: none;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: white;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.btn-outline:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+@media (max-width: 768px) {
+  .employee-create {
+    padding: 16px;
+  }
+}
+
+.employee-create {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.employee-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-primary,
+.btn-outline {
+  padding: 10px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: #6366f1;
+  border: none;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: white;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+.btn-outline:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
 .employee-create {
   max-width: 1000px;
   margin: 0 auto;
