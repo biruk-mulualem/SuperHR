@@ -14,17 +14,49 @@
 
     <!-- Navigation Menu -->
     <nav class="nav-menu">
-      <router-link
-        v-for="item in menuItems"
-        :key="item.path"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: isActiveRoute(item.path) }"
-      >
-        <component :is="getIcon(item.icon)" class="nav-icon" />
-        <span class="nav-text">{{ item.name }}</span>
-        <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
-      </router-link>
+      <template v-for="item in menuItems" :key="item.path">
+        <router-link
+          v-if="!item.dropdownMenu"
+          :to="item.path"
+          class="nav-item"
+          :class="{ active: isActiveRoute(item.path) }"
+        >
+          <component :is="getIcon(item.icon)" class="nav-icon" />
+          <span class="nav-text">{{ item.name }}</span>
+          <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+        </router-link>
+
+        <div v-if="item.dropdownMenu">
+          <button
+            @click="toggleDropdown(item.path)"
+            class="nav-item nav-dropdown-btn"
+            :class="{ active: openDropdown === item.path }"
+          >
+            <div class="nav-item-inner">
+              <component :is="getIcon(item.icon)" class="nav-icon" />
+              <span class="nav-text">{{ item.name }}</span>
+            </div>
+            <component
+              class="dropdown-chevron"
+              :is="openDropdown === item.path ? getIcon('ChevronDownIcon') : getIcon('ChevronRightIcon')"
+            />
+          </button>
+          <div v-if="openDropdown === item.path" class="nav-dropdown-content">
+            <router-link
+              v-for="sub in item.dropdownMenu"
+              :key="sub.path"
+              :to="sub.path"
+              class="nav-item sub-nav-item"
+              :class="{ active: isActiveRoute(sub.path) }"
+            >
+              <component :is="getIcon(sub.icon)" class="nav-icon sub-icon" />
+              <span class="nav-text">{{ sub.name }}</span>
+              <span v-if="sub.badge" class="nav-badge">{{ sub.badge }}</span>
+            </router-link>
+          </div>
+        </div>
+      </template>
+
     </nav>
 
     <!-- Bottom Section with Status -->
@@ -59,6 +91,11 @@ const router = useRouter()
 const authStore = useAuthStore()
 const userRole = computed(() => authStore.user?.role || 'employee')
 const isCollapsed = ref(props.collapsed)
+const openDropdown  = ref(null)
+
+const toggleDropdown = (path) => {
+  openDropdown.value = openDropdown.value === path ? null : path
+}
 
 const userDisplayName = computed(() => {
   return authStore.user?.fullEmployeeName || authStore.user?.fullName || 'User'
@@ -76,7 +113,9 @@ const roleTitle = computed(() => {
     hr: 'HR Manager',
     finance: 'Finance Officer',
     employee: 'Employee',
-    attendance: 'Attendance Manager'
+    attendance: 'Attendance Manager',
+    charity_admin: 'Charity Admin',
+    charity_teamleader: 'Team Leader',
 
   }
   return titles[userRole.value] || 'User'
@@ -93,8 +132,36 @@ const roleMenus = {
     // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
      
-        
+    {
+      name: 'Charity',
+      path: '/charity',
+      icon: 'HeartIcon',
+      dropdownMenu: [
+        { name: 'Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+        { name: 'Teams',         path: '/charity/teams',         icon: 'RectangleStackIcon' },
+        { name: 'Settings',      path: '/charity/settings',      icon: 'CogIcon' },
+      ]
+    },
   ],
+
+
+  // ── charity_admin ──────────────────────────────────────────────────────────
+  charity_admin: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon' },
+    { name: 'Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+    { name: 'Teams',         path: '/charity/teams',         icon: 'RectangleStackIcon' },
+    { name: 'Settings',      path: '/charity/settings',      icon: 'CogIcon' },
+  ],
+
+  // ── charity_teamleader ─────────────────────────────────────────────────────
+  charity_teamleader: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon' },
+    { name: 'My Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+    { name: 'My Team',          path: '/charity/teams',         icon: 'RectangleStackIcon' }, // Scoped to self in controller
+  ],
+
+
+
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
@@ -308,6 +375,59 @@ if (savedState !== null) {
   min-width: 20px;
   text-align: center;
   margin-left: auto;
+}
+
+/* Dropdown specific */
+.nav-dropdown-btn {
+  width: 100%;
+  justify-content: space-between;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-dropdown-btn:hover {
+  background: #2d3a54;
+  color: white;
+}
+
+.nav-dropdown-btn.active {
+  background: #2d3a54;
+  color: white;
+  box-shadow: none;
+}
+
+.nav-item-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dropdown-chevron {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.nav-dropdown-content {
+  margin-top: 4px;
+  margin-left: 36px;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sub-nav-item {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+
+.sub-icon {
+  width: 16px;
+  height: 16px;
 }
 
 /* Sidebar Footer */
