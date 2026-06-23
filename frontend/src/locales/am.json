@@ -1,8 +1,33 @@
 {
+  "employmentType": {
+    "fullTime": "ሙሉ ጊዜ",
+    "partTime": "የትርፍ ጊዜ",
+    "contract": "ውል",
+    "intern": "ተለማማጅ"
+  },
+  "status": {
+    "active": "ንቁ",
+    "onLeave": "በእረፍት ላይ",
+    "terminated": "ተቋርጧል"
+  },
+    "calendar": {
+    "ec": "ዓ.ም"
+  },
+
   "common": {
+ "system": "ስርዓት",
+  
     "save": "አስቀምጥ",
     "saveing": "በመስቀምጥ ላይ...",
     "add": " ጨምር",
+    "no": "አይ",
+    "yes": "አዎ",
+    "backToList": "ወደ ዝርዝር ተመለስ",
+     "viewMarriageCertificate": "የጋብቻ ማስረጃን ይመልከቱ",
+  "viewAdoptionCertificate": "የጉዲፈቻ ማስረጃን ይመልከቱ",
+  "viewBirthCertificate": "የልደት ማስረጃን ይመልከቱ",
+  "viewMedicalReport": "የሕክምና ሪፖርትን ይመልከቱ",
+    "view": "ይመልከቱ",
     "cancel": "ሰርዝ",
     "saveEmployee": "ሰራተኛ አስቀምጥ",
      "editEmployee": "ሰራተኛ አርትዕ",
@@ -88,6 +113,7 @@
     "ofActive": "ከንቁዎቹ"
   },
   "employee": {
+    "reasonForLeaving": "የመልቀቂያ ምክንያት",
       "nationalityEthiopian": "ኢትዮጵያዊ",
     "nationalityEritrean": "ኤርትራዊ",
     "nationalityKenyan": "ኬንያዊ",
@@ -229,7 +255,9 @@
   "family": {
     "spouse": "የትዳር አጋር",
     "children": "ልጆች",
-   
+     "notes": "ማስታወሻዎች",
+      "years": "ዓመታት",
+  "adopted": "ጸድቋል",
     "supportProvided": "የሚደረገው ድጋፍ",
     "parents": "የወላጆች መረጃ",
     "emergencyContact": "የአደጋ ጊዜ መገናኛ",
@@ -310,6 +338,9 @@
     "title": "የዋስ መረጃ",
     "guarantors": "ዋሶች",
     "guarantor": "ዋስ",
+     "guaranteeLetter": "የዋስ ደብዳቤ",
+    "sdtLetter": "የኤስዲቲ ደብዳቤ",
+    "otherDocument": "ሌላ ሰነድ",
     "guarantorName": "የዋስ ስም",
     "guarantorNamePlaceholder": "የዋስ ሙሉ ስም",
     "guarantorJob": "የዋስ ስራ / ሹመት",
@@ -336,11 +367,12 @@
     "document": "ሰነድ"
   },
   "compensation":{
-"history": "የካሳ ታሪክ",
+  "history": "የካሳ ለውጥ ታሪክ",
     "noHistory": "ምንም የካሳ ለውጦች አልተመዘገቡም",
     "historyHint": "ደመወዝ ወይም አበል ሲሻሻሉ ለውጦቹ እዚህ ይታያሉ",
     "previousAmount": "ቀዳሚ መጠን",
-    "newAmount": "አዲስ መጠን"
+    "newAmount": "አዲስ መጠን",
+    "changes": "ለውጦች"
   },
   "healthLegal": {
     "title": "የጤና እና የህግ መረጃ",
@@ -352,6 +384,7 @@
     "legalTitle": "የህግ መረጃ",
     "hasCriminalRecord": "የወንጀል መዝገብ አለዎት?",
     "criminalDescription": "የወንጀል መዝገብ መግለጫ",
+   "criminalRecord": "የወንጀል ሪከርድ",
     "criminalPlaceholder": "እባክዎ የወንጀል መዝገቡን ይግለጹ...",
     "confidentialNote": "ይህ መረጃ ሚስጥራዊነት ይጠበቅለታል"
   },
@@ -461,6 +494,7 @@
   "otherHint": "ለምሳሌ: ፕሮጀክት አስተዳደር፣ አመራር፣ የሶፍትዌር እውቀት፣ ማይክሮሶፍት ኦፊስ፣ የውሂብ ትንተና፣ ወዘተ"
 },
 "nationality": {
+   "type": "አይነት",
   "title": "የዜግነት መረጃ",
   "acquired": "ዜግነት እንዴት ተገኘ?",
   "byBirth": "በዘር",

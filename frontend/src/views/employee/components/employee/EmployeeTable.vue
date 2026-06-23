@@ -16,7 +16,6 @@
       <tbody>
         <tr v-for="emp in employees" :key="emp.id">
           <td class="employee-cell">
-            <!-- Try to load image first, fallback to colored avatar -->
             <img 
               v-if="emp.profilePictureUrl" 
               :src="emp.profilePictureUrl" 
@@ -35,22 +34,22 @@
               <span class="employee-name">{{ emp.fullName }}</span>
               <span class="employee-email">{{ emp.fullNameEnglish || emp.email }}</span>
             </div>
-           </td>
-          <td class="employee-id">{{ emp.employeeId }} </td>
-           <td>{{ emp.departmentName || 'N/A' }} </td>
-          <td class="position-cell">{{ emp.position || 'N/A' }} </td>
-           <td>
+          </td>
+          <td class="employee-id">{{ emp.employeeId }}</td>
+          <td>{{ emp.departmentName || 'N/A' }}</td>
+          <td class="position-cell">{{ emp.position || 'N/A' }}</td>
+          <td>
             <span :class="`type-badge type-${emp.employmentType}`">
               {{ getEmploymentTypeLabel(emp.employmentType) }}
             </span>
-           </td>
-           <td>
+          </td>
+          <td>
             <button class="status-toggle" :class="`status-${emp.status}`" @click="$emit('toggle-status', emp)">
               <span class="status-dot"></span>
               {{ getStatusLabel(emp.status) }}
             </button>
-           </td>
-          <td class="date-cell">{{ formatDate(emp.hireDate) }} </td>
+          </td>
+          <td class="date-cell">{{ formatDate(emp.hireDateEC) }} {{ $t('calendar.ec') || 'E.C' }}</td>
           <td class="actions-cell">
             <button class="action-btn view" @click="$emit('view-employee', emp)" :title="$t('actions.viewDetails') || 'View Details'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -68,8 +67,8 @@
                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
             </button>
-           </td>
-         </tr>
+          </td>
+        </tr>
         <tr v-if="employees.length === 0">
           <td colspan="8" class="empty-state">
             <div class="empty-state-content">
@@ -88,12 +87,11 @@
                 {{ $t('common.clearFilters') || 'Clear Filters' }}
               </button>
             </div>
-           </td>
-         </tr>
+          </td>
+        </tr>
       </tbody>
     </table>
 
-    <!-- Pagination -->
     <div class="pagination" v-if="pagination.totalPages > 1">
       <button class="page-btn" :disabled="pagination.page === 1" @click="$emit('go-to-page', pagination.page - 1)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -111,6 +109,11 @@
 </template>
 
 <script setup>
+import { getCurrentInstance } from 'vue'
+
+const { proxy } = getCurrentInstance()
+const { $t } = proxy
+
 defineProps({
   employees: {
     type: Array,
@@ -124,7 +127,6 @@ defineProps({
 
 defineEmits(['edit-employee', 'view-employee', 'delete-employee', 'toggle-status', 'go-to-page', 'clear-filters'])
 
-// Utility functions
 const getInitials = (name) => {
   if (!name) return 'E'
   return name
@@ -141,44 +143,57 @@ const getAvatarColor = (name) => {
   return colors[index]
 }
 
+// These functions now use $t to get translated values
 const getEmploymentTypeLabel = (type) => {
   const labels = { 
-    'full-time': 'Full Time', 
-    'part-time': 'Part Time', 
-    contract: 'Contract', 
-    intern: 'Intern' 
+    'full-time': $t('employmentType.fullTime') || 'Full Time', 
+    'part-time': $t('employmentType.partTime') || 'Part Time', 
+    'contract': $t('employmentType.contract') || 'Contract', 
+    'intern': $t('employmentType.intern') || 'Intern' 
   }
   return labels[type] || type || 'N/A'
 }
 
 const getStatusLabel = (status) => {
   const labels = { 
-    active: 'Active', 
-    'on-leave': 'On Leave', 
-    terminated: 'Terminated' 
+    'active': $t('status.active') || 'Active', 
+    'on-leave': $t('status.onLeave') || 'On Leave', 
+    'terminated': $t('status.terminated') || 'Terminated' 
   }
   return labels[status] || status || 'N/A'
 }
 
 const formatDate = (date) => {
-  return date ? new Date(date).toLocaleDateString() : 'N/A'
+  if (!date) return "—"
+  
+  if (date.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+    return date
+  }
+  
+  const parts = date.split(/[/-]/)
+  if (parts.length === 3) {
+    const day = parts[0].padStart(2, '0')
+    const month = parts[1].padStart(2, '0')
+    const year = parts[2]
+    return `${day}/${month}/${year}`
+  }
+  
+  return date
 }
 
-// Handle image loading error - replace with colored avatar
 const handleImageError = (event, fullName) => {
   const img = event.target
   const parent = img.parentElement
   
-  // Create fallback div
   const fallback = document.createElement('div')
   fallback.className = 'avatar-placeholder'
   fallback.style.background = getAvatarColor(fullName)
   fallback.textContent = getInitials(fullName)
   
-  // Replace img with fallback
   parent.replaceChild(fallback, img)
 }
 </script>
+
 
 <style scoped>
 .table-container {

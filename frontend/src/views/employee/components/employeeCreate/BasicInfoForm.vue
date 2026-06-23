@@ -1,11 +1,16 @@
 <template>
   <div class="form-card">
     <div class="card-header">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
         <circle cx="12" cy="7" r="4" />
       </svg>
-      <h3>{{ t('employee.basicInfo') || 'Basic Information' }}</h3>
+      <h3>{{ t("employee.basicInfo") || "Basic Information" }}</h3>
     </div>
 
     <div class="card-body">
@@ -17,7 +22,12 @@
             <div class="profile-preview" v-if="profilePreview">
               <img :src="profilePreview" alt="Profile preview" />
               <div class="profile-overlay">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
                   <path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
@@ -25,15 +35,28 @@
               </div>
             </div>
             <div v-else class="profile-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span>{{ t('employee.clickToUpload') || 'Click to upload photo' }}</span>
+              <span>{{
+                t("employee.clickToUpload") || "Click to upload photo"
+              }}</span>
               <small>JPG, PNG (Max 2MB)</small>
             </div>
           </div>
-          <input type="file" ref="profileInput" @change="handleProfileUpload" accept="image/jpeg,image/png" style="display: none" />
+          <input
+            type="file"
+            ref="profileInput"
+            @change="handleProfileUpload"
+            accept="image/jpeg,image/png"
+            style="display: none"
+          />
         </div>
 
         <!-- Right Column: All Form Fields -->
@@ -41,89 +64,206 @@
           <!-- Row 1: Name Fields -->
           <div class="form-row-three">
             <div class="form-field">
-              <label>{{ t('employee.firstName') || 'First Name' }} <span class="required">*</span></label>
-              <input type="text" :value="form.firstName" @input="updateField('firstName', $event.target.value)" :placeholder="t('employee.firstName') || 'First name'" />
-              <span class="error" v-if="errors.firstName">{{ errors.firstName }}</span>
+              <label
+                >{{ t("employee.firstName") || "First Name" }}
+                <span class="required">*</span></label
+              >
+              <input
+                type="text"
+                :value="form.firstName"
+                @input="updateField('firstName', $event.target.value)"
+                :placeholder="t('employee.firstName') || 'First name'"
+              />
+              <span class="error" v-if="errors.firstName">{{
+                errors.firstName
+              }}</span>
             </div>
             <div class="form-field">
-              <label>{{ t('employee.lastName') || 'Last Name' }} <span class="required">*</span></label>
-              <input type="text" :value="form.lastName" @input="updateField('lastName', $event.target.value)" :placeholder="t('employee.lastName') || 'Last name'" />
-              <span class="error" v-if="errors.lastName">{{ errors.lastName }}</span>
+              <label
+                >{{ t("employee.lastName") || "Last Name" }}
+                <span class="required">*</span></label
+              >
+              <input
+                type="text"
+                :value="form.lastName"
+                @input="updateField('lastName', $event.target.value)"
+                :placeholder="t('employee.lastName') || 'Last name'"
+              />
+              <span class="error" v-if="errors.lastName">{{
+                errors.lastName
+              }}</span>
             </div>
             <div class="form-field">
-              <label>{{ t('employee.middleName') || 'Middle Name' }}</label>
-              <input type="text" :value="form.middleName" @input="updateField('middleName', $event.target.value)" :placeholder="t('employee.middleName') || 'Middle name'" />
+              <label>{{ t("employee.middleName") || "Middle Name" }}</label>
+              <input
+                type="text"
+                :value="form.middleName"
+                @input="updateField('middleName', $event.target.value)"
+                :placeholder="t('employee.middleName') || 'Middle name'"
+              />
             </div>
           </div>
 
           <!-- Full Name in English Field - Only shows when language is Amharic -->
           <div v-if="currentLanguage === 'am'" class="form-row-full">
             <div class="form-field">
-              <label>{{ t('employee.fullNameEnglish') || 'Full Name (English)' }}</label>
-              <input 
-                type="text" 
-                :value="form.fullNameEnglish" 
-                @input="updateField('fullNameEnglish', $event.target.value)" 
-                :placeholder="t('employee.fullNameEnglishPlaceholder') || 'Enter your full name in English characters'"
+              <label>{{
+                t("employee.fullNameEnglish") || "Full Name (English)"
+              }}</label>
+              <input
+                type="text"
+                :value="form.fullNameEnglish"
+                @input="updateField('fullNameEnglish', $event.target.value)"
+                :placeholder="
+                  t('employee.fullNameEnglishPlaceholder') ||
+                  'Enter your full name in English characters'
+                "
               />
-              <small class="field-hint">{{ t('employee.fullNameEnglishHint') || 'Please enter your full name in English (Latin) characters' }}</small>
+              <small class="field-hint">{{
+                t("employee.fullNameEnglishHint") ||
+                "Please enter your full name in English (Latin) characters"
+              }}</small>
             </div>
           </div>
 
           <!-- Row 2: Gender, Marital Status, Date of Birth -->
           <div class="form-row-three">
             <div class="form-field">
-              <label>{{ t('employee.gender') || 'Gender' }}</label>
-              <select :value="form.gender" @change="updateField('gender', $event.target.value)">
-                <option value="">{{ t('common.select') || 'Select' }}</option>
-                <option value="employee.male">{{ t('employee.male') || 'Male' }}</option>
-                <option value="employee.female">{{ t('employee.female') || 'Female' }}</option>
+              <label>{{ t("employee.gender") || "Gender" }}</label>
+              <select
+                :value="form.gender"
+                @change="updateField('gender', $event.target.value)"
+              >
+                <option value="">{{ t("common.select") || "Select" }}</option>
+                <option value="male">{{ t("employee.male") || "Male" }}</option>
+                <option value="female">
+                  {{ t("employee.female") || "Female" }}
+                </option>
+                <option value="other">
+                  {{ t("employee.other") || "Other" }}
+                </option>
               </select>
             </div>
             <div class="form-field">
-              <label>{{ t('employee.maritalStatus') || 'Marital Status' }}</label>
-              <select :value="form.maritalStatus" @change="updateField('maritalStatus', $event.target.value)">
-                <option value="">{{ t('common.select') || 'Select' }}</option>
-                <option value="employee.single">{{ t('employee.single') || 'Single' }}</option>
-                <option value="employee.married">{{ t('employee.married') || 'Married' }}</option>
-                <option value="employee.divorced">{{ t('employee.divorced') || 'Divorced' }}</option>
-                <option value="employee.widowed">{{ t('employee.widowed') || 'Widowed' }}</option>
+              <label>{{
+                t("employee.maritalStatus") || "Marital Status"
+              }}</label>
+              <select
+                :value="form.maritalStatus"
+                @change="updateField('maritalStatus', $event.target.value)"
+              >
+                <option value="">{{ t("common.select") || "Select" }}</option>
+                <option value="single">
+                  {{ t("employee.single") || "Single" }}
+                </option>
+                <!-- Changed -->
+                <option value="married">
+                  {{ t("employee.married") || "Married" }}
+                </option>
+                <!-- Changed -->
+                <option value="divorced">
+                  {{ t("employee.divorced") || "Divorced" }}
+                </option>
+                <!-- Changed -->
+                <option value="widowed">
+                  {{ t("employee.widowed") || "Widowed" }}
+                </option>
+                <!-- Changed -->
               </select>
             </div>
             <div class="form-field">
-              <label>{{ t('employee.dateOfBirth') || 'Date of Birth' }}</label>
-              <input type="date" :value="form.dob" @input="updateField('dob', $event.target.value)" />
+              <label
+                >{{ $t("employee.dateOfBirth") }}
+                <span class="required">*</span></label
+              >
+              <EthiopianDateSelector
+                v-model="form.dateOfBirthEC"
+                :error="errors.dateOfBirthEC"
+              />
             </div>
           </div>
 
           <!-- Row 3: Nationality, National ID -->
           <div class="form-row-two">
-     <div class="form-field">
-  <label>{{ t('employee.nationality') || 'Nationality' }}</label>
-  <select :value="form.nationality" @change="updateField('nationality', $event.target.value)">
-    <option value="">{{ t('common.select') || 'Select nationality' }}</option>
-    <option value="Ethiopian">{{ t('employee.nationalityEthiopian') || 'Ethiopian' }}</option>
-    <option value="Eritrean">{{ t('employee.nationalityEritrean') || 'Eritrean' }}</option>
-    <option value="Kenyan">{{ t('employee.nationalityKenyan') || 'Kenyan' }}</option>
-    <option value="Somali">{{ t('employee.nationalitySomali') || 'Somali' }}</option>
-    <option value="Sudanese">{{ t('employee.nationalitySudanese') || 'Sudanese' }}</option>
-    <option value="American">{{ t('employee.nationalityAmerican') || 'American' }}</option>
-    <option value="Canadian">{{ t('employee.nationalityCanadian') || 'Canadian' }}</option>
-    <option value="Chinese">{{ t('employee.nationalityChinese') || 'Chinese' }}</option>
-    <option value="Other">{{ t('employee.nationalityOther') || 'Other' }}</option>
-  </select>
-</div>
             <div class="form-field">
-              <label>{{ t('employee.nationalId') || 'National ID / FAN Number' }}</label>
+              <label>{{ t("employee.nationality") || "Nationality" }}</label>
+              <select
+                :value="form.nationality"
+                @change="updateField('nationality', $event.target.value)"
+              >
+                <option value="">
+                  {{ t("common.select") || "Select nationality" }}
+                </option>
+                <option value="Ethiopian">
+                  {{ t("employee.nationalityEthiopian") || "Ethiopian" }}
+                </option>
+                <option value="Eritrean">
+                  {{ t("employee.nationalityEritrean") || "Eritrean" }}
+                </option>
+                <option value="Kenyan">
+                  {{ t("employee.nationalityKenyan") || "Kenyan" }}
+                </option>
+                <option value="Somali">
+                  {{ t("employee.nationalitySomali") || "Somali" }}
+                </option>
+                <option value="Sudanese">
+                  {{ t("employee.nationalitySudanese") || "Sudanese" }}
+                </option>
+                <option value="American">
+                  {{ t("employee.nationalityAmerican") || "American" }}
+                </option>
+                <option value="Canadian">
+                  {{ t("employee.nationalityCanadian") || "Canadian" }}
+                </option>
+                <option value="Chinese">
+                  {{ t("employee.nationalityChinese") || "Chinese" }}
+                </option>
+                <option value="Other">
+                  {{ t("employee.nationalityOther") || "Other" }}
+                </option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>{{
+                t("employee.nationalId") || "National ID / FAN Number"
+              }}</label>
               <div class="id-upload-group">
-                <input type="text" :value="form.nationalId" @input="updateField('nationalId', $event.target.value)" placeholder="e.g., FAN-1234567890" class="id-input" />
-                <button type="button" class="btn-upload" @click="triggerIdFileInput" :class="{ 'has-file': nationalIdFile }">
-                  {{ nationalIdFile ? nationalIdFile.name : "📎 " + (t('common.upload') || 'Select File') }}
+                <input
+                  type="text"
+                  :value="form.nationalId"
+                  @input="updateField('nationalId', $event.target.value)"
+                  placeholder="e.g., FAN-1234567890"
+                  class="id-input"
+                />
+                <button
+                  type="button"
+                  class="btn-upload"
+                  @click="triggerIdFileInput"
+                  :class="{ 'has-file': nationalIdFile }"
+                >
+                  {{
+                    nationalIdFile
+                      ? nationalIdFile.name
+                      : "📎 " + (t("common.upload") || "Select File")
+                  }}
                 </button>
               </div>
-              <input type="file" ref="idFileInput" @change="handleIdFileSelect" accept=".pdf,.jpg,.jpeg,.png" style="display: none" />
-              <small class="field-hint" v-if="!nationalIdFile">{{ t('employee.selectIdDocument') || 'Select scanned copy of National ID / FAN Card' }}</small>
-              <small class="field-hint success" v-else>{{ t('employee.fileSelected') || 'File selected' }}: {{ nationalIdFile.name }} - {{ t('employee.readyToSave') || 'ready to save' }}</small>
+              <input
+                type="file"
+                ref="idFileInput"
+                @change="handleIdFileSelect"
+                accept=".pdf,.jpg,.jpeg,.png"
+                style="display: none"
+              />
+              <small class="field-hint" v-if="!nationalIdFile">{{
+                t("employee.selectIdDocument") ||
+                "Select scanned copy of National ID / FAN Card"
+              }}</small>
+              <small class="field-hint success" v-else
+                >{{ t("employee.fileSelected") || "File selected" }}:
+                {{ nationalIdFile.name }} -
+                {{ t("employee.readyToSave") || "ready to save" }}</small
+              >
             </div>
           </div>
         </div>
@@ -131,76 +271,153 @@
 
       <!-- Birth Place Section -->
       <div class="info-section">
-        <div class="section-subtitle">{{ t('employee.birthPlace') || 'Birth Place' }}</div>
+        <div class="section-subtitle">
+          {{ t("employee.birthPlace") || "Birth Place" }}
+        </div>
         <div class="form-row-four">
           <div class="form-field">
-            <label>{{ t('address.region') || 'Region' }}</label>
-            <input type="text" :value="form.birthPlace?.region" @input="updateBirthPlace('region', $event.target.value)" :placeholder="t('address.region') || 'Region'" />
+            <label>{{ t("address.region") || "Region" }}</label>
+            <input
+              type="text"
+              :value="form.birthPlace?.region"
+              @input="updateBirthPlace('region', $event.target.value)"
+              :placeholder="t('address.region') || 'Region'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.city') || 'City' }}</label>
-            <input type="text" :value="form.birthPlace?.city" @input="updateBirthPlace('city', $event.target.value)" :placeholder="t('address.city') || 'City'" />
+            <label>{{ t("address.city") || "City" }}</label>
+            <input
+              type="text"
+              :value="form.birthPlace?.city"
+              @input="updateBirthPlace('city', $event.target.value)"
+              :placeholder="t('address.city') || 'City'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.subcity') || 'Subcity' }}</label>
-            <input type="text" :value="form.birthPlace?.subcity" @input="updateBirthPlace('subcity', $event.target.value)" :placeholder="t('address.subcity') || 'Subcity'" />
+            <label>{{ t("address.subcity") || "Subcity" }}</label>
+            <input
+              type="text"
+              :value="form.birthPlace?.subcity"
+              @input="updateBirthPlace('subcity', $event.target.value)"
+              :placeholder="t('address.subcity') || 'Subcity'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.district') || 'District' }}</label>
-            <input type="text" :value="form.birthPlace?.district" @input="updateBirthPlace('district', $event.target.value)" :placeholder="t('address.district') || 'District'" />
+            <label>{{ t("address.district") || "District" }}</label>
+            <input
+              type="text"
+              :value="form.birthPlace?.district"
+              @input="updateBirthPlace('district', $event.target.value)"
+              :placeholder="t('address.district') || 'District'"
+            />
           </div>
         </div>
       </div>
 
       <!-- Current Address Section -->
       <div class="info-section">
-        <div class="section-subtitle">{{ t('address.currentAddress') || 'Current Address' }}</div>
+        <div class="section-subtitle">
+          {{ t("address.currentAddress") || "Current Address" }}
+        </div>
         <div class="form-row-three">
           <div class="form-field">
-            <label>{{ t('address.region') || 'Region' }}</label>
-            <input type="text" :value="form.currentAddress?.region" @input="updateCurrentAddress('region', $event.target.value)" :placeholder="t('address.region') || 'Region'" />
+            <label>{{ t("address.region") || "Region" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.region"
+              @input="updateCurrentAddress('region', $event.target.value)"
+              :placeholder="t('address.region') || 'Region'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.subcity') || 'Subcity' }}</label>
-            <input type="text" :value="form.currentAddress?.subcity" @input="updateCurrentAddress('subcity', $event.target.value)" :placeholder="t('address.subcity') || 'Subcity'" />
+            <label>{{ t("address.subcity") || "Subcity" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.subcity"
+              @input="updateCurrentAddress('subcity', $event.target.value)"
+              :placeholder="t('address.subcity') || 'Subcity'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.kebele') || 'Kebele' }}</label>
-            <input type="text" :value="form.currentAddress?.kebele" @input="updateCurrentAddress('kebele', $event.target.value)" :placeholder="t('address.kebele') || 'Kebele'" />
+            <label>{{ t("address.kebele") || "Kebele" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.kebele"
+              @input="updateCurrentAddress('kebele', $event.target.value)"
+              :placeholder="t('address.kebele') || 'Kebele'"
+            />
           </div>
         </div>
         <div class="form-row-three">
           <div class="form-field">
-            <label>{{ t('address.district') || 'District' }}</label>
-            <input type="text" :value="form.currentAddress?.district" @input="updateCurrentAddress('district', $event.target.value)" :placeholder="t('address.district') || 'District/Woreda'" />
+            <label>{{ t("address.district") || "District" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.district"
+              @input="updateCurrentAddress('district', $event.target.value)"
+              :placeholder="t('address.district') || 'District/Woreda'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.poBox') || 'PO Box' }}</label>
-            <input type="text" :value="form.currentAddress?.poBox" @input="updateCurrentAddress('poBox', $event.target.value)" :placeholder="t('address.poBox') || 'PO Box'" />
+            <label>{{ t("address.poBox") || "PO Box" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.poBox"
+              @input="updateCurrentAddress('poBox', $event.target.value)"
+              :placeholder="t('address.poBox') || 'PO Box'"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('address.houseNumber') || 'House Number' }}</label>
-            <input type="text" :value="form.currentAddress?.houseNumber" @input="updateCurrentAddress('houseNumber', $event.target.value)" :placeholder="t('address.houseNumber') || 'House number'" />
+            <label>{{ t("address.houseNumber") || "House Number" }}</label>
+            <input
+              type="text"
+              :value="form.currentAddress?.houseNumber"
+              @input="updateCurrentAddress('houseNumber', $event.target.value)"
+              :placeholder="t('address.houseNumber') || 'House number'"
+            />
           </div>
         </div>
       </div>
 
       <!-- Contact Section -->
       <div class="info-section">
-        <div class="section-subtitle">{{ t('employee.contactInfo') || 'Contact Information' }}</div>
+        <div class="section-subtitle">
+          {{ t("employee.contactInfo") || "Contact Information" }}
+        </div>
         <div class="form-row-three">
           <div class="form-field">
-            <label>{{ t('employee.workEmail') || 'Email' }} <span class="required">*</span></label>
-            <input type="email" :value="form.email" @input="updateField('email', $event.target.value)" placeholder="employee@company.com" />
+            <label
+              >{{ t("employee.workEmail") || "Email" }}
+              <span class="required">*</span></label
+            >
+            <input
+              type="email"
+              :value="form.email"
+              @input="updateField('email', $event.target.value)"
+              placeholder="employee@company.com"
+            />
             <span class="error" v-if="errors.email">{{ errors.email }}</span>
           </div>
           <div class="form-field">
-            <label>{{ t('employee.personalEmail') || 'Personal Email' }}</label>
-            <input type="email" :value="form.personalEmail" @input="updateField('personalEmail', $event.target.value)" placeholder="personal@email.com" />
+            <label>{{ t("employee.personalEmail") || "Personal Email" }}</label>
+            <input
+              type="email"
+              :value="form.personalEmail"
+              @input="updateField('personalEmail', $event.target.value)"
+              placeholder="personal@email.com"
+            />
           </div>
           <div class="form-field">
-            <label>{{ t('employee.phone') || 'Phone Number' }} <span class="required">*</span></label>
-            <input type="tel" :value="form.phone" @input="updateField('phone', $event.target.value)" placeholder="+251 911 000 000" />
+            <label
+              >{{ t("employee.phone") || "Phone Number" }}
+              <span class="required">*</span></label
+            >
+            <input
+              type="tel"
+              :value="form.phone"
+              @input="updateField('phone', $event.target.value)"
+              placeholder="+251 911 000 000"
+            />
             <span class="error" v-if="errors.phone">{{ errors.phone }}</span>
           </div>
         </div>
@@ -211,7 +428,8 @@
 
 <script setup>
 import { ref, computed } from "vue";
-import { useI18n } from 'vue-i18n';
+import { useI18n } from "vue-i18n";
+import EthiopianDateSelector from "@/components/shared/EthiopianDateSelector.vue";
 
 const { locale } = useI18n();
 const currentLanguage = computed(() => locale.value);
@@ -224,18 +442,34 @@ const props = defineProps({
   t: { type: Function, default: (key) => key },
 });
 
-const emit = defineEmits(["update:form", "uploadDocument", "update:profileFile", "update:profilePreview", "file-selected", "update:nationalIdFile"]);
+const emit = defineEmits([
+  "update:form",
+  "uploadDocument",
+  "update:profileFile",
+  "update:profilePreview",
+  "file-selected",
+  "update:nationalIdFile",
+]);
 
 const profileInput = ref(null);
 const idFileInput = ref(null);
 const nationalIdFile = ref(null);
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
-const ALLOWED_ID_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+const ALLOWED_ID_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "application/pdf",
+];
 
 const validateFileType = (file, allowedTypes, typeName) => {
   if (!allowedTypes.includes(file.type)) {
-    emit("file-selected", `Invalid file type for ${typeName}. Allowed: ${allowedTypes.map(t => t.split("/")[1]).join(", ")}`, "error");
+    emit(
+      "file-selected",
+      `Invalid file type for ${typeName}. Allowed: ${allowedTypes.map((t) => t.split("/")[1]).join(", ")}`,
+      "error",
+    );
     return false;
   }
   return true;
@@ -243,7 +477,11 @@ const validateFileType = (file, allowedTypes, typeName) => {
 
 const validateFileSize = (file, maxSizeMB, typeName) => {
   if (file.size > maxSizeMB * 1024 * 1024) {
-    emit("file-selected", `${typeName} size must be less than ${maxSizeMB}MB`, "error");
+    emit(
+      "file-selected",
+      `${typeName} size must be less than ${maxSizeMB}MB`,
+      "error",
+    );
     return false;
   }
   return true;
@@ -254,7 +492,10 @@ const triggerProfileInput = () => profileInput.value?.click();
 const handleProfileUpload = (event) => {
   const file = event.target.files[0];
   if (file) {
-    if (!validateFileType(file, ALLOWED_IMAGE_TYPES, "Profile picture") || !validateFileSize(file, 2, "Profile picture")) {
+    if (
+      !validateFileType(file, ALLOWED_IMAGE_TYPES, "Profile picture") ||
+      !validateFileSize(file, 2, "Profile picture")
+    ) {
       event.target.value = "";
       return;
     }
@@ -273,13 +514,20 @@ const triggerIdFileInput = () => {
 const handleIdFileSelect = (event) => {
   const file = event.target.files[0];
   if (file) {
-    if (!validateFileType(file, ALLOWED_ID_TYPES, "ID document") || !validateFileSize(file, 5, "ID document")) {
+    if (
+      !validateFileType(file, ALLOWED_ID_TYPES, "ID document") ||
+      !validateFileSize(file, 5, "ID document")
+    ) {
       event.target.value = "";
       return;
     }
     nationalIdFile.value = file;
     emit("update:nationalIdFile", file);
-    emit("file-selected", `ID document "${file.name}" selected - ready to save`, "success");
+    emit(
+      "file-selected",
+      `ID document "${file.name}" selected - ready to save`,
+      "success",
+    );
   }
 };
 
@@ -299,7 +547,6 @@ const updateCurrentAddress = (field, value) => {
 </script>
 
 <style scoped>
-
 .form-row-two {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

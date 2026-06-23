@@ -237,7 +237,17 @@ const form = ref({
   personalEmail: '',
   fullNameEnglish: '',
   phone: '',
-  dob: '',
+  
+  // ========== DATES - ETHIOPIAN CALENDAR (PRIMARY) ==========
+  hireDateEC: '',           // Ethiopian hire date (DD/MM/YYYY)
+  dateOfBirthEC: '',        // Ethiopian date of birth (DD/MM/YYYY)
+  confirmationDateEC: '',   // Ethiopian confirmation date (DD/MM/YYYY)
+  terminationDateEC: '',    // Ethiopian termination date (DD/MM/YYYY)
+  
+  // ========== OLD DATE FIELDS (KEPT FOR BACKWARD COMPATIBILITY) ==========
+  dob: '',                  // Old field - keep but don't use
+  hireDate: '',             // Old field - keep but don't use
+  
   gender: '',
   maritalStatus: '',
   nationality: '',
@@ -246,7 +256,6 @@ const form = ref({
   positionId: null,
   managerId: null,
   employmentType: '',
-  hireDate: '',
   salary: '',
   basicSalary: '',
   housingAllowance: '',
@@ -287,7 +296,7 @@ const form = ref({
   spouseInfo: {
     tinNumber: '',
     fullName: '',
-    dateOfBirth: '',
+     dateOfBirthEC: '',        // ← Changed to dateOfBirthEC
     jobStatus: '',
     companyName: '',
     companyAddress: '',
@@ -424,25 +433,33 @@ const updateLegalInfo = (newLegal) => {
 }
 
 const saveAllData = async () => {
+   // Add this debug BEFORE validation
+  console.log('🔍 VALIDATION DEBUG - Form values:', {
+    firstName: form.value.firstName,
+    lastName: form.value.lastName,
+    email: form.value.email,
+    phone: form.value.phone,
+    departmentId: form.value.departmentId,
+    positionId: form.value.positionId,
+    employmentType: form.value.employmentType,
+    hireDateEC: form.value.hireDateEC,
+    dateOfBirthEC: form.value.dateOfBirthEC
+  })
+  
   if (!validateForm()) {
     addToast('Please fix validation errors', 'error')
     return
   }
   
   console.log('=== SAVING EMPLOYEE DATA ===')
-  console.log('Required fields:', {
-    firstName: form.value.firstName,
-    lastName: form.value.lastName,
-    departmentId: form.value.departmentId,
-    positionId: form.value.positionId,
-    employmentType: form.value.employmentType,
-    hireDate: form.value.hireDate
-  })
+  console.log('EC Dates - Hire:', form.value.hireDateEC)
+  console.log('EC Dates - DOB:', form.value.dateOfBirthEC)
   
   isSubmitting.value = true
   
   try {
     const employeeData = {
+      // Basic Info
       firstName: form.value.firstName?.trim(),
       lastName: form.value.lastName?.trim(),
       middleName: form.value.middleName?.trim() || null,
@@ -450,22 +467,34 @@ const saveAllData = async () => {
       email: form.value.email?.trim(),
       personalEmail: form.value.personalEmail?.trim() || null,
       phone: form.value.phone?.trim(),
-      dob: form.value.dob || null,
+      
+      // ========== ETHIOPIAN CALENDAR DATES (PRIMARY) ==========
+      hireDateEC: form.value.hireDateEC || null,
+      dateOfBirthEC: form.value.dateOfBirthEC || null,
+      confirmationDateEC: form.value.confirmationDateEC || null,
+      terminationDateEC: form.value.terminationDateEC || null,
+      
+      // Personal Info
       gender: form.value.gender || null,
       maritalStatus: form.value.maritalStatus || null,
       nationality: form.value.nationality || null,
       nationalId: form.value.nationalId || null,
+      
+      // Employment
       departmentId: form.value.departmentId ? parseInt(form.value.departmentId) : null,
       positionId: form.value.positionId ? parseInt(form.value.positionId) : null,
       managerId: form.value.managerId ? parseInt(form.value.managerId) : null,
       employmentType: form.value.employmentType,
-      hireDate: form.value.hireDate,
+      workLocation: form.value.workLocation?.trim() || null,
+      
+      // Salary & Allowances
       basicSalary: form.value.basicSalary,
       housingAllowance: parseFloat(form.value.housingAllowance) || 0,
       positionAllowance: parseFloat(form.value.positionAllowance) || 0,
       transportAllowance: parseFloat(form.value.transportAllowance) || 0,
       mobileAllowance: parseFloat(form.value.mobileAllowance) || 0,
-      workLocation: form.value.workLocation?.trim() || null,
+      
+      // JSON Fields
       currentCompany: form.value.currentCompany,
       birthPlace: form.value.birthPlace,
       currentAddress: form.value.currentAddress,
@@ -488,7 +517,10 @@ const saveAllData = async () => {
       bankAccount: JSON.stringify(bankAccount)
     }
     
-    console.log('Sending employeeData:', employeeData)
+    console.log('Sending EC Dates to backend:', {
+      hireDateEC: employeeData.hireDateEC,
+      dateOfBirthEC: employeeData.dateOfBirthEC
+    })
     
     let employeeId
   
@@ -667,6 +699,10 @@ const validateForm = () => {
   if (!form.value.lastName?.trim()) newErrors.lastName = 'Last name is required'
   if (!form.value.email?.trim()) newErrors.email = 'Email is required'
   if (!form.value.phone?.trim()) newErrors.phone = 'Phone is required'
+  if (!form.value.departmentId) newErrors.departmentId = 'Department is required'
+  if (!form.value.positionId) newErrors.positionId = 'Position is required'
+  if (!form.value.employmentType) newErrors.employmentType = 'Employment type is required'
+  if (!form.value.hireDateEC) newErrors.hireDateEC = 'Hire date is required'  // Changed to EC
   
   errors.value = newErrors
   return Object.keys(newErrors).length === 0

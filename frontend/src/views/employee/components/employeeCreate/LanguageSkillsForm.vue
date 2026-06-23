@@ -25,42 +25,42 @@
             >
               <option value="">{{ props.t('skills.selectLanguage') || 'Select language...' }}</option>
               <optgroup :label="props.t('skills.ethiopianLanguages') || '🇪🇹 Ethiopian Languages'">
-                <option value="skills.amharic">{{ props.t('skills.amharic') || 'Amharic' }}</option>
-                <option value="skills.oromo">{{ props.t('skills.oromo') || 'Oromo' }}</option>
-                <option value="skills.tigrinya">{{ props.t('skills.tigrinya') || 'Tigrinya' }}</option>
-                <option value="skills.somali">{{ props.t('skills.somali') || 'Somali' }}</option>
-                <option value="skills.sidamo">{{ props.t('skills.sidamo') || 'Sidamo' }}</option>
-                <option value="skills.wolaytta">{{ props.t('skills.wolaytta') || 'Wolaytta' }}</option>
-                <option value="skills.afar">{{ props.t('skills.afar') || 'Afar' }}</option>
-                <option value="skills.hadiyya">{{ props.t('skills.hadiyya') || 'Hadiyya' }}</option>
-                <option value="skills.gamo">{{ props.t('skills.gamo') || 'Gamo' }}</option>
-                <option value="skills.gurage">{{ props.t('skills.gurage') || 'Gurage' }}</option>
-                <option value="skills.kembata">{{ props.t('skills.kembata') || 'Kembata' }}</option>
-                <option value="skills.silte">{{ props.t('skills.silte') || "Silt'e" }}</option>
+                <option value="amharic">{{ props.t('skills.amharic') || 'Amharic' }}</option>
+                <option value="oromo">{{ props.t('skills.oromo') || 'Oromo' }}</option>
+                <option value="tigrinya">{{ props.t('skills.tigrinya') || 'Tigrinya' }}</option>
+                <option value="somali">{{ props.t('skills.somali') || 'Somali' }}</option>
+                <option value="sidamo">{{ props.t('skills.sidamo') || 'Sidamo' }}</option>
+                <option value="wolaytta">{{ props.t('skills.wolaytta') || 'Wolaytta' }}</option>
+                <option value="afar">{{ props.t('skills.afar') || 'Afar' }}</option>
+                <option value="hadiyya">{{ props.t('skills.hadiyya') || 'Hadiyya' }}</option>
+                <option value="gamo">{{ props.t('skills.gamo') || 'Gamo' }}</option>
+                <option value="gurage">{{ props.t('skills.gurage') || 'Gurage' }}</option>
+                <option value="kembata">{{ props.t('skills.kembata') || 'Kembata' }}</option>
+                <option value="silte">{{ props.t('skills.silte') || "Silt'e" }}</option>
               </optgroup>
               <optgroup :label="props.t('skills.africanLanguages') || '🌍 African Languages'">
-                <option value="skills.swahili">{{ props.t('skills.swahili') || 'Swahili' }}</option>
-                <option value="skills.hausa">{{ props.t('skills.hausa') || 'Hausa' }}</option>
-                <option value="skills.yoruba">{{ props.t('skills.yoruba') || 'Yoruba' }}</option>
-                <option value="skills.zulu">{{ props.t('skills.zulu') || 'Zulu' }}</option>
+                <option value="swahili">{{ props.t('skills.swahili') || 'Swahili' }}</option>
+                <option value="hausa">{{ props.t('skills.hausa') || 'Hausa' }}</option>
+                <option value="yoruba">{{ props.t('skills.yoruba') || 'Yoruba' }}</option>
+                <option value="zulu">{{ props.t('skills.zulu') || 'Zulu' }}</option>
               </optgroup>
               <optgroup :label="props.t('skills.europeanLanguages') || '🌎 European Languages'">
-                <option value="skills.english">{{ props.t('skills.english') || 'English' }}</option>
-                <option value="skills.french">{{ props.t('skills.french') || 'French' }}</option>
-                <option value="skills.spanish">{{ props.t('skills.spanish') || 'Spanish' }}</option>
-                <option value="skills.german">{{ props.t('skills.german') || 'German' }}</option>
-                <option value="skills.italian">{{ props.t('skills.italian') || 'Italian' }}</option>
-                <option value="skills.russian">{{ props.t('skills.russian') || 'Russian' }}</option>
+                <option value="english">{{ props.t('skills.english') || 'English' }}</option>
+                <option value="french">{{ props.t('skills.french') || 'French' }}</option>
+                <option value="spanish">{{ props.t('skills.spanish') || 'Spanish' }}</option>
+                <option value="german">{{ props.t('skills.german') || 'German' }}</option>
+                <option value="italian">{{ props.t('skills.italian') || 'Italian' }}</option>
+                <option value="russian">{{ props.t('skills.russian') || 'Russian' }}</option>
               </optgroup>
               <optgroup :label="props.t('skills.asianLanguages') || '🌏 Asian Languages'">
-                <option value="skills.chinese">{{ props.t('skills.chinese') || 'Chinese' }}</option>
-                <option value="skills.japanese">{{ props.t('skills.japanese') || 'Japanese' }}</option>
-                <option value="skills.korean">{{ props.t('skills.korean') || 'Korean' }}</option>
-                <option value="skills.arabic">{{ props.t('skills.arabic') || 'Arabic' }}</option>
-                <option value="skills.hindi">{{ props.t('skills.hindi') || 'Hindi' }}</option>
+                <option value="chinese">{{ props.t('skills.chinese') || 'Chinese' }}</option>
+                <option value="japanese">{{ props.t('skills.japanese') || 'Japanese' }}</option>
+                <option value="korean">{{ props.t('skills.korean') || 'Korean' }}</option>
+                <option value="arabic">{{ props.t('skills.arabic') || 'Arabic' }}</option>
+                <option value="hindi">{{ props.t('skills.hindi') || 'Hindi' }}</option>
               </optgroup>
               <optgroup :label="props.t('skills.otherLanguages') || 'Other Languages'">
-                <option value="skills.others">{{ props.t('skills.others') || 'Others' }}</option>
+                <option value="others">{{ props.t('skills.others') || 'Others' }}</option>
               </optgroup>
             </select>
           </div>
@@ -70,11 +70,11 @@
               @change="updateLanguage(index, 'proficiency', $event.target.value)"
             >
               <option value="">{{ props.t('skills.selectLevel') || 'Select level' }}</option>
-              <option value="skills.basic">{{ props.t('skills.basic') || 'Basic' }}</option>
-              <option value="skills.intermediate">{{ props.t('skills.intermediate') || 'Intermediate' }}</option>
-              <option value="skills.advanced">{{ props.t('skills.advanced') || 'Advanced' }}</option>
-              <option value="skills.fluent">{{ props.t('skills.fluent') || 'Fluent' }}</option>
-              <option value="skills.native">{{ props.t('skills.native') || 'Native' }}</option>
+              <option value="basic">{{ props.t('skills.basic') || 'Basic' }}</option>
+              <option value="intermediate">{{ props.t('skills.intermediate') || 'Intermediate' }}</option>
+              <option value="advanced">{{ props.t('skills.advanced') || 'Advanced' }}</option>
+              <option value="fluent">{{ props.t('skills.fluent') || 'Fluent' }}</option>
+              <option value="native">{{ props.t('skills.native') || 'Native' }}</option>
             </select>
           </div>
           <button type="button" class="btn-remove-small" @click="removeLanguage(index)">×</button>

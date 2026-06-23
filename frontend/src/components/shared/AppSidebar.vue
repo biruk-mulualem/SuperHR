@@ -76,7 +76,8 @@ const roleTitle = computed(() => {
     hr: 'HR Manager',
     finance: 'Finance Officer',
     employee: 'Employee',
-    attendance: 'Attendance Manager'
+    attendance: 'Attendance Manager',
+    store: 'store Manager'
 
   }
   return titles[userRole.value] || 'User'
@@ -90,8 +91,15 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
-    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null },
-    { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
+    { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
+   
+     { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+     { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+   
+    //  { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
+      { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+
+       { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
      
         
   ],
@@ -123,6 +131,17 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
     // { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
+  ]
+  ,
+    store: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+   
+    { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
+     { name: 'group-managment', path: '/group-managment', icon: 'UserIcon', badge: null },
+    { name: 'store-management', path: '/store-management', icon: 'ClockIcon', badge: null },
+     { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
+    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+   
   ]
 
 }

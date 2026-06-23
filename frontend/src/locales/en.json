@@ -1,14 +1,44 @@
 {
+
+ "employmentType": {
+    "fullTime": "Full Time",
+    "partTime": "Part Time",
+    "contract": "Contract",
+    "intern": "Intern"
+  },
+  "status": {
+    "active": "Active",
+    "onLeave": "On Leave",
+    "terminated": "Terminated"
+  },
+   "calendar": {
+    "ec": "E.C"
+  },
+
+
+
+
   "common": {
     "save": "Save",
+ 
+
+       "system": "System",
+
     "saving": "Saving...",
+    "backToList": "backToList",
     "cancel": "Cancel",
+    "viewMarriageCertificate": "view Marriage Certificate",
+    "viewAdoptionCertificate": "view Adoption Certificate",
+    "viewBirthCertificate": "view Birth Certificate",
+    "viewMedicalReport": "view Medical Report",
+     "yes":"Yes",
+     "no":"No",
     "deleteEmployee": "Delete Employee",
     "deleting": "Deleting...",
     "delete": "Delete",
     "edit": "Edit",
     "editEmployee": "Edit Employee",
-    "guaranteeLetters":"Documents",
+    "guaranteeLetters": "Documents",
     "page": "Page",
     "import": "Import",
     "importing": "Importing...",
@@ -66,13 +96,16 @@
     "guarantorOfficeAddress": "Guarantor Office Address",
     "addressPlaceholder": "Office address",
     "guaranteeLetterTitle": "Guarantee Letter Details",
-    "letterNumber": "Guarantee Letter Number",
+    "guaranteeLetter":"guaranteeLetter",
+    "sdtLetter":"sdtLetter",
+    "otherDocument":"otherDocument",
+    "letterNumber": "Guarantee Letter Number and date",
     "letterNumberPlaceholder": "Letter reference number",
     "letterDate": "Guarantee Letter Date",
     "letterDocument": "Guarantee Letter Document",
     "guaranteeLetterHint": "Select signed guarantee letter",
     "sdtLetterTitle": "SDT Letter Details",
-    "sdtLetterNumber": "SDT Letter Number",
+    "sdtLetterNumber": "SDT Letter Number and date",
     "sdtNumberPlaceholder": "SDT letter number",
     "sdtLetterDate": "SDT Letter Date",
     "sdtLetterDocument": "SDT Letter Document",
@@ -85,8 +118,9 @@
   "healthLegal": {
     "title": "Health & Legal Information",
     "healthTitle": "Health Information",
+    "criminalRecord": "criminal Record",
     "hasInjury": "Has any physical injury or disability?",
-    "physicalInjury":"physical Injury",
+    "physicalInjury": "physical Injury",
     "injuryDescription": "Injury/Disability Description",
     "injuryPlaceholder": "Please describe the injury, disability, or medical condition...",
     "legalTitle": "Legal Information",
@@ -160,6 +194,7 @@
     "emptyState": "No training records added. Click \"Add Training\" to add."
   },
   "nationality": {
+    "type": "type",
     "title": "Nationality Information",
     "acquired": "How was nationality acquired?",
     "byBirth": "By Birth",
@@ -182,10 +217,13 @@
     "kenyan": "Kenyan",
     "eritrean": "Eritrean",
     "somali": "Somali",
+
     "sudanese": "Sudanese",
     "other": "Other"
   },
   "family": {
+    "notes": "notes",
+    "adopted": "adopted",
     "spouse": "Spouse",
     "children": "Children",
     "parents": "Parents Information",
@@ -216,6 +254,7 @@
     "unemployed": "Unemployed",
     "business": "Own Business",
     "other": "Other",
+    "years":"years",
     "companyName": "Company Name",
     "companyAddress": "Company Address",
     "profilePicture": "Profile Picture",
@@ -298,6 +337,8 @@
     "ofActive": "of active"
   },
   "employee": {
+  
+    "reasonForLeaving": "reason For Leaving",
     "currentEmployment": "Current Employment",
     "workLocationPlaceholder": "Head Office, Addis Ababa",
     "compensationAllowances": "💰 Compensation & Allowances",
@@ -409,12 +450,13 @@
     "fileSelected": "File selected",
     "readyToSave": "ready to save"
   },
-  "compensation":{
-"history": "Compensation History",
+  "compensation": {
+     "history": "Compensation Change History",
     "noHistory": "No compensation changes recorded",
     "historyHint": "When salary or allowances are updated, changes will appear here",
     "previousAmount": "Previous Amount",
-    "newAmount": "New Amount"
+    "newAmount": "New Amount",
+    "changes": "changes"
   },
   "payroll": {
     "title": "Payroll Report",

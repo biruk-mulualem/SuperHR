@@ -1,8 +1,9 @@
+// stores/auth.js
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from './interceptor'
 
-export type UserRole = 'admin' | 'hr' | 'finance' | 'employee'
+export type UserRole = 'admin' | 'hr' | 'finance' | 'employee' | 'attendance' | 'store'
 
 export interface User {
   userId: number
@@ -33,7 +34,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   // ==================== GETTERS ====================
   const isAuthenticated = computed(() => !!token.value && !!user.value)
-  const userRole = computed(() => user.value?.role)
+  
+  // IMPORTANT: Default to 'employee' if role is missing or undefined
+  const userRole = computed(() => {
+    return user.value?.role || 'employee'
+  })
+  
   const userFullName = computed(() => {
     if (!user.value) return 'User'
     return (
@@ -44,6 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
         : 'User')
     )
   })
+  
   const userAvatar = computed(() => user.value?.profilePicture || user.value?.profilePictureUrl || null)
 
   // ==================== ACTIONS ====================
@@ -67,7 +74,12 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (storedUser && storedToken) {
       try {
-        user.value = JSON.parse(storedUser)
+        const parsedUser = JSON.parse(storedUser)
+        // Ensure role exists, default to 'employee'
+        if (!parsedUser.role) {
+          parsedUser.role = 'employee'
+        }
+        user.value = parsedUser
         token.value = storedToken
         refreshToken.value = storedRefreshToken
         isLoggedOut.value = false
@@ -84,6 +96,11 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (response.data.success) {
         const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
+
+        // Ensure role exists
+        if (!userData.role) {
+          userData.role = 'employee'
+        }
 
         user.value = userData
         token.value = authToken
@@ -114,15 +131,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   const logout = async () => {
     try {
-      // Try to call logout API
       await api.post('/users/logout').catch(() => {})
     } catch (error) {
       console.warn('Logout API failed', error)
     } finally {
-      // Always clear local auth data
       clearAuthData()
-      
-      // Redirect to login page
       if (!window.location.pathname.includes('/login')) {
         window.location.replace('/login')
       }
@@ -133,9 +146,13 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.get('/users/profile')
       if (response.data.success) {
-        user.value = response.data.user
-        localStorage.setItem('user', JSON.stringify(response.data.user))
-        return { success: true, user: response.data.user }
+        const userData = response.data.user
+        if (!userData.role) {
+          userData.role = 'employee'
+        }
+        user.value = userData
+        localStorage.setItem('user', JSON.stringify(userData))
+        return { success: true, user: userData }
       }
       return { success: false, error: response.data.error }
     } catch (error: any) {

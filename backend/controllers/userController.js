@@ -107,15 +107,30 @@ exports.login = async (req, res) => {
           model: Employee, 
           as: 'employee',
           required: false,
-          attributes: [
-            'employeeId', 'employeeCode', 'firstName', 'lastName', 
-            'middleName', 'profilePicture', 'profilePictureUrl', 'profilePicturePublicId',
-            'phoneNumber', 'hireDate', 'positionId', 'employmentType', 'employmentStatus',
-            'dateOfBirth', 'gender', 'maritalStatus', 'nationality',
-            'personalEmail', 'workEmail', 'emergencyContact',
-            'currentAddress', 'permanentAddress', 'basicSalary',
-            'bankAccount', 'workLocation', 'managerId'
-          ]
+         attributes: [
+  'employeeId', 'employeeCode', 'firstName', 'lastName', 
+  'middleName', 'profilePicture', 'profilePictureUrl', 'profilePicturePublicId',
+  'phoneNumber', 
+  'hireDateEC',    // Use the correct field name
+  'hireDateGC',    // Include this too if needed
+  'positionId', 
+  'employmentType', 
+  'employmentStatus',
+  'dateOfBirthEC', // Fix: Use dateOfBirthEC instead of dateOfBirth
+  'dateOfBirthGC', // Include this too if needed
+  'gender', 
+  'maritalStatus', 
+  'nationality',
+  'personalEmail', 
+  'workEmail', 
+  'emergencyContact',
+  'currentAddress', 
+  'permanentAddress', 
+  'basicSalary',
+  'bankAccount', 
+  'workLocation', 
+  'managerId'
+]
         }
       ]
     });
@@ -214,7 +229,8 @@ exports.login = async (req, res) => {
       fullEmployeeName: employee?.firstName && employee?.lastName 
         ? `${employee.firstName} ${employee.lastName}` 
         : user.fullName,
-      dateOfBirth: employee?.dateOfBirth,
+       dateOfBirthEC: employee?.dateOfBirthEC,    // Use the correct field
+  dateOfBirthGC: employee?.dateOfBirthGC,    // Use the correct field
       gender: employee?.gender,
       maritalStatus: employee?.maritalStatus,
       nationality: employee?.nationality,
@@ -228,7 +244,8 @@ exports.login = async (req, res) => {
       permanentAddress: employee?.permanentAddress,
       positionId: employee?.positionId,
       managerId: employee?.managerId,
-      hireDate: employee?.hireDate,
+      hireDateEC: employee?.hireDateEC,
+      hireDateGC: employee?.hireDateGC,
       employmentType: employee?.employmentType,
       employmentStatus: employee?.employmentStatus,
       basicSalary: employee?.basicSalary,
@@ -886,7 +903,7 @@ exports.getUserById = async (req, res) => {
           required: false,
           attributes: [
             'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName',
-            'phoneNumber', 'hireDate', 'positionId', 'employmentType', 'employmentStatus',
+            'phoneNumber', 'hireDateEC', 'positionId', 'employmentType', 'employmentStatus',
             'dateOfBirth', 'gender', 'maritalStatus', 'nationality',
             'personalEmail', 'workEmail', 'profilePictureUrl'
           ]

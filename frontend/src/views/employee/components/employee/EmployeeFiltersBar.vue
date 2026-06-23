@@ -25,17 +25,17 @@
       
       <select :value="filters.employmentStatus" @change="$emit('update:filters', { employmentStatus: $event.target.value })" class="filter-select">
         <option value="">{{ $t('common.allStatus') || 'All Status' }}</option>
-        <option value="employee.active">{{ $t('employee.active') || 'Active' }}</option>
-        <option value="employee.onLeave">{{ $t('employee.onLeave') || 'On Leave' }}</option>
-        <option value="employee.terminated">{{ $t('employee.terminated') || 'Terminated' }}</option>
+        <option value="active">{{ $t('employee.active') || 'Active' }}</option>
+        <option value="on-leave">{{ $t('employee.onLeave') || 'On Leave' }}</option>
+        <option value="terminated">{{ $t('employee.terminated') || 'Terminated' }}</option>
       </select>
       
       <select :value="filters.employmentType" @change="$emit('update:filters', { employmentType: $event.target.value })" class="filter-select">
         <option value="">{{ $t('common.allTypes') || 'All Types' }}</option>
-        <option value="employee.fullTime">{{ $t('employee.fullTime') || 'Full Time' }}</option>
-        <option value="employee.partTime">{{ $t('employee.partTime') || 'Part Time' }}</option>
-        <option value="employee.contract">{{ $t('employee.contract') || 'Contract' }}</option>
-        <option value="employee.intern">{{ $t('employee.intern') || 'Intern' }}</option>
+        <option value="full-time">{{ $t('employee.fullTime') || 'Full Time' }}</option>
+        <option value="part-time">{{ $t('employee.partTime') || 'Part Time' }}</option>
+        <option value="contract">{{ $t('employee.contract') || 'Contract' }}</option>
+        <option value="intern">{{ $t('employee.intern') || 'Intern' }}</option>
       </select>
       
       <button class="btn-clear" @click="$emit('clear-filters')" :title="$t('common.clearFilters') || 'Clear filters'">

@@ -1,3 +1,4 @@
+// router/index.js
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import MainLayout from "@/layouts/MainLayout.vue";
@@ -22,7 +23,7 @@ const router = createRouter({
           component: () => import("@/views/dashboard/Dashboard.vue"),
           meta: {
             title: "Dashboard",
-            roles: ["admin", "hr", "finance", "employee", "attendance"],
+            roles: ["admin", "hr", "finance", "employee", "attendance", "store"],
           },
         },
         {
@@ -31,7 +32,7 @@ const router = createRouter({
           component: () => import("@/views/employee/Profile.vue"),
           meta: {
             title: "My Profile",
-            roles: ["admin", "hr", "finance", "employee", "attendance"],
+            roles: ["admin", "hr", "finance", "employee", "attendance", "store"],
           },
         },
         {
@@ -58,8 +59,8 @@ const router = createRouter({
           component: () => import("@/views/employee/EmployeeEdit.vue"),
           meta: { title: "Edit Employee", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
-          {
-       path: "documents-letters",
+        {
+          path: "documents-letters",
           name: "DocumentsLetters",
           component: () => import("@/views/employee/DocumentsLetters.vue"),
           meta: { title: "Documents & Letters", roles: ["admin", "hr", "finance", "employee", "attendance"] },
@@ -95,7 +96,7 @@ const router = createRouter({
           path: "leaves",
           name: "leaves",
           component: () => import("@/views/leaveRequest/leaves.vue"),
-          meta: { title: " leaves", roles: ["admin", "hr", "finance", "employee", "attendance"] },
+          meta: { title: "Leaves", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
         {
           path: "payroll",
@@ -103,12 +104,10 @@ const router = createRouter({
           component: () => import("@/views/payroll/payroll.vue"),
           meta: { title: "Payroll Management", roles: ["admin", "finance", "hr", "employee", "attendance"] },
         },
-
         {
           path: "approved-leaves-list",
           name: "approved-leaves-list",
-          component: () =>
-            import("@/views/leaveRequest/approvedLeavesList.vue"),
+          component: () => import("@/views/leaveRequest/approvedLeavesList.vue"),
           meta: {
             title: "Approved Leave Requests",
             roles: ["admin", "hr", "finance", "employee", "attendance"],
@@ -120,6 +119,60 @@ const router = createRouter({
           component: () => import("@/views/leaveRequest/leaveDetail.vue"),
           meta: { title: "Leave Detail", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
+        // ============================================================
+        // STORE INVENTORY ROUTES
+        // ============================================================
+        {
+          path: "inventory",
+          name: "inventory",
+          component: () => import("@/views/storemanagement/inventory/inventory.vue"),
+          meta: { 
+            title: "Inventory Management", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+          {
+          path: "group-management",
+          name: "group-management",
+          component: () => import("@/views/storemanagement/storeAndGroups/groupManagement.vue"),
+          meta: { 
+            title: "group Management", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+
+          {
+          path: "store-management",
+          name: "store-management",
+          component: () => import("@/views/storemanagement/storeAndGroups/storeManagemet.vue"),
+          meta: { 
+            title: "store Management", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+          {
+          path: "user-management",
+          name: "user-management",
+          component: () => import("@/views/storemanagement/storeAndGroups/userManagment.vue"),
+          meta: { 
+            title: "user Management", 
+            roles: ["admin", "store"] 
+          },
+        },
+       
+          {
+          path: "audit",
+          name: "audit",
+          component: () => import("@/views/storemanagement/audit/audit.vue"),
+          meta: { 
+            title: "audit ", 
+            roles: ["admin", "store"] 
+          },
+        },
+       
         {
           path: "",
           redirect: "/dashboard",
@@ -129,11 +182,13 @@ const router = createRouter({
   ],
 });
 
-// Navigation guard with role-based access control
+// ============================================================
+// NAVIGATION GUARD - UPDATED FOR STORE ROLE
+// ============================================================
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
   const isAuthenticated = authStore.isAuthenticated;
-  const userRole = authStore.userRole;
+  const userRole = authStore.userRole || 'employee'; // Default fallback
 
   // Check authentication
   if (to.meta.requiresAuth && !isAuthenticated) {
@@ -147,13 +202,49 @@ router.beforeEach((to, from, next) => {
     return;
   }
 
-  // Check role-based access
-  if (
-    to.meta.roles &&
-    Array.isArray(to.meta.roles) &&
-    to.meta.roles.length > 0
-  ) {
+  // If not authenticated, allow access
+  if (!isAuthenticated) {
+    next();
+    return;
+  }
+
+  // ============================================================
+  // STORE ROLE - Only allow access to store routes
+  // ============================================================
+  if (userRole === "store") {
+    const allowedStorePaths = [
+      "/dashboard",
+      "/profile",
+      "/inventory",
+      "/inventory/product-master",
+      "/inventory/stock"
+    ];
+    
+    const isAllowed = allowedStorePaths.some(path => 
+      to.path === path || to.path.startsWith(path + '/')
+    );
+    
+    if (!isAllowed) {
+      // Prevent redirect loop
+      if (to.path !== "/inventory") {
+        next("/inventory");
+        return;
+      }
+    }
+    
+    next();
+    return;
+  }
+
+  // ============================================================
+  // OTHER ROLES - Check role-based access
+  // ============================================================
+  if (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
     if (!to.meta.roles.includes(userRole)) {
+      if (to.path === "/dashboard") {
+        next();
+        return;
+      }
       next("/dashboard");
       return;
     }

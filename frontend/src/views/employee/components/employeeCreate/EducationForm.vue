@@ -24,13 +24,13 @@
             <label>{{ t('education.level') || 'Education Level' }}</label>
             <select :value="item.level" @change="updateEducation(idx, 'level', $event.target.value)">
               <option value="">{{ t('common.select') || 'Select level' }}</option>
-              <option value="education.primary">{{ t('education.primary') || 'Primary School' }}</option>
-              <option value="education.secondary">{{ t('education.secondary') || 'Secondary School' }}</option>
-              <option value="education.diploma">{{ t('education.diploma') || 'Diploma' }}</option>
-              <option value="education.bachelor">{{ t('education.bachelor') || "Bachelor's Degree" }}</option>
-              <option value="education.master">{{ t('education.master') || "Master's Degree" }}</option>
-              <option value="education.phd">{{ t('education.phd') || 'PhD/Doctorate' }}</option>
-              <option value="education.certificate">{{ t('education.certificate') || 'Certificate' }}</option>
+              <option value="primary">{{ t('education.primary') || 'Primary School' }}</option>
+              <option value="secondary">{{ t('education.secondary') || 'Secondary School' }}</option>
+              <option value="diploma">{{ t('education.diploma') || 'Diploma' }}</option>
+              <option value="bachelor">{{ t('education.bachelor') || "Bachelor's Degree" }}</option>
+              <option value="master">{{ t('education.master') || "Master's Degree" }}</option>
+              <option value="phd">{{ t('education.phd') || 'PhD/Doctorate' }}</option>
+              <option value="certificate">{{ t('education.certificate') || 'Certificate' }}</option>
             </select>
           </div>
           <div class="form-field">
@@ -66,25 +66,23 @@
           </div>
         </div>
         
-        <div class="form-row">
-          <div class="form-field">
-            <label>{{ t('education.startDate') || 'Start Date' }}</label>
-            <input 
-              type="date" 
-              :value="item.startDate" 
-              @input="updateEducation(idx, 'startDate', $event.target.value)"
-            >
-          </div>
-          <div class="form-field">
-            <label>{{ t('education.endDate') || 'End Date' }}</label>
-            <input 
-              type="date" 
-              :value="item.endDate" 
-              @input="updateEducation(idx, 'endDate', $event.target.value)"
-              :disabled="item.isCurrent"
-            >
-          </div>
-        </div>
+      <div class="form-row">
+  <div class="form-field">
+    <label>{{ t('education.startDate') || 'Start Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.startDateEC"
+      @update:model-value="(value) => updateEducation(idx, 'startDateEC', value)"
+    />
+  </div>
+  <div class="form-field">
+    <label>{{ t('education.endDate') || 'End Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.endDateEC"
+      @update:model-value="(value) => updateEducation(idx, 'endDateEC', value)"
+      :disabled="item.isCurrent"
+    />
+  </div>
+</div>
         
         <div class="form-row">
           <div class="form-field">
@@ -118,6 +116,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import EthiopianDateSelector from '@/components/shared/EthiopianDateSelector.vue'
 
 const props = defineProps({
   education: {
@@ -152,8 +151,8 @@ const addEducation = () => {
     level: '',
     institutionName: '',
     institutionAddress: '',
-    startDate: '',
-    endDate: '',
+    startDateEC: '',    // Changed from startDate
+    endDateEC: '',      // Changed from endDate
     isCurrent: false,
     certificateFile: null
   }]

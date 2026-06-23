@@ -2,23 +2,36 @@
   <div class="employee-detail">
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
-      <p>{{ $t('common.loading') || 'Loading employee information...' }}</p>
+      <p>{{ $t("common.loading") || "Loading employee information..." }}</p>
     </div>
 
     <div v-else-if="employee" class="detail-wrapper">
       <!-- Header Actions -->
       <div class="action-bar">
         <router-link to="/employees" class="action-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          {{ $t('common.backToList') || 'Back to List' }}
+          {{ $t("common.backToList") || "Back to List" }}
         </router-link>
-        <router-link :to="`/employees/${employeeId}/edit`" class="action-btn primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <router-link
+          :to="`/employees/${employeeId}/edit`"
+          class="action-btn primary"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M17 3l4 4-7 7H10v-4l7-7z" />
           </svg>
-          {{ $t('common.editEmployee') || 'Edit Employee' }}
+          {{ $t("common.editEmployee") || "Edit Employee" }}
         </router-link>
       </div>
 
@@ -26,7 +39,13 @@
       <div class="hero-section">
         <div class="hero-left">
           <div class="employee-avatar-large">
-            <img :src="employee.profilePictureUrl || getAvatarUrl(employee.fullName)" :alt="employee.fullName" @error="handleImageError" />
+            <img
+              :src="
+                employee.profilePictureUrl || getAvatarUrl(employee.fullName)
+              "
+              :alt="employee.fullName"
+              @error="handleImageError"
+            />
             <div class="online-status" :class="employee.status"></div>
           </div>
           <div class="employee-basic">
@@ -39,7 +58,9 @@
         </div>
         <div class="hero-right">
           <div class="employee-code">
-            <span class="code-label">{{ $t('employee.employeeId') || 'Employee ID' }}</span>
+            <span class="code-label">{{
+              $t("employee.employeeId") || "Employee ID"
+            }}</span>
             <strong class="code-value">{{ employee.employeeId }}</strong>
           </div>
           <div class="status-indicator" :class="employee.status">
@@ -51,20 +72,91 @@
       <!-- Stats Cards -->
       <div class="stats-cards">
         <div class="stat-card">
-          <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">{{ $t('employee.department') || 'Department' }}</span><span class="stat-number">{{ employee.departmentName || "N/A" }}</span></div>
+          <div class="stat-card-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+            </svg>
+          </div>
+          <div class="stat-card-info">
+            <span class="stat-label">{{
+              $t("employee.department") || "Department"
+            }}</span
+            ><span class="stat-number">{{
+              employee.departmentName || "N/A"
+            }}</span>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">{{ $t('employee.hireDate') || 'Hire Date' }}</span><span class="stat-number">{{ formatDate(employee.hireDate) }}</span></div>
+          <div class="stat-card-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div class="stat-card-info">
+            <span class="stat-label">{{
+              $t("employee.hireDate") || "Hire Date"
+            }}</span
+            ><span class="stat-number">{{
+              formatDate(employee.hireDateEC)
+            }} {{ $t('calendar.ec') || 'E.C' }}</span>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">{{ $t('employee.employmentType') || 'Employment Type' }}</span><span class="stat-number">{{ getEmploymentTypeLabel(employee.employmentType) }}</span></div>
+          <div class="stat-card-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+              />
+            </svg>
+          </div>
+          <div class="stat-card-info">
+            <span class="stat-label">{{
+              $t("employee.employmentType") || "Employment Type"
+            }}</span
+            ><span class="stat-number">{{
+              getEmploymentTypeLabel(employee.employmentType)
+            }}</span>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z" /><path d="M12 2v2M22 12h-2M4 12H2M12 22v2" /></svg></div>
-          <div class="stat-card-info"><span class="stat-label">{{ $t('employee.basicSalary') || 'Basic Salary' }}</span><span class="stat-number">{{ formatCurrency(employee.basicSalary) }}</span></div>
+          <div class="stat-card-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z"
+              />
+              <path d="M12 2v2M22 12h-2M4 12H2M12 22v2" />
+            </svg>
+          </div>
+          <div class="stat-card-info">
+            <span class="stat-label">{{
+              $t("employee.basicSalary") || "Basic Salary"
+            }}</span
+            ><span class="stat-number">{{
+              formatCurrency(employee.basicSalary)
+            }}</span>
+          </div>
         </div>
       </div>
 
@@ -72,317 +164,1470 @@
       <div class="content-grid">
         <div class="left-column">
           <!-- Personal Info Card -->
-         <div class="info-card">
-  <div class="card-header">
-    <div class="card-header-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    </div>
-    <h3>{{ $t('employee.personalInfo') || 'Personal Information' }}</h3>
-  </div>
-  <div class="info-list">
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.fullName') || 'Full Name' }}</span>
-      <span class="info-value">{{ employee.fullName }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.workEmail') || 'Work Email' }}</span>
-      <span class="info-value">{{ employee.email || employee.workEmail || "—" }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.personalEmail') || 'Personal Email' }}</span>
-      <span class="info-value">{{ employee.personalEmail || "—" }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.phone') || 'Phone' }}</span>
-      <span class="info-value">{{ employee.phone || employee.phoneNumber || "—" }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.dateOfBirth') || 'Date of Birth' }}</span>
-      <span class="info-value">{{ formatDate(employee.dob || employee.dateOfBirth) || "—" }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.gender') || 'Gender' }}</span>
-      <span class="info-value">{{ getGenderLabel(employee.gender) }}</span>
-    </div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.maritalStatus') || 'Marital Status' }}</span>
-      <span class="info-value">{{ getMaritalStatusLabel(employee.maritalStatus) }}</span>
-    </div>
-   <div class="info-item">
-  <span class="info-label">{{ $t('employee.nationality') || 'Nationality' }}</span>
-  <span class="info-value">{{ getNationalityLabel(employee.nationality) }}</span>
-</div>
-    <div class="info-item">
-      <span class="info-label">{{ $t('employee.nationalId') || 'National ID (FAN)' }}</span>
-      <span class="info-value">
-        {{ employee.nationalId || "—" }}
-        <a v-if="getDocumentUrl('national_id')" :href="getDocumentUrl('national_id')" target="_blank" class="file-link-inline">
-          📄 {{ $t('common.view') || 'View' }}
-        </a>
-      </span>
-    </div>
-  </div>
-</div>
+          <div class="info-card">
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("employee.personalInfo") || "Personal Information" }}
+              </h3>
+            </div>
+            <div class="info-list">
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.fullName") || "Full Name"
+                }}</span>
+                <span class="info-value">{{ employee.fullName }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.workEmail") || "Work Email"
+                }}</span>
+                <span class="info-value">{{
+                  employee.email || employee.workEmail || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.personalEmail") || "Personal Email"
+                }}</span>
+                <span class="info-value">{{
+                  employee.personalEmail || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.phone") || "Phone"
+                }}</span>
+                <span class="info-value">{{
+                  employee.phone || employee.phoneNumber || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.dateOfBirth") || "Date of Birth"
+                }}</span>
+                <span class="info-value">{{
+                  formatDate(employee.dob || employee.dateOfBirth) || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.gender") || "Gender"
+                }}</span>
+                <span class="info-value">{{
+                  getGenderLabel(employee.gender)
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.maritalStatus") || "Marital Status"
+                }}</span>
+                <span class="info-value">{{
+                  getMaritalStatusLabel(employee.maritalStatus)
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.nationality") || "Nationality"
+                }}</span>
+                <span class="info-value">{{
+                  getNationalityLabel(employee.nationality)
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.nationalId") || "National ID (FAN)"
+                }}</span>
+                <span class="info-value">
+                  {{ employee.nationalId || "—" }}
+                  <a
+                    v-if="getDocumentUrl('national_id')"
+                    :href="getDocumentUrl('national_id')"
+                    target="_blank"
+                    class="file-link-inline"
+                  >
+                    📄 {{ $t("common.view") || "View" }}
+                  </a>
+                </span>
+              </div>
+            </div>
+          </div>
 
           <!-- Birth Place Card -->
-          <div class="info-card" v-if="employee.birthPlace && Object.keys(employee.birthPlace).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg></div><h3>{{ $t('employee.birthPlace') || 'Birth Place' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.birthPlace && Object.keys(employee.birthPlace).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </div>
+              <h3>{{ $t("employee.birthPlace") || "Birth Place" }}</h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('address.region') || 'Region' }}</span><span class="info-value">{{ employee.birthPlace.region || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.city') || 'City' }}</span><span class="info-value">{{ employee.birthPlace.city || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.subcity') || 'Subcity' }}</span><span class="info-value">{{ employee.birthPlace.subcity || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.district') || 'District' }}</span><span class="info-value">{{ employee.birthPlace.district || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.region") || "Region"
+                }}</span
+                ><span class="info-value">{{
+                  employee.birthPlace.region || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.city") || "City"
+                }}</span
+                ><span class="info-value">{{
+                  employee.birthPlace.city || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.subcity") || "Subcity"
+                }}</span
+                ><span class="info-value">{{
+                  employee.birthPlace.subcity || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.district") || "District"
+                }}</span
+                ><span class="info-value">{{
+                  employee.birthPlace.district || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Current Company Card -->
-          <div class="info-card" v-if="employee.currentCompany && Object.keys(employee.currentCompany).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div><h3>{{ $t('company.currentCompany') || 'Current Company' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.currentCompany &&
+              Object.keys(employee.currentCompany).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h3>{{ $t("company.currentCompany") || "Current Company" }}</h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('company.name') || 'Company Name' }}</span><span class="info-value">{{ employee.currentCompany.companyName || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.tin') || 'TIN Number' }}</span><span class="info-value">{{ employee.currentCompany.companyTin || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.phone') || 'Phone' }}</span><span class="info-value">{{ employee.currentCompany.companyPhone || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.email') || 'Email' }}</span><span class="info-value">{{ employee.currentCompany.companyEmail || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.address') || 'Address' }}</span><span class="info-value">{{ employee.currentCompany.companyAddress || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.poBox') || 'PO Box' }}</span><span class="info-value">{{ employee.currentCompany.poBox || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('company.website') || 'Website' }}</span><span class="info-value">{{ employee.currentCompany.website || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.name") || "Company Name"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.companyName || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.tin") || "TIN Number"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.companyTin || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.phone") || "Phone"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.companyPhone || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.email") || "Email"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.companyEmail || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.address") || "Address"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.companyAddress || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.poBox") || "PO Box"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.poBox || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("company.website") || "Website"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentCompany.website || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Current Address Card -->
-          <div class="info-card" v-if="employee.currentAddress && Object.keys(employee.currentAddress).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg></div><h3>{{ $t('address.currentAddress') || 'Current Address' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.currentAddress &&
+              Object.keys(employee.currentAddress).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
+                  />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </div>
+              <h3>{{ $t("address.currentAddress") || "Current Address" }}</h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('address.region') || 'Region' }}</span><span class="info-value">{{ employee.currentAddress.region || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.subcity') || 'Subcity' }}</span><span class="info-value">{{ employee.currentAddress.subcity || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.kebele') || 'Kebele' }}</span><span class="info-value">{{ employee.currentAddress.kebele || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.district') || 'District' }}</span><span class="info-value">{{ employee.currentAddress.district || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.poBox') || 'PO Box' }}</span><span class="info-value">{{ employee.currentAddress.poBox || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.houseNumber') || 'House Number' }}</span><span class="info-value">{{ employee.currentAddress.houseNumber || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.region") || "Region"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.region || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.subcity") || "Subcity"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.subcity || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.kebele") || "Kebele"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.kebele || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.district") || "District"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.district || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.poBox") || "PO Box"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.poBox || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.houseNumber") || "House Number"
+                }}</span
+                ><span class="info-value">{{
+                  employee.currentAddress.houseNumber || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Permanent Address Card -->
-          <div class="info-card" v-if="employee.permanentAddress && Object.keys(employee.permanentAddress).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg></div><h3>{{ $t('address.permanentAddress') || 'Permanent Address' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.permanentAddress &&
+              Object.keys(employee.permanentAddress).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
+                  />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("address.permanentAddress") || "Permanent Address" }}
+              </h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('address.region') || 'Region' }}</span><span class="info-value">{{ employee.permanentAddress.region || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.subcity') || 'Subcity' }}</span><span class="info-value">{{ employee.permanentAddress.subcity || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.kebele') || 'Kebele' }}</span><span class="info-value">{{ employee.permanentAddress.kebele || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.district') || 'District' }}</span><span class="info-value">{{ employee.permanentAddress.district || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.poBox') || 'PO Box' }}</span><span class="info-value">{{ employee.permanentAddress.poBox || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.houseNumber') || 'House Number' }}</span><span class="info-value">{{ employee.permanentAddress.houseNumber || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.region") || "Region"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.region || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.subcity") || "Subcity"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.subcity || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.kebele") || "Kebele"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.kebele || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.district") || "District"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.district || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.poBox") || "PO Box"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.poBox || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.houseNumber") || "House Number"
+                }}</span
+                ><span class="info-value">{{
+                  employee.permanentAddress.houseNumber || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Emergency Contact Card -->
-          <div class="info-card emergency-card" v-if="employee.emergencyContact && Object.keys(employee.emergencyContact).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg></div><h3>{{ $t('family.emergencyContact') || 'Emergency Contact' }}</h3></div>
+          <div
+            class="info-card emergency-card"
+            v-if="
+              employee.emergencyContact &&
+              Object.keys(employee.emergencyContact).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("family.emergencyContact") || "Emergency Contact" }}
+              </h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('family.contactName') || 'Contact Name' }}</span><span class="info-value">{{ employee.emergencyContact.name || "—" }}</span></div>
               <div class="info-item">
-  <span class="info-label">{{ $t('family.relationship') || 'Relationship' }}</span>
-  <span class="info-value">{{ getRelationshipLabel(employee.emergencyContact?.relationship) }}</span>
-</div>
-              <div class="info-item"><span class="info-label">{{ $t('family.phoneNumber') || 'Phone' }}</span><span class="info-value">{{ employee.emergencyContact.phone || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('family.alternatePhone') || 'Alternate Phone' }}</span><span class="info-value">{{ employee.emergencyContact.alternatePhone || "—" }}</span></div>
+                <span class="info-label">{{
+                  $t("family.contactName") || "Contact Name"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContact.name || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("family.relationship") || "Relationship"
+                }}</span>
+                <span class="info-value">{{
+                  getRelationshipLabel(employee.emergencyContact?.relationship)
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("family.phoneNumber") || "Phone"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContact.phone || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("family.alternatePhone") || "Alternate Phone"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContact.alternatePhone || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Emergency Contact Address Card -->
-          <div class="info-card" v-if="employee.emergencyContactAddress && Object.keys(employee.emergencyContactAddress).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" /><circle cx="12" cy="10" r="3" /></svg></div><h3>{{ $t('family.emergencyAddress') || 'Emergency Contact Address' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.emergencyContactAddress &&
+              Object.keys(employee.emergencyContactAddress).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
+                  />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </div>
+              <h3>
+                {{
+                  $t("family.emergencyAddress") || "Emergency Contact Address"
+                }}
+              </h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('address.city') || 'City' }}</span><span class="info-value">{{ employee.emergencyContactAddress.city || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.subcity') || 'Subcity' }}</span><span class="info-value">{{ employee.emergencyContactAddress.subcity || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.district') || 'District' }}</span><span class="info-value">{{ employee.emergencyContactAddress.district || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('address.kebele') || 'Kebele' }}</span><span class="info-value">{{ employee.emergencyContactAddress.kebele || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.city") || "City"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContactAddress.city || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.subcity") || "Subcity"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContactAddress.subcity || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.district") || "District"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContactAddress.district || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("address.kebele") || "Kebele"
+                }}</span
+                ><span class="info-value">{{
+                  employee.emergencyContactAddress.kebele || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Education Card -->
-          <div class="info-card" v-if="employee.education && employee.education.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10-5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></svg></div><h3>{{ $t('education.title') || 'Education' }} ({{ employee.education.length }})</h3></div>
+          <div
+            class="info-card"
+            v-if="employee.education && employee.education.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 10v6M2 10l10-5 10-5-10 5z" />
+                  <path d="M6 12v5c3 3 9 3 12 0v-5" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("education.title") || "Education" }} ({{
+                  employee.education.length
+                }})
+              </h3>
+            </div>
             <div class="education-list">
-              <div v-for="(edu, idx) in employee.education" :key="idx" class="education-item">
-                <div class="edu-header"><strong>{{ edu.level }}</strong> - {{ edu.institutionName }}</div>
-                <div class="edu-details">{{ edu.startDate }} to {{ edu.isCurrent ? "Present" : edu.endDate }}</div>
+              <div
+                v-for="(edu, idx) in employee.education"
+                :key="idx"
+                class="education-item"
+              >
+                <div class="edu-header">
+                  <strong>{{ edu.level }}</strong> - {{ edu.institutionName }}
+                </div>
+                <div class="edu-details">
+                  {{ edu.startDate }} to
+                  {{ edu.isCurrent ? "Present" : edu.endDate }}
+                </div>
                 <div class="edu-address">{{ edu.institutionAddress }}</div>
-                <a v-if="getDocumentUrl('education_certificate')" :href="getDocumentUrl('education_certificate')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }} Certificate</a>
+                <a
+                  v-if="getDocumentUrl('education_certificate')"
+                  :href="getDocumentUrl('education_certificate')"
+                  target="_blank"
+                  class="file-link"
+                  >📄 {{ $t("common.view") || "View" }} </a
+                >
               </div>
             </div>
           </div>
 
           <!-- Training Card -->
-          <div class="info-card" v-if="employee.training && employee.training.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div><h3>{{ $t('training.title') || 'Training' }} ({{ employee.training.length }})</h3></div>
+          <div
+            class="info-card"
+            v-if="employee.training && employee.training.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("training.title") || "Training" }} ({{
+                  employee.training.length
+                }})
+              </h3>
+            </div>
             <div class="training-list">
-              <div v-for="(train, idx) in employee.training" :key="idx" class="training-item">
-                <div class="training-header"><strong>{{ train.trainingName }}</strong></div>
-                <div class="training-details">{{ train.institutionName }} | {{ train.startDate }} to {{ train.endDate }}</div>
-                <div class="training-address">{{ train.institutionAddress }}</div>
-                <a v-if="getDocumentUrl('training_certificate')" :href="getDocumentUrl('training_certificate')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }} Certificate</a>
+              <div
+                v-for="(train, idx) in employee.training"
+                :key="idx"
+                class="training-item"
+              >
+                <div class="training-header">
+                  <strong>{{ train.trainingName }}</strong>
+                </div>
+                <div class="training-details">
+                  {{ train.institutionName }} | {{ train.startDate }} to
+                  {{ train.endDate }}
+                </div>
+                <div class="training-address">
+                  {{ train.institutionAddress }}
+                </div>
+                <a
+                  v-if="getDocumentUrl('training_certificate')"
+                  :href="getDocumentUrl('training_certificate')"
+                  target="_blank"
+                  class="file-link"
+                  >📄 {{ $t("common.view") || "View" }} </a
+                >
               </div>
             </div>
           </div>
 
           <!-- Bank Account Card -->
-          <div class="info-card bank-card" v-if="employee.bankAccount && Object.keys(employee.bankAccount).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /></svg></div><h3>{{ $t('bank.title') || 'Bank Account' }}</h3></div>
+          <div
+            class="info-card bank-card"
+            v-if="
+              employee.bankAccount && Object.keys(employee.bankAccount).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+                  />
+                </svg>
+              </div>
+              <h3>{{ $t("bank.title") || "Bank Account" }}</h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('bank.bankName') || 'Bank Name' }}</span><span class="info-value">{{ employee.bankAccount.bankName || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('bank.accountNumber') || 'Account Number' }}</span><span class="info-value">{{ employee.bankAccount.accountNumber || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('bank.accountHolderName') || 'Account Holder' }}</span><span class="info-value">{{ employee.bankAccount.accountHolderName || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('bank.branch') || 'Branch' }}</span><span class="info-value">{{ employee.bankAccount.branch || "—" }}</span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("bank.bankName") || "Bank Name"
+                }}</span
+                ><span class="info-value">{{
+                  employee.bankAccount.bankName || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("bank.accountNumber") || "Account Number"
+                }}</span
+                ><span class="info-value">{{
+                  employee.bankAccount.accountNumber || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("bank.accountHolderName") || "Account Holder"
+                }}</span
+                ><span class="info-value">{{
+                  employee.bankAccount.accountHolderName || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("bank.branch") || "Branch"
+                }}</span
+                ><span class="info-value">{{
+                  employee.bankAccount.branch || "—"
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Nationality Acquisition Card -->
           <div class="info-card" v-if="employee.nationalityAcquisition">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6h14M8 3l-2 3h12l-2-3" /></svg></div><h3>{{ $t('nationality.title') || 'Nationality Acquisition' }}</h3></div>
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 21h18M3 10h18M5 6h14M8 3l-2 3h12l-2-3" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("nationality.title") || "Nationality Acquisition" }}
+              </h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('nationality.type') || 'Type' }}</span><span class="info-value">{{ getNationalityTypeLabel(employee.nationalityAcquisition.type) }}</span></div>
-              <div class="info-item" v-if="getDocumentUrl('naturalization_certificate')"><span class="info-label">{{ $t('nationality.certificate') || 'Certificate' }}</span><span class="info-value"><a :href="getDocumentUrl('naturalization_certificate')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }}</a></span></div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("nationality.type") || "Type"
+                }}</span
+                ><span class="info-value">{{
+                  getNationalityTypeLabel(employee.nationalityAcquisition.type)
+                }}</span>
+              </div>
+              <div
+                class="info-item"
+                v-if="getDocumentUrl('naturalization_certificate')"
+              >
+                <span class="info-label">{{
+                  $t("nationality.certificate") || "Certificate"
+                }}</span
+                ><span class="info-value"
+                  ><a
+                    :href="getDocumentUrl('naturalization_certificate')"
+                    target="_blank"
+                    class="file-link"
+                    >📄 {{ $t("common.view") || "View" }}</a
+                  ></span
+                >
+              </div>
             </div>
           </div>
 
           <!-- Health & Legal Card -->
-          <div class="info-card" v-if="employee.healthInfo || employee.legalInfo">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" /></svg></div><h3>{{ $t('healthLegal.title') || 'Health & Legal' }}</h3></div>
-            <div class="health-legal-content">
-              <div class="health-section" v-if="employee.healthInfo"><h4>{{ $t('healthLegal.healthTitle') || 'Health Information' }}</h4><div>{{ $t('healthLegal.physicalInjury') || 'Physical Injury/Disability' }}: {{ employee.healthInfo.hasPhysicalInjury ? "Yes" : "No" }}</div><div v-if="employee.healthInfo.injuryDescription">{{ employee.healthInfo.injuryDescription }}</div><a v-if="getDocumentUrl('health_document')" :href="getDocumentUrl('health_document')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }}</a></div>
-              <div class="legal-section" v-if="employee.legalInfo"><h4>{{ $t('healthLegal.legalTitle') || 'Legal Information' }}</h4><div>{{ $t('healthLegal.criminalRecord') || 'Criminal Record' }}: {{ employee.legalInfo.hasCriminalRecord ? "Yes" : "No" }}</div><div v-if="employee.legalInfo.criminalRecordDescription">{{ employee.legalInfo.criminalRecordDescription }}</div><a v-if="getDocumentUrl('legal_document')" :href="getDocumentUrl('legal_document')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }}</a></div>
-            </div>
-          </div>
+          <div
+    class="info-card"
+    v-if="employee.healthInfo || employee.legalInfo"
+  >
+    <div class="card-header">
+      <div class="card-header-icon">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+          />
+          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+        </svg>
+      </div>
+      <h3>{{ $t("healthLegal.title") || "Health & Legal" }}</h3>
+    </div>
+    <div class="health-legal-content">
+      <div class="health-section" v-if="employee.healthInfo">
+        <h4>
+          {{ $t("healthLegal.healthTitle") || "Health Information" }}
+        </h4>
+        <div>
+          {{
+            $t("healthLegal.physicalInjury") ||
+            "Physical Injury/Disability"
+          }}: {{ employee.healthInfo.hasPhysicalInjury ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+        </div>
+        <div v-if="employee.healthInfo.injuryDescription">
+          {{ employee.healthInfo.injuryDescription }}
+        </div>
+        <a
+          v-if="getDocumentUrl('health_document')"
+          :href="getDocumentUrl('health_document')"
+          target="_blank"
+          class="file-link"
+          >📄 {{ $t("common.view") || "View" }}</a
+        >
+      </div>
+      <div class="legal-section" v-if="employee.legalInfo">
+        <h4>
+          {{ $t("healthLegal.legalTitle") || "Legal Information" }}
+        </h4>
+        <div>
+          {{ $t("healthLegal.criminalRecord") || "Criminal Record" }}:
+          {{ employee.legalInfo.hasCriminalRecord ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+        </div>
+        <div v-if="employee.legalInfo.criminalRecordDescription">
+          {{ employee.legalInfo.criminalRecordDescription }}
+        </div>
+        <a
+          v-if="getDocumentUrl('legal_document')"
+          :href="getDocumentUrl('legal_document')"
+          target="_blank"
+          class="file-link"
+          >📄 {{ $t("common.view") || "View" }}</a
+        >
+      </div>
+    </div>
+  </div>
 
           <!-- Language Skills Card -->
-          <div class="info-card" v-if="employee.languageSkills && employee.languageSkills.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h10M9 4v4M11 12h8M15 8v4" /><path d="M2 2h20v20H2z" /></svg></div><h3>{{ $t('skills.title') || 'Language Skills' }}</h3></div>
-            <div class="skills-list"><div v-for="(lang, idx) in employee.languageSkills" :key="idx" class="skill-tag">{{ lang.language }} - {{ capitalize(lang.proficiency) }}</div></div>
-            <div v-if="employee.otherSkills" class="other-skills"><strong>{{ $t('skills.otherTitle') || 'Other Skills' }}:</strong> {{ employee.otherSkills }}</div>
-          </div>
+       <div
+  class="info-card"
+  v-if="employee.languageSkills && employee.languageSkills.length"
+>
+  <div class="card-header">
+    <div class="card-header-icon">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M5 8h10M9 4v4M11 12h8M15 8v4" />
+        <path d="M2 2h20v20H2z" />
+      </svg>
+    </div>
+    <h3>{{ $t("skills.title") || "Language Skills" }}</h3>
+  </div>
+  <div class="skills-list">
+    <div
+      v-for="(lang, idx) in employee.languageSkills"
+      :key="idx"
+      class="skill-tag"
+    >
+      {{ getLanguageLabel(lang.language) }} - {{ getProficiencyLabel(lang.proficiency) }}
+    </div>
+  </div>
+  <div v-if="employee.otherSkills" class="other-skills">
+    <strong>{{ $t("skills.otherTitle") || "Other Skills" }}:</strong>
+    {{ employee.otherSkills }}
+  </div>
+</div>
         </div>
 
         <div class="right-column">
           <!-- Employment Card -->
           <div class="info-card">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div><h3>{{ $t('employee.employmentInfo') || 'Employment Information' }}</h3></div>
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("employee.employmentInfo") || "Employment Information" }}
+              </h3>
+            </div>
             <div class="info-list">
-              <div class="info-item"><span class="info-label">{{ $t('employee.department') || 'Department' }}</span><span class="info-value">{{ employee.departmentName || "N/A" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('employee.position') || 'Position' }}</span><span class="info-value">{{ employee.position || "N/A" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('employee.employmentType') || 'Employment Type' }}</span><span class="info-value">{{ getEmploymentTypeLabel(employee.employmentType) }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('employee.hireDate') || 'Hire Date' }}</span><span class="info-value">{{ formatDate(employee.hireDate) }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('employee.manager') || 'Manager' }}</span><span class="info-value">{{ employee.managerName || "—" }}</span></div>
-              <div class="info-item"><span class="info-label">{{ $t('employee.workLocation') || 'Work Location' }}</span><span class="info-value">{{ employee.workLocation || "—" }}</span></div>
-<div class="info-item">
-  <span class="info-label">{{ $t('employee.shiftType') || 'Shift Type' }}</span>
-  <span class="info-value">{{ getShiftTypeLabel(employee.shiftType) }}</span>
-</div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.department") || "Department"
+                }}</span
+                ><span class="info-value">{{
+                  employee.departmentName || "N/A"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.position") || "Position"
+                }}</span
+                ><span class="info-value">{{
+                  employee.position || "N/A"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.employmentType") || "Employment Type"
+                }}</span
+                ><span class="info-value">{{
+                  getEmploymentTypeLabel(employee.employmentType)
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.hireDate") || "Hire Date"
+                }}</span
+                ><span class="info-value">{{
+                  formatDate(employee.hireDateEC)
+                }} {{ $t('calendar.ec') || 'E.C' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.manager") || "Manager"
+                }}</span
+                ><span class="info-value">{{
+                  employee.managerName || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.workLocation") || "Work Location"
+                }}</span
+                ><span class="info-value">{{
+                  employee.workLocation || "—"
+                }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{
+                  $t("employee.shiftType") || "Shift Type"
+                }}</span>
+                <span class="info-value">{{
+                  getShiftTypeLabel(employee.shiftType)
+                }}</span>
+              </div>
             </div>
           </div>
 
           <!-- Compensation & Allowances Card -->
           <div class="info-card allowances-card">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></div><h3>{{ $t('employee.compensationAllowances') || 'Compensation & Allowances' }}</h3></div>
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+              </div>
+              <h3>
+                {{
+                  $t("employee.compensationAllowances") ||
+                  "Compensation & Allowances"
+                }}
+              </h3>
+            </div>
             <div class="allowances-content">
-              <div class="allowance-item basic"><div class="allowance-label">{{ $t('employee.basicSalary') || 'Basic Salary' }}</div><div class="allowance-value">{{ formatCurrency(employee.basicSalary) }}</div></div>
+              <div class="allowance-item basic">
+                <div class="allowance-label">
+                  {{ $t("employee.basicSalary") || "Basic Salary" }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(employee.basicSalary) }}
+                </div>
+              </div>
               <div class="allowance-divider"></div>
-              <div class="allowance-item"><div class="allowance-label">{{ $t('employee.housingAllowance') || 'Housing Allowance' }}</div><div class="allowance-value">{{ formatCurrency(employee.housingAllowance) }}</div></div>
-              <div class="allowance-item"><div class="allowance-label">{{ $t('employee.positionAllowance') || 'Position Allowance' }}</div><div class="allowance-value">{{ formatCurrency(employee.positionAllowance) }}</div></div>
-              <div class="allowance-item"><div class="allowance-label">{{ $t('employee.transportAllowance') || 'Transport Allowance' }}</div><div class="allowance-value">{{ formatCurrency(employee.transportAllowance) }}</div></div>
-              <div class="allowance-item"><div class="allowance-label">{{ $t('employee.mobileAllowance') || 'Mobile Allowance' }}</div><div class="allowance-value">{{ formatCurrency(employee.mobileAllowance) }}</div></div>
+              <div class="allowance-item">
+                <div class="allowance-label">
+                  {{ $t("employee.housingAllowance") || "Housing Allowance" }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(employee.housingAllowance) }}
+                </div>
+              </div>
+              <div class="allowance-item">
+                <div class="allowance-label">
+                  {{ $t("employee.positionAllowance") || "Position Allowance" }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(employee.positionAllowance) }}
+                </div>
+              </div>
+              <div class="allowance-item">
+                <div class="allowance-label">
+                  {{
+                    $t("employee.transportAllowance") || "Transport Allowance"
+                  }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(employee.transportAllowance) }}
+                </div>
+              </div>
+              <div class="allowance-item">
+                <div class="allowance-label">
+                  {{ $t("employee.mobileAllowance") || "Mobile Allowance" }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(employee.mobileAllowance) }}
+                </div>
+              </div>
               <div class="allowance-divider"></div>
-              <div class="allowance-item total"><div class="allowance-label">{{ $t('employee.totalAllowances') || 'Total Allowances' }}</div><div class="allowance-value">{{ formatCurrency(totalAllowances) }}</div></div>
-              <div class="allowance-item gross"><div class="allowance-label">{{ $t('employee.grossPay') || 'Gross Monthly Pay' }}</div><div class="allowance-value gross-amount">{{ formatCurrency(grossPay) }}</div></div>
+              <div class="allowance-item total">
+                <div class="allowance-label">
+                  {{ $t("employee.totalAllowances") || "Total Allowances" }}
+                </div>
+                <div class="allowance-value">
+                  {{ formatCurrency(totalAllowances) }}
+                </div>
+              </div>
+              <div class="allowance-item gross">
+                <div class="allowance-label">
+                  {{ $t("employee.grossPay") || "Gross Monthly Pay" }}
+                </div>
+                <div class="allowance-value gross-amount">
+                  {{ formatCurrency(grossPay) }}
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Spouse Information Card -->
-          <div class="info-card" v-if="employee.spouseInfo && Object.keys(employee.spouseInfo).length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg></div><h3>{{ $t('family.spouse') || 'Spouse Information' }}</h3></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.spouseInfo && Object.keys(employee.spouseInfo).length
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <h3>{{ $t("family.spouse") || "Spouse Information" }}</h3>
+            </div>
             <div class="spouse-layout">
-              <div class="spouse-avatar"><img v-if="getDocumentWithIndex('spouse_profile', 0) || getDocumentUrl('spouse_profile')" :src="getDocumentWithIndex('spouse_profile', 0) || getDocumentUrl('spouse_profile')" :alt="employee.spouseInfo?.fullName || 'Spouse'" @error="(e) => e.target.src = getAvatarUrl(employee.spouseInfo?.fullName || 'Spouse')" /><div v-else class="spouse-avatar-placeholder">{{ employee.spouseInfo?.fullName?.charAt(0) || "S" }}</div></div>
+              <div class="spouse-avatar">
+                <img
+                  v-if="
+                    getDocumentWithIndex('spouse_profile', 0) ||
+                    getDocumentUrl('spouse_profile')
+                  "
+                  :src="
+                    getDocumentWithIndex('spouse_profile', 0) ||
+                    getDocumentUrl('spouse_profile')
+                  "
+                  :alt="employee.spouseInfo?.fullName || 'Spouse'"
+                  @error="
+                    (e) =>
+                      (e.target.src = getAvatarUrl(
+                        employee.spouseInfo?.fullName || 'Spouse',
+                      ))
+                  "
+                />
+                <div v-else class="spouse-avatar-placeholder">
+                  {{ employee.spouseInfo?.fullName?.charAt(0) || "S" }}
+                </div>
+              </div>
               <div class="spouse-info">
-                <div class="spouse-name">{{ employee.spouseInfo.fullName || "—" }}</div>
-                <div class="spouse-detail"><span>{{ $t('family.tinNumber') || 'TIN Number' }}:</span> {{ employee.spouseInfo.tinNumber || "—" }}</div>
-                <div class="spouse-detail"><span>{{ $t('family.dateOfBirth') || 'Date of Birth' }}:</span> {{ formatDate(employee.spouseInfo.dateOfBirth) || "—" }}</div>
-                <div class="spouse-detail"><span>{{ $t('family.jobStatus') || 'Job Status' }}:</span> {{ capitalize(employee.spouseInfo.jobStatus) || "—" }}</div>
-                <div class="spouse-detail"><span>{{ $t('family.companyName') || 'Company Name' }}:</span> {{ employee.spouseInfo.companyName || "—" }}</div>
-                <div class="spouse-detail"><span>{{ $t('family.companyAddress') || 'Company Address' }}:</span> {{ employee.spouseInfo.companyAddress || "—" }}</div>
-                <div class="spouse-document" v-if="getDocumentWithIndex('marriage_certificate', 0) || getDocumentUrl('marriage_certificate')"><a :href="getDocumentWithIndex('marriage_certificate', 0) || getDocumentUrl('marriage_certificate')" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }} Marriage Certificate</a></div>
+                <div class="spouse-name">
+                  {{ employee.spouseInfo.fullName || "—" }}
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t("family.tinNumber") || "TIN Number" }}:</span>
+                  {{ employee.spouseInfo.tinNumber || "—" }}
+                </div>
+                <div class="spouse-detail">
+                  <span
+                    >{{ $t("family.dateOfBirth") || "Date of Birth" }}:</span
+                  >
+                  {{ formatDate(employee.spouseInfo.dateOfBirth) || "—" }}
+                </div>
+               <div class="spouse-detail">
+  <span>{{ $t("family.jobStatus") || "Job Status" }}:</span>
+  {{ getJobStatusLabel(employee.spouseInfo.jobStatus) }}
+</div>
+                <div class="spouse-detail">
+                  <span>{{ $t("family.companyName") || "Company Name" }}:</span>
+                  {{ employee.spouseInfo.companyName || "—" }}
+                </div>
+                <div class="spouse-detail">
+                  <span
+                    >{{
+                      $t("family.companyAddress") || "Company Address"
+                    }}:</span
+                  >
+                  {{ employee.spouseInfo.companyAddress || "—" }}
+                </div>
+                <div
+                  class="spouse-document"
+                  v-if="
+                    getDocumentWithIndex('marriage_certificate', 0) ||
+                    getDocumentUrl('marriage_certificate')
+                  "
+                >
+                  <a
+                    :href="
+                      getDocumentWithIndex('marriage_certificate', 0) ||
+                      getDocumentUrl('marriage_certificate')
+                    "
+                    target="_blank"
+                    class="file-link"
+                    >📄 {{ $t("common.viewMarriageCertificate") || "View" }}
+                  </a>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Children Information Card -->
-          <div class="info-card" v-if="employee.children && employee.children.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg></div><h3>{{ $t('family.children') || 'Children' }} ({{ employee.children.length }})</h3></div>
+          <div
+            class="info-card"
+            v-if="employee.children && employee.children.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                  />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("family.children") || "Children" }} ({{
+                  employee.children.length
+                }})
+              </h3>
+            </div>
             <div class="children-list">
-              <div v-for="(child, idx) in employee.children" :key="idx" class="child-card">
-                <div class="child-avatar"><img v-if="getDocumentWithIndex('child_profile', idx)" :src="getDocumentWithIndex('child_profile', idx)" :alt="child.name" @error="(e) => (e.target.src = getAvatarUrl(child.name))" /><div v-else class="avatar-placeholder">{{ child.name?.charAt(0) || 'C' }}</div></div>
-                <div class="child-info">
-                  <div class="child-header"><span class="child-name">{{ child.name }}</span><span class="child-age">{{ calculateAge(child.dateOfBirth) }} {{ $t('family.years') || 'years' }}</span></div>
-                  <div class="child-details">
-                    <div><span class="child-label">{{ $t('family.dateOfBirth') || 'Date of Birth' }}:</span> {{ formatDate(child.dateOfBirth) }}</div>
-                    <div><span class="child-label">{{ $t('family.medicalCondition') || 'Medical Condition' }}:</span> {{ child.hasMedicalCondition ? "Yes" : "No" }}</div>
-                    <div v-if="child.medicalConditionNotes"><span class="child-label">{{ $t('family.notes') || 'Notes' }}:</span> {{ child.medicalConditionNotes }}</div>
-                    <div><span class="child-label">{{ $t('family.adopted') || 'Adopted' }}:</span> {{ child.isAdopted ? "Yes" : "No" }}</div>
-                    <div class="child-documents">
-                      <a v-if="getDocumentWithIndex('child_birth_certificate', idx)" :href="getDocumentWithIndex('child_birth_certificate', idx)" target="_blank" class="file-link">📄 {{ $t('documents.birthCertificate') || 'Birth Certificate' }}</a>
-                      <a v-if="getDocumentWithIndex('child_adoption_certificate', idx)" :href="getDocumentWithIndex('child_adoption_certificate', idx)" target="_blank" class="file-link">📄 {{ $t('documents.adoptionCertificate') || 'Adoption Certificate' }}</a>
-                      <a v-if="getDocumentWithIndex('child_medical_report', idx)" :href="getDocumentWithIndex('child_medical_report', idx)" target="_blank" class="file-link">📄 {{ $t('documents.medicalReport') || 'Medical Report' }}</a>
-                      <a v-if="getDocumentWithIndex('child_profile', idx)" :href="getDocumentWithIndex('child_profile', idx)" target="_blank" class="file-link">📄 {{ $t('documents.profilePicture') || 'Profile Picture' }}</a>
-                    </div>
+              <div
+                v-for="(child, idx) in employee.children"
+                :key="idx"
+                class="child-card"
+              >
+                <div class="child-avatar">
+                  <img
+                    v-if="getDocumentWithIndex('child_profile', idx)"
+                    :src="getDocumentWithIndex('child_profile', idx)"
+                    :alt="child.name"
+                    @error="(e) => (e.target.src = getAvatarUrl(child.name))"
+                  />
+                  <div v-else class="avatar-placeholder">
+                    {{ child.name?.charAt(0) || "C" }}
                   </div>
+                </div>
+                <div class="child-info">
+                  <div class="child-header">
+                    <span class="child-name">{{ child.name }}</span
+                    ><span class="child-age"
+                      >{{ calculateAge(child.dateOfBirth) }}
+                      {{ $t("family.years") || "years" }}</span
+                    >
+                  </div>
+                 <div class="child-details">
+  <div>
+    <span class="child-label"
+      >{{
+        $t("family.dateOfBirth") || "Date of Birth"
+      }}:</span
+    >
+    {{ formatDate(child.dateOfBirth) }}
+  </div>
+  <div>
+    <span class="child-label"
+      >{{
+        $t("family.medicalCondition") || "Medical Condition"
+      }}:</span
+    >
+    {{ child.hasMedicalCondition ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+  </div>
+  <div v-if="child.medicalConditionNotes">
+    <span class="child-label"
+      >{{ $t("family.notes") || "Notes" }}:</span
+    >
+    {{ child.medicalConditionNotes }}
+  </div>
+  <div>
+    <span class="child-label"
+      >{{ $t("family.adopted") || "Adopted" }}:</span
+    >
+    {{ child.isAdopted ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+  </div>
+  <div class="child-documents">
+    <a
+      v-if="
+        getDocumentWithIndex('child_birth_certificate', idx)
+      "
+      :href="
+        getDocumentWithIndex('child_birth_certificate', idx)
+      "
+      target="_blank"
+      class="file-link"
+      >📄 {{ $t("common.viewBirthCertificate") || "" }}</a
+    >
+    <a
+      v-if="
+        getDocumentWithIndex(
+          'child_adoption_certificate',
+          idx,
+        )
+      "
+      :href="
+        getDocumentWithIndex(
+          'child_adoption_certificate',
+          idx,
+        )
+      "
+      target="_blank"
+      class="file-link"
+      >📄
+      {{
+        $t("common.viewAdoptionCertificate") ||
+        "Adoption Certificate"
+      }}</a
+    >
+    <a
+      v-if="getDocumentWithIndex('child_medical_report', idx)"
+      :href="
+        getDocumentWithIndex('child_medical_report', idx)
+      "
+      target="_blank"
+      class="file-link"
+      >📄
+      {{
+        $t("common.viewMedicalReport") || "Medical Report"
+      }}</a
+    >
+  </div>
+</div>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Parents Information Card -->
-          <div class="info-card" v-if="employee.parentsInfo && (employee.parentsInfo.father || employee.parentsInfo.mother)">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg></div><h3>{{ $t('family.parents') || 'Parents Information' }}</h3></div>
-            <div class="parents-container">
-              <div class="parent-card"><div class="parent-icon">👨</div><div class="parent-details"><div class="parent-name">{{ employee.parentsInfo.father?.fullName || "—" }}</div><div class="parent-meta"><span class="parent-job">{{ employee.parentsInfo.father?.job || "—" }}</span><span class="parent-income">{{ $t('family.monthlyIncome') || 'Monthly Income' }}: {{ formatCurrency(employee.parentsInfo.father?.monthlyIncome) }}</span></div></div></div>
-              <div class="parent-card"><div class="parent-icon">👩</div><div class="parent-details"><div class="parent-name">{{ employee.parentsInfo.mother?.fullName || "—" }}</div><div class="parent-meta"><span class="parent-job">{{ employee.parentsInfo.mother?.job || "—" }}</span><span class="parent-income">{{ $t('family.monthlyIncome') || 'Monthly Income' }}: {{ formatCurrency(employee.parentsInfo.mother?.monthlyIncome) }}</span></div></div></div>
+          <div
+            class="info-card"
+            v-if="
+              employee.parentsInfo &&
+              (employee.parentsInfo.father || employee.parentsInfo.mother)
+            "
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <h3>{{ $t("family.parents") || "Parents Information" }}</h3>
             </div>
-            <div class="support-section" v-if="(employee.parentsInfo.financialSupport && employee.parentsInfo.financialSupport !== 'Monthly 0 ETB') || (employee.parentsInfo.otherSupport && employee.parentsInfo.otherSupport !== '') || (employee.parentSupport && employee.parentSupport.length)">
-              <div class="simple-support" v-if="employee.parentsInfo.financialSupport || employee.parentsInfo.otherSupport"><div class="support-title">💝 {{ $t('family.supportProvided') || 'Support Provided' }}</div><div v-if="employee.parentsInfo.financialSupport && employee.parentsInfo.financialSupport !== 'Monthly 0 ETB'" class="support-row"><span class="support-icon">💰</span><span class="support-text">{{ $t('family.financialSupport') || 'Financial Support' }}: {{ employee.parentsInfo.financialSupport }}</span></div><div v-if="employee.parentsInfo.otherSupport && employee.parentsInfo.otherSupport !== ''" class="support-row"><span class="support-icon">🎁</span><span class="support-text">{{ $t('family.otherSupport') || 'Other Support' }}: {{ employee.parentsInfo.otherSupport }}</span></div></div>
+            <div class="parents-container">
+              <div class="parent-card">
+                <div class="parent-icon">👨</div>
+                <div class="parent-details">
+                  <div class="parent-name">
+                    {{ employee.parentsInfo.father?.fullName || "—" }}
+                  </div>
+                  <div class="parent-meta">
+                    <span class="parent-job">{{
+                      employee.parentsInfo.father?.job || "—"
+                    }}</span
+                    ><span class="parent-income"
+                      >{{ $t("family.monthlyIncome") || "Monthly Income" }}:
+                      {{
+                        formatCurrency(
+                          employee.parentsInfo.father?.monthlyIncome,
+                        )
+                      }}</span
+                    >
+                  </div>
+                </div>
+              </div>
+              <div class="parent-card">
+                <div class="parent-icon">👩</div>
+                <div class="parent-details">
+                  <div class="parent-name">
+                    {{ employee.parentsInfo.mother?.fullName || "—" }}
+                  </div>
+                  <div class="parent-meta">
+                    <span class="parent-job">{{
+                      employee.parentsInfo.mother?.job || "—"
+                    }}</span
+                    ><span class="parent-income"
+                      >{{ $t("family.monthlyIncome") || "Monthly Income" }}:
+                      {{
+                        formatCurrency(
+                          employee.parentsInfo.mother?.monthlyIncome,
+                        )
+                      }}</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              class="support-section"
+              v-if="
+                (employee.parentsInfo.financialSupport &&
+                  employee.parentsInfo.financialSupport !== 'Monthly 0 ETB') ||
+                (employee.parentsInfo.otherSupport &&
+                  employee.parentsInfo.otherSupport !== '') ||
+                (employee.parentSupport && employee.parentSupport.length)
+              "
+            >
+              <div
+                class="simple-support"
+                v-if="
+                  employee.parentsInfo.financialSupport ||
+                  employee.parentsInfo.otherSupport
+                "
+              >
+                <div class="support-title">
+                  💝 {{ $t("family.supportProvided") || "Support Provided" }}
+                </div>
+                <div
+                  v-if="
+                    employee.parentsInfo.financialSupport &&
+                    employee.parentsInfo.financialSupport !== 'Monthly 0 ETB'
+                  "
+                  class="support-row"
+                >
+                  <span class="support-icon">💰</span
+                  ><span class="support-text"
+                    >{{ $t("family.financialSupport") || "Financial Support" }}:
+                    {{ employee.parentsInfo.financialSupport }}</span
+                  >
+                </div>
+                <div
+                  v-if="
+                    employee.parentsInfo.otherSupport &&
+                    employee.parentsInfo.otherSupport !== ''
+                  "
+                  class="support-row"
+                >
+                  <span class="support-icon">🎁</span
+                  ><span class="support-text"
+                    >{{ $t("family.otherSupport") || "Other Support" }}:
+                    {{ employee.parentsInfo.otherSupport }}</span
+                  >
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Work Experience Card -->
-          <div class="info-card" v-if="employee.workExperience && employee.workExperience.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg></div><h3>{{ $t('employee.workExperience') || 'Work Experience' }} ({{ employee.workExperience.length }})</h3></div>
+          <div
+            class="info-card"
+            v-if="employee.workExperience && employee.workExperience.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("employee.workExperience") || "Work Experience" }} ({{
+                  employee.workExperience.length
+                }})
+              </h3>
+            </div>
             <div class="work-list">
-              <div v-for="(work, idx) in employee.workExperience" :key="idx" class="work-item">
-                <div class="work-header"><strong>{{ work.position }}</strong> at {{ work.companyName }}</div>
-                <div class="work-dates">{{ work.startDate }} to {{ work.endDate }}</div>
-                <div class="work-details"><div>{{ $t('employee.salary') || 'Salary' }}: {{ formatCurrency(work.monthlySalary) }} → {{ formatCurrency(work.salaryWhenLeft) }}</div><div>{{ $t('employee.providentFund') || 'Provident Fund' }}: {{ work.providentFundSubmitted === "yes" ? "Yes" : "No" }}</div><div v-if="work.terminationReason">{{ $t('employee.reasonForLeaving') || 'Reason for leaving' }}: {{ work.terminationReason }}</div></div>
-                <a v-if="getDocumentWithIndex('experience_letter', idx)" :href="getDocumentWithIndex('experience_letter', idx)" target="_blank" class="file-link">📄 {{ $t('common.view') || 'View' }} Experience Letter</a>
+              <div
+                v-for="(work, idx) in employee.workExperience"
+                :key="idx"
+                class="work-item"
+              >
+                <div class="work-header">
+                  <strong>{{ work.position }}</strong> at {{ work.companyName }}
+                </div>
+                <div class="work-dates">
+                  {{ work.startDate }} to {{ work.endDate }}
+                </div>
+                <div class="work-details">
+                  <div>
+                    {{ $t("employee.salary") || "Salary" }}:
+                    {{ formatCurrency(work.monthlySalary) }} →
+                    {{ formatCurrency(work.salaryWhenLeft) }}
+                  </div>
+                  <div>
+  {{ $t("employee.providentFund") || "Provident Fund" }}:
+  {{ work.providentFundSubmitted === "yes" ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+</div>
+                  <div v-if="work.terminationReason">
+                    {{
+                      $t("employee.reasonForLeaving") || "Reason for leaving"
+                    }}: {{ work.terminationReason }}
+                  </div>
+                </div>
+                <a
+                  v-if="getDocumentWithIndex('experience_letter', idx)"
+                  :href="getDocumentWithIndex('experience_letter', idx)"
+                  target="_blank"
+                  class="file-link"
+                  >📄 {{ $t("common.view") || "View" }} Experience Letter</a
+                >
               </div>
             </div>
           </div>
 
           <!-- Guarantee Information Card -->
-          <div class="info-card" v-if="employee.guaranteeInfo && employee.guaranteeInfo.length">
-            <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg></div><h3>{{ $t('guarantee.title') || 'Guarantors' }} ({{ employee.guaranteeInfo.length }})</h3></div>
+          <div
+            class="info-card"
+            v-if="employee.guaranteeInfo && employee.guaranteeInfo.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("guarantee.title") || "Guarantors" }} ({{
+                  employee.guaranteeInfo.length
+                }})
+              </h3>
+            </div>
             <div class="guarantee-list">
-              <div v-for="(guarantor, idx) in employee.guaranteeInfo" :key="idx" class="guarantor-card-item">
-                <div class="guarantor-header"><strong>{{ guarantor.guarantorName }}</strong> - {{ guarantor.guarantorJob }}</div>
+              <div
+                v-for="(guarantor, idx) in employee.guaranteeInfo"
+                :key="idx"
+                class="guarantor-card-item"
+              >
+                <div class="guarantor-header">
+                  <strong>{{ guarantor.guarantorName }}</strong> -
+                  {{ guarantor.guarantorJob }}
+                </div>
                 <div class="guarantor-details">
-                  <div>{{ $t('guarantee.office') || 'Office' }}: {{ guarantor.guarantorOfficeName }}</div>
-                  <div>{{ $t('guarantee.address') || 'Address' }}: {{ guarantor.guarantorOfficeAddress }}</div>
-                  <div>{{ $t('guarantee.guaranteeLetter') || 'Guarantee Letter' }}: {{ guarantor.guaranteeLetterNo }} ({{ formatDate(guarantor.guaranteeLetterDate) }})</div>
-                  <div>{{ $t('guarantee.sdtLetter') || 'SDT Letter' }}: {{ guarantor.sdtLetterNo }} ({{ formatDate(guarantor.sdtLetterDate) }})</div>
-                  <div>{{ $t('guarantee.confirmedDate') || 'Confirmed Date' }}: {{ formatDate(guarantor.confirmedDate) }}</div>
+                  <div>
+                    {{ $t("guarantee.guarantorOfficeName") || "Office" }}:
+                    {{ guarantor.guarantorOfficeName }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.guarantorOfficeAddress") || "Address" }}:
+                    {{ guarantor.guarantorOfficeAddress }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.letterNumber") || "Guarantee Letter" }}:
+                    {{ guarantor.guaranteeLetterNo }} ({{
+                      formatDate(guarantor.guaranteeLetterDateEC)
+                    }}){{ $t('calendar.ec') || 'E.C' }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.sdtLetterNumber") || "SDT Letter" }}:
+                    {{ guarantor.sdtLetterNo }} ({{
+                      formatDate(guarantor.sdtLetterDateEC) }}){{ $t('calendar.ec') || 'E.C' }}
+                  </div>
                   <div class="guarantor-documents">
-                    <a v-if="getDocumentWithIndex('guarantee_letter', idx)" :href="getDocumentWithIndex('guarantee_letter', idx)" target="_blank" class="file-link">📄 {{ $t('guarantee.guaranteeLetter') || 'Guarantee Letter' }}</a>
-                    <a v-if="getDocumentWithIndex('sdt_letter', idx)" :href="getDocumentWithIndex('sdt_letter', idx)" target="_blank" class="file-link">📄 {{ $t('guarantee.sdtLetter') || 'SDT Letter' }}</a>
-                    <a v-if="getDocumentWithIndex('guarantee_other', idx)" :href="getDocumentWithIndex('guarantee_other', idx)" target="_blank" class="file-link">📄 {{ $t('guarantee.otherDocument') || 'Other Document' }}</a>
+                    <a
+                      v-if="getDocumentWithIndex('guarantee_letter', idx)"
+                      :href="getDocumentWithIndex('guarantee_letter', idx)"
+                      target="_blank"
+                      class="file-link"
+                      >📄
+                      {{
+                        $t("guarantee.guaranteeLetter") || "Guarantee Letter"
+                      }}</a
+                    >
+                    <a
+                      v-if="getDocumentWithIndex('sdt_letter', idx)"
+                      :href="getDocumentWithIndex('sdt_letter', idx)"
+                      target="_blank"
+                      class="file-link"
+                      >📄 {{ $t("guarantee.sdtLetter") || "SDT Letter" }}</a
+                    >
+                    <a
+                      v-if="getDocumentWithIndex('guarantee_other', idx)"
+                      :href="getDocumentWithIndex('guarantee_other', idx)"
+                      target="_blank"
+                      class="file-link"
+                      >📄
+                      {{ $t("guarantee.otherDocument") || "Other Document" }}</a
+                    >
                   </div>
                 </div>
               </div>
@@ -392,29 +1637,145 @@
       </div>
 
       <!-- Compensation History Card -->
-      <div class="info-card history-card full-width">
-        <div class="card-header"><div class="card-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" /></svg></div><h3>{{ $t('compensation.history') || 'Compensation Change History' }}</h3><span class="history-count" v-if="compensationHistories.length > 0">{{ compensationHistories.length }} {{ $t('common.changes') || 'changes' }}</span></div>
-        <div class="history-content-full">
-          <div v-if="loadingHistory" class="history-loading-full"><div class="spinner"></div><span>{{ $t('common.loading') || 'Loading compensation history...' }}</span></div>
-          <div v-else-if="compensationHistories.length === 0" class="history-empty-full"><div class="empty-icon">📋</div><p>{{ $t('compensation.noHistory') || 'No compensation changes recorded' }}</p><span class="history-hint">{{ $t('compensation.historyHint') || 'When salary or allowances are updated, changes will appear here' }}</span></div>
-          <div v-else class="history-timeline-full">
-            <div v-for="(history, index) in compensationHistories" :key="history.id" class="timeline-entry">
-              <div class="timeline-left"><div class="timeline-date-badge"><div class="timeline-date-day">{{ formatDateDay(history.changeDate) }}</div><div class="timeline-date-month">{{ formatDateMonth(history.changeDate) }}</div><div class="timeline-date-year">{{ formatDateYear(history.changeDate) }}</div></div><div class="timeline-arrow" :class="history.changeType"><span class="arrow-icon">{{ history.changeType === "increase" ? "↑" : "↓" }}</span></div></div>
-              <div class="timeline-body">
-                <div class="timeline-header-full"><div class="timeline-title"><span class="component-badge" :class="history.changeType">{{ history.component }}</span><span class="change-percent" :class="history.changeType">{{ history.changeType === "increase" ? "+" : "" }}{{ formatPercentage(history.percentageChange) }}%</span></div><div class="timeline-submitted"><span class="submitted-icon">👤</span><span>{{ history.submittedBy || "System" }}</span></div></div>
-                <div class="timeline-values-full"><div class="value-card old"><div class="value-label">{{ $t('compensation.previousAmount') || 'Previous Amount' }}</div><div class="value-amount">{{ formatCurrency(history.oldValue) }}</div></div><div class="value-arrow-full">→</div><div class="value-card new" :class="history.changeType"><div class="value-label">{{ $t('compensation.newAmount') || 'New Amount' }}</div><div class="value-amount">{{ formatCurrency(history.newValue) }}</div></div><div class="value-diff" :class="history.changeType"><span class="diff-icon">{{ history.changeType === "increase" ? "▲" : "▼" }}</span><span class="diff-amount">{{ formatCurrency(history.difference) }}</span></div></div>
-                <div v-if="history.reason" class="timeline-reason-full"><span class="reason-icon">💬</span><span class="reason-text">{{ history.reason }}</span></div>
+   <!-- Compensation History Card -->
+<div class="info-card history-card full-width">
+  <div class="card-header">
+    <div class="card-header-icon">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />
+      </svg>
+    </div>
+    <h3>
+      {{ $t("compensation.history") || "Compensation Change History" }}
+    </h3>
+    <span class="history-count" v-if="compensationHistories.length > 0"
+      >{{ compensationHistories.length }}
+      {{ $t("compensation.changes") || "changes" }}</span
+    >
+  </div>
+  <div class="history-content-full">
+    <div v-if="loadingHistory" class="history-loading-full">
+      <div class="spinner"></div>
+      <span>{{
+        $t("common.loading") || "Loading compensation history..."
+      }}</span>
+    </div>
+    <div
+      v-else-if="compensationHistories.length === 0"
+      class="history-empty-full"
+    >
+      <div class="empty-icon">📋</div>
+      <p>
+        {{
+          $t("compensation.noHistory") ||
+          "No compensation changes recorded"
+        }}
+      </p>
+      <span class="history-hint">{{
+        $t("compensation.historyHint") ||
+        "When salary or allowances are updated, changes will appear here"
+      }}</span>
+    </div>
+    <div v-else class="history-timeline-full">
+      <div
+        v-for="(history, index) in compensationHistories"
+        :key="history.id"
+        class="timeline-entry"
+      >
+        <div class="timeline-left">
+          <div class="timeline-date-badge">
+            <div class="timeline-date-day">
+              {{ history.changeDay || '--' }}
+            </div>
+            <div class="timeline-date-month">
+              {{ history.changeMonth || '---' }}
+            </div>
+            <div class="timeline-date-year">
+              {{ history.changeYear || '----' }}
+            </div>
+          </div>
+          <div class="timeline-arrow" :class="history.changeType">
+            <span class="arrow-icon">{{
+              history.changeType === "increase" ? "↑" : "↓"
+            }}</span>
+          </div>
+        </div>
+        <div class="timeline-body">
+          <div class="timeline-header-full">
+            <div class="timeline-title">
+              <span class="component-badge" :class="history.changeType">{{
+                getComponentLabel(history.componentKey || history.component)
+              }}</span>
+              <span class="change-percent" :class="history.changeType"
+                >{{ history.changeType === "increase" ? "+" : ""
+                }}{{ formatPercentage(history.percentageChange) }}%</span
+              >
+            </div>
+            <div class="timeline-submitted">
+              <span class="submitted-icon">👤</span>
+              <span>{{ history.submittedBy || $t("common.system") || "System" }}</span>
+            </div>
+          </div>
+          <div class="timeline-values-full">
+            <div class="value-card old">
+              <div class="value-label">
+                {{
+                  $t("compensation.previousAmount") || "Previous Amount"
+                }}
+              </div>
+              <div class="value-amount">
+                {{ formatCurrency(history.oldValue) }}
               </div>
             </div>
+            <div class="value-arrow-full">→</div>
+            <div class="value-card new" :class="history.changeType">
+              <div class="value-label">
+                {{ $t("compensation.newAmount") || "New Amount" }}
+              </div>
+              <div class="value-amount">
+                {{ formatCurrency(history.newValue) }}
+              </div>
+            </div>
+            <div class="value-diff" :class="history.changeType">
+              <span class="diff-icon">{{
+                history.changeType === "increase" ? "▲" : "▼"
+              }}</span>
+              <span class="diff-amount">{{
+                formatCurrency(history.difference)
+              }}</span>
+            </div>
+          </div>
+          <div v-if="history.reason" class="timeline-reason-full">
+            <span class="reason-icon">💬</span>
+            <span class="reason-text">{{ history.reason }}</span>
           </div>
         </div>
       </div>
     </div>
+  </div>
+</div>
+    </div>
 
     <div v-else class="empty-state">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><circle cx="12" cy="16" r="0.5" /></svg>
-      <h3>{{ $t('messages.employeeNotFound') || 'Employee Not Found' }}</h3>
-      <router-link to="/employees">{{ $t('common.returnToEmployees') || 'Return to Employees' }}</router-link>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <circle cx="12" cy="16" r="0.5" />
+      </svg>
+      <h3>{{ $t("messages.employeeNotFound") || "Employee Not Found" }}</h3>
+      <router-link to="/employees">{{
+        $t("common.returnToEmployees") || "Return to Employees"
+      }}</router-link>
     </div>
   </div>
 </template>
@@ -422,7 +1783,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { useRoute } from "vue-router";
-import { useI18n } from 'vue-i18n';
+import { useI18n } from "vue-i18n";
 import EmployeesService from "@/stores/employee";
 
 const route = useRoute();
@@ -437,20 +1798,52 @@ const employeeId = route.params.id;
 const getDocumentUrl = (type) => {
   const docs = employee.value?.documents;
   if (!docs) return null;
-  
+
   const indexedKey = `${type}_0`;
   if (docs[indexedKey]) {
     return docs[indexedKey]?.fileUrl || null;
   }
-  
+
   if (docs[type]) {
     if (Array.isArray(docs[type])) {
       return docs[type][0]?.fileUrl || null;
     }
     return docs[type]?.fileUrl || null;
   }
-  
+
   return null;
+};
+
+const getComponentLabel = (componentKey) => {
+  const labels = {
+    basicSalary: t("employee.basicSalary") || "Basic Salary",
+    housingAllowance: t("employee.housingAllowance") || "Housing Allowance",
+    positionAllowance: t("employee.positionAllowance") || "Position Allowance",
+    transportAllowance: t("employee.transportAllowance") || "Transport Allowance",
+    mobileAllowance: t("employee.mobileAllowance") || "Mobile Allowance",
+    totalAllowances: t("employee.totalAllowances") || "Total Allowances",
+    grossPay: t("employee.grossPay") || "Gross Monthly Pay",
+    // Fallback for any other component names
+    basicsalary: t("employee.basicSalary") || "Basic Salary",
+    housingallowance: t("employee.housingAllowance") || "Housing Allowance",
+    positionallowance: t("employee.positionAllowance") || "Position Allowance",
+    transportallowance: t("employee.transportAllowance") || "Transport Allowance",
+    mobileallowance: t("employee.mobileAllowance") || "Mobile Allowance",
+    totalallowances: t("employee.totalAllowances") || "Total Allowances",
+    grosspay: t("employee.grossPay") || "Gross Monthly Pay",
+  };
+  return labels[componentKey] || componentKey || "—";
+};
+
+const getJobStatusLabel = (status) => {
+  const labels = {
+    government: t("family.government") || "Government",
+    private: t("family.private") || "Private Company",
+    unemployed: t("family.unemployed") || "Unemployed",
+    business: t("family.business") || "Own Business",
+    other: t("family.other") || "Other",
+  };
+  return labels[status] || status || "—";
 };
 
 // Helper method to get document URL by type with index (for array documents)
@@ -462,121 +1855,161 @@ const getDocumentWithIndex = (type, index) => {
   if (docs[indexedKey]) {
     return docs[indexedKey]?.fileUrl || null;
   }
-  
+
   if (docs[type] && !Array.isArray(docs[type])) {
     return index === 0 ? docs[type]?.fileUrl : null;
   }
-  
+
   if (docs[type] && Array.isArray(docs[type])) {
-    const doc = docs[type].find(d => d.index === index);
+    const doc = docs[type].find((d) => d.index === index);
     return doc?.fileUrl || null;
   }
-  
+
   return null;
+};
+
+
+const getLanguageLabel = (language) => {
+  const labels = {
+    // Ethiopian Languages
+    amharic: t("skills.amharic") || "Amharic",
+    oromo: t("skills.oromo") || "Oromo",
+    tigrinya: t("skills.tigrinya") || "Tigrinya",
+    somali: t("skills.somali") || "Somali",
+    sidamo: t("skills.sidamo") || "Sidamo",
+    wolaytta: t("skills.wolaytta") || "Wolaytta",
+    afar: t("skills.afar") || "Afar",
+    hadiyya: t("skills.hadiyya") || "Hadiyya",
+    gamo: t("skills.gamo") || "Gamo",
+    gurage: t("skills.gurage") || "Gurage",
+    kembata: t("skills.kembata") || "Kembata",
+    silte: t("skills.silte") || "Silt'e",
+    // African Languages
+    swahili: t("skills.swahili") || "Swahili",
+    hausa: t("skills.hausa") || "Hausa",
+    yoruba: t("skills.yoruba") || "Yoruba",
+    zulu: t("skills.zulu") || "Zulu",
+    // European Languages
+    english: t("skills.english") || "English",
+    french: t("skills.french") || "French",
+    spanish: t("skills.spanish") || "Spanish",
+    german: t("skills.german") || "German",
+    italian: t("skills.italian") || "Italian",
+    russian: t("skills.russian") || "Russian",
+    // Asian Languages
+    chinese: t("skills.chinese") || "Chinese",
+    japanese: t("skills.japanese") || "Japanese",
+    korean: t("skills.korean") || "Korean",
+    arabic: t("skills.arabic") || "Arabic",
+    hindi: t("skills.hindi") || "Hindi",
+  };
+  return labels[language?.toLowerCase()] || language || "—";
+};
+
+const getProficiencyLabel = (proficiency) => {
+  const labels = {
+    basic: t("skills.basic") || "Basic",
+    intermediate: t("skills.intermediate") || "Intermediate",
+    advanced: t("skills.advanced") || "Advanced",
+    fluent: t("skills.fluent") || "Fluent",
+    native: t("skills.native") || "Native",
+  };
+  return labels[proficiency?.toLowerCase()] || proficiency || "—";
 };
 
 // ========== TRANSLATION HELPER FUNCTIONS ==========
 const getGenderLabel = (gender) => {
   const labels = {
-    male: t('employee.male') || 'Male',
-    female: t('employee.female') || 'Female',
-    other: t('employee.other') || 'Other',
+    male: t("employee.male") || "Male",
+    female: t("employee.female") || "Female",
+    other: t("employee.other") || "Other",
   };
-  return labels[gender] || gender || '—';
+  return labels[gender] || gender || "—";
 };
 
 const getMaritalStatusLabel = (status) => {
   const labels = {
-    single: t('employee.single') || 'Single',
-    married: t('employee.married') || 'Married',
-    divorced: t('employee.divorced') || 'Divorced',
-    widowed: t('employee.widowed') || 'Widowed',
+    single: t("employee.single") || "Single",
+    married: t("employee.married") || "Married",
+    divorced: t("employee.divorced") || "Divorced",
+    widowed: t("employee.widowed") || "Widowed",
   };
-  return labels[status] || status || '—';
+  return labels[status] || status || "—";
 };
 
 const getEmploymentTypeLabel = (type) => {
   const labels = {
-    'full-time': t('employee.fullTime') || 'Full Time',
-    'part-time': t('employee.partTime') || 'Part Time',
-    contract: t('employee.contract') || 'Contract',
-    intern: t('employee.intern') || 'Intern',
+    "full-time": t("employee.fullTime") || "Full Time",
+    "part-time": t("employee.partTime") || "Part Time",
+    contract: t("employee.contract") || "Contract",
+    intern: t("employee.intern") || "Intern",
   };
-  return labels[type] || type || '—';
+  return labels[type] || type || "—";
 };
 
 const getNationalityLabel = (nationality) => {
   const labels = {
-    'Ethiopian': t('nationality.ethiopian') || 'ኢትዮጵያዊ',
-    'American': t('nationality.american') || 'አሜሪካዊ',
-    'British': t('nationality.british') || 'ብሪቲሽ',
-    'Canadian': t('nationality.canadian') || 'ካናዳዊ',
-    'Australian': t('nationality.australian') || 'አውስትራሊያዊ',
-    'German': t('nationality.german') || 'ጀርመናዊ',
-    'French': t('nationality.french') || 'ፈረንሳዊ',
-    'Italian': t('nationality.italian') || 'ጣሊያናዊ',
-    'Spanish': t('nationality.spanish') || 'ስፓኒሽ',
-    'Kenyan': t('nationality.kenyan') || 'ኬንያዊ',
-    'Eritrean': t('nationality.eritrean') || 'ኤርትራዊ',
-    'Somali': t('nationality.somali') || 'ሶማሊ',
-    'Sudanese': t('nationality.sudanese') || 'ሱዳናዊ',
-    'Other': t('nationality.other') || 'ሌላ',
+    Ethiopian: t("nationality.ethiopian") || "ኢትዮጵያዊ",
+    American: t("nationality.american") || "አሜሪካዊ",
+    British: t("nationality.british") || "ብሪቲሽ",
+    Canadian: t("nationality.canadian") || "ካናዳዊ",
+    Australian: t("nationality.australian") || "አውስትራሊያዊ",
+    German: t("nationality.german") || "ጀርመናዊ",
+    French: t("nationality.french") || "ፈረንሳዊ",
+    Italian: t("nationality.italian") || "ጣሊያናዊ",
+    Spanish: t("nationality.spanish") || "ስፓኒሽ",
+    Kenyan: t("nationality.kenyan") || "ኬንያዊ",
+    Eritrean: t("nationality.eritrean") || "ኤርትራዊ",
+    Somali: t("nationality.somali") || "ሶማሊ",
+    Sudanese: t("nationality.sudanese") || "ሱዳናዊ",
+    Other: t("nationality.other") || "ሌላ",
   };
-  return labels[nationality] || nationality || '—';
+  return labels[nationality] || nationality || "—";
 };
 
 const getShiftTypeLabel = (shift) => {
   const labels = {
-    day: t('employee.dayShift') || 'Day Shift',
-    night: t('employee.nightShift') || 'Night Shift',
+    day: t("employee.dayShift") || "Day Shift",
+    night: t("employee.nightShift") || "Night Shift",
   };
-  return labels[shift] || shift || '—';
+  return labels[shift] || shift || "—";
 };
 
 const getStatusLabel = (status) => {
   const labels = {
-    active: t('employee.active') || 'Active',
-    'on-leave': t('employee.onLeave') || 'On Leave',
-    terminated: t('employee.terminated') || 'Terminated',
+    active: t("employee.active") || "Active",
+    "on-leave": t("employee.onLeave") || "On Leave",
+    terminated: t("employee.terminated") || "Terminated",
   };
-  return labels[status] || status || '—';
+  return labels[status] || status || "—";
 };
 
 const getNationalityTypeLabel = (type) => {
   const labels = {
-    by_birth: t('nationality.byBirth') || 'By Birth',
-    by_law: t('nationality.byLaw') || 'By Law (Naturalization)',
-    ethiopian_birth: t('nationality.ethiopianBirth') || 'Ethiopian by Birth',
+    by_birth: t("nationality.byBirth") || "By Birth",
+    by_law: t("nationality.byLaw") || "By Law (Naturalization)",
+    ethiopian_birth: t("nationality.ethiopianBirth") || "Ethiopian by Birth",
   };
-  return labels[type] || type || '—';
+  return labels[type] || type || "—";
 };
 
-const getProficiencyLabel = (proficiency) => {
-  const labels = {
-    basic: t('skills.basic') || 'Basic',
-    intermediate: t('skills.intermediate') || 'Intermediate',
-    advanced: t('skills.advanced') || 'Advanced',
-    fluent: t('skills.fluent') || 'Fluent',
-    native: t('skills.native') || 'Native',
-  };
-  return labels[proficiency] || proficiency || '—';
-};
+
 
 const getYesNoLabel = (value) => {
-  return value ? (t('common.yes') || 'Yes') : (t('common.no') || 'No');
+  return value ? t("common.yes") || "Yes" : t("common.no") || "No";
 };
 
 const getEducationLevelLabel = (level) => {
   const labels = {
-    primary: t('education.primary') || 'Primary School',
-    secondary: t('education.secondary') || 'Secondary School',
-    diploma: t('education.diploma') || 'Diploma',
-    bachelor: t('education.bachelor') || "Bachelor's Degree",
-    master: t('education.master') || "Master's Degree",
-    phd: t('education.phd') || 'PhD/Doctorate',
-    certificate: t('education.certificate') || 'Certificate',
+    primary: t("education.primary") || "Primary School",
+    secondary: t("education.secondary") || "Secondary School",
+    diploma: t("education.diploma") || "Diploma",
+    bachelor: t("education.bachelor") || "Bachelor's Degree",
+    master: t("education.master") || "Master's Degree",
+    phd: t("education.phd") || "PhD/Doctorate",
+    certificate: t("education.certificate") || "Certificate",
   };
-  return labels[level] || level || '—';
+  return labels[level] || level || "—";
 };
 
 // ========== COMPUTED PROPERTIES ==========
@@ -609,31 +2042,76 @@ const formatPercentage = (value) => {
 };
 
 const formatDateDay = (date) => {
-  if (!date) return "—";
+  if (!date) return "--";
+  // If date is a string in DD/MM/YYYY format, extract day
+  if (typeof date === 'string' && date.includes('/')) {
+    return date.split('/')[0];
+  }
+  // Fallback for Gregorian dates
   return new Date(date).getDate();
 };
-
 const formatDateMonth = (date) => {
-  if (!date) return "—";
+  if (!date) return "---";
+  // If date is a string in DD/MM/YYYY format, extract month and get name
+  if (typeof date === 'string' && date.includes('/')) {
+    const monthNum = parseInt(date.split('/')[1]);
+    // Get month name based on current language
+    const monthNames = {
+      am: ['መስከረም', 'ጥቅምት', 'ህዳር', 'ታህሳስ', 'ጥር', 'የካቲት', 
+           'መጋቢት', 'ሚያዝያ', 'ግንቦት', 'ሰኔ', 'ሐምሌ', 'ነሀሴ', 'ጳጉሜ'],
+      en: ['Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tir', 'Yekatit',
+           'Megabit', 'Miazia', 'Genbot', 'Sene', 'Hamle', 'Nehase', 'Pagume']
+    };
+    const lang = $i18n?.locale || 'en';
+    const names = monthNames[lang] || monthNames.en;
+    return names[monthNum - 1] || '---';
+  }
+  // Fallback for Gregorian dates
   return new Date(date).toLocaleString("default", { month: "short" });
 };
 
 const formatDateYear = (date) => {
-  if (!date) return "—";
+  if (!date) return "----";
+  // If date is a string in DD/MM/YYYY format, extract year
+  if (typeof date === 'string' && date.includes('/')) {
+    return date.split('/')[2];
+  }
+  // Fallback for Gregorian dates
   return new Date(date).getFullYear();
 };
-
 const formatDate = (date) => {
-  if (!date) return null;
-  try {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch (e) {
-    return "—";
+  if (!date) return "—";
+  
+  // If it's already in DD/MM/YYYY format (Ethiopian Calendar), return as is
+  if (typeof date === 'string' && date.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+    return date;
   }
+  
+  // If it's in another format, try to parse it
+  if (typeof date === 'string') {
+    const parts = date.split(/[/-]/);
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2];
+      return `${day}/${month}/${year}`;
+    }
+  }
+  
+  // If it's a Date object or ISO string
+  try {
+    const d = new Date(date);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+  } catch (e) {
+    // ignore
+  }
+  
+  return date;
 };
 
 const getAvatarUrl = (name) => {
@@ -648,7 +2126,10 @@ const calculateAge = (dateOfBirth) => {
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()))
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && today.getDate() < birthDate.getDate())
+  )
     age--;
   return age;
 };
@@ -667,7 +2148,10 @@ const loadCompensationHistory = async () => {
   loadingHistory.value = true;
   try {
     const response = await EmployeesService.getEmployeeCompensationHistory(employeeId);
-    if (response.success) compensationHistories.value = response.data || [];
+    if (response.success) {
+      // The backend now sends EC dates directly
+      compensationHistories.value = response.data || [];
+    }
   } catch (error) {
     console.error("Failed to load compensation history:", error);
     compensationHistories.value = [];
@@ -677,14 +2161,14 @@ const loadCompensationHistory = async () => {
 };
 const getRelationshipLabel = (relationship) => {
   const labels = {
-    'Spouse': t('family.spouse') || 'Spouse',
-    'Parent': t('family.parent') || 'Parent',
-    'Child': t('family.child') || 'Child',
-    'Sibling': t('family.sibling') || 'Sibling',
-    'Relative': t('family.relative') || 'Relative',
-    'Friend': t('family.friend') || 'Friend',
+    Spouse: t("family.spouse") || "Spouse",
+    Parent: t("family.parent") || "Parent",
+    Child: t("family.child") || "Child",
+    Sibling: t("family.sibling") || "Sibling",
+    Relative: t("family.relative") || "Relative",
+    Friend: t("family.friend") || "Friend",
   };
-  return labels[relationship] || relationship || '—';
+  return labels[relationship] || relationship || "—";
 };
 
 const loadEmployeeData = async () => {

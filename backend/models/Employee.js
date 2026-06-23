@@ -30,6 +30,30 @@ module.exports = (sequelize, DataTypes) => {
     getFullName() {
       return `${this.firstName} ${this.middleName ? this.middleName + ' ' : ''}${this.lastName}`;
     }
+
+    // ========== EC PRIMARY HELPER METHODS ==========
+    
+    // Get Ethiopian hire date (Primary)
+    getHireDate() {
+      return this.hireDateEC;
+    }
+    
+    // Get Ethiopian date of birth (Primary)
+    getDateOfBirth() {
+      return this.dateOfBirthEC;
+    }
+    
+    // Get Gregorian version (for sorting/reports)
+    getHireDateGC() {
+      return this.hireDateGC;
+    }
+    
+    // Format Ethiopian date for display
+    getFormattedHireDate() {
+      if (!this.hireDateEC) return '';
+      // Already in DD/MM/YYYY format
+      return this.hireDateEC;
+    }
   }
 
   Employee.init(
@@ -52,7 +76,6 @@ module.exports = (sequelize, DataTypes) => {
         field: 'user_id',
       },
 
-      
       // ========== BASIC PERSONAL INFORMATION ==========
       firstName: {
         type: DataTypes.STRING(50),
@@ -68,17 +91,27 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(50),
         allowNull: true,
         field: 'middle_name',
-      },// In Employee model
-fullNameEnglish: {
-  type: DataTypes.STRING(255),
-  allowNull: true,
-  field: 'full_name_english'
-},
-      dateOfBirth: {
+      },
+      fullNameEnglish: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'full_name_english'
+      },
+      
+      // ========== DATE OF BIRTH - EC PRIMARY ==========
+      dateOfBirthEC: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'date_of_birth_ec',
+        comment: 'PRIMARY: Ethiopian calendar date of birth (DD/MM/YYYY)'
+      },
+      dateOfBirthGC: {
         type: DataTypes.DATEONLY,
         allowNull: true,
-        field: 'date_of_birth',
+        field: 'date_of_birth_gc',
+        comment: 'SECONDARY: Gregorian calendar date of birth (for sorting/reports)'
       },
+      
       gender: {
         type: DataTypes.ENUM('male', 'female', 'other'),
         allowNull: true,
@@ -98,7 +131,7 @@ fullNameEnglish: {
         field: 'national_id',
       },
       
-      // ========== NATIONAL ID DOCUMENT (NEW) ==========
+      // ========== NATIONAL ID DOCUMENT ==========
       nationalIdDocument: {
         type: DataTypes.JSONB,
         defaultValue: {},
@@ -182,21 +215,49 @@ fullNameEnglish: {
         defaultValue: 'active',
         field: 'employment_status',
       },
-      hireDate: {
+      
+      // ========== HIRE DATE - EC PRIMARY ==========
+      hireDateEC: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'hire_date_ec',
+        comment: 'PRIMARY: Ethiopian calendar hire date (DD/MM/YYYY) - Main date used in HR'
+      },
+      hireDateGC: {
         type: DataTypes.DATEONLY,
         allowNull: true,
-        field: 'hire_date',
+        field: 'hire_date_gc',
+        comment: 'SECONDARY: Gregorian calendar hire date (for sorting/reports/exports)'
       },
-      confirmationDate: {
+      
+      // ========== CONFIRMATION DATE - EC PRIMARY ==========
+      confirmationDateEC: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'confirmation_date_ec',
+        comment: 'PRIMARY: Ethiopian calendar confirmation date (DD/MM/YYYY)'
+      },
+      confirmationDateGC: {
         type: DataTypes.DATEONLY,
         allowNull: true,
-        field: 'confirmation_date',
+        field: 'confirmation_date_gc',
+        comment: 'SECONDARY: Gregorian calendar confirmation date'
       },
-      terminationDate: {
+      
+      // ========== TERMINATION DATE - EC PRIMARY ==========
+      terminationDateEC: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'termination_date_ec',
+        comment: 'PRIMARY: Ethiopian calendar termination date (DD/MM/YYYY)'
+      },
+      terminationDateGC: {
         type: DataTypes.DATEONLY,
         allowNull: true,
-        field: 'termination_date',
+        field: 'termination_date_gc',
+        comment: 'SECONDARY: Gregorian calendar termination date'
       },
+      
       shiftType: {
         type: DataTypes.ENUM('day', 'night'),
         defaultValue: 'day',
@@ -266,13 +327,13 @@ fullNameEnglish: {
         type: DataTypes.JSONB,
         defaultValue: {},
         field: 'spouse_info',
-        comment: 'Spouse: tinNumber, fullName, dateOfBirth, jobStatus, companyName, companyAddress, profilePictureDocumentId, marriageCertificateDocumentId, profilePictureUrl, marriageCertificateUrl'
+        comment: 'Spouse: tinNumber, fullName, dateOfBirthEC, dateOfBirthGC, jobStatus, companyName, companyAddress, profilePictureDocumentId, marriageCertificateDocumentId, profilePictureUrl, marriageCertificateUrl'
       },
       children: {
         type: DataTypes.JSONB,
         defaultValue: [],
         field: 'children',
-        comment: 'Array of children: name, dateOfBirth, hasMedicalCondition, medicalConditionNotes, isAdopted, birthCertificateDocumentId, medicalReportDocumentId, adoptionCertificateDocumentId, profilePictureDocumentId, birthCertificateUrl, medicalReportUrl, adoptionCertificateUrl, profilePictureUrl'
+        comment: 'Array of children: name, dateOfBirthEC, dateOfBirthGC, hasMedicalCondition, medicalConditionNotes, isAdopted, birthCertificateDocumentId, medicalReportDocumentId, adoptionCertificateDocumentId, profilePictureDocumentId, birthCertificateUrl, medicalReportUrl, adoptionCertificateUrl, profilePictureUrl'
       },
       parentsInfo: {
         type: DataTypes.JSONB,
@@ -292,13 +353,13 @@ fullNameEnglish: {
         type: DataTypes.JSONB,
         defaultValue: [],
         field: 'education',
-        comment: 'Array of education: level, institutionName, institutionAddress, startDate, endDate, isCurrent, certificateDocumentId, certificateUrl'
+        comment: 'Array of education: level, institutionName, institutionAddress, startDateEC, startDateGC, endDateEC, endDateGC, isCurrent, certificateDocumentId, certificateUrl'
       },
       training: {
         type: DataTypes.JSONB,
         defaultValue: [],
         field: 'training',
-        comment: 'Array of training: trainingName, institutionName, institutionAddress, startDate, endDate, certificateDocumentId, certificateUrl'
+        comment: 'Array of training: trainingName, institutionName, institutionAddress, startDateEC, startDateGC, endDateEC, endDateGC, certificateDocumentId, certificateUrl'
       },
       
       // ========== WORK EXPERIENCE ==========
@@ -306,7 +367,7 @@ fullNameEnglish: {
         type: DataTypes.JSONB,
         defaultValue: [],
         field: 'work_experience',
-        comment: 'Array of work experience: position, companyName, companyTin, companyType, companyAddress, startDate, endDate, monthlySalary, salaryWhenLeft, providentFundSubmitted, providentFundStartDate, terminationReason, documentId, documentUrl'
+        comment: 'Array of work experience: position, companyName, companyTin, companyType, companyAddress, startDateEC, startDateGC, endDateEC, endDateGC, monthlySalary, salaryWhenLeft, providentFundSubmitted, providentFundStartDateEC, providentFundStartDateGC, terminationReason, documentId, documentUrl'
       },
       
       // ========== SKILLS ==========
@@ -349,7 +410,7 @@ fullNameEnglish: {
         type: DataTypes.JSONB,
         defaultValue: [],
         field: 'guarantee_info',
-        comment: 'Array of guarantors: guarantorName, guarantorJob, guarantorOfficeName, guarantorOfficeAddress, guaranteeLetterNo, guaranteeLetterDate, sdtLetterNo, sdtLetterDate, confirmedDate, guaranteeLetterUrl, sdtLetterUrl, otherDocumentUrl'
+        comment: 'Array of guarantors: guarantorName, guarantorJob, guarantorOfficeName, guarantorOfficeAddress, guaranteeLetterNo, guaranteeLetterDateEC, guaranteeLetterDateGC, sdtLetterNo, sdtLetterDateEC, sdtLetterDateGC, confirmedDateEC, confirmedDateGC, guaranteeLetterUrl, sdtLetterUrl, otherDocumentUrl'
       },
       
       // ========== PROFILE PICTURE ==========

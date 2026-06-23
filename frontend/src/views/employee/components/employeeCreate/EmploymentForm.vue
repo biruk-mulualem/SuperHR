@@ -64,29 +64,29 @@
             :placeholder="props.t('employee.workLocationPlaceholder') || 'Head Office, Addis Ababa'"
           >
         </div>
-        <div class="form-field">
-          <label>{{ props.t('employee.employmentType') || 'Employment Type' }} <span class="required">*</span></label>
-          <select 
-            :value="form.employmentType" 
-            @change="$emit('update:form', { ...form, employmentType: $event.target.value })"
-          >
-            <option value="">{{ props.t('common.select') || 'Select type' }}</option>
-            <option value="employee.fullTime">{{ props.t('employee.fullTime') || 'Full Time' }}</option>
-            <option value="employee.partTime">{{ props.t('employee.partTime') || 'Part Time' }}</option>
-            <option value="employee.contract">{{ props.t('employee.contract') || 'Contract' }}</option>
-            <option value="employee.intern">{{ props.t('employee.intern') || 'Intern' }}</option>
-          </select>
-          <span class="error" v-if="errors.employmentType">{{ errors.employmentType }}</span>
-        </div>
-        <div class="form-field">
-          <label>{{ props.t('employee.hireDate') || 'Hire Date' }} <span class="required">*</span></label>
-          <input 
-            type="date" 
-            :value="form.hireDate" 
-            @input="$emit('update:form', { ...form, hireDate: $event.target.value })"
-          >
-          <span class="error" v-if="errors.hireDate">{{ errors.hireDate }}</span>
-        </div>
+      <div class="form-field">
+  <label>{{ props.t('employee.employmentType') || 'Employment Type' }} <span class="required">*</span></label>
+  <select 
+    :value="form.employmentType" 
+    @change="$emit('update:form', { ...form, employmentType: $event.target.value })"
+  >
+    <option value="">{{ props.t('common.select') || 'Select type' }}</option>
+    <option value="full-time">{{ props.t('employee.fullTime') || 'Full Time' }}</option>
+    <option value="part-time">{{ props.t('employee.partTime') || 'Part Time' }}</option>
+    <option value="contract">{{ props.t('employee.contract') || 'Contract' }}</option>
+    <option value="intern">{{ props.t('employee.intern') || 'Intern' }}</option>
+  </select>
+  <span class="error" v-if="errors.employmentType">{{ errors.employmentType }}</span>
+</div>
+       <div class="form-field">
+    <label>{{ props.t('employee.hireDate') || 'Hire Date' }} <span class="required">*</span></label>
+    <EthiopianDateSelector 
+      :model-value="form.hireDateEC"
+      @update:model-value="(value) => $emit('update:form', { ...form, hireDateEC: value })"
+      :error="errors.hireDateEC"
+    />
+    <span class="error" v-if="errors.hireDate">{{ errors.hireDateEC }}</span>
+  </div>
       </div>
 
       <!-- ========== ALLOWANCES SECTION ========== -->
@@ -252,14 +252,14 @@
               <label>{{ props.t('employee.companyType') || 'Company Type' }}</label>
               <select :value="item.companyType" @change="updateWorkExperience(idx, 'companyType', $event.target.value)">
                 <option value="">{{ props.t('common.select') || 'Select company type' }}</option>
-                <option value="employee.government">{{ props.t('employee.government') || 'Government' }}</option>
-                <option value="employee.private">{{ props.t('employee.private') || 'Private' }}</option>
-                <option value="employee.military">{{ props.t('employee.military') || 'Military' }}</option>
-                <option value="employee.civil">{{ props.t('employee.civil') || 'Civil' }}</option>
-                <option value="employee.provident_fund">{{ props.t('employee.providentFund') || 'Provident Fund' }}</option>
-                <option value="employee.ngo">{{ props.t('employee.ngo') || 'NGO' }}</option>
-                <option value="employee.international">{{ props.t('employee.international') || 'International Organization' }}</option>
-                <option value="employee.other">{{ props.t('employee.other') || 'Other' }}</option>
+                <option value="government">{{ props.t('employee.government') || 'Government' }}</option>
+                <option value="private">{{ props.t('employee.private') || 'Private' }}</option>
+                <option value="military">{{ props.t('employee.military') || 'Military' }}</option>
+                <option value="civil">{{ props.t('employee.civil') || 'Civil' }}</option>
+                <option value="provident_fund">{{ props.t('employee.providentFund') || 'Provident Fund' }}</option>
+                <option value="ngo">{{ props.t('employee.ngo') || 'NGO' }}</option>
+                <option value="international">{{ props.t('employee.international') || 'International Organization' }}</option>
+                <option value="other">{{ props.t('employee.other') || 'Other' }}</option>
               </select>
             </div>
             <div class="form-field">
@@ -278,32 +278,30 @@
           
           <!-- Row 3: Start Date, End Date, Monthly Salary -->
           <div class="form-row-three">
-            <div class="form-field">
-              <label>{{ props.t('employee.startDate') || 'Start Date' }}</label>
-              <input 
-                type="date" 
-                :value="item.startDate" 
-                @input="updateWorkExperience(idx, 'startDate', $event.target.value)"
-              >
-            </div>
-            <div class="form-field">
-              <label>{{ props.t('employee.endDate') || 'End Date' }}</label>
-              <input 
-                type="date" 
-                :value="item.endDate" 
-                @input="updateWorkExperience(idx, 'endDate', $event.target.value)"
-              >
-            </div>
-            <div class="form-field">
-              <label>{{ props.t('employee.monthlySalary') || 'Monthly Salary (ETB)' }}</label>
-              <input 
-                type="number" 
-                :value="item.monthlySalary" 
-                @input="updateWorkExperience(idx, 'monthlySalary', parseFloat($event.target.value) || 0)"
-                placeholder="0.00"
-                step="100"
-              >
-            </div>
+          <div class="form-field">
+    <label>{{ props.t('employee.startDate') || 'Start Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.startDateEC"
+      @update:model-value="(value) => updateWorkExperience(idx, 'startDateEC', value)"
+    />
+  </div>
+  <div class="form-field">
+    <label>{{ props.t('employee.endDate') || 'End Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.endDateEC"
+      @update:model-value="(value) => updateWorkExperience(idx, 'endDateEC', value)"
+    />
+  </div>
+  <div class="form-field">
+    <label>{{ props.t('employee.monthlySalary') || 'Monthly Salary (ETB)' }}</label>
+    <input 
+      type="number" 
+      :value="item.monthlySalary" 
+      @input="updateWorkExperience(idx, 'monthlySalary', parseFloat($event.target.value) || 0)"
+      placeholder="0.00"
+      step="100"
+    />
+  </div>
           </div>
           
           <!-- Row 4: Salary When Left, Provident Fund Submitted, Provident Fund Start Date -->
@@ -322,18 +320,17 @@
               <label>{{ props.t('employee.providentFundSubmitted') || 'Provident Fund Submitted?' }}</label>
               <select :value="item.providentFundSubmitted" @change="updateWorkExperience(idx, 'providentFundSubmitted', $event.target.value)">
                 <option value="">{{ props.t('common.select') || 'Select' }}</option>
-                <option value="common.yes">{{ props.t('common.yes') || 'Yes' }}</option>
-                <option value="common.no">{{ props.t('common.no') || 'No' }}</option>
+                <option value="yes">{{ props.t('common.yes') || 'Yes' }}</option>
+                <option value="no">{{ props.t('common.no') || 'No' }}</option>
               </select>
             </div>
-            <div class="form-field" v-if="item.providentFundSubmitted === 'common.yes'">
-              <label>{{ props.t('employee.providentFundStartDate') || 'Provident Fund Starting From' }}</label>
-              <input 
-                type="date" 
-                :value="item.providentFundStartDate" 
-                @input="updateWorkExperience(idx, 'providentFundStartDate', $event.target.value)"
-              >
-            </div>
+           <div class="form-field" v-if="item.providentFundSubmitted === 'yes'">
+    <label>{{ props.t('employee.providentFundStartDate') || 'Provident Fund Starting From' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.providentFundStartDateEC"
+      @update:model-value="(value) => updateWorkExperience(idx, 'providentFundStartDateEC', value)"
+    />
+  </div>
             <div class="form-field" v-if="item.providentFundSubmitted !== 'yes'">
               <!-- Empty for alignment -->
             </div>
@@ -386,6 +383,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import EthiopianDateSelector from '@/components/shared/EthiopianDateSelector.vue'
 
 const props = defineProps({
   form: {
@@ -438,6 +436,13 @@ const setWorkDocumentInputRef = (index, el) => {
     workDocumentInputs.value[index] = el
   }
 }
+// Add this watch to monitor form.hireDate changes
+watch(() => props.form.hireDateEC, (newValue, oldValue) => {
+  console.log('EmploymentForm - hireDateEC changed:', {
+    oldValue: oldValue,
+    newValue: newValue
+  })
+}, { immediate: true })
 
 // Computed properties for allowance calculations
 const basicSalaryAmount = computed(() => parseFloat(props.form.basicSalary) || 0)
@@ -470,12 +475,12 @@ const addWorkExperience = () => {
     companyTin: '',
     companyType: '',
     companyAddress: '',
-    startDate: '',
-    endDate: '',
+  startDateEC: '',              // Changed from startDate
+    endDateEC: '',                // Changed from endDate
     monthlySalary: null,
     salaryWhenLeft: null,
     providentFundSubmitted: '',
-    providentFundStartDate: '',
+    providentFundStartDateEC: '',
     terminationReason: '',
     experienceLetterFile: null
   }

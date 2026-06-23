@@ -19,7 +19,8 @@ export interface BirthPlace {
 export interface SpouseInfo {
   tinNumber?: string
   fullName?: string
-  dateOfBirth?: string
+  dateOfBirthEC?: string      // Changed from dateOfBirth
+  dateOfBirthGC?: string       // Gregorian version (optional)
   jobStatus?: string
   companyName?: string
   companyAddress?: string
@@ -31,7 +32,8 @@ export interface SpouseInfo {
 
 export interface Child {
   name: string
-  dateOfBirth: string
+  dateOfBirthEC?: string      // Changed from dateOfBirth
+  dateOfBirthGC?: string       // Gregorian version (optional)
   hasMedicalCondition: boolean
   medicalConditionNotes?: string
   isAdopted: boolean
@@ -50,35 +52,40 @@ export interface Education {
   level: string
   institutionName: string
   institutionAddress: string
-  startDate: string
-  endDate: string
+  startDateEC?: string        // Changed from startDate
+  startDateGC?: string         // Gregorian version (optional)
+  endDateEC?: string          // Changed from endDate
+  endDateGC?: string           // Gregorian version (optional)
   isCurrent: boolean
   certificateUrl?: string
   certificateDocumentId?: string
 }
-
 export interface Training {
   trainingName: string
   institutionName: string
   institutionAddress: string
-  startDate: string
-  endDate: string
+  startDateEC?: string        // Changed from startDate
+  startDateGC?: string         // Gregorian version (optional)
+  endDateEC?: string          // Changed from endDate
+  endDateGC?: string           // Gregorian version (optional)
   certificateUrl?: string
   certificateDocumentId?: string
 }
-
 export interface WorkExperience {
   position: string
   companyName: string
   companyTin?: string
   companyType?: string
   companyAddress: string
-  startDate: string
-  endDate: string
+  startDateEC?: string        // Changed from startDate
+  startDateGC?: string         // Gregorian version (optional)
+  endDateEC?: string          // Changed from endDate
+  endDateGC?: string           // Gregorian version (optional)
   monthlySalary?: number
   salaryWhenLeft?: number
   providentFundSubmitted?: string
-  providentFundStartDate?: string
+  providentFundStartDateEC?: string  // Changed from providentFundStartDate
+  providentFundStartDateGC?: string   // Gregorian version (optional)
   terminationReason?: string
   documentUrl?: string
   documentId?: string
@@ -111,10 +118,13 @@ export interface Guarantor {
   guarantorOfficeName: string
   guarantorOfficeAddress: string
   guaranteeLetterNo: string
-  guaranteeLetterDate: string
+  guaranteeLetterDateEC?: string    // Changed from guaranteeLetterDate
+  guaranteeLetterDateGC?: string     // Gregorian version (optional)
   sdtLetterNo: string
-  sdtLetterDate: string
-  confirmedDate: string
+  sdtLetterDateEC?: string          // Changed from sdtLetterDate
+  sdtLetterDateGC?: string           // Gregorian version (optional)
+  confirmedDateEC?: string          // Changed from confirmedDate
+  confirmedDateGC?: string           // Gregorian version (optional)
   guaranteeLetterUrl?: string
   guaranteeLetterDocumentId?: string
   sdtLetterUrl?: string
@@ -158,6 +168,12 @@ export interface EmergencyContactAddress {
 // Updated Employee interface with all new fields
 export interface Employee {
   id: number
+
+  hireDateEC?: string      // Ethiopian hire date (DD/MM/YYYY)
+  dateOfBirthEC?: string   // Ethiopian date of birth (DD/MM/YYYY)
+  confirmationDateEC?: string
+  terminationDateEC?: string
+
   employeeId: string
   fullName: string
   firstName: string
@@ -721,8 +737,8 @@ async getEmployeeById(id: number) {
 }
 
 
-  /**
- * Create new employee (WITH ALLOWANCES)
+/**
+ * Create new employee (WITH ALLOWANCES & ETHIOPIAN CALENDAR)
  */
 async createEmployee(employeeData: any) {
   try {
@@ -731,7 +747,7 @@ async createEmployee(employeeData: any) {
       firstName: employeeData.firstName,
       lastName: employeeData.lastName,
       middleName: employeeData.middleName,
-       fullNameEnglish: employeeData.fullNameEnglish,  // ← ADD THIS
+      fullNameEnglish: employeeData.fullNameEnglish,
       email: employeeData.email,
       personalEmail: employeeData.personalEmail,
       phone: employeeData.phone,
@@ -740,6 +756,12 @@ async createEmployee(employeeData: any) {
       maritalStatus: employeeData.maritalStatus,
       nationality: employeeData.nationality,
       nationalId: employeeData.nationalId,
+      
+      // ========== ETHIOPIAN CALENDAR DATES (ADD THESE) ==========
+      hireDateEC: employeeData.hireDateEC,
+      dateOfBirthEC: employeeData.dateOfBirthEC,
+      confirmationDateEC: employeeData.confirmationDateEC,
+      terminationDateEC: employeeData.terminationDateEC,
       
       // Employment
       departmentId: employeeData.departmentId,
@@ -760,7 +782,7 @@ async createEmployee(employeeData: any) {
       // Address
       address: employeeData.address,
       
-      // ========== ADD ALL MISSING JSONB FIELDS ==========
+      // JSONB Fields
       currentCompany: employeeData.currentCompany,
       birthPlace: employeeData.birthPlace,
       currentAddress: employeeData.currentAddress,
@@ -787,6 +809,13 @@ async createEmployee(employeeData: any) {
       bankAccount: employeeData.bankAccount
     }
     
+    console.log('📤 API Service - Sending payload:', {
+      hireDateEC: payload.hireDateEC,
+      dateOfBirthEC: payload.dateOfBirthEC,
+      firstName: payload.firstName,
+      lastName: payload.lastName
+    })
+    
     const response = await api.post('/employees', payload)
     return {
       success: true,
@@ -811,7 +840,7 @@ async updateEmployee(id: number, employeeData: any) {
       firstName: employeeData.firstName,
       lastName: employeeData.lastName,
       middleName: employeeData.middleName,
-        fullNameEnglish: employeeData.fullNameEnglish,  // ← ADD THIS
+      fullNameEnglish: employeeData.fullNameEnglish,
       email: employeeData.email,
       personalEmail: employeeData.personalEmail,
       phone: employeeData.phone,
@@ -820,6 +849,12 @@ async updateEmployee(id: number, employeeData: any) {
       maritalStatus: employeeData.maritalStatus,
       nationality: employeeData.nationality,
       nationalId: employeeData.nationalId,
+      
+      // ========== ETHIOPIAN CALENDAR DATES (ADD THESE) ==========
+      hireDateEC: employeeData.hireDateEC,
+      dateOfBirthEC: employeeData.dateOfBirthEC,
+      confirmationDateEC: employeeData.confirmationDateEC,
+      terminationDateEC: employeeData.terminationDateEC,
       
       // Employment
       departmentId: employeeData.departmentId,
@@ -843,7 +878,7 @@ async updateEmployee(id: number, employeeData: any) {
       address: employeeData.address,
       permanentAddress: employeeData.permanentAddress,
       
-      // ========== ADD ALL MISSING JSONB FIELDS ==========
+      // JSONB Fields
       currentCompany: employeeData.currentCompany,
       birthPlace: employeeData.birthPlace,
       currentAddress: employeeData.currentAddress,

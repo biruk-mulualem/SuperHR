@@ -5,12 +5,14 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { getDocumentFolder } = require('../middleware/uploadMiddleware');
 
-
+const {
+  isValidEthiopianDate,
+  convertEthiopianToGregorian
+} = require('../utils/dateConverter');
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-// Generate unique employee code
 const generateEmployeeCode = async () => {
   const lastEmployee = await Employee.findOne({
     order: [['employeeId', 'DESC']],
@@ -25,6 +27,9 @@ const generateEmployeeCode = async () => {
   return 'EMP001';
 };
 
+// ============================================================================
+// RELIABLE EC TO GC CONVERSION (No external dependencies)
+// ============================================================================
 
 
 // Advanced pagination helper
@@ -338,41 +343,113 @@ const getFileUrl = (req, filename, subfolder) => {
 // ============================================================================
 // CREATE EMPLOYEE (FULLY UPDATED WITH ALL JSONB FIELDS + nationalIdDocument)
 // ============================================================================
+
+
 exports.createEmployee = async (req, res) => {
   try {
     // Parse form data - ALL fields from frontend
     const {
-      firstName, lastName, middleName, email, phone, dob, gender,fullNameEnglish,
+      firstName, lastName, middleName, email, phone, dob, gender, fullNameEnglish,
       maritalStatus, nationality, nationalId, departmentId, positionId, managerId,
       employmentType, hireDate, salary, address, workLocation,
       personalEmail, emergencyContact, bankAccount,
       housingAllowance, positionAllowance, transportAllowance, mobileAllowance,
-      // NEW JSONB FIELDS
       birthPlace, mothersFullName, spouseInfo, children, parentSupport,
       education, training, workExperience, languageSkills, otherSkills,
       nationalityAcquisition, healthInfo, legalInfo, guaranteeInfo,
       parentsInfo, emergencyContactAddress, currentCompany, permanentAddress,
-      nationalIdDocument  // ← ADDED
+      nationalIdDocument,
+      
+      // ========== ETHIOPIAN CALENDAR DATES (from frontend) ==========
+      hireDateEC,           // Format: "DD/MM/YYYY"
+      dateOfBirthEC,        // Format: "DD/MM/YYYY"
+      confirmationDateEC,
+      terminationDateEC
     } = req.body;
 
-    // Validate required fields
-    if (!firstName || !lastName || !departmentId || !positionId || !employmentType || !hireDate) {
+    // ========== DEBUG LOGS ==========
+    console.log('🔍 Backend received EC dates:', { 
+      hireDateEC, 
+      dateOfBirthEC,
+      confirmationDateEC,
+      terminationDateEC
+    });
+    console.log('🔍 Basic info:', { firstName, lastName, email, departmentId, positionId, employmentType });
+
+    // ========== VALIDATE EC DATES USING YOUR WORKING CONVERTER ==========
+    // Import the validation function from your dateConverter
+    const { isValidEthiopianDate, convertEthiopianToGregorian } = require('../utils/dateConverter');
+
+    // Validate EC dates if provided
+    if (hireDateEC && !isValidEthiopianDate(hireDateEC)) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: firstName, lastName, departmentId, positionId, employmentType, hireDate'
+        error: `Invalid Ethiopian hire date: ${hireDateEC}. Use format DD/MM/YYYY`
+      });
+    }
+    
+    if (dateOfBirthEC && !isValidEthiopianDate(dateOfBirthEC)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid Ethiopian date of birth: ${dateOfBirthEC}. Use format DD/MM/YYYY`
+      });
+    }
+
+    if (confirmationDateEC && !isValidEthiopianDate(confirmationDateEC)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid Ethiopian confirmation date: ${confirmationDateEC}. Use format DD/MM/YYYY`
+      });
+    }
+
+    if (terminationDateEC && !isValidEthiopianDate(terminationDateEC)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid Ethiopian termination date: ${terminationDateEC}. Use format DD/MM/YYYY`
+      });
+    }
+
+    // ========== CONVERT EC TO GC USING YOUR WORKING CONVERTER ==========
+    const convertedHireDateGC = convertEthiopianToGregorian(hireDateEC);
+    const convertedDobGC = convertEthiopianToGregorian(dateOfBirthEC);
+    const convertedConfirmationGC = convertEthiopianToGregorian(confirmationDateEC);
+    const convertedTerminationGC = convertEthiopianToGregorian(terminationDateEC);
+
+    console.log('✅ Converted GC dates:', { 
+      convertedHireDateGC, 
+      convertedDobGC,
+      convertedConfirmationGC,
+      convertedTerminationGC
+    });
+
+    // Validate required fields
+    if (!firstName || !lastName || !departmentId || !positionId || !employmentType) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: firstName, lastName, departmentId, positionId, employmentType'
+      });
+    }
+
+    // Hire date is required (EC format)
+    if (!hireDateEC) {
+      return res.status(400).json({
+        success: false,
+        error: 'Hire date is required (Ethiopian calendar)'
       });
     }
 
     // Check for duplicate email
-    const existingEmployee = await Employee.findOne({ 
-      where: { workEmail: email } 
-    });
-    
-    if (existingEmployee) {
-      return res.status(400).json({
-        success: false,
-        error: `Employee with email "${email}" already exists.`
+    if (email) {
+      const existingEmployee = await Employee.findOne({ 
+        where: { workEmail: email } 
       });
+      
+      if (existingEmployee) {
+        return res.status(400).json({
+          success: false,
+          error: `Employee with email "${email}" already exists.`
+        });
+      }
     }
     
     // Auto-create or find existing user
@@ -383,7 +460,7 @@ exports.createEmployee = async (req, res) => {
       user = await User.findOne({ where: { email: email } });
     }
     
-    if (!user) {
+    if (!user && email) {
       isNewUser = true;
       const username = await generateUniqueUsername(email, firstName, lastName);
       const defaultPassword = 'password123';
@@ -399,7 +476,7 @@ exports.createEmployee = async (req, res) => {
         roleId: employeeRoleId,
         departmentId: departmentId || null,
         isActive: true,
-        createdBy: req.user.userId
+        createdBy: req.user?.userId || null
       });
     }
 
@@ -409,7 +486,7 @@ exports.createEmployee = async (req, res) => {
     // Parse basic salary
     const basicSalary = salary ? parseFloat(salary) : 0;
     
-    // Use provided allowances or default to 0
+    // Parse allowances
     const finalHousingAllowance = housingAllowance !== undefined && housingAllowance !== '' ? parseFloat(housingAllowance) : 0;
     const finalPositionAllowance = positionAllowance !== undefined && positionAllowance !== '' ? parseFloat(positionAllowance) : 0;
     const finalTransportAllowance = transportAllowance !== undefined && transportAllowance !== '' ? parseFloat(transportAllowance) : 0;
@@ -434,7 +511,7 @@ exports.createEmployee = async (req, res) => {
     let parsedEmergencyContactAddress = emergencyContactAddress;
     let parsedCurrentCompany = currentCompany;
     let parsedPermanentAddress = permanentAddress;
-    let parsedNationalIdDocument = nationalIdDocument;  // ← ADDED
+    let parsedNationalIdDocument = nationalIdDocument;
 
     if (emergencyContact && typeof emergencyContact === 'string') {
       try { parsedEmergencyContact = JSON.parse(emergencyContact); } catch (e) { parsedEmergencyContact = {}; }
@@ -490,38 +567,56 @@ exports.createEmployee = async (req, res) => {
     if (permanentAddress && typeof permanentAddress === 'string') {
       try { parsedPermanentAddress = JSON.parse(permanentAddress); } catch (e) { parsedPermanentAddress = {}; }
     }
-    if (nationalIdDocument && typeof nationalIdDocument === 'string') {  // ← ADDED
+    if (nationalIdDocument && typeof nationalIdDocument === 'string') {
       try { parsedNationalIdDocument = JSON.parse(nationalIdDocument); } catch (e) { parsedNationalIdDocument = {}; }
     }
 
-    // Create employee with ALL fields
+    // Create employee with ALL fields including Ethiopian calendar
     const employee = await Employee.create({
       // Basic Info
       employeeCode,
-      userId: user.userId,
+      userId: user ? user.userId : null,
       firstName,
       lastName,
       middleName: middleName || null,
-      fullNameEnglish: fullNameEnglish || null,  // ← ADD THIS LINE - IT'S MISSING!
-      workEmail: email,
+      fullNameEnglish: fullNameEnglish || null,
+      workEmail: email || null,
       personalEmail: personalEmail || null,
-      phoneNumber: phone,
-      dateOfBirth: dob || null,
+      phoneNumber: phone || null,
+      
+      // ========== DATES ==========
+      // Ethiopian Calendar (Primary - from frontend)
+      hireDateEC: hireDateEC || null,
+      dateOfBirthEC: dateOfBirthEC || null,
+      confirmationDateEC: confirmationDateEC || null,
+      terminationDateEC: terminationDateEC || null,
+      
+      // Gregorian Calendar (Secondary - converted by your working converter)
+      hireDateGC: convertedHireDateGC,
+      dateOfBirthGC: convertedDobGC,
+      confirmationDateGC: convertedConfirmationGC,
+      terminationDateGC: convertedTerminationGC,
+      
+      // Backward compatibility (old fields)
+      hireDate: convertedHireDateGC,
+      dateOfBirth: convertedDobGC,
+      confirmationDate: convertedConfirmationGC,
+      terminationDate: convertedTerminationGC,
+      
       gender: gender || null,
       maritalStatus: maritalStatus || null,
       nationality: nationality || null,
       nationalId: nationalId || null,
       
       // National ID Document
-      nationalIdDocument: parsedNationalIdDocument || {},  // ← ADDED
+      nationalIdDocument: parsedNationalIdDocument || {},
       
       // Employment
-      departmentId: parseInt(departmentId),
-      positionId: parseInt(positionId),
+      departmentId: departmentId ? parseInt(departmentId) : null,
+      positionId: positionId ? parseInt(positionId) : null,
       managerId: managerId ? parseInt(managerId) : null,
-      employmentType: employmentType,
+      employmentType: employmentType || null,
       employmentStatus: 'active',
-      hireDate: hireDate,
       workLocation: workLocation || null,
       
       // Salary & Allowances
@@ -534,6 +629,7 @@ exports.createEmployee = async (req, res) => {
       // Addresses
       currentAddress: address ? { street: address } : {},
       permanentAddress: parsedPermanentAddress || {},
+      birthPlace: parsedBirthPlace || {},
       
       // Financial
       bankAccount: parsedBankAccount || {},
@@ -548,9 +644,6 @@ exports.createEmployee = async (req, res) => {
       children: parsedChildren || [],
       parentSupport: parsedParentSupport || [],
       parentsInfo: parsedParentsInfo || {},
-      
-      // Birth Place
-      birthPlace: parsedBirthPlace || {},
       
       // Education & Training
       education: parsedEducation || [],
@@ -579,12 +672,29 @@ exports.createEmployee = async (req, res) => {
       isActive: true
     });
 
+    console.log('✅ Employee created successfully with ID:', employee.employeeId);
+    console.log('📅 Stored EC dates:', { 
+      hireDateEC: employee.hireDateEC, 
+      dateOfBirthEC: employee.dateOfBirthEC 
+    });
+    console.log('📅 Stored GC dates:', { 
+      hireDateGC: employee.hireDateGC, 
+      dateOfBirthGC: employee.dateOfBirthGC 
+    });
+
     // Prepare response
     const responseData = {
       id: employee.employeeId,
       employeeId: employee.employeeCode,
       fullName: `${employee.firstName} ${employee.lastName}`,
       profilePicture: null,
+      
+      // Return both calendars in response
+      hireDateEC: employee.hireDateEC,
+      hireDateGC: employee.hireDateGC,
+      dateOfBirthEC: employee.dateOfBirthEC,
+      dateOfBirthGC: employee.dateOfBirthGC,
+      
       allowances: {
         housing: parseFloat(employee.housingAllowance) || 0,
         position: parseFloat(employee.positionAllowance) || 0,
@@ -595,19 +705,21 @@ exports.createEmployee = async (req, res) => {
                (parseFloat(employee.transportAllowance) || 0) +
                (parseFloat(employee.mobileAllowance) || 0),
       },
-      user: {
+      user: user ? {
         id: user.userId,
         username: user.username,
         email: user.email,
         roleId: user.roleId,
         isNewUser: isNewUser
-      }
+      } : null
     };
     
     if (isNewUser) {
       responseData.message = `Employee created successfully. Default password is "password123".`;
-    } else {
+    } else if (user) {
       responseData.message = 'Employee created and linked to existing user successfully';
+    } else {
+      responseData.message = 'Employee created successfully without user account';
     }
 
     res.status(201).json({
@@ -620,6 +732,7 @@ exports.createEmployee = async (req, res) => {
     console.error('=== CREATE EMPLOYEE ERROR DETAILS ===');
     console.error('Error name:', error.name);
     console.error('Error message:', error.message);
+    console.error('Full error:', error);
     
     if (error.name === 'SequelizeValidationError') {
       return res.status(400).json({
@@ -646,7 +759,6 @@ exports.createEmployee = async (req, res) => {
     });
   }
 };
-
 // ============================================================================
 // UPDATE EMPLOYEE (WITH ALLOWANCES & COMPENSATION HISTORY + nationalIdDocument)
 // ============================================================================
@@ -1122,9 +1234,6 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
 // GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
 // ============================================================================
 
-// ============================================================================
-// GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
-// ============================================================================
 exports.getEmployees = async (req, res) => {
   try {
     const {
@@ -1152,7 +1261,7 @@ exports.getEmployees = async (req, res) => {
             { firstName: { [Op.iLike]: `%${searchTerm}%` } },
             { lastName: { [Op.iLike]: `%${searchTerm}%` } },
             { middleName: { [Op.iLike]: `%${searchTerm}%` } },
-            { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },  // ← ADD for search
+            { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },
             { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
             { phoneNumber: { [Op.iLike]: `%${searchTerm}%` } },
             { nationalId: { [Op.iLike]: `%${searchTerm}%` } },
@@ -1166,7 +1275,7 @@ exports.getEmployees = async (req, res) => {
             { firstName: { [Op.iLike]: `%${word}%` } },
             { lastName: { [Op.iLike]: `%${word}%` } },
             { middleName: { [Op.iLike]: `%${word}%` } },
-            { fullNameEnglish: { [Op.iLike]: `%${word}%` } },  // ← ADD for search
+            { fullNameEnglish: { [Op.iLike]: `%${word}%` } },
             { employeeCode: { [Op.iLike]: `%${word}%` } }
           ]
         }));
@@ -1194,20 +1303,24 @@ exports.getEmployees = async (req, res) => {
     // Pagination
     const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
     
-    // Sorting
-    const allowedSortFields = ['employeeId', 'firstName', 'lastName', 'fullNameEnglish', 'hireDate', 'employmentStatus', 'basicSalary'];  // ← ADD fullNameEnglish
+    // Sorting - use GC dates for sorting
+    const allowedSortFields = ['employeeId', 'firstName', 'lastName', 'fullNameEnglish', 'hireDateGC', 'employmentStatus', 'basicSalary'];
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'employeeId';
     const sortDirection = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
-    // Execute query - ADD fullNameEnglish to attributes
+    // Execute query with BOTH calendars
     const { count, rows: employees } = await Employee.findAndCountAll({
       where: whereCondition,
       attributes: [
-        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish',  // ← ADD fullNameEnglish
+        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish',
         'workEmail', 'phoneNumber', 'employmentType', 'employmentStatus',
-        'hireDate', 'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId',
+        // Gregorian dates (for sorting/backend)
+        'hireDateGC', 'dateOfBirthGC', 'confirmationDateGC', 'terminationDateGC',
+        // Ethiopian dates (for display)
+        'hireDateEC', 'dateOfBirthEC', 'confirmationDateEC', 'terminationDateEC',
+        'basicSalary', 'profilePictureUrl', 'departmentId', 'positionId',
         'housingAllowance', 'positionAllowance', 'transportAllowance', 'mobileAllowance',
-        'nationalId', 'nationality', 'gender', 'maritalStatus', 'dateOfBirth'
+        'nationalId', 'nationality', 'gender', 'maritalStatus'
       ],
       include: [
         { model: Department, attributes: ['departmentId', 'name', 'code'], required: false },
@@ -1221,7 +1334,7 @@ exports.getEmployees = async (req, res) => {
       subQuery: false
     });
 
-    // Format employees - ADD fullNameEnglish to response
+    // Format employees with BOTH calendars
     const formattedEmployees = employees.map(emp => {
       const housing = parseFloat(emp.housingAllowance) || 0;
       const position = parseFloat(emp.positionAllowance) || 0;
@@ -1234,7 +1347,7 @@ exports.getEmployees = async (req, res) => {
         id: emp.employeeId,
         employeeId: emp.employeeCode,
         fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
-        fullNameEnglish: emp.fullNameEnglish,  // ← ADD THIS LINE
+        fullNameEnglish: emp.fullNameEnglish,
         firstName: emp.firstName,
         lastName: emp.lastName,
         middleName: emp.middleName,
@@ -1244,7 +1357,16 @@ exports.getEmployees = async (req, res) => {
         nationality: emp.nationality,
         gender: emp.gender,
         maritalStatus: emp.maritalStatus,
-        dateOfBirth: emp.dateOfBirth,
+        // Ethiopian Calendar dates (Primary - for display)
+        hireDateEC: emp.hireDateEC,
+        dateOfBirthEC: emp.dateOfBirthEC,
+        confirmationDateEC: emp.confirmationDateEC,
+        terminationDateEC: emp.terminationDateEC,
+        // Gregorian Calendar dates (Secondary - for sorting)
+        hireDateGC: emp.hireDateGC,
+        dateOfBirthGC: emp.dateOfBirthGC,
+        confirmationDateGC: emp.confirmationDateGC,
+        terminationDateGC: emp.terminationDateGC,
         departmentId: emp.departmentId,
         departmentName: emp.Department?.name,
         departmentCode: emp.Department?.code,
@@ -1252,7 +1374,6 @@ exports.getEmployees = async (req, res) => {
         positionId: emp.positionId,
         employmentType: emp.employmentType,
         status: emp.employmentStatus,
-        hireDate: emp.hireDate,
         basicSalary: emp.basicSalary,
         housingAllowance: housing,
         positionAllowance: position,
@@ -1296,9 +1417,9 @@ exports.getEmployeeById = async (req, res) => {
     const employee = await Employee.findByPk(id, {
       attributes: [
         // Primary and basic info
-        'employeeId', 'employeeCode', 'userId','fullNameEnglish',
+        'employeeId', 'employeeCode', 'userId', 'fullNameEnglish',
         'firstName', 'lastName', 'middleName',
-        'dateOfBirth', 'gender', 'maritalStatus', 'nationality', 'nationalId',
+        'gender', 'maritalStatus', 'nationality', 'nationalId',
         'personalEmail', 'workEmail', 'phoneNumber',
         
         // Addresses
@@ -1310,7 +1431,12 @@ exports.getEmployeeById = async (req, res) => {
         // Employment
         'departmentId', 'positionId', 'managerId',
         'employmentType', 'employmentStatus', 'shiftType',
-        'hireDate', 'confirmationDate', 'terminationDate',
+        
+        // ========== DATES - BOTH CALENDARS ==========
+        // Ethiopian Calendar (Primary - for display)
+        'hireDateEC', 'dateOfBirthEC', 'confirmationDateEC', 'terminationDateEC',
+        // Gregorian Calendar (Secondary - for backend)
+        'hireDateGC', 'dateOfBirthGC', 'confirmationDateGC', 'terminationDateGC',
         
         // Salary & Allowances
         'basicSalary', 'housingAllowance', 'positionAllowance', 
@@ -1357,7 +1483,7 @@ exports.getEmployeeById = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Employee not found' });
     }
 
-    // Fetch documents - REMOVED subType from the query
+    // Fetch documents
     const documents = await EmployeeDocument.findAll({
       where: { employeeId: employee.employeeId },
       attributes: ['documentId', 'documentType', 'index', 'documentName', 'fileUrl', 'fileSize', 'mimeType', 'created_at'],
@@ -1366,11 +1492,10 @@ exports.getEmployeeById = async (req, res) => {
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-    // Group documents by type, handling indexed documents
+    // Group documents
     const groupedDocuments = {};
 
     documents.forEach(doc => {
-      // Ensure full URL
       const fullUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${baseUrl}${doc.fileUrl}`;
       
       const docData = {
@@ -1384,19 +1509,13 @@ exports.getEmployeeById = async (req, res) => {
         uploadedAt: doc.created_at
       };
 
-      // If document has an index (for children, education, training, work, guarantee)
       if (doc.index !== null && doc.index !== undefined) {
-        // Create an indexed key like 'child_profile_0', 'child_birth_certificate_0', etc.
         const indexedKey = `${doc.documentType}_${doc.index}`;
         groupedDocuments[indexedKey] = docData;
-      } 
-      // For non-indexed documents
-      else {
-        // If multiple documents of same type (like guarantee_letters), store as array
+      } else {
         if (groupedDocuments[doc.documentType] && Array.isArray(groupedDocuments[doc.documentType])) {
           groupedDocuments[doc.documentType].push(docData);
         } else if (groupedDocuments[doc.documentType]) {
-          // Convert to array if we already have one
           const existing = groupedDocuments[doc.documentType];
           groupedDocuments[doc.documentType] = [existing, docData];
         } else {
@@ -1405,7 +1524,7 @@ exports.getEmployeeById = async (req, res) => {
       }
     });
 
-    // Parse JSON fields if they are stored as strings
+    // Parse JSON fields
     let currentAddress = employee.currentAddress;
     let permanentAddress = employee.permanentAddress;
     let birthPlace = employee.birthPlace;
@@ -1427,67 +1546,27 @@ exports.getEmployeeById = async (req, res) => {
     let guaranteeInfo = employee.guaranteeInfo;
     let nationalIdDocument = employee.nationalIdDocument;
 
-    // Parse stringified JSON
-    if (typeof currentAddress === 'string') {
-      try { currentAddress = JSON.parse(currentAddress); } catch (e) { currentAddress = {}; }
-    }
-    if (typeof permanentAddress === 'string') {
-      try { permanentAddress = JSON.parse(permanentAddress); } catch (e) { permanentAddress = {}; }
-    }
-    if (typeof birthPlace === 'string') {
-      try { birthPlace = JSON.parse(birthPlace); } catch (e) { birthPlace = {}; }
-    }
-    if (typeof emergencyContact === 'string') {
-      try { emergencyContact = JSON.parse(emergencyContact); } catch (e) { emergencyContact = {}; }
-    }
-    if (typeof emergencyContactAddress === 'string') {
-      try { emergencyContactAddress = JSON.parse(emergencyContactAddress); } catch (e) { emergencyContactAddress = {}; }
-    }
-    if (typeof bankAccount === 'string') {
-      try { bankAccount = JSON.parse(bankAccount); } catch (e) { bankAccount = {}; }
-    }
-    if (typeof currentCompany === 'string') {
-      try { currentCompany = JSON.parse(currentCompany); } catch (e) { currentCompany = {}; }
-    }
-    if (typeof spouseInfo === 'string') {
-      try { spouseInfo = JSON.parse(spouseInfo); } catch (e) { spouseInfo = {}; }
-    }
-    if (typeof children === 'string') {
-      try { children = JSON.parse(children); } catch (e) { children = []; }
-    }
-    if (typeof parentSupport === 'string') {
-      try { parentSupport = JSON.parse(parentSupport); } catch (e) { parentSupport = []; }
-    }
-    if (typeof parentsInfo === 'string') {
-      try { parentsInfo = JSON.parse(parentsInfo); } catch (e) { parentsInfo = {}; }
-    }
-    if (typeof education === 'string') {
-      try { education = JSON.parse(education); } catch (e) { education = []; }
-    }
-    if (typeof training === 'string') {
-      try { training = JSON.parse(training); } catch (e) { training = []; }
-    }
-    if (typeof workExperience === 'string') {
-      try { workExperience = JSON.parse(workExperience); } catch (e) { workExperience = []; }
-    }
-    if (typeof languageSkills === 'string') {
-      try { languageSkills = JSON.parse(languageSkills); } catch (e) { languageSkills = []; }
-    }
-    if (typeof nationalityAcquisition === 'string') {
-      try { nationalityAcquisition = JSON.parse(nationalityAcquisition); } catch (e) { nationalityAcquisition = {}; }
-    }
-    if (typeof healthInfo === 'string') {
-      try { healthInfo = JSON.parse(healthInfo); } catch (e) { healthInfo = {}; }
-    }
-    if (typeof legalInfo === 'string') {
-      try { legalInfo = JSON.parse(legalInfo); } catch (e) { legalInfo = {}; }
-    }
-    if (typeof guaranteeInfo === 'string') {
-      try { guaranteeInfo = JSON.parse(guaranteeInfo); } catch (e) { guaranteeInfo = []; }
-    }
-    if (typeof nationalIdDocument === 'string') {
-      try { nationalIdDocument = JSON.parse(nationalIdDocument); } catch (e) { nationalIdDocument = {}; }
-    }
+    // Parse stringified JSON (same as before)
+    if (typeof currentAddress === 'string') { try { currentAddress = JSON.parse(currentAddress); } catch (e) { currentAddress = {}; } }
+    if (typeof permanentAddress === 'string') { try { permanentAddress = JSON.parse(permanentAddress); } catch (e) { permanentAddress = {}; } }
+    if (typeof birthPlace === 'string') { try { birthPlace = JSON.parse(birthPlace); } catch (e) { birthPlace = {}; } }
+    if (typeof emergencyContact === 'string') { try { emergencyContact = JSON.parse(emergencyContact); } catch (e) { emergencyContact = {}; } }
+    if (typeof emergencyContactAddress === 'string') { try { emergencyContactAddress = JSON.parse(emergencyContactAddress); } catch (e) { emergencyContactAddress = {}; } }
+    if (typeof bankAccount === 'string') { try { bankAccount = JSON.parse(bankAccount); } catch (e) { bankAccount = {}; } }
+    if (typeof currentCompany === 'string') { try { currentCompany = JSON.parse(currentCompany); } catch (e) { currentCompany = {}; } }
+    if (typeof spouseInfo === 'string') { try { spouseInfo = JSON.parse(spouseInfo); } catch (e) { spouseInfo = {}; } }
+    if (typeof children === 'string') { try { children = JSON.parse(children); } catch (e) { children = []; } }
+    if (typeof parentSupport === 'string') { try { parentSupport = JSON.parse(parentSupport); } catch (e) { parentSupport = []; } }
+    if (typeof parentsInfo === 'string') { try { parentsInfo = JSON.parse(parentsInfo); } catch (e) { parentsInfo = {}; } }
+    if (typeof education === 'string') { try { education = JSON.parse(education); } catch (e) { education = []; } }
+    if (typeof training === 'string') { try { training = JSON.parse(training); } catch (e) { training = []; } }
+    if (typeof workExperience === 'string') { try { workExperience = JSON.parse(workExperience); } catch (e) { workExperience = []; } }
+    if (typeof languageSkills === 'string') { try { languageSkills = JSON.parse(languageSkills); } catch (e) { languageSkills = []; } }
+    if (typeof nationalityAcquisition === 'string') { try { nationalityAcquisition = JSON.parse(nationalityAcquisition); } catch (e) { nationalityAcquisition = {}; } }
+    if (typeof healthInfo === 'string') { try { healthInfo = JSON.parse(healthInfo); } catch (e) { healthInfo = {}; } }
+    if (typeof legalInfo === 'string') { try { legalInfo = JSON.parse(legalInfo); } catch (e) { legalInfo = {}; } }
+    if (typeof guaranteeInfo === 'string') { try { guaranteeInfo = JSON.parse(guaranteeInfo); } catch (e) { guaranteeInfo = []; } }
+    if (typeof nationalIdDocument === 'string') { try { nationalIdDocument = JSON.parse(nationalIdDocument); } catch (e) { nationalIdDocument = {}; } }
 
     // Fix profile picture URL
     let profilePictureUrl = employee.profilePictureUrl;
@@ -1503,7 +1582,7 @@ exports.getEmployeeById = async (req, res) => {
     const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
     const grossPay = (parseFloat(employee.basicSalary) || 0) + totalAllowances;
 
-    // ========== RETURN ALL DATA WITH INDEXED DOCUMENTS ==========
+    // Return response with BOTH calendars
     res.status(200).json({
       success: true,
       data: {
@@ -1518,7 +1597,8 @@ exports.getEmployeeById = async (req, res) => {
         lastName: employee.lastName,
         middleName: employee.middleName,
         fullName: `${employee.firstName} ${employee.middleName ? employee.middleName + ' ' : ''}${employee.lastName}`,
-         fullNameEnglish: employee.fullNameEnglish,  // ← ADD THIS
+        fullNameEnglish: employee.fullNameEnglish,
+        
         // Contact
         email: employee.workEmail,
         workEmail: employee.workEmail,
@@ -1527,12 +1607,23 @@ exports.getEmployeeById = async (req, res) => {
         phoneNumber: employee.phoneNumber,
         
         // Personal Details
-        dob: employee.dateOfBirth,
-        dateOfBirth: employee.dateOfBirth,
         gender: employee.gender,
         maritalStatus: employee.maritalStatus,
         nationality: employee.nationality,
         nationalId: employee.nationalId,
+        
+        // ========== DATES - BOTH CALENDARS ==========
+        // Ethiopian Calendar (Primary - for display to users)
+        hireDateEC: employee.hireDateEC,
+        dateOfBirthEC: employee.dateOfBirthEC,
+        confirmationDateEC: employee.confirmationDateEC,
+        terminationDateEC: employee.terminationDateEC,
+        
+        // Gregorian Calendar (Secondary - for backend sorting/reports)
+        hireDateGC: employee.hireDateGC,
+        dateOfBirthGC: employee.dateOfBirthGC,
+        confirmationDateGC: employee.confirmationDateGC,
+        terminationDateGC: employee.terminationDateGC,
         
         // National ID Document
         nationalIdDocument: nationalIdDocument || null,
@@ -1560,9 +1651,6 @@ exports.getEmployeeById = async (req, res) => {
         employmentStatus: employee.employmentStatus,
         status: employee.employmentStatus,
         shiftType: employee.shiftType,
-        hireDate: employee.hireDate,
-        confirmationDate: employee.confirmationDate,
-        terminationDate: employee.terminationDate,
         
         // Salary & Allowances
         salary: employee.basicSalary,
@@ -3041,7 +3129,7 @@ exports.importEmployees = async (req, res) => {
           firstName: empData.firstName,
           lastName: empData.lastName,
           middleName: empData.middleName || null,
-            fullNameEnglish: fullNameEnglish || null,  // ← ADD THIS LINE
+            fullNameEnglish: empData.fullNameEnglish || null,
           workEmail: empData.email,
           personalEmail: empData.personalEmail || null,
           phoneNumber: empData.phone,
@@ -3118,12 +3206,15 @@ exports.importEmployees = async (req, res) => {
 
 
 // ==================== GET EMPLOYEE COMPENSATION HISTORY ====================
+// ==================== GET EMPLOYEE COMPENSATION HISTORY ====================
 exports.getEmployeeCompensationHistory = async (req, res) => {
   try {
     const { employeeId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
 
-    // Use CompensationHistory directly (not db.CompensationHistory)
+    // Import your date converter functions
+    const { convertGregorianToEthiopian, getEthiopianMonthName } = require('../utils/dateConverter');
+
     const histories = await CompensationHistory.findAndCountAll({
       where: { employee_id: employeeId },
       include: [
@@ -3143,20 +3234,64 @@ exports.getEmployeeCompensationHistory = async (req, res) => {
       offset: parseInt(offset)
     });
 
-    // Format response for frontend
-    const formattedHistories = histories.rows.map(history => ({
-      id: history.history_id,
-      employeeId: history.employee_id,
-      component: history.component_type,
-      oldValue: parseFloat(history.old_value),
-      newValue: parseFloat(history.new_value),
-      percentageChange: parseFloat(history.change_percent),
-      changeDate: history.effective_date,
-      reason: history.reason,
-      submittedBy: history.approver?.fullName || 'System',
-      changeType: history.new_value > history.old_value ? 'increase' : 'decrease',
-      difference: Math.abs(parseFloat(history.new_value) - parseFloat(history.old_value))
-    }));
+    // Format response for frontend with Ethiopian Calendar dates
+    const formattedHistories = histories.rows.map(history => {
+      // Convert Gregorian date to Ethiopian Calendar
+      let ethDate = null;
+      let ethiopianDateStr = null;
+      let ethDateParts = null;
+      
+      if (history.effective_date) {
+        try {
+          const dateObj = new Date(history.effective_date);
+          if (!isNaN(dateObj.getTime())) {
+            ethDate = convertGregorianToEthiopian(dateObj);
+            if (ethDate) {
+              ethiopianDateStr = `${String(ethDate.day).padStart(2, '0')}/${String(ethDate.month).padStart(2, '0')}/${ethDate.year}`;
+              ethDateParts = {
+                day: String(ethDate.day).padStart(2, '0'),
+                month: ethDate.month,
+                monthName: getEthiopianMonthName(ethDate.month, 'am'),
+                monthNameEn: getEthiopianMonthName(ethDate.month, 'en'),
+                year: ethDate.year
+              };
+            }
+          }
+        } catch (e) {
+          console.error('Error converting date:', e);
+        }
+      }
+
+      // Determine change type
+      const oldVal = parseFloat(history.old_value) || 0;
+      const newVal = parseFloat(history.new_value) || 0;
+      const changeType = newVal > oldVal ? 'increase' : (newVal < oldVal ? 'decrease' : 'no_change');
+
+      return {
+        id: history.history_id,
+        employeeId: history.employee_id,
+        component: history.component_type,
+        componentKey: history.component_type.replace(/\s+/g, '').toLowerCase(),
+        oldValue: oldVal,
+        newValue: newVal,
+        percentageChange: parseFloat(history.change_percent) || 0,
+        // Gregorian date (for backend/sorting)
+        changeDate: history.effective_date,
+        changeDateGC: history.effective_date,
+        // Ethiopian Calendar date (for display)
+        changeDateEC: ethiopianDateStr,
+        changeDateECParts: ethDateParts,
+        // For timeline display
+        changeDay: ethDateParts?.day || '--',
+        changeMonth: ethDateParts?.monthName || '---',
+        changeMonthEn: ethDateParts?.monthNameEn || '---',
+        changeYear: ethDateParts?.year || '----',
+        reason: history.reason,
+        submittedBy: history.approver?.fullName || 'System',
+        changeType: changeType,
+        difference: Math.abs(newVal - oldVal)
+      };
+    });
 
     res.json({
       success: true,
@@ -3174,7 +3309,6 @@ exports.getEmployeeCompensationHistory = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 
 // ============================================================================

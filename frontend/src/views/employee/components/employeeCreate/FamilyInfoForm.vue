@@ -33,13 +33,13 @@
           >
         </div>
         <div class="form-field">
-          <label>{{ props.t('family.dateOfBirth') || 'Date of Birth' }}</label>
-          <input 
-            type="date" 
-            :value="spouseInfo.dateOfBirth" 
-            @input="updateSpouse('dateOfBirth', $event.target.value)"
-          >
-        </div>
+    <label>{{ props.t('family.dateOfBirth') || 'Date of Birth' }}</label>
+    <EthiopianDateSelector 
+      :model-value="spouseInfo.dateOfBirthEC"
+      @update:model-value="(value) => updateSpouse('dateOfBirthEC', value)"
+      :error="errors?.spouseDateOfBirthEC"
+    />
+  </div>
       </div>
       
       <!-- Row 2: Job Status, Company Name, Company Address -->
@@ -48,11 +48,11 @@
           <label>{{ props.t('family.jobStatus') || 'Job Status' }}</label>
           <select :value="spouseInfo.jobStatus" @change="updateSpouse('jobStatus', $event.target.value)">
             <option value="">{{ props.t('common.select') || 'Select' }}</option>
-            <option value="family.government">{{ props.t('family.government') || 'Government' }}</option>
-            <option value="family.private">{{ props.t('family.private') || 'Private Company' }}</option>
-            <option value="family.unemployed">{{ props.t('family.unemployed') || 'Unemployed' }}</option>
-            <option value="family.business">{{ props.t('family.business') || 'Own Business' }}</option>
-            <option value="family.other">{{ props.t('family.other') || 'Other' }}</option>
+            <option value="government">{{ props.t('family.government') || 'Government' }}</option>
+            <option value="private">{{ props.t('family.private') || 'Private Company' }}</option>
+            <option value="unemployed">{{ props.t('family.unemployed') || 'Unemployed' }}</option>
+            <option value="business">{{ props.t('family.business') || 'Own Business' }}</option>
+            <option value="other">{{ props.t('family.other') || 'Other' }}</option>
           </select>
         </div>
         <div class="form-field">
@@ -128,14 +128,13 @@
               :placeholder="props.t('family.childNamePlaceholder') || 'Child\'s name'"
             >
           </div>
-          <div class="form-field">
-            <label>{{ props.t('family.dateOfBirth') || 'Date of Birth' }}</label>
-            <input 
-              type="date" 
-              :value="child.dateOfBirth" 
-              @input="updateChild(idx, 'dateOfBirth', $event.target.value)"
-            >
-          </div>
+        <div class="form-field">
+  <label>{{ props.t('family.dateOfBirth') || 'Date of Birth' }}</label>
+  <EthiopianDateSelector 
+    :model-value="child.dateOfBirthEC"
+    @update:model-value="(value) => updateChild(idx, 'dateOfBirthEC', value)"
+  />
+</div>
           <div class="form-field">
             <!-- Empty for alignment -->
           </div>
@@ -378,6 +377,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import EthiopianDateSelector from '@/components/shared/EthiopianDateSelector.vue'
 
 const props = defineProps({
   spouseInfo: {
@@ -422,9 +422,21 @@ const childDocumentRefs = ref({})
 const childProfileRefs = ref({})
 
 // Helper function to calculate age
-const calculateAge = (dateOfBirth) => {
-  if (!dateOfBirth) return null
-  const birthDate = new Date(dateOfBirth)
+// Update the calculateAge function to handle Ethiopian dates
+const calculateAge = (dateOfBirthEC) => {
+  if (!dateOfBirthEC) return null
+  
+  // Parse Ethiopian date (DD/MM/YYYY)
+  const parts = dateOfBirthEC.split('/')
+  if (parts.length !== 3) return null
+  
+  const day = parseInt(parts[0])
+  const month = parseInt(parts[1]) - 1 // JavaScript months are 0-indexed
+  const year = parseInt(parts[2])
+  
+  // Create a date object (this is approximate - for age warnings only)
+  // For accurate age, you'd need to convert EC to GC first
+  const birthDate = new Date(year, month, day)
   const today = new Date()
   let age = today.getFullYear() - birthDate.getFullYear()
   const monthDiff = today.getMonth() - birthDate.getMonth()
@@ -494,7 +506,7 @@ const addChild = () => {
   isUpdating = true
   const newChildren = [...localChildren.value, {
     name: '',
-    dateOfBirth: '',
+     dateOfBirthEC: '',    // Changed from dateOfBirth
     hasMedicalCondition: false,
     medicalConditionNotes: '',
     isAdopted: false,

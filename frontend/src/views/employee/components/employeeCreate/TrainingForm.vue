@@ -53,24 +53,22 @@
           </div>
         </div>
         
-        <div class="form-row">
-          <div class="form-field">
-            <label>{{ props.t('training.startDate') || 'Start Date' }}</label>
-            <input 
-              type="date" 
-              :value="item.startDate" 
-              @input="updateTraining(idx, 'startDate', $event.target.value)"
-            >
-          </div>
-          <div class="form-field">
-            <label>{{ props.t('training.endDate') || 'End Date' }}</label>
-            <input 
-              type="date" 
-              :value="item.endDate" 
-              @input="updateTraining(idx, 'endDate', $event.target.value)"
-            >
-          </div>
-        </div>
+      <div class="form-row">
+  <div class="form-field">
+    <label>{{ props.t('training.startDate') || 'Start Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.startDateEC"
+      @update:model-value="(value) => updateTraining(idx, 'startDateEC', value)"
+    />
+  </div>
+  <div class="form-field">
+    <label>{{ props.t('training.endDate') || 'End Date' }}</label>
+    <EthiopianDateSelector 
+      :model-value="item.endDateEC"
+      @update:model-value="(value) => updateTraining(idx, 'endDateEC', value)"
+    />
+  </div>
+</div>
         
         <div class="form-row">
           <div class="form-field">
@@ -104,6 +102,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import EthiopianDateSelector from '@/components/shared/EthiopianDateSelector.vue'
 
 const props = defineProps({
   training: {
@@ -138,8 +137,8 @@ const addTraining = () => {
     trainingName: '',
     institutionName: '',
     institutionAddress: '',
-    startDate: '',
-    endDate: '',
+     startDateEC: '',    // Changed from startDate
+    endDateEC: '',      // Changed from endDate
     certificateFile: null
   }]
   localTraining.value = newTraining

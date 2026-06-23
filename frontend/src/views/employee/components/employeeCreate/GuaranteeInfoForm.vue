@@ -76,13 +76,12 @@
               >
             </div>
             <div class="form-field">
-              <label>{{ props.t('guarantee.letterDate') || 'Guarantee Letter Date' }}</label>
-              <input 
-                type="date" 
-                :value="guarantor.guaranteeLetterDate" 
-                @input="updateGuarantor(index, 'guaranteeLetterDate', $event.target.value)"
-              >
-            </div>
+  <label>{{ props.t('guarantee.letterDate') || 'Guarantee Letter Date' }}</label>
+  <EthiopianDateSelector 
+    :model-value="guarantor.guaranteeLetterDateEC"
+    @update:model-value="(value) => updateGuarantor(index, 'guaranteeLetterDateEC', value)"
+  />
+</div>
             <div class="form-field">
               <label>{{ props.t('guarantee.letterDocument') || 'Guarantee Letter Document' }}</label>
               <div class="file-upload-row">
@@ -115,14 +114,13 @@
                 :placeholder="props.t('guarantee.sdtNumberPlaceholder') || 'SDT letter number'"
               >
             </div>
-            <div class="form-field">
-              <label>{{ props.t('guarantee.sdtLetterDate') || 'SDT Letter Date' }}</label>
-              <input 
-                type="date" 
-                :value="guarantor.sdtLetterDate" 
-                @input="updateGuarantor(index, 'sdtLetterDate', $event.target.value)"
-              >
-            </div>
+           <div class="form-field">
+  <label>{{ props.t('guarantee.sdtLetterDate') || 'SDT Letter Date' }}</label>
+  <EthiopianDateSelector 
+    :model-value="guarantor.sdtLetterDateEC"
+    @update:model-value="(value) => updateGuarantor(index, 'sdtLetterDateEC', value)"
+  />
+</div>
             <div class="form-field">
               <label>{{ props.t('guarantee.sdtLetterDocument') || 'SDT Letter Document' }}</label>
               <div class="file-upload-row">
@@ -164,6 +162,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import EthiopianDateSelector from '@/components/shared/EthiopianDateSelector.vue'
 
 const props = defineProps({
   guaranteeInfo: {
@@ -204,10 +203,10 @@ const addGuarantor = () => {
     guarantorOfficeName: '',
     guarantorOfficeAddress: '',
     guaranteeLetterNo: '',
-    guaranteeLetterDate: '',
+    guaranteeLetterDateEC: '',    // Changed from guaranteeLetterDate
     sdtLetterNo: '',
-    sdtLetterDate: '',
-    confirmedDate: '',
+    sdtLetterDateEC: '',          // Changed from sdtLetterDate
+    confirmedDateEC: '',          // Changed from confirmedDate
     guaranteeLetterFile: null,
     sdtLetterFile: null,
     otherDocumentFile: null
