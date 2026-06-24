@@ -3,14 +3,19 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from './interceptor'
 
-export type UserRole = 'admin' | 'hr' | 'finance' | 'employee' | 'attendance' | 'store'
+// ==================== TYPES ====================
+// Remove the hardcoded type definition
+// export type UserRole = 'admin' | 'hr' | 'finance' | 'employee' | 'attendance' | 'store'
+
+// Instead, use a generic string type (roles come from backend)
+export type UserRole = string
 
 export interface User {
   userId: number
   username: string
   fullName: string
   email: string
-  role: UserRole
+  role: UserRole  // Now accepts any role from backend
   roleId: number
   departmentId: number | null
   departmentName?: string
@@ -31,11 +36,11 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const refreshToken = ref<string | null>(null)
   const isLoggedOut = ref(false)
+  const availableRoles = ref<string[]>([]) // Store all roles from backend
 
   // ==================== GETTERS ====================
   const isAuthenticated = computed(() => !!token.value && !!user.value)
   
-  // IMPORTANT: Default to 'employee' if role is missing or undefined
   const userRole = computed(() => {
     return user.value?.role || 'employee'
   })
@@ -58,6 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     token.value = null
     refreshToken.value = null
+    availableRoles.value = []
     localStorage.removeItem('token')
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
@@ -65,6 +71,20 @@ export const useAuthStore = defineStore('auth', () => {
     sessionStorage.removeItem('refreshToken')
     sessionStorage.removeItem('user')
     isLoggedOut.value = true
+  }
+
+  // Fetch roles from backend
+  const fetchRoles = async () => {
+    try {
+      const response = await api.get('/roles') // Adjust endpoint as needed
+      if (response.data.success) {
+        availableRoles.value = response.data.roles
+      }
+    } catch (error) {
+      console.warn('Failed to fetch roles from backend', error)
+      // Fallback - but ideally you want backend to always provide this
+      availableRoles.value = ['admin', 'hr', 'finance', 'employee', 'attendance', 'store']
+    }
   }
 
   const init = () => {
@@ -83,6 +103,9 @@ export const useAuthStore = defineStore('auth', () => {
         token.value = storedToken
         refreshToken.value = storedRefreshToken
         isLoggedOut.value = false
+        
+        // Fetch available roles from backend
+        fetchRoles()
       } catch (e) {
         console.error('Failed to parse stored user:', e)
         clearAuthData()
@@ -110,6 +133,9 @@ export const useAuthStore = defineStore('auth', () => {
         localStorage.setItem('token', authToken)
         localStorage.setItem('refreshToken', authRefreshToken)
         localStorage.setItem('user', JSON.stringify(userData))
+
+        // Fetch available roles after login
+        await fetchRoles()
 
         return { success: true, user: userData }
       }
@@ -171,6 +197,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Helper to check if user has a specific role
+  const hasRole = (role: string | string[]): boolean => {
+    if (!user.value) return false
+    const roles = Array.isArray(role) ? role : [role]
+    return roles.includes(user.value.role)
+  }
+
   // Initialize the store
   init()
 
@@ -183,10 +216,12 @@ export const useAuthStore = defineStore('auth', () => {
     userRole,
     userFullName,
     userAvatar,
+    availableRoles,
     login,
     logout,
     fetchProfile,
     changePassword,
+    hasRole,
     init,
     clearAuthData
   }

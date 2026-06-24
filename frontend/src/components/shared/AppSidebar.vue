@@ -96,7 +96,9 @@ const roleMenus = {
      { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
      { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
    
-    //  { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
+     { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+
+       { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
       { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
 
        { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },

@@ -172,6 +172,32 @@ const router = createRouter({
             roles: ["admin", "store"] 
           },
         },
+
+          {
+          path: "store-to-store",
+          name: "store-to-store",
+          component: () => import("@/views/storemanagement/storeAndGroups/storeTostoreRelationship.vue"),
+          meta: { 
+            title: "store to store relationship ", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+            {
+          path: "store-balance",
+          name: "store-balance",
+          component: () => import("@/views/storemanagement/storebalance/storebalance.vue"),
+          meta: { 
+            title: "general store balance ", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+
+
+
+        
+        
        
         {
           path: "",
