@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
+import 'quill/dist/quill.snow.css';
 import App from './App.vue'
 import router from './router'
 

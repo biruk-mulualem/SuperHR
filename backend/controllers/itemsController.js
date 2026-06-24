@@ -1,9 +1,10 @@
 // controllers/itemsController.js
 'use strict';
 
-const { Item, Category, UOM } = require('../models');
+const { Item, Category, UOM ,sequelize } = require('../models');
 const { Op } = require('sequelize');
-
+const fs = require('fs');
+const path = require('path');
 // ================================================================
 // ITEM CRUD OPERATIONS
 // ================================================================
@@ -959,6 +960,12 @@ exports.exportItems = async (req, res) => {
  * Import items from CSV data
  * POST /api/items/import
  */
+// controllers/itemsController.js - Updated importItems
+
+/**
+ * Import items from CSV data
+ * POST /api/items/import
+ */
 exports.importItems = async (req, res) => {
   try {
     const { items } = req.body;
@@ -971,18 +978,38 @@ exports.importItems = async (req, res) => {
     }
 
     const results = [];
+    let successCount = 0;
+    let failureCount = 0;
 
     for (const itemData of items) {
       try {
+        // Clean and validate data
+        const cleanData = {
+          name: itemData.name?.trim(),
+          standardName: itemData.standardName?.trim() || '',
+          description: itemData.description?.trim() || '',
+          brand: itemData.brand?.trim() || '',
+          model: itemData.model?.trim() || '',
+          barcode: itemData.barcode?.toString().replace(/[^0-9]/g, '') || null,
+          costPrice: parseFloat(itemData.costPrice) || 0,
+          conversionValue: parseFloat(itemData.conversionValue) || 0,
+          specText: itemData.specText?.trim() || '',
+        };
+
+        // Validate required fields
+        if (!cleanData.name) {
+          throw new Error('Item name is required');
+        }
+
         // Find or create category
         let category = null;
-        if (itemData.categoryName) {
+        if (itemData.categoryName?.trim()) {
           category = await Category.findOne({
-            where: { name: itemData.categoryName },
+            where: { name: { [Op.iLike]: itemData.categoryName.trim() } },
           });
           if (!category) {
             category = await Category.create({
-              name: itemData.categoryName,
+              name: itemData.categoryName.trim(),
               status: 'Active',
             });
           }
@@ -990,52 +1017,75 @@ exports.importItems = async (req, res) => {
 
         // Find or create UOM
         let uom = null;
-        if (itemData.uomCode) {
+        if (itemData.uomCode?.trim()) {
           uom = await UOM.findOne({
-            where: { code: itemData.uomCode },
+            where: { code: { [Op.iLike]: itemData.uomCode.trim() } },
           });
           if (!uom) {
             uom = await UOM.create({
-              code: itemData.uomCode,
-              name: itemData.uomCode,
+              code: itemData.uomCode.trim().toUpperCase(),
+              name: itemData.uomCode.trim(),
               status: 'Active',
             });
           }
         }
 
+        // Find or create conversion UOM
+        let conversionUom = null;
+        if (itemData.conversionUomCode?.trim()) {
+          conversionUom = await UOM.findOne({
+            where: { code: { [Op.iLike]: itemData.conversionUomCode.trim() } },
+          });
+          if (!conversionUom) {
+            conversionUom = await UOM.create({
+              code: itemData.conversionUomCode.trim().toUpperCase(),
+              name: itemData.conversionUomCode.trim(),
+              status: 'Active',
+            });
+          }
+        }
+
+        // Generate item code
         const code = await Item.generateItemCode();
 
+        // Create item
         const item = await Item.create({
           code,
-          name: itemData.name,
-          standardName: itemData.standardName || '',
-          description: itemData.description || '',
-          brand: itemData.brand || '',
-          model: itemData.model || '',
-          barcode: itemData.barcode || null,
+          name: cleanData.name,
+          standardName: cleanData.standardName,
+          description: cleanData.description,
+          brand: cleanData.brand,
+          model: cleanData.model,
+          barcode: cleanData.barcode,
           categoryId: category ? category.categoryId : null,
           uomId: uom ? uom.uomId : null,
-          conversionUomId: null,
-          conversionValue: 0,
-          costPrice: itemData.costPrice || 0,
+          conversionUomId: conversionUom ? conversionUom.uomId : null,
+          conversionValue: cleanData.conversionValue,
+          costPrice: cleanData.costPrice,
           status: 'Active',
           specType: 'text',
+          specText: cleanData.specText,
         });
 
         results.push({
           success: true,
-          item,
+          item: {
+            id: item.itemId,
+            code: item.code,
+            name: item.name,
+          },
         });
+        successCount++;
       } catch (error) {
+        console.error('Import item error:', error);
         results.push({
           success: false,
           data: itemData,
-          error: error.message,
+          error: error.message || 'Validation error',
         });
+        failureCount++;
       }
     }
-
-    const successCount = results.filter(r => r.success).length;
 
     res.status(201).json({
       success: true,
@@ -1044,7 +1094,7 @@ exports.importItems = async (req, res) => {
         results,
         total: items.length,
         success: successCount,
-        failed: items.length - successCount,
+        failed: failureCount,
       },
     });
   } catch (error) {
@@ -1191,3 +1241,498 @@ exports.removeItemSpecification = async (req, res) => {
   }
 };
 
+
+
+// controllers/itemsController.js
+// ... (all your existing code)
+
+// ================================================================
+// CATEGORY CONTROLLER FUNCTIONS
+// ================================================================
+
+/**
+ * Get all categories
+ * GET /api/items/categories
+ */
+exports.getAllCategories = async (req, res) => {
+  try {
+    const { Category } = require('../models');
+    const categories = await Category.findAll({
+      order: [['name', 'ASC']],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: categories,
+    });
+  } catch (error) {
+    console.error('Error in getAllCategories:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch categories',
+    });
+  }
+};
+
+/**
+ * Get single category by ID
+ * GET /api/items/categories/:id
+ */
+exports.getCategoryById = async (req, res) => {
+  try {
+    const { Category, Item } = require('../models');
+    const { id } = req.params;
+
+    const category = await Category.findByPk(id, {
+      include: [
+        {
+          model: Item,
+          as: 'items',
+          attributes: ['itemId', 'code', 'name', 'status'],
+        },
+      ],
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: 'Category not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    console.error('Error in getCategoryById:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch category',
+    });
+  }
+};
+
+/**
+ * Create a new category
+ * POST /api/items/categories
+ */
+exports.createCategory = async (req, res) => {
+  try {
+    const { Category } = require('../models');
+    const { Op } = require('sequelize');
+    const { name, description } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Category name is required',
+      });
+    }
+
+    // Check if category already exists
+    const existingCategory = await Category.findOne({
+      where: { name: { [Op.iLike]: name } },
+    });
+
+    if (existingCategory) {
+      return res.status(400).json({
+        success: false,
+        error: 'Category with this name already exists',
+      });
+    }
+
+    const category = await Category.create({
+      name,
+      description,
+      status: 'Active',
+    });
+
+    res.status(201).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    console.error('Error in createCategory:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create category',
+    });
+  }
+};
+
+/**
+ * Update a category
+ * PUT /api/items/categories/:id
+ */
+exports.updateCategory = async (req, res) => {
+  try {
+    const { Category } = require('../models');
+    const { Op } = require('sequelize');
+    const { id } = req.params;
+    const { name, description, status } = req.body;
+
+    const category = await Category.findByPk(id);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: 'Category not found',
+      });
+    }
+
+    // Check if name already exists (excluding current category)
+    if (name && name !== category.name) {
+      const existingCategory = await Category.findOne({
+        where: {
+          name: { [Op.iLike]: name },
+          categoryId: { [Op.ne]: parseInt(id) },
+        },
+      });
+
+      if (existingCategory) {
+        return res.status(400).json({
+          success: false,
+          error: 'Category with this name already exists',
+        });
+      }
+    }
+
+    await category.update({
+      name: name || category.name,
+      description: description !== undefined ? description : category.description,
+      status: status || category.status,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    console.error('Error in updateCategory:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update category',
+    });
+  }
+};
+
+/**
+ * Update category status
+ * PATCH /api/items/categories/:id/status
+ */
+exports.updateCategoryStatus = async (req, res) => {
+  try {
+    const { Category } = require('../models');
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['Active', 'Inactive'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be Active or Inactive',
+      });
+    }
+
+    const category = await Category.findByPk(id);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: 'Category not found',
+      });
+    }
+
+    await category.update({ status });
+
+    res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    console.error('Error in updateCategoryStatus:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update category status',
+    });
+  }
+};
+
+/**
+ * Delete a category
+ * DELETE /api/items/categories/:id
+ */
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { Category } = require('../models');
+    const { id } = req.params;
+
+    const category = await Category.findByPk(id);
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: 'Category not found',
+      });
+    }
+
+    // Check if category has items
+    const itemCount = await category.countItems();
+    if (itemCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot delete category with ${itemCount} items. Please reassign or delete items first.`,
+      });
+    }
+
+    await category.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: 'Category deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error in deleteCategory:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete category',
+    });
+  }
+};
+
+// ================================================================
+// UOM CONTROLLER FUNCTIONS
+// ================================================================
+
+/**
+ * Get all UOMs
+ * GET /api/items/uom
+ */
+exports.getAllUOMs = async (req, res) => {
+  try {
+    const { UOM } = require('../models');
+    const uoms = await UOM.findAll({
+      order: [['code', 'ASC']],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: uoms,
+    });
+  } catch (error) {
+    console.error('Error in getAllUOMs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch UOMs',
+    });
+  }
+};
+
+/**
+ * Get single UOM by ID
+ * GET /api/items/uom/:id
+ */
+exports.getUOMById = async (req, res) => {
+  try {
+    const { UOM, Item } = require('../models');
+    const { id } = req.params;
+
+    const uom = await UOM.findByPk(id, {
+      include: [
+        {
+          model: Item,
+          as: 'items',
+          attributes: ['itemId', 'code', 'name', 'status'],
+        },
+      ],
+    });
+
+    if (!uom) {
+      return res.status(404).json({
+        success: false,
+        error: 'UOM not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: uom,
+    });
+  } catch (error) {
+    console.error('Error in getUOMById:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch UOM',
+    });
+  }
+};
+
+/**
+ * Create a new UOM
+ * POST /api/items/uom
+ */
+exports.createUOM = async (req, res) => {
+  try {
+    const { UOM } = require('../models');
+    const { Op } = require('sequelize');
+    const { code, name, description } = req.body;
+
+    if (!code || !name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Code and name are required',
+      });
+    }
+
+    // Check if UOM with code already exists
+    const existingUOM = await UOM.findOne({
+      where: { code: { [Op.iLike]: code } },
+    });
+
+    if (existingUOM) {
+      return res.status(400).json({
+        success: false,
+        error: 'UOM with this code already exists',
+      });
+    }
+
+    const uom = await UOM.create({
+      code: code.toUpperCase(),
+      name,
+      description,
+      status: 'Active',
+    });
+
+    res.status(201).json({
+      success: true,
+      data: uom,
+    });
+  } catch (error) {
+    console.error('Error in createUOM:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create UOM',
+    });
+  }
+};
+
+/**
+ * Update a UOM
+ * PUT /api/items/uom/:id
+ */
+exports.updateUOM = async (req, res) => {
+  try {
+    const { UOM } = require('../models');
+    const { id } = req.params;
+    const { name, description, status } = req.body;
+
+    const uom = await UOM.findByPk(id);
+
+    if (!uom) {
+      return res.status(404).json({
+        success: false,
+        error: 'UOM not found',
+      });
+    }
+
+    await uom.update({
+      name: name || uom.name,
+      description: description !== undefined ? description : uom.description,
+      status: status || uom.status,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: uom,
+    });
+  } catch (error) {
+    console.error('Error in updateUOM:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update UOM',
+    });
+  }
+};
+
+/**
+ * Update UOM status
+ * PATCH /api/items/uom/:id/status
+ */
+exports.updateUOMStatus = async (req, res) => {
+  try {
+    const { UOM } = require('../models');
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['Active', 'Inactive'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be Active or Inactive',
+      });
+    }
+
+    const uom = await UOM.findByPk(id);
+
+    if (!uom) {
+      return res.status(404).json({
+        success: false,
+        error: 'UOM not found',
+      });
+    }
+
+    await uom.update({ status });
+
+    res.status(200).json({
+      success: true,
+      data: uom,
+    });
+  } catch (error) {
+    console.error('Error in updateUOMStatus:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update UOM status',
+    });
+  }
+};
+
+/**
+ * Delete a UOM
+ * DELETE /api/items/uom/:id
+ */
+exports.deleteUOM = async (req, res) => {
+  try {
+    const { UOM } = require('../models');
+    const { id } = req.params;
+
+    const uom = await UOM.findByPk(id);
+
+    if (!uom) {
+      return res.status(404).json({
+        success: false,
+        error: 'UOM not found',
+      });
+    }
+
+    // Check if UOM is used in any items
+    const itemCount = await uom.countItems();
+    if (itemCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot delete UOM used by ${itemCount} items. Please reassign or delete items first.`,
+      });
+    }
+
+    await uom.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: 'UOM deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error in deleteUOM:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete UOM',
+    });
+  }
+};

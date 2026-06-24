@@ -7,6 +7,7 @@ import api from './interceptor';
 
 export interface Category {
   categoryId: number;
+  id?: number;
   name: string;
   description?: string;
   status: 'Active' | 'Inactive';
@@ -16,6 +17,7 @@ export interface Category {
 
 export interface UOM {
   uomId: number;
+  id?: number;
   code: string;
   name: string;
   description?: string;
@@ -148,10 +150,159 @@ export interface GenerateCodeResponse {
 // ================================================================
 
 class ItemService {
-  private baseUrl = '/items';
+  // ================================================================
+  // CATEGORY METHODS
+  // ================================================================
+
+  /**
+   * Get all categories
+   * GET /api/items/categories
+   */
+  async getCategories(): Promise<{ success: boolean; data: Category[]; error?: string }> {
+    try {
+      const response = await api.get('/items/categories');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get categories error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch categories'
+      };
+    }
+  }
+
+  /**
+   * Create a new category
+   * POST /api/items/categories
+   */
+  async createCategory(data: { name: string; description?: string }): Promise<{ success: boolean; data?: Category; error?: string }> {
+    try {
+      const response = await api.post('/items/categories', data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Create category error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to create category'
+      };
+    }
+  }
+
+  /**
+   * Update a category
+   * PUT /api/items/categories/:id
+   */
+  async updateCategory(id: number, data: { name?: string; status?: string }): Promise<{ success: boolean; data?: Category; error?: string }> {
+    try {
+      const response = await api.put(`/items/categories/${id}`, data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Update category error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to update category'
+      };
+    }
+  }
+
+  /**
+   * Delete a category
+   * DELETE /api/items/categories/:id
+   */
+  async deleteCategory(id: number): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await api.delete(`/items/categories/${id}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Delete category error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to delete category'
+      };
+    }
+  }
+
+  // ================================================================
+  // UOM METHODS
+  // ================================================================
+
+  /**
+   * Get all UOMs
+   * GET /api/items/uom
+   */
+  async getUOMs(): Promise<{ success: boolean; data: UOM[]; error?: string }> {
+    try {
+      const response = await api.get('/items/uom');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get UOMs error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch UOMs'
+      };
+    }
+  }
+
+  /**
+   * Create a new UOM
+   * POST /api/items/uom
+   */
+  async createUOM(data: { code: string; name: string; description?: string }): Promise<{ success: boolean; data?: UOM; error?: string }> {
+    try {
+      const response = await api.post('/items/uom', data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Create UOM error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to create UOM'
+      };
+    }
+  }
+
+  /**
+   * Update a UOM
+   * PUT /api/items/uom/:id
+   */
+  async updateUOM(id: number, data: { name?: string; status?: string }): Promise<{ success: boolean; data?: UOM; error?: string }> {
+    try {
+      const response = await api.put(`/items/uom/${id}`, data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Update UOM error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to update UOM'
+      };
+    }
+  }
+
+  /**
+   * Delete a UOM
+   * DELETE /api/items/uom/:id
+   */
+  async deleteUOM(id: number): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await api.delete(`/items/uom/${id}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Delete UOM error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to delete UOM'
+      };
+    }
+  }
+
+  // ================================================================
+  // ITEM METHODS
+  // ================================================================
 
   /**
    * Get all items with pagination and filtering
+   * GET /api/items
    */
   async getItems(params: {
     page?: number;
@@ -176,8 +327,8 @@ class ItemService {
       if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
       const url = queryParams.toString() 
-        ? `${this.baseUrl}?${queryParams.toString()}`
-        : this.baseUrl;
+        ? `/items?${queryParams.toString()}`
+        : '/items';
 
       const response = await api.get(url);
       return response.data;
@@ -201,10 +352,11 @@ class ItemService {
 
   /**
    * Get single item by ID
+   * GET /api/items/:id
    */
   async getItemById(id: number | string): Promise<SingleItemResponse> {
     try {
-      const response = await api.get(`${this.baseUrl}/${id}`);
+      const response = await api.get(`/items/${id}`);
       return response.data;
     } catch (error: any) {
       console.error('Get item by ID error:', error);
@@ -218,10 +370,11 @@ class ItemService {
 
   /**
    * Get item by code
+   * GET /api/items/code/:code
    */
   async getItemByCode(code: string): Promise<SingleItemResponse> {
     try {
-      const response = await api.get(`${this.baseUrl}/code/${code}`);
+      const response = await api.get(`/items/code/${code}`);
       return response.data;
     } catch (error: any) {
       console.error('Get item by code error:', error);
@@ -235,6 +388,7 @@ class ItemService {
 
   /**
    * Get active items only
+   * GET /api/items/active
    */
   async getActiveItems(): Promise<{
     success: boolean;
@@ -242,7 +396,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.get(`${this.baseUrl}/active`);
+      const response = await api.get('/items/active');
       return response.data;
     } catch (error: any) {
       console.error('Get active items error:', error);
@@ -256,6 +410,7 @@ class ItemService {
 
   /**
    * Get items by category
+   * GET /api/items/category/:categoryId
    */
   async getItemsByCategory(categoryId: number | string): Promise<{
     success: boolean;
@@ -263,7 +418,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.get(`${this.baseUrl}/category/${categoryId}`);
+      const response = await api.get(`/items/category/${categoryId}`);
       return response.data;
     } catch (error: any) {
       console.error('Get items by category error:', error);
@@ -277,6 +432,7 @@ class ItemService {
 
   /**
    * Search items
+   * GET /api/items/search
    */
   async searchItems(query: string): Promise<{
     success: boolean;
@@ -284,7 +440,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.get(`${this.baseUrl}/search?q=${encodeURIComponent(query)}`);
+      const response = await api.get(`/items/search?q=${encodeURIComponent(query)}`);
       return response.data;
     } catch (error: any) {
       console.error('Search items error:', error);
@@ -298,10 +454,11 @@ class ItemService {
 
   /**
    * Get item statistics
+   * GET /api/items/statistics
    */
   async getStats(): Promise<StatsResponse> {
     try {
-      const response = await api.get(`${this.baseUrl}/statistics`);
+      const response = await api.get('/items/statistics');
       return response.data;
     } catch (error: any) {
       console.error('Get item stats error:', error);
@@ -321,10 +478,11 @@ class ItemService {
 
   /**
    * Generate next item code
+   * GET /api/items/generate-code
    */
   async generateItemCode(): Promise<GenerateCodeResponse> {
     try {
-      const response = await api.get(`${this.baseUrl}/generate-code`);
+      const response = await api.get('/items/generate-code');
       return response.data;
     } catch (error: any) {
       console.error('Generate item code error:', error);
@@ -338,10 +496,11 @@ class ItemService {
 
   /**
    * Create a new item
+   * POST /api/items
    */
   async createItem(itemData: Partial<Item>): Promise<SingleItemResponse> {
     try {
-      const response = await api.post(this.baseUrl, itemData);
+      const response = await api.post('/items', itemData);
       return response.data;
     } catch (error: any) {
       console.error('Create item error:', error);
@@ -355,10 +514,11 @@ class ItemService {
 
   /**
    * Update an item
+   * PUT /api/items/:id
    */
   async updateItem(id: number | string, itemData: Partial<Item>): Promise<SingleItemResponse> {
     try {
-      const response = await api.put(`${this.baseUrl}/${id}`, itemData);
+      const response = await api.put(`/items/${id}`, itemData);
       return response.data;
     } catch (error: any) {
       console.error('Update item error:', error);
@@ -372,6 +532,7 @@ class ItemService {
 
   /**
    * Update item status
+   * PATCH /api/items/:id/status
    */
   async updateItemStatus(id: number | string, status: 'Active' | 'Inactive' | 'Discontinued'): Promise<{
     success: boolean;
@@ -380,7 +541,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.patch(`${this.baseUrl}/${id}/status`, { status });
+      const response = await api.patch(`/items/${id}/status`, { status });
       return response.data;
     } catch (error: any) {
       console.error('Update item status error:', error);
@@ -394,6 +555,7 @@ class ItemService {
 
   /**
    * Activate an item
+   * PATCH /api/items/:id/activate
    */
   async activateItem(id: number | string): Promise<{
     success: boolean;
@@ -402,7 +564,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.patch(`${this.baseUrl}/${id}/activate`);
+      const response = await api.patch(`/items/${id}/activate`);
       return response.data;
     } catch (error: any) {
       console.error('Activate item error:', error);
@@ -416,6 +578,7 @@ class ItemService {
 
   /**
    * Deactivate an item
+   * PATCH /api/items/:id/deactivate
    */
   async deactivateItem(id: number | string): Promise<{
     success: boolean;
@@ -424,7 +587,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.patch(`${this.baseUrl}/${id}/deactivate`);
+      const response = await api.patch(`/items/${id}/deactivate`);
       return response.data;
     } catch (error: any) {
       console.error('Deactivate item error:', error);
@@ -438,6 +601,7 @@ class ItemService {
 
   /**
    * Soft delete an item (set status to Discontinued)
+   * DELETE /api/items/:id
    */
   async deleteItem(id: number | string): Promise<{
     success: boolean;
@@ -446,7 +610,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.delete(`${this.baseUrl}/${id}`);
+      const response = await api.delete(`/items/${id}`);
       return response.data;
     } catch (error: any) {
       console.error('Delete item error:', error);
@@ -460,6 +624,7 @@ class ItemService {
 
   /**
    * Permanently delete an item
+   * DELETE /api/items/:id/permanent
    */
   async permanentDeleteItem(id: number | string): Promise<{
     success: boolean;
@@ -467,7 +632,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.delete(`${this.baseUrl}/${id}/permanent`);
+      const response = await api.delete(`/items/${id}/permanent`);
       return response.data;
     } catch (error: any) {
       console.error('Permanent delete item error:', error);
@@ -481,6 +646,7 @@ class ItemService {
 
   /**
    * Upload item specification PDF
+   * POST /api/items/:id/upload-specification
    */
   async uploadSpecification(id: number | string, file: File): Promise<{
     success: boolean;
@@ -501,7 +667,7 @@ class ItemService {
       formData.append('specification', file);
 
       const response = await api.post(
-        `${this.baseUrl}/${id}/upload-specification`,
+        `/items/${id}/upload-specification`,
         formData,
         {
           headers: {
@@ -522,6 +688,7 @@ class ItemService {
 
   /**
    * Remove item specification PDF
+   * DELETE /api/items/:id/remove-specification
    */
   async removeSpecification(id: number | string): Promise<{
     success: boolean;
@@ -530,7 +697,7 @@ class ItemService {
     error?: string;
   }> {
     try {
-      const response = await api.delete(`${this.baseUrl}/${id}/remove-specification`);
+      const response = await api.delete(`/items/${id}/remove-specification`);
       return response.data;
     } catch (error: any) {
       console.error('Remove specification error:', error);
@@ -544,10 +711,11 @@ class ItemService {
 
   /**
    * Bulk create items
+   * POST /api/items/bulk
    */
   async bulkCreateItems(itemsData: Partial<Item>[]): Promise<BulkCreateResponse> {
     try {
-      const response = await api.post(`${this.baseUrl}/bulk`, { items: itemsData });
+      const response = await api.post('/items/bulk', { items: itemsData });
       return response.data;
     } catch (error: any) {
       console.error('Bulk create items error:', error);
@@ -565,10 +733,11 @@ class ItemService {
 
   /**
    * Import items from CSV data
+   * POST /api/items/import
    */
   async importItems(itemsData: any[]): Promise<ImportResponse> {
     try {
-      const response = await api.post(`${this.baseUrl}/import`, { items: itemsData });
+      const response = await api.post('/items/import', { items: itemsData });
       return response.data;
     } catch (error: any) {
       console.error('Import items error:', error);
@@ -587,6 +756,7 @@ class ItemService {
 
   /**
    * Export items as CSV data
+   * GET /api/items/export
    */
   async exportItems(params?: {
     categoryId?: number | string;
@@ -603,8 +773,8 @@ class ItemService {
       if (params?.status) queryParams.append('status', params.status);
 
       const url = queryParams.toString() 
-        ? `${this.baseUrl}/export?${queryParams.toString()}`
-        : `${this.baseUrl}/export`;
+        ? `/items/export?${queryParams.toString()}`
+        : '/items/export';
 
       const response = await api.get(url);
       return response.data;

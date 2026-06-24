@@ -1,4 +1,4 @@
-<!-- pages/ItemMaster.vue -->
+<!-- pages/inventory.vue - FULLY UPDATED WITH RICH TEXT EDITOR -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -18,6 +18,11 @@
             @input="onSearchChange"
           />
         </div>
+        <button class="btn-import" @click="openImportModal" :disabled="importing">
+          <span v-if="importing" class="spinner-small"></span>
+          <span v-else>📥</span>
+          {{ importing ? "Importing..." : "Import" }}
+        </button>
         <button class="btn-export" @click="openExportModal" :disabled="exporting">
           <span v-if="exporting" class="spinner-small"></span>
           <span v-else>📊</span>
@@ -55,7 +60,7 @@
         <div class="filter-bar">
           <select v-model="filterCategory" class="filter-select" @change="onFilterChange">
             <option value="">All Categories</option>
-            <option v-for="cat in getActiveCategories()" :key="cat" :value="cat">{{ cat }}</option>
+            <option v-for="cat in activeCategoryNames" :key="cat" :value="cat">{{ cat }}</option>
           </select>
           <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
             <option value="">All Status</option>
@@ -65,7 +70,7 @@
           </select>
           <select v-model="filterUOM" class="filter-select" @change="onFilterChange">
             <option value="">All UOM</option>
-            <option v-for="uom in getActiveUOMs()" :key="uom.code" :value="uom.code">{{ uom.code }}</option>
+            <option v-for="uom in activeUOMs" :key="uom.code" :value="uom.code">{{ uom.code }}</option>
           </select>
         </div>
 
@@ -171,9 +176,7 @@
 
                         <div class="detail-card full-width">
                           <h4>📄 Specifications</h4>
-                          <div v-if="item.specType === 'text' && item.specText" class="spec-text-content">
-                            {{ item.specText }}
-                          </div>
+                          <div v-if="item.specType === 'text' && item.specText" class="spec-text-content" v-html="item.specText"></div>
                           <div v-if="item.specType === 'pdf' && item.specPdfUrl" class="spec-pdf-content">
                             <span class="pdf-icon">📎</span>
                             <span class="pdf-name">{{ item.specPdfName || 'Specification Document.pdf' }}</span>
@@ -238,7 +241,7 @@
                   </div>
                 </td>
               </tr>
-              <tr v-for="(cat, index) in paginatedCategories" :key="cat.name">
+              <tr v-for="(cat, index) in paginatedCategories" :key="cat.categoryId || cat.id">
                 <td class="text-center">{{ (categoryPage - 1) * categoryPageSize + index + 1 }}</td>
                 <td>{{ cat.name }}</td>
                 <td>
@@ -301,7 +304,7 @@
                   </div>
                 </td>
               </tr>
-              <tr v-for="(uom, index) in paginatedUOMs" :key="uom.code">
+              <tr v-for="(uom, index) in paginatedUOMs" :key="uom.uomId || uom.id">
                 <td class="text-center">{{ (uomPage - 1) * uomPageSize + index + 1 }}</td>
                 <td class="code">{{ uom.code }}</td>
                 <td>{{ uom.name }}</td>
@@ -387,16 +390,18 @@
           <div class="form-row">
             <div class="form-group">
               <label>Category *</label>
-              <select v-model="itemForm.category" required>
+              <select v-model="itemForm.categoryId" required>
                 <option value="">Select Category...</option>
-                <option v-for="cat in getActiveCategories()" :key="cat" :value="cat">{{ cat }}</option>
+                <option v-for="cat in activeCategories" :key="cat.categoryId" :value="cat.categoryId">
+                  {{ cat.name }}
+                </option>
               </select>
             </div>
             <div class="form-group">
               <label>Unit of Measure (UOM) *</label>
-              <select v-model="itemForm.uom" required @change="onUOMChange">
+              <select v-model="itemForm.uomId" required @change="onUOMChange">
                 <option value="">Select UOM...</option>
-                <option v-for="uom in getActiveUOMs()" :key="uom.code" :value="uom.code">
+                <option v-for="uom in activeUOMs" :key="uom.uomId" :value="uom.uomId">
                   {{ uom.code }} - {{ uom.name }}
                 </option>
               </select>
@@ -408,9 +413,9 @@
           <div class="form-row">
             <div class="form-group">
               <label>Conversion Unit</label>
-              <select v-model="itemForm.conversionUom" @change="onConversionUnitChange">
+              <select v-model="itemForm.conversionUomId" @change="onConversionUnitChange">
                 <option value="">Select Conversion Unit...</option>
-                <option v-for="uom in getActiveUOMs()" :key="uom.code" :value="uom.code">
+                <option v-for="uom in activeUOMs" :key="uom.uomId" :value="uom.uomId">
                   {{ uom.code }} - {{ uom.name }}
                 </option>
               </select>
@@ -419,10 +424,10 @@
             <div class="form-group">
               <label>Conversion Value</label>
               <input v-model.number="itemForm.conversionValue" type="number" step="0.01" min="0" placeholder="e.g., 165" />
-              <span class="hint" v-if="itemForm.conversionUom && itemForm.conversionValue">
-                {{ itemForm.conversionValue }} {{ itemForm.conversionUom }} = 1 {{ itemForm.uom }}
+              <span class="hint" v-if="itemForm.conversionUomId && itemForm.conversionValue">
+                {{ itemForm.conversionValue }} {{ getUOMCode(itemForm.conversionUomId) }} = 1 {{ getUOMCode(itemForm.uomId) }}
               </span>
-              <span class="hint" v-else-if="itemForm.uom && !itemForm.conversionUom">Base Unit (no conversion)</span>
+              <span class="hint" v-else-if="itemForm.uomId && !itemForm.conversionUomId">Base Unit (no conversion)</span>
             </div>
           </div>
 
@@ -438,7 +443,7 @@
           <div class="spec-type-selector">
             <label class="spec-option">
               <input type="radio" value="text" v-model="specType" /> 
-              📝 Written Specifications
+              📝 Rich Text Specifications
             </label>
             <label class="spec-option">
               <input type="radio" value="pdf" v-model="specType" /> 
@@ -448,9 +453,17 @@
           
           <div v-if="specType === 'text'" class="form-row">
             <div class="form-group full-width">
-              <label>Written Specifications</label>
-              <textarea v-model="itemForm.specText" rows="6" 
-                placeholder="Enter detailed specifications here..."></textarea>
+              <label>Rich Text Specifications</label>
+              <ClientOnly>
+                <QuillEditor 
+                  v-model:content="itemForm.specText" 
+                  content-type="html"
+                  theme="snow"
+                  :toolbar="quillToolbar"
+                  class="quill-editor"
+                  @update:content="onQuillUpdate"
+                />
+              </ClientOnly>
             </div>
           </div>
 
@@ -618,6 +631,141 @@
     </div>
   </div>
 
+  <!-- ================================================================ -->
+  <!-- IMPORT MODAL - UPDATED WITH PROGRESS                           -->
+  <!-- ================================================================ -->
+  <div v-if="showImportModal" class="modal-overlay" @click.self="!importing && closeImportModal()">
+    <div class="modal-container import-modal">
+      <div class="modal-header">
+        <h3>📥 Import Items from CSV</h3>
+        <button class="modal-close" @click="!importing && closeImportModal()" :disabled="importing">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Import Info -->
+        <div class="import-info">
+          <div class="info-box">
+            <span class="info-icon">ℹ️</span>
+            <div>
+              <p><strong>CSV Format Required:</strong></p>
+              <p class="info-text">Your CSV should have the following columns:</p>
+              <ul class="csv-format-list">
+                <li><strong>name</strong> - Item name (required)</li>
+                <li><strong>standardName</strong> - Standard name</li>
+                <li><strong>description</strong> - Item description</li>
+                <li><strong>brand</strong> - Brand name</li>
+                <li><strong>model</strong> - Model number</li>
+                <li><strong>barcode</strong> - Barcode</li>
+                <li><strong>categoryName</strong> - Category name (will be created if not exists)</li>
+                <li><strong>uomCode</strong> - UOM code (will be created if not exists)</li>
+                <li><strong>conversionUomCode</strong> - Conversion UOM code (e.g., KG, L)</li>
+                <li><strong>conversionValue</strong> - Conversion value (e.g., 165)</li>
+                <li><strong>costPrice</strong> - Cost price</li>
+                <li><strong>specText</strong> - Specification text</li>
+              </ul>
+              <button class="btn-template" @click="downloadTemplate" :disabled="importing">
+                📄 Download CSV Template
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Upload -->
+        <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload()" 
+             :class="{ 'drag-over': isDragOver, 'disabled': importing }"
+             @dragover.prevent="!importing && (isDragOver = true)" 
+             @dragleave.prevent="!importing && (isDragOver = false)"
+             @drop.prevent="!importing && handleCsvDrop($event)">
+          <div v-if="csvFile" class="file-preview">
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ csvFile.name }}</span>
+            <span class="file-size">{{ formatFileSize(csvFile.size) }}</span>
+            <button type="button" @click.stop="!importing && removeCsvFile()" class="remove-file" :disabled="importing">✕</button>
+          </div>
+          <div v-else class="upload-placeholder">
+            <span class="upload-icon">📁</span>
+            <span>Click to upload CSV file</span>
+            <span class="upload-hint">or drag and drop</span>
+            <span class="upload-hint">Supported formats: .csv</span>
+          </div>
+          <input type="file" ref="csvFileInput" accept=".csv" 
+                 @change="handleCsvUpload" style="display:none" :disabled="importing" />
+        </div>
+
+        <!-- Progress Bar -->
+        <div v-if="importing" class="import-progress">
+          <div class="progress-info">
+            <span>Importing items...</span>
+            <span>{{ importProgress.processed }} / {{ importProgress.total }}</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: importProgress.percentage + '%' }"></div>
+          </div>
+          <div class="progress-status">
+            <span class="status-success">✅ {{ importProgress.success }}</span>
+            <span class="status-failed">❌ {{ importProgress.failed }}</span>
+            <span class="status-remaining">⏳ {{ importProgress.remaining }} remaining</span>
+          </div>
+        </div>
+
+        <!-- Preview imported data -->
+        <div v-if="importPreviewData.length > 0 && !importing" class="import-preview">
+          <h4>Preview ({{ importPreviewData.length }} items)</h4>
+          <div class="preview-table-container">
+            <table class="preview-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>UOM</th>
+                  <th>Conversion UOM</th>
+                  <th>Cost Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in importPreviewData.slice(0, 10)" :key="index">
+                  <td>{{ index + 1 }}</td>
+                  <td>{{ item.name || 'N/A' }}</td>
+                  <td>{{ item.categoryName || 'N/A' }}</td>
+                  <td>{{ item.uomCode || 'N/A' }}</td>
+                  <td>{{ item.conversionUomCode || 'N/A' }}</td>
+                  <td>${{ formatCurrency(item.costPrice) }}</td>
+                </tr>
+                <tr v-if="importPreviewData.length > 10">
+                  <td colspan="6" class="preview-more">
+                    ... and {{ importPreviewData.length - 10 }} more items
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Import results -->
+        <div v-if="importResults && !importing" class="import-results">
+          <div class="result-summary">
+            <span class="result-success">✅ {{ importResults.success }} imported</span>
+            <span class="result-failed">❌ {{ importResults.failed }} failed</span>
+            <span class="result-total">📊 {{ importResults.total }} total</span>
+          </div>
+          <div v-if="importResults.errors && importResults.errors.length > 0" class="result-errors">
+            <p><strong>Errors:</strong></p>
+            <ul>
+              <li v-for="(err, idx) in importResults.errors.slice(0, 5)" :key="idx">{{ err }}</li>
+              <li v-if="importResults.errors.length > 5">... and {{ importResults.errors.length - 5 }} more errors</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="!importing && closeImportModal()" :disabled="importing">Close</button>
+        <button class="btn-primary" @click="processImport" :disabled="!csvFile || importing">
+          {{ importing ? 'Importing...' : 'Import Items' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div v-if="showToast" class="toast" :class="toastType">
     <span>{{ toastMessage }}</span>
@@ -625,13 +773,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import itemService from '@/stores/itemService';
+
+// Import Quill editor dynamically
+const QuillEditor = defineAsyncComponent(() => 
+  import('@vueup/vue-quill').then(m => m.QuillEditor)
+);
 
 // ================================================================
 // STATE
 // ================================================================
 const items = ref([]);
+const categories = ref([]);
+const uomList = ref([]);
 const loading = ref(false);
 const searchQuery = ref('');
 const filterCategory = ref('');
@@ -668,9 +823,27 @@ const uomForm = ref({ code: '', name: '', status: 'Active' });
 const uomPage = ref(1);
 const uomPageSize = ref(5);
 
+// Export
 const showExportModal = ref(false);
 const exporting = ref(false);
 const exportType = ref('full');
+
+// Import
+const showImportModal = ref(false);
+const importing = ref(false);
+const csvFile = ref(null);
+const csvFileInput = ref(null);
+const isDragOver = ref(false);
+const importPreviewData = ref([]);
+const importResults = ref(null);
+const importProgress = ref({
+  total: 0,
+  processed: 0,
+  success: 0,
+  failed: 0,
+  remaining: 0,
+  percentage: 0
+});
 
 const showToast = ref(false);
 const toastMessage = ref('');
@@ -678,18 +851,44 @@ const toastType = ref('success');
 
 const pdfFileInput = ref(null);
 
+// Quill Editor Toolbar
+const quillToolbar = [
+  ['bold', 'italic', 'underline', 'strike'],
+  ['blockquote', 'code-block'],
+  [{ 'header': 1 }, { 'header': 2 }],
+  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+  [{ 'script': 'sub'}, { 'script': 'super' }],
+  [{ 'indent': '-1'}, { 'indent': '+1' }],
+  [{ 'direction': 'rtl' }],
+  [{ 'size': ['small', false, 'large', 'huge'] }],
+  [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+  [{ 'color': [] }, { 'background': [] }],
+  [{ 'font': [] }],
+  [{ 'align': [] }],
+  ['clean']
+];
+
+// ================================================================
+// TABS DEFINITION
+// ================================================================
+const tabs = [
+  { key: 'items', label: '📦 Items' },
+  { key: 'categories', label: '📁 Categories' },
+  { key: 'uom', label: '📏 UOM' }
+];
+
 const itemForm = ref({
   name: '',
   standardName: '',
   description: '',
   brand: '',
   model: '',
-  category: '',
-  uom: '',
   barcode: '',
-  costPrice: 0,
-  conversionUom: '',
+  categoryId: '',
+  uomId: '',
+  conversionUomId: '',
   conversionValue: 0,
+  costPrice: 0,
   specType: 'text',
   specText: '',
   specPdfFile: null,
@@ -698,115 +897,23 @@ const itemForm = ref({
 });
 
 // ================================================================
-// UOM LIST
-// ================================================================
-const uomList = ref([
-  { code: 'KG', name: 'Kilogram', status: 'Active' },
-  { code: 'G', name: 'Gram', status: 'Active' },
-  { code: 'L', name: 'Liter', status: 'Active' },
-  { code: 'ML', name: 'Milliliter', status: 'Active' },
-  { code: 'Each', name: 'Each', status: 'Active' },
-  { code: 'Drum', name: 'Drum', status: 'Active' },
-  { code: 'Bag', name: 'Bag', status: 'Active' },
-  { code: 'Box', name: 'Box', status: 'Active' },
-  { code: 'Pallet', name: 'Pallet', status: 'Active' },
-  { code: 'Dozen', name: 'Dozen', status: 'Active' },
-  { code: 'Packet', name: 'Packet', status: 'Active' },
-  { code: 'Set', name: 'Set', status: 'Active' },
-  { code: 'Pair', name: 'Pair', status: 'Active' },
-  { code: 'Roll', name: 'Roll', status: 'Active' },
-]);
-
-// ================================================================
-// CATEGORIES
-// ================================================================
-const categories = ref([
-  { name: 'Fiber Raw Material', status: 'Active' },
-  { name: 'Paint Raw Material', status: 'Active' },
-  { name: 'Electronics', status: 'Active' },
-  { name: 'Electric', status: 'Active' },
-  { name: 'Machinery', status: 'Active' },
-  { name: 'Stationery', status: 'Active' },
-  { name: 'Chemicals', status: 'Active' },
-  { name: 'Packaging', status: 'Active' },
-  { name: 'Metals', status: 'Active' },
-  { name: 'Finishing', status: 'Active' },
-  { name: 'Spare Parts', status: 'Active' },
-  { name: 'Consumables', status: 'Active' },
-  { name: 'Hardeners', status: 'Active' },
-  { name: 'Pigments', status: 'Active' },
-  { name: 'Solvents', status: 'Active' },
-  { name: 'Resins', status: 'Active' },
-]);
-
-// ================================================================
 // COMPUTED
 // ================================================================
-const tabs = [
-  { key: 'items', label: '📦 Items' },
-  { key: 'categories', label: '📁 Categories' },
-  { key: 'uom', label: '📏 UOM' }
-];
 
-const getActiveCategories = () => {
-  return categories.value.filter(c => c.status === 'Active').map(c => c.name);
-};
+const activeCategories = computed(() => {
+  return categories.value.filter(c => c.status === 'Active');
+});
 
-const getActiveUOMs = () => {
+const activeUOMs = computed(() => {
   return uomList.value.filter(u => u.status === 'Active');
-};
-
-// Category Computed
-const categoryStats = computed(() => {
-  return categories.value.sort((a, b) => a.name.localeCompare(b.name));
 });
 
-const paginatedCategories = computed(() => {
-  const start = (categoryPage.value - 1) * categoryPageSize.value;
-  return categoryStats.value.slice(start, start + categoryPageSize.value);
+const activeCategoryNames = computed(() => {
+  return categories.value.filter(c => c.status === 'Active').map(c => c.name);
 });
 
-const categoryTotalPages = computed(() => {
-  return Math.ceil(categoryStats.value.length / categoryPageSize.value) || 1;
-});
-
-// UOM Computed
-const paginatedUOMs = computed(() => {
-  const start = (uomPage.value - 1) * uomPageSize.value;
-  return uomList.value.slice(start, start + uomPageSize.value);
-});
-
-const uomTotalPages = computed(() => {
-  return Math.ceil(uomList.value.length / uomPageSize.value) || 1;
-});
-
-// Item Computed
 const filteredItems = computed(() => {
-  let result = items.value;
-  
-  if (searchQuery.value) {
-    const s = searchQuery.value.toLowerCase();
-    result = result.filter(p => 
-      p.code.toLowerCase().includes(s) ||
-      p.name.toLowerCase().includes(s) ||
-      p.standardName?.toLowerCase().includes(s) ||
-      p.brand?.toLowerCase().includes(s)
-    );
-  }
-  
-  if (filterCategory.value) {
-    result = result.filter(p => p.category === filterCategory.value);
-  }
-  
-  if (filterStatus.value) {
-    result = result.filter(p => p.status === filterStatus.value);
-  }
-  
-  if (filterUOM.value) {
-    result = result.filter(p => p.uom === filterUOM.value);
-  }
-  
-  return result;
+  return items.value;
 });
 
 const totalPages = computed(() => {
@@ -818,19 +925,33 @@ const paginatedItems = computed(() => {
   return filteredItems.value.slice(start, start + pageSize.value);
 });
 
-watch(specType, (newVal) => {
-  if (newVal === 'text') {
-    itemForm.value.specPdfFile = null;
-    itemForm.value.specPdfName = '';
-    itemForm.value.specPdfSize = '';
-  } else {
-    itemForm.value.specText = '';
-  }
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value;
+  return categories.value.slice(start, start + categoryPageSize.value);
+});
+
+const categoryTotalPages = computed(() => {
+  return Math.ceil(categories.value.length / categoryPageSize.value) || 1;
+});
+
+const paginatedUOMs = computed(() => {
+  const start = (uomPage.value - 1) * uomPageSize.value;
+  return uomList.value.slice(start, start + uomPageSize.value);
+});
+
+const uomTotalPages = computed(() => {
+  return Math.ceil(uomList.value.length / uomPageSize.value) || 1;
 });
 
 // ================================================================
-// CONVERSION HELPER METHODS
+// HELPER METHODS
 // ================================================================
+
+const getUOMCode = (id) => {
+  const uom = uomList.value.find(u => (u.uomId || u.id) === id);
+  return uom?.code || '';
+};
+
 const getConversionDisplay = (item) => {
   if (!item) return '';
   const uomCode = item.uom?.code || item.uom;
@@ -843,104 +964,211 @@ const getConversionDisplay = (item) => {
   return `1 ${uomCode} = 1 ${uomCode}`;
 };
 
-// ================================================================
-// METHODS
-// ================================================================
-
-const onUOMChange = () => {
-  // When UOM changes
-};
-
-const onConversionUnitChange = () => {
-  // When conversion unit changes
-};
-
 const getNewStatus = (currentStatus) => {
   return currentStatus === 'Active' ? 'Inactive' : 'Active';
 };
 
+const formatCurrency = (amt) => {
+  if (!amt && amt !== 0) return '0.00';
+  const num = parseFloat(amt);
+  if (isNaN(num)) return '0.00';
+  return num.toFixed(2);
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+};
+
 // ================================================================
-// API CALLS
+// DOWNLOAD TEMPLATE CSV
 // ================================================================
+
+const downloadTemplate = () => {
+  const headers = [
+    'name',
+    'standardName',
+    'description',
+    'brand',
+    'model',
+    'barcode',
+    'categoryName',
+    'uomCode',
+    'conversionUomCode',
+    'conversionValue',
+    'costPrice',
+    'specText'
+  ];
+
+  const sampleData = [
+    {
+      name: 'Sample Item 1',
+      standardName: 'Standard Name 1',
+      description: 'This is a sample description for the item',
+      brand: 'BrandX',
+      model: 'Model-100',
+      barcode: '1234567890123', // No scientific notation
+      categoryName: 'Electronics',
+      uomCode: 'Each',
+      conversionUomCode: 'Dozen',
+      conversionValue: '12',
+      costPrice: '25.50',
+      specText: '<p><strong>Sample specifications</strong></p><ul><li>Feature 1</li><li>Feature 2</li></ul>'
+    },
+    {
+      name: 'Sample Item 2',
+      standardName: 'Standard Name 2',
+      description: 'Another sample item description',
+      brand: 'BrandY',
+      model: 'Model-200',
+      barcode: '9876543210987', // No scientific notation
+      categoryName: 'Chemicals',
+      uomCode: 'KG',
+      conversionUomCode: 'L',
+      conversionValue: '1.5',
+      costPrice: '45.75',
+      specText: '<p><strong>Chemical specifications</strong></p><p>Purity: 99%</p>'
+    }
+  ];
+
+  let csvContent = headers.join(',') + '\n';
+  
+  sampleData.forEach(row => {
+    const values = headers.map(header => {
+      let value = row[header] || '';
+      // For barcode, keep as string
+      if (header === 'barcode') {
+        value = `="${value}"`; // This forces Excel to treat as text
+      }
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    });
+    csvContent += values.join(',') + '\n';
+  });
+
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `item_import_template_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  
+  showToastMessage('Template CSV downloaded successfully!', 'success');
+};
+
+// ================================================================
+// LOAD DATA
+// ================================================================
+
+const loadCategories = async () => {
+  try {
+    const response = await itemService.getCategories();
+    if (response.success) {
+      categories.value = response.data;
+    } else {
+      showToastMessage(response.error || 'Failed to load categories', 'error');
+    }
+  } catch (error) {
+    console.error('Load categories error:', error);
+    showToastMessage('Failed to load categories', 'error');
+  }
+};
+
+const loadUOMs = async () => {
+  try {
+    const response = await itemService.getUOMs();
+    if (response.success) {
+      uomList.value = response.data;
+    } else {
+      showToastMessage(response.error || 'Failed to load UOMs', 'error');
+    }
+  } catch (error) {
+    console.error('Load UOMs error:', error);
+    showToastMessage('Failed to load UOMs', 'error');
+  }
+};
 
 const loadItems = async () => {
   loading.value = true;
   try {
+    let categoryId = undefined;
+    if (filterCategory.value) {
+      const category = categories.value.find(c => c.name === filterCategory.value);
+      categoryId = category?.categoryId || category?.id;
+    }
+    
+    let uomId = undefined;
+    if (filterUOM.value) {
+      const uom = uomList.value.find(u => u.code === filterUOM.value);
+      uomId = uom?.uomId || uom?.id;
+    }
+
     const response = await itemService.getItems({
       page: currentPage.value,
       limit: pageSize.value,
       search: searchQuery.value || undefined,
-      categoryId: filterCategory.value || undefined,
+      categoryId: categoryId,
       status: filterStatus.value || undefined,
-      uomId: filterUOM.value || undefined
+      uomId: uomId
     });
     
     if (response.success) {
-      // Map the data to handle both 'id' and 'itemId'
-      items.value = response.data.items.map(item => ({
-        ...item,
-        id: item.itemId || item.id
-      }));
+      items.value = response.data.items;
     } else {
       showToastMessage(response.error || 'Failed to load items', 'error');
     }
   } catch (error) {
     console.error('Load items error:', error);
-    showToastMessage('Failed to load items', 'error');
+    showToastMessage(error.response?.data?.error || 'Failed to load items', 'error');
   } finally {
     loading.value = false;
   }
 };
 
+// ================================================================
+// SAVE ITEM
+// ================================================================
 const saveItem = async () => {
   savingItem.value = true;
   try {
-    const formData = { 
-      ...itemForm.value,
-      status: 'Active'
+    const formData = {
+      name: itemForm.value.name,
+      standardName: itemForm.value.standardName || null,
+      description: itemForm.value.description || null,
+      brand: itemForm.value.brand || null,
+      model: itemForm.value.model || null,
+      barcode: itemForm.value.barcode || null,
+      categoryId: itemForm.value.categoryId ? parseInt(itemForm.value.categoryId) : null,
+      uomId: parseInt(itemForm.value.uomId),
+      conversionUomId: itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null,
+      conversionValue: itemForm.value.conversionValue || 0,
+      costPrice: itemForm.value.costPrice || 0,
+      specType: specType.value,
     };
-    
-    // Map category name to categoryId if needed
-    if (itemForm.value.category && typeof itemForm.value.category === 'string') {
-      const category = categories.value.find(c => c.name === itemForm.value.category);
-      if (category) {
-        formData.categoryId = categories.value.findIndex(c => c.name === itemForm.value.category) + 1;
-      }
-    }
-    
-    // Map UOM code to uomId
-    if (itemForm.value.uom && typeof itemForm.value.uom === 'string') {
-      const uom = uomList.value.find(u => u.code === itemForm.value.uom);
-      if (uom) {
-        formData.uomId = uomList.value.indexOf(uom) + 1;
-      }
-    }
-    
-    // Map conversion UOM
-    if (itemForm.value.conversionUom && typeof itemForm.value.conversionUom === 'string') {
-      const convUom = uomList.value.find(u => u.code === itemForm.value.conversionUom);
-      if (convUom) {
-        formData.conversionUomId = uomList.value.indexOf(convUom) + 1;
-      }
-    }
-    
+
     if (specType.value === 'text') {
-      formData.specType = 'text';
+      formData.specText = itemForm.value.specText || null;
       formData.specPdfName = null;
       formData.specPdfSize = null;
       formData.specPdfUrl = null;
     } else {
-      formData.specType = 'pdf';
       formData.specText = null;
       if (itemForm.value.specPdfFile) {
         formData.specPdfName = itemForm.value.specPdfFile.name;
         formData.specPdfSize = formatFileSize(itemForm.value.specPdfFile.size);
       }
     }
-    
+
     let response;
-    const itemId = editingItem.value?.itemId || editingItem.value?.id;
-    
+    const itemId = editingItem.value?.itemId;
+
     if (editingItem.value) {
       response = await itemService.updateItem(itemId, formData);
       if (response.success) {
@@ -948,26 +1176,28 @@ const saveItem = async () => {
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
         }
+        await loadItems();
+        closeItemModal();
+      } else {
+        showToastMessage(response.error || 'Failed to update item', 'error');
       }
     } else {
       response = await itemService.createItem(formData);
       if (response.success) {
         showToastMessage('Item added successfully!', 'success');
+        const newItemId = response.data.itemId || response.data.id;
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
-          await uploadSpecificationFile(response.data.itemId || response.data.id, itemForm.value.specPdfFile);
+          await uploadSpecificationFile(newItemId, itemForm.value.specPdfFile);
         }
+        await loadItems();
+        closeItemModal();
+      } else {
+        showToastMessage(response.error || 'Failed to create item', 'error');
       }
-    }
-    
-    if (response.success) {
-      closeItemModal();
-      await loadItems();
-    } else {
-      showToastMessage(response.error || 'Failed to save item', 'error');
     }
   } catch (error) {
     console.error('Save item error:', error);
-    showToastMessage('Failed to save item', 'error');
+    showToastMessage(error.response?.data?.error || 'Failed to save item', 'error');
   } finally {
     savingItem.value = false;
   }
@@ -976,22 +1206,23 @@ const saveItem = async () => {
 const uploadSpecificationFile = async (itemId, file) => {
   try {
     const response = await itemService.uploadSpecification(itemId, file);
-    if (response.success) {
-      showToastMessage('Specification uploaded successfully!', 'success');
-    } else {
-      showToastMessage('Failed to upload specification', 'error');
+    if (!response.success) {
+      showToastMessage(response.error || 'Failed to upload specification', 'error');
     }
   } catch (error) {
     console.error('Upload specification error:', error);
-    showToastMessage('Failed to upload specification', 'error');
+    showToastMessage(error.response?.data?.error || 'Failed to upload specification', 'error');
   }
 };
 
+// ================================================================
+// DEACTIVATE ITEM
+// ================================================================
 const confirmDeactivate = async () => {
   if (deactivateItem.value) {
     try {
       const newStatus = deactivateItem.value.status === 'Active' ? 'Inactive' : 'Active';
-      const itemId = deactivateItem.value.itemId || deactivateItem.value.id;
+      const itemId = deactivateItem.value.itemId;
       let response;
       
       if (newStatus === 'Active') {
@@ -1003,22 +1234,153 @@ const confirmDeactivate = async () => {
       if (response.success) {
         showToastMessage(`Item "${deactivateItem.value.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, 'success');
         await loadItems();
+        closeDeactivateModal();
       } else {
         showToastMessage(response.error || 'Failed to change status', 'error');
       }
     } catch (error) {
       console.error('Status change error:', error);
-      showToastMessage('Failed to change status', 'error');
+      showToastMessage(error.response?.data?.error || 'Failed to change status', 'error');
     }
-    closeDeactivateModal();
   }
 };
 
+// ================================================================
+// CATEGORY CRUD
+// ================================================================
+const confirmSaveCategory = async () => {
+  const catName = categoryForm.value.name.trim();
+  if (!catName) return;
+  
+  try {
+    if (editingCategory.value) {
+      const response = await itemService.updateCategory(editingCategory.value.categoryId, {
+        name: catName,
+        status: categoryForm.value.status
+      });
+      if (response.success) {
+        showToastMessage('Category updated!', 'success');
+        await loadCategories();
+        await loadItems();
+        closeCategoryModal();
+      } else {
+        showToastMessage(response.error || 'Failed to update category', 'error');
+      }
+    } else {
+      const exists = categories.value.some(c => c.name === catName);
+      if (exists) {
+        categoryExists.value = true;
+        return;
+      }
+      const response = await itemService.createCategory({ name: catName });
+      if (response.success) {
+        showToastMessage(`Category "${catName}" added!`, 'success');
+        await loadCategories();
+        await loadItems();
+        closeCategoryModal();
+      } else {
+        showToastMessage(response.error || 'Failed to add category', 'error');
+      }
+    }
+  } catch (error) {
+    console.error('Category save error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to save category', 'error');
+  }
+};
+
+const toggleCategoryStatus = async (cat) => {
+  try {
+    const newStatus = cat.status === 'Active' ? 'Inactive' : 'Active';
+    const response = await itemService.updateCategory(cat.categoryId, { status: newStatus });
+    if (response.success) {
+      showToastMessage(`Category "${cat.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
+      await loadCategories();
+      await loadItems();
+    } else {
+      showToastMessage(response.error || 'Failed to change status', 'error');
+    }
+  } catch (error) {
+    console.error('Category status error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to change status', 'error');
+  }
+};
+
+// ================================================================
+// UOM CRUD
+// ================================================================
+const saveUOM = async () => {
+  const code = uomForm.value.code.trim();
+  const name = uomForm.value.name.trim();
+  
+  if (!code || !name) {
+    showToastMessage('Please enter both code and name', 'error');
+    return;
+  }
+  
+  try {
+    if (editingUOM.value) {
+      const response = await itemService.updateUOM(editingUOM.value.uomId, { name });
+      if (response.success) {
+        showToastMessage('UOM updated!', 'success');
+        await loadUOMs();
+        await loadItems();
+        closeUOMModal();
+      } else {
+        showToastMessage(response.error || 'Failed to update UOM', 'error');
+      }
+    } else {
+      const exists = uomList.value.some(u => u.code === code);
+      if (exists) {
+        showToastMessage(`UOM "${code}" already exists`, 'error');
+        return;
+      }
+      const response = await itemService.createUOM({ code, name });
+      if (response.success) {
+        showToastMessage(`UOM "${code}" added!`, 'success');
+        await loadUOMs();
+        await loadItems();
+        closeUOMModal();
+      } else {
+        showToastMessage(response.error || 'Failed to add UOM', 'error');
+      }
+    }
+  } catch (error) {
+    console.error('UOM save error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to save UOM', 'error');
+  }
+};
+
+const toggleUOMStatus = async (uom) => {
+  try {
+    const newStatus = uom.status === 'Active' ? 'Inactive' : 'Active';
+    const response = await itemService.updateUOM(uom.uomId, { status: newStatus });
+    if (response.success) {
+      showToastMessage(`UOM "${uom.code}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
+      await loadUOMs();
+      await loadItems();
+    } else {
+      showToastMessage(response.error || 'Failed to change status', 'error');
+    }
+  } catch (error) {
+    console.error('UOM status error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to change status', 'error');
+  }
+};
+
+// ================================================================
+// EXPORT
+// ================================================================
 const exportSelectedReport = async () => {
   exporting.value = true;
   try {
+    let categoryId = undefined;
+    if (filterCategory.value) {
+      const category = categories.value.find(c => c.name === filterCategory.value);
+      categoryId = category?.categoryId || category?.id;
+    }
+    
     const response = await itemService.exportItems({
-      categoryId: filterCategory.value || undefined,
+      categoryId: categoryId,
       status: filterStatus.value || undefined
     });
     
@@ -1041,7 +1403,7 @@ const exportSelectedReport = async () => {
     }
   } catch (error) {
     console.error('Export error:', error);
-    showToastMessage('Failed to export', 'error');
+    showToastMessage(error.response?.data?.error || 'Failed to export', 'error');
   } finally {
     exporting.value = false;
     closeExportModal();
@@ -1049,8 +1411,243 @@ const exportSelectedReport = async () => {
 };
 
 // ================================================================
+// IMPORT
+// ================================================================
+
+const openImportModal = () => {
+  showImportModal.value = true;
+  csvFile.value = null;
+  importPreviewData.value = [];
+  importResults.value = null;
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  };
+};
+
+const closeImportModal = () => {
+  showImportModal.value = false;
+  csvFile.value = null;
+  importPreviewData.value = [];
+  importResults.value = null;
+  importing.value = false;
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  };
+};
+
+const triggerCsvUpload = () => {
+  csvFileInput.value.click();
+};
+
+const handleCsvUpload = (event) => {
+  const file = event.target.files[0];
+  if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
+    csvFile.value = file;
+    parseCsvFile(file);
+  } else {
+    showToastMessage('Please upload a valid CSV file', 'error');
+  }
+  event.target.value = '';
+};
+
+const handleCsvDrop = (event) => {
+  isDragOver.value = false;
+  const file = event.dataTransfer.files[0];
+  if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
+    csvFile.value = file;
+    parseCsvFile(file);
+  } else {
+    showToastMessage('Please upload a valid CSV file', 'error');
+  }
+};
+
+// ================================================================
+// IMPORT - Updated parseCsvFile with better data handling
+// ================================================================
+
+const parseCsvFile = (file) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        showToastMessage('CSV file must contain headers and at least one data row', 'error');
+        return;
+      }
+      
+      // Parse headers - handle quoted headers
+      const headers = parseCSVLine(lines[0]);
+      
+      // Parse data rows
+      const data = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const obj = {};
+        headers.forEach((h, idx) => {
+          let value = values[idx] || '';
+          // Clean up the value
+          value = value.trim();
+          // Handle barcode - prevent scientific notation
+          if (h === 'barcode' && value) {
+            // Remove any non-numeric characters and convert to string
+            value = value.replace(/[^0-9]/g, '');
+          }
+          // Handle numeric values
+          if (['conversionValue', 'costPrice'].includes(h) && value) {
+            value = parseFloat(value) || 0;
+          }
+          obj[h] = value;
+        });
+        // Ensure required fields
+        if (obj.name) {
+          data.push(obj);
+        }
+      }
+      
+      importPreviewData.value = data;
+      showToastMessage(`Successfully parsed ${data.length} items from CSV`, 'success');
+    } catch (error) {
+      console.error('CSV parse error:', error);
+      showToastMessage('Failed to parse CSV file. Please check the format.', 'error');
+    }
+  };
+  reader.readAsText(file);
+};
+
+// Helper function to parse CSV lines with quoted values
+const parseCSVLine = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+const processImport = async () => {
+  if (!csvFile.value || importPreviewData.value.length === 0) {
+    showToastMessage('No data to import', 'error');
+    return;
+  }
+
+  importing.value = true;
+  importResults.value = null;
+  
+  const totalItems = importPreviewData.value.length;
+  importProgress.value = {
+    total: totalItems,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: totalItems,
+    percentage: 0
+  };
+
+  try {
+    const response = await itemService.importItems(importPreviewData.value);
+    
+    if (response.success) {
+      importResults.value = {
+        success: response.data.success,
+        failed: response.data.failed,
+        total: response.data.total,
+        errors: response.data.results
+          .filter(r => !r.success)
+          .map(r => `${r.data?.name || 'Unknown'}: ${r.error}`)
+      };
+      
+      // Update progress with final values
+      importProgress.value = {
+        total: response.data.total,
+        processed: response.data.total,
+        success: response.data.success,
+        failed: response.data.failed,
+        remaining: 0,
+        percentage: 100
+      };
+      
+      showToastMessage(response.message, 'success');
+      await loadItems();
+      await loadCategories();
+      await loadUOMs();
+      
+      // Auto close modal after 2 seconds with a success message
+      setTimeout(() => {
+        closeImportModal();
+      }, 2000);
+      
+    } else {
+      showToastMessage(response.error || 'Failed to import items', 'error');
+      importResults.value = {
+        success: 0,
+        failed: totalItems,
+        total: totalItems,
+        errors: [response.error || 'Import failed']
+      };
+      importing.value = false;
+    }
+  } catch (error) {
+    console.error('Import error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to import items', 'error');
+    importResults.value = {
+      success: 0,
+      failed: importPreviewData.value.length,
+      total: importPreviewData.value.length,
+      errors: [error.message || 'Unknown error occurred']
+    };
+    importing.value = false;
+  }
+};
+
+// ================================================================
 // UI HELPERS
 // ================================================================
+
+const onUOMChange = () => {
+  if (itemForm.value.uomId) {
+    const selectedUOM = uomList.value.find(u => (u.uomId || u.id) === parseInt(itemForm.value.uomId));
+    if (selectedUOM && !itemForm.value.conversionUomId) {
+      itemForm.value.conversionUomId = itemForm.value.uomId;
+      itemForm.value.conversionValue = 1;
+    }
+  }
+};
+
+const onConversionUnitChange = () => {
+  if (!itemForm.value.conversionUomId || itemForm.value.conversionUomId === itemForm.value.uomId) {
+    itemForm.value.conversionValue = 1;
+  }
+};
+
+const onQuillUpdate = (content) => {
+  itemForm.value.specText = content;
+};
 
 const openAddItem = () => {
   editingItem.value = null;
@@ -1061,12 +1658,12 @@ const openAddItem = () => {
     description: '',
     brand: '',
     model: '',
-    category: '',
-    uom: '',
     barcode: '',
-    costPrice: 0,
-    conversionUom: '',
+    categoryId: '',
+    uomId: '',
+    conversionUomId: '',
     conversionValue: 0,
+    costPrice: 0,
     specType: 'text',
     specText: '',
     specPdfFile: null,
@@ -1078,24 +1675,25 @@ const openAddItem = () => {
 
 const openEditItem = (item) => {
   editingItem.value = item;
+  
   if (item.specType === 'pdf' && item.specPdfUrl) {
     specType.value = 'pdf';
   } else {
     specType.value = 'text';
   }
   
-  itemForm.value = { 
+  itemForm.value = {
     name: item.name,
     standardName: item.standardName || '',
     description: item.description || '',
     brand: item.brand || '',
     model: item.model || '',
-    category: item.category?.name || item.category || '',
-    uom: item.uom?.code || item.uom || '',
     barcode: item.barcode || '',
-    costPrice: item.costPrice || 0,
-    conversionUom: item.conversionUom?.code || item.conversionUom || '',
+    categoryId: item.categoryId || '',
+    uomId: item.uomId || '',
+    conversionUomId: item.conversionUomId || '',
     conversionValue: item.conversionValue || 0,
+    costPrice: item.costPrice || 0,
     specType: item.specType || 'text',
     specText: item.specText || '',
     specPdfFile: null,
@@ -1151,7 +1749,7 @@ const removePdfFile = () => {
   itemForm.value.specPdfSize = '';
 };
 
-// -- Category CRUD --
+// -- Category Modal --
 const openAddCategoryModal = () => {
   editingCategory.value = null;
   categoryForm.value = { name: '', status: 'Active' };
@@ -1173,44 +1771,7 @@ const closeCategoryModal = () => {
   categoryExists.value = false;
 };
 
-const confirmSaveCategory = () => {
-  const catName = categoryForm.value.name.trim();
-  if (!catName) return;
-  
-  if (!editingCategory.value) {
-    const exists = categories.value.some(c => c.name === catName);
-    if (exists) {
-      categoryExists.value = true;
-      return;
-    }
-    categories.value.push({ name: catName, status: 'Active' });
-    categories.value.sort((a, b) => a.name.localeCompare(b.name));
-    showToastMessage(`Category "${catName}" added!`, 'success');
-  } else {
-    const exists = categories.value.some(c => c.name === catName && c.name !== editingCategory.value.name);
-    if (exists) {
-      categoryExists.value = true;
-      return;
-    }
-    const idx = categories.value.findIndex(c => c.name === editingCategory.value.name);
-    if (idx !== -1) {
-      categories.value[idx].name = catName;
-    }
-    showToastMessage(`Category updated!`, 'success');
-  }
-  closeCategoryModal();
-};
-
-const toggleCategoryStatus = (cat) => {
-  const newStatus = cat.status === 'Active' ? 'Inactive' : 'Active';
-  const idx = categories.value.findIndex(c => c.name === cat.name);
-  if (idx !== -1) {
-    categories.value[idx].status = newStatus;
-    showToastMessage(`Category "${cat.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
-  }
-};
-
-// -- UOM CRUD --
+// -- UOM Modal --
 const openAddUOMModal = () => {
   editingUOM.value = null;
   uomForm.value = { code: '', name: '', status: 'Active' };
@@ -1228,43 +1789,6 @@ const closeUOMModal = () => {
   editingUOM.value = null;
 };
 
-const saveUOM = () => {
-  const code = uomForm.value.code.trim();
-  const name = uomForm.value.name.trim();
-  
-  if (!code || !name) {
-    showToastMessage('Please enter both code and name', 'error');
-    return;
-  }
-  
-  if (!editingUOM.value) {
-    const exists = uomList.value.some(u => u.code === code);
-    if (exists) {
-      showToastMessage(`UOM "${code}" already exists`, 'error');
-      return;
-    }
-    uomList.value.push({ code, name, status: 'Active' });
-    uomList.value.sort((a, b) => a.code.localeCompare(b.code));
-    showToastMessage(`UOM "${code}" added!`, 'success');
-  } else {
-    const idx = uomList.value.findIndex(u => u.code === editingUOM.value.code);
-    if (idx !== -1) {
-      uomList.value[idx].name = name;
-    }
-    showToastMessage(`UOM updated!`, 'success');
-  }
-  closeUOMModal();
-};
-
-const toggleUOMStatus = (uom) => {
-  const newStatus = uom.status === 'Active' ? 'Inactive' : 'Active';
-  const idx = uomList.value.findIndex(u => u.code === uom.code);
-  if (idx !== -1) {
-    uomList.value[idx].status = newStatus;
-    showToastMessage(`UOM "${uom.code}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
-  }
-};
-
 // -- Export --
 const openExportModal = () => {
   showExportModal.value = true;
@@ -1279,18 +1803,22 @@ const changePage = (page) => {
   currentPage.value = page;
   loadItems();
 };
+
 const changePageSize = () => { 
   currentPage.value = 1;
   loadItems();
 };
+
 const onSearchChange = () => { 
   currentPage.value = 1;
   loadItems();
 };
+
 const onFilterChange = () => { 
   currentPage.value = 1;
   loadItems();
 };
+
 const toggleExpand = (id) => { 
   expandedRow.value = expandedRow.value === id ? null : id; 
 };
@@ -1300,32 +1828,474 @@ const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg;
   toastType.value = type;
   showToast.value = true;
-  setTimeout(() => { showToast.value = false; }, 3000);
-};
-
-// -- Formatting --
-const formatCurrency = (amt) => {
-  if (!amt && amt !== 0) return '0.00';
-  return amt.toFixed(2);
-};
-
-const formatFileSize = (bytes) => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  setTimeout(() => { showToast.value = false; }, 4000);
 };
 
 // ================================================================
 // LIFECYCLE
 // ================================================================
-onMounted(() => {
-  loadItems();
+onMounted(async () => {
+  await Promise.all([
+    loadCategories(),
+    loadUOMs(),
+    loadItems()
+  ]);
 });
 </script>
 
-
-
 <style scoped>
+/* ================================================================
+   ALL EXISTING STYLES REMAIN THE SAME
+   ================================================================ */
+
+.btn-template {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-template:hover:not(:disabled) {
+  background: #d97706;
+}
+.btn-template:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ================================================================
+   IMPORT STYLES
+   ================================================================ */
+
+.btn-import {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-import:hover:not(:disabled) { background: #7c3aed; }
+.btn-import:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.import-modal {
+  max-width: 850px;
+}
+
+.import-info {
+  margin-bottom: 16px;
+}
+
+.info-box {
+  display: flex;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.info-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.info-text {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0;
+}
+
+.csv-format-list {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.csv-format-list li {
+  margin: 2px 0;
+}
+
+.import-upload {
+  border-color: #8b5cf6;
+  background: #faf5ff;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+}
+
+.import-upload.drag-over {
+  border-color: #7c3aed;
+  background: #ede9fe;
+}
+
+.import-upload.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.import-upload.disabled:hover {
+  border-color: #8b5cf6;
+  background: #faf5ff;
+}
+
+/* Progress Bar */
+.import-progress {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-status {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.status-success { color: #16a34a; }
+.status-failed { color: #dc2626; }
+.status-remaining { color: #475569; }
+
+/* Import Results */
+.import-results {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.result-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.result-success { color: #16a34a; }
+.result-failed { color: #dc2626; }
+.result-total { color: #475569; }
+
+.result-errors {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.result-errors ul {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.result-errors li {
+  margin: 2px 0;
+}
+
+/* ================================================================
+   QUILL EDITOR STYLES
+   ================================================================ */
+
+.quill-editor {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.quill-editor :deep(.ql-toolbar) {
+  border-radius: 8px 8px 0 0;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.quill-editor :deep(.ql-container) {
+  border-radius: 0 0 8px 8px;
+  border: none;
+  min-height: 150px;
+  font-size: 14px;
+}
+
+.quill-editor :deep(.ql-editor) {
+  min-height: 150px;
+}
+
+.quill-editor :deep(.ql-editor p) {
+  margin-bottom: 8px;
+}
+
+.quill-editor :deep(.ql-editor ul),
+.quill-editor :deep(.ql-editor ol) {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+/* ================================================================
+   SPECIFICATION DISPLAY
+   ================================================================ */
+
+.spec-text-content {
+  background: white;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.8;
+  border: 1px solid #e2e8f0;
+}
+
+.spec-text-content :deep(p) {
+  margin-bottom: 8px;
+}
+
+.spec-text-content :deep(ul),
+.spec-text-content :deep(ol) {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.spec-text-content :deep(strong) {
+  font-weight: 600;
+}
+
+.spec-text-content :deep(em) {
+  font-style: italic;
+}
+
+.spec-text-content :deep(blockquote) {
+  border-left: 3px solid #3b82f6;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #475569;
+}
+
+.spec-text-content :deep(code) {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* ================================================================
+   ALL EXISTING STYLES CONTINUE BELOW
+   ================================================================ */
+
+
+.btn-template {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-template:hover {
+  background: #d97706;
+}
+/* ================================================================
+   ADD THESE NEW STYLES FOR IMPORT
+   ================================================================ */
+
+.btn-import {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-import:hover:not(:disabled) { background: #7c3aed; }
+
+.import-modal {
+  max-width: 750px;
+}
+
+.import-info {
+  margin-bottom: 16px;
+}
+
+.info-box {
+  display: flex;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.info-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.info-text {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0;
+}
+
+.csv-format-list {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.csv-format-list li {
+  margin: 2px 0;
+}
+
+.import-upload {
+  border-color: #8b5cf6;
+  background: #faf5ff;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.import-upload.drag-over {
+  border-color: #7c3aed;
+  background: #ede9fe;
+}
+
+.import-preview {
+  margin-top: 16px;
+}
+
+.import-preview h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.preview-table-container {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.preview-table th {
+  background: #f8fafc;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.preview-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.preview-more {
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 8px;
+}
+
+.import-results {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.result-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.result-success { color: #16a34a; }
+.result-failed { color: #dc2626; }
+.result-total { color: #475569; }
+
+.result-errors {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.result-errors ul {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.result-errors li {
+  margin: 2px 0;
+}
+
 /* ================================================================
    SECTION CARD
    ================================================================ */

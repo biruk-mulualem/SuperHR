@@ -3,10 +3,52 @@ const express = require('express');
 const router = express.Router();
 const itemController = require('../controllers/itemsController');
 const { authMiddleware } = require('../middleware/authMiddleware');
-const { uploadItemSpec } = require('../middleware/uploadMiddleware'); 
+const { uploadItemSpec } = require('../middleware/uploadMiddleware');
 
 // Apply auth middleware to all routes
 router.use(authMiddleware());
+
+// ==================== CATEGORY ROUTES ====================
+// MUST COME BEFORE /:id routes
+
+// Get all categories
+router.get('/categories', itemController.getAllCategories);
+
+// Get single category by ID
+router.get('/categories/:id', itemController.getCategoryById);
+
+// Create a new category
+router.post('/categories', itemController.createCategory);
+
+// Update a category
+router.put('/categories/:id', itemController.updateCategory);
+
+// Update category status
+router.patch('/categories/:id/status', itemController.updateCategoryStatus);
+
+// Delete a category
+router.delete('/categories/:id', itemController.deleteCategory);
+
+// ==================== UOM ROUTES ====================
+// MUST COME BEFORE /:id routes
+
+// Get all UOMs
+router.get('/uom', itemController.getAllUOMs);
+
+// Get single UOM by ID
+router.get('/uom/:id', itemController.getUOMById);
+
+// Create a new UOM
+router.post('/uom', itemController.createUOM);
+
+// Update a UOM
+router.put('/uom/:id', itemController.updateUOM);
+
+// Update UOM status
+router.patch('/uom/:id/status', itemController.updateUOMStatus);
+
+// Delete a UOM
+router.delete('/uom/:id', itemController.deleteUOM);
 
 // ==================== ITEM ROUTES ====================
 
@@ -34,7 +76,9 @@ router.get('/code/:code', itemController.getItemByCode);
 // Get all items with pagination and filtering
 router.get('/', itemController.getAllItems);
 
-// Get single item by ID
+// ==================== IMPORTANT: Wildcard routes MUST come AFTER specific routes ====================
+
+// Get single item by ID - THIS MUST BE AFTER ALL SPECIFIC ROUTES
 router.get('/:id', itemController.getItemById);
 
 // Create a new item
@@ -67,7 +111,7 @@ router.delete('/:id/permanent', itemController.permanentDeleteItem);
 // Upload item specification
 router.post(
   '/:id/upload-specification',
-  uploadItemSpec, // ✅ Use the middleware
+  uploadItemSpec,
   itemController.uploadItemSpecification
 );
 
@@ -76,6 +120,5 @@ router.delete(
   '/:id/remove-specification',
   itemController.removeItemSpecification
 );
-
 
 module.exports = router;
