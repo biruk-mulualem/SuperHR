@@ -1,11 +1,11 @@
-<!-- pages/ProductMaster.vue -->
+<!-- pages/ItemMaster.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
-        <h2>📦 Product Master Data</h2>
-        <span class="total-badge">{{ products.length }} Products</span>
+        <h2>📦 Item Master Data</h2>
+        <span class="total-badge">{{ items.length }} Items</span>
       </div>
 
       <div class="header-filters">
@@ -14,7 +14,7 @@
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="Search products..."
+            placeholder="Search items..."
             @input="onSearchChange"
           />
         </div>
@@ -23,7 +23,7 @@
           <span v-else>📊</span>
           {{ exporting ? "Exporting..." : "Export" }}
         </button>
-        <button class="btn-add" @click="openAddProduct">➕ Add Product</button>
+        <button class="btn-add" @click="openAddItem">➕ Add Item</button>
       </div>
     </div>
 
@@ -49,9 +49,9 @@
     <div class="tab-content">
 
       <!-- ============================================================ -->
-      <!-- TAB 1: PRODUCT LIST                                          -->
+      <!-- TAB 1: ITEM LIST                                             -->
       <!-- ============================================================ -->
-      <div v-if="activeTab === 'products'" class="products-tab">
+      <div v-if="activeTab === 'items'" class="items-tab">
         <div class="filter-bar">
           <select v-model="filterCategory" class="filter-select" @change="onFilterChange">
             <option value="">All Categories</option>
@@ -71,23 +71,23 @@
 
         <div v-if="loading" class="loading-state">
           <div class="spinner"></div>
-          <p>Loading products...</p>
+          <p>Loading items...</p>
         </div>
 
-        <div v-else-if="filteredProducts.length === 0" class="empty-state">
+        <div v-else-if="filteredItems.length === 0" class="empty-state">
           <div class="empty-icon">🧪</div>
-          <h3>No products found</h3>
-          <p>Add your first product to the master catalog</p>
-          <button @click="openAddProduct" class="btn-primary">Add Product</button>
+          <h3>No items found</h3>
+          <p>Add your first item to the master catalog</p>
+          <button @click="openAddItem" class="btn-primary">Add Item</button>
         </div>
 
         <div v-else class="table-container">
-          <table class="product-table">
+          <table class="item-table">
             <thead>
               <tr>
                 <th style="width:35px"></th>
                 <th>Code</th>
-                <th>Product Name</th>
+                <th>Item Name</th>
                 <th>Category</th>
                 <th>UOM</th>
                 <th>Status</th>
@@ -95,93 +95,92 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="product in paginatedProducts" :key="product.id">
+              <template v-for="item in paginatedItems" :key="item.itemId || item.id">
                 <tr
                   :class="{
-                    'expanded-row': expandedRow === product.id,
-                    'inactive-row': product.status === 'Inactive',
-                    'discontinued-row': product.status === 'Discontinued'
+                    'expanded-row': expandedRow === (item.itemId || item.id),
+                    'inactive-row': item.status === 'Inactive',
+                    'discontinued-row': item.status === 'Discontinued'
                   }"
                 >
                   <td class="text-center">
-                    <button class="expand-btn" @click="toggleExpand(product.id)">
-                      {{ expandedRow === product.id ? "▼" : "▶" }}
+                    <button class="expand-btn" @click="toggleExpand(item.itemId || item.id)">
+                      {{ expandedRow === (item.itemId || item.id) ? "▼" : "▶" }}
                     </button>
                   </td>
-                  <td class="sku">{{ product.code }}</td>
+                  <td class="sku">{{ item.code }}</td>
                   <td>
-                    <div class="product-info">
-                      <span class="common-name">{{ product.name }}</span>
-                      <span class="standard-name">{{ product.standardName }}</span>
+                    <div class="item-info">
+                      <span class="common-name">{{ item.name }}</span>
+                      <span class="standard-name">{{ item.standardName }}</span>
                     </div>
                   </td>
-                  <td>{{ product.category || '-' }}</td>
-                  <td>{{ product.uom }}</td>
+                  <td>{{ item.category?.name || '-' }}</td>
+                  <td>{{ item.uom?.code || '-' }}</td>
                   <td>
-                    <span :class="['status-badge', product.status.toLowerCase()]">
-                      {{ product.status }}
+                    <span :class="['status-badge', item.status.toLowerCase()]">
+                      {{ item.status }}
                     </span>
                   </td>
                   <td>
                     <div class="action-buttons">
-                      <button @click="openEditProduct(product)" class="icon-btn" title="Edit">✏️</button>
+                      <button @click="openEditItem(item)" class="icon-btn" title="Edit">✏️</button>
+                      <button @click="openDeactivateModal(item)" class="icon-btn" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
+                        {{ item.status === 'Active' ? '⏸️' : '▶️' }}
+                      </button>
                     </div>
                   </td>
                 </tr>
 
-                <tr v-if="expandedRow === product.id" class="detail-expand-row">
+                <tr v-if="expandedRow === (item.itemId || item.id)" class="detail-expand-row">
                   <td colspan="7">
                     <div class="expand-details">
                       <div class="detail-container">
                         <div class="detail-row-two-cols">
                           <div class="detail-card">
                             <h4>📋 Basic Information</h4>
-                            <div><span>Product Code</span><span class="value">{{ product.code }}</span></div>
-                            <div><span>Product Name</span><span class="value">{{ product.name }}</span></div>
-                            <div><span>Standard Name</span><span class="value">{{ product.standardName || '-' }}</span></div>
-                            <div><span>Description</span><span class="value">{{ product.description || '-' }}</span></div>
-                            <div><span>Brand</span><span class="value">{{ product.brand || '-' }}</span></div>
-                            <div><span>Model</span><span class="value">{{ product.model || '-' }}</span></div>
-                            <div><span>Barcode</span><span class="value">{{ product.barcode || '-' }}</span></div>
+                            <div><span>Item Code</span><span class="value">{{ item.code }}</span></div>
+                            <div><span>Item Name</span><span class="value">{{ item.name }}</span></div>
+                            <div><span>Standard Name</span><span class="value">{{ item.standardName || '-' }}</span></div>
+                            <div><span>Description</span><span class="value">{{ item.description || '-' }}</span></div>
+                            <div><span>Brand</span><span class="value">{{ item.brand || '-' }}</span></div>
+                            <div><span>Model</span><span class="value">{{ item.model || '-' }}</span></div>
+                            <div><span>Barcode</span><span class="value">{{ item.barcode || '-' }}</span></div>
                           </div>
 
                           <div class="detail-card">
                             <h4>💰 Pricing & Unit</h4>
-                            <div><span>Unit of Measure</span><span class="value">{{ product.uom }}</span></div>
+                            <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom }}</span></div>
                             
                             <!-- Conversion Display -->
-                            <div v-if="product.conversionUom">
+                            <div>
                               <span>Conversion</span>
-                              <span class="value">{{ product.conversionValue }} {{ product.conversionUom }} = 1 {{ product.uom }}</span>
+                              <span class="value">{{ getConversionDisplay(item) }}</span>
                             </div>
-                            <div v-if="product.conversionUom">
+                            <div>
                               <span>Conversion Unit</span>
-                              <span class="value">{{ product.conversionUom }}</span>
+                              <span class="value">{{ item.conversionUom?.code || item.conversionUom || item.uom }}</span>
                             </div>
-                            <div v-if="product.conversionUom">
+                            <div>
                               <span>Conversion Value</span>
-                              <span class="value">{{ product.conversionValue }}</span>
+                              <span class="value">{{ item.conversionValue || 1 }}</span>
                             </div>
-                            <div v-else>
-                              <span>Conversion</span>
-                              <span class="value">Base Unit</span>
-                            </div>
-                            <div><span>Cost Price</span><span class="value">${{ formatCurrency(product.costPrice) }}</span></div>
+                            <div><span>Cost Price</span><span class="value">${{ formatCurrency(item.costPrice) }}</span></div>
                           </div>
                         </div>
 
                         <div class="detail-card full-width">
                           <h4>📄 Specifications</h4>
-                          <div v-if="product.specType === 'text' && product.specText" class="spec-text-content">
-                            {{ product.specText }}
+                          <div v-if="item.specType === 'text' && item.specText" class="spec-text-content">
+                            {{ item.specText }}
                           </div>
-                          <div v-if="product.specType === 'pdf' && product.specPdf" class="spec-pdf-content">
+                          <div v-if="item.specType === 'pdf' && item.specPdfUrl" class="spec-pdf-content">
                             <span class="pdf-icon">📎</span>
-                            <span class="pdf-name">{{ product.specPdfName || 'Specification Document.pdf' }}</span>
-                            <span class="pdf-size">{{ product.specPdfSize || '250 KB' }}</span>
-                            <button @click="openPdfNewTab(product)" class="btn-pdf-open">📖 Open PDF</button>
+                            <span class="pdf-name">{{ item.specPdfName || 'Specification Document.pdf' }}</span>
+                            <span class="pdf-size">{{ item.specPdfSize || '250 KB' }}</span>
+                            <button @click="openPdfNewTab(item)" class="btn-pdf-open">📖 Open PDF</button>
                           </div>
-                          <div v-if="!product.specText && !product.specPdf" class="no-specs">
+                          <div v-if="!item.specText && !item.specPdfUrl" class="no-specs">
                             No specifications entered
                           </div>
                         </div>
@@ -194,7 +193,7 @@
           </table>
         </div>
 
-        <div class="pagination" v-if="filteredProducts.length > 0">
+        <div class="pagination" v-if="filteredItems.length > 0">
           <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
             ← Previous
           </button>
@@ -215,7 +214,7 @@
       <!-- ============================================================ -->
       <div v-if="activeTab === 'categories'" class="categories-tab">
         <div class="section-header">
-          <h2>📁 Product Categories</h2>
+          <h2>📁 Item Categories</h2>
           <button class="btn-add" @click="openAddCategoryModal">➕ Add Category</button>
         </div>
 
@@ -343,44 +342,44 @@
   <!-- MODALS                                                           -->
   <!-- ================================================================ -->
 
-  <!-- PRODUCT MODAL -->
-  <div v-if="showProductModal" class="modal-overlay" @click.self="closeProductModal">
-    <div class="modal-container product-modal">
+  <!-- ITEM MODAL -->
+  <div v-if="showItemModal" class="modal-overlay" @click.self="closeItemModal">
+    <div class="modal-container item-modal">
       <div class="modal-header">
-        <h3>{{ editingProduct ? '✏️ Edit Product' : '➕ Add New Product' }}</h3>
-        <button class="modal-close" @click="closeProductModal">✕</button>
+        <h3>{{ editingItem ? '✏️ Edit Item' : '➕ Add New Item' }}</h3>
+        <button class="modal-close" @click="closeItemModal">✕</button>
       </div>
       <div class="modal-body">
-        <form @submit.prevent="saveProduct" class="product-form">
+        <form @submit.prevent="saveItem" class="item-form">
           <div class="form-section-title">Basic Information</div>
           <div class="form-row">
             <div class="form-group">
-              <label>Product Name *</label>
-              <input v-model="productForm.name" type="text" required />
+              <label>Item Name *</label>
+              <input v-model="itemForm.name" type="text" required />
             </div>
             <div class="form-group">
               <label>Standard Name</label>
-              <input v-model="productForm.standardName" type="text" />
+              <input v-model="itemForm.standardName" type="text" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Description</label>
-              <textarea v-model="productForm.description" rows="2"></textarea>
+              <textarea v-model="itemForm.description" rows="2"></textarea>
             </div>
             <div class="form-group">
               <label>Brand</label>
-              <input v-model="productForm.brand" type="text" />
+              <input v-model="itemForm.brand" type="text" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label>Model</label>
-              <input v-model="productForm.model" type="text" />
+              <input v-model="itemForm.model" type="text" />
             </div>
             <div class="form-group">
               <label>Barcode</label>
-              <input v-model="productForm.barcode" type="text" />
+              <input v-model="itemForm.barcode" type="text" />
             </div>
           </div>
 
@@ -388,14 +387,14 @@
           <div class="form-row">
             <div class="form-group">
               <label>Category *</label>
-              <select v-model="productForm.category" required>
+              <select v-model="itemForm.category" required>
                 <option value="">Select Category...</option>
                 <option v-for="cat in getActiveCategories()" :key="cat" :value="cat">{{ cat }}</option>
               </select>
             </div>
             <div class="form-group">
               <label>Unit of Measure (UOM) *</label>
-              <select v-model="productForm.uom" required @change="onUOMChange">
+              <select v-model="itemForm.uom" required @change="onUOMChange">
                 <option value="">Select UOM...</option>
                 <option v-for="uom in getActiveUOMs()" :key="uom.code" :value="uom.code">
                   {{ uom.code }} - {{ uom.name }}
@@ -409,16 +408,21 @@
           <div class="form-row">
             <div class="form-group">
               <label>Conversion Unit</label>
-              <input v-model="productForm.conversionUom" type="text" readonly class="readonly-field" />
-              <span class="hint">Auto-filled from UOM settings</span>
+              <select v-model="itemForm.conversionUom" @change="onConversionUnitChange">
+                <option value="">Select Conversion Unit...</option>
+                <option v-for="uom in getActiveUOMs()" :key="uom.code" :value="uom.code">
+                  {{ uom.code }} - {{ uom.name }}
+                </option>
+              </select>
+              <span class="hint">Select the unit this converts to</span>
             </div>
             <div class="form-group">
               <label>Conversion Value</label>
-              <input v-model.number="productForm.conversionValue" type="number" readonly class="readonly-field" />
-              <span class="hint" v-if="productForm.conversionUom && productForm.conversionValue">
-                {{ productForm.conversionValue }} {{ productForm.conversionUom }} = 1 {{ productForm.uom }}
+              <input v-model.number="itemForm.conversionValue" type="number" step="0.01" min="0" placeholder="e.g., 165" />
+              <span class="hint" v-if="itemForm.conversionUom && itemForm.conversionValue">
+                {{ itemForm.conversionValue }} {{ itemForm.conversionUom }} = 1 {{ itemForm.uom }}
               </span>
-              <span class="hint" v-else-if="productForm.uom">Base Unit (no conversion)</span>
+              <span class="hint" v-else-if="itemForm.uom && !itemForm.conversionUom">Base Unit (no conversion)</span>
             </div>
           </div>
 
@@ -426,7 +430,7 @@
           <div class="form-row">
             <div class="form-group">
               <label>Cost Price ($)</label>
-              <input v-model.number="productForm.costPrice" type="number" step="0.01" min="0" />
+              <input v-model.number="itemForm.costPrice" type="number" step="0.01" min="0" />
             </div>
           </div>
 
@@ -445,7 +449,7 @@
           <div v-if="specType === 'text'" class="form-row">
             <div class="form-group full-width">
               <label>Written Specifications</label>
-              <textarea v-model="productForm.specText" rows="6" 
+              <textarea v-model="itemForm.specText" rows="6" 
                 placeholder="Enter detailed specifications here..."></textarea>
             </div>
           </div>
@@ -454,10 +458,10 @@
             <div class="form-group full-width">
               <label>PDF Specification Document</label>
               <div class="file-upload-area" @click="triggerFileUpload">
-                <div v-if="productForm.specPdfFile" class="file-preview">
+                <div v-if="itemForm.specPdfFile" class="file-preview">
                   <span class="file-icon">📄</span>
-                  <span class="file-name">{{ productForm.specPdfFile.name }}</span>
-                  <span class="file-size">{{ formatFileSize(productForm.specPdfFile.size) }}</span>
+                  <span class="file-name">{{ itemForm.specPdfFile.name }}</span>
+                  <span class="file-size">{{ formatFileSize(itemForm.specPdfFile.size) }}</span>
                   <button type="button" @click.stop="removePdfFile" class="remove-file">✕</button>
                 </div>
                 <div v-else class="upload-placeholder">
@@ -473,9 +477,58 @@
         </form>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" @click="closeProductModal">Cancel</button>
-        <button class="btn-primary" @click="saveProduct" :disabled="savingProduct">
-          {{ savingProduct ? 'Saving...' : (editingProduct ? 'Update' : 'Add') }}
+        <button class="btn-secondary" @click="closeItemModal">Cancel</button>
+        <button class="btn-primary" @click="saveItem" :disabled="savingItem">
+          {{ savingItem ? 'Saving...' : (editingItem ? 'Update' : 'Add') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEACTIVATE/CONFIRMATION MODAL -->
+  <div v-if="showDeactivateModal" class="modal-overlay" @click.self="closeDeactivateModal">
+    <div class="modal-container deactivate-modal">
+      <div class="modal-header">
+        <h3>{{ deactivateItem?.status === 'Active' ? '⏸️ Confirm Deactivate' : '▶️ Confirm Activate' }}</h3>
+        <button class="modal-close" @click="closeDeactivateModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="confirmation-icon">🔄</div>
+        <p class="confirmation-title">Are you sure you want to change the status?</p>
+        <div class="confirmation-details">
+          <div class="detail-row">
+            <span class="detail-label">Item:</span>
+            <span class="detail-value">{{ deactivateItem?.name }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Code:</span>
+            <span class="detail-value">{{ deactivateItem?.code }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Current Status:</span>
+            <span :class="['status-badge', deactivateItem?.status?.toLowerCase() || 'active']">
+              {{ deactivateItem?.status || 'Active' }}
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">New Status:</span>
+            <span :class="['status-badge', getNewStatus(deactivateItem?.status)?.toLowerCase() || 'inactive']">
+              {{ getNewStatus(deactivateItem?.status) }}
+            </span>
+          </div>
+        </div>
+        <p class="warning-text">⚠️ This action will {{ deactivateItem?.status === 'Active' ? 'deactivate' : 'activate' }} this item.</p>
+        <p class="warning-subtext" v-if="deactivateItem?.status === 'Active'">
+          Deactivated items will not appear in dropdown selections.
+        </p>
+        <p class="warning-subtext" v-else>
+          Activated items will appear in dropdown selections.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="closeDeactivateModal">Cancel</button>
+        <button class="btn-primary" @click="confirmDeactivate">
+          {{ deactivateItem?.status === 'Active' ? 'Deactivate' : 'Activate' }}
         </button>
       </div>
     </div>
@@ -543,13 +596,13 @@
   <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
     <div class="modal-container export-modal">
       <div class="modal-header">
-        <h3>📊 Export Product Data</h3>
+        <h3>📊 Export Item Data</h3>
         <button class="modal-close" @click="closeExportModal">✕</button>
       </div>
       <div class="modal-body">
         <div class="export-options">
           <div class="export-option" @click="exportType = 'full'">
-            <input type="radio" v-model="exportType" value="full" /> Full Product Catalog
+            <input type="radio" v-model="exportType" value="full" /> Full Item Catalog
           </div>
           <div class="export-option" @click="exportType = 'summary'">
             <input type="radio" v-model="exportType" value="summary" /> Summary
@@ -573,11 +626,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import itemService from '@/stores/itemService';
 
 // ================================================================
 // STATE
 // ================================================================
-const products = ref([]);
+const items = ref([]);
 const loading = ref(false);
 const searchQuery = ref('');
 const filterCategory = ref('');
@@ -586,14 +640,18 @@ const filterUOM = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10);
 
-const activeTab = ref('products');
+const activeTab = ref('items');
 const expandedRow = ref(null);
 const specType = ref('text');
 
-// Product Modals
-const showProductModal = ref(false);
-const editingProduct = ref(null);
-const savingProduct = ref(false);
+// Item Modals
+const showItemModal = ref(false);
+const editingItem = ref(null);
+const savingItem = ref(false);
+
+// Deactivate Modal
+const showDeactivateModal = ref(false);
+const deactivateItem = ref(null);
 
 // Category Modals
 const showCategoryModal = ref(false);
@@ -620,7 +678,7 @@ const toastType = ref('success');
 
 const pdfFileInput = ref(null);
 
-const productForm = ref({
+const itemForm = ref({
   name: '',
   standardName: '',
   description: '',
@@ -685,7 +743,7 @@ const categories = ref([
 // COMPUTED
 // ================================================================
 const tabs = [
-  { key: 'products', label: '📦 Products' },
+  { key: 'items', label: '📦 Items' },
   { key: 'categories', label: '📁 Categories' },
   { key: 'uom', label: '📏 UOM' }
 ];
@@ -722,9 +780,9 @@ const uomTotalPages = computed(() => {
   return Math.ceil(uomList.value.length / uomPageSize.value) || 1;
 });
 
-// Product Computed
-const filteredProducts = computed(() => {
-  let result = products.value;
+// Item Computed
+const filteredItems = computed(() => {
+  let result = items.value;
   
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase();
@@ -752,125 +810,252 @@ const filteredProducts = computed(() => {
 });
 
 const totalPages = computed(() => {
-  return Math.ceil(filteredProducts.value.length / pageSize.value) || 1;
+  return Math.ceil(filteredItems.value.length / pageSize.value) || 1;
 });
 
-const paginatedProducts = computed(() => {
+const paginatedItems = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
-  return filteredProducts.value.slice(start, start + pageSize.value);
+  return filteredItems.value.slice(start, start + pageSize.value);
 });
 
 watch(specType, (newVal) => {
   if (newVal === 'text') {
-    productForm.value.specPdfFile = null;
-    productForm.value.specPdfName = '';
-    productForm.value.specPdfSize = '';
+    itemForm.value.specPdfFile = null;
+    itemForm.value.specPdfName = '';
+    itemForm.value.specPdfSize = '';
   } else {
-    productForm.value.specText = '';
+    itemForm.value.specText = '';
   }
 });
+
+// ================================================================
+// CONVERSION HELPER METHODS
+// ================================================================
+const getConversionDisplay = (item) => {
+  if (!item) return '';
+  const uomCode = item.uom?.code || item.uom;
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const convValue = item.conversionValue;
+  
+  if (convUnit && convValue && convValue > 0) {
+    return `${convValue} ${convUnit} = 1 ${uomCode}`;
+  }
+  return `1 ${uomCode} = 1 ${uomCode}`;
+};
 
 // ================================================================
 // METHODS
 // ================================================================
 
 const onUOMChange = () => {
-  // UOM selection auto-fills conversion info
+  // When UOM changes
 };
 
-const generateProductCode = () => {
-  const maxNumber = products.value.reduce((max, p) => {
-    const num = parseInt(p.code.replace('SDT', ''));
-    return num > max ? num : max;
-  }, 0);
-  const nextNumber = String(maxNumber + 1).padStart(6, '0');
-  return 'SDT' + nextNumber;
+const onConversionUnitChange = () => {
+  // When conversion unit changes
 };
 
-const loadProducts = () => {
+const getNewStatus = (currentStatus) => {
+  return currentStatus === 'Active' ? 'Inactive' : 'Active';
+};
+
+// ================================================================
+// API CALLS
+// ================================================================
+
+const loadItems = async () => {
   loading.value = true;
-  setTimeout(() => {
-    products.value = getMockProducts();
+  try {
+    const response = await itemService.getItems({
+      page: currentPage.value,
+      limit: pageSize.value,
+      search: searchQuery.value || undefined,
+      categoryId: filterCategory.value || undefined,
+      status: filterStatus.value || undefined,
+      uomId: filterUOM.value || undefined
+    });
+    
+    if (response.success) {
+      // Map the data to handle both 'id' and 'itemId'
+      items.value = response.data.items.map(item => ({
+        ...item,
+        id: item.itemId || item.id
+      }));
+    } else {
+      showToastMessage(response.error || 'Failed to load items', 'error');
+    }
+  } catch (error) {
+    console.error('Load items error:', error);
+    showToastMessage('Failed to load items', 'error');
+  } finally {
     loading.value = false;
-  }, 300);
+  }
 };
 
-const getMockProducts = () => {
-  return [
-    { 
-      id: 'p1', 
-      code: 'SDT000001', 
-      name: 'Dulatin Chemical', 
-      standardName: 'Dulatin Industrial Chemical',
-      description: 'High-performance industrial chemical',
-      brand: 'ChemTech', 
-      model: 'DT-2000', 
-      category: 'Chemicals', 
-      uom: 'Drum', 
-      conversionUom: 'KG',
-      conversionValue: 165,
-      status: 'Active', 
-      barcode: '1234567890123', 
-      costPrice: 245.00,
-      specType: 'text',
-      specText: 'High-performance industrial chemical.\n\nKey Properties:\n- Density: 1.2 g/cm³\n- Flash Point: 35°C',
-      specPdf: null,
-      specPdfName: '',
-      specPdfSize: '',
-      specPdfUrl: ''
-    },
-    { 
-      id: 'p2', 
-      code: 'SDT000002', 
-      name: 'Titanium Dioxide Pigment', 
-      standardName: 'Titanium Dioxide White Pigment',
-      description: 'High-quality titanium dioxide pigment',
-      brand: 'ColorMaster', 
-      model: 'TiO2-5000', 
-      category: 'Paint Raw Material', 
-      uom: 'KG', 
-      conversionUom: '',
-      conversionValue: 0,
-      status: 'Active', 
-      barcode: '9876543210987', 
-      costPrice: 8.00,
-      specType: 'text',
-      specText: 'High-quality titanium dioxide pigment.\n\nKey Properties:\n- Purity: 99.5%',
-      specPdf: null,
-      specPdfName: '',
-      specPdfSize: '',
-      specPdfUrl: ''
-    },
-    { 
-      id: 'p3', 
-      code: 'SDT000003', 
-      name: 'Steel Sheets', 
-      standardName: 'Industrial Steel Sheets 2mm',
-      description: 'High-grade steel sheets',
-      brand: 'SteelPro', 
-      model: 'SP-2mm', 
-      category: 'Metals', 
-      uom: 'Box', 
-      conversionUom: 'Each',
-      conversionValue: 12,
-      status: 'Active', 
-      barcode: '4567890123456', 
-      costPrice: 15.00,
-      specType: 'text',
-      specText: 'High-grade steel sheets.\n\nKey Properties:\n- Thickness: 2mm\n- Grade: A36',
-      specPdf: null,
-      specPdfName: '',
-      specPdfSize: '',
-      specPdfUrl: ''
-    },
-  ];
+const saveItem = async () => {
+  savingItem.value = true;
+  try {
+    const formData = { 
+      ...itemForm.value,
+      status: 'Active'
+    };
+    
+    // Map category name to categoryId if needed
+    if (itemForm.value.category && typeof itemForm.value.category === 'string') {
+      const category = categories.value.find(c => c.name === itemForm.value.category);
+      if (category) {
+        formData.categoryId = categories.value.findIndex(c => c.name === itemForm.value.category) + 1;
+      }
+    }
+    
+    // Map UOM code to uomId
+    if (itemForm.value.uom && typeof itemForm.value.uom === 'string') {
+      const uom = uomList.value.find(u => u.code === itemForm.value.uom);
+      if (uom) {
+        formData.uomId = uomList.value.indexOf(uom) + 1;
+      }
+    }
+    
+    // Map conversion UOM
+    if (itemForm.value.conversionUom && typeof itemForm.value.conversionUom === 'string') {
+      const convUom = uomList.value.find(u => u.code === itemForm.value.conversionUom);
+      if (convUom) {
+        formData.conversionUomId = uomList.value.indexOf(convUom) + 1;
+      }
+    }
+    
+    if (specType.value === 'text') {
+      formData.specType = 'text';
+      formData.specPdfName = null;
+      formData.specPdfSize = null;
+      formData.specPdfUrl = null;
+    } else {
+      formData.specType = 'pdf';
+      formData.specText = null;
+      if (itemForm.value.specPdfFile) {
+        formData.specPdfName = itemForm.value.specPdfFile.name;
+        formData.specPdfSize = formatFileSize(itemForm.value.specPdfFile.size);
+      }
+    }
+    
+    let response;
+    const itemId = editingItem.value?.itemId || editingItem.value?.id;
+    
+    if (editingItem.value) {
+      response = await itemService.updateItem(itemId, formData);
+      if (response.success) {
+        showToastMessage('Item updated successfully!', 'success');
+        if (itemForm.value.specPdfFile && specType.value === 'pdf') {
+          await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
+        }
+      }
+    } else {
+      response = await itemService.createItem(formData);
+      if (response.success) {
+        showToastMessage('Item added successfully!', 'success');
+        if (itemForm.value.specPdfFile && specType.value === 'pdf') {
+          await uploadSpecificationFile(response.data.itemId || response.data.id, itemForm.value.specPdfFile);
+        }
+      }
+    }
+    
+    if (response.success) {
+      closeItemModal();
+      await loadItems();
+    } else {
+      showToastMessage(response.error || 'Failed to save item', 'error');
+    }
+  } catch (error) {
+    console.error('Save item error:', error);
+    showToastMessage('Failed to save item', 'error');
+  } finally {
+    savingItem.value = false;
+  }
 };
 
-// -- Products CRUD --
-const openAddProduct = () => {
-  editingProduct.value = null;
+const uploadSpecificationFile = async (itemId, file) => {
+  try {
+    const response = await itemService.uploadSpecification(itemId, file);
+    if (response.success) {
+      showToastMessage('Specification uploaded successfully!', 'success');
+    } else {
+      showToastMessage('Failed to upload specification', 'error');
+    }
+  } catch (error) {
+    console.error('Upload specification error:', error);
+    showToastMessage('Failed to upload specification', 'error');
+  }
+};
+
+const confirmDeactivate = async () => {
+  if (deactivateItem.value) {
+    try {
+      const newStatus = deactivateItem.value.status === 'Active' ? 'Inactive' : 'Active';
+      const itemId = deactivateItem.value.itemId || deactivateItem.value.id;
+      let response;
+      
+      if (newStatus === 'Active') {
+        response = await itemService.activateItem(itemId);
+      } else {
+        response = await itemService.deactivateItem(itemId);
+      }
+      
+      if (response.success) {
+        showToastMessage(`Item "${deactivateItem.value.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, 'success');
+        await loadItems();
+      } else {
+        showToastMessage(response.error || 'Failed to change status', 'error');
+      }
+    } catch (error) {
+      console.error('Status change error:', error);
+      showToastMessage('Failed to change status', 'error');
+    }
+    closeDeactivateModal();
+  }
+};
+
+const exportSelectedReport = async () => {
+  exporting.value = true;
+  try {
+    const response = await itemService.exportItems({
+      categoryId: filterCategory.value || undefined,
+      status: filterStatus.value || undefined
+    });
+    
+    if (response.success && response.data.length > 0) {
+      const headers = Object.keys(response.data[0]);
+      const rows = response.data.map(item => headers.map(key => item[key]));
+      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `item_catalog_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      showToastMessage('Export completed!', 'success');
+    } else {
+      showToastMessage(response.error || 'No data to export', 'error');
+    }
+  } catch (error) {
+    console.error('Export error:', error);
+    showToastMessage('Failed to export', 'error');
+  } finally {
+    exporting.value = false;
+    closeExportModal();
+  }
+};
+
+// ================================================================
+// UI HELPERS
+// ================================================================
+
+const openAddItem = () => {
+  editingItem.value = null;
   specType.value = 'text';
-  productForm.value = {
+  itemForm.value = {
     name: '',
     standardName: '',
     description: '',
@@ -888,90 +1073,82 @@ const openAddProduct = () => {
     specPdfName: '',
     specPdfSize: ''
   };
-  showProductModal.value = true;
+  showItemModal.value = true;
 };
 
-const openEditProduct = (product) => {
-  editingProduct.value = product;
-  if (product.specType === 'pdf' && product.specPdf) {
+const openEditItem = (item) => {
+  editingItem.value = item;
+  if (item.specType === 'pdf' && item.specPdfUrl) {
     specType.value = 'pdf';
   } else {
     specType.value = 'text';
   }
-  productForm.value = { 
-    name: product.name,
-    standardName: product.standardName || '',
-    description: product.description || '',
-    brand: product.brand || '',
-    model: product.model || '',
-    category: product.category || '',
-    uom: product.uom || '',
-    barcode: product.barcode || '',
-    costPrice: product.costPrice || 0,
-    conversionUom: product.conversionUom || '',
-    conversionValue: product.conversionValue || 0,
-    specType: product.specType || 'text',
-    specText: product.specText || '',
+  
+  itemForm.value = { 
+    name: item.name,
+    standardName: item.standardName || '',
+    description: item.description || '',
+    brand: item.brand || '',
+    model: item.model || '',
+    category: item.category?.name || item.category || '',
+    uom: item.uom?.code || item.uom || '',
+    barcode: item.barcode || '',
+    costPrice: item.costPrice || 0,
+    conversionUom: item.conversionUom?.code || item.conversionUom || '',
+    conversionValue: item.conversionValue || 0,
+    specType: item.specType || 'text',
+    specText: item.specText || '',
     specPdfFile: null,
-    specPdfName: product.specPdfName || '',
-    specPdfSize: product.specPdfSize || ''
+    specPdfName: item.specPdfName || '',
+    specPdfSize: item.specPdfSize || ''
   };
-  showProductModal.value = true;
+  showItemModal.value = true;
 };
 
-const closeProductModal = () => {
-  showProductModal.value = false;
-  editingProduct.value = null;
+const closeItemModal = () => {
+  showItemModal.value = false;
+  editingItem.value = null;
 };
 
-const saveProduct = () => {
-  savingProduct.value = true;
-  setTimeout(() => {
-    const formData = { 
-      ...productForm.value,
-      status: 'Active'
-    };
-    
-    if (specType.value === 'text') {
-      formData.specType = 'text';
-      formData.specPdf = null;
-      formData.specPdfName = '';
-      formData.specPdfSize = '';
-      formData.specPdfUrl = '';
-    } else {
-      formData.specType = 'pdf';
-      formData.specText = '';
-      if (productForm.value.specPdfFile) {
-        formData.specPdf = true;
-        formData.specPdfName = productForm.value.specPdfFile.name;
-        formData.specPdfSize = formatFileSize(productForm.value.specPdfFile.size);
-        formData.specPdfUrl = URL.createObjectURL(productForm.value.specPdfFile);
-      }
-    }
-    
-    if (editingProduct.value) {
-      const idx = products.value.findIndex(p => p.id === editingProduct.value.id);
-      if (idx !== -1) {
-        products.value[idx] = { 
-          ...formData, 
-          id: editingProduct.value.id,
-          code: editingProduct.value.code
-        };
-      }
-      showToastMessage('Product updated successfully!', 'success');
-    } else {
-      const newProduct = {
-        ...formData,
-        id: 'p' + Date.now(),
-        code: generateProductCode()
-      };
-      products.value.push(newProduct);
-      showToastMessage('Product added successfully!', 'success');
-    }
-    closeProductModal();
-    loadProducts();
-    savingProduct.value = false;
-  }, 500);
+const openDeactivateModal = (item) => {
+  deactivateItem.value = item;
+  showDeactivateModal.value = true;
+};
+
+const closeDeactivateModal = () => {
+  showDeactivateModal.value = false;
+  deactivateItem.value = null;
+};
+
+const openPdfNewTab = (item) => {
+  if (item.specPdfUrl) {
+    window.open(item.specPdfUrl, '_blank');
+  } else {
+    showToastMessage(`Opening ${item.specPdfName}...`, 'success');
+  }
+};
+
+const triggerFileUpload = () => {
+  pdfFileInput.value.click();
+};
+
+const handlePdfUpload = (event) => {
+  const file = event.target.files[0];
+  if (file && file.type === 'application/pdf') {
+    itemForm.value.specPdfFile = file;
+    itemForm.value.specPdfName = file.name;
+    itemForm.value.specPdfSize = formatFileSize(file.size);
+    showToastMessage('PDF uploaded successfully!', 'success');
+  } else {
+    showToastMessage('Please upload a valid PDF file', 'error');
+  }
+  event.target.value = '';
+};
+
+const removePdfFile = () => {
+  itemForm.value.specPdfFile = null;
+  itemForm.value.specPdfName = '';
+  itemForm.value.specPdfSize = '';
 };
 
 // -- Category CRUD --
@@ -1088,38 +1265,6 @@ const toggleUOMStatus = (uom) => {
   }
 };
 
-// -- PDF Functions --
-const openPdfNewTab = (product) => {
-  if (product.specPdfUrl) {
-    window.open(product.specPdfUrl, '_blank');
-  } else {
-    showToastMessage(`Opening ${product.specPdfName}...`, 'success');
-  }
-};
-
-const triggerFileUpload = () => {
-  pdfFileInput.value.click();
-};
-
-const handlePdfUpload = (event) => {
-  const file = event.target.files[0];
-  if (file && file.type === 'application/pdf') {
-    productForm.value.specPdfFile = file;
-    productForm.value.specPdfName = file.name;
-    productForm.value.specPdfSize = formatFileSize(file.size);
-    showToastMessage('PDF uploaded successfully!', 'success');
-  } else {
-    showToastMessage('Please upload a valid PDF file', 'error');
-  }
-  event.target.value = '';
-};
-
-const removePdfFile = () => {
-  productForm.value.specPdfFile = null;
-  productForm.value.specPdfName = '';
-  productForm.value.specPdfSize = '';
-};
-
 // -- Export --
 const openExportModal = () => {
   showExportModal.value = true;
@@ -1129,52 +1274,26 @@ const closeExportModal = () => {
   showExportModal.value = false;
 };
 
-const exportSelectedReport = () => {
-  exporting.value = true;
-  setTimeout(() => {
-    let headers = [], rows = [];
-    const data = filteredProducts.value;
-    
-    if (exportType.value === 'full') {
-      headers = ['Code', 'Name', 'Category', 'UOM', 'Conversion', 'Conversion Unit', 'Conversion Value', 'Status', 'Cost Price'];
-      rows = data.map(p => [
-        p.code, p.name, p.category || '', p.uom, 
-        p.conversionUom ? `${p.conversionValue} ${p.conversionUom} = 1 ${p.uom}` : 'Base Unit',
-        p.conversionUom || '',
-        p.conversionValue || 0,
-        p.status, p.costPrice || 0
-      ]);
-    } else {
-      headers = ['Code', 'Name', 'Category', 'UOM', 'Status'];
-      rows = data.map(p => [
-        p.code, p.name, p.category || '', p.uom, p.status
-      ]);
-    }
-    
-    downloadCSV([headers, ...rows], `product_catalog_${new Date().toISOString().split('T')[0]}.csv`);
-    exporting.value = false;
-    closeExportModal();
-    showToastMessage('Export completed!', 'success');
-  }, 500);
-};
-
-const downloadCSV = (data, filename) => {
-  const csv = data.map(row => row.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
 // -- Pagination --
-const changePage = (page) => { currentPage.value = page; };
-const changePageSize = () => { currentPage.value = 1; };
-const onSearchChange = () => { currentPage.value = 1; };
-const onFilterChange = () => { currentPage.value = 1; };
-const toggleExpand = (id) => { expandedRow.value = expandedRow.value === id ? null : id; };
+const changePage = (page) => { 
+  currentPage.value = page;
+  loadItems();
+};
+const changePageSize = () => { 
+  currentPage.value = 1;
+  loadItems();
+};
+const onSearchChange = () => { 
+  currentPage.value = 1;
+  loadItems();
+};
+const onFilterChange = () => { 
+  currentPage.value = 1;
+  loadItems();
+};
+const toggleExpand = (id) => { 
+  expandedRow.value = expandedRow.value === id ? null : id; 
+};
 
 // -- Toast --
 const showToastMessage = (msg, type = 'success') => {
@@ -1200,9 +1319,11 @@ const formatFileSize = (bytes) => {
 // LIFECYCLE
 // ================================================================
 onMounted(() => {
-  loadProducts();
+  loadItems();
 });
 </script>
+
+
 
 <style scoped>
 /* ================================================================
@@ -1434,14 +1555,14 @@ onMounted(() => {
   overflow-x: auto;
 }
 
-.product-table, .category-table, .uom-table {
+.item-table, .category-table, .uom-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   min-width: 600px;
 }
 
-.product-table th, .product-table td,
+.item-table th, .item-table td,
 .category-table th, .category-table td,
 .uom-table th, .uom-table td {
   padding: 10px 12px;
@@ -1449,7 +1570,7 @@ onMounted(() => {
   border-bottom: 1px solid #f1f5f9;
 }
 
-.product-table th, .category-table th, .uom-table th {
+.item-table th, .category-table th, .uom-table th {
   background: #f8fafc;
   font-weight: 600;
   color: #475569;
@@ -1461,7 +1582,7 @@ onMounted(() => {
 .text-center { text-align: center; }
 .sku, .code { font-weight: 600; color: #2563eb; font-size: 12px; }
 
-.product-info {
+.item-info {
   display: flex;
   flex-direction: column;
 }
@@ -1571,6 +1692,76 @@ onMounted(() => {
 .no-specs { color: #94a3b8; font-size: 13px; padding: 12px; text-align: center; }
 
 /* ================================================================
+   DEACTIVATE MODAL
+   ================================================================ */
+.deactivate-modal {
+  max-width: 450px;
+}
+
+.confirmation-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirmation-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.confirmation-details {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 500;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.detail-value {
+  color: #1e293b;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.warning-text {
+  color: #f59e0b;
+  font-weight: 500;
+  text-align: center;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fffbeb;
+  border-radius: 6px;
+  border: 1px solid #fef3c7;
+  font-size: 13px;
+}
+
+.warning-subtext {
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* ================================================================
    MODALS
    ================================================================ */
 .modal-overlay {
@@ -1596,10 +1787,11 @@ onMounted(() => {
   box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
 }
 
-.product-modal { max-width: 750px; }
+.item-modal { max-width: 750px; }
 .uom-modal { max-width: 450px; }
 .category-modal { max-width: 450px; }
 .export-modal { max-width: 400px; }
+.deactivate-modal { max-width: 450px; }
 
 .modal-header {
   display: flex;
@@ -1644,18 +1836,18 @@ onMounted(() => {
   border-bottom: 2px solid #e2e8f0;
 }
 
-.product-form .form-row, .uom-form .form-row {
+.item-form .form-row, .uom-form .form-row {
   display: flex;
   gap: 16px;
   margin-bottom: 12px;
 }
-.product-form .form-group, .uom-form .form-group {
+.item-form .form-group, .uom-form .form-group {
   flex: 1;
   min-width: 120px;
 }
-.product-form .form-group.full-width { flex: 1 1 100%; }
+.item-form .form-group.full-width { flex: 1 1 100%; }
 
-.product-form .form-group label, .uom-form .form-group label {
+.item-form .form-group label, .uom-form .form-group label {
   display: block;
   font-size: 11px;
   font-weight: 600;
@@ -1665,9 +1857,9 @@ onMounted(() => {
   letter-spacing: 0.3px;
 }
 
-.product-form .form-group input,
-.product-form .form-group select,
-.product-form .form-group textarea,
+.item-form .form-group input,
+.item-form .form-group select,
+.item-form .form-group textarea,
 .uom-form .form-group input {
   width: 100%;
   padding: 6px 10px;
@@ -1677,16 +1869,16 @@ onMounted(() => {
   font-family: inherit;
 }
 
-.product-form .form-group input:focus,
-.product-form .form-group select:focus,
-.product-form .form-group textarea:focus,
+.item-form .form-group input:focus,
+.item-form .form-group select:focus,
+.item-form .form-group textarea:focus,
 .uom-form .form-group input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.product-form .hint, .uom-form .hint {
+.item-form .hint, .uom-form .hint {
   display: block;
   font-size: 11px;
   color: #94a3b8;
@@ -1859,7 +2051,7 @@ onMounted(() => {
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
   .spec-type-selector { flex-direction: column; gap: 8px; }
-  .product-form .form-row, .uom-form .form-row { flex-direction: column; gap: 8px; }
+  .item-form .form-row, .uom-form .form-row { flex-direction: column; gap: 8px; }
 }
 
 @media (max-width: 600px) {
@@ -1867,7 +2059,7 @@ onMounted(() => {
   .tabs { flex-wrap: wrap; }
   .tab { flex: 1; text-align: center; padding: 6px 10px; font-size: 11px; }
   .pagination { flex-wrap: wrap; }
-  .product-table, .category-table, .uom-table { min-width: 500px; }
+  .item-table, .category-table, .uom-table { min-width: 500px; }
   .modal-container { margin: 10px; max-height: 95vh; }
 }
 </style>

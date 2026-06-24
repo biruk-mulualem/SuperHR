@@ -194,6 +194,16 @@ const router = createRouter({
         },
 
 
+              {
+          path: "store-transaction",
+          name: "store-transaction",
+          component: () => import("@/views/storemanagement/storetransaction/storetransaction.vue"),
+          meta: { 
+            title: "general store transaction ", 
+            roles: ["admin", "store"] 
+          },
+        },
+
 
 
         

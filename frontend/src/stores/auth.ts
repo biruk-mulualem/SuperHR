@@ -76,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
   // Fetch roles from backend
   const fetchRoles = async () => {
     try {
-      const response = await api.get('/roles') // Adjust endpoint as needed
+      const response = await api.get('/users/roles') // Adjust endpoint as needed
       if (response.data.success) {
         availableRoles.value = response.data.roles
       }

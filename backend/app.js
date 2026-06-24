@@ -48,6 +48,11 @@ const uploadDirs = [
   // Attendance
   "uploads/attendance/",
   
+
+ // Item specifications
+  "uploads/items/specifications",
+  
+
   // Temp uploads
   "uploads/temp/"
 ];
@@ -74,6 +79,7 @@ const payrollRoutes = require("./routes/payrollRoutes");
 const penalityRoutes = require("./routes/penalityRoutes");
 
 const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
+const itemRoutes=require('./routes/itemRoutes');
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -118,7 +124,7 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/penalties", penalityRoutes);
 app.use('/api/penalty-summary', penaltySummaryRoutes);
-
+app.use('/api/items', itemRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

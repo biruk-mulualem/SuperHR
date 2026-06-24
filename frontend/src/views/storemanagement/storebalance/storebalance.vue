@@ -66,10 +66,10 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">📊</div>
+        <div class="stat-icon">⚠️</div>
         <div class="stat-content">
-          <div class="stat-number">{{ totalBaseQuantity }}</div>
-          <div class="stat-label">Total (Base UOM)</div>
+          <div class="stat-number">{{ lowStockItems }}</div>
+          <div class="stat-label">Low Stock Items</div>
         </div>
       </div>
     </div>
@@ -118,7 +118,7 @@
                 <div class="conversion-info" v-if="getConversionValue(item.itemId) > 1">
                   {{ getConversionValue(item.itemId) }} {{ getBaseUOM(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}
                 </div>
-                <div class="conversion-info base" v-else>Base Unit</div>
+                <div class="conversion-info base" v-else>1 {{ getItemUnit(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}</div>
               </div>
             </td>
             <td>
@@ -126,7 +126,7 @@
                 <div class="balance-value" :class="getBalanceClass(item)">
                   {{ formatNumber(item.balance) }}
                 </div>
-                <div class="base-balance" v-if="getConversionValue(item.itemId) > 1">
+                <div class="base-balance">
                   = {{ formatNumber(getBaseBalance(item)) }} {{ getBaseUOM(item.itemId) }}
                 </div>
               </div>
@@ -208,16 +208,6 @@
               <div class="form-group">
                 <label>Balance ({{ getItemUnit(form.itemId) }}) *</label>
                 <input v-model.number="form.balance" type="number" required placeholder="0" min="0" step="1" @input="onBalanceChange" />
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Conversion</label>
-                <input :value="getConversionDisplay(form.itemId)" type="text" readonly class="readonly-field" />
-              </div>
-              <div class="form-group">
-                <label>Base Balance</label>
-                <input :value="getBaseBalanceForm(form.itemId, form.balance)" type="text" readonly class="readonly-field" />
               </div>
             </div>
             <div class="form-row">
@@ -587,12 +577,10 @@ const totalItems = computed(() => {
   return balances.value.length
 })
 
-const totalBaseQuantity = computed(() => {
-  let total = 0
-  balances.value.forEach(item => {
-    total += getBaseBalance(item)
-  })
-  return total
+const lowStockItems = computed(() => {
+  return balances.value.filter(item => 
+    item.balance <= item.minStock && item.balance > 0
+  ).length
 })
 
 // ================================================================
@@ -636,7 +624,7 @@ const getConversionDisplay = (itemId) => {
   if (val > 1) {
     return `${val} ${base} = 1 ${unit}`
   }
-  return 'Base Unit'
+  return `1 ${unit} = 1 ${unit}`
 }
 
 const getBaseBalance = (item) => {

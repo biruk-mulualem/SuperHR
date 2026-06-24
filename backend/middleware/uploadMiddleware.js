@@ -18,22 +18,25 @@ const createDirectories = () => {
     'uploads/profiles',
     
     // Document categories
-    'uploads/documents/national_id',      // For ID cards, passports
-    'uploads/documents/spouse',            // For spouse documents
-    'uploads/documents/children',          // For child documents
-    'uploads/documents/education',         // For degrees, certificates, CVs
-    'uploads/documents/training',          // For training certificates
-    'uploads/documents/work_experience',   // For experience letters
-    'uploads/documents/guarantees',        // For guarantee letters
-    'uploads/documents/parent_support',    // For parent support docs
-    'uploads/documents/nationality',       // For naturalization docs
-    'uploads/documents/health',            // For health documents
-    'uploads/documents/legal',             // For legal documents
-    'uploads/documents/contracts',         // For contracts
-    'uploads/documents/performance',       // For performance reviews
+    'uploads/documents/national_id',
+    'uploads/documents/spouse',
+    'uploads/documents/children',
+    'uploads/documents/education',
+    'uploads/documents/training',
+    'uploads/documents/work_experience',
+    'uploads/documents/guarantees',
+    'uploads/documents/parent_support',
+    'uploads/documents/nationality',
+    'uploads/documents/health',
+    'uploads/documents/legal',
+    'uploads/documents/contracts',
+    'uploads/documents/performance',
     
     // Attendance
-    'uploads/attendance/'
+    'uploads/attendance/',
+    
+    // Item specifications
+    'uploads/items/specifications'
   ];
   dirs.forEach(dir => ensureDirectoryExists(dir));
 };
@@ -46,6 +49,11 @@ const getDocumentFolder = (documentType, subType = null) => {
   // Profile pictures are handled separately
   if (documentType === 'profile_picture') {
     return null;
+  }
+  
+  // Item specifications
+  if (documentType === 'item_specification') {
+    return 'items/specifications';
   }
   
   const folders = {
@@ -119,9 +127,29 @@ const profileStorage = multer.diskStorage({
   filename: (req, file, cb) => {
     const employeeId = req.params.id;
     const ext = path.extname(file.originalname);
-    // Use params.id, not documentType
     const filename = `${employeeId}-profile-${Date.now()}${ext}`;
     console.log('📄 Profile filename:', filename);
+    cb(null, filename);
+  }
+});
+
+// ============================================================================
+// ITEM SPECIFICATION STORAGE
+// ============================================================================
+const itemSpecStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/items/specifications/';
+    ensureDirectoryExists(dir);
+    console.log('💾 Item spec destination:', dir);
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const itemId = req.params.id || req.params.itemId;
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    const sanitizedName = baseName.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `spec_${itemId}_${sanitizedName}_${Date.now()}${ext}`;
+    console.log('📄 Item spec filename:', filename);
     cb(null, filename);
   }
 });
@@ -135,7 +163,6 @@ const documentStorage = multer.diskStorage({
     
     console.log('📍 documentStorage.destination - Type:', documentType);
     
-    // This should never happen for profile_picture if routing is correct
     if (documentType === 'profile_picture') {
       console.error('❌ ERROR: profile_picture reached documentStorage!');
       return cb(new Error('Profile pictures should use profile storage, not document storage'), null);
@@ -153,7 +180,6 @@ const documentStorage = multer.diskStorage({
     cb(null, dir);
   },
   filename: async (req, file, cb) => {
-    // ✅ Get employee code from database for better filenames
     const { Employee } = require('../models');
     const employeeId = req.params.id;
     
@@ -222,6 +248,19 @@ const profileFilter = (req, file, cb) => {
   }
 };
 
+// Filter for item specifications (only PDF)
+const itemSpecFilter = (req, file, cb) => {
+  const allowedTypes = /pdf/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+  
+  if (mimetype && extname) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF files are allowed for item specifications'));
+  }
+};
+
 // Filter for legal/important documents (only PDF)
 const legalDocumentFilter = (req, file, cb) => {
   const allowedTypes = /pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|webp/;
@@ -239,21 +278,30 @@ const legalDocumentFilter = (req, file, cb) => {
 // UPLOAD CONFIGURATIONS
 // ============================================================================
 const uploadProfile = multer({
-  storage: profileStorage,  // ← Must be profileStorage, NOT documentStorage!
+  storage: profileStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: profileFilter
 });
 
 const uploadDocument = multer({
   storage: documentStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: documentFilter
 });
 
 const uploadLegalDocument = multer({
   storage: documentStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB for legal docs
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: legalDocumentFilter
+});
+
+// ============================================================================
+// ITEM SPECIFICATION UPLOAD CONFIG
+// ============================================================================
+const uploadItemSpecification = multer({
+  storage: itemSpecStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: itemSpecFilter
 });
 
 // ============================================================================
@@ -285,7 +333,7 @@ const attendanceFileFilter = (req, file, cb) => {
 
 const uploadAttendance = multer({
   storage: attendanceStorage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: attendanceFileFilter
 });
 
@@ -324,6 +372,20 @@ const uploadMultipleDocuments = (req, res, next) => {
 const uploadSingleAttendance = (req, res, next) => {
   uploadAttendance.single('file')(req, res, (err) => {
     if (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+};
+
+// ============================================================================
+// ITEM SPECIFICATION UPLOAD MIDDLEWARE
+// ============================================================================
+const uploadItemSpec = (req, res, next) => {
+  console.log('=== uploadItemSpec called ===');
+  uploadItemSpecification.single('specification')(req, res, (err) => {
+    if (err) {
+      console.error('Multer item spec error:', err);
       return res.status(400).json({ success: false, error: err.message });
     }
     next();
@@ -394,10 +456,14 @@ module.exports = {
   uploadAttendance,
   uploadDynamicDocument,
   
+  // Item specification upload
+  uploadItemSpec,
+  
   // Raw multer instances (for advanced use)
   uploadProfile,
   uploadDocument,
   uploadLegalDocument,
+  uploadItemSpecification,
   
   // Utilities
   getDocumentFolder,

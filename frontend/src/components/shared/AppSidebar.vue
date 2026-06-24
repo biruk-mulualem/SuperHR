@@ -1,6 +1,6 @@
 <template>
   <aside class="sidebar" :class="{ collapsed: isCollapsed }">
-    <!-- User Profile Section -->
+    <!-- User Profile Section - Fixed -->
     <div class="user-section" :class="{ 'collapsed-user': isCollapsed }">
       <div class="user-avatar">
         <img :src="userAvatar" alt="User">
@@ -12,22 +12,24 @@
       </div>
     </div>
 
-    <!-- Navigation Menu -->
-    <nav class="nav-menu">
-      <router-link
-        v-for="item in menuItems"
-        :key="item.path"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: isActiveRoute(item.path) }"
-      >
-        <component :is="getIcon(item.icon)" class="nav-icon" />
-        <span class="nav-text">{{ item.name }}</span>
-        <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
-      </router-link>
-    </nav>
+    <!-- Navigation Menu - Scrollable -->
+    <div class="nav-menu-wrapper">
+      <nav class="nav-menu">
+        <router-link
+          v-for="item in menuItems"
+          :key="item.path"
+          :to="item.path"
+          class="nav-item"
+          :class="{ active: isActiveRoute(item.path) }"
+        >
+          <component :is="getIcon(item.icon)" class="nav-icon" />
+          <span class="nav-text">{{ item.name }}</span>
+          <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+        </router-link>
+      </nav>
+    </div>
 
-    <!-- Bottom Section with Status -->
+    <!-- Bottom Section with Status - Fixed -->
     <div class="sidebar-footer">
       <button class="logout-btn" @click="handleLogout">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -77,8 +79,7 @@ const roleTitle = computed(() => {
     finance: 'Finance Officer',
     employee: 'Employee',
     attendance: 'Attendance Manager',
-    store: 'store Manager'
-
+    store: 'Store Manager'
   }
   return titles[userRole.value] || 'User'
 })
@@ -92,33 +93,25 @@ const roleMenus = {
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
     { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-   
-     { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-     { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-   
-     { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-
-       { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
-      { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
-
-       { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
-     
-        
+    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
+    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
+    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+    { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
   ],
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
-    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
   ],
   finance: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
-      { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
+    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
-  
-    // { name: 'Reports', path: '/reports', icon: 'ChartBarIcon', badge: null }
   ],
   employee: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
@@ -127,25 +120,19 @@ const roleMenus = {
     { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
     { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
   ],
-    attendance: [
+  attendance: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
-    // { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
-  ]
-  ,
-    store: [
+  ],
+  store: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-   
     { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-     { name: 'group-managment', path: '/group-managment', icon: 'UserIcon', badge: null },
+    { name: 'group-managment', path: '/group-managment', icon: 'UserIcon', badge: null },
     { name: 'store-management', path: '/store-management', icon: 'ClockIcon', badge: null },
-     { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
+    { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
-   
   ]
-
 }
 
 const menuItems = computed(() => {
@@ -156,7 +143,6 @@ const getIcon = (iconName) => {
   return icons[iconName] || icons.HomeIcon
 }
 
-// Check if route is active - exact match or starts with path
 const isActiveRoute = (path) => {
   const currentPath = route.path
   if (path === '/dashboard') {
@@ -196,34 +182,22 @@ if (savedState !== null) {
   position: sticky;
   top: 60px;
   height: calc(100vh - 60px);
-  overflow-y: auto;
+  overflow: hidden; /* Prevent sidebar itself from scrolling */
 }
 
 .sidebar.collapsed {
   width: 70px;
 }
 
-/* Custom scrollbar */
-.sidebar::-webkit-scrollbar {
-  width: 5px;
-}
-.sidebar::-webkit-scrollbar-track {
-  background: #2a2a4a;
-}
-.sidebar::-webkit-scrollbar-thumb {
-  background: #5a5a8a;
-  border-radius: 5px;
-}
-
-/* User Section */
+/* User Section - Fixed */
 .user-section {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 20px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 16px;
   flex-shrink: 0;
+  min-height: 80px;
 }
 
 .user-avatar {
@@ -277,9 +251,32 @@ if (savedState !== null) {
   padding: 20px 0;
 }
 
-/* Navigation Menu */
-.nav-menu {
+/* Navigation Menu Wrapper - Scrollable */
+.nav-menu-wrapper {
   flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* Custom scrollbar for nav menu */
+.nav-menu-wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+
+.nav-menu-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nav-menu-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+}
+
+.nav-menu-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.nav-menu {
   padding: 0 12px;
 }
 
@@ -301,7 +298,6 @@ if (savedState !== null) {
   color: white;
 }
 
-/* Only the active route gets the gradient background */
 .nav-item.active {
   background: linear-gradient(135deg, #6a11cb, #7c3aed);
   color: white;
@@ -331,11 +327,12 @@ if (savedState !== null) {
   margin-left: auto;
 }
 
-/* Sidebar Footer */
+/* Sidebar Footer - Fixed */
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  background: inherit; /* Matches sidebar background */
 }
 
 .logout-btn {
