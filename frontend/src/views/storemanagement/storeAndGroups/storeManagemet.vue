@@ -22,14 +22,6 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="filter-bar">
-      <select v-model="filterType" class="filter-select" @change="onFilterChange">
-        <option value="">All Types</option>
-        <option value="Main">Main Store</option>
-        <option value="Mini">Mini Store</option>
-        <option value="Mini Mini">Mini Mini Store</option>
-        <option value="Regional">Regional Store</option>
-        <option value="Specialized">Specialized Store</option>
-      </select>
       <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
         <option value="">All Status</option>
         <option value="Active">Active</option>
@@ -38,12 +30,9 @@
       </select>
       <select v-model="filterLocation" class="filter-select" @change="onFilterChange">
         <option value="">All Locations</option>
-        <option value="Wana Gebi">Wana Gebi</option>
-        <option value="Wana Gebi Kuter 2">Wana Gebi Kuter 2</option>
-        <option value="Wana Gebi Kuter 3">Wana Gebi Kuter 3</option>
-        <option value="Addis Ababa">Addis Ababa</option>
-        <option value="Bahir Dar">Bahir Dar</option>
-        <option value="Hawassa">Hawassa</option>
+        <option v-for="location in locations" :key="location" :value="location">
+          {{ location }}
+        </option>
       </select>
       <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters">
         ✕ Clear Filters
@@ -55,14 +44,18 @@
     </div>
 
     <!-- ==================== STORE LIST ==================== -->
-    <div class="table-container" id="printable-area">
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading stores...</p>
+    </div>
+
+    <div v-else class="table-container" id="printable-area">
       <table class="store-table">
         <thead>
           <tr>
             <th>#</th>
             <th>Store Code</th>
             <th>Store Name</th>
-            <th>Type</th>
             <th>Location</th>
             <th>Groups</th>
             <th>Users</th>
@@ -71,11 +64,19 @@
           </tr>
         </thead>
         <tbody>
+          <tr v-if="paginatedStores.length === 0">
+            <td colspan="8" class="empty-state">
+              <div class="empty-content">
+                <span class="empty-icon">🏪</span>
+                <p>No stores found</p>
+                <button class="btn-secondary" @click="openAddStoreModal">Add First Store</button>
+              </div>
+            </td>
+          </tr>
           <tr v-for="(store, index) in paginatedStores" :key="store.id">
             <td class="text-center">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
             <td class="code">{{ store.code }}</td>
             <td class="store-name-cell">{{ store.name }}</td>
-            <td>{{ store.type || 'Main' }}</td>
             <td>{{ store.location || '-' }}</td>
             <td>
               <div class="group-tags-wrapper">
@@ -85,7 +86,7 @@
                 <span v-if="!store.groups || store.groups.length === 0" class="no-items">No groups</span>
               </div>
             </td>
-            <td class="text-center">{{ getTotalUsers(store) }}</td>
+            <td class="text-center">{{ store.totalUsers || 0 }}</td>
             <td>
               <span :class="['status-badge', store.status?.toLowerCase() || 'active']">
                 {{ store.status || 'Active' }}
@@ -98,6 +99,7 @@
                 <button @click="openToggleStatus(store)" class="icon-btn" title="Toggle Status">
                   {{ store.status === 'Active' ? '⏸️' : '▶️' }}
                 </button>
+                <button @click="openDeleteStoreModal(store)" class="icon-btn delete-btn" title="Delete Store">🗑️</button>
               </div>
             </td>
           </tr>
@@ -130,24 +132,11 @@
         </div>
         <div class="modal-body">
           <form @submit.prevent="saveStore" class="store-form">
-            <!-- Store Code removed - backend will generate it -->
             <div class="form-row">
               <div class="form-group">
                 <label>Store Name *</label>
                 <input v-model="storeForm.name" type="text" required placeholder="e.g., Fiber Main Store" />
               </div>
-              <div class="form-group">
-                <label>Store Type</label>
-                <select v-model="storeForm.type">
-                  <option value="Main">Main Store</option>
-                  <option value="Mini">Mini Store</option>
-                  <option value="Mini Mini">Mini Mini Store</option>
-                  <option value="Regional">Regional Store</option>
-                  <option value="Specialized">Specialized Store</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
               <div class="form-group">
                 <label>Location</label>
                 <select v-model="storeForm.location">
@@ -160,6 +149,8 @@
                   <option value="Hawassa">Hawassa</option>
                 </select>
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label>Status</label>
                 <select v-model="storeForm.status">
@@ -188,7 +179,7 @@
           <button class="modal-close" @click="closeGroupModal">✕</button>
         </div>
         <div class="modal-body">
-          <!-- Add Group Form - Dropdown selection (no duplicates) -->
+          <!-- Add Group Form -->
           <div class="add-group-section">
             <h4>Add Existing Group to Store</h4>
             <div class="add-group-form">
@@ -198,8 +189,8 @@
                   {{ group.name }}
                 </option>
               </select>
-              <button @click="addGroupToStore" class="btn-add-group" :disabled="!selectedGroupToAdd">
-                ➕ Add Group
+              <button @click="addGroupToStore" class="btn-add-group" :disabled="!selectedGroupToAdd || addingGroup">
+                {{ addingGroup ? 'Adding...' : '➕ Add Group' }}
               </button>
             </div>
             <div v-if="availableGroupsToAdd.length === 0" class="no-available-groups">
@@ -214,13 +205,13 @@
               <div v-if="selectedStore?.groups?.length === 0" class="no-groups">
                 No groups added to this store yet
               </div>
-              <div v-for="group in selectedStore?.groups" :key="group.id" class="group-item">
+              <div v-for="group in selectedStore?.groups" :key="group.id" class="group-item" @click="selectGroup(group)">
                 <div class="group-info">
                   <span class="group-name">{{ group.name }}</span>
                   <span class="group-user-count">{{ group.users?.length || 0 }} members</span>
                 </div>
                 <div class="group-actions">
-                  <button @click="openRemoveGroupModal(group)" class="icon-btn-small delete-btn" title="Remove from store">✕</button>
+                  <button @click.stop="openRemoveGroupModal(group)" class="icon-btn-small delete-btn" title="Remove from store">✕</button>
                 </div>
               </div>
             </div>
@@ -236,7 +227,9 @@
                   {{ user.fullName }} ({{ user.username }})
                 </option>
               </select>
-              <button @click="addUserToGroup" class="btn-add-user">➕ Add Member</button>
+              <button @click="addUserToGroup" class="btn-add-user" :disabled="!newUserId || addingUser">
+                {{ addingUser ? 'Adding...' : '➕ Add Member' }}
+              </button>
             </div>
             <div class="users-list">
               <div v-if="selectedGroup.users?.length === 0" class="no-users">
@@ -305,6 +298,27 @@
       </div>
     </div>
 
+    <!-- ==================== DELETE STORE CONFIRMATION MODAL ==================== -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+      <div class="modal-container delete-modal">
+        <div class="modal-header">
+          <h3>🗑️ Confirm Delete</h3>
+          <button class="modal-close" @click="closeDeleteModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="delete-icon">🗑️</div>
+          <p><strong>Delete Store:</strong> {{ deleteStoreItem?.name }}</p>
+          <p><strong>Code:</strong> {{ deleteStoreItem?.code }}</p>
+          <p class="delete-warning">This will set the store status to "Closed".</p>
+          <p class="delete-question">Are you sure you want to close this store?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeDeleteModal">Cancel</button>
+          <button class="btn-danger" @click="confirmDeleteStore">Close Store</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== REMOVE USER CONFIRMATION MODAL ==================== -->
     <div v-if="showRemoveUserModal" class="modal-overlay" @click.self="closeRemoveUserModal">
       <div class="modal-container delete-modal">
@@ -338,7 +352,7 @@
               <input type="radio" v-model="exportType" value="full" /> Full Store Report
             </div>
             <div class="export-option" @click="exportType = 'summary'">
-              <input type="radio" v-model="exportType" value="summary" /> Summary (Code, Name, Type, Status)
+              <input type="radio" v-model="exportType" value="summary" /> Summary (Code, Name, Location, Status)
             </div>
             <div class="export-option" @click="exportType = 'groups'">
               <input type="radio" v-model="exportType" value="groups" /> Groups & Users Report
@@ -362,17 +376,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import storeService from '@/stores/storeService'
 
 // ================================================================
 // STATE
 // ================================================================
 const stores = ref([])
+const allGroups = ref([])
+const allUsers = ref([])
 const loading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(5)
 const searchQuery = ref('')
-const filterType = ref('')
 const filterStatus = ref('')
 const filterLocation = ref('')
 
@@ -380,11 +396,8 @@ const filterLocation = ref('')
 const showStoreModal = ref(false)
 const editingStore = ref(null)
 const savingStore = ref(false)
-
-// Store form - NO CODE field (backend generates it)
 const storeForm = ref({
   name: '',
-  type: 'Main',
   location: '',
   status: 'Active'
 })
@@ -395,6 +408,8 @@ const selectedStore = ref(null)
 const selectedGroup = ref(null)
 const selectedGroupToAdd = ref('')
 const newUserId = ref('')
+const addingGroup = ref(false)
+const addingUser = ref(false)
 
 // Remove Group Modal
 const showRemoveGroupModal = ref(false)
@@ -405,6 +420,10 @@ const showToggleModal = ref(false)
 const toggleStore = ref(null)
 const toggleNewStatus = ref('')
 
+// Delete Store Modal
+const showDeleteModal = ref(false)
+const deleteStoreItem = ref(null)
+
 // Remove User Modal
 const showRemoveUserModal = ref(false)
 const removeUserItem = ref(null)
@@ -413,12 +432,6 @@ const removeUserItem = ref(null)
 const showExportModal = ref(false)
 const exporting = ref(false)
 const exportType = ref('full')
-
-// All available groups (master list - NO DUPLICATES)
-const allGroups = ref([])
-
-// Users (mock)
-const allUsers = ref([])
 
 // Toast
 const showToast = ref(false)
@@ -429,7 +442,17 @@ const toastType = ref('success')
 // COMPUTED
 // ================================================================
 const hasActiveFilters = computed(() => {
-  return filterType.value || filterStatus.value || filterLocation.value
+  return filterStatus.value || filterLocation.value
+})
+
+const locations = computed(() => {
+  const locs = new Set()
+  stores.value.forEach(store => {
+    if (store.location) {
+      locs.add(store.location)
+    }
+  })
+  return Array.from(locs).sort()
 })
 
 const filteredStores = computed(() => {
@@ -442,10 +465,6 @@ const filteredStores = computed(() => {
       store.code.toLowerCase().includes(s) ||
       store.location?.toLowerCase().includes(s)
     )
-  }
-  
-  if (filterType.value) {
-    result = result.filter(store => store.type === filterType.value)
   }
   
   if (filterStatus.value) {
@@ -468,15 +487,14 @@ const paginatedStores = computed(() => {
   return filteredStores.value.slice(start, start + pageSize.value)
 })
 
-// Available groups to add - filtered to remove duplicates and already added groups
 const availableGroupsToAdd = computed(() => {
   if (!selectedStore.value) return []
-  const existingGroupNames = selectedStore.value.groups?.map(g => g.name) || []
-  return allGroups.value.filter(g => !existingGroupNames.includes(g.name))
+  const existingGroupIds = selectedStore.value.groups?.map(g => g.id) || []
+  return allGroups.value.filter(g => !existingGroupIds.includes(g.id))
 })
 
 const availableUsers = computed(() => {
-  if (!selectedStore.value || !selectedGroup.value) return allUsers.value
+  if (!selectedGroup.value) return allUsers.value
   const existingUserIds = selectedGroup.value.users?.map(u => u.id) || []
   return allUsers.value.filter(u => !existingUserIds.includes(u.id))
 })
@@ -485,153 +503,64 @@ const availableUsers = computed(() => {
 // METHODS
 // ================================================================
 
-// -- Generate Store Code --
-const generateStoreCode = () => {
-  const maxNumber = stores.value.reduce((max, store) => {
-    const num = parseInt(store.code.replace('STORE-', ''))
-    return num > max ? num : max
-  }, 0)
-  
-  const nextNumber = String(maxNumber + 1).padStart(3, '0')
-  return 'STORE-' + nextNumber
-}
-
 // -- Load Data --
-const loadStores = () => {
+const loadStores = async () => {
   loading.value = true
-  setTimeout(() => {
-    stores.value = getMockStores()
-    allGroups.value = getMockAllGroups()
-    allUsers.value = getMockUsers()
-    loading.value = false
-  }, 300)
-}
-
-const getMockStores = () => {
-  return [
-    {
-      id: 'store-1',
-      code: 'STORE-001',
-      name: 'Fiber Main Store',
-      type: 'Main',
-      location: 'Wana Gebi',
-      status: 'Active',
-      groups: [
-        { id: 'g1', name: 'Storekeeper', users: [{ id: 'u1', fullName: 'Biruk Mulualem', username: 'birukm' }, { id: 'u2', fullName: 'Dagmawi Hadgu', username: 'dagmawih' }, { id: 'u20', fullName: 'Abebe Kebede', username: 'abebe' }] },
-        { id: 'g2', name: 'IT', users: [{ id: 'u3', fullName: 'Melkamu Zewdu', username: 'melkamu' }] },
-        { id: 'g3', name: 'Auditor', users: [{ id: 'u4', fullName: 'Melaku Tewodros', username: 'melaku' }] }
-      ]
-    },
-    {
-      id: 'store-2',
-      code: 'STORE-002',
-      name: 'Paint Main Store',
-      type: 'Main',
-      location: 'Wana Gebi',
-      status: 'Active',
-      groups: [
-        { id: 'g5', name: 'Storekeeper', users: [{ id: 'u6', fullName: 'Nuru Seid', username: 'nuru' }, { id: 'u7', fullName: 'Tadese Jemberu', username: 'tadese' }] },
-        { id: 'g6', name: 'IT', users: [{ id: 'u8', fullName: 'Eshete Worke', username: 'eshete' }] }
-      ]
-    },
-    {
-      id: 'store-3',
-      code: 'STORE-003',
-      name: 'Fiber Mini Store',
-      type: 'Mini',
-      location: 'Wana Gebi Kuter 2',
-      status: 'Active',
-      groups: [
-        { id: 'g8', name: 'Storekeeper', users: [{ id: 'u10', fullName: 'Zerihun Tesfaye', username: 'zerihun' }] },
-        { id: 'g9', name: 'IT', users: [{ id: 'u11', fullName: 'Samuel Ayele', username: 'samuel' }] },
-        { id: 'g10', name: 'Auditor', users: [{ id: 'u12', fullName: 'Berhanu Alemu', username: 'berhanu' }] }
-      ]
-    },
-    {
-      id: 'store-4',
-      code: 'STORE-004',
-      name: 'Paint Mini Store',
-      type: 'Mini',
-      location: 'Wana Gebi Kuter 2',
-      status: 'Active',
-      groups: [
-        { id: 'g11', name: 'Storekeeper', users: [{ id: 'u13', fullName: 'Abebe Kebede', username: 'abebe' }, { id: 'u14', fullName: 'Mulugeta Desta', username: 'mulugeta' }] },
-        { id: 'g12', name: 'IT', users: [{ id: 'u15', fullName: 'Getachew Ayele', username: 'getachew' }] }
-      ]
-    },
-    {
-      id: 'store-5',
-      code: 'STORE-005',
-      name: 'Fiber Mini Mini Store',
-      type: 'Mini Mini',
-      location: 'Wana Gebi Kuter 3',
-      status: 'Active',
-      groups: [
-        { id: 'g13', name: 'Storekeeper', users: [{ id: 'u16', fullName: 'Tigist Hailu', username: 'tigist' }] }
-      ]
-    },
-    {
-      id: 'store-6',
-      code: 'STORE-006',
-      name: 'Metal Store',
-      type: 'Specialized',
-      location: 'Wana Gebi Kuter 3',
-      status: 'Active',
-      groups: [
-        { id: 'g15', name: 'Storekeeper', users: [{ id: 'u18', fullName: 'Henok Ayele', username: 'henok' }] },
-        { id: 'g16', name: 'IT', users: [{ id: 'u19', fullName: 'Sintayehu Worku', username: 'sintayehu' }] },
-        { id: 'g17', name: 'Auditor', users: [{ id: 'u21', fullName: 'Birhanu Alemu', username: 'birhanu' }, { id: 'u22', fullName: 'Meskerem Tesfaye', username: 'meskerem' }] }
-      ]
+  try {
+    const response = await storeService.getStores({
+      page: currentPage.value,
+      limit: pageSize.value,
+      search: searchQuery.value || undefined,
+      status: filterStatus.value || undefined,
+      location: filterLocation.value || undefined
+    })
+    
+    if (response.success) {
+      stores.value = response.data.stores
+    } else {
+      showToastMessage(response.error || 'Failed to load stores', 'error')
     }
-  ]
+  } catch (error) {
+    console.error('Load stores error:', error)
+    showToastMessage('Failed to load stores', 'error')
+  } finally {
+    loading.value = false
+  }
 }
 
-// All groups - UNIQUE names (no duplicates)
-const getMockAllGroups = () => {
+const loadGroups = async () => {
+  try {
+    const response = await storeService.getAvailableGroupsForStore(0)
+    // This will be handled differently - we need a separate endpoint for all groups
+    // For now, we'll use the mock data or a dedicated endpoint
+    allGroups.value = await fetchAllGroups()
+  } catch (error) {
+    console.error('Load groups error:', error)
+  }
+}
+
+const fetchAllGroups = async () => {
+  // Temporary: Use mock data until we have a proper groups endpoint
   return [
-    { id: 'g1', name: 'Storekeeper' },
-    { id: 'g2', name: 'IT' },
-    { id: 'g3', name: 'Auditor' },
-    { id: 'g4', name: 'Supplier' },
-    { id: 'g5', name: 'Quality Control' },
-    { id: 'g6', name: 'Warehouse' },
-    { id: 'g7', name: 'Logistics' }
+    { id: 1, name: 'Storekeeper', code: 'GRP-001' },
+    { id: 2, name: 'IT', code: 'GRP-002' },
+    { id: 3, name: 'Auditor', code: 'GRP-003' },
+    { id: 4, name: 'Supplier', code: 'GRP-004' },
+    { id: 5, name: 'Quality Control', code: 'GRP-005' },
+    { id: 6, name: 'Warehouse', code: 'GRP-006' },
+    { id: 7, name: 'Logistics', code: 'GRP-007' }
   ]
 }
 
-const getMockUsers = () => {
-  return [
-    { id: 'u1', fullName: 'Biruk Mulualem', username: 'birukm' },
-    { id: 'u2', fullName: 'Dagmawi Hadgu', username: 'dagmawih' },
-    { id: 'u3', fullName: 'Melkamu Zewdu', username: 'melkamu' },
-    { id: 'u4', fullName: 'Melaku Tewodros', username: 'melaku' },
-    { id: 'u5', fullName: 'Tamrat Zerihun', username: 'tamrat' },
-    { id: 'u6', fullName: 'Nuru Seid', username: 'nuru' },
-    { id: 'u7', fullName: 'Tadese Jemberu', username: 'tadese' },
-    { id: 'u8', fullName: 'Eshete Worke', username: 'eshete' },
-    { id: 'u9', fullName: 'Haymanot Abebaw', username: 'haymanot' },
-    { id: 'u10', fullName: 'Zerihun Tesfaye', username: 'zerihun' },
-    { id: 'u11', fullName: 'Samuel Ayele', username: 'samuel' },
-    { id: 'u12', fullName: 'Berhanu Alemu', username: 'berhanu' },
-    { id: 'u13', fullName: 'Abebe Kebede', username: 'abebe' },
-    { id: 'u14', fullName: 'Mulugeta Desta', username: 'mulugeta' },
-    { id: 'u15', fullName: 'Getachew Ayele', username: 'getachew' },
-    { id: 'u16', fullName: 'Tigist Hailu', username: 'tigist' },
-    { id: 'u17', fullName: 'Meron Tekle', username: 'meron' },
-    { id: 'u18', fullName: 'Henok Ayele', username: 'henok' },
-    { id: 'u19', fullName: 'Sintayehu Worku', username: 'sintayehu' },
-    { id: 'u20', fullName: 'Abebe Kebede', username: 'abebe' },
-    { id: 'u21', fullName: 'Birhanu Alemu', username: 'birhanu' },
-    { id: 'u22', fullName: 'Meskerem Tesfaye', username: 'meskerem' }
-  ]
-}
-
-const getTotalUsers = (store) => {
-  let count = 0
-  store.groups?.forEach(group => {
-    count += group.users?.length || 0
-  })
-  return count
+const loadUsers = async () => {
+  try {
+    const response = await storeService.getAllUsers()
+    if (response.success) {
+      allUsers.value = response.data
+    }
+  } catch (error) {
+    console.error('Load users error:', error)
+  }
 }
 
 // -- Store CRUD --
@@ -639,7 +568,6 @@ const openAddStoreModal = () => {
   editingStore.value = null
   storeForm.value = {
     name: '',
-    type: 'Main',
     location: '',
     status: 'Active'
   }
@@ -650,7 +578,6 @@ const openEditStore = (store) => {
   editingStore.value = store
   storeForm.value = { 
     name: store.name,
-    type: store.type || 'Main',
     location: store.location || '',
     status: store.status || 'Active'
   }
@@ -662,42 +589,54 @@ const closeStoreModal = () => {
   editingStore.value = null
 }
 
-const saveStore = () => {
+const saveStore = async () => {
   savingStore.value = true
-  setTimeout(() => {
+  try {
+    let response
     if (editingStore.value) {
-      // Update existing store - keep the same code
-      const idx = stores.value.findIndex(s => s.id === editingStore.value.id)
-      if (idx !== -1) {
-        stores.value[idx] = { 
-          ...storeForm.value, 
-          id: editingStore.value.id,
-          code: editingStore.value.code,
-          groups: editingStore.value.groups 
-        }
+      response = await storeService.updateStore(editingStore.value.id, storeForm.value)
+      if (response.success) {
+        showToastMessage('Store updated successfully!', 'success')
+        await loadStores()
       }
-      showToastMessage('Store updated successfully!', 'success')
     } else {
-      // Add new store - backend generates the code
-      const maxNumber = stores.value.reduce((max, store) => {
-        const num = parseInt(store.code.replace('STORE-', ''))
-        return num > max ? num : max
-      }, 0)
-      const nextNumber = String(maxNumber + 1).padStart(3, '0')
-      const newCode = 'STORE-' + nextNumber
-      
-      const newStore = {
-        ...storeForm.value,
-        id: 'store-' + Date.now(),
-        code: newCode,
-        groups: []
+      response = await storeService.createStore(storeForm.value)
+      if (response.success) {
+        showToastMessage(`Store "${response.data.name}" added with code ${response.data.code}!`, 'success')
+        await loadStores()
       }
-      stores.value.push(newStore)
-      showToastMessage(`Store "${newStore.name}" added with code ${newCode}!`, 'success')
     }
     closeStoreModal()
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to save store', 'error')
+  } finally {
     savingStore.value = false
-  }, 500)
+  }
+}
+
+const openDeleteStoreModal = (store) => {
+  deleteStoreItem.value = store
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  deleteStoreItem.value = null
+}
+
+const confirmDeleteStore = async () => {
+  if (deleteStoreItem.value) {
+    try {
+      const response = await storeService.deleteStore(deleteStoreItem.value.id)
+      if (response.success) {
+        showToastMessage(`Store "${deleteStoreItem.value.name}" closed successfully`, 'success')
+        await loadStores()
+      }
+    } catch (error) {
+      showToastMessage(error.message || 'Failed to close store', 'error')
+    }
+    closeDeleteModal()
+  }
 }
 
 // -- Group Management --
@@ -716,30 +655,38 @@ const closeGroupModal = () => {
   loadStores()
 }
 
-const addGroupToStore = () => {
+const selectGroup = (group) => {
+  selectedGroup.value = group
+  newUserId.value = ''
+}
+
+const addGroupToStore = async () => {
   if (!selectedGroupToAdd.value) {
     showToastMessage('Please select a group', 'error')
     return
   }
   
-  const groupToAdd = allGroups.value.find(g => g.id === selectedGroupToAdd.value)
-  if (!groupToAdd) return
-  
-  const store = stores.value.find(s => s.id === selectedStore.value.id)
-  if (store) {
-    if (!store.groups) store.groups = []
-    if (store.groups.some(g => g.name === groupToAdd.name)) {
-      showToastMessage(`Group "${groupToAdd.name}" already exists in this store`, 'error')
-      return
+  addingGroup.value = true
+  try {
+    const response = await storeService.addGroupToStore(
+      selectedStore.value.id,
+      selectedGroupToAdd.value
+    )
+    
+    if (response.success) {
+      const groupToAdd = allGroups.value.find(g => g.id === selectedGroupToAdd.value)
+      showToastMessage(`Group "${groupToAdd?.name}" added to store!`, 'success')
+      selectedStore.value = response.data
+      selectedGroupToAdd.value = ''
+      await loadStores()
     }
-    store.groups.push({ ...groupToAdd, users: [] })
-    selectedStore.value = JSON.parse(JSON.stringify(store))
-    selectedGroupToAdd.value = ''
-    showToastMessage(`Group "${groupToAdd.name}" added to store!`, 'success')
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to add group', 'error')
+  } finally {
+    addingGroup.value = false
   }
 }
 
-// -- Remove Group --
 const openRemoveGroupModal = (group) => {
   removeGroupItem.value = group
   showRemoveGroupModal.value = true
@@ -750,55 +697,65 @@ const closeRemoveGroupModal = () => {
   removeGroupItem.value = null
 }
 
-const confirmRemoveGroup = () => {
+const confirmRemoveGroup = async () => {
   if (removeGroupItem.value) {
-    const store = stores.value.find(s => s.id === selectedStore.value.id)
-    if (store) {
-      store.groups = store.groups.filter(g => g.id !== removeGroupItem.value.id)
-      selectedStore.value = JSON.parse(JSON.stringify(store))
-      if (selectedGroup.value?.id === removeGroupItem.value.id) {
-        selectedGroup.value = null
+    try {
+      const response = await storeService.removeGroupFromStore(
+        selectedStore.value.id,
+        removeGroupItem.value.id
+      )
+      
+      if (response.success) {
+        showToastMessage(`Group "${removeGroupItem.value.name}" removed from store`, 'success')
+        selectedStore.value = response.data
+        if (selectedGroup.value?.id === removeGroupItem.value.id) {
+          selectedGroup.value = null
+        }
+        await loadStores()
       }
-      showToastMessage(`Group "${removeGroupItem.value.name}" removed from store`, 'success')
+    } catch (error) {
+      showToastMessage(error.message || 'Failed to remove group', 'error')
     }
     closeRemoveGroupModal()
   }
 }
 
 // -- User Management --
-const openManageUsers = (group) => {
-  selectedGroup.value = group
-  newUserId.value = ''
-}
-
-const addUserToGroup = () => {
+const addUserToGroup = async () => {
   if (!newUserId.value) {
     showToastMessage('Please select a user', 'error')
     return
   }
   
-  const user = allUsers.value.find(u => u.id === newUserId.value)
-  if (!user) return
-  
-  const store = stores.value.find(s => s.id === selectedStore.value.id)
-  if (store) {
-    const group = store.groups.find(g => g.id === selectedGroup.value.id)
-    if (group) {
-      if (!group.users) group.users = []
-      if (group.users.some(u => u.id === user.id)) {
-        showToastMessage('User already in this group', 'error')
-        return
-      }
-      group.users.push({ ...user })
-      selectedGroup.value = JSON.parse(JSON.stringify(group))
-      selectedStore.value = JSON.parse(JSON.stringify(store))
+  addingUser.value = true
+  try {
+    const response = await storeService.addUserToGroup(
+      selectedGroup.value.id,
+      newUserId.value
+    )
+    
+    if (response.success) {
+      const user = allUsers.value.find(u => u.id === newUserId.value)
+      showToastMessage(`User "${user?.fullName}" added to group!`, 'success')
+      selectedGroup.value = response.data
       newUserId.value = ''
-      showToastMessage(`User "${user.fullName}" added to group!`, 'success')
+      
+      // Update the store's group data
+      const store = stores.value.find(s => s.id === selectedStore.value.id)
+      if (store) {
+        const groupIndex = store.groups.findIndex(g => g.id === selectedGroup.value.id)
+        if (groupIndex !== -1) {
+          store.groups[groupIndex] = selectedGroup.value
+        }
+      }
     }
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to add user', 'error')
+  } finally {
+    addingUser.value = false
   }
 }
 
-// -- Remove User --
 const openRemoveUserModal = (user) => {
   removeUserItem.value = user
   showRemoveUserModal.value = true
@@ -809,56 +766,126 @@ const closeRemoveUserModal = () => {
   removeUserItem.value = null
 }
 
-const confirmRemoveUser = () => {
-  const store = stores.value.find(s => s.id === selectedStore.value.id)
-  if (store) {
-    const group = store.groups.find(g => g.id === selectedGroup.value.id)
-    if (group && removeUserItem.value) {
-      group.users = group.users.filter(u => u.id !== removeUserItem.value.id)
-      selectedGroup.value = JSON.parse(JSON.stringify(group))
-      selectedStore.value = JSON.parse(JSON.stringify(store))
-      showToastMessage(`User "${removeUserItem.value.fullName}" removed from group`, 'success')
+const confirmRemoveUser = async () => {
+  if (removeUserItem.value && selectedGroup.value) {
+    try {
+      const response = await storeService.removeUserFromGroup(
+        selectedGroup.value.id,
+        removeUserItem.value.id
+      )
+      
+      if (response.success) {
+        showToastMessage(`User "${removeUserItem.value.fullName}" removed from group`, 'success')
+        selectedGroup.value = response.data
+        
+        // Update the store's group data
+        const store = stores.value.find(s => s.id === selectedStore.value.id)
+        if (store) {
+          const groupIndex = store.groups.findIndex(g => g.id === selectedGroup.value.id)
+          if (groupIndex !== -1) {
+            store.groups[groupIndex] = selectedGroup.value
+          }
+        }
+      }
+    } catch (error) {
+      showToastMessage(error.message || 'Failed to remove user', 'error')
     }
+    closeRemoveUserModal()
   }
-  closeRemoveUserModal()
 }
 
 // -- Store Toggle Status --
 const openToggleStatus = (store) => {
-  toggleStore.value = store;
-  toggleNewStatus.value = store.status === 'Active' ? 'Inactive' : 'Active';
-  showToggleModal.value = true;
+  toggleStore.value = store
+  toggleNewStatus.value = store.status === 'Active' ? 'Inactive' : 'Active'
+  showToggleModal.value = true
 }
+
 const closeToggleModal = () => {
   showToggleModal.value = false
   toggleStore.value = null
   toggleNewStatus.value = ''
 }
 
-const confirmToggleStatus = () => {
+const confirmToggleStatus = async () => {
   if (toggleStore.value) {
-    toggleStore.value.status = toggleNewStatus.value
-    showToastMessage(`Store status changed to ${toggleNewStatus.value}`, 'success')
+    try {
+      const response = await storeService.updateStoreStatus(
+        toggleStore.value.id,
+        toggleNewStatus.value
+      )
+      if (response.success) {
+        showToastMessage(`Store status changed to ${toggleNewStatus.value}`, 'success')
+        await loadStores()
+      }
+    } catch (error) {
+      showToastMessage(error.message || 'Failed to update status', 'error')
+    }
+    closeToggleModal()
   }
-  closeToggleModal()
 }
 
 // -- Filters --
 const onSearchChange = () => {
   currentPage.value = 1
+  loadStores()
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
+  loadStores()
 }
 
 const clearFilters = () => {
-  filterType.value = ''
   filterStatus.value = ''
   filterLocation.value = ''
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
+  loadStores()
+}
+
+// -- Export --
+const openExportModal = () => {
+  exportType.value = 'full'
+  showExportModal.value = true
+}
+
+const closeExportModal = () => {
+  showExportModal.value = false
+}
+
+const exportSelectedReport = async () => {
+  exporting.value = true
+  try {
+    const response = await storeService.exportStores({
+      status: filterStatus.value || undefined,
+      location: filterLocation.value || undefined
+    })
+    
+    if (response.success && response.data.length > 0) {
+      const headers = Object.keys(response.data[0])
+      const rows = response.data.map(item => headers.map(key => item[key]))
+      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+      
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `store_report_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      
+      showToastMessage('Export completed successfully!', 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'error')
+    }
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to export', 'error')
+  } finally {
+    exporting.value = false
+    closeExportModal()
+  }
 }
 
 // -- Print --
@@ -894,85 +921,15 @@ const printReport = () => {
   window.location.reload()
 }
 
-// -- Export --
-const openExportModal = () => {
-  exportType.value = 'full'
-  showExportModal.value = true
-}
-
-const closeExportModal = () => {
-  showExportModal.value = false
-}
-
-const exportSelectedReport = () => {
-  exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredStores.value
-    
-    if (exportType.value === 'full') {
-      headers = ['#', 'Store Code', 'Store Name', 'Type', 'Location', 'Total Groups', 'Total Users', 'Status']
-      rows = data.map((store, index) => [
-        index + 1,
-        store.code,
-        store.name,
-        store.type || 'Main',
-        store.location || '-',
-        store.groups?.length || 0,
-        getTotalUsers(store),
-        store.status || 'Active'
-      ])
-    } else if (exportType.value === 'summary') {
-      headers = ['Store Code', 'Store Name', 'Type', 'Status']
-      rows = data.map(store => [
-        store.code,
-        store.name,
-        store.type || 'Main',
-        store.status || 'Active'
-      ])
-    } else {
-      headers = ['Store', 'Group Name', 'Members Count']
-      rows = []
-      data.forEach(store => {
-        store.groups?.forEach(group => {
-          rows.push([
-            store.name,
-            group.name,
-            group.users?.length || 0
-          ])
-        })
-      })
-      if (rows.length === 0) {
-        rows.push(['No groups found', '', ''])
-      }
-    }
-    
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
-    })
-    
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `store_report_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    
-    exporting.value = false
-    closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
-  }, 500)
-}
-
 // -- Pagination --
 const changePage = (page) => {
   currentPage.value = page
+  loadStores()
 }
 
 const changePageSize = () => {
   currentPage.value = 1
+  loadStores()
 }
 
 // -- Toast --
@@ -988,8 +945,12 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 // LIFECYCLE
 // ================================================================
-onMounted(() => {
-  loadStores()
+onMounted(async () => {
+  await Promise.all([
+    loadStores(),
+    loadGroups(),
+    loadUsers()
+  ])
 })
 </script>
 
@@ -1172,6 +1133,48 @@ onMounted(() => {
 }
 
 /* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.spinner {
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+/* ================================================================
    TABLE
    ================================================================ */
 .table-container {
@@ -1183,7 +1186,7 @@ onMounted(() => {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 900px;
+  min-width: 850px;
 }
 
 .store-table th,
@@ -1327,6 +1330,10 @@ onMounted(() => {
 
 .icon-btn-small:hover {
   background: #f1f5f9;
+}
+
+.delete-btn {
+  color: #94a3b8;
 }
 
 .delete-btn:hover {
@@ -1620,7 +1627,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.btn-add-group:hover {
+.btn-add-group:hover:not(:disabled) {
   background: #059669;
 }
 
@@ -1662,6 +1669,12 @@ onMounted(() => {
   border: 1px solid #e2e8f0;
   flex-wrap: wrap;
   gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.group-item:hover {
+  background: #f1f5f9;
 }
 
 .group-info {
@@ -1736,8 +1749,13 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.btn-add-user:hover {
+.btn-add-user:hover:not(:disabled) {
   background: #2563eb;
+}
+
+.btn-add-user:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .users-list {
@@ -1792,7 +1810,7 @@ onMounted(() => {
 }
 
 /* ================================================================
-   TOGGLE MODAL
+   TOGGLE & DELETE MODALS
    ================================================================ */
 .toggle-modal .modal-container,
 .delete-modal .modal-container {
@@ -1977,7 +1995,7 @@ onMounted(() => {
   }
   
   .store-table {
-    min-width: 800px;
+    min-width: 700px;
   }
   
   .modal-container {

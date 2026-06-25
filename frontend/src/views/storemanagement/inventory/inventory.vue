@@ -5,7 +5,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>📦 Item Master Data</h2>
-        <span class="total-badge">{{ items.length }} Items</span>
+       
       </div>
 
       <div class="header-filters">
@@ -50,6 +50,7 @@
       </button>
     </div>
 
+     
     <!-- ==================== TAB CONTENT ==================== -->
     <div class="tab-content">
 

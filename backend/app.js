@@ -77,7 +77,7 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
 const payrollRoutes = require("./routes/payrollRoutes");
 const penalityRoutes = require("./routes/penalityRoutes");
-
+const storeRoutes  = require("./routes/storeRoutes");
 const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
 const itemRoutes=require('./routes/itemRoutes');
 
@@ -125,6 +125,7 @@ app.use("/api/payroll", payrollRoutes);
 app.use("/api/penalties", penalityRoutes);
 app.use('/api/penalty-summary', penaltySummaryRoutes);
 app.use('/api/items', itemRoutes);
+app.use('/api/stores', storeRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

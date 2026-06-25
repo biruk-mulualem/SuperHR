@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 const { Model } = require("sequelize");
 const bcrypt = require("bcryptjs");
 
@@ -27,8 +27,14 @@ module.exports = (sequelize, DataTypes) => {
         as: "uploadedDocuments" 
       });
       
-    
-    
+      // ===== GROUP ASSOCIATION (NEW) =====
+      // Many-to-Many with Group via UserGroupRelation
+      User.belongsToMany(models.Group, {
+        through: models.UserGroupRelation,
+        foreignKey: 'userId',
+        otherKey: 'groupId',
+        as: 'groups'
+      });
     }
 
     // Instance method to validate password
