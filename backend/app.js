@@ -82,6 +82,12 @@ const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
 const itemRoutes=require('./routes/itemRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 
+// Charity module 
+const charityTeamRoutes        = require("./routes/charity/teamRoutes");
+const charityBeneficiaryRoutes = require("./routes/charity/beneficiaryRoutes");
+const charitySettingRoutes     = require("./routes/charity/settingRoutes");
+const charityDashboardRoutes   = require("./routes/charity/dashboardRoutes");
+
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -128,6 +134,13 @@ app.use('/api/penalty-summary', penaltySummaryRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/backup', backupRoutes);
+// Charity Module Routes
+app.use("/api/charity/teams",        charityTeamRoutes);
+app.use("/api/charity/beneficiaries",charityBeneficiaryRoutes);
+app.use("/api/charity/settings",     charitySettingRoutes);
+app.use("/api/charity/dashboard",    charityDashboardRoutes);
+
+
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

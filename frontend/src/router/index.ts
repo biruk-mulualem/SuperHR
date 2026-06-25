@@ -23,7 +23,7 @@ const router = createRouter({
           component: () => import("@/views/dashboard/Dashboard.vue"),
           meta: {
             title: "Dashboard",
-            roles: ["admin", "hr", "finance", "employee", "attendance", "store"],
+            roles: ["admin", "hr", "finance", "employee", "attendance", "store","charity_admin","charity_teamleader"],
           },
         },
         {
@@ -119,6 +119,75 @@ const router = createRouter({
           component: () => import("@/views/leaveRequest/leaveDetail.vue"),
           meta: { title: "Leave Detail", roles: ["admin", "hr", "finance", "employee", "attendance"] },
         },
+
+
+
+        // ──────────────────── CHARITY SECTION ───────────────────────────────
+        
+           {
+          path: 'charity/teams',
+          name: 'charity-teams',
+          component: () => import('@/views/charity/teams.vue'),
+          meta: { title: 'Charity Teams', roles: ['admin', 'charity_admin','charity_teamleader'] },
+        },
+        {
+          path: 'charity/teams/create',
+          name: 'charity-teams-create',
+          component: () => import('@/views/charity/team_create.vue'),
+          meta: { title: 'Create Charity Team', roles: ['admin', 'charity_admin','charity_teamleader'] },
+        },
+        {
+          path: 'charity/teams/:id',
+          name: 'charity-teams-view',
+          component: () => import('@/views/charity/team_create.vue'),
+          meta: { title: 'View Charity Team', roles: ['admin', 'charity_admin', 'charity_teamleader','charity_teamleader'] },
+        },
+        {
+          path: 'charity/teams/:id/edit',
+          name: 'charity-teams-edit',
+          component: () => import('@/views/charity/team_create.vue'),
+          meta: { title: 'Edit Charity Team', roles: ['admin', 'charity_admin','charity_teamleader'] },
+        },
+        {
+          path: 'charity/beneficiaries',
+          name: 'charity-beneficiaries',
+          component: () => import('@/views/charity/beneficiaries.vue'),
+          meta: { title: 'All Beneficiaries', roles: ['admin', 'charity_admin', 'charity_teamleader'] },
+        },
+        {
+          path: 'charity/my-beneficiaries',
+          redirect: { name: 'charity-beneficiaries' }
+        },
+        {
+          path: 'charity/beneficiaries/create',
+          name: 'charity-beneficiaries-create',
+          component: () => import('@/views/charity/beneficiary_create.vue'),
+          meta: { title: 'Add Beneficiary', roles: ['admin', 'charity_admin', 'charity_teamleader'] },
+        },
+        {
+          path: 'charity/beneficiaries/:id',
+          name: 'charity-beneficiaries-view',
+          component: () => import('@/views/charity/beneficiary_create.vue'),
+          meta: { title: 'View Beneficiary', roles: ['admin', 'charity_admin', 'charity_teamleader'] },
+        },
+        {
+          path: 'charity/beneficiaries/:id/edit',
+          name: 'charity-beneficiaries-edit',
+          component: () => import('@/views/charity/beneficiary_create.vue'),
+          meta: { title: 'Edit Beneficiary', roles: ['admin', 'charity_admin', 'charity_teamleader'] },
+        },
+        {
+          path: '/charity/beneficiaries/:id/details',
+          name: 'BeneficiaryDetails',
+          component: () => import('@/views/charity/beneficiary_details.vue')
+        },
+        {
+          path: 'charity/settings',
+          name: 'charity-settings',
+          component: () => import('@/views/charity/settings.vue'),
+          meta: { title: 'Charity Settings', roles: ['admin', 'charity_admin'] },
+        },
+
         // ============================================================
         // STORE INVENTORY ROUTES
         // ============================================================

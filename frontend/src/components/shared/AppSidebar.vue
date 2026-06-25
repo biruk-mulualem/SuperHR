@@ -15,17 +15,48 @@
     <!-- Navigation Menu - Scrollable -->
     <div class="nav-menu-wrapper">
       <nav class="nav-menu">
-        <router-link
-          v-for="item in menuItems"
-          :key="item.path"
-          :to="item.path"
-          class="nav-item"
-          :class="{ active: isActiveRoute(item.path) }"
-        >
-          <component :is="getIcon(item.icon)" class="nav-icon" />
-          <span class="nav-text">{{ item.name }}</span>
-          <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
-        </router-link>
+        <template v-for="item in menuItems" :key="item.path">
+          <router-link
+            v-if="!item.dropdownMenu"
+            :to="item.path"
+            class="nav-item"
+            :class="{ active: isActiveRoute(item.path) }"
+          >
+            <component :is="getIcon(item.icon)" class="nav-icon" />
+            <span class="nav-text">{{ item.name }}</span>
+            <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+          </router-link>
+
+          <div v-if="item.dropdownMenu">
+            <button
+              @click="toggleDropdown(item.path)"
+              class="nav-item nav-dropdown-btn"
+              :class="{ active: openDropdown === item.path }"
+            >
+              <div class="nav-item-inner">
+                <component :is="getIcon(item.icon)" class="nav-icon" />
+                <span class="nav-text">{{ item.name }}</span>
+              </div>
+              <component
+                class="dropdown-chevron"
+                :is="openDropdown === item.path ? getIcon('ChevronDownIcon') : getIcon('ChevronRightIcon')"
+              />
+            </button>
+            <div v-if="openDropdown === item.path" class="nav-dropdown-content">
+              <router-link
+                v-for="sub in item.dropdownMenu"
+                :key="sub.path"
+                :to="sub.path"
+                class="nav-item sub-nav-item"
+                :class="{ active: isActiveRoute(sub.path) }"
+              >
+                <component :is="getIcon(sub.icon)" class="nav-icon sub-icon" />
+                <span class="nav-text">{{ sub.name }}</span>
+                <span v-if="sub.badge" class="nav-badge">{{ sub.badge }}</span>
+              </router-link>
+            </div>
+          </div>
+        </template>
       </nav>
     </div>
 
@@ -61,6 +92,11 @@ const router = useRouter()
 const authStore = useAuthStore()
 const userRole = computed(() => authStore.user?.role || 'employee')
 const isCollapsed = ref(props.collapsed)
+const openDropdown = ref(null)
+
+const toggleDropdown = (path) => {
+  openDropdown.value = openDropdown.value === path ? null : path
+}
 
 const userDisplayName = computed(() => {
   return authStore.user?.fullEmployeeName || authStore.user?.fullName || 'User'
@@ -79,7 +115,9 @@ const roleTitle = computed(() => {
     finance: 'Finance Officer',
     employee: 'Employee',
     attendance: 'Attendance Manager',
-    store: 'Store Manager'
+    store: 'Store Manager',
+    charity_admin: 'Charity Admin',
+    charity_teamleader: 'Team Leader',
   }
   return titles[userRole.value] || 'User'
 })
@@ -93,12 +131,29 @@ const roleMenus = {
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
     { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
-    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
-    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+    {
+      name: 'Store',
+      path: '/store',
+      icon: 'BuildingStorefrontIcon',
+      dropdownMenu: [
+        { name: 'Stores List',       path: '/store-management',  icon: 'ClockIcon' },
+        { name: 'Store Groups',      path: '/group-management',  icon: 'UserIcon' },
+        { name: 'Store to Store',    path: '/store-to-store',    icon: 'UserIcon' },
+        { name: 'Store Balance',     path: '/store-balance',     icon: 'UserIcon' },
+        { name: 'Store Transaction', path: '/store-transaction', icon: 'UserIcon' },
+        { name: 'Audit',             path: '/audit',             icon: 'ClockIcon' },
+      ]
+    },
+    {
+      name: 'Charity',
+      path: '/charity',
+      icon: 'HeartIcon',
+      dropdownMenu: [
+        { name: 'Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+        { name: 'Teams',         path: '/charity/teams',         icon: 'RectangleStackIcon' },
+        { name: 'Settings',      path: '/charity/settings',      icon: 'CogIcon' },
+      ]
+    },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
   ],
   hr: [
@@ -182,7 +237,7 @@ if (savedState !== null) {
   position: sticky;
   top: 60px;
   height: calc(100vh - 60px);
-  overflow: hidden; /* Prevent sidebar itself from scrolling */
+  overflow: hidden;
 }
 
 .sidebar.collapsed {
@@ -258,7 +313,6 @@ if (savedState !== null) {
   padding: 8px 0;
 }
 
-/* Custom scrollbar for nav menu */
 .nav-menu-wrapper::-webkit-scrollbar {
   width: 5px;
 }
@@ -327,12 +381,64 @@ if (savedState !== null) {
   margin-left: auto;
 }
 
+/* Dropdown specific */
+.nav-dropdown-btn {
+  width: 100%;
+  justify-content: space-between;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-dropdown-btn:hover {
+  background: #2d3a54;
+  color: white;
+}
+
+.nav-dropdown-btn.active {
+  background: #2d3a54;
+  color: white;
+  box-shadow: none;
+}
+
+.nav-item-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dropdown-chevron {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.nav-dropdown-content {
+  margin-top: 4px;
+  margin-left: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sub-nav-item {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+
+.sub-icon {
+  width: 16px;
+  height: 16px;
+}
+
 /* Sidebar Footer - Fixed */
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
-  background: inherit; /* Matches sidebar background */
+  background: inherit;
 }
 
 .logout-btn {
