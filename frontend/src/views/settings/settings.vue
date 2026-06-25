@@ -1059,6 +1059,162 @@
       </div>
     </div>
 
+      <!-- ==================== BACKUP & RESTORE ==================== -->
+      <div v-if="activeTab === 'backup'" class="settings-card backup-tab">
+        <div class="card-header">
+          <h2>🗂️ Backup &amp; Restore</h2>
+          <button class="btn-add" @click="createBackup" :disabled="backupCreating">
+            <span v-if="backupCreating">⏳ Creating...</span>
+            <span v-else>+ Create Backup Now</span>
+          </button>
+        </div>
+
+        <!-- Auto Backup Settings -->
+        <div class="backup-settings-panel">
+          <div class="panel-header">
+            <h3>⚙️ Auto-Backup Configuration</h3>
+            <button class="btn-save btn-small" @click="saveBackupSettings" :disabled="savingBackupSettings">
+              {{ savingBackupSettings ? 'Saving...' : 'Save Config' }}
+            </button>
+          </div>
+          <div class="panel-body form-grid">
+            <div class="form-group toggle-group">
+              <label>Enable Auto-Backup</label>
+              <label class="switch">
+                <input type="checkbox" v-model="backupSettings.enabled" />
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Backup Time</label>
+              <input type="time" v-model="backupSettings.time" class="form-input" :disabled="!backupSettings.enabled" />
+            </div>
+            <div class="form-group">
+              <label>Keep Last X Backups</label>
+              <input type="number" v-model="backupSettings.retentionDays" min="1" max="30" class="form-input" :disabled="!backupSettings.enabled" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Info Banner -->
+        <div class="backup-info-banner">
+          <div class="info-icon">ℹ️</div>
+          <div>
+            <strong>Full System Backup</strong> — Backs up the entire database and all uploaded files.
+            <span v-if="backupSettings.enabled">Auto-backup is scheduled for <strong>{{ backupSettings.time }}</strong> and keeps the last <strong>{{ backupSettings.retentionDays }}</strong> auto-backups.</span>
+            <span v-else>Auto-backup is currently <strong>disabled</strong>.</span>
+          </div>
+        </div>
+
+        <!-- Backup List -->
+        <div class="backup-loading" v-if="backupLoading">
+          <div class="spinner"></div>
+          <p>Loading backups...</p>
+        </div>
+
+        <div v-else>
+          <div class="backup-empty" v-if="backups.length === 0">
+            <div class="backup-empty-icon">📂</div>
+            <p>No backups found. Create your first backup!</p>
+          </div>
+
+          <div class="backup-list" v-else>
+            <div
+              v-for="backup in backups"
+              :key="backup.filename"
+              class="backup-item"
+              :class="{ 'auto-backup': backup.filename.includes('_auto_') }"
+            >
+              <div class="backup-item-left">
+                <div class="backup-icon">{{ backup.filename.includes('_auto_') ? '🔄' : '💾' }}</div>
+                <div class="backup-meta">
+                  <div class="backup-name">{{ backup.filename }}</div>
+                  <div class="backup-details">
+                    <span class="backup-size">{{ backup.sizeFormatted }}</span>
+                    <span class="backup-dot">·</span>
+                    <span class="backup-date">{{ formatBackupDate(backup.createdAt) }}</span>
+                    <span class="backup-badge" v-if="backup.filename.includes('_auto_')">Auto</span>
+                    <span class="backup-badge manual" v-else>Manual</span>
+                  </div>
+                </div>
+              </div>
+              <div class="backup-item-actions">
+                <button
+                  class="backup-btn download"
+                  @click="downloadBackup(backup.filename)"
+                  title="Download"
+                >⬇️ Download</button>
+                <button
+                  class="backup-btn restore"
+                  @click="confirmRestore(backup)"
+                  title="Restore"
+                >🔁 Restore</button>
+                <button
+                  class="backup-btn delete"
+                  @click="confirmDeleteBackup(backup)"
+                  title="Delete"
+                >🗑️</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Restore Confirmation Modal -->
+      <div v-if="showRestoreModal" class="modal-overlay" @click.self="showRestoreModal = false">
+        <div class="modal restore-modal">
+          <div class="modal-header">
+            <h3>⚠️ Confirm Restore</h3>
+          </div>
+          <div class="modal-body" v-if="!restoring">
+            <p>You are about to restore the system from:</p>
+            <p class="restore-filename"><strong>{{ selectedBackup?.filename }}</strong></p>
+            <div class="restore-warning">
+              ⚠️ <strong>This will overwrite ALL current data</strong> — the database and all uploaded files will be replaced with the contents of this backup. This action cannot be undone.
+            </div>
+            <p>Type <strong>RESTORE</strong> below to confirm:</p>
+            <input
+              v-model="restoreConfirmText"
+              class="restore-input"
+              placeholder="Type RESTORE to confirm"
+              autocomplete="off"
+            />
+          </div>
+          <div class="modal-body progress-body" v-else>
+            <h3>Restoring System...</h3>
+            <div class="progress-wrapper">
+              <div class="progress-bar" :style="{ width: restoreProgress + '%' }"></div>
+            </div>
+            <p class="progress-status">{{ restoreStatusText }}</p>
+            <p class="progress-warning">Please do not close this window or refresh the page.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-cancel" @click="showRestoreModal = false">Cancel</button>
+            <button
+              class="btn-danger"
+              @click="executeRestore"
+              :disabled="restoreConfirmText !== 'RESTORE' || restoring"
+            >
+              {{ restoring ? '⏳ Restoring...' : '🔁 Restore System' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Backup Confirmation Modal -->
+      <div v-if="showDeleteBackupModal" class="modal-overlay" @click.self="showDeleteBackupModal = false">
+        <div class="modal">
+          <div class="modal-header"><h3>Delete Backup</h3></div>
+          <div class="modal-body">
+            <p>Are you sure you want to delete <strong>{{ selectedBackup?.filename }}</strong>?</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-cancel" @click="showDeleteBackupModal = false">Cancel</button>
+            <button class="btn-danger" @click="executeDeleteBackup" :disabled="deleting">Delete</button>
+          </div>
+        </div>
+      </div>
+
     <!-- Toast -->
     <div class="toast-container">
       <div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type]">
@@ -1072,6 +1228,9 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import settingService from '@/stores/settingService'
 import employeeService from '@/stores/employee'
+import axios from 'axios'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'
 
 // ==================== STATE ====================
 const activeTab = ref('departments')
@@ -1085,6 +1244,25 @@ const savingPosition = ref(false)
 const savingRole = ref(false)
 const deleting = ref(false)
 const toasts = ref([])
+
+// ==================== BACKUP STATE ====================
+const backups = ref([])
+const backupLoading = ref(false)
+const backupCreating = ref(false)
+const backupSettings = reactive({
+  enabled: true,
+  time: '02:00',
+  retentionDays: 7
+})
+const savingBackupSettings = ref(false)
+const restoring = ref(false)
+const showRestoreModal = ref(false)
+const showDeleteBackupModal = ref(false)
+const selectedBackup = ref(null)
+const restoreConfirmText = ref('')
+const restoreProgress = ref(0)
+const restoreStatusText = ref('')
+let restoreInterval = null
 
 // Modals
 const showDepartmentModal = ref(false)
@@ -1407,7 +1585,8 @@ const tabs = [
   { id: 'positions', name: 'Positions' },
   { id: 'roles', name: 'Roles' },
   { id: 'attendance', name: 'Attendance Rules' },
-  { id: 'tax', name: 'Tax Rules' }
+  { id: 'tax', name: 'Tax Rules' },
+  { id: 'backup', name: '🗂️ Backup & Restore' }
 ]
 
 const attendanceSubTabs = [
@@ -1488,6 +1667,8 @@ const loadTabData = async (tabId) => {
       }
     } else if (tabId === 'tax') {
       await loadTaxRules()
+    } else if (tabId === 'backup') {
+      await loadBackups()
     }
   } catch (error) {
     addToast(error.error || 'Failed to load data', 'error')
@@ -1859,6 +2040,154 @@ const addToast = (message, type = 'success') => {
   setTimeout(() => {
     toasts.value = toasts.value.filter(t => t.id !== id)
   }, 3000)
+}
+
+// ==================== BACKUP FUNCTIONS ====================
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return { headers: { Authorization: `Bearer ${token}` } }
+}
+
+const formatBackupDate = (dateStr) => {
+  if (!dateStr) return '-'
+  return new Date(dateStr).toLocaleString('en-ET', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+const loadBackups = async () => {
+  backupLoading.value = true
+  try {
+    const res = await axios.get(`${API_BASE_URL}/backup/list`, getAuthHeaders())
+    backups.value = res.data.backups || []
+    
+    // Also load settings
+    const settingsRes = await axios.get(`${API_BASE_URL}/backup/settings`, getAuthHeaders())
+    if (settingsRes.data.success) {
+      backupSettings.enabled = settingsRes.data.data.enabled
+      backupSettings.time = settingsRes.data.data.time || '02:00'
+      backupSettings.retentionDays = settingsRes.data.data.retentionDays || 7
+    }
+  } catch (error) {
+    addToast('Failed to load backups or settings', 'error')
+  } finally {
+    backupLoading.value = false
+  }
+}
+
+const saveBackupSettings = async () => {
+  savingBackupSettings.value = true
+  try {
+    await axios.post(`${API_BASE_URL}/backup/settings`, backupSettings, getAuthHeaders())
+    addToast('Auto-backup settings updated successfully', 'success')
+  } catch (error) {
+    addToast('Failed to update backup settings', 'error')
+  } finally {
+    savingBackupSettings.value = false
+  }
+}
+
+const createBackup = async () => {
+  backupCreating.value = true
+  try {
+    await axios.post(`${API_BASE_URL}/backup/create`, {}, getAuthHeaders())
+    addToast('Backup created successfully!', 'success')
+    await loadBackups()
+  } catch (error) {
+    addToast(error.response?.data?.message || 'Failed to create backup', 'error')
+  } finally {
+    backupCreating.value = false
+  }
+}
+
+const downloadBackup = (filename) => {
+  const token = localStorage.getItem('token')
+  const url = `${API_BASE_URL}/backup/download/${filename}`
+  const a = document.createElement('a')
+  a.href = url
+  a.setAttribute('download', filename)
+  // Pass token via fetch and create blob URL since axios can't trigger browser download
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.blob())
+    .then(blob => {
+      const blobUrl = URL.createObjectURL(blob)
+      a.href = blobUrl
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    })
+    .catch(() => addToast('Failed to download backup', 'error'))
+}
+
+const confirmRestore = (backup) => {
+  selectedBackup.value = backup
+  restoreConfirmText.value = ''
+  showRestoreModal.value = true
+}
+
+const executeRestore = async () => {
+  if (restoreConfirmText.value !== 'RESTORE') return
+  restoring.value = true
+  restoreProgress.value = 5
+  restoreStatusText.value = 'Preparing to restore...'
+
+  const steps = [
+    { p: 15, msg: 'Extracting backup archive...' },
+    { p: 35, msg: 'Dropping current database...' },
+    { p: 50, msg: 'Recreating database schema...' },
+    { p: 75, msg: 'Restoring database data...' },
+    { p: 90, msg: 'Restoring uploaded files...' }
+  ]
+  
+  let stepIdx = 0
+  restoreInterval = setInterval(() => {
+    if (stepIdx < steps.length) {
+      restoreProgress.value = steps[stepIdx].p
+      restoreStatusText.value = steps[stepIdx].msg
+      stepIdx++
+    }
+  }, 1200)
+
+  try {
+    await axios.post(`${API_BASE_URL}/backup/restore/${selectedBackup.value.filename}`, {}, getAuthHeaders())
+    
+    clearInterval(restoreInterval)
+    restoreProgress.value = 100
+    restoreStatusText.value = 'Restore complete! Restarting...'
+    
+    setTimeout(() => {
+      showRestoreModal.value = false
+      addToast('System restored successfully! Please refresh the page.', 'success')
+      restoring.value = false
+    }, 1500)
+    
+  } catch (error) {
+    clearInterval(restoreInterval)
+    addToast(error.response?.data?.message || 'Failed to restore backup', 'error')
+    restoring.value = false
+  }
+}
+
+const confirmDeleteBackup = (backup) => {
+  selectedBackup.value = backup
+  showDeleteBackupModal.value = true
+}
+
+const executeDeleteBackup = async () => {
+  deleting.value = true
+  try {
+    await axios.delete(`${API_BASE_URL}/backup/${selectedBackup.value.filename}`, getAuthHeaders())
+    showDeleteBackupModal.value = false
+    addToast('Backup deleted', 'success')
+    await loadBackups()
+  } catch (error) {
+    addToast('Failed to delete backup', 'error')
+  } finally {
+    deleting.value = false
+  }
 }
 
 // Initialize
@@ -2444,6 +2773,250 @@ onMounted(async () => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ==================== BACKUP & RESTORE STYLES ==================== */
+.backup-tab {
+  padding: 0;
+}
+
+.backup-settings-panel {
+  margin: 20px 24px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+.backup-settings-panel .panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.backup-settings-panel .panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1f2937;
+}
+.backup-settings-panel .panel-body.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  align-items: flex-end;
+}
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.toggle-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.toggle-group label:first-child {
+  margin-bottom: 8px;
+}
+
+.backup-info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin: 0 24px 20px;
+  font-size: 14px;
+  color: #1e40af;
+  line-height: 1.5;
+}
+
+.info-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+.backup-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px;
+  color: #6b7280;
+  gap: 12px;
+}
+
+.backup-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 24px;
+  color: #9ca3af;
+  gap: 12px;
+}
+.backup-empty-icon { font-size: 48px; }
+.backup-empty p { font-size: 15px; }
+
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 24px 24px;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.backup-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-color: #d1d5db;
+}
+.backup-item.auto-backup {
+  border-left: 3px solid #6366f1;
+}
+
+.backup-item-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.backup-icon { font-size: 24px; flex-shrink: 0; }
+.backup-meta { min-width: 0; }
+.backup-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 500px;
+}
+.backup-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.backup-dot { color: #d1d5db; }
+.backup-badge {
+  background: #6366f1;
+  color: white;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.backup-badge.manual {
+  background: #10b981;
+}
+
+.backup-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.backup-btn {
+  border: none;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.backup-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+.backup-btn:active { transform: translateY(0); }
+.backup-btn.download { background: #3b82f6; color: white; }
+.backup-btn.restore { background: #f59e0b; color: white; }
+.backup-btn.delete { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; padding: 7px 10px; }
+
+/* Restore modal specifics */
+.restore-modal .modal-body { display: flex; flex-direction: column; gap: 12px; }
+.restore-filename {
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+.restore-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+.restore-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: monospace;
+  letter-spacing: 1px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.restore-input:focus { outline: none; border-color: #ef4444; }
+.btn-danger {
+  padding: 9px 20px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.progress-body {
+  align-items: center;
+  text-align: center;
+  padding: 20px 0;
+}
+.progress-body h3 {
+  margin: 0 0 16px 0;
+  color: #111827;
+}
+.progress-wrapper {
+  width: 100%;
+  height: 12px;
+  background: #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.progress-bar {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+.progress-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin: 0;
+}
+.progress-warning {
+  font-size: 12px;
+  color: #ef4444;
+  margin-top: 16px;
 }
 
 .toast-container {

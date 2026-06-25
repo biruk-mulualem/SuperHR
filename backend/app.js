@@ -80,6 +80,7 @@ const penalityRoutes = require("./routes/penalityRoutes");
 const storeRoutes  = require("./routes/storeRoutes");
 const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
 const itemRoutes=require('./routes/itemRoutes');
+const backupRoutes = require('./routes/backupRoutes');
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -126,6 +127,7 @@ app.use("/api/penalties", penalityRoutes);
 app.use('/api/penalty-summary', penaltySummaryRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/backup', backupRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
@@ -181,6 +183,13 @@ if (process.env.NODE_ENV !== "test") {
     startAttendanceJobs();
   } catch (error) {
     console.error("Failed to start cron jobs:", error.message);
+  }
+
+  try {
+    const { startScheduledBackup } = require("./utils/scheduledBackup");
+    startScheduledBackup();
+  } catch (error) {
+    console.error("Failed to start scheduled backup:", error.message);
   }
 }
 
