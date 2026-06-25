@@ -4,8 +4,8 @@
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
-        <h2>🔗 Store Relationships</h2>
-        <span class="total-badge">{{ filteredRelationships.length }} Relationships</span>
+        <h2>🔗 Store to Store Relationships</h2>
+        <span class="total-badge">{{ totalItems }} Relationships</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -44,7 +44,12 @@
     </div>
 
     <!-- ==================== RELATIONSHIPS TABLE ==================== -->
-    <div class="table-container" id="printable-area">
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading relationships...</p>
+    </div>
+
+    <div v-else class="table-container" id="printable-area">
       <table class="relationships-table">
         <thead>
           <tr>
@@ -88,7 +93,7 @@
                 <button class="icon-btn" @click="openToggleModal(rel)" :title="rel.status === 'active' ? 'Deactivate' : 'Activate'">
                   {{ rel.status === 'active' ? '⏸️' : '▶️' }}
                 </button>
-                <button class="icon-btn delete" @click="openDeleteModal(rel)" title="Delete">🗑️</button>
+            
               </div>
             </td>
           </tr>
@@ -97,7 +102,7 @@
     </div>
 
     <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="filteredRelationships.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -178,14 +183,22 @@
                 />
               </div>
             </div>
+            <!-- Error message for same store -->
+            <div v-if="form.sourceStoreId && form.targetStoreId && form.sourceStoreId === form.targetStoreId" class="form-error">
+              ⚠️ A store cannot be both the asking and supplying store
+            </div>
           </form>
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button class="btn-primary" @click="saveRelationship">
-            {{ editingRelationship ? 'Update' : 'Add' }}
-          </button>
-        </div>
+       <div class="modal-footer">
+  <button class="btn-secondary" @click="closeModal">Cancel</button>
+  <button 
+    class="btn-primary" 
+    @click="saveRelationship" 
+    :disabled="saving || isSameStore"
+  >
+    {{ saving ? 'Saving...' : (editingRelationship ? 'Update' : 'Add') }}
+  </button>
+</div>
       </div>
     </div>
 
@@ -272,79 +285,60 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import relationshipService, { type StoreRelationship } from '@/stores/storeToStoreRelationshipService'
+import storeService from '@/stores/storeService'
 
 // ================================================================
-// STORE DATA
+// TYPES
 // ================================================================
-const stores = [
-  { id: 1, name: 'Main Store', code: 'STORE-001', location: 'Wana Gebi', type: 'Main' },
-  { id: 2, name: 'Fiber Mini Store', code: 'STORE-002', location: 'Wana Gebi Kuter 2', type: 'Mini' },
-  { id: 3, name: 'Paint Mini Store', code: 'STORE-003', location: 'Wana Gebi Kuter 2', type: 'Mini' },
-  { id: 4, name: 'Fiber Mini Mini Store', code: 'STORE-004', location: 'Wana Gebi Kuter 3', type: 'Mini Mini' },
-  { id: 5, name: 'Paint Mini Mini Store', code: 'STORE-005', location: 'Wana Gebi Kuter 3', type: 'Mini Mini' },
-  { id: 6, name: 'Metal Store', code: 'STORE-006', location: 'Wana Gebi Kuter 3', type: 'Specialized' },
-  { id: 7, name: 'Technic Store', code: 'STORE-007', location: 'Addis Ababa', type: 'Specialized' },
-  { id: 8, name: 'Calcium Store', code: 'STORE-008', location: 'Bahir Dar', type: 'Specialized' },
-  { id: 9, name: 'Finishing Store', code: 'STORE-009', location: 'Hawassa', type: 'Specialized' },
-]
+
+interface Store {
+  id: number
+  name: string
+  code: string
+  location?: string
+  status: string
+}
 
 // ================================================================
 // STATE
 // ================================================================
-const relationships = ref([
-  { id: 1, code: 'REL-001', sourceStoreId: 2, targetStoreId: 1, status: 'active', description: 'Fiber Mini Store requests items from Main Store', createdAt: '2026-01-15T10:00:00Z' },
-  { id: 2, code: 'REL-002', sourceStoreId: 3, targetStoreId: 1, status: 'active', description: 'Paint Mini Store requests items from Main Store', createdAt: '2026-01-15T10:30:00Z' },
-  { id: 3, code: 'REL-003', sourceStoreId: 4, targetStoreId: 1, status: 'active', description: 'Fiber Mini Mini Store requests items from Main Store', createdAt: '2026-01-16T09:00:00Z' },
-  { id: 4, code: 'REL-004', sourceStoreId: 5, targetStoreId: 1, status: 'active', description: 'Paint Mini Mini Store requests items from Main Store', createdAt: '2026-01-16T09:30:00Z' },
-  { id: 5, code: 'REL-005', sourceStoreId: 6, targetStoreId: 1, status: 'active', description: 'Metal Store requests items from Main Store', createdAt: '2026-01-17T10:00:00Z' },
-  { id: 6, code: 'REL-006', sourceStoreId: 7, targetStoreId: 1, status: 'active', description: 'Technic Store requests items from Main Store', createdAt: '2026-01-17T11:00:00Z' },
-  { id: 7, code: 'REL-007', sourceStoreId: 8, targetStoreId: 1, status: 'inactive', description: 'Calcium Store requests items from Main Store (temporarily paused)', createdAt: '2026-01-18T08:00:00Z' },
-  { id: 8, code: 'REL-008', sourceStoreId: 9, targetStoreId: 1, status: 'active', description: 'Finishing Store requests items from Main Store', createdAt: '2026-01-18T09:00:00Z' },
-  { id: 9, code: 'REL-009', sourceStoreId: 4, targetStoreId: 2, status: 'active', description: 'Fiber Mini Mini Store requests items from Fiber Mini Store', createdAt: '2026-01-20T10:00:00Z' },
-  { id: 10, code: 'REL-010', sourceStoreId: 5, targetStoreId: 3, status: 'active', description: 'Paint Mini Mini Store requests items from Paint Mini Store', createdAt: '2026-01-20T11:00:00Z' },
-  { id: 11, code: 'REL-011', sourceStoreId: 6, targetStoreId: 2, status: 'active', description: 'Metal Store requests items from Fiber Mini Store', createdAt: '2026-01-21T09:00:00Z' },
-  { id: 12, code: 'REL-012', sourceStoreId: 7, targetStoreId: 3, status: 'inactive', description: 'Technic Store requests items from Paint Mini Store (paused)', createdAt: '2026-01-21T10:00:00Z' },
-  { id: 13, code: 'REL-013', sourceStoreId: 8, targetStoreId: 4, status: 'active', description: 'Calcium Store requests items from Fiber Mini Mini Store', createdAt: '2026-01-22T08:00:00Z' },
-  { id: 14, code: 'REL-014', sourceStoreId: 9, targetStoreId: 5, status: 'active', description: 'Finishing Store requests items from Paint Mini Mini Store', createdAt: '2026-01-22T09:00:00Z' },
-  { id: 15, code: 'REL-015', sourceStoreId: 7, targetStoreId: 6, status: 'active', description: 'Technic Store requests items from Metal Store', createdAt: '2026-01-23T10:00:00Z' },
-  { id: 16, code: 'REL-016', sourceStoreId: 8, targetStoreId: 7, status: 'active', description: 'Calcium Store requests items from Technic Store', createdAt: '2026-01-23T11:00:00Z' },
-  { id: 17, code: 'REL-017', sourceStoreId: 9, targetStoreId: 8, status: 'active', description: 'Finishing Store requests items from Calcium Store', createdAt: '2026-01-24T09:00:00Z' },
-  { id: 18, code: 'REL-018', sourceStoreId: 9, targetStoreId: 6, status: 'active', description: 'Finishing Store requests items from Metal Store', createdAt: '2026-01-25T10:00:00Z' },
-  { id: 19, code: 'REL-019', sourceStoreId: 5, targetStoreId: 4, status: 'active', description: 'Paint Mini Mini Store requests items from Fiber Mini Mini Store', createdAt: '2026-01-25T11:00:00Z' },
-])
-
+const stores = ref<Store[]>([])
+const relationships = ref<StoreRelationship[]>([])
+const loading = ref(false)
 const searchQuery = ref('')
 const filterStatus = ref('all')
 const filterStore = ref('all')
 const currentPage = ref(1)
 const pageSize = ref(5)
-const showModal = ref(false)
-const editingRelationship = ref(null)
-const nextId = ref(relationships.value.length + 1)
-const exporting = ref(false)
-const exportType = ref('full')
-const showExportModal = ref(false)
+const totalItems = ref(0)
 
-// Confirmation Modals
+// Modal states
+const showModal = ref(false)
+const editingRelationship = ref<StoreRelationship | null>(null)
+const saving = ref(false)
 const showDeleteModal = ref(false)
 const showToggleModal = ref(false)
-const relationshipToDelete = ref(null)
-const relationshipToToggle = ref(null)
+const showExportModal = ref(false)
+const relationshipToDelete = ref<StoreRelationship | null>(null)
+const relationshipToToggle = ref<StoreRelationship | null>(null)
+const exporting = ref(false)
+const exportType = ref<'full' | 'summary'>('full')
 
 const form = ref({
-  code: '',
   sourceStoreId: '',
   targetStoreId: '',
-  status: 'active',
+  status: 'active' as 'active' | 'inactive',
   description: '',
+  code: '',
 })
 
 // Toast
 const showToast = ref(false)
 const toastMessage = ref('')
-const toastType = ref('success')
+const toastType = ref<'success' | 'error' | 'info'>('success')
 
 // ================================================================
 // COMPUTED
@@ -354,50 +348,108 @@ const hasActiveFilters = computed(() => {
 })
 
 const filteredRelationships = computed(() => {
-  return relationships.value.filter(rel => {
-    const sourceName = getStoreName(rel.sourceStoreId).toLowerCase()
-    const targetName = getStoreName(rel.targetStoreId).toLowerCase()
-    const description = (rel.description || '').toLowerCase()
-    const code = (rel.code || '').toLowerCase()
-    const matchesSearch = sourceName.includes(searchQuery.value.toLowerCase()) || 
-                          targetName.includes(searchQuery.value.toLowerCase()) ||
-                          description.includes(searchQuery.value.toLowerCase()) ||
-                          code.includes(searchQuery.value.toLowerCase())
-    const matchesStatus = filterStatus.value === 'all' || rel.status === filterStatus.value
-    const matchesStore = filterStore.value === 'all' || 
-                         rel.sourceStoreId === Number(filterStore.value) || 
-                         rel.targetStoreId === Number(filterStore.value)
-    return matchesSearch && matchesStatus && matchesStore
-  })
+  let result = relationships.value
+  
+  if (searchQuery.value) {
+    const s = searchQuery.value.toLowerCase()
+    result = result.filter(rel => 
+      rel.code.toLowerCase().includes(s) ||
+      rel.description?.toLowerCase().includes(s) ||
+      getStoreName(rel.sourceStoreId).toLowerCase().includes(s) ||
+      getStoreName(rel.targetStoreId).toLowerCase().includes(s)
+    )
+  }
+  
+  if (filterStatus.value !== 'all') {
+    result = result.filter(rel => rel.status === filterStatus.value)
+  }
+  
+  if (filterStore.value !== 'all') {
+    const storeId = Number(filterStore.value)
+    result = result.filter(rel => 
+      rel.sourceStoreId === storeId || 
+      rel.targetStoreId === storeId
+    )
+  }
+  
+  return result
 })
 
 const totalPages = computed(() => {
-  return Math.ceil(filteredRelationships.value.length / pageSize.value) || 1
+  return Math.ceil(totalItems.value / pageSize.value) || 1
 })
 
 const paginatedRelationships = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredRelationships.value.slice(start, start + pageSize.value)
+  return relationships.value
 })
 
 // ================================================================
 // METHODS
 // ================================================================
-const getStoreName = (storeId) => {
-  const store = stores.find(s => s.id === storeId)
+
+// -- Load Data --
+const loadStores = async () => {
+  try {
+    const response = await storeService.getStores({ limit: 100 })
+    if (response.success) {
+      stores.value = response.data.stores || []
+    }
+  } catch (error) {
+    console.error('Load stores error:', error)
+  }
+}
+
+const loadRelationships = async () => {
+  loading.value = true
+  try {
+    const response = await relationshipService.getRelationships({
+      page: currentPage.value,
+      limit: pageSize.value,
+      search: searchQuery.value || undefined,
+      status: filterStatus.value,
+      storeId: filterStore.value,
+    })
+    
+    if (response.success) {
+      relationships.value = response.data.relationships || []
+      totalItems.value = response.data.pagination?.total || 0
+    } else {
+      showToastMessage(response.error || 'Failed to load relationships', 'error')
+    }
+  } catch (error: any) {
+    console.error('Load relationships error:', error)
+    showToastMessage('Failed to load relationships', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+// ================================================================
+// COMPUTED
+// ================================================================
+
+// Check if source and target are the same
+const isSameStore = computed(() => {
+  return !!(form.value.sourceStoreId && form.value.targetStoreId && form.value.sourceStoreId === form.value.targetStoreId)
+})
+
+// -- Helper Methods --
+const getStoreName = (storeId: number): string => {
+  const store = stores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
-const formatDate = (dateString) => {
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'N/A'
   const date = new Date(dateString)
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-const getNewStatus = (currentStatus) => {
+const getNewStatus = (currentStatus: string): string => {
   return currentStatus === 'active' ? 'inactive' : 'active'
 }
 
-const autoGenerateDescription = () => {
+const autoGenerateDescription = (): void => {
   if (form.value.sourceStoreId && form.value.targetStoreId) {
     const sourceName = getStoreName(Number(form.value.sourceStoreId))
     const targetName = getStoreName(Number(form.value.targetStoreId))
@@ -410,19 +462,20 @@ const autoGenerateDescription = () => {
   }
 }
 
-const openCreateModal = () => {
+// -- Modal Methods --
+const openCreateModal = (): void => {
   editingRelationship.value = null
   form.value = { 
-    code: '',
     sourceStoreId: '', 
     targetStoreId: '', 
     status: 'active', 
-    description: '' 
+    description: '',
+    code: '',
   }
   showModal.value = true
 }
 
-const editRelationship = (rel) => {
+const editRelationship = (rel: StoreRelationship): void => {
   editingRelationship.value = rel
   form.value = {
     code: rel.code,
@@ -434,67 +487,13 @@ const editRelationship = (rel) => {
   showModal.value = true
 }
 
-const closeModal = () => {
+const closeModal = (): void => {
   showModal.value = false
   editingRelationship.value = null
 }
 
-// ================================================================
-// DELETE MODAL METHODS
-// ================================================================
-const openDeleteModal = (rel) => {
-  relationshipToDelete.value = rel
-  showDeleteModal.value = true
-}
-
-const closeDeleteModal = () => {
-  showDeleteModal.value = false
-  relationshipToDelete.value = null
-}
-
-const confirmDelete = () => {
-  if (relationshipToDelete.value) {
-    const id = relationshipToDelete.value.id
-    const code = relationshipToDelete.value.code
-    relationships.value = relationships.value.filter(r => r.id !== id)
-    showToastMessage(`Relationship ${code} deleted successfully!`, 'success')
-    closeDeleteModal()
-  }
-}
-
-// ================================================================
-// TOGGLE MODAL METHODS
-// ================================================================
-const openToggleModal = (rel) => {
-  relationshipToToggle.value = rel
-  showToggleModal.value = true
-}
-
-const closeToggleModal = () => {
-  showToggleModal.value = false
-  relationshipToToggle.value = null
-}
-
-const confirmToggle = () => {
-  if (relationshipToToggle.value) {
-    const newStatus = relationshipToToggle.value.status === 'active' ? 'inactive' : 'active'
-    const index = relationships.value.findIndex(r => r.id === relationshipToToggle.value.id)
-    if (index !== -1) {
-      relationships.value[index] = {
-        ...relationships.value[index],
-        status: newStatus,
-        updatedAt: new Date().toISOString(),
-      }
-    }
-    showToastMessage(`Relationship ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully!`, 'success')
-    closeToggleModal()
-  }
-}
-
-// ================================================================
-// SAVE RELATIONSHIP
-// ================================================================
-const saveRelationship = () => {
+// -- Save Relationship --
+const saveRelationship = async (): Promise<void> => {
   if (!form.value.sourceStoreId) {
     showToastMessage('Please select the source store', 'error')
     return
@@ -505,98 +504,156 @@ const saveRelationship = () => {
     return
   }
 
+  // 🔴 CRITICAL: Check if source and target are the same
   if (form.value.sourceStoreId === form.value.targetStoreId) {
-    showToastMessage('A store cannot request from itself', 'error')
+    showToastMessage('A store cannot be both the asking and supplying store', 'error')
     return
   }
 
-  if (!form.value.description.trim()) {
+  if (!form.value.description?.trim()) {
     showToastMessage('Please enter a description', 'error')
     return
   }
 
-  // Check for duplicate relationship (only for new ones)
-  if (!editingRelationship.value) {
-    const exists = relationships.value.some(rel => 
-      rel.sourceStoreId === Number(form.value.sourceStoreId) && 
-      rel.targetStoreId === Number(form.value.targetStoreId)
-    )
+  saving.value = true
+  try {
+    let response
+    if (editingRelationship.value) {
+      response = await relationshipService.updateRelationship(
+        editingRelationship.value.id,
+        {
+          sourceStoreId: Number(form.value.sourceStoreId),
+          targetStoreId: Number(form.value.targetStoreId),
+          status: form.value.status,
+          description: form.value.description,
+        }
+      )
+      if (response.success) {
+        showToastMessage('Relationship updated successfully!', 'success')
+        await loadRelationships()
+      }
+    } else {
+      // Check for duplicate
+      const exists = relationships.value.some(rel => 
+        rel.sourceStoreId === Number(form.value.sourceStoreId) && 
+        rel.targetStoreId === Number(form.value.targetStoreId)
+      )
+      if (exists) {
+        showToastMessage('This relationship already exists', 'error')
+        saving.value = false
+        return
+      }
 
-    if (exists) {
-      showToastMessage('This relationship already exists', 'error')
-      return
-    }
-  }
-
-  if (editingRelationship.value) {
-    const index = relationships.value.findIndex(r => r.id === editingRelationship.value.id)
-    if (index !== -1) {
-      relationships.value[index] = {
-        ...relationships.value[index],
+      response = await relationshipService.createRelationship({
         sourceStoreId: Number(form.value.sourceStoreId),
         targetStoreId: Number(form.value.targetStoreId),
         status: form.value.status,
         description: form.value.description,
-        updatedAt: new Date().toISOString(),
+      })
+      if (response.success) {
+        showToastMessage(`Relationship created successfully!`, 'success')
+        await loadRelationships()
       }
     }
-    showToastMessage('Relationship updated successfully!', 'success')
-  } else {
-    // Generate new code
-    const maxNumber = relationships.value.reduce((max, rel) => {
-      const num = parseInt(rel.code.replace('REL-', ''))
-      return num > max ? num : max
-    }, 0)
-    const nextNumber = String(maxNumber + 1).padStart(3, '0')
-    const newCode = 'REL-' + nextNumber
-    
-    relationships.value.push({
-      id: nextId.value++,
-      code: newCode,
-      sourceStoreId: Number(form.value.sourceStoreId),
-      targetStoreId: Number(form.value.targetStoreId),
-      status: form.value.status,
-      description: form.value.description,
-      createdAt: new Date().toISOString(),
-    })
-    showToastMessage(`Relationship ${newCode} created successfully!`, 'success')
+    closeModal()
+  } catch (error: any) {
+    showToastMessage(error.message || 'Failed to save relationship', 'error')
+  } finally {
+    saving.value = false
   }
-
-  closeModal()
 }
 
-// ================================================================
-// FILTERS & PAGINATION
-// ================================================================
-const onSearchChange = () => {
+// -- Delete --
+const openDeleteModal = (rel: StoreRelationship): void => {
+  relationshipToDelete.value = rel
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = (): void => {
+  showDeleteModal.value = false
+  relationshipToDelete.value = null
+}
+
+const confirmDelete = async (): Promise<void> => {
+  if (relationshipToDelete.value) {
+    try {
+      const response = await relationshipService.deleteRelationship(relationshipToDelete.value.id)
+      if (response.success) {
+        showToastMessage(`Relationship ${relationshipToDelete.value.code} deactivated`, 'success')
+        await loadRelationships()
+      }
+    } catch (error: any) {
+      showToastMessage(error.message || 'Failed to delete relationship', 'error')
+    }
+    closeDeleteModal()
+  }
+}
+
+// -- Toggle Status --
+const openToggleModal = (rel: StoreRelationship): void => {
+  relationshipToToggle.value = rel
+  showToggleModal.value = true
+}
+
+const closeToggleModal = (): void => {
+  showToggleModal.value = false
+  relationshipToToggle.value = null
+}
+
+const confirmToggle = async (): Promise<void> => {
+  if (relationshipToToggle.value) {
+    const newStatus = relationshipToToggle.value.status === 'active' ? 'inactive' : 'active'
+    try {
+      const response = await relationshipService.updateRelationshipStatus(
+        relationshipToToggle.value.id,
+        newStatus
+      )
+      if (response.success) {
+        showToastMessage(`Relationship ${newStatus === 'active' ? 'activated' : 'deactivated'}`, 'success')
+        await loadRelationships()
+      }
+    } catch (error: any) {
+      showToastMessage(error.message || 'Failed to update status', 'error')
+    }
+    closeToggleModal()
+  }
+}
+
+// -- Filters --
+const onSearchChange = (): void => {
   currentPage.value = 1
+  loadRelationships()
 }
 
-const onFilterChange = () => {
+const onFilterChange = (): void => {
   currentPage.value = 1
+  loadRelationships()
 }
 
-const clearFilters = () => {
+const clearFilters = (): void => {
   filterStatus.value = 'all'
   filterStore.value = 'all'
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
+  loadRelationships()
 }
 
-const changePage = (page) => {
+// -- Pagination --
+const changePage = (page: number): void => {
+  if (page < 1 || page > totalPages.value) return
   currentPage.value = page
+  loadRelationships()
 }
 
-const changePageSize = () => {
+const changePageSize = (): void => {
   currentPage.value = 1
+  loadRelationships()
 }
 
-// ================================================================
-// PRINT & EXPORT
-// ================================================================
-const printTable = () => {
-  const printContents = document.getElementById('printable-area').innerHTML
+// -- Print --
+const printTable = (): void => {
+  const printContents = document.getElementById('printable-area')?.innerHTML || ''
   const originalContents = document.body.innerHTML
   
   document.body.innerHTML = `
@@ -610,6 +667,9 @@ const printTable = () => {
           th { background: #f5f5f5; }
           h2 { text-align: center; margin-bottom: 20px; }
           .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
+          .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+          .status-badge.active { background: #dcfce7; color: #166534; }
+          .status-badge.inactive { background: #fef3c7; color: #92400e; }
         </style>
       </head>
       <body>
@@ -627,65 +687,61 @@ const printTable = () => {
   window.location.reload()
 }
 
-const openExportModal = () => {
+// -- Export --
+const openExportModal = (): void => {
   exportType.value = 'full'
   showExportModal.value = true
 }
 
-const closeExportModal = () => {
+const closeExportModal = (): void => {
   showExportModal.value = false
 }
 
-const exportSelectedReport = () => {
+const exportSelectedReport = async (): Promise<void> => {
   exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredRelationships.value
-    
-    if (exportType.value === 'full') {
-      headers = ['#', 'Code', 'Store Asking', 'Store Supplying', 'Description', 'Status', 'Created']
-      rows = data.map((rel, index) => [
-        index + 1,
-        rel.code,
-        getStoreName(rel.sourceStoreId),
-        getStoreName(rel.targetStoreId),
-        rel.description || '',
-        rel.status,
-        formatDate(rel.createdAt)
-      ])
-    } else {
-      headers = ['Code', 'Store Asking', 'Store Supplying', 'Status']
-      rows = data.map(rel => [
-        rel.code,
-        getStoreName(rel.sourceStoreId),
-        getStoreName(rel.targetStoreId),
-        rel.status
-      ])
-    }
-    
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
+  try {
+    const response = await relationshipService.exportRelationships({
+      status: filterStatus.value,
+      storeId: filterStore.value,
     })
     
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `store_relationships_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    
+    if (response.success && response.data && response.data.length > 0) {
+      const firstItem = response.data[0]
+      if (!firstItem) {
+        showToastMessage('No data to export', 'error')
+        exporting.value = false
+        return
+      }
+      
+      const headers = Object.keys(firstItem)
+      const rows = response.data.map((item: any) => headers.map((key: string) => item[key] ?? ''))
+      const csv = [headers.join(','), ...rows.map((row: any[]) => row.join(','))].join('\n')
+      
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `store_relationships_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      showToastMessage('Export completed successfully!', 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'error')
+    }
+  } catch (error: any) {
+    console.error('Export error:', error)
+    showToastMessage(error.message || 'Failed to export', 'error')
+  } finally {
     exporting.value = false
     closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
-  }, 500)
+  }
 }
 
-// ================================================================
-// TOAST
-// ================================================================
-const showToastMessage = (msg, type = 'success') => {
+// -- Toast --
+const showToastMessage = (msg: string, type: 'success' | 'error' | 'info' = 'success'): void => {
   toastMessage.value = msg
   toastType.value = type
   showToast.value = true
@@ -701,11 +757,19 @@ watch([() => form.value.sourceStoreId, () => form.value.targetStoreId], () => {
   autoGenerateDescription()
 })
 
+watch([filterStatus, filterStore], () => {
+  currentPage.value = 1
+  loadRelationships()
+})
+
 // ================================================================
 // LIFECYCLE
 // ================================================================
-onMounted(() => {
-  console.log('Store Relationships page loaded')
+onMounted(async () => {
+  await Promise.all([
+    loadStores(),
+    loadRelationships()
+  ])
 })
 </script>
 
@@ -885,6 +949,28 @@ onMounted(() => {
 
 .btn-export:hover {
   background: #059669;
+}
+
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.spinner {
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ================================================================
@@ -1259,6 +1345,17 @@ onMounted(() => {
   background: #f1f5f9;
   color: #64748b;
   cursor: not-allowed;
+}
+
+.form-error {
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  margin-top: 8px;
 }
 
 /* ================================================================

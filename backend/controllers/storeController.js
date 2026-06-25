@@ -1037,3 +1037,81 @@ exports.exportStores = async (req, res) => {
     });
   }
 };
+
+
+// controllers/storeController.js - Add at the end of the file
+
+// ================================================================
+// GET ALL GROUPS & USERS (FOR DROPDOWNS)
+// ================================================================
+
+/**
+ * Get all groups (for dropdown)
+ * GET /api/stores/groups
+ */
+exports.getAllGroups = async (req, res) => {
+  try {
+    const groups = await Group.findAll({
+      where: { status: 'Active' },
+      attributes: ['groupId', 'code', 'name', 'description', 'status'],
+      order: [['name', 'ASC']],
+    });
+
+    const formattedGroups = groups.map(group => ({
+      id: group.groupId,
+      code: group.code,
+      name: group.name,
+      description: group.description,
+      status: group.status,
+    }));
+
+    console.log(`✅ Found ${formattedGroups.length} active groups`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedGroups,
+    });
+  } catch (error) {
+    console.error('❌ Error in getAllGroups:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch groups',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all users (for dropdown)
+ * GET /api/stores/users
+ */
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { isActive: true },
+      attributes: ['userId', 'fullName', 'username', 'email'],
+      order: [['fullName', 'ASC']],
+    });
+
+    const formattedUsers = users.map(user => ({
+      id: user.userId,
+      fullName: user.fullName,
+      username: user.username,
+      email: user.email,
+    }));
+
+    console.log(`✅ Found ${formattedUsers.length} active users`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedUsers,
+    });
+  } catch (error) {
+    console.error('❌ Error in getAllUsers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+      error: error.message,
+    });
+  }
+};
