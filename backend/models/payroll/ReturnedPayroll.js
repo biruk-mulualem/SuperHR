@@ -56,7 +56,7 @@ module.exports = (sequelize, DataTypes) => {
     original_payment_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: { model: 'payroll_history', key: 'history_id' }
+      references: { model: 'payroll_history', key: 'payment_id' }
     },
     original_amount: {
       type: DataTypes.DECIMAL(12, 2),
@@ -96,7 +96,7 @@ module.exports = (sequelize, DataTypes) => {
     payment_history_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      references: { model: 'payroll_history', key: 'history_id' }
+      references: { model: 'payroll_history', key: 'payment_id' }
     },
     created_at: {
       type: DataTypes.DATE,
