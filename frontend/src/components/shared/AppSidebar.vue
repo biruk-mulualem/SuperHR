@@ -180,6 +180,20 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
   ],
+  // ── charity ──────────────────────────────────────────────────────────
+  charity_admin: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon' },
+    { name: 'Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+    { name: 'Teams',         path: '/charity/teams',         icon: 'RectangleStackIcon' },
+    { name: 'Settings',      path: '/charity/settings',      icon: 'CogIcon' },
+  ],
+  charity_teamleader: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon' },
+    { name: 'My Beneficiaries', path: '/charity/beneficiaries', icon: 'UsersIcon' },
+    { name: 'My Team',          path: '/charity/teams',         icon: 'RectangleStackIcon' }, // Scoped to self in controller
+  ],
+  // ── END charity ──────────────────────────────────────────────────────────
+
   store: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
