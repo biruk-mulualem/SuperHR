@@ -51,7 +51,13 @@ const uploadDirs = [
 
  // Item specifications
   "uploads/items/specifications",
-  
+
+    // ============================================
+  // STORE BALANCE - ADD THIS
+  // ============================================
+  "uploads/balances/",
+  "uploads/balances/imports",
+  "uploads/balances/exports",
 
   // Temp uploads
   "uploads/temp/"
@@ -84,6 +90,8 @@ const groupRoutes = require('./routes/groupRoutes');
 const storeToStoreRelationshipRoutes = require('./routes/storeToStoreRelationshipRoutes');
 const itemRequestRoutes = require('./routes/itemRequestRoutes');
 
+
+const balanceRoutes = require('./routes/balanceRoutes');
 
 
 // ============================================================================
@@ -135,6 +143,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/store-to-store-relationships', storeToStoreRelationshipRoutes);
 
 app.use('/api/item-requests', itemRequestRoutes);
+app.use('/api/balances', balanceRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
