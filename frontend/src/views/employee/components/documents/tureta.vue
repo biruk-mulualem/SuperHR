@@ -3,7 +3,6 @@
     
     <div class="print-container portrait-page">
       <div class="page-indicator-tag">ቅጽ፡ምስ፡1</div>
-      <!-- {{ employee }} -->
 
       <header class="header-blueprint">
         <div class="header-left-stack">
@@ -1238,9 +1237,12 @@ const extractDatePart = (dateString, part) => {
   margin-top: auto;
 }
 
-/* ==========================================================================
-   9. Hardware Printer Control Overrides 
-   ========================================================================== */
+
+</style>
+
+<!-- Print styles MUST be unscoped: @page named rules and the `page` property
+     are global CSS features that break when Vue adds scoped data-attributes -->
+<style>
 @media print {
   body {
     background: none !important;
@@ -1262,7 +1264,7 @@ const extractDatePart = (dateString, part) => {
   }
 
   .portrait-page {
-    page: portrait_layout;
+    page: portraitPage;
     width: 210mm !important;
     height: 297mm !important;
     padding: 15mm 18mm 20mm 18mm !important;
@@ -1270,26 +1272,21 @@ const extractDatePart = (dateString, part) => {
   }
 
   .landscape-page {
-    page: landscape_layout;
+    page: landscapePage;
     width: 297mm !important;
     height: 210mm !important;
     padding: 20mm 18mm 18mm 18mm !important;
-    page-break-before: always !important;
     page-break-after: always !important;
   }
+}
 
-  @page {
-    margin: 0;
-  }
+@page portraitPage {
+  size: A4 portrait;
+  margin: 0;
+}
 
-  @page portrait_layout {
-    size: A4 portrait;
-    margin: 0;
-  }
-  
-  @page landscape_layout {
-    size: A4 landscape;
-    margin: 0;
-  }
+@page landscapePage {
+  size: A4 landscape;
+  margin: 0;
 }
 </style>
