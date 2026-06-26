@@ -1,8 +1,9 @@
-  <template>
+<template>
   <div class="document-blueprint-package">
     
     <div class="print-container portrait-page">
       <div class="page-indicator-tag">ቅጽ፡ምስ፡1</div>
+      <!-- {{ employee }} -->
 
       <header class="header-blueprint">
         <div class="header-left-stack">
@@ -545,190 +546,183 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: "DocumentLetter",
-  props: {
-    formData: {
-      type: Object,
-      default: () => ({})
-    },
-    employee: {
-      type: Object,
-      default: () => ({
-        employeeId: 1042,
-        employeeCode: "P-048291",
-        firstName: "አሸናፊ",
-        middleName: "ንጉሴ",
-        lastName: "በዘአብ",
-        dateOfBirth: "1978-10-12", // YYYY-MM-DD standard DB format
-        gender: "male",
-        mothersFullName: "አለማሽ ዘሪሁን ሙላት",
-        phoneNumber: "0911689799",
-        personalEmail: "ashu.nigusse@gmail.com",
-        workEmail: "ashenafi.n@superdinq.com",
-        hireDate: "2018-04-25",
-        basicSalary: "12000.00",
-        profilePictureUrl: "", // URL string if exists from cloud storage
-        
-        nationalityAcquisition: {
-          type: "by_birth", // 'by_birth', 'by_law', 'ethiopian_birth'
-          documentUrl: ""
-        },
-        
-        currentAddress: {
-          region: "አዲስ አበባ",
-          subcity: "ንፋስ ስልክ ላፍቶ",
-          district: "12", // ወረዳ
-          kebele: "04",
-          poBox: "4192",
-          houseNumber: "1052"
-        },
-        
-        currentCompany: {
-          companyName: "ሱፐር ድንቅ ቴክኖሎጂ ትሬዲንግ ኃ/የተ/የግ ማህበር",
-          companyTin: "0003600429",
-          companyPhone: "011-3-66-22-18",
-          poBox: "8840",
-          companyEmail: "info@superdinq.com"
-        },
-        
-        // Array mapping onto Section 6.2 (Landscape ledger table)
-        workExperience: [
-          {
-            companyTin: "0014829301",
-            companyName: "አዋሽ ባንክ አ.ማ",
-            companyType: "የግል ድርጅት",
-            startDate: "12/02/2010",
-            endDate: "15/08/2014",
-            monthlySalary: "6500.00",
-            providentFundSubmitted: "አድርጓል",
-            terminationReason: "በገዛ ፈቃድ"
-          },
-          {
-            companyTin: "0039281044",
-            companyName: "ኢትዮ ቴሌኮም",
-            companyType: "መንግስት",
-            startDate: "01/09/2014",
-            endDate: "20/03/2018",
-            monthlySalary: "9800.00",
-            providentFundSubmitted: "አልደረገም",
-            terminationReason: "የሥራ ውል ማብቃት"
-          }
-        ],
-        
-        spouseInfo: {
-          fullName: "ራሄል በቀለ ወልደማርያም",
-          tinNumber: "0024910394",
-          dateOfBirth: "1984-05-18",
-          profilePictureUrl: ""
-        },
-        
-        // Array mapping onto section ii Children table
-        children: [
-          {
-            name: "ናሆም አሸናፊ ንጉሴ",
-            dateOfBirth: "12/04/2015",
-            gender: "male",
-            hasMedicalCondition: "የለበትም",
-            isAdopted: "አይደለም"
-          },
-          {
-            name: "ኤልሳቤጥ አሸናፊ ንጉሴ",
-            dateOfBirth: "30/11/2019",
-            gender: "female",
-            hasMedicalCondition: "የለበትም",
-            isAdopted: "አይደለም"
-          }
-        ],
-        
-        parentsInfo: {
-          father: {
-            fullName: "ንጉሴ በዘአብ ወንድሙ",
-            monthlyIncome: "3500.00",
-            job: "የመንግስት ጡረተኛ"
-          },
-          mother: {
-            fullName: "አለማሽ ዘሪሁን ሙላት",
-            monthlyIncome: "0.00",
-            job: "የቤት እመቤት"
-          },
-          financialSupport: "በየወሩ ለህክምና መግዣ የገንዘብ ድጋፍ ይደረግላቸዋል::",
-          otherSupport: "የመኖሪያ ቤት ኪራይ ክፍያ እገዛ ያገኛሉ::"
-        }
-      })
-    }
+<script setup>
+import { computed } from 'vue';
+
+// 1. Props Definitions using macro
+const props = defineProps({
+  formData: {
+    type: Object,
+    default: () => ({})
   },
-  computed: {
-    // Generates a clean full name dynamically mapping the helper logic in your sequelize model
-    employeeFullName() {
-      const f = this.employee.firstName || '';
-      const m = this.employee.middleName ? this.employee.middleName + ' ' : '';
-      const l = this.employee.lastName || '';
-      return `${f} ${m}${l}`.trim();
-    },
-    
-    // Generates exactly 7 rows for Landscape Ledger table, padding empty slots if array length is less
-    paddedWorkExperience() {
-      const rows = [];
-      const maxRows = 7;
-      const actualData = this.employee.workExperience || [];
+  employee: {
+    type: Object,
+    default: () => ({
+      employeeId: 1042,
+      employeeCode: "P-048291",
+      firstName: "አሸናፊ",
+      middleName: "ንጉሴ",
+      lastName: "በዘአብ",
+      dateOfBirth: "1978-10-12", 
+      gender: "male",
+      mothersFullName: "አለማሽ ዘሪሁን ሙላት",
+      phoneNumber: "0911689799",
+      personalEmail: "ashu.nigusse@gmail.com",
+      workEmail: "ashenafi.n@superdinq.com",
+      hireDate: "2018-04-25",
+      basicSalary: "12000.00",
+      profilePictureUrl: "", 
       
-      for (let i = 0; i < maxRows; i++) {
-        if (i < actualData.length) {
-          rows.push({ seq: i + 1, ...actualData[i] });
-        } else {
-          rows.push({
-            seq: "", companyTin: "", companyName: "", companyType: "",
-            startDate: "", endDate: "", monthlySalary: "",
-            providentFundSubmitted: "", terminationReason: ""
-          });
+      nationalityAcquisition: {
+        type: "by_birth", 
+        documentUrl: ""
+      },
+      
+      currentAddress: {
+        region: "አዲስ አበባ",
+        subcity: "ንፋስ ስልክ ላፍቶ",
+        district: "12", 
+        kebele: "04",
+        poBox: "4192",
+        houseNumber: "1052"
+      },
+      
+      currentCompany: {
+        companyName: "ሱፐር ድንቅ ቴክኖሎጂ ትሬዲንግ ኃ/የተ/የግ ማህበር",
+        companyTin: "0003600429",
+        companyPhone: "011-3-66-22-18",
+        poBox: "8840",
+        companyEmail: "info@superdinq.com"
+      },
+      
+      workExperience: [
+        {
+          companyTin: "0014829301",
+          companyName: "አዋሽ ባንክ አ.ማ",
+          companyType: "የግል ድርጅት",
+          startDate: "12/02/2010",
+          endDate: "15/08/2014",
+          monthlySalary: "6500.00",
+          providentFundSubmitted: "አድርጓል",
+          terminationReason: "በገዛ ፈቃድ"
+        },
+        {
+          companyTin: "0039281044",
+          companyName: "ኢትዮ ቴሌኮም",
+          companyType: "መንግስት",
+          startDate: "01/09/2014",
+          endDate: "20/03/2018",
+          monthlySalary: "9800.00",
+          providentFundSubmitted: "አልደረገም",
+          terminationReason: "የሥራ ውል ማብቃት"
         }
+      ],
+      
+      spouseInfo: {
+        fullName: "ራሄል በቀለ ወልደማርያም",
+        tinNumber: "0024910394",
+        dateOfBirth: "1984-05-18",
+        profilePictureUrl: ""
+      },
+      
+      children: [
+        {
+          name: "ናሆም አሸናፊ ንጉሴ",
+          dateOfBirth: "12/04/2015",
+          gender: "male",
+          hasMedicalCondition: "የለበትም",
+          isAdopted: "አይደለም"
+        },
+        {
+          name: "ኤልሳቤጥ አሸናፊ ንጉሴ",
+          dateOfBirth: "30/11/2019",
+          gender: "female",
+          hasMedicalCondition: "የለበትም",
+          isAdopted: "አይደለም"
+        }
+      ],
+      
+      parentsInfo: {
+        father: {
+          fullName: "ንጉሴ በዘአብ ወንድሙ",
+          monthlyIncome: "3500.00",
+          job: "የመንግስት ጡረተኛ"
+        },
+        mother: {
+          fullName: "አለማሽ ዘሪሁን ሙላት",
+          monthlyIncome: "0.00",
+          job: "የቤት እመቤት"
+        },
+        financialSupport: "በየወሩ ለህክምና መግዣ የገንዘብ ድጋፍ ይደረግላቸዋል::",
+        otherSupport: "የመኖሪያ ቤት ኪራይ ክፍያ እገዛ ያገኛሉ::"
       }
-      return rows;
-    },
-    
-    // Generates exactly 4 rows for Children matrix layout to preserve precise physical sheet height
-    paddedChildren() {
-      const rows = [];
-      const maxRows = 4;
-      const actualData = this.employee.children || [];
-      
-      for (let i = 0; i < maxRows; i++) {
-        if (i < actualData.length) {
-          rows.push({ seq: i + 1, ...actualData[i] });
-        } else {
-          rows.push({
-            seq: "", name: "", dateOfBirth: "", gender: "",
-            hasMedicalCondition: "", isAdopted: ""
-          });
-        }
-      }
-      return rows;
+    })
+  }
+});
+
+// 2. Computed Properties
+const employeeFullName = computed(() => {
+  const f = props.employee.firstName || '';
+  const m = props.employee.middleName ? props.employee.middleName + ' ' : '';
+  const l = props.employee.lastName || '';
+  return `${f} ${m}${l}`.trim();
+});
+
+const paddedWorkExperience = computed(() => {
+  const rows = [];
+  const maxRows = 7;
+  const actualData = props.employee.workExperience || [];
+  
+  for (let i = 0; i < maxRows; i++) {
+    if (i < actualData.length) {
+      rows.push({ seq: i + 1, ...actualData[i] });
+    } else {
+      rows.push({
+        seq: "", companyTin: "", companyName: "", companyType: "",
+        startDate: "", endDate: "", monthlySalary: "",
+        providentFundSubmitted: "", terminationReason: ""
+      });
     }
-  },
-  methods: {
-    // Standard Amharic Gender Translation utility mapping DB Enums safely
-    translateGender(val) {
-      if (!val) return "";
-      const lower = val.toLowerCase();
-      if (lower === "male") return "ወንድ";
-      if (lower === "female") return "ሴት";
-      return "ሌላ";
-    },
-    
-    // Elegant utility to split DB string dates cleanly into separate printable form line segments
-    extractDatePart(dateString, part) {
-      if (!dateString) return "";
-      const parts = dateString.split("-"); // Expects YYYY-MM-DD
-      if (parts.length !== 3) return "";
-      
-      if (part === "year") return parts[0];
-      if (part === "month") return parts[1];
-      if (part === "day") return parts[2];
-      return "";
+  }
+  return rows;
+});
+
+const paddedChildren = computed(() => {
+  const rows = [];
+  const maxRows = 4;
+  const actualData = props.employee.children || [];
+  
+  for (let i = 0; i < maxRows; i++) {
+    if (i < actualData.length) {
+      rows.push({ seq: i + 1, ...actualData[i] });
+    } else {
+      rows.push({
+        seq: "", name: "", dateOfBirth: "", gender: "",
+        hasMedicalCondition: "", isAdopted: ""
+      });
     }
-  },
+  }
+  return rows;
+});
+
+// 3. Methods / Helper Functions
+const translateGender = (val) => {
+  if (!val) return "";
+  const lower = val.toLowerCase();
+  if (lower === "male") return "ወንድ";
+  if (lower === "female") return "ሴት";
+  return "ሌላ";
+};
+
+const extractDatePart = (dateString, part) => {
+  if (!dateString) return "";
+  const parts = dateString.split("-"); // Expects YYYY-MM-DD
+  if (parts.length !== 3) return "";
+  
+  if (part === "year") return parts[0];
+  if (part === "month") return parts[1];
+  if (part === "day") return parts[2];
+  return "";
 };
 </script>
 
@@ -1268,6 +1262,7 @@ export default {
   }
 
   .portrait-page {
+    page: portrait_layout;
     width: 210mm !important;
     height: 297mm !important;
     padding: 15mm 18mm 20mm 18mm !important;
@@ -1275,6 +1270,7 @@ export default {
   }
 
   .landscape-page {
+    page: landscape_layout;
     width: 297mm !important;
     height: 210mm !important;
     padding: 20mm 18mm 18mm 18mm !important;
@@ -1283,15 +1279,17 @@ export default {
   }
 
   @page {
-    size: portrait;
+    margin: 0;
+  }
+
+  @page portrait_layout {
+    size: A4 portrait;
     margin: 0;
   }
   
-  .landscape-page {
-    @page {
-      size: landscape;
-    }
+  @page landscape_layout {
+    size: A4 landscape;
+    margin: 0;
   }
 }
 </style>
-
