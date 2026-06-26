@@ -145,7 +145,8 @@ app.use('/api/penalty-summary', penaltySummaryRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/backup', backupRoutes);
-
+app.use('/api/groups', groupRoutes);
+app.use('/api/store-to-store-relationships', storeToStoreRelationshipRoutes);
 
 // Charity Module Routes
 app.use("/api/charity/teams",        charityTeamRoutes);
@@ -155,9 +156,11 @@ app.use("/api/charity/dashboard",    charityDashboardRoutes);
 app.use("/api/letter-templates", letterTemplateRoutes);
 
 
-
 app.use('/api/item-requests', itemRequestRoutes);
 app.use('/api/balances', balanceRoutes);
+
+
+
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
