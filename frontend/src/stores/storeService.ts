@@ -367,39 +367,38 @@ class StoreService {
    * Get available groups for a store (for dropdown)
    * GET /api/stores/:storeId/available-groups
    */
- async getAvailableGroupsForStore(storeId: number | string): Promise<AvailableGroupsResponse> {
-  try {
-    // If no storeId or storeId is 0, pass 0 to get all groups
-    const id = storeId || 0;
-    const response = await api.get(`/stores/${id}/available-groups`);
-    return response.data;
-  } catch (error: any) {
-    console.error('Get available groups error:', error);
-    return {
-      success: false,
-      data: [],
-      error: error.response?.data?.error || 'Failed to fetch available groups'
-    };
+  async getAvailableGroupsForStore(storeId: number | string): Promise<AvailableGroupsResponse> {
+    try {
+      const id = storeId || 0;
+      const response = await api.get(`/stores/${id}/available-groups`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get available groups error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch available groups'
+      };
+    }
   }
-}
 
-/**
- * Get all groups (for dropdown) - Use this instead of available-groups when storeId is 0
- * GET /api/stores/groups
- */
-async getAllGroups(): Promise<AvailableGroupsResponse> {
-  try {
-    const response = await api.get('/stores/groups');
-    return response.data;
-  } catch (error: any) {
-    console.error('Get all groups error:', error);
-    return {
-      success: false,
-      data: [],
-      error: error.response?.data?.error || 'Failed to fetch groups'
-    };
+  /**
+   * Get all groups (for dropdown)
+   * GET /api/stores/groups
+   */
+  async getAllGroups(): Promise<AvailableGroupsResponse> {
+    try {
+      const response = await api.get('/stores/groups');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get all groups error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch groups'
+      };
+    }
   }
-}
 
   /**
    * Get all groups assigned to a store
@@ -461,6 +460,34 @@ async getAllGroups(): Promise<AvailableGroupsResponse> {
         success: false,
         data: {} as Store,
         error: error.response?.data?.error || 'Failed to remove group from store'
+      };
+    }
+  }
+
+  
+
+  // ================================================================
+  // USER OPERATIONS (FOR DROPDOWN)
+  // ================================================================
+
+  /**
+   * Get all users (for dropdown)
+   * GET /api/stores/users
+   */
+  async getAllUsers(): Promise<{
+    success: boolean;
+    data: User[];
+    error?: string;
+  }> {
+    try {
+      const response = await api.get('/stores/users');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get all users error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch users'
       };
     }
   }

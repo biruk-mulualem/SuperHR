@@ -80,6 +80,11 @@ const penalityRoutes = require("./routes/penalityRoutes");
 const storeRoutes  = require("./routes/storeRoutes");
 const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
 const itemRoutes=require('./routes/itemRoutes');
+const groupRoutes = require('./routes/groupRoutes');
+const storeToStoreRelationshipRoutes = require('./routes/storeToStoreRelationshipRoutes');
+const itemRequestRoutes = require('./routes/itemRequestRoutes');
+
+
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -126,6 +131,10 @@ app.use("/api/penalties", penalityRoutes);
 app.use('/api/penalty-summary', penaltySummaryRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/groups', groupRoutes);
+app.use('/api/store-to-store-relationships', storeToStoreRelationshipRoutes);
+
+app.use('/api/item-requests', itemRequestRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
