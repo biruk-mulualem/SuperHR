@@ -36,11 +36,106 @@ const createDirectories = () => {
     'uploads/attendance/',
     
     // Item specifications
-    'uploads/items/specifications'
+    'uploads/items/specifications',
+    
+    // ============================================
+    // STORE BALANCE - ADD THESE DIRECTORIES
+    // ============================================
+    'uploads/balances/',
+    'uploads/balances/imports',
+    'uploads/balances/exports',
   ];
   dirs.forEach(dir => ensureDirectoryExists(dir));
 };
 createDirectories();
+
+// ============================================================================
+// STORE BALANCE - IMPORT STORAGE
+// ============================================================================
+const balanceStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/balances/imports/';
+    ensureDirectoryExists(dir);
+    console.log('💾 Balance import destination:', dir);
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    const sanitizedName = baseName.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `balance-import-${sanitizedName}-${uniqueSuffix}${ext}`;
+    console.log('📄 Balance import filename:', filename);
+    cb(null, filename);
+  }
+});
+
+// ============================================================================
+// STORE BALANCE - FILE FILTER
+// ============================================================================
+const balanceFileFilter = (req, file, cb) => {
+  const allowedTypes = /csv|xlsx|xls/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+  
+  if (mimetype && extname) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only CSV and Excel files are allowed (.csv, .xlsx, .xls)'));
+  }
+};
+
+// ============================================================================
+// STORE BALANCE - UPLOAD INSTANCE
+// ============================================================================
+const uploadBalance = multer({
+  storage: balanceStorage,
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: balanceFileFilter
+});
+
+// ============================================================================
+// STORE BALANCE - MIDDLEWARE
+// ============================================================================
+const uploadSingleBalance = (req, res, next) => {
+  console.log('=== uploadSingleBalance called ===');
+  uploadBalance.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer balance error:', err);
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'FILE_TOO_LARGE') {
+          return res.status(400).json({
+            success: false,
+            error: 'File too large. Maximum size is 10MB.'
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: err.message
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: err.message
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded'
+      });
+    }
+    
+    console.log('✅ File uploaded:', req.file.filename);
+    console.log('📊 File size:', req.file.size);
+    console.log('📁 File path:', req.file.path);
+    
+    next();
+  });
+};
 
 // ============================================================================
 // HELPER: Get document folder based on type
@@ -54,6 +149,11 @@ const getDocumentFolder = (documentType, subType = null) => {
   // Item specifications
   if (documentType === 'item_specification') {
     return 'items/specifications';
+  }
+  
+  // Store balance imports
+  if (documentType === 'balance_import') {
+    return 'balances/imports';
   }
   
   const folders = {
@@ -458,6 +558,10 @@ module.exports = {
   
   // Item specification upload
   uploadItemSpec,
+  
+  // Store Balance upload
+  uploadSingleBalance,
+  uploadBalance,
   
   // Raw multer instances (for advanced use)
   uploadProfile,
