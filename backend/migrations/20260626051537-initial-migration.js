@@ -2883,6 +2883,101 @@ module.exports = {
         allowNull: false,
       },
     });
+    await queryInterface.createTable('item_requests', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      request_code: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      asking_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      supplying_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      requested_by_id: {
+        type: Sequelize.INTEGER,
+      },
+      requested_date: {
+        type: Sequelize.DATEONLY,
+        allowNull: false,
+      },
+      status: {
+        type: Sequelize.ENUM('pending', 'approved', 'rejected', 'finalized'),
+        allowNull: false,
+        defaultValue: "pending",
+      },
+      remark: {
+        type: Sequelize.TEXT,
+      },
+      approved_at: {
+        type: Sequelize.DATE,
+      },
+      finalized_at: {
+        type: Sequelize.DATE,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+    await queryInterface.createTable('item_request_details', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      request_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      item_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      quantity: {
+        type: Sequelize.DECIMAL,
+        allowNull: false,
+      },
+      remark: {
+        type: Sequelize.TEXT,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
     await queryInterface.createTable('store_group_relations', {
       id: {
         type: Sequelize.INTEGER,
@@ -2898,6 +2993,50 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: false,
         unique: true,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+    await queryInterface.createTable('store_to_store_relationships', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      code: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      source_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      target_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      description: {
+        type: Sequelize.TEXT,
+      },
+      status: {
+        type: Sequelize.ENUM('active', 'inactive'),
+        allowNull: false,
+        defaultValue: "active",
       },
       created_at: {
         type: Sequelize.DATE,
@@ -4281,6 +4420,71 @@ module.exports = {
       onDelete: 'SET NULL',
     }
     });
+    await queryInterface.addConstraint('item_requests', {
+      fields: ['asking_store_id'],
+      ...{
+      type: 'foreign key',
+      name: 'item_requests_asking_store_id_fkey',
+      references: {
+        table: 'stores',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'NO ACTION',
+    }
+    });
+    await queryInterface.addConstraint('item_requests', {
+      fields: ['supplying_store_id'],
+      ...{
+      type: 'foreign key',
+      name: 'item_requests_supplying_store_id_fkey',
+      references: {
+        table: 'stores',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'NO ACTION',
+    }
+    });
+    await queryInterface.addConstraint('item_requests', {
+      fields: ['requested_by_id'],
+      ...{
+      type: 'foreign key',
+      name: 'item_requests_requested_by_id_fkey',
+      references: {
+        table: 'users',
+        field: 'user_id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    }
+    });
+    await queryInterface.addConstraint('item_request_details', {
+      fields: ['request_id'],
+      ...{
+      type: 'foreign key',
+      name: 'item_request_details_request_id_fkey',
+      references: {
+        table: 'item_requests',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('item_request_details', {
+      fields: ['item_id'],
+      ...{
+      type: 'foreign key',
+      name: 'item_request_details_item_id_fkey',
+      references: {
+        table: 'items',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'NO ACTION',
+    }
+    });
     await queryInterface.addConstraint('store_group_relations', {
       fields: ['store_id'],
       ...{
@@ -4301,6 +4505,32 @@ module.exports = {
       name: 'store_group_relations_group_id_fkey',
       references: {
         table: 'groups',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('store_to_store_relationships', {
+      fields: ['source_store_id'],
+      ...{
+      type: 'foreign key',
+      name: 'store_to_store_relationships_source_store_id_fkey',
+      references: {
+        table: 'stores',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('store_to_store_relationships', {
+      fields: ['target_store_id'],
+      ...{
+      type: 'foreign key',
+      name: 'store_to_store_relationships_target_store_id_fkey',
+      references: {
+        table: 'stores',
         field: 'id'
       },
       onUpdate: 'CASCADE',
@@ -4394,7 +4624,10 @@ module.exports = {
     await queryInterface.dropTable('uom');
     await queryInterface.dropTable('items');
     await queryInterface.dropTable('stores');
+    await queryInterface.dropTable('item_requests');
+    await queryInterface.dropTable('item_request_details');
     await queryInterface.dropTable('store_group_relations');
+    await queryInterface.dropTable('store_to_store_relationships');
     await queryInterface.dropTable('user_group_relations');
     await queryInterface.dropTable('system_settings');
   }
