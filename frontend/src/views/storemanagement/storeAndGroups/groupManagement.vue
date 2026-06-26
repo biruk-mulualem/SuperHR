@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>👥 Group Management</h2>
-        <span class="total-badge">{{ filteredGroups.length }} Groups</span>
+        <span class="total-badge">{{ totalItems }} Groups</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -24,7 +24,7 @@
     <div class="filter-bar">
       <select v-model="filterStore" class="filter-select" @change="onFilterChange">
         <option value="">All Stores</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">
+        <option v-for="store in activeStores" :key="store.id" :value="store.id">
           {{ store.name }}
         </option>
       </select>
@@ -43,7 +43,12 @@
     </div>
 
     <!-- ==================== GROUP LIST ==================== -->
-    <div class="table-container" id="printable-area">
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading groups...</p>
+    </div>
+
+    <div v-else class="table-container" id="printable-area">
       <table class="group-table">
         <thead>
           <tr>
@@ -51,12 +56,22 @@
             <th>Group Code</th>
             <th>Group Name</th>
             <th>Store</th>
+            <th>Store Status</th>
             <th>Members</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
+          <tr v-if="paginatedGroups.length === 0">
+            <td colspan="8" class="empty-state">
+              <div class="empty-content">
+                <span class="empty-icon">👥</span>
+                <p>No groups found</p>
+                <button class="btn-secondary" @click="openAddGroupModal">Add First Group</button>
+              </div>
+            </td>
+          </tr>
           <tr v-for="(group, index) in paginatedGroups" :key="group.id">
             <td>{{ (currentPage - 1) * pageSize + index + 1 }}</td>
             <td class="code">{{ group.code }}</td>
@@ -67,29 +82,44 @@
               <span class="store-tag">{{ group.storeName || '-' }}</span>
             </td>
             <td>
+              <span :class="['status-badge', group.storeStatus?.toLowerCase() || 'inactive']">
+                {{ group.storeStatus || 'Inactive' }}
+              </span>
+            </td>
+            <td>
               <div class="member-list">
-                <span v-for="user in group.users.slice(0, 3)" :key="user.id" class="member-tag">
-                  {{ user.name }}
+                <span v-for="user in getDisplayMembers(group)" :key="user.id" class="member-tag">
+                  {{ user.fullName }}
                 </span>
-                <span v-if="group.users.length > 3" class="member-more" @click="openManageMembers(group)">
-                  +{{ group.users.length - 3 }} more
+                <span v-if="hasMoreMembers(group)" class="member-more" @click="openManageMembers(group)">
+                  +{{ getRemainingMemberCount(group) }} more
                 </span>
                 <span v-if="!group.users || group.users.length === 0" class="no-items">No members</span>
               </div>
             </td>
             <td>
-              <span :class="['status-badge', group.status?.toLowerCase() || 'active']">
-                {{ group.status || 'Active' }}
+              <span :class="['status-badge', getEffectiveStatus(group)]">
+                {{ getEffectiveStatus(group) }}
               </span>
             </td>
             <td>
               <div class="action-buttons">
                 <button @click="openEditGroup(group)" class="icon-btn" title="Edit Group">✏️</button>
-                <button @click="openManageMembers(group)" class="icon-btn" title="Manage Members">👤</button>
-                <button @click="openToggleStatus(group)" class="icon-btn" title="Toggle Status">
+                <button 
+                  v-if="isEffectivelyActive(group)" 
+                  @click="openManageMembers(group)" 
+                  class="icon-btn" 
+                  title="Manage Members"
+                >
+                  👤
+                </button>
+                <button 
+                  @click="openToggleStatus(group)" 
+                  class="icon-btn" 
+                  :title="group.status === 'Active' ? 'Deactivate Group' : 'Activate Group'"
+                >
                   {{ group.status === 'Active' ? '⏸️' : '▶️' }}
                 </button>
-                <button @click="openDeleteGroupModal(group)" class="icon-btn delete-btn" title="Delete Group">🗑️</button>
               </div>
             </td>
           </tr>
@@ -98,7 +128,7 @@
     </div>
 
     <!-- Pagination -->
-    <div class="pagination" v-if="filteredGroups.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -122,7 +152,6 @@
         </div>
         <div class="modal-body">
           <form @submit.prevent="saveGroup" class="group-form">
-            <!-- Group Code - Hidden from user (backend generates) -->
             <div class="form-row">
               <div class="form-group">
                 <label>Group Name *</label>
@@ -132,7 +161,7 @@
                 <label>Store *</label>
                 <select v-model="groupForm.storeId" required class="store-select">
                   <option value="">Select Store...</option>
-                  <option v-for="store in stores" :key="store.id" :value="store.id">
+                  <option v-for="store in activeStores" :key="store.id" :value="store.id">
                     {{ store.name }}
                   </option>
                 </select>
@@ -172,11 +201,11 @@
               <select v-model="selectedMemberId" class="member-select">
                 <option value="">Select a member...</option>
                 <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                  {{ user.name }}
+                  {{ user.fullName }} ({{ user.username }})
                 </option>
               </select>
-              <button @click="addMemberToGroup" class="btn-add-member" :disabled="!selectedMemberId">
-                ➕ Add Member
+              <button @click="addMemberToGroup" class="btn-add-member" :disabled="!selectedMemberId || addingMember">
+                {{ addingMember ? 'Adding...' : '➕ Add Member' }}
               </button>
             </div>
             <div v-if="availableUsers.length === 0" class="no-available-members">
@@ -191,7 +220,8 @@
                 No members in this group
               </div>
               <div v-for="user in selectedGroup?.users" :key="user.id" class="member-item">
-                <span class="member-name">{{ user.name }}</span>
+                <span class="member-name">{{ user.fullName }}</span>
+                <span class="member-username">{{ user.username }}</span>
                 <button @click="openRemoveMemberModal(user)" class="remove-member-btn" title="Remove from group">✕</button>
               </div>
             </div>
@@ -207,48 +237,65 @@
     <div v-if="showToggleModal" class="modal-overlay" @click.self="closeToggleModal">
       <div class="modal-container toggle-modal">
         <div class="modal-header">
-          <h3>⏸️ Confirm Status Change</h3>
+          <h3>{{ toggleGroup?.status === 'Active' ? '⏸️ Confirm Deactivate' : '▶️ Confirm Activate' }}</h3>
           <button class="modal-close" @click="closeToggleModal">✕</button>
         </div>
         <div class="modal-body">
-          <p><strong>Group:</strong> {{ toggleGroup?.name }}</p>
-          <p><strong>Store:</strong> {{ toggleGroup?.storeName }}</p>
-          <p><strong>Current Status:</strong> 
-            <span :class="['status-badge', toggleGroup?.status?.toLowerCase()]">
-              {{ toggleGroup?.status }}
-            </span>
+          <div class="confirmation-icon">🔄</div>
+          <p class="confirmation-title">Are you sure you want to change the status?</p>
+          <div class="confirmation-details">
+            <div class="detail-row">
+              <span class="detail-label">Group:</span>
+              <span class="detail-value">{{ toggleGroup?.name }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Store:</span>
+              <span class="detail-value">{{ toggleGroup?.storeName }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Store Status:</span>
+              <span :class="['status-badge', toggleGroup?.storeStatus?.toLowerCase() || 'inactive']">
+                {{ toggleGroup?.storeStatus || 'Inactive' }}
+              </span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Current Group Status:</span>
+              <span :class="['status-badge', toggleGroup?.status?.toLowerCase()]">
+                {{ toggleGroup?.status || 'Active' }}
+              </span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">New Group Status:</span>
+              <span :class="['status-badge', toggleNewStatus?.toLowerCase()]">
+                {{ toggleNewStatus }}
+              </span>
+            </div>
+          </div>
+          <p class="warning-text">⚠️ This action will {{ toggleGroup?.status === 'Active' ? 'deactivate' : 'activate' }} this group.</p>
+          <p v-if="toggleGroup?.status === 'Active'" class="warning-subtext">
+            Deactivated groups will not allow adding new members.
           </p>
-          <p><strong>New Status:</strong> 
-            <span :class="['status-badge', toggleNewStatus?.toLowerCase()]">
-              {{ toggleNewStatus }}
-            </span>
+          <p v-else class="warning-subtext">
+            Activated groups will allow adding new members.
           </p>
-          <p class="warning-text">⚠️ Are you sure you want to change the status?</p>
+          <div v-if="toggleNewStatus === 'Active' && toggleGroup?.storeStatus !== 'Active'" class="error-box">
+            <span class="error-icon">❌</span>
+            <span class="error-text">Cannot activate group because the store is {{ toggleGroup?.storeStatus?.toLowerCase() }}</span>
+          </div>
+          <div v-if="toggleError" class="error-box">
+            <span class="error-icon">❌</span>
+            <span class="error-text">{{ toggleError }}</span>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeToggleModal">Cancel</button>
-          <button class="btn-primary" @click="confirmToggleStatus">Confirm</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== DELETE GROUP CONFIRMATION MODAL ==================== -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
-      <div class="modal-container delete-modal">
-        <div class="modal-header">
-          <h3>🗑️ Confirm Delete</h3>
-          <button class="modal-close" @click="closeDeleteModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="delete-icon">🗑️</div>
-          <p><strong>Delete Group:</strong> {{ deleteGroup?.name }}</p>
-          <p><strong>Store:</strong> {{ deleteGroup?.storeName }}</p>
-          <p class="delete-warning">This will remove the group and all its members.</p>
-          <p class="delete-question">Are you sure you want to delete this group?</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeDeleteModal">Cancel</button>
-          <button class="btn-danger" @click="confirmDeleteGroup">Delete</button>
+          <button 
+            class="btn-primary" 
+            @click="confirmToggleStatus" 
+            :disabled="(toggleNewStatus === 'Active' && toggleGroup?.storeStatus !== 'Active') || toggling"
+          >
+            {{ toggling ? 'Processing...' : 'Confirm' }}
+          </button>
         </div>
       </div>
     </div>
@@ -262,7 +309,7 @@
         </div>
         <div class="modal-body">
           <div class="delete-icon">👤</div>
-          <p><strong>Remove Member:</strong> {{ removeMember?.name }}</p>
+          <p><strong>Remove Member:</strong> {{ removeMember?.fullName }}</p>
           <p><strong>From Group:</strong> {{ selectedGroup?.name }}</p>
           <p class="delete-question">Are you sure you want to remove this member from the group?</p>
         </div>
@@ -307,7 +354,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import groupService from '@/stores/groupService'
+import storeService from '@/stores/storeService'
 
 // ================================================================
 // STATE
@@ -321,12 +370,12 @@ const pageSize = ref(5)
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterStatus = ref('')
+const totalItems = ref(0)
 
 // Group Modal
 const showGroupModal = ref(false)
 const editingGroup = ref(null)
 const savingGroup = ref(false)
-
 const groupForm = ref({
   name: '',
   storeId: '',
@@ -337,15 +386,14 @@ const groupForm = ref({
 const showMembersModal = ref(false)
 const selectedGroup = ref(null)
 const selectedMemberId = ref('')
+const addingMember = ref(false)
 
 // Toggle Modal
 const showToggleModal = ref(false)
 const toggleGroup = ref(null)
 const toggleNewStatus = ref('')
-
-// Delete Modal
-const showDeleteModal = ref(false)
-const deleteGroup = ref(null)
+const toggling = ref(false)
+const toggleError = ref('')
 
 // Remove Member Modal
 const showRemoveMemberModal = ref(false)
@@ -364,6 +412,12 @@ const toastType = ref('success')
 // ================================================================
 // COMPUTED
 // ================================================================
+
+// Only show active stores in dropdowns
+const activeStores = computed(() => {
+  return stores.value.filter(store => store.status === 'Active')
+})
+
 const filteredGroups = computed(() => {
   let result = groups.value
   
@@ -376,7 +430,7 @@ const filteredGroups = computed(() => {
   }
   
   if (filterStore.value) {
-    result = result.filter(g => g.storeId === filterStore.value)
+    result = result.filter(g => g.storeId === parseInt(filterStore.value))
   }
   
   if (filterStatus.value) {
@@ -387,12 +441,11 @@ const filteredGroups = computed(() => {
 })
 
 const totalPages = computed(() => {
-  return Math.ceil(filteredGroups.value.length / pageSize.value) || 1
+  return Math.ceil(totalItems.value / pageSize.value) || 1
 })
 
 const paginatedGroups = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredGroups.value.slice(start, start + pageSize.value)
+  return groups.value
 })
 
 const availableUsers = computed(() => {
@@ -405,74 +458,77 @@ const availableUsers = computed(() => {
 // METHODS
 // ================================================================
 
-// -- Generate Group Code --
-const generateGroupCode = () => {
-  const maxNumber = groups.value.reduce((max, g) => {
-    const num = parseInt(g.code.replace('GRP-', ''))
-    return num > max ? num : max
-  }, 0)
-  
-  const nextNumber = String(maxNumber + 1).padStart(3, '0')
-  return 'GRP-' + nextNumber
+// -- Helper Methods for Member Display --
+const getDisplayMembers = (group) => {
+  return group.users?.slice(0, 3) || []
+}
+
+const hasMoreMembers = (group) => {
+  return (group.users?.length || 0) > 3
+}
+
+const getRemainingMemberCount = (group) => {
+  return Math.max(0, (group.users?.length || 0) - 3)
+}
+
+// -- Status Helper Methods --
+const getEffectiveStatus = (group) => {
+  if (group.status === 'Active' && group.storeStatus !== 'Active') {
+    return 'Inactive'
+  }
+  return group.status || 'Active'
+}
+
+const isEffectivelyActive = (group) => {
+  return group.status === 'Active' && group.storeStatus === 'Active'
 }
 
 // -- Load Data --
-const loadData = () => {
+const loadStores = async () => {
+  try {
+    const response = await storeService.getStores({ limit: 100 })
+    if (response.success) {
+      stores.value = response.data.stores || []
+    }
+  } catch (error) {
+    console.error('Load stores error:', error)
+  }
+}
+
+const loadGroups = async () => {
   loading.value = true
-  setTimeout(() => {
-    stores.value = getMockStores()
-    groups.value = getMockGroups()
-    allUsers.value = getMockUsers()
+  try {
+    const response = await groupService.getGroups({
+      page: currentPage.value,
+      limit: pageSize.value,
+      search: searchQuery.value || undefined,
+      storeId: filterStore.value || undefined,
+      status: filterStatus.value || undefined
+    })
+    
+    if (response.success) {
+      groups.value = response.data.groups || []
+      totalItems.value = response.data.pagination?.total || 0
+    } else {
+      showToastMessage(response.error || 'Failed to load groups', 'error')
+    }
+  } catch (error) {
+    console.error('Load groups error:', error)
+    showToastMessage('Failed to load groups', 'error')
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
-const getMockStores = () => {
-  return [
-    { id: 'store-1', name: 'Fiber Main Store' },
-    { id: 'store-2', name: 'Paint Main Store' },
-    { id: 'store-3', name: 'Fiber Mini Store' },
-    { id: 'store-4', name: 'Paint Mini Store' },
-    { id: 'store-5', name: 'Fiber Mini Mini Store' },
-    { id: 'store-6', name: 'Paint Mini Mini Store' },
-    { id: 'store-7', name: 'Metal Store' }
-  ]
-}
-
-const getMockGroups = () => {
-  return [
-    { id: 'g1', code: 'GRP-001', name: 'Storekeeper', storeId: 'store-1', storeName: 'Fiber Main Store', status: 'Active', users: [{ id: 'u1', name: 'Biruk Mulualem' }, { id: 'u2', name: 'Dagmawi Hadgu' }, { id: 'u3', name: 'Melkamu Zewdu' }, { id: 'u4', name: 'Melaku Tewodros' }, { id: 'u5', name: 'Tamrat Zerihun' }, { id: 'u6', name: 'Nuru Seid' }, { id: 'u7', name: 'Tadese Jemberu' }] },
-    { id: 'g2', code: 'GRP-002', name: 'IT', storeId: 'store-1', storeName: 'Fiber Main Store', status: 'Active', users: [{ id: 'u8', name: 'Eshete Worke' }, { id: 'u9', name: 'Haymanot Abebaw' }] },
-    { id: 'g3', code: 'GRP-003', name: 'Auditor', storeId: 'store-1', storeName: 'Fiber Main Store', status: 'Active', users: [{ id: 'u10', name: 'Zerihun Tesfaye' }] },
-    { id: 'g4', code: 'GRP-004', name: 'Supplier', storeId: 'store-1', storeName: 'Fiber Main Store', status: 'Inactive', users: [{ id: 'u11', name: 'Samuel Ayele' }] },
-    { id: 'g5', code: 'GRP-005', name: 'Storekeeper', storeId: 'store-2', storeName: 'Paint Main Store', status: 'Active', users: [{ id: 'u12', name: 'Berhanu Alemu' }, { id: 'u13', name: 'Abebe Kebede' }, { id: 'u14', name: 'Mulugeta Desta' }] },
-    { id: 'g6', code: 'GRP-006', name: 'IT', storeId: 'store-2', storeName: 'Paint Main Store', status: 'Active', users: [{ id: 'u15', name: 'Getachew Ayele' }] },
-    { id: 'g7', code: 'GRP-007', name: 'Storekeeper', storeId: 'store-3', storeName: 'Fiber Mini Store', status: 'Inactive', users: [{ id: 'u16', name: 'Tigist Hailu' }, { id: 'u17', name: 'Meron Tekle' }, { id: 'u18', name: 'Henok Ayele' }, { id: 'u19', name: 'Sintayehu Worku' }] }
-  ]
-}
-
-const getMockUsers = () => {
-  return [
-    { id: 'u1', name: 'Biruk Mulualem' },
-    { id: 'u2', name: 'Dagmawi Hadgu' },
-    { id: 'u3', name: 'Melkamu Zewdu' },
-    { id: 'u4', name: 'Melaku Tewodros' },
-    { id: 'u5', name: 'Tamrat Zerihun' },
-    { id: 'u6', name: 'Nuru Seid' },
-    { id: 'u7', name: 'Tadese Jemberu' },
-    { id: 'u8', name: 'Eshete Worke' },
-    { id: 'u9', name: 'Haymanot Abebaw' },
-    { id: 'u10', name: 'Zerihun Tesfaye' },
-    { id: 'u11', name: 'Samuel Ayele' },
-    { id: 'u12', name: 'Berhanu Alemu' },
-    { id: 'u13', name: 'Abebe Kebede' },
-    { id: 'u14', name: 'Mulugeta Desta' },
-    { id: 'u15', name: 'Getachew Ayele' },
-    { id: 'u16', name: 'Tigist Hailu' },
-    { id: 'u17', name: 'Meron Tekle' },
-    { id: 'u18', name: 'Henok Ayele' },
-    { id: 'u19', name: 'Sintayehu Worku' }
-  ]
+const loadUsers = async () => {
+  try {
+    const response = await groupService.getAllUsers()
+    if (response.success) {
+      allUsers.value = response.data || []
+    }
+  } catch (error) {
+    console.error('Load users error:', error)
+  }
 }
 
 // -- Group CRUD --
@@ -490,8 +546,8 @@ const openEditGroup = (group) => {
   editingGroup.value = group
   groupForm.value = { 
     name: group.name,
-    storeId: group.storeId,
-    status: group.status
+    storeId: group.storeId || '',
+    status: group.status || 'Active'
   }
   showGroupModal.value = true
 }
@@ -501,42 +557,38 @@ const closeGroupModal = () => {
   editingGroup.value = null
 }
 
-const saveGroup = () => {
+const saveGroup = async () => {
   savingGroup.value = true
-  setTimeout(() => {
-    const store = stores.value.find(s => s.id === groupForm.value.storeId)
-    
+  try {
+    let response
     if (editingGroup.value) {
-      const idx = groups.value.findIndex(g => g.id === editingGroup.value.id)
-      if (idx !== -1) {
-        groups.value[idx] = { 
-          ...groupForm.value,
-          id: editingGroup.value.id,
-          code: editingGroup.value.code,
-          storeName: store?.name || '',
-          users: editingGroup.value.users || []
-        }
+      response = await groupService.updateGroup(editingGroup.value.id, groupForm.value)
+      if (response.success) {
+        showToastMessage('Group updated successfully!', 'success')
+        await loadGroups()
       }
-      showToastMessage('Group updated successfully!', 'success')
     } else {
-      const newCode = generateGroupCode()
-      const newGroup = {
-        ...groupForm.value,
-        id: 'g' + Date.now(),
-        code: newCode,
-        storeName: store?.name || '',
-        users: []
+      response = await groupService.createGroup(groupForm.value)
+      if (response.success) {
+        const store = stores.value.find(s => s.id === response.data.storeId)
+        showToastMessage(`Group "${response.data.name}" added to ${store?.name || ''} with code ${response.data.code}!`, 'success')
+        await loadGroups()
       }
-      groups.value.push(newGroup)
-      showToastMessage(`Group "${newGroup.name}" added to ${store?.name} with code ${newCode}!`, 'success')
     }
     closeGroupModal()
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to save group', 'error')
+  } finally {
     savingGroup.value = false
-  }, 500)
+  }
 }
 
 // -- Members Management --
 const openManageMembers = (group) => {
+  if (!isEffectivelyActive(group)) {
+    showToastMessage('Cannot manage members of an inactive group', 'error')
+    return
+  }
   selectedGroup.value = JSON.parse(JSON.stringify(group))
   selectedMemberId.value = ''
   showMembersModal.value = true
@@ -546,29 +598,33 @@ const closeMembersModal = () => {
   showMembersModal.value = false
   selectedGroup.value = null
   selectedMemberId.value = ''
-  loadData()
+  loadGroups()
 }
 
-const addMemberToGroup = () => {
+const addMemberToGroup = async () => {
   if (!selectedMemberId.value) {
     showToastMessage('Please select a member', 'error')
     return
   }
   
-  const user = allUsers.value.find(u => u.id === selectedMemberId.value)
-  if (!user) return
-  
-  const group = groups.value.find(g => g.id === selectedGroup.value.id)
-  if (group) {
-    if (!group.users) group.users = []
-    if (group.users.some(u => u.id === user.id)) {
-      showToastMessage('Member already in this group', 'error')
-      return
+  addingMember.value = true
+  try {
+    const response = await groupService.addUserToGroup(
+      selectedGroup.value.id,
+      selectedMemberId.value
+    )
+    
+    if (response.success) {
+      const user = allUsers.value.find(u => u.id === selectedMemberId.value)
+      showToastMessage(`Member "${user?.fullName}" added to group!`, 'success')
+      selectedGroup.value = response.data
+      selectedMemberId.value = ''
+      await loadGroups()
     }
-    group.users.push({ ...user })
-    selectedGroup.value = JSON.parse(JSON.stringify(group))
-    selectedMemberId.value = ''
-    showToastMessage(`Member "${user.name}" added to group!`, 'success')
+  } catch (error) {
+    showToastMessage(error.message || 'Failed to add member', 'error')
+  } finally {
+    addingMember.value = false
   }
 }
 
@@ -582,13 +638,21 @@ const closeRemoveMemberModal = () => {
   removeMember.value = null
 }
 
-const confirmRemoveMember = () => {
-  if (removeMember.value) {
-    const group = groups.value.find(g => g.id === selectedGroup.value.id)
-    if (group) {
-      group.users = group.users.filter(u => u.id !== removeMember.value.id)
-      selectedGroup.value = JSON.parse(JSON.stringify(group))
-      showToastMessage(`Member "${removeMember.value.name}" removed from group`, 'success')
+const confirmRemoveMember = async () => {
+  if (removeMember.value && selectedGroup.value) {
+    try {
+      const response = await groupService.removeUserFromGroup(
+        selectedGroup.value.id,
+        removeMember.value.id
+      )
+      
+      if (response.success) {
+        showToastMessage(`Member "${removeMember.value.fullName}" removed from group`, 'success')
+        selectedGroup.value = response.data
+        await loadGroups()
+      }
+    } catch (error) {
+      showToastMessage(error.message || 'Failed to remove member', 'error')
     }
     closeRemoveMemberModal()
   }
@@ -596,6 +660,7 @@ const confirmRemoveMember = () => {
 
 // -- Toggle Status --
 const openToggleStatus = (group) => {
+  toggleError.value = ''
   toggleGroup.value = group
   toggleNewStatus.value = group.status === 'Active' ? 'Inactive' : 'Active'
   showToggleModal.value = true
@@ -605,42 +670,58 @@ const closeToggleModal = () => {
   showToggleModal.value = false
   toggleGroup.value = null
   toggleNewStatus.value = ''
+  toggleError.value = ''
+  toggling.value = false
 }
 
-const confirmToggleStatus = () => {
-  if (toggleGroup.value) {
-    toggleGroup.value.status = toggleNewStatus.value
-    showToastMessage(`Group status changed to ${toggleNewStatus.value}`, 'success')
+const confirmToggleStatus = async () => {
+  if (!toggleGroup.value) return
+  
+  // Check if trying to activate with inactive store
+  if (toggleNewStatus === 'Active' && toggleGroup.value.storeStatus !== 'Active') {
+    toggleError.value = `Cannot activate group because the store "${toggleGroup.value.storeName}" is ${toggleGroup.value.storeStatus?.toLowerCase()}`
+    return
   }
-  closeToggleModal()
-}
-
-// -- Delete Group --
-const openDeleteGroupModal = (group) => {
-  deleteGroup.value = group
-  showDeleteModal.value = true
-}
-
-const closeDeleteModal = () => {
-  showDeleteModal.value = false
-  deleteGroup.value = null
-}
-
-const confirmDeleteGroup = () => {
-  if (deleteGroup.value) {
-    groups.value = groups.value.filter(g => g.id !== deleteGroup.value.id)
-    showToastMessage(`Group "${deleteGroup.value.name}" deleted from ${deleteGroup.value.storeName}`, 'success')
-    closeDeleteModal()
+  
+  toggling.value = true
+  toggleError.value = ''
+  
+  try {
+    const response = await groupService.updateGroupStatus(
+      toggleGroup.value.id,
+      toggleNewStatus.value
+    )
+    
+    if (response.success) {
+      showToastMessage(response.message || `Group status changed to ${toggleNewStatus.value}`, 'success')
+      await loadGroups()
+      closeToggleModal()
+    } else {
+      // Show backend error message
+      const errorMsg = response.error || response.message || 'Failed to update status'
+      toggleError.value = errorMsg
+      showToastMessage(errorMsg, 'error')
+    }
+  } catch (error) {
+    console.error('Toggle status error:', error)
+    // Display backend error message if available
+    const errorMsg = error.response?.data?.message || error.message || 'Failed to update status'
+    toggleError.value = errorMsg
+    showToastMessage(errorMsg, 'error')
+  } finally {
+    toggling.value = false
   }
 }
 
 // -- Filters --
 const onSearchChange = () => {
   currentPage.value = 1
+  loadGroups()
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
+  loadGroups()
 }
 
 const clearFilters = () => {
@@ -649,6 +730,53 @@ const clearFilters = () => {
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
+  loadGroups()
+}
+
+// -- Export --
+const openExportModal = () => {
+  exportType.value = 'full'
+  showExportModal.value = true
+}
+
+const closeExportModal = () => {
+  showExportModal.value = false
+}
+
+const exportSelectedReport = async () => {
+  exporting.value = true
+  try {
+    const response = await groupService.exportGroups({
+      status: filterStatus.value || undefined,
+      storeId: filterStore.value || undefined
+    })
+    
+    if (response.success && response.data.length > 0) {
+      const headers = Object.keys(response.data[0])
+      const rows = response.data.map(item => headers.map(key => item[key]))
+      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+      
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `group_report_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      showToastMessage('Export completed successfully!', 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'error')
+    }
+  } catch (error) {
+    console.error('Export error:', error)
+    showToastMessage(error.message || 'Failed to export', 'error')
+  } finally {
+    exporting.value = false
+    closeExportModal()
+  }
 }
 
 // -- Print --
@@ -667,14 +795,13 @@ const printReport = () => {
           th { background: #f5f5f5; }
           h2 { text-align: center; margin-bottom: 20px; }
           .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
-          .member-list { display: inline; }
           .member-tag { display: inline-block; padding: 2px 8px; background: #dcfce7; margin: 2px; border-radius: 4px; font-size: 10px; }
         </style>
       </head>
       <body>
         <h2>👥 Group Management Report</h2>
         <p>Generated: ${new Date().toLocaleString()}</p>
-        <p>Total Groups: ${filteredGroups.value.length}</p>
+        <p>Total Groups: ${totalItems.value}</p>
         ${printContents}
         <div class="print-footer">Printed from Group Management System</div>
       </body>
@@ -686,70 +813,16 @@ const printReport = () => {
   window.location.reload()
 }
 
-// -- Export --
-const openExportModal = () => {
-  exportType.value = 'full'
-  showExportModal.value = true
-}
-
-const closeExportModal = () => {
-  showExportModal.value = false
-}
-
-const exportSelectedReport = () => {
-  exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredGroups.value
-    
-    if (exportType.value === 'full') {
-      headers = ['#', 'Group Code', 'Group Name', 'Store', 'Status', 'Members Count', 'Members']
-      rows = data.map((group, index) => [
-        index + 1,
-        group.code,
-        group.name,
-        group.storeName || '-',
-        group.status || 'Active',
-        group.users?.length || 0,
-        group.users?.map(u => u.name).join(', ') || 'None'
-      ])
-    } else {
-      headers = ['Group Code', 'Group Name', 'Store', 'Status', 'Members Count']
-      rows = data.map(group => [
-        group.code,
-        group.name,
-        group.storeName || '-',
-        group.status || 'Active',
-        group.users?.length || 0
-      ])
-    }
-    
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
-    })
-    
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `group_report_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    
-    exporting.value = false
-    closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
-  }, 500)
-}
-
 // -- Pagination --
 const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return
   currentPage.value = page
+  loadGroups()
 }
 
 const changePageSize = () => {
   currentPage.value = 1
+  loadGroups()
 }
 
 // -- Toast --
@@ -759,14 +832,26 @@ const showToastMessage = (msg, type = 'success') => {
   showToast.value = true
   setTimeout(() => {
     showToast.value = false
-  }, 3000)
+  }, 4000)
 }
+
+// ================================================================
+// WATCHERS
+// ================================================================
+watch([filterStore, filterStatus], () => {
+  currentPage.value = 1
+  loadGroups()
+})
 
 // ================================================================
 // LIFECYCLE
 // ================================================================
-onMounted(() => {
-  loadData()
+onMounted(async () => {
+  await Promise.all([
+    loadStores(),
+    loadGroups(),
+    loadUsers()
+  ])
 })
 </script>
 
@@ -949,6 +1034,48 @@ onMounted(() => {
 }
 
 /* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.spinner {
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+/* ================================================================
    TABLE
    ================================================================ */
 .table-container {
@@ -960,7 +1087,7 @@ onMounted(() => {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 850px;
+  min-width: 950px;
 }
 
 .group-table th,
@@ -1073,6 +1200,11 @@ onMounted(() => {
   color: #92400e;
 }
 
+.status-badge.closed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 /* ================================================================
    ACTION BUTTONS
    ================================================================ */
@@ -1094,6 +1226,21 @@ onMounted(() => {
 }
 
 .icon-btn:hover {
+  background: #f1f5f9;
+}
+
+.icon-btn-small {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.icon-btn-small:hover {
   background: #f1f5f9;
 }
 
@@ -1304,6 +1451,123 @@ onMounted(() => {
 }
 
 /* ================================================================
+   TOGGLE MODAL
+   ================================================================ */
+.toggle-modal .modal-container {
+  max-width: 450px;
+}
+
+.confirmation-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirmation-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.confirmation-details {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 500;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.detail-value {
+  color: #1e293b;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.warning-text {
+  color: #f59e0b;
+  font-weight: 500;
+  text-align: center;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fffbeb;
+  border-radius: 6px;
+  border: 1px solid #fef3c7;
+  font-size: 13px;
+}
+
+.warning-subtext {
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* Error Box */
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+.error-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ================================================================
+   DELETE MODAL
+   ================================================================ */
+.delete-modal .modal-container {
+  max-width: 400px;
+}
+
+.delete-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.delete-warning {
+  color: #f59e0b;
+  font-weight: 500;
+  margin: 8px 0;
+}
+
+.delete-question {
+  color: #64748b;
+  margin-top: 8px;
+}
+
+/* ================================================================
    GROUP FORM
    ================================================================ */
 .group-form .form-row {
@@ -1402,7 +1666,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.btn-add-member:hover {
+.btn-add-member:hover:not(:disabled) {
   background: #2563eb;
 }
 
@@ -1450,6 +1714,12 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.member-username {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
 .remove-member-btn {
   background: none;
   border: none;
@@ -1468,41 +1738,6 @@ onMounted(() => {
   font-size: 12px;
   padding: 8px;
   text-align: center;
-}
-
-/* ================================================================
-   TOGGLE & DELETE MODALS
-   ================================================================ */
-.toggle-modal .modal-container,
-.delete-modal .modal-container {
-  max-width: 400px;
-}
-
-.warning-text {
-  color: #f59e0b;
-  font-weight: 500;
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #fffbeb;
-  border-radius: 6px;
-  border: 1px solid #fef3c7;
-}
-
-.delete-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.delete-warning {
-  color: #f59e0b;
-  font-weight: 500;
-  margin: 8px 0;
-}
-
-.delete-question {
-  color: #64748b;
-  margin-top: 8px;
 }
 
 /* ================================================================

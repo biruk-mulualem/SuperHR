@@ -273,6 +273,29 @@ const router = createRouter({
           },
         },
 
+               {
+          path: "item-requests",
+          name: "item-requests",
+          component: () => import("@/views/storemanagement/itemRequests/itemRequests.vue"),
+          meta: { 
+            title: "item requests ", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+             {
+          path: "print-requests",
+          name: "print-requests",
+          component: () => import("@/views/storemanagement/itemRequests/printrequests.vue"),
+          meta: { 
+            title: "print requests ", 
+            roles: ["admin", "store"] 
+          },
+        },
+
+
+
+        
 
 
         

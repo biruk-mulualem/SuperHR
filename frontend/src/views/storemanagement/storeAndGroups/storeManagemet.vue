@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>🏪 Store Management</h2>
-        <span class="total-badge">{{ filteredStores.length }} Stores</span>
+        <span class="total-badge">{{ totalItems }} Stores</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -99,7 +99,6 @@
                 <button @click="openToggleStatus(store)" class="icon-btn" title="Toggle Status">
                   {{ store.status === 'Active' ? '⏸️' : '▶️' }}
                 </button>
-                <button @click="openDeleteStoreModal(store)" class="icon-btn delete-btn" title="Delete Store">🗑️</button>
               </div>
             </td>
           </tr>
@@ -108,7 +107,7 @@
     </div>
 
     <!-- Pagination -->
-    <div class="pagination" v-if="filteredStores.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -186,7 +185,7 @@
               <select v-model="selectedGroupToAdd" class="group-select">
                 <option value="">Select a group to add...</option>
                 <option v-for="group in availableGroupsToAdd" :key="group.id" :value="group.id">
-                  {{ group.name }}
+                  {{ group.name }} ({{ group.code }})
                 </option>
               </select>
               <button @click="addGroupToStore" class="btn-add-group" :disabled="!selectedGroupToAdd || addingGroup">
@@ -200,12 +199,12 @@
 
           <!-- Existing Groups in Store -->
           <div class="existing-groups">
-            <h4>Groups in this Store</h4>
+            <h4>Groups in this Store ({{ selectedStore?.groups?.length || 0 }})</h4>
             <div class="groups-list">
               <div v-if="selectedStore?.groups?.length === 0" class="no-groups">
                 No groups added to this store yet
               </div>
-              <div v-for="group in selectedStore?.groups" :key="group.id" class="group-item" @click="selectGroup(group)">
+              <div v-for="group in selectedStore?.groups" :key="group.id" class="group-item">
                 <div class="group-info">
                   <span class="group-name">{{ group.name }}</span>
                   <span class="group-user-count">{{ group.users?.length || 0 }} members</span>
@@ -217,30 +216,9 @@
             </div>
           </div>
 
-          <!-- Users in Selected Group -->
-          <div v-if="selectedGroup" class="users-section">
-            <h4>👤 Members in {{ selectedGroup.name }}</h4>
-            <div class="add-user-form">
-              <select v-model="newUserId" class="user-select">
-                <option value="">Select member to add...</option>
-                <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                  {{ user.fullName }} ({{ user.username }})
-                </option>
-              </select>
-              <button @click="addUserToGroup" class="btn-add-user" :disabled="!newUserId || addingUser">
-                {{ addingUser ? 'Adding...' : '➕ Add Member' }}
-              </button>
-            </div>
-            <div class="users-list">
-              <div v-if="selectedGroup.users?.length === 0" class="no-users">
-                No members in this group
-              </div>
-              <div v-for="user in selectedGroup.users" :key="user.id" class="user-item">
-                <span class="user-name">{{ user.fullName }}</span>
-                <span class="user-username">{{ user.username }}</span>
-                <button @click="openRemoveUserModal(user)" class="remove-user-btn" title="Remove from group">✕</button>
-              </div>
-            </div>
+          <!-- Note: User management removed - will be handled in Group Management module -->
+          <div class="user-management-note">
+            <p>👤 <strong>Manage Members:</strong> Click the <strong>"👥 Groups"</strong> tab in the main navigation to manage members in each group.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -298,47 +276,6 @@
       </div>
     </div>
 
-    <!-- ==================== DELETE STORE CONFIRMATION MODAL ==================== -->
-    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
-      <div class="modal-container delete-modal">
-        <div class="modal-header">
-          <h3>🗑️ Confirm Delete</h3>
-          <button class="modal-close" @click="closeDeleteModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="delete-icon">🗑️</div>
-          <p><strong>Delete Store:</strong> {{ deleteStoreItem?.name }}</p>
-          <p><strong>Code:</strong> {{ deleteStoreItem?.code }}</p>
-          <p class="delete-warning">This will set the store status to "Closed".</p>
-          <p class="delete-question">Are you sure you want to close this store?</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeDeleteModal">Cancel</button>
-          <button class="btn-danger" @click="confirmDeleteStore">Close Store</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== REMOVE USER CONFIRMATION MODAL ==================== -->
-    <div v-if="showRemoveUserModal" class="modal-overlay" @click.self="closeRemoveUserModal">
-      <div class="modal-container delete-modal">
-        <div class="modal-header">
-          <h3>👤 Confirm Remove Member</h3>
-          <button class="modal-close" @click="closeRemoveUserModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="delete-icon">👤</div>
-          <p><strong>Remove Member:</strong> {{ removeUserItem?.fullName }}</p>
-          <p><strong>From Group:</strong> {{ selectedGroup?.name }}</p>
-          <p class="delete-question">Are you sure you want to remove this member from the group?</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeRemoveUserModal">Cancel</button>
-          <button class="btn-danger" @click="confirmRemoveUser">Remove</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ==================== EXPORT MODAL ==================== -->
     <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
       <div class="modal-container export-modal">
@@ -391,6 +328,7 @@ const pageSize = ref(5)
 const searchQuery = ref('')
 const filterStatus = ref('')
 const filterLocation = ref('')
+const totalItems = ref(0)
 
 // Store Modal
 const showStoreModal = ref(false)
@@ -405,11 +343,8 @@ const storeForm = ref({
 // Group Modal
 const showGroupModal = ref(false)
 const selectedStore = ref(null)
-const selectedGroup = ref(null)
 const selectedGroupToAdd = ref('')
-const newUserId = ref('')
 const addingGroup = ref(false)
-const addingUser = ref(false)
 
 // Remove Group Modal
 const showRemoveGroupModal = ref(false)
@@ -419,14 +354,6 @@ const removeGroupItem = ref(null)
 const showToggleModal = ref(false)
 const toggleStore = ref(null)
 const toggleNewStatus = ref('')
-
-// Delete Store Modal
-const showDeleteModal = ref(false)
-const deleteStoreItem = ref(null)
-
-// Remove User Modal
-const showRemoveUserModal = ref(false)
-const removeUserItem = ref(null)
 
 // Export Modal
 const showExportModal = ref(false)
@@ -442,7 +369,7 @@ const toastType = ref('success')
 // COMPUTED
 // ================================================================
 const hasActiveFilters = computed(() => {
-  return filterStatus.value || filterLocation.value
+  return filterStatus.value || filterLocation.value || searchQuery.value
 })
 
 const locations = computed(() => {
@@ -479,24 +406,17 @@ const filteredStores = computed(() => {
 })
 
 const totalPages = computed(() => {
-  return Math.ceil(filteredStores.value.length / pageSize.value) || 1
+  return Math.ceil(totalItems.value / pageSize.value) || 1
 })
 
 const paginatedStores = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredStores.value.slice(start, start + pageSize.value)
+  return stores.value
 })
 
 const availableGroupsToAdd = computed(() => {
   if (!selectedStore.value) return []
   const existingGroupIds = selectedStore.value.groups?.map(g => g.id) || []
   return allGroups.value.filter(g => !existingGroupIds.includes(g.id))
-})
-
-const availableUsers = computed(() => {
-  if (!selectedGroup.value) return allUsers.value
-  const existingUserIds = selectedGroup.value.users?.map(u => u.id) || []
-  return allUsers.value.filter(u => !existingUserIds.includes(u.id))
 })
 
 // ================================================================
@@ -516,7 +436,8 @@ const loadStores = async () => {
     })
     
     if (response.success) {
-      stores.value = response.data.stores
+      stores.value = response.data.stores || []
+      totalItems.value = response.data.pagination?.total || 0
     } else {
       showToastMessage(response.error || 'Failed to load stores', 'error')
     }
@@ -530,36 +451,35 @@ const loadStores = async () => {
 
 const loadGroups = async () => {
   try {
-    const response = await storeService.getAvailableGroupsForStore(0)
-    // This will be handled differently - we need a separate endpoint for all groups
-    // For now, we'll use the mock data or a dedicated endpoint
-    allGroups.value = await fetchAllGroups()
-  } catch (error) {
-    console.error('Load groups error:', error)
-  }
-}
-
-const fetchAllGroups = async () => {
-  // Temporary: Use mock data until we have a proper groups endpoint
-  return [
-    { id: 1, name: 'Storekeeper', code: 'GRP-001' },
-    { id: 2, name: 'IT', code: 'GRP-002' },
-    { id: 3, name: 'Auditor', code: 'GRP-003' },
-    { id: 4, name: 'Supplier', code: 'GRP-004' },
-    { id: 5, name: 'Quality Control', code: 'GRP-005' },
-    { id: 6, name: 'Warehouse', code: 'GRP-006' },
-    { id: 7, name: 'Logistics', code: 'GRP-007' }
-  ]
-}
-
-const loadUsers = async () => {
-  try {
-    const response = await storeService.getAllUsers()
+    const response = await storeService.getAllGroups()
     if (response.success) {
-      allUsers.value = response.data
+      allGroups.value = response.data || []
+      console.log('✅ Groups loaded:', allGroups.value.length)
+    } else {
+      console.error('❌ Failed to load groups:', response.error)
+      // Fallback to mock data if API fails
+      allGroups.value = [
+        { id: 1, name: 'Storekeeper', code: 'GRP-001' },
+        { id: 2, name: 'IT', code: 'GRP-002' },
+        { id: 3, name: 'Auditor', code: 'GRP-003' },
+        { id: 4, name: 'Supplier', code: 'GRP-004' },
+        { id: 5, name: 'Quality Control', code: 'GRP-005' },
+        { id: 6, name: 'Warehouse', code: 'GRP-006' },
+        { id: 7, name: 'Logistics', code: 'GRP-007' }
+      ]
     }
   } catch (error) {
-    console.error('Load users error:', error)
+    console.error('❌ Load groups error:', error)
+    // Fallback to mock data
+    allGroups.value = [
+      { id: 1, name: 'Storekeeper', code: 'GRP-001' },
+      { id: 2, name: 'IT', code: 'GRP-002' },
+      { id: 3, name: 'Auditor', code: 'GRP-003' },
+      { id: 4, name: 'Supplier', code: 'GRP-004' },
+      { id: 5, name: 'Quality Control', code: 'GRP-005' },
+      { id: 6, name: 'Warehouse', code: 'GRP-006' },
+      { id: 7, name: 'Logistics', code: 'GRP-007' }
+    ]
   }
 }
 
@@ -614,50 +534,17 @@ const saveStore = async () => {
   }
 }
 
-const openDeleteStoreModal = (store) => {
-  deleteStoreItem.value = store
-  showDeleteModal.value = true
-}
-
-const closeDeleteModal = () => {
-  showDeleteModal.value = false
-  deleteStoreItem.value = null
-}
-
-const confirmDeleteStore = async () => {
-  if (deleteStoreItem.value) {
-    try {
-      const response = await storeService.deleteStore(deleteStoreItem.value.id)
-      if (response.success) {
-        showToastMessage(`Store "${deleteStoreItem.value.name}" closed successfully`, 'success')
-        await loadStores()
-      }
-    } catch (error) {
-      showToastMessage(error.message || 'Failed to close store', 'error')
-    }
-    closeDeleteModal()
-  }
-}
-
 // -- Group Management --
 const openManageGroups = (store) => {
   selectedStore.value = JSON.parse(JSON.stringify(store))
-  selectedGroup.value = null
   selectedGroupToAdd.value = ''
-  newUserId.value = ''
   showGroupModal.value = true
 }
 
 const closeGroupModal = () => {
   showGroupModal.value = false
   selectedStore.value = null
-  selectedGroup.value = null
   loadStores()
-}
-
-const selectGroup = (group) => {
-  selectedGroup.value = group
-  newUserId.value = ''
 }
 
 const addGroupToStore = async () => {
@@ -708,89 +595,12 @@ const confirmRemoveGroup = async () => {
       if (response.success) {
         showToastMessage(`Group "${removeGroupItem.value.name}" removed from store`, 'success')
         selectedStore.value = response.data
-        if (selectedGroup.value?.id === removeGroupItem.value.id) {
-          selectedGroup.value = null
-        }
         await loadStores()
       }
     } catch (error) {
       showToastMessage(error.message || 'Failed to remove group', 'error')
     }
     closeRemoveGroupModal()
-  }
-}
-
-// -- User Management --
-const addUserToGroup = async () => {
-  if (!newUserId.value) {
-    showToastMessage('Please select a user', 'error')
-    return
-  }
-  
-  addingUser.value = true
-  try {
-    const response = await storeService.addUserToGroup(
-      selectedGroup.value.id,
-      newUserId.value
-    )
-    
-    if (response.success) {
-      const user = allUsers.value.find(u => u.id === newUserId.value)
-      showToastMessage(`User "${user?.fullName}" added to group!`, 'success')
-      selectedGroup.value = response.data
-      newUserId.value = ''
-      
-      // Update the store's group data
-      const store = stores.value.find(s => s.id === selectedStore.value.id)
-      if (store) {
-        const groupIndex = store.groups.findIndex(g => g.id === selectedGroup.value.id)
-        if (groupIndex !== -1) {
-          store.groups[groupIndex] = selectedGroup.value
-        }
-      }
-    }
-  } catch (error) {
-    showToastMessage(error.message || 'Failed to add user', 'error')
-  } finally {
-    addingUser.value = false
-  }
-}
-
-const openRemoveUserModal = (user) => {
-  removeUserItem.value = user
-  showRemoveUserModal.value = true
-}
-
-const closeRemoveUserModal = () => {
-  showRemoveUserModal.value = false
-  removeUserItem.value = null
-}
-
-const confirmRemoveUser = async () => {
-  if (removeUserItem.value && selectedGroup.value) {
-    try {
-      const response = await storeService.removeUserFromGroup(
-        selectedGroup.value.id,
-        removeUserItem.value.id
-      )
-      
-      if (response.success) {
-        showToastMessage(`User "${removeUserItem.value.fullName}" removed from group`, 'success')
-        selectedGroup.value = response.data
-        
-        // Update the store's group data
-        const store = stores.value.find(s => s.id === selectedStore.value.id)
-        if (store) {
-          const groupIndex = store.groups.findIndex(g => g.id === selectedGroup.value.id)
-          if (groupIndex !== -1) {
-            store.groups[groupIndex] = selectedGroup.value
-          }
-        }
-      }
-    } catch (error) {
-      showToastMessage(error.message || 'Failed to remove user', 'error')
-    }
-    closeRemoveUserModal()
   }
 }
 
@@ -868,12 +678,14 @@ const exportSelectedReport = async () => {
       const rows = response.data.map(item => headers.map(key => item[key]))
       const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
       
-      const blob = new Blob([csv], { type: 'text/csv' })
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `store_report_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
       URL.revokeObjectURL(url)
       
       showToastMessage('Export completed successfully!', 'success')
@@ -881,6 +693,7 @@ const exportSelectedReport = async () => {
       showToastMessage(response.error || 'No data to export', 'error')
     }
   } catch (error) {
+    console.error('Export error:', error)
     showToastMessage(error.message || 'Failed to export', 'error')
   } finally {
     exporting.value = false
@@ -904,12 +717,13 @@ const printReport = () => {
           th { background: #f5f5f5; }
           h2 { text-align: center; margin-bottom: 20px; }
           .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
+          .group-tag { display: inline-block; padding: 2px 8px; background: #eff6ff; margin: 2px; border-radius: 4px; font-size: 10px; }
         </style>
       </head>
       <body>
         <h2>🏪 Store Management Report</h2>
         <p>Generated: ${new Date().toLocaleString()}</p>
-        <p>Total Stores: ${filteredStores.value.length}</p>
+        <p>Total Stores: ${totalItems.value}</p>
         ${printContents}
         <div class="print-footer">Printed from Store Management System</div>
       </body>
@@ -923,6 +737,7 @@ const printReport = () => {
 
 // -- Pagination --
 const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return
   currentPage.value = page
   loadStores()
 }
@@ -943,13 +758,20 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 // ================================================================
+// WATCHERS
+// ================================================================
+watch([filterStatus, filterLocation], () => {
+  currentPage.value = 1
+  loadStores()
+})
+
+// ================================================================
 // LIFECYCLE
 // ================================================================
 onMounted(async () => {
   await Promise.all([
     loadStores(),
-    loadGroups(),
-    loadUsers()
+    loadGroups()
   ])
 })
 </script>
@@ -1669,12 +1491,6 @@ onMounted(async () => {
   border: 1px solid #e2e8f0;
   flex-wrap: wrap;
   gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.group-item:hover {
-  background: #f1f5f9;
 }
 
 .group-info {
@@ -1709,104 +1525,18 @@ onMounted(async () => {
   text-align: center;
 }
 
-.users-section {
+.user-management-note {
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.users-section h4 {
-  margin: 0 0 10px 0;
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.add-user-form {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-.user-select {
-  flex: 1;
-  min-width: 150px;
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #166534;
   font-size: 13px;
-  background: white;
 }
 
-.btn-add-user {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.btn-add-user:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-add-user:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.users-list {
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.user-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-  background: white;
-  border-radius: 4px;
-  margin-bottom: 2px;
-  border: 1px solid #f1f5f9;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.user-name {
-  font-weight: 500;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.user-username {
-  font-size: 12px;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-.remove-user-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #94a3b8;
-  font-size: 14px;
-  padding: 0 4px;
-  flex-shrink: 0;
-}
-
-.remove-user-btn:hover {
-  color: #ef4444;
-}
-
-.no-users {
-  color: #94a3b8;
-  font-size: 12px;
-  padding: 8px;
-  text-align: center;
+.user-management-note p {
+  margin: 0;
 }
 
 /* ================================================================
@@ -1940,6 +1670,15 @@ onMounted(async () => {
   .status-badge {
     border: 1px solid #ddd !important;
   }
+  
+  .group-tag {
+    display: inline-block !important;
+    padding: 2px 8px !important;
+    background: #eff6ff !important;
+    margin: 2px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+  }
 }
 
 /* ================================================================
@@ -1982,10 +1721,6 @@ onMounted(async () => {
   }
   
   .add-group-form {
-    flex-direction: column;
-  }
-  
-  .add-user-form {
     flex-direction: column;
   }
   
