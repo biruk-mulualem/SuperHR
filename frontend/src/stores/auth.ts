@@ -83,7 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (error) {
       console.warn('Failed to fetch roles from backend', error)
       // Fallback - but ideally you want backend to always provide this
-      availableRoles.value = ['admin', 'hr', 'finance', 'employee', 'attendance', 'store']
+      availableRoles.value = ['admin', 'hr', 'finance', 'employee', 'attendance', 'store','checker']
     }
   }
 

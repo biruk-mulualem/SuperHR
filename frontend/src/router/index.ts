@@ -23,7 +23,7 @@ const router = createRouter({
           component: () => import("@/views/dashboard/Dashboard.vue"),
           meta: {
             title: "Dashboard",
-            roles: ["admin", "hr", "finance", "employee", "attendance", "store","charity_admin","charity_teamleader"],
+            roles: ["admin", "hr", "finance", "employee", "attendance", "store","charity_admin","charity_teamleader","checker"],
           },
         },
         {
@@ -32,7 +32,7 @@ const router = createRouter({
           component: () => import("@/views/employee/Profile.vue"),
           meta: {
             title: "My Profile",
-            roles: ["admin", "hr", "finance", "employee", "attendance", "store"],
+            roles: ["admin", "hr", "finance", "employee", "attendance", "store","checker"],
           },
         },
         {
@@ -197,7 +197,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/inventory/inventory.vue"),
           meta: { 
             title: "Inventory Management", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -207,7 +207,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storeAndGroups/groupManagement.vue"),
           meta: { 
             title: "group Management", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -218,7 +218,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storeAndGroups/storeManagemet.vue"),
           meta: { 
             title: "store Management", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -228,7 +228,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storeAndGroups/userManagment.vue"),
           meta: { 
             title: "user Management", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
        
@@ -238,7 +238,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/audit/audit.vue"),
           meta: { 
             title: "audit ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -248,7 +248,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storeAndGroups/storeTostoreRelationship.vue"),
           meta: { 
             title: "store to store relationship ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -258,7 +258,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storebalance/storebalance.vue"),
           meta: { 
             title: "general store balance ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -269,7 +269,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/storetransaction/storetransaction.vue"),
           meta: { 
             title: "general store transaction ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -279,7 +279,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: { 
             title: "item requests ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -289,7 +289,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/itemRequests/printrequests.vue"),
           meta: { 
             title: "print requests ", 
-            roles: ["admin", "store"] 
+            roles: ["admin", "store","checker"] 
           },
         },
 
@@ -336,33 +336,7 @@ router.beforeEach((to, from, next) => {
     return;
   }
 
-  // ============================================================
-  // STORE ROLE - Only allow access to store routes
-  // ============================================================
-  if (userRole === "store") {
-    const allowedStorePaths = [
-      "/dashboard",
-      "/profile",
-      "/inventory",
-      "/inventory/product-master",
-      "/inventory/stock"
-    ];
-    
-    const isAllowed = allowedStorePaths.some(path => 
-      to.path === path || to.path.startsWith(path + '/')
-    );
-    
-    if (!isAllowed) {
-      // Prevent redirect loop
-      if (to.path !== "/inventory") {
-        next("/inventory");
-        return;
-      }
-    }
-    
-    next();
-    return;
-  }
+  
 
   // ============================================================
   // OTHER ROLES - Check role-based access

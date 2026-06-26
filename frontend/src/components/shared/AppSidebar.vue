@@ -118,6 +118,7 @@ const roleTitle = computed(() => {
     store: 'Store Manager',
     charity_admin: 'Charity Admin',
     charity_teamleader: 'Team Leader',
+    checker: 'checker'
   }
   return titles[userRole.value] || 'User'
 })
@@ -196,10 +197,21 @@ const roleMenus = {
 
   store: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-    { name: 'group-managment', path: '/group-managment', icon: 'UserIcon', badge: null },
-    { name: 'store-management', path: '/store-management', icon: 'ClockIcon', badge: null },
-    { name: 'user-management', path: '/user-management', icon: 'UserIcon', badge: null },
+    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
+    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
+    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+  ],
+  checker: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+
+
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ]
 }

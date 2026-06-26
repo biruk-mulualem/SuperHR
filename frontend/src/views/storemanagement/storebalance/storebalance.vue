@@ -1,11 +1,11 @@
-<!-- pages/StoreBalance.vue -->
+<!-- views/storemanagement/storebalance/storebalance.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
         <h2>💰 Store Balance</h2>
-        <span class="total-badge">{{ filteredBalances.length }} Items</span>
+        <span class="total-badge">{{ totalItems }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -17,7 +17,8 @@
             @input="onSearchChange"
           />
         </div>
-        <button class="btn-add" @click="openAddBalanceModal">➕ Add Balance</button>
+        <button class="btn-add" @click="openAddBalanceModal">📦 Initialize Balance</button>
+        <button class="btn-process-requests" @click="processApprovedRequests">📋 Process Approved Requests</button>
       </div>
     </div>
 
@@ -72,6 +73,13 @@
           <div class="stat-label">Low Stock Items</div>
         </div>
       </div>
+      <div class="stat-card">
+        <div class="stat-icon">📋</div>
+        <div class="stat-content">
+          <div class="stat-number">{{ pendingRequestsCount }}</div>
+          <div class="stat-label">Pending Approved Requests</div>
+        </div>
+      </div>
     </div>
 
     <!-- ==================== STORE BALANCE TABLE ==================== -->
@@ -90,58 +98,70 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="paginatedBalances.length === 0">
+          <tr v-if="isLoading">
+            <td colspan="8" class="text-center">
+              <div class="loading-spinner">Loading...</div>
+            </td>
+          </tr>
+          <tr v-else-if="paginatedBalances.length === 0">
             <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
                 <p>No balance records found</p>
-                <button class="btn-secondary" @click="openAddBalanceModal">Add First Balance</button>
+                <button class="btn-secondary" @click="openAddBalanceModal">Initialize First Balance</button>
               </div>
             </td>
           </tr>
           <tr v-for="(item, index) in paginatedBalances" :key="item.id">
             <td class="text-center">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
-            <td class="store-name">{{ getStoreName(item.storeId) }}</td>
+            <td class="store-name">{{ item.storeName || getStoreName(item.storeId) }}</td>
             <td>
-              <span class="group-tag">{{ getGroupName(item.groupId) }}</span>
+              <span class="group-tag">{{ item.groupName || getGroupName(item.groupId) }}</span>
             </td>
             <td>
               <div class="item-name-wrapper">
-                <div class="item-code">{{ getItemCode(item.itemId) }}</div>
-                <div class="standard-name">{{ getItemName(item.itemId) }}</div>
-                <div class="common-name">{{ getItemCommonName(item.itemId) }}</div>
+                <div class="item-code">{{ item.itemCode || getItemCode(item.itemId) }}</div>
+                <div class="standard-name">{{ item.itemName || getItemName(item.itemId) }}</div>
+                <div class="common-name">{{ item.itemCommonName || getItemCommonName(item.itemId) }}</div>
               </div>
             </td>
             <td>
               <div class="uom-wrapper">
-                <div class="uom-code">{{ getItemUnit(item.itemId) }}</div>
-                <div class="conversion-info" v-if="getConversionValue(item.itemId) > 1">
-                  {{ getConversionValue(item.itemId) }} {{ getBaseUOM(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}
+                <div class="uom-code">{{ item.uomCode || getItemUnit(item.itemId) }}</div>
+                <div class="conversion-info" v-if="(item.conversionValue || getConversionValue(item.itemId)) > 1">
+                  {{ item.conversionValue || getConversionValue(item.itemId) }} 
+                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }} = 1 
+                  {{ item.uomCode || getItemUnit(item.itemId) }}
                 </div>
-                <div class="conversion-info base" v-else>1 {{ getItemUnit(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}</div>
+                <div class="conversion-info base" v-else>
+                  1 {{ item.uomCode || getItemUnit(item.itemId) }} = 1 {{ item.uomCode || getItemUnit(item.itemId) }}
+                </div>
               </div>
             </td>
             <td>
               <div class="balance-wrapper">
-                <div class="balance-value" :class="getBalanceClass(item)">
+                <div class="balance-value" :class="item.statusClass || getBalanceClass(item)">
                   {{ formatNumber(item.balance) }}
                 </div>
                 <div class="base-balance">
-                  = {{ formatNumber(getBaseBalance(item)) }} {{ getBaseUOM(item.itemId) }}
+                  = {{ formatNumber(item.baseBalance || getBaseBalance(item)) }} 
+                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }}
                 </div>
               </div>
             </td>
             <td>
-              <span :class="['status-badge', item.status.toLowerCase()]">
-                {{ item.status }}
+              <span :class="['status-badge', (item.status || 'inactive').toLowerCase()]">
+                {{ item.status || 'Inactive' }}
               </span>
             </td>
             <td>
               <div class="action-buttons">
                 <button class="icon-btn" @click="editBalance(item)" title="Edit">✏️</button>
-                <button class="icon-btn" @click="openStockModal(item)" title="Stock">📦</button>
                 <button class="icon-btn" @click="toggleStatus(item)" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
                   {{ item.status === 'Active' ? '⏸️' : '▶️' }}
+                </button>
+                <button class="icon-btn delete-btn" @click="openDeleteModal(item)" title="Delete" v-if="item.status === 'Inactive'">
+                  🗑️
                 </button>
               </div>
             </td>
@@ -163,168 +183,364 @@
         <option :value="5">5 per page</option>
         <option :value="10">10 per page</option>
         <option :value="20">20 per page</option>
+        <option :value="50">50 per page</option>
       </select>
     </div>
 
-    <!-- ==================== ADD/EDIT BALANCE MODAL ==================== -->
+    <!-- ==================== INITIALIZE BALANCE MODAL WITH TABS ==================== -->
     <div v-if="showBalanceModal" class="modal-overlay" @click.self="closeBalanceModal">
       <div class="modal-container balance-modal">
         <div class="modal-header">
-          <h3>{{ editingBalance ? '✏️ Edit Balance' : '➕ Add Balance' }}</h3>
+          <h3>{{ editingBalance ? '✏️ Edit Balance' : '📦 Initialize Balance' }}</h3>
           <button class="modal-close" @click="closeBalanceModal">✕</button>
         </div>
         <div class="modal-body">
-          <form @submit.prevent="saveBalance" class="balance-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Store *</label>
-                <select v-model="form.storeId" required>
-                  <option value="">Select Store</option>
-                  <option v-for="store in stores" :key="store.id" :value="store.id">
-                    {{ store.name }}
-                  </option>
-                </select>
+          <!-- Tabs -->
+          <div class="init-tabs" v-if="!editingBalance">
+            <button class="init-tab" :class="{ active: initTab === 'manual' }" @click="initTab = 'manual'">
+              ✍️ Manual
+            </button>
+            <button class="init-tab" :class="{ active: initTab === 'import' }" @click="initTab = 'import'">
+              📥 Import
+            </button>
+          </div>
+
+          <!-- Manual Tab -->
+          <div v-if="initTab === 'manual' || editingBalance">
+            <div v-if="!editingBalance" class="init-info">
+              <span class="info-icon">ℹ️</span>
+              <span>Set up initial stock balance for a specific item in a store.</span>
+            </div>
+            <form @submit.prevent="saveBalance" class="balance-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Store *</label>
+                  <select v-model="form.storeId" required>
+                    <option value="">Select Store</option>
+                    <option v-for="store in stores" :key="store.id" :value="store.id">
+                      {{ store.name }}
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Group *</label>
+                  <select v-model="form.groupId" required>
+                    <option value="">Select Group</option>
+                    <option v-for="group in allGroups" :key="group.id" :value="group.id">
+                      {{ group.name }}
+                    </option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Group *</label>
-                <select v-model="form.groupId" required>
-                  <option value="">Select Group</option>
-                  <option v-for="group in allGroups" :key="group.id" :value="group.id">
-                    {{ group.name }}
-                  </option>
-                </select>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Item *</label>
+                  <select v-model="form.itemId" required @change="onItemChange">
+                    <option value="">Select Item</option>
+                    <option v-for="item in inventoryItems" :key="item.id" :value="item.id">
+                      {{ item.code }} - {{ item.standardName }}
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Balance ({{ getItemUnit(form.itemId) }}) *</label>
+                  <input v-model.number="form.balance" type="number" required placeholder="0" min="0" step="1" @input="onBalanceChange" :readonly="!!editingBalance" />
+                  <span class="hint" v-if="form.itemId && form.balance > 0 && !editingBalance">
+                    = {{ formatNumber(form.balance * getConversionValue(Number(form.itemId))) }} {{ getBaseUOM(Number(form.itemId)) }}
+                  </span>
+                  <span class="hint" v-if="editingBalance">Balance cannot be changed after initialization</span>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Status</label>
+                  <select v-model="form.status">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Minimum Stock Alert</label>
+                  <input v-model.number="form.minStock" type="number" placeholder="Min stock level" min="0" step="1" />
+                  <span class="hint">Warning when stock falls below this level</span>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <!-- Import Tab -->
+          <div v-if="initTab === 'import' && !editingBalance">
+            <div class="import-info">
+              <span class="info-icon">📄</span>
+              <div>
+                <p><strong>CSV Format Required:</strong></p>
+                <p class="info-text">Your CSV should have the following columns:</p>
+                <ul class="csv-format-list">
+                  <li><strong>storeId</strong> - Store ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
+                  <li><strong>groupId</strong> - Group ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
+                  <li><strong>itemCode</strong> - Item Code (required) <span class="hint-text">e.g., SDT000001</span></li>
+                  <li><strong>balance</strong> - Initial balance (required) <span class="hint-text">e.g., 100</span></li>
+                  <li><strong>minStock</strong> - Minimum stock level (optional) <span class="hint-text">e.g., 10</span></li>
+                  <li><strong>status</strong> - Status (optional, defaults to Active) <span class="hint-text">Active/Inactive</span></li>
+                </ul>
+                <p class="info-text" style="margin-top: 8px;">
+                  💡 <strong>Note:</strong> Use <strong>itemCode</strong> (e.g., SDT000001) instead of numeric itemId for easier import.
+                </p>
+                <button class="btn-template" @click="downloadTemplate" :disabled="importing">
+                  📄 Download CSV Template
+                </button>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Item *</label>
-                <select v-model="form.itemId" required @change="onItemChange">
-                  <option value="">Select Item</option>
-                  <option v-for="item in inventoryItems" :key="item.id" :value="item.id">
-                    {{ item.code }} - {{ item.standardName }}
-                  </option>
-                </select>
+
+            <!-- File Upload -->
+            <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload($event)" 
+              :class="{ 'drag-over': isDragOver, 'disabled': importing }"
+              @dragover.prevent="!importing && (isDragOver = true)" 
+              @dragleave.prevent="!importing && (isDragOver = false)"
+              @drop.prevent="!importing && handleCsvDrop($event)">
+              <div v-if="csvFile" class="file-preview">
+                <span class="file-icon">📄</span>
+                <span class="file-name">{{ csvFile.name }}</span>
+                <span class="file-size">{{ formatFileSize(csvFile.size) }}</span>
+                <button type="button" @click.stop="!importing && removeCsvFile()" class="remove-file" :disabled="importing">✕</button>
               </div>
-              <div class="form-group">
-                <label>Balance ({{ getItemUnit(form.itemId) }}) *</label>
-                <input v-model.number="form.balance" type="number" required placeholder="0" min="0" step="1" @input="onBalanceChange" />
+              <div v-else class="upload-placeholder">
+                <span class="upload-icon">📁</span>
+                <span>Click to upload CSV file</span>
+                <span class="upload-hint">or drag and drop</span>
+                <span class="upload-hint">Supported formats: .csv</span>
+              </div>
+              <input type="file" ref="csvFileInput" accept=".csv" 
+                     @change="handleCsvUpload" style="display:none" :disabled="importing" />
+            </div>
+
+            <!-- Import Progress -->
+            <div v-if="importing" class="import-progress">
+              <div class="progress-info">
+                <span>Importing balances...</span>
+                <span>{{ importProgress.processed }} / {{ importProgress.total }}</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" :style="{ width: importProgress.percentage + '%' }"></div>
+              </div>
+              <div class="progress-status">
+                <span class="status-success">✅ {{ importProgress.success }}</span>
+                <span class="status-failed">❌ {{ importProgress.failed }}</span>
+                <span class="status-remaining">⏳ {{ importProgress.remaining }} remaining</span>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Status</label>
-                <select v-model="form.status">
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Minimum Stock Alert</label>
-                <input v-model.number="form.minStock" type="number" placeholder="Min stock level" min="0" step="1" />
+
+            <!-- Preview imported data -->
+            <div v-if="importPreviewData.length > 0 && !importing" class="import-preview">
+              <h4>Preview ({{ importPreviewData.length }} items)</h4>
+              <div class="preview-table-container">
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th>Store</th>
+                      <th>Group</th>
+                      <th>Item Code</th>
+                      <th>Item Name</th>
+                      <th>Balance</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(item, index) in importPreviewData.slice(0, 10)" :key="index">
+                      <td>{{ getStoreName(Number(item.storeId)) || item.storeId }}</td>
+                      <td>{{ getGroupName(Number(item.groupId)) || item.groupId }}</td>
+                      <td><strong>{{ item.itemCode || item.itemId }}</strong></td>
+                      <td>{{ getItemNameByCode(item.itemCode) || getItemName(Number(item.itemId)) || 'Unknown' }}</td>
+                      <td>{{ item.balance }}</td>
+                      <td>{{ item.status || 'Active' }}</td>
+                    </tr>
+                    <tr v-if="importPreviewData.length > 10">
+                      <td colspan="6" class="preview-more">
+                        ... and {{ importPreviewData.length - 10 }} more items
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
-          </form>
+
+            <!-- Import results -->
+            <div v-if="importResults && !importing" class="import-results">
+              <div class="result-summary">
+                <span class="result-success">✅ {{ importResults.success }} imported</span>
+                <span class="result-failed">❌ {{ importResults.failed }} failed</span>
+                <span class="result-total">📊 {{ importResults.total }} total</span>
+              </div>
+              <div v-if="importResults.errors && importResults.errors.length > 0" class="result-errors">
+                <p><strong>Errors:</strong></p>
+                <ul>
+                  <li v-for="(err, idx) in importResults.errors.slice(0, 5)" :key="idx">{{ err }}</li>
+                  <li v-if="importResults.errors.length > 5">... and {{ importResults.errors.length - 5 }} more errors</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeBalanceModal">Cancel</button>
-          <button class="btn-primary" @click="saveBalance">
-            {{ editingBalance ? 'Update' : 'Add' }}
+          <button class="btn-secondary" @click="closeBalanceModal" :disabled="importing">Cancel</button>
+          <button 
+            v-if="initTab === 'manual' || editingBalance"
+            class="btn-primary" 
+            @click="saveBalance" 
+            :disabled="saving || (editingBalance && form.balance !== undefined)"
+          >
+            {{ saving ? 'Saving...' : (editingBalance ? 'Update' : 'Initialize') }}
+          </button>
+          <button 
+            v-if="initTab === 'import' && !editingBalance"
+            class="btn-primary" 
+            @click="processImport" 
+            :disabled="!csvFile || importing || importPreviewData.length === 0"
+          >
+            {{ importing ? 'Importing...' : 'Import Balances' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ==================== STOCK IN/OUT MODAL (TABS) ==================== -->
-    <div v-if="showStockModal" class="modal-overlay" @click.self="closeStockModal">
-      <div class="modal-container stock-modal">
+    <!-- ==================== DELETE CONFIRMATION MODAL ==================== -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+      <div class="modal-container delete-modal">
         <div class="modal-header">
-          <h3>📦 Stock Movement</h3>
-          <button class="modal-close" @click="closeStockModal">✕</button>
+          <h3>🗑️ Confirm Delete</h3>
+          <button class="modal-close" @click="closeDeleteModal">✕</button>
         </div>
         <div class="modal-body">
-          <!-- Tabs -->
-          <div class="stock-tabs">
-            <button class="stock-tab" :class="{ active: stockTab === 'in' }" @click="stockTab = 'in'">📥 Stock In</button>
-            <button class="stock-tab" :class="{ active: stockTab === 'out' }" @click="stockTab = 'out'">📤 Stock Out</button>
-          </div>
-
-          <form @submit.prevent="saveStock" class="stock-form">
-            <!-- Item Info -->
-            <div class="stock-item-info">
-              <div><strong>{{ stockItem ? getItemCode(stockItem.itemId) : '' }}</strong> - {{ stockItem ? getItemName(stockItem.itemId) : '' }}</div>
-              <div v-if="stockItem">
-                Balance: <strong>{{ formatNumber(stockItem.balance) }}</strong> {{ getItemUnit(stockItem.itemId) }}
-                <span class="base-info">({{ formatNumber(getBaseBalance(stockItem)) }} {{ getBaseUOM(stockItem.itemId) }})</span>
-              </div>
-            </div>
-
-            <!-- Stock In Fields -->
-            <div v-if="stockTab === 'in'">
-              <div class="form-group">
-                <label>Source Store *</label>
-                <select v-model="stockForm.sourceStoreId" required>
-                  <option value="">Select Source Store</option>
-                  <option v-for="store in allStores" :key="store.id" :value="store.id">
-                    {{ store.name }}
-                  </option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div class="form-group" v-if="stockForm.sourceStoreId === 'other'">
-                <label>Other Store Name</label>
-                <input v-model="stockForm.otherStore" type="text" placeholder="Enter store name" />
-              </div>
-              <div class="form-group">
-                <label>Quantity ({{ stockItem ? getItemUnit(stockItem.itemId) : '' }}) *</label>
-                <input v-model.number="stockForm.quantity" type="number" required placeholder="Enter quantity" min="1" step="1" @input="onStockQuantityChange" />
-                <small class="hint-text" v-if="stockItem && stockForm.quantity > 0">
-                  Adds {{ formatNumber(stockForm.quantity * getConversionValue(stockItem.itemId)) }} {{ getBaseUOM(stockItem.itemId) }}
-                </small>
-              </div>
-              <div class="form-group">
-                <label>Reference / Reason</label>
-                <input v-model="stockForm.reason" type="text" placeholder="e.g., Purchase order #123" />
-              </div>
-            </div>
-
-            <!-- Stock Out Fields -->
-            <div v-if="stockTab === 'out'">
-              <div class="form-group">
-                <label>Destination Store *</label>
-                <select v-model="stockForm.destinationStoreId" required>
-                  <option value="">Select Destination Store</option>
-                  <option v-for="store in allStores" :key="store.id" :value="store.id">
-                    {{ store.name }}
-                  </option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div class="form-group" v-if="stockForm.destinationStoreId === 'other'">
-                <label>Other Store Name</label>
-                <input v-model="stockForm.otherStore" type="text" placeholder="Enter store name" />
-              </div>
-              <div class="form-group">
-                <label>Quantity ({{ stockItem ? getItemUnit(stockItem.itemId) : '' }}) *</label>
-                <input v-model.number="stockForm.quantity" type="number" required placeholder="Enter quantity" min="1" step="1" :max="stockItem?.balance || 0" @input="onStockQuantityChange" />
-                <small class="hint-text">Max: {{ stockItem?.balance || 0 }}</small>
-                <small class="hint-text" v-if="stockItem && stockForm.quantity > 0">
-                  Removes {{ formatNumber(stockForm.quantity * getConversionValue(stockItem.itemId)) }} {{ getBaseUOM(stockItem.itemId) }}
-                </small>
-              </div>
-              <div class="form-group">
-                <label>Reference / Reason</label>
-                <input v-model="stockForm.reason" type="text" placeholder="e.g., Issued to department" />
-              </div>
-              <p v-if="stockForm.quantity > (stockItem?.balance || 0)" class="error-text">
-                ⚠️ Cannot exceed current balance ({{ stockItem?.balance || 0 }})
-              </p>
-            </div>
-          </form>
+          <div class="delete-icon">⚠️</div>
+          <p><strong>Item:</strong> {{ deleteTarget ? getItemName(deleteTarget.itemId) : '' }}</p>
+          <p><strong>Store:</strong> {{ deleteTarget ? getStoreName(deleteTarget.storeId) : '' }}</p>
+          <p><strong>Group:</strong> {{ deleteTarget ? getGroupName(deleteTarget.groupId) : '' }}</p>
+          <p><strong>Balance:</strong> {{ deleteTarget ? deleteTarget.balance : 0 }} {{ deleteTarget ? getItemUnit(deleteTarget.itemId) : '' }}</p>
+          <p class="delete-warning">⚠️ This action cannot be undone!</p>
+          <p class="delete-question">Are you sure you want to delete this balance record?</p>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeStockModal">Cancel</button>
-          <button class="btn-primary" @click="saveStock" :disabled="stockTab === 'out' && (stockForm.quantity > (stockItem?.balance || 0) || stockForm.quantity <= 0)">
-            {{ stockTab === 'in' ? 'Add Stock' : 'Remove Stock' }}
+          <button class="btn-secondary" @click="closeDeleteModal">Cancel</button>
+          <button class="btn-danger" @click="confirmDelete">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PROCESS REQUESTS MODAL ==================== -->
+    <div v-if="showProcessModal" class="modal-overlay" @click.self="closeProcessModal">
+      <div class="modal-container process-modal">
+        <div class="modal-header">
+          <h3>📋 Process Approved Requests</h3>
+          <button class="modal-close" @click="closeProcessModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <!-- Info Box -->
+          <div class="process-info">
+            <div class="process-info-header">
+              <span class="info-icon">ℹ️</span>
+              <span class="info-title">How it works</span>
+            </div>
+            <ul class="process-rules">
+              <li>1️⃣ Select a <strong>Store</strong> to see its approved requests</li>
+              <li>2️⃣ Select the <strong>Requests</strong> you want to process</li>
+              <li>3️⃣ Select the <strong>Group</strong> to apply the changes to</li>
+              <li>4️⃣ Click <strong>"Process Selected"</strong> to apply changes</li>
+              <li>✅ If your store is the <strong>asking store</strong> → Items will be <span class="text-success">added</span> to the group's balance</li>
+              <li>✅ If your store is the <strong>supplying store</strong> → Items will be <span class="text-danger">removed</span> from the group's balance</li>
+            </ul>
+          </div>
+
+          <!-- Step 1: Select Store -->
+          <div class="form-group">
+            <label>1. Select Store *</label>
+            <select v-model="selectedStoreId" required @change="onStoreSelect">
+              <option value="">Select a store</option>
+              <option v-for="store in stores" :key="store.id" :value="store.id">
+                {{ store.name }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Step 2: Select Requests -->
+          <div v-if="selectedStoreId && storeRequests.length > 0" class="form-group">
+            <label>2. Select Requests to Process</label>
+            <div class="select-all-container">
+              <label class="select-all-label">
+                <input type="checkbox" v-model="selectAllRequests" @change="toggleAllRequests" />
+                Select All ({{ storeRequests.length }} requests)
+              </label>
+            </div>
+            <div class="requests-checkbox-list">
+              <label v-for="req in storeRequests" :key="req.id" class="request-checkbox">
+                <input type="checkbox" v-model="selectedRequestIds" :value="req.id" @change="onRequestSelect" />
+                <div class="request-info">
+                  <span class="req-code">{{ req.requestCode }}</span>
+                  <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
+                  <span class="req-items-count">{{ req.items.length }} items</span>
+                  <span class="req-action" :class="getItemActionClass(req)">
+                    {{ getItemActionLabel(req) }}
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Step 3: Select Group - FILTERED BY STORE -->
+          <div class="form-group" v-if="selectedRequestIds.length > 0">
+            <label>3. Select Group to Apply Changes *</label>
+            <select v-model="selectedGroupId" required>
+              <option value="">Select a group</option>
+              <option v-for="group in availableGroupsForStore" :key="group.id" :value="group.id">
+                {{ group.name }}
+              </option>
+            </select>
+            <p v-if="availableGroupsForStore.length === 0" class="hint-text" style="color: #f59e0b; margin-top: 4px;">
+              ⚠️ No groups found for this store. Please initialize balances first.
+            </p>
+          </div>
+
+          <!-- Preview Selected Requests -->
+          <div v-if="selectedRequestIds.length > 0 && selectedGroupId" class="requests-preview">
+            <div class="preview-header">
+              <span>📋 {{ selectedRequestIds.length }} request(s) selected</span>
+              <span class="badge-info">{{ getSelectedTotalItems() }} total items</span>
+            </div>
+            <div class="requests-list">
+              <div v-for="req in selectedRequests" :key="req.id" class="request-item">
+                <div class="request-header">
+                  <span class="request-code">{{ req.requestCode }}</span>
+                  <span class="request-date">{{ formatDate(req.requestedDate) }}</span>
+                </div>
+                <div class="request-items">
+                  <div v-for="item in req.items" :key="item.itemId" class="request-item-detail">
+                    <span>{{ getItemName(item.itemId) }}</span>
+                    <span class="item-qty">× {{ item.quantity }}</span>
+                    <span class="item-uom">{{ getItemUnit(item.itemId) }}</span>
+                    <span class="item-action" :class="getItemActionClass(req)">
+                      {{ getItemActionLabel(req) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="request-remark" v-if="req.remark">
+                  <span class="remark-label">Remark:</span> {{ req.remark }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedStoreId && storeRequests.length === 0" class="no-requests">
+            <span class="no-requests-icon">✅</span>
+            <p>No approved requests found for this store.</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeProcessModal">Cancel</button>
+          <button 
+            class="btn-primary" 
+            @click="confirmProcessRequests" 
+            :disabled="!selectedStoreId || selectedRequestIds.length === 0 || !selectedGroupId || processing"
+          >
+            {{ processing ? 'Processing...' : `Process ${selectedRequestIds.length} Request(s)` }}
           </button>
         </div>
       </div>
@@ -392,90 +608,43 @@
   </div>
 </template>
 
+
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import balanceService from '@/stores/balanceService'
 
 // ================================================================
-// STORE DATA
+// STORE DATA - Will be populated from API
 // ================================================================
-const stores = [
-  { id: 1, name: 'Main Store', code: 'STORE-001' },
-  { id: 2, name: 'Fiber Mini Store', code: 'STORE-002' },
-  { id: 3, name: 'Paint Mini Store', code: 'STORE-003' },
-  { id: 4, name: 'Fiber Mini Mini Store', code: 'STORE-004' },
-  { id: 5, name: 'Paint Mini Mini Store', code: 'STORE-005' },
-  { id: 6, name: 'Metal Store', code: 'STORE-006' },
-  { id: 7, name: 'Technic Store', code: 'STORE-007' },
-  { id: 8, name: 'Calcium Store', code: 'STORE-008' },
-  { id: 9, name: 'Finishing Store', code: 'STORE-009' },
-]
+const stores = ref([])
 
 // ================================================================
-// GROUPS DATA
+// GROUPS DATA - Will be populated from API
 // ================================================================
-const allGroups = [
-  { id: 1, name: 'Storekeeper' },
-  { id: 2, name: 'IT' },
-  { id: 3, name: 'Auditor' },
-  { id: 4, name: 'Supplier' },
-  { id: 5, name: 'Quality Control' },
-  { id: 6, name: 'Warehouse' },
-  { id: 7, name: 'Logistics' },
-]
+const allGroups = ref([])
 
 // ================================================================
-// INVENTORY ITEMS (Master List with Conversion)
+// INVENTORY ITEMS - Will be populated from API
 // ================================================================
-const inventoryItems = [
-  { id: 1, code: 'ITEM-001', standardName: 'Cement 50kg', commonName: 'Cement', unit: 'bags', baseUom: 'KG', conversionValue: 50 },
-  { id: 2, code: 'ITEM-002', standardName: 'Steel Rod 12mm', commonName: 'Steel Rod', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 3, code: 'ITEM-003', standardName: 'Laptop Dell Latitude', commonName: 'Laptop', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 4, code: 'ITEM-004', standardName: 'Printer HP LaserJet', commonName: 'Printer', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 5, code: 'ITEM-005', standardName: 'Audit File Folders', commonName: 'Audit Files', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 6, code: 'ITEM-006', standardName: 'Fiber Sheets 4x8', commonName: 'Fiber Sheets', unit: 'm²', baseUom: 'm²', conversionValue: 1 },
-  { id: 7, code: 'ITEM-007', standardName: 'Adhesive Glue 5L', commonName: 'Adhesive', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 8, code: 'ITEM-008', standardName: 'Monitor 24 Inch', commonName: 'Monitor', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 9, code: 'ITEM-009', standardName: 'Paint White 20L', commonName: 'White Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 10, code: 'ITEM-010', standardName: 'Paint Red 20L', commonName: 'Red Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 11, code: 'ITEM-011', standardName: 'Paint Blue 20L', commonName: 'Blue Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 12, code: 'ITEM-012', standardName: 'Fiber Glass Mat', commonName: 'Fiber Glass', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 13, code: 'ITEM-013', standardName: 'Quality Control Reports', commonName: 'QC Reports', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 14, code: 'ITEM-014', standardName: 'Metal Sheets 2mm', commonName: 'Metal Sheets', unit: 'm²', baseUom: 'm²', conversionValue: 1 },
-  { id: 15, code: 'ITEM-015', standardName: 'Screws M6x30', commonName: 'Screws', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 16, code: 'ITEM-016', standardName: 'Network Switch 24 Port', commonName: 'Network Switch', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 17, code: 'ITEM-017', standardName: 'Technic Parts Kit', commonName: 'Technic Parts', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 18, code: 'ITEM-018', standardName: 'Tools Set 50pcs', commonName: 'Tools Set', unit: 'sets', baseUom: 'Each', conversionValue: 1 },
-  { id: 19, code: 'ITEM-019', standardName: 'Calcium Powder 25kg', commonName: 'Calcium Powder', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 20, code: 'ITEM-020', standardName: 'Finishing Materials Set', commonName: 'Finishing Materials', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 21, code: 'ITEM-021', standardName: 'Quality Check Tools Kit', commonName: 'QC Tools', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-]
+const inventoryItems = ref([])
 
 // ================================================================
-// BALANCE DATA
+// BALANCE DATA - Will be populated from API
 // ================================================================
-const balances = ref([
-  { id: 1, storeId: 1, groupId: 1, itemId: 1, balance: 150, minStock: 50, status: 'Active' },
-  { id: 2, storeId: 1, groupId: 1, itemId: 2, balance: 80, minStock: 30, status: 'Active' },
-  { id: 3, storeId: 1, groupId: 2, itemId: 3, balance: 5, minStock: 2, status: 'Active' },
-  { id: 4, storeId: 1, groupId: 2, itemId: 4, balance: 3, minStock: 1, status: 'Active' },
-  { id: 5, storeId: 1, groupId: 3, itemId: 5, balance: 200, minStock: 100, status: 'Active' },
-  { id: 6, storeId: 2, groupId: 1, itemId: 6, balance: 300, minStock: 100, status: 'Active' },
-  { id: 7, storeId: 2, groupId: 1, itemId: 7, balance: 45, minStock: 20, status: 'Active' },
-  { id: 8, storeId: 2, groupId: 2, itemId: 8, balance: 2, minStock: 1, status: 'Active' },
-  { id: 9, storeId: 3, groupId: 1, itemId: 9, balance: 200, minStock: 50, status: 'Active' },
-  { id: 10, storeId: 3, groupId: 1, itemId: 10, balance: 80, minStock: 30, status: 'Active' },
-  { id: 11, storeId: 3, groupId: 1, itemId: 11, balance: 0, minStock: 20, status: 'Active' },
-  { id: 12, storeId: 4, groupId: 1, itemId: 12, balance: 150, minStock: 40, status: 'Active' },
-  { id: 13, storeId: 4, groupId: 3, itemId: 13, balance: 50, minStock: 20, status: 'Active' },
-  { id: 14, storeId: 6, groupId: 1, itemId: 14, balance: 120, minStock: 40, status: 'Active' },
-  { id: 15, storeId: 6, groupId: 1, itemId: 15, balance: 500, minStock: 100, status: 'Active' },
-  { id: 16, storeId: 6, groupId: 2, itemId: 16, balance: 4, minStock: 2, status: 'Active' },
-  { id: 17, storeId: 7, groupId: 1, itemId: 17, balance: 200, minStock: 50, status: 'Active' },
-  { id: 18, storeId: 7, groupId: 1, itemId: 18, balance: 15, minStock: 5, status: 'Active' },
-  { id: 19, storeId: 8, groupId: 1, itemId: 19, balance: 100, minStock: 30, status: 'Active' },
-  { id: 20, storeId: 9, groupId: 1, itemId: 20, balance: 75, minStock: 25, status: 'Active' },
-  { id: 21, storeId: 9, groupId: 3, itemId: 21, balance: 8, minStock: 3, status: 'Active' },
-])
+const balances = ref([])
+
+// ================================================================
+// ITEM REQUESTS - Will be populated from API
+// ================================================================
+const itemRequests = ref([])
+
+// ================================================================
+// LOADING STATES
+// ================================================================
+const isLoading = ref(false)
+const isLoadingStores = ref(false)
+const isLoadingGroups = ref(false)
+const isLoadingItems = ref(false)
 
 // ================================================================
 // STATE
@@ -488,15 +657,45 @@ const currentPage = ref(1)
 const pageSize = ref(5)
 const showBalanceModal = ref(false)
 const editingBalance = ref(null)
-const showStockModal = ref(false)
-const stockItem = ref(null)
-const stockTab = ref('in')
 const showToggleModal = ref(false)
 const toggleItem = ref(null)
 const toggleNewStatus = ref('')
 const exporting = ref(false)
 const exportType = ref('full')
 const showExportModal = ref(false)
+
+// Balance Modal Tabs
+const initTab = ref('manual')
+const saving = ref(false)
+
+// Import State
+const csvFile = ref(null)
+const csvFileInput = ref(null)
+const isDragOver = ref(false)
+const importPreviewData = ref([])
+const importResults = ref(null)
+const importing = ref(false)
+const importProgress = ref({
+  total: 0,
+  processed: 0,
+  success: 0,
+  failed: 0,
+  remaining: 0,
+  percentage: 0
+})
+
+// Delete Modal State
+const showDeleteModal = ref(false)
+const deleteTarget = ref(null)
+
+// Process Requests State
+const showProcessModal = ref(false)
+const selectedStoreId = ref('')
+const selectedGroupId = ref('')
+const selectedRequestIds = ref([])
+const storeRequests = ref([])
+const processing = ref(false)
+const selectAllRequests = ref(false)
 
 const form = ref({
   storeId: '',
@@ -507,39 +706,28 @@ const form = ref({
   minStock: 0,
 })
 
-const stockForm = ref({
-  sourceStoreId: '',
-  destinationStoreId: '',
-  quantity: 0,
-  reason: '',
-  otherStore: '',
-})
-
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// COMPUTED
+// COMPUTED - FILTERED DATA (All data after filters)
 // ================================================================
+
 const hasActiveFilters = computed(() => {
   return filterStore.value || filterGroup.value || filterStatus.value || searchQuery.value
 })
 
-const allStores = computed(() => {
-  if (!stockItem.value) return stores
-  return stores.filter(s => s.id !== stockItem.value.storeId)
-})
-
+// All balances after applying filters
 const filteredBalances = computed(() => {
   let result = balances.value
   
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter(item => {
-      const itemName = getItemName(item.itemId).toLowerCase()
-      const itemCode = getItemCode(item.itemId).toLowerCase()
-      const storeName = getStoreName(item.storeId).toLowerCase()
+      const itemName = (item.itemName || getItemName(item.itemId) || '').toLowerCase()
+      const itemCode = (item.itemCode || getItemCode(item.itemId) || '').toLowerCase()
+      const storeName = (item.storeName || getStoreName(item.storeId) || '').toLowerCase()
       return itemName.includes(s) || itemCode.includes(s) || storeName.includes(s)
     })
   }
@@ -559,72 +747,114 @@ const filteredBalances = computed(() => {
   return result
 })
 
+// ================================================================
+// COMPUTED - PAGINATED DATA (Current page only)
+// ================================================================
+
 const paginatedBalances = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
-  return filteredBalances.value.slice(start, start + pageSize.value)
+  const end = start + pageSize.value
+  return filteredBalances.value.slice(start, end)
 })
 
 const totalPages = computed(() => {
   return Math.ceil(filteredBalances.value.length / pageSize.value) || 1
 })
 
+// ================================================================
+// COMPUTED - STATS (From DISPLAYED items only)
+// ================================================================
+
+// Total stores from displayed items (paginated)
 const totalStores = computed(() => {
-  const uniqueStores = new Set(balances.value.map(item => item.storeId))
+  const uniqueStores = new Set(paginatedBalances.value.map(item => item.storeId))
   return uniqueStores.size
 })
 
+// Total items from displayed items (paginated)
 const totalItems = computed(() => {
-  return balances.value.length
+  return paginatedBalances.value.length
 })
 
+// Low stock items from displayed items (paginated)
 const lowStockItems = computed(() => {
-  return balances.value.filter(item => 
+  return paginatedBalances.value.filter(item => 
     item.balance <= item.minStock && item.balance > 0
   ).length
+})
+
+// Pending approved requests from all item requests (global)
+const pendingRequestsCount = computed(() => {
+  return itemRequests.value.filter(req => req.status === 'approved').length
+})
+
+const selectedRequests = computed(() => {
+  return storeRequests.value.filter(req => selectedRequestIds.value.includes(req.id))
+})
+
+// ================================================================
+// COMPUTED - Filter groups by selected store (for process modal)
+// ================================================================
+
+const availableGroupsForStore = computed(() => {
+  if (!selectedStoreId.value) {
+    return allGroups.value
+  }
+  
+  // Get all balance records for this store
+  const storeBalances = balances.value.filter(b => b.storeId === Number(selectedStoreId.value))
+  
+  // Get unique group IDs from these balances
+  const groupIds = new Set(storeBalances.map(b => b.groupId))
+  
+  // Return only groups that have balances in this store
+  return allGroups.value.filter(group => groupIds.has(group.id))
 })
 
 // ================================================================
 // HELPER METHODS
 // ================================================================
+
 const getItemName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.standardName : 'Unknown'
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemName || 'Unknown'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || item.name : 'Unknown'
 }
 
 const getItemCode = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.code : 'Unknown'
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemCode || 'N/A'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.code : 'N/A'
 }
 
 const getItemCommonName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.commonName : 'Unknown'
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemCommonName || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || item.name : ''
 }
 
 const getItemUnit = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.unit : ''
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.uomCode || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.uomCode || '' : ''
 }
 
 const getBaseUOM = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.baseUom || item.unit : ''
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.conversionUomCode || balance.uomCode || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.conversionUomCode || item.uomCode || '' : ''
 }
 
 const getConversionValue = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.conversionValue || 1
+  const item = inventoryItems.value.find(i => i.id === itemId)
   return item ? item.conversionValue || 1 : 1
-}
-
-const getConversionDisplay = (itemId) => {
-  if (!itemId) return ''
-  const val = getConversionValue(itemId)
-  const base = getBaseUOM(itemId)
-  const unit = getItemUnit(itemId)
-  if (val > 1) {
-    return `${val} ${base} = 1 ${unit}`
-  }
-  return `1 ${unit} = 1 ${unit}`
 }
 
 const getBaseBalance = (item) => {
@@ -632,20 +862,25 @@ const getBaseBalance = (item) => {
   return item.balance * conversionValue
 }
 
-const getBaseBalanceForm = (itemId, balance) => {
-  if (!itemId || !balance) return 0
-  const conversionValue = getConversionValue(itemId)
-  return balance * conversionValue
-}
-
 const getStoreName = (storeId) => {
-  const store = stores.find(s => s.id === storeId)
+  const balance = balances.value.find(b => b.storeId === storeId)
+  if (balance) return balance.storeName || 'Unknown'
+  const store = stores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
 const getGroupName = (groupId) => {
-  const group = allGroups.find(g => g.id === groupId)
+  const balance = balances.value.find(b => b.groupId === groupId)
+  if (balance) return balance.groupName || 'Unknown'
+  const group = allGroups.value.find(g => g.id === groupId)
   return group ? group.name : 'Unknown'
+}
+
+// Helper to get item name by code (for import preview)
+const getItemNameByCode = (itemCode) => {
+  if (!itemCode) return null
+  const item = inventoryItems.value.find(i => i.code === itemCode)
+  return item ? item.standardName || item.name : null
 }
 
 const formatNumber = (num) => {
@@ -658,18 +893,172 @@ const getBalanceClass = (item) => {
   return 'normal'
 }
 
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  })
+}
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+const getItemActionLabel = (req) => {
+  if (selectedStoreId.value === String(req.askingStoreId)) {
+    return '➕ ADD to balance'
+  } else if (selectedStoreId.value === String(req.supplyingStoreId)) {
+    return '➖ REMOVE from balance'
+  }
+  return ''
+}
+
+const getItemActionClass = (req) => {
+  if (selectedStoreId.value === String(req.askingStoreId)) {
+    return 'action-add'
+  } else if (selectedStoreId.value === String(req.supplyingStoreId)) {
+    return 'action-remove'
+  }
+  return ''
+}
+
+const getSelectedTotalItems = () => {
+  let total = 0
+  selectedRequests.value.forEach(req => {
+    total += req.items.length
+  })
+  return total
+}
+
 // ================================================================
-// UI HELPERS
+// API METHODS
 // ================================================================
-const onItemChange = () => {}
-const onBalanceChange = () => {}
-const onStockQuantityChange = () => {}
+
+const fetchStores = async () => {
+  isLoadingStores.value = true
+  try {
+    const response = await balanceService.getStores()
+    stores.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching stores:', error)
+    showToastMessage('Failed to load stores', 'error')
+  } finally {
+    isLoadingStores.value = false
+  }
+}
+
+const fetchGroups = async () => {
+  isLoadingGroups.value = true
+  try {
+    const response = await balanceService.getGroups()
+    allGroups.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching groups:', error)
+    showToastMessage('Failed to load groups', 'error')
+  } finally {
+    isLoadingGroups.value = false
+  }
+}
+
+const fetchItems = async () => {
+  isLoadingItems.value = true
+  try {
+    const response = await balanceService.getActiveItems()
+    inventoryItems.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching items:', error)
+    showToastMessage('Failed to load items', 'error')
+  } finally {
+    isLoadingItems.value = false
+  }
+}
+
+const fetchBalances = async () => {
+  isLoading.value = true
+  try {
+    const response = await balanceService.getBalances({
+      storeId: filterStore.value ? Number(filterStore.value) : undefined,
+      groupId: filterGroup.value ? Number(filterGroup.value) : undefined,
+      status: filterStatus.value || undefined,
+      search: searchQuery.value || undefined,
+      page: currentPage.value,
+      limit: pageSize.value
+    })
+    
+    balances.value = response.data || []
+    
+    if (response.pagination) {
+      currentPage.value = response.pagination.page || 1
+      pageSize.value = response.pagination.limit || 5
+    }
+  } catch (error) {
+    console.error('Error fetching balances:', error)
+    showToastMessage('Failed to load balances', 'error')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ================================================================
+// FILTERS & PAGINATION
+// ================================================================
+
+const onSearchChange = () => { 
+  currentPage.value = 1
+  fetchBalances()
+}
+
+const onFilterChange = () => { 
+  currentPage.value = 1
+  fetchBalances()
+}
+
+const clearFilters = () => {
+  filterStore.value = ''
+  filterGroup.value = ''
+  filterStatus.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+  showToastMessage('Filters cleared', 'info')
+  fetchBalances()
+}
+
+const changePage = (page) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+    fetchBalances()
+  }
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
+  fetchBalances()
+}
 
 // ================================================================
 // BALANCE CRUD
 // ================================================================
+
 const openAddBalanceModal = () => {
   editingBalance.value = null
+  initTab.value = 'manual'
+  csvFile.value = null
+  importPreviewData.value = []
+  importResults.value = null
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  }
   form.value = {
     storeId: '',
     groupId: '',
@@ -683,6 +1072,7 @@ const openAddBalanceModal = () => {
 
 const editBalance = (item) => {
   editingBalance.value = item
+  initTab.value = 'manual'
   form.value = {
     storeId: item.storeId,
     groupId: item.groupId,
@@ -695,11 +1085,23 @@ const editBalance = (item) => {
 }
 
 const closeBalanceModal = () => {
+  if (importing.value) return
   showBalanceModal.value = false
   editingBalance.value = null
+  csvFile.value = null
+  importPreviewData.value = []
+  importResults.value = null
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  }
 }
 
-const saveBalance = () => {
+const saveBalance = async () => {
   if (!form.value.storeId) {
     showToastMessage('Please select a store', 'error')
     return
@@ -717,112 +1119,370 @@ const saveBalance = () => {
     return
   }
 
-  const exists = balances.value.some(b => 
-    b.storeId === Number(form.value.storeId) &&
-    b.groupId === Number(form.value.groupId) &&
-    b.itemId === Number(form.value.itemId) &&
-    b.id !== (editingBalance.value?.id || -1)
-  )
-  
-  if (exists) {
-    showToastMessage('This item already has a balance in this store and group', 'error')
-    return
-  }
+  saving.value = true
 
-  if (editingBalance.value) {
-    const index = balances.value.findIndex(b => b.id === editingBalance.value.id)
-    if (index !== -1) {
-      balances.value[index] = {
-        ...balances.value[index],
-        storeId: Number(form.value.storeId),
-        groupId: Number(form.value.groupId),
-        itemId: Number(form.value.itemId),
-        balance: Number(form.value.balance),
-        status: form.value.status,
-        minStock: Number(form.value.minStock),
-      }
-    }
-    showToastMessage('Balance updated successfully!', 'success')
-  } else {
-    balances.value.push({
-      id: balances.value.length + 1,
+  try {
+    const payload = {
       storeId: Number(form.value.storeId),
       groupId: Number(form.value.groupId),
       itemId: Number(form.value.itemId),
       balance: Number(form.value.balance),
-      status: form.value.status,
-      minStock: Number(form.value.minStock),
-    })
-    showToastMessage('Balance added successfully!', 'success')
+      minStock: Number(form.value.minStock) || 0,
+      status: form.value.status || 'Active'
+    }
+
+    let response
+    if (editingBalance.value) {
+      response = await balanceService.updateBalance(editingBalance.value.id, payload)
+      showToastMessage('Balance updated successfully!', 'success')
+    } else {
+      response = await balanceService.createBalance(payload)
+      showToastMessage('Balance initialized successfully!', 'success')
+    }
+
+    await fetchBalances()
+    closeBalanceModal()
+  } catch (error) {
+    console.error('Error saving balance:', error)
+    if (error.response?.data?.error) {
+      showToastMessage(error.response.data.error, 'error')
+    } else {
+      showToastMessage('Failed to save balance', 'error')
+    }
+  } finally {
+    saving.value = false
   }
-  closeBalanceModal()
 }
 
 // ================================================================
-// STOCK IN/OUT
+// IMPORT FUNCTIONS
 // ================================================================
-const openStockModal = (item) => {
-  stockItem.value = item
-  stockTab.value = 'in'
-  stockForm.value = { sourceStoreId: '', destinationStoreId: '', quantity: 0, reason: '', otherStore: '' }
-  showStockModal.value = true
+
+const downloadTemplate = async () => {
+  try {
+    const blob = await balanceService.downloadTemplate()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `balance_import_template_${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    showToastMessage('Template CSV downloaded successfully!', 'success')
+  } catch (error) {
+    console.error('Error downloading template:', error)
+    showToastMessage('Failed to download template', 'error')
+  }
 }
 
-const closeStockModal = () => {
-  showStockModal.value = false
-  stockItem.value = null
+const triggerCsvUpload = (event) => {
+  if (importing.value) return
+  if (csvFileInput.value) {
+    csvFileInput.value.click()
+  }
 }
 
-const saveStock = () => {
-  if (stockTab.value === 'in') {
-    if (!stockForm.value.sourceStoreId) {
-      showToastMessage('Please select source store', 'error')
-      return
-    }
-    if (!stockForm.value.quantity || stockForm.value.quantity <= 0) {
-      showToastMessage('Please enter a valid quantity', 'error')
-      return
-    }
-    
-    const index = balances.value.findIndex(b => b.id === stockItem.value.id)
-    if (index !== -1) {
-      balances.value[index].balance += Number(stockForm.value.quantity)
-      const source = stockForm.value.sourceStoreId === 'other' 
-        ? stockForm.value.otherStore || 'Other' 
-        : getStoreName(Number(stockForm.value.sourceStoreId))
-      const baseQty = Number(stockForm.value.quantity) * getConversionValue(stockItem.value.itemId)
-      showToastMessage(`Stock In: ${stockForm.value.quantity} ${getItemUnit(stockItem.value.itemId)} (${baseQty} ${getBaseUOM(stockItem.value.itemId)}) from ${source}`, 'success')
-    }
+const handleCsvUpload = (event) => {
+  const file = event.target.files[0]
+  if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
+    csvFile.value = file
+    parseCsvFile(file)
   } else {
-    if (!stockForm.value.destinationStoreId) {
-      showToastMessage('Please select destination store', 'error')
-      return
-    }
-    if (!stockForm.value.quantity || stockForm.value.quantity <= 0) {
-      showToastMessage('Please enter a valid quantity', 'error')
-      return
-    }
-    if (stockForm.value.quantity > stockItem.value.balance) {
-      showToastMessage(`Insufficient stock! Available: ${stockItem.value.balance}`, 'error')
-      return
-    }
-    
-    const index = balances.value.findIndex(b => b.id === stockItem.value.id)
-    if (index !== -1) {
-      balances.value[index].balance -= Number(stockForm.value.quantity)
-      const dest = stockForm.value.destinationStoreId === 'other' 
-        ? stockForm.value.otherStore || 'Other' 
-        : getStoreName(Number(stockForm.value.destinationStoreId))
-      const baseQty = Number(stockForm.value.quantity) * getConversionValue(stockItem.value.itemId)
-      showToastMessage(`Stock Out: ${stockForm.value.quantity} ${getItemUnit(stockItem.value.itemId)} (${baseQty} ${getBaseUOM(stockItem.value.itemId)}) to ${dest}`, 'success')
+    showToastMessage('Please upload a valid CSV file', 'error')
+  }
+  event.target.value = ''
+}
+
+const handleCsvDrop = (event) => {
+  isDragOver.value = false
+  const file = event.dataTransfer.files[0]
+  if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
+    csvFile.value = file
+    parseCsvFile(file)
+  } else {
+    showToastMessage('Please upload a valid CSV file', 'error')
+  }
+}
+
+const removeCsvFile = () => {
+  csvFile.value = null
+  importPreviewData.value = []
+  importResults.value = null
+}
+
+const parseCsvFile = (file) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result
+      const lines = text.split('\n')
+        .filter(line => line.trim() && !line.trim().startsWith('#'))
+      
+      if (lines.length < 2) {
+        showToastMessage('CSV file must contain headers and at least one data row', 'error')
+        return
+      }
+      
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+      console.log('Headers:', headers)
+      
+      const requiredHeaders = ['storeid', 'groupid', 'balance']
+      const hasItemId = headers.includes('itemid')
+      const hasItemCode = headers.includes('itemcode')
+      
+      if (!hasItemId && !hasItemCode) {
+        showToastMessage('CSV must contain either "itemId" or "itemCode" column', 'error')
+        return
+      }
+      
+      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
+      if (missingHeaders.length > 0) {
+        showToastMessage(`Missing required headers: ${missingHeaders.join(', ')}`, 'error')
+        return
+      }
+      
+      const data = []
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim())
+        const obj = {}
+        headers.forEach((h, idx) => {
+          obj[h] = values[idx] || ''
+        })
+        
+        const itemId = obj.itemid ? parseInt(obj.itemid) : null
+        const itemCode = obj.itemcode || null
+        
+        if ((!itemId && !itemCode) || !obj.storeid || !obj.groupid || !obj.balance) {
+          continue
+        }
+        
+        const storeId = parseInt(obj.storeid)
+        const groupId = parseInt(obj.groupid)
+        const balance = parseFloat(obj.balance)
+        
+        if (isNaN(storeId) || isNaN(groupId) || isNaN(balance)) {
+          console.warn(`Skipping row ${i + 1}: Invalid data`, obj)
+          continue
+        }
+        
+        data.push({
+          storeId: storeId,
+          groupId: groupId,
+          itemId: itemId,
+          itemCode: itemCode,
+          balance: balance,
+          minStock: parseInt(obj.minstock) || 0,
+          status: obj.status || 'Active'
+        })
+      }
+      
+      console.log('Parsed data:', data)
+      
+      if (data.length === 0) {
+        showToastMessage('No valid data found in CSV file. Please check the format.', 'error')
+        importPreviewData.value = []
+        return
+      }
+      
+      importPreviewData.value = data
+      showToastMessage(`Successfully parsed ${data.length} items from CSV`, 'success')
+      
+    } catch (error) {
+      console.error('CSV parse error:', error)
+      showToastMessage('Failed to parse CSV file. Please check the format.', 'error')
+      importPreviewData.value = []
     }
   }
-  closeStockModal()
+  reader.onerror = () => {
+    showToastMessage('Failed to read file', 'error')
+    importPreviewData.value = []
+  }
+  reader.readAsText(file)
+}
+
+const processImport = async () => {
+  if (!csvFile.value || importPreviewData.value.length === 0) {
+    showToastMessage('No data to import. Please upload a valid CSV file.', 'error')
+    return
+  }
+
+  importing.value = true
+  importResults.value = null
+  
+  const totalItems = importPreviewData.value.length
+  importProgress.value = {
+    total: totalItems,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: totalItems,
+    percentage: 0
+  }
+
+  try {
+    const response = await balanceService.importBalances(csvFile.value)
+    
+    importResults.value = response.data
+    showToastMessage(`Import completed: ${response.data.success} imported, ${response.data.failed} failed`, response.data.failed > 0 ? 'warning' : 'success')
+    
+    await fetchBalances()
+    
+    if (response.data.failed === 0) {
+      setTimeout(() => {
+        closeBalanceModal()
+      }, 1500)
+    }
+    
+  } catch (error) {
+    console.error('Import error:', error)
+    showToastMessage('Failed to import balances', 'error')
+  } finally {
+    importing.value = false
+  }
+}
+
+// ================================================================
+// DELETE BALANCE
+// ================================================================
+
+const openDeleteModal = (item) => {
+  if (item.status === 'Active') {
+    showToastMessage('Cannot delete active balance. Please deactivate it first.', 'error')
+    return
+  }
+  deleteTarget.value = item
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  deleteTarget.value = null
+}
+
+const confirmDelete = async () => {
+  if (deleteTarget.value) {
+    try {
+      await balanceService.deleteBalance(deleteTarget.value.id)
+      showToastMessage(`Balance record for ${getItemName(deleteTarget.value.itemId)} deleted successfully!`, 'success')
+      await fetchBalances()
+    } catch (error) {
+      console.error('Error deleting balance:', error)
+      showToastMessage('Failed to delete balance', 'error')
+    }
+    closeDeleteModal()
+  }
+}
+
+// ================================================================
+// PROCESS REQUESTS
+// ================================================================
+
+const processApprovedRequests = async () => {
+  selectedStoreId.value = ''
+  selectedGroupId.value = ''
+  selectedRequestIds.value = []
+  storeRequests.value = []
+  selectAllRequests.value = false
+  showProcessModal.value = true
+}
+
+const closeProcessModal = () => {
+  showProcessModal.value = false
+  selectedStoreId.value = ''
+  selectedGroupId.value = ''
+  selectedRequestIds.value = []
+  storeRequests.value = []
+  selectAllRequests.value = false
+}
+
+const onStoreSelect = async () => {
+  selectedRequestIds.value = []
+  storeRequests.value = []
+  selectAllRequests.value = false
+  selectedGroupId.value = '' // Reset group selection when store changes
+  
+  if (!selectedStoreId.value) {
+    return
+  }
+  
+  try {
+    const response = await balanceService.getApprovedRequests(Number(selectedStoreId.value))
+    storeRequests.value = response.data || []
+    
+    selectAllRequests.value = storeRequests.value.length > 0
+    if (selectAllRequests.value) {
+      selectedRequestIds.value = storeRequests.value.map(req => req.id)
+    }
+  } catch (error) {
+    console.error('Error fetching approved requests:', error)
+    showToastMessage('Failed to fetch approved requests', 'error')
+  }
+}
+
+const toggleAllRequests = () => {
+  if (selectAllRequests.value) {
+    selectedRequestIds.value = storeRequests.value.map(req => req.id)
+  } else {
+    selectedRequestIds.value = []
+  }
+}
+
+const onRequestSelect = () => {
+  if (selectedRequestIds.value.length === storeRequests.value.length) {
+    selectAllRequests.value = true
+  } else {
+    selectAllRequests.value = false
+  }
+}
+
+const confirmProcessRequests = async () => {
+  if (!selectedStoreId.value || selectedRequestIds.value.length === 0 || !selectedGroupId.value) {
+    showToastMessage('Please select a store, requests, and a group', 'warning')
+    return
+  }
+  
+  processing.value = true
+
+  try {
+    const response = await balanceService.processRequests({
+      storeId: Number(selectedStoreId.value),
+      groupId: Number(selectedGroupId.value),
+      requestIds: selectedRequestIds.value.map(id => Number(id))
+    })
+
+    if (response.success) {
+      const { processed, failed, missingItems, processedItems } = response.data || {}
+      
+      let message = response.message || 'Requests processed!'
+      
+      if (processedItems && processedItems.length > 0) {
+        message += `\n\n✅ Processed ${processedItems.length} items`
+      }
+      
+      if (missingItems && missingItems.length > 0) {
+        message += `\n\n⚠️ ${missingItems.length} items need initialization`
+      }
+      
+      showToastMessage(message, failed > 0 ? 'warning' : 'success')
+    } else {
+      showToastMessage(response.error || 'Failed to process requests', 'error')
+    }
+    
+    await fetchBalances()
+    closeProcessModal()
+  } catch (error) {
+    console.error('Error processing requests:', error)
+    showToastMessage(error.response?.data?.error || 'Error processing requests', 'error')
+  } finally {
+    processing.value = false
+  }
 }
 
 // ================================================================
 // TOGGLE STATUS
 // ================================================================
+
 const toggleStatus = (item) => {
   toggleItem.value = item
   toggleNewStatus.value = item.status === 'Active' ? 'Inactive' : 'Active'
@@ -835,38 +1495,24 @@ const closeToggleModal = () => {
   toggleNewStatus.value = ''
 }
 
-const confirmToggle = () => {
+const confirmToggle = async () => {
   if (toggleItem.value) {
-    const index = balances.value.findIndex(b => b.id === toggleItem.value.id)
-    if (index !== -1) {
-      balances.value[index].status = toggleNewStatus.value
+    try {
+      await balanceService.toggleStatus(toggleItem.value.id)
       showToastMessage(`Status changed to ${toggleNewStatus.value}`, 'success')
+      await fetchBalances()
+    } catch (error) {
+      console.error('Error toggling status:', error)
+      showToastMessage('Failed to change status', 'error')
     }
     closeToggleModal()
   }
 }
 
 // ================================================================
-// FILTERS & PAGINATION
-// ================================================================
-const onSearchChange = () => { currentPage.value = 1 }
-const onFilterChange = () => { currentPage.value = 1 }
-
-const clearFilters = () => {
-  filterStore.value = ''
-  filterGroup.value = ''
-  filterStatus.value = ''
-  searchQuery.value = ''
-  currentPage.value = 1
-  showToastMessage('Filters cleared', 'info')
-}
-
-const changePage = (page) => { currentPage.value = page }
-const changePageSize = () => { currentPage.value = 1 }
-
-// ================================================================
 // PRINT & EXPORT
 // ================================================================
+
 const printReport = () => {
   const printContents = document.getElementById('printable-area').innerHTML
   const originalContents = document.body.innerHTML
@@ -907,68 +1553,25 @@ const closeExportModal = () => {
   showExportModal.value = false
 }
 
-const exportSelectedReport = () => {
+const exportSelectedReport = async () => {
   exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredBalances.value
-    
-    if (exportType.value === 'full') {
-      headers = ['#', 'Store', 'Group', 'Item Code', 'Item Name', 'UOM', 'Conversion', 'Balance', 'Base Balance', 'Status']
-      rows = data.map((item, index) => [
-        index + 1,
-        getStoreName(item.storeId),
-        getGroupName(item.groupId),
-        getItemCode(item.itemId),
-        getItemName(item.itemId),
-        getItemUnit(item.itemId),
-        getConversionDisplay(item.itemId),
-        item.balance,
-        getBaseBalance(item),
-        item.status
-      ])
-    } else {
-      const storeSummary = {}
-      data.forEach(item => {
-        const key = item.storeId
-        if (!storeSummary[key]) {
-          storeSummary[key] = {
-            storeName: getStoreName(item.storeId),
-            totalItems: 0,
-            totalBalance: 0,
-            totalBaseBalance: 0
-          }
-        }
-        storeSummary[key].totalItems++
-        storeSummary[key].totalBalance += item.balance
-        storeSummary[key].totalBaseBalance += getBaseBalance(item)
-      })
-      headers = ['Store Name', 'Total Items', 'Total Balance', 'Total Base Balance']
-      rows = Object.values(storeSummary).map(summary => [
-        summary.storeName,
-        summary.totalItems,
-        summary.totalBalance,
-        summary.totalBaseBalance
-      ])
-    }
-    
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
-    })
-    
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
+  try {
+    const blob = await balanceService.exportBalances(exportType.value)
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `store_balance_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
-    URL.revokeObjectURL(url)
+    window.URL.revokeObjectURL(url)
     
+    showToastMessage('Export completed successfully!', 'success')
+  } catch (error) {
+    console.error('Export error:', error)
+    showToastMessage('Failed to export data', 'error')
+  } finally {
     exporting.value = false
     closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
-  }, 500)
+  }
 }
 
 const showToastMessage = (msg, type = 'success') => {
@@ -979,6 +1582,86 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
+
+// ================================================================
+// LIFECYCLE HOOKS
+// ================================================================
+onMounted(async () => {
+  await Promise.all([
+    fetchStores(),
+    fetchGroups(),
+    fetchItems(),
+    fetchBalances()
+  ])
+  
+  itemRequests.value = [
+    {
+      id: 1,
+      requestCode: 'REQ-001',
+      askingStoreId: 2,
+      supplyingStoreId: 1,
+      status: 'approved',
+      requestedDate: '2024-01-15',
+      items: [
+        { itemId: 1, quantity: 10 },
+        { itemId: 6, quantity: 5 }
+      ],
+      remark: 'Stock transfer for production'
+    },
+    {
+      id: 2,
+      requestCode: 'REQ-002',
+      askingStoreId: 3,
+      supplyingStoreId: 2,
+      status: 'approved',
+      requestedDate: '2024-01-16',
+      items: [
+        { itemId: 9, quantity: 20 },
+        { itemId: 10, quantity: 10 }
+      ],
+      remark: 'Paint order for new project'
+    },
+    {
+      id: 3,
+      requestCode: 'REQ-003',
+      askingStoreId: 4,
+      supplyingStoreId: 6,
+      status: 'approved',
+      requestedDate: '2024-01-17',
+      items: [
+        { itemId: 14, quantity: 15 },
+        { itemId: 15, quantity: 100 }
+      ],
+      remark: 'Metal sheets for construction'
+    },
+    {
+      id: 4,
+      requestCode: 'REQ-004',
+      askingStoreId: 1,
+      supplyingStoreId: 7,
+      status: 'approved',
+      requestedDate: '2024-01-18',
+      items: [
+        { itemId: 17, quantity: 5 },
+        { itemId: 18, quantity: 10 }
+      ],
+      remark: 'Tools for maintenance team'
+    },
+    {
+      id: 5,
+      requestCode: 'REQ-005',
+      askingStoreId: 8,
+      supplyingStoreId: 9,
+      status: 'approved',
+      requestedDate: '2024-01-19',
+      items: [
+        { itemId: 19, quantity: 50 },
+        { itemId: 20, quantity: 30 }
+      ],
+      remark: 'Calcium and finishing materials'
+    },
+  ]
+})
 </script>
 
 <style scoped>
@@ -1082,6 +1765,25 @@ const showToastMessage = (msg, type = 'success') => {
   background: #2563eb;
 }
 
+.btn-process-requests {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-process-requests:hover {
+  background: #7c3aed;
+}
+
 /* ================================================================
    FILTER BAR
    ================================================================ */
@@ -1164,7 +1866,7 @@ const showToastMessage = (msg, type = 'success') => {
    ================================================================ */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -1208,16 +1910,17 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   TABLE - Compact with no horizontal scroll
+   TABLE
    ================================================================ */
 .table-container {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 .balance-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  min-width: 700px;
 }
 
 .balance-table th,
@@ -1377,56 +2080,12 @@ const showToastMessage = (msg, type = 'success') => {
   background: #f1f5f9;
 }
 
-/* ================================================================
-   BUTTONS
-   ================================================================ */
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
+.delete-btn {
+  color: #ef4444;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e2e8f0;
-}
-
-.readonly-field {
-  background: #f1f5f9 !important;
-  color: #64748b !important;
-  cursor: not-allowed;
+.delete-btn:hover {
+  background: #fee2e2;
 }
 
 /* ================================================================
@@ -1506,8 +2165,8 @@ const showToastMessage = (msg, type = 'success') => {
   box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
 }
 
-.stock-modal .modal-container {
-  max-width: 420px;
+.process-modal .modal-container {
+  max-width: 650px;
 }
 
 .toggle-modal .modal-container {
@@ -1516,6 +2175,10 @@ const showToastMessage = (msg, type = 'success') => {
 
 .export-modal .modal-container {
   max-width: 380px;
+}
+
+.delete-modal .modal-container {
+  max-width: 400px;
 }
 
 .modal-header {
@@ -1574,22 +2237,19 @@ const showToastMessage = (msg, type = 'success') => {
 /* ================================================================
    FORMS
    ================================================================ */
-.balance-form .form-row,
-.stock-form .form-row {
+.balance-form .form-row {
   display: flex;
   gap: 10px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
-.balance-form .form-group,
-.stock-form .form-group {
+.balance-form .form-group {
   flex: 1;
   min-width: 120px;
 }
 
-.balance-form .form-group label,
-.stock-form .form-group label {
+.balance-form .form-group label {
   display: block;
   font-size: 10px;
   font-weight: 600;
@@ -1600,9 +2260,7 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 .balance-form .form-group input,
-.balance-form .form-group select,
-.stock-form .form-group input,
-.stock-form .form-group select {
+.balance-form .form-group select {
   width: 100%;
   padding: 5px 8px;
   border: 1px solid #e2e8f0;
@@ -1612,80 +2270,762 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 .balance-form .form-group input:focus,
-.balance-form .form-group select:focus,
-.stock-form .form-group input:focus,
-.stock-form .form-group select:focus {
+.balance-form .form-group select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-.balance-form .hint {
-  display: block;
-  font-size: 9px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.stock-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
+.balance-form .form-group input:read-only {
   background: #f1f5f9;
-  border-radius: 6px;
-  padding: 3px;
-}
-
-.stock-tab {
-  flex: 1;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  background: transparent;
   color: #64748b;
-  transition: all 0.2s;
+  cursor: not-allowed;
 }
 
-.stock-tab.active {
-  background: white;
-  color: #1e293b;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.stock-tab:hover:not(.active) {
-  background: #e2e8f0;
-}
-
-.stock-item-info {
-  background: #f8fafc;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.base-info {
-  color: #64748b;
-  font-size: 11px;
-}
-
-.hint-text {
+.balance-form .hint {
   display: block;
   font-size: 10px;
   color: #94a3b8;
   margin-top: 2px;
 }
 
-.error-text {
-  color: #ef4444;
+.process-modal .form-group {
+  margin-bottom: 12px;
+}
+
+.process-modal .form-group label {
+  display: block;
   font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.process-modal .form-group select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.process-modal .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* ================================================================
+   INITIALIZE BALANCE TABS
+   ================================================================ */
+.init-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.init-tab {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  background: transparent;
+  color: #64748b;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.init-tab.active {
+  background: white;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.init-tab:hover:not(.active) {
+  background: #e2e8f0;
+}
+
+/* ================================================================
+   IMPORT STYLES
+   ================================================================ */
+.import-info {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+  margin-bottom: 16px;
+}
+
+.import-info .info-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.info-text {
+  font-size: 13px;
+  color: #475569;
+  margin: 4px 0;
+}
+
+.csv-format-list {
+  margin: 8px 0 12px 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.csv-format-list li {
+  margin: 3px 0;
+}
+
+.hint-text {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.btn-template {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-template:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-template:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+
+.file-upload-area:hover:not(.disabled) {
+  border-color: #3b82f6;
+  background: #f8fafc;
+}
+
+.file-upload-area.drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.file-upload-area.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.file-icon {
+  font-size: 24px;
+}
+
+.file-name {
+  font-weight: 500;
+}
+
+.file-size {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.remove-file {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.upload-icon {
+  font-size: 32px;
+}
+
+.upload-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Import Progress */
+.import-progress {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-status {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.status-success { color: #16a34a; }
+.status-failed { color: #dc2626; }
+.status-remaining { color: #475569; }
+
+/* Import Preview */
+.import-preview {
+  margin-top: 16px;
+}
+
+.import-preview h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.preview-table-container {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.preview-table th {
+  background: #f8fafc;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.preview-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.preview-more {
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 8px;
+}
+
+/* Import Results */
+.import-results {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.result-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.result-success { color: #16a34a; }
+.result-failed { color: #dc2626; }
+.result-total { color: #475569; }
+
+.result-errors {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.result-errors ul {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.result-errors li {
+  margin: 2px 0;
+}
+
+/* ================================================================
+   PROCESS REQUESTS MODAL
+   ================================================================ */
+.process-info {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+}
+
+.process-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.process-info .info-icon {
+  font-size: 16px;
+}
+
+.info-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.process-rules {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.process-rules li {
+  margin: 4px 0;
+}
+
+.text-success {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.text-danger {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.requests-checkbox-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.request-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.request-checkbox:hover {
+  background: #f8fafc;
+}
+
+.request-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.request-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.req-code {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.req-date {
+  color: #94a3b8;
+}
+
+.req-items-count {
+  color: #475569;
+  font-size: 11px;
+}
+
+.req-action {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.req-action.action-add {
+  color: #22c55e;
+  background: #dcfce7;
+}
+
+.req-action.action-remove {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.select-all-container {
+  margin-bottom: 8px;
+  padding: 6px 0;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.no-requests {
+  text-align: center;
+  padding: 30px 20px;
+  color: #94a3b8;
+}
+
+.no-requests-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.requests-preview {
+  margin-top: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.requests-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.request-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.request-item:last-child {
+  border-bottom: none;
+}
+
+.request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.request-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.request-date {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.request-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.request-item-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #1e293b;
+}
+
+.item-qty {
+  font-weight: 600;
+  color: #475569;
+}
+
+.item-uom {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.item-action {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.item-action.action-add {
+  color: #22c55e;
+  background: #dcfce7;
+}
+
+.item-action.action-remove {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.request-remark {
   margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.remark-label {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+/* ================================================================
+   TOAST
+   ================================================================ */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+  animation: slideIn 0.3s ease;
+  border-left: 3px solid #10b981;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.toast.error {
+  border-left-color: #ef4444;
+}
+
+.toast.info {
+  border-left-color: #3b82f6;
+}
+
+.toast.warning {
+  border-left-color: #f59e0b;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 30px !important;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-icon {
+  font-size: 36px;
+  opacity: 0.3;
+}
+
+.empty-content p {
+  color: #64748b;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ================================================================
+   DELETE MODAL
+   ================================================================ */
+.delete-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.delete-warning {
+  color: #dc2626;
+  font-weight: 600;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+  text-align: center;
+}
+
+.delete-question {
+  font-size: 14px;
+  color: #475569;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
 }
 
 /* ================================================================
@@ -1734,77 +3074,24 @@ const showToastMessage = (msg, type = 'success') => {
   border-color: #3b82f6;
 }
 
-/* ================================================================
-   EMPTY STATE
-   ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 30px !important;
-}
-
-.empty-content {
+.init-info {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 10px;
-}
-
-.empty-icon {
-  font-size: 36px;
-  opacity: 0.3;
-}
-
-.empty-content p {
-  color: #64748b;
-  margin: 0;
-  font-size: 14px;
-}
-
-/* ================================================================
-   TOAST
-   ================================================================ */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 10px 16px;
+  padding: 10px 14px;
+  background: #eff6ff;
   border-radius: 8px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 3px solid #10b981;
-  white-space: nowrap;
-  max-width: 90vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border: 1px solid #bfdbfe;
+  margin-bottom: 14px;
   font-size: 13px;
-}
-
-.toast.error {
-  border-left-color: #ef4444;
-}
-
-.toast.info {
-  border-left-color: #3b82f6;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  color: #1e293b;
 }
 
 /* ================================================================
    PRINT STYLES
    ================================================================ */
 @media print {
-  .btn-add, .btn-print, .btn-export, .search-box, .filter-bar, .pagination, .action-buttons, .icon-btn {
+  .btn-add, .btn-print, .btn-export, .btn-process-requests, .search-box, .filter-bar, .pagination, .action-buttons, .icon-btn {
     display: none !important;
   }
   .section-card {
@@ -1829,10 +3116,23 @@ const showToastMessage = (msg, type = 'success') => {
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
   .filter-actions { width: 100%; margin-left: 0; justify-content: flex-start; }
-  .stats-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
   .pagination { flex-wrap: wrap; }
-  .balance-form .form-row, .stock-form .form-row { flex-direction: column; }
+  .balance-form .form-row { flex-direction: column; }
   .modal-container { margin: 10px; max-width: 100% !important; }
-  .stock-item-info { flex-direction: column; gap: 4px; }
+  .process-modal .modal-container { max-width: 100% !important; }
+  .request-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .request-items { flex-direction: column; gap: 2px; }
+  .preview-header { flex-direction: column; gap: 4px; align-items: flex-start; }
+  .request-info { flex-wrap: wrap; }
+  .init-tabs { flex-direction: column; }
+  .import-info { flex-direction: column; }
+}
+
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .balance-table { font-size: 11px; min-width: 600px; }
+  .requests-checkbox-list { max-height: 150px; }
+  .requests-list { max-height: 150px; }
 }
 </style>

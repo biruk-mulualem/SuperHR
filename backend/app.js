@@ -51,7 +51,13 @@ const uploadDirs = [
 
  // Item specifications
   "uploads/items/specifications",
-  
+
+    // ============================================
+  // STORE BALANCE - ADD THIS
+  // ============================================
+  "uploads/balances/",
+  "uploads/balances/imports",
+  "uploads/balances/exports",
 
   // Temp uploads
   "uploads/temp/"
@@ -81,6 +87,8 @@ const storeRoutes  = require("./routes/storeRoutes");
 const penaltySummaryRoutes = require('./routes/penaltySummaryRoutes');
 const itemRoutes=require('./routes/itemRoutes');
 
+
+const balanceRoutes = require('./routes/balanceRoutes');
 
 
 // Charity module 
@@ -148,6 +156,8 @@ app.use("/api/letter-templates", letterTemplateRoutes);
 
 
 
+app.use('/api/item-requests', itemRequestRoutes);
+app.use('/api/balances', balanceRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
