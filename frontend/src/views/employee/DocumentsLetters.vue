@@ -195,7 +195,7 @@
     </div>
   </div>
 </template>
-
+66102822650
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -203,7 +203,6 @@ import { useRouter } from 'vue-router'
 // Import document components
 import DynamicDocument from './components/documents/DynamicDocument.vue'
 import Tureta from './components/documents/tureta.vue'
-import GuaranteeLetter1 from './components/documents/GuaranteeLetter1.vue'
 
 import { QuillEditor } from '@vueup/vue-quill'
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
@@ -218,7 +217,6 @@ const router = useRouter()
 // Custom Components Map
 const customComponents = {
   'Tureta': Tureta,
-  'GuaranteeLetter1': GuaranteeLetter1
 }
 
 // Letter Templates State

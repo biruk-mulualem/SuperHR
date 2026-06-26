@@ -12,6 +12,7 @@
       <div 
         class="editable-document-wrapper" 
         :class="{ 'is-editing': isEditing }"
+        :style="editorCssVars"
         title="Double-click to toggle editing mode"
       >
         <QuillEditor 
@@ -69,6 +70,43 @@ const isEditing = ref(false)
 const isManualEdit = ref(false)
 const documentWrapper = ref(null)
 
+const contentHeight = computed(() => {
+  // A4 Height = 1123px, Header ~ 155px, Footer ~ 66px
+  return props.template?.meta?.includeFooter ? 902 : 968
+})
+
+const editorCssVars = computed(() => {
+  const height = contentHeight.value;
+  
+  const vars = {
+    '--page-content-height': `${height}px`
+  };
+
+  if (!isEditing.value) return vars;
+  
+  const maxPages = 30; // 30 pages limit for editing
+  const totalHeight = height * maxPages;
+  
+  let svgLines = '';
+  for (let i = 1; i < maxPages; i++) {
+    const yPos = height * i;
+    svgLines += `
+      <line x1='0' y1='${yPos}' x2='800' y2='${yPos}' stroke='#3b82f6' stroke-dasharray='10,10' stroke-width='2'/>
+      <rect x='300' y='${yPos - 15}' width='200' height='30' fill='white'/>
+      <text x='400' y='${yPos + 4}' font-family='Nyala, Arial' font-size='12' fill='#3b82f6' text-anchor='middle' font-weight='bold'>--------- ገጽ (PAGE) ${i + 1} ---------</text>
+    `;
+  }
+  
+  const svg = `<svg width='800' height='${totalHeight}' xmlns='http://www.w3.org/2000/svg'>${svgLines}</svg>`;
+  // Safely encode to data URI format
+  const encodedSvg = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
+  
+  vars['--page-bg-image'] = encodedSvg;
+  vars['--page-bg-size'] = `100% ${totalHeight}px`;
+  
+  return vars;
+})
+
 const isContentEmpty = computed(() => {
   if (!localContent.value) return true
   // Strip HTML tags and check if anything remains
@@ -111,19 +149,28 @@ const applyFormDataOnly = () => {
 
 const toggleEditing = (e) => {
   e.stopPropagation()
-  isEditing.value = !isEditing.value
-  if (isEditing.value) {
+  if (!isEditing.value) {
+    // Entering edit mode: Load the raw template so {{ }} tags are preserved!
+    isEditing.value = true
     isManualEdit.value = true
+    localContent.value = props.template?.content || ''
+  } else {
+    // Cancelling edit mode
+    disableEditing()
   }
 }
 
 const handleSave = () => {
+  // Emits the raw template with {{ }} intact
   emit('save', localContent.value)
   disableEditing()
 }
 
 const disableEditing = () => {
   isEditing.value = false
+  isManualEdit.value = false
+  // Re-render the compiled version to show actual data
+  generateContent()
 }
 
 const handleClickOutside = (event) => {
@@ -139,10 +186,11 @@ watch([() => props.template, () => props.employee], () => {
   }
 }, { deep: true })
 
-// Watch formData separately — ALWAYS re-render so adjustment values show live
-// This re-generates from the original template so values are always accurate
+// Watch formData separately
 watch(() => props.formData, () => {
-  generateContent()
+  if (!isManualEdit.value) {
+    generateContent()
+  }
 }, { deep: true })
 
 // Reset manual edit if template ID changes (switched to a different letter)
@@ -173,6 +221,7 @@ onUnmounted(() => {
   cursor: pointer;
   position: relative;
   background: transparent !important;
+  margin: 0 -80px; /* Pull container to the absolute edge of the page */
 }
 
 .editable-document-wrapper :deep(.ql-editor) {
@@ -180,30 +229,31 @@ onUnmounted(() => {
   font-size: 14px;
   line-height: 1.8;
   color: #1e293b;
-  padding: 0;
+  padding: 0 80px; /* Restore the text padding so it aligns perfectly */
   overflow-y: auto !important; /* Enable vertical internal scroll */
   overflow-x: hidden !important; /* Disable horizontal scroll */
   flex: 1;
 }
 
-/* Custom Thin Scrollbar */
+/* Custom Modern Scrollbar */
 .editable-document-wrapper :deep(.ql-editor)::-webkit-scrollbar {
-  width: 2px;
+  width: 8px; /* Much wider and easier to click */
 }
 .editable-document-wrapper :deep(.ql-editor)::-webkit-scrollbar-track {
-  background: transparent;
+  background: #f8fafc;
+  border-left: 1px solid #e2e8f0;
 }
 .editable-document-wrapper :deep(.ql-editor)::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 .editable-document-wrapper :deep(.ql-editor)::-webkit-scrollbar-thumb:hover {
-  background: #3b82f6;
+  background: #94a3b8;
 }
 
 .editable-document-wrapper :deep(.ql-container) {
   border: none !important;
-  height: 902px; /* Precise height for A4 content (1123px - 155px header - 66px footer) */
+  height: var(--page-content-height, 902px); /* Dynamic height based on footer */
   display: flex;
   flex-direction: column;
 }
@@ -215,18 +265,19 @@ onUnmounted(() => {
 
 .editable-document-wrapper.is-editing {
   outline: 2px dashed #3b82f6;
-  outline-offset: 10px;
+  outline-offset: -2px; /* Bring the outline inward so it doesn't bleed outside the A4 page */
   background: #fff;
   cursor: text;
   padding-bottom: 20px;
 }
 
-/* Page Marker for Editor - Updated for exactly 902px content area */
+/* Page Marker for Editor - Updated for dynamic pages */
 .editable-document-wrapper.is-editing :deep(.ql-editor) {
-  background-image: url("data:image/svg+xml,%3Csvg width='800' height='902' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='0' y1='901' x2='800' y2='901' stroke='%233b82f6' stroke-dasharray='10,10' stroke-width='2'/%3E%3Crect x='300' y='885' width='200' height='30' fill='white'/%3E%3Ctext x='400' y='905' font-family='Nyala, Arial' font-size='12' fill='%233b82f6' text-anchor='middle' font-weight='bold'%3E--------- NEXT PAGE ---------%3C/text%3E%3C/svg%3E");
-  background-size: 100% 902px;
-  background-repeat: repeat-y;
+  background-image: var(--page-bg-image);
+  background-size: var(--page-bg-size);
+  background-repeat: no-repeat;
   background-position: center top;
+  background-attachment: local; /* Essential for marker to scroll exactly with text */
 }
 
 .inline-save-container {
@@ -281,5 +332,24 @@ onUnmounted(() => {
 .editable-document-wrapper :deep(.signature-section) {
   margin-top: 50px;
   text-align: right;
+}
+
+@media print {
+  .editable-document-wrapper {
+    min-height: auto !important;
+    padding-bottom: 0 !important;
+  }
+  
+  .editable-document-wrapper :deep(.ql-container) {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .editable-document-wrapper :deep(.ql-editor) {
+    overflow: visible !important;
+    height: auto !important;
+    background-image: none !important; /* Hide dashed page markers in actual print */
+  }
 }
 </style>

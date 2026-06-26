@@ -111,9 +111,9 @@
         <div class="form-block-stack">
           <label class="field-label font-bold">4. <span class="asterisk">*</span>የኢትዮጵያ ዜግነት የተገኘበት ሁኔታ:-</label>
           <div class="checkbox-alignment-row indent-level-1">
-            <span class="checkbox-item-wrapper" :class="{ 'weight-heavy': employee.nationalityAcquisition?.type === 'by_birth' }">
-              <span class="vector-checkbox-box" :class="{ 'checked-box': employee.nationalityAcquisition?.type === 'by_birth' }">
-                {{ employee.nationalityAcquisition?.type === 'by_birth' ? '✔' : '' }}
+            <span class="checkbox-item-wrapper" :class="{ 'weight-heavy': employee?.nationalityAcquisition?.type === 'by_birth' }">
+              <span class="vector-checkbox-box" :class="{ 'checked-box': employee?.nationalityAcquisition?.type === 'by_birth' }">
+                {{ employee?.nationalityAcquisition?.type === 'by_birth' ? '✔' : '' }}
               </span> በትውልድ
             </span>
             <span class="checkbox-item-wrapper" :class="{ 'weight-heavy': employee.nationalityAcquisition?.type === 'by_law' }">
@@ -189,7 +189,7 @@
               <div class="half-width-column padding-left-lg">
                 <label class="field-label font-bold label-width-short">የቤት ቁጥር</label>
                 <span class="data-text-fill font-bold line-medium flex-grow padding-left-sm text-center">
-                  {{ employee.currentAddress?.houseNumber }}
+                  {{ employee?.currentAddress?.houseNumber }}
                 </span>
               </div>
             </div>
@@ -656,10 +656,9 @@ export default {
           financialSupport: "በየወሩ ለህክምና መግዣ የገንዘብ ድጋፍ ይደረግላቸዋል::",
           otherSupport: "የመኖሪያ ቤት ኪራይ ክፍያ እገዛ ያገኛሉ::"
         }
-      }
       })
     }
-  }
+  },
   computed: {
     // Generates a clean full name dynamically mapping the helper logic in your sequelize model
     employeeFullName() {
@@ -707,7 +706,7 @@ export default {
       }
       return rows;
     }
-  }
+  },
   methods: {
     // Standard Amharic Gender Translation utility mapping DB Enums safely
     translateGender(val) {
@@ -729,7 +728,7 @@ export default {
       if (part === "day") return parts[2];
       return "";
     }
-  }
+  },
 };
 </script>
 

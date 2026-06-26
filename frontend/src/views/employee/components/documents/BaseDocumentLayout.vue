@@ -43,6 +43,7 @@
         <tfoot v-if="includeFooter">
           <tr>
             <td>
+              <div class="print-footer-spacer"></div>
               <div class="print-footer">
                 <img :src="footerImage" class="footer-img-print" />
               </div>
@@ -179,9 +180,17 @@ const backgroundStyle = computed(() => {
     object-fit: fill;
   }
 
+  .print-footer-spacer {
+    height: 66px; /* Invisible spacer to prevent content overlap */
+  }
+
   .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
     height: 66px;
     width: 100%;
+    z-index: 1000;
   }
 
   .footer-img-print {
@@ -189,6 +198,7 @@ const backgroundStyle = computed(() => {
     height: 66px;
     display: block;
     object-fit: fill;
+    margin: 0 auto; /* Centers the image inside the fixed block */
   }
 
   .print-content {
