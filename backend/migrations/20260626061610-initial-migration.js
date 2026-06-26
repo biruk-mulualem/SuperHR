@@ -1161,6 +1161,37 @@ module.exports = {
         allowNull: false,
       },
     });
+    await queryInterface.createTable('letter_templates', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+      content: {
+        type: Sequelize.TEXT,
+        allowNull: false,
+      },
+      fields: {
+        type: Sequelize.JSONB,
+        allowNull: false,
+      },
+      meta: {
+        type: Sequelize.JSONB,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
     await queryInterface.createTable('payroll_periods', {
       period_id: {
         type: Sequelize.INTEGER,
@@ -4596,6 +4627,7 @@ module.exports = {
     await queryInterface.dropTable('leave_requests');
     await queryInterface.dropTable('leave_extensions');
     await queryInterface.dropTable('leave_notifications');
+    await queryInterface.dropTable('letter_templates');
     await queryInterface.dropTable('payroll_periods');
     await queryInterface.dropTable('employee_penalties');
     await queryInterface.dropTable('onhold_payroll');

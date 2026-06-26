@@ -1,145 +1,195 @@
 <template>
   <div class="documents-page">
-    <!-- Rich Text Toolbar -->
-    <div
-      v-if="showToolbar"
-      class="rich-text-toolbar"
-      :style="{
-        top: toolbarPosition.top + 'px',
-        left: toolbarPosition.left + 'px',
-      }"
-    >
-      <button @click="execCommand('bold')" class="toolbar-btn">
-        <strong>B</strong>
-      </button>
-      <button @click="execCommand('italic')" class="toolbar-btn">
-        <em>I</em>
-      </button>
-      <button @click="execCommand('underline')" class="toolbar-btn">
-        <u>U</u>
-      </button>
-      <div class="toolbar-divider"></div>
-      
-      <!-- FIXED: Use changeFontName instead of execCommand -->
-      <select @change="changeFontName($event.target.value)" class="toolbar-select">
-        <option value="'Nyala', 'Abyssinica SIL', serif">Nyala</option>
-        <option value="'Times New Roman', serif">Times New Roman</option>
-        <option value="'Arial', sans-serif">Arial</option>
-      </select>
-
-      <!-- FIXED: Use changeFontSize instead of execCommand -->
-      <select @change="changeFontSize($event.target.value)" class="toolbar-select">
-        <option value="11">11px</option>
-        <option value="12">12px</option>
-        <option value="13">13px</option>
-        <option value="14">14px</option>
-        <option value="15">15px</option>
-        <option value="16">16px</option>
-        <option value="17">17px</option>
-        <option value="18" selected>18px</option>
-        <option value="19">19px</option>
-        <option value="20">20px</option>
-        <option value="21">21px</option>
-        <option value="22">22px</option>
-      </select>
-      
-      <div class="toolbar-divider"></div>
-      <button @click="execCommand('justifyLeft')" class="toolbar-btn">
-        ⬅️
-      </button>
-      <button @click="execCommand('justifyCenter')" class="toolbar-btn">
-        ⬌
-      </button>
-      <button @click="execCommand('justifyRight')" class="toolbar-btn">
-        ➡️
-      </button>
-      <div class="toolbar-divider"></div>
-      <button @click="execCommand('undo')" class="toolbar-btn">↩️</button>
-      <button @click="execCommand('redo')" class="toolbar-btn">↪️</button>
-    </div>
-
     <!-- Floating Buttons -->
     <div class="right-float-buttons">
       <button @click="goBack" class="float-btn back-float">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M19 12H5M12 19l-7-7 7-7" />
         </svg>
       </button>
-      <button @click="openSettings" class="float-btn settings-float">
+      <button @click="openCreateModal" class="float-btn create-float" title="አዲስ ደብዳቤ ፍጠር (Create)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+      <button @click="openEditModal" class="float-btn edit-template-float" :disabled="!selectedDocument || selectedDocument.isStatic" title="ደብዳቤውን ማስተካከያ (Edit Template)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+          <path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+      </button>
+      <button @click="openAdjustmentModal" class="float-btn adjust-float" :disabled="!selectedDocument">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
         </svg>
       </button>
-      <button @click="printDocument" class="float-btn print-float">
+      <button @click="printDocument" class="float-btn print-float" :disabled="!selectedDocument">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path
-            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2z"
-          />
+          <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2z" />
         </svg>
       </button>
     </div>
 
-    <!-- Document Viewer -->
-    <div class="document-container">
-      <div class="document-wrapper">
-        <div
-          ref="documentContent"
-          class="document-content"
-          contenteditable="true"
-          v-html="documentHtml"
-          @mouseup="showToolbarAtSelection"
-          @keyup="showToolbarAtSelection"
-          @blur="saveContent"
-        ></div>
-      </div>
+    <!-- Document Display -->
+    <div v-if="!selectedDocument" class="empty-preview">
+      <div class="empty-icon">📄</div>
+      <h3>እባክዎ ሰነድ ይምረጡ</h3>
+      <p>በቀኝ በኩል ባለው ማስተካከያ ቁልፍ ሰነድ ይምረጡ</p>
+    </div>
+    <div v-else class="document-container">
+      <component 
+        :is="selectedDocument.isStatic ? customComponents[selectedDocument.component] : DynamicDocument"
+        :template="selectedDocument" 
+        :employee="selectedEmployee || {}" 
+        :formData="documentData" 
+        @save="handleInlineSave"
+      />
     </div>
 
-    <!-- Settings Modal -->
-    <div
-      v-if="showSettings"
-      class="modal-overlay"
-      @click.self="showSettings = false"
-    >
-      <div class="modal-container">
+    <!-- Adjustment Modal -->
+    <div v-if="showAdjustmentModal" class="modal-overlay" @click.self="closeAdjustmentModal">
+      <div class="modal-container modal-adjustment">
         <div class="modal-header">
-          <h2>ማስተካከያ</h2>
-          <button @click="showSettings = false" class="close-btn">
-            &times;
-          </button>
+          <h2>ማስተካከያ - {{ selectedDocument?.name }}</h2>
+          <button @click="closeAdjustmentModal" class="close-btn">&times;</button>
         </div>
         <div class="modal-body">
-          <div class="field-group">
-            <label>የሰራተኛ ስም</label>
-            <input v-model="employeeName" placeholder="ሙሉ ስም" />
+          <div class="modal-section">
+            <label class="modal-label">ሰነድ ይምረጡ</label>
+            <select v-model="selectedDocument" @change="onDocumentChange" class="modal-select">
+              <option v-for="doc in documents" :key="doc.id" :value="doc">
+                {{ doc.name }}
+              </option>
+            </select>
           </div>
-          <div class="field-group">
-            <label>መታወቂያ ቁጥር</label>
-            <input v-model="employeeId" placeholder="መታወቂያ ቁጥር" />
+
+          <div class="modal-section">
+            <label class="modal-label">ሰራተኛ ይምረጡ</label>
+            <div class="employee-select-wrapper">
+              <div v-if="selectedEmployee" class="selected-employee-modal" @click="showEmployeePicker = true">
+                <div class="emp-info-modal">
+                  <div class="emp-name-modal">{{ selectedEmployee.fullName }}</div>
+                  <div class="emp-detail-modal">{{ selectedEmployee.position }} • {{ selectedEmployee.idNumber }}</div>
+                </div>
+                <button @click.stop="clearEmployee" class="remove-emp-modal">×</button>
+              </div>
+              <button v-else @click="showEmployeePicker = true" class="select-emp-modal-btn">
+                + ሰራተኛ ምረጥ
+              </button>
+            </div>
           </div>
-          <div class="field-group">
-            <label>የተቀጠሩበት ቀን</label>
-            <input v-model="hireDate" placeholder="ቀን" />
+
+          <div class="modal-divider"></div>
+
+          <!-- Dynamic Fields based on document type -->
+          <div v-for="field in documentFields" :key="field.key" class="modal-field">
+            <label>{{ field.label }}</label>
+            <input v-model="documentData[field.key]" type="text" :placeholder="field.placeholder" />
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="showSettings = false" class="cancel-btn">ይቅር</button>
-          <button @click="updateDocument" class="save-btn">አስቀምጥ</button>
+          <button @click="closeAdjustmentModal" class="cancel-btn">ይቅር</button>
+          <button @click="saveAdjustments" class="save-btn">አስቀምጥ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create/Edit Template Modal -->
+    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeCreateModal">
+      <div class="modal-container modal-large">
+        <div class="modal-header">
+          <h2>{{ newTemplate.id ? 'ደብዳቤ ማስተካከያ (Edit Template)' : 'አዲስ ደብዳቤ መፍጠሪያ (Create Template)' }}</h2>
+          <button @click="closeCreateModal" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <label class="modal-label">የደብዳቤው ስም (Template Name)</label>
+            <input v-model="newTemplate.name" type="text" class="modal-search" placeholder="ለምሳሌ፡ የልምድ ማስረጃ..." />
+          </div>
+
+          <div class="modal-section branding-options">
+            <label class="modal-label">ምልክቶች (Branding Options)</label>
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="newTemplate.meta.includeHeader" />
+                ራስጌ (Header)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="newTemplate.meta.includeFooter" />
+                ግርጌ (Footer)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="newTemplate.meta.includeBackground" />
+                ጀርባ (Background)
+              </label>
+            </div>
+          </div>
+          
+          <div class="modal-section">
+            <label class="modal-label">ይዘት (Content - HTML & Variables)</label>
+            <p class="help-text" v-pre>ተለዋዋጮችን ለመጠቀም {{ employee.fullName }} ወይም {{ formData.date }} ይጠቀሙ</p>
+            <div class="editor-container">
+              <QuillEditor theme="snow" v-model:content="newTemplate.content" contentType="html" placeholder="የደብዳቤው ይዘት እዚህ ይፃፉ..." />
+            </div>
+          </div>
+
+          <div class="modal-divider"></div>
+          
+          <div class="modal-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <label class="modal-label" style="margin: 0;">ተጨማሪ መረጃዎች (Form Fields)</label>
+              <button @click="addField" class="add-field-btn">+ አዲስ መረጃ</button>
+            </div>
+            <p class="help-text" style="margin-bottom: 10px;" v-pre>ቁልፍ ስምን (Key) ካስቀመጡ በኋላ <strong>{{ formData.KEY }}</strong> ወደ ምስጢር ቁምፊ ይለጥፉ — ከታቹ ያለውን chip ይጫኑ ለመቅዳት</p>
+            
+            <div v-for="(field, index) in newTemplate.fields" :key="index" class="field-row">
+              <div class="field-row-inputs">
+                <input v-model="field.key" placeholder="Key (e.g. date)" class="field-input" />
+                <input v-model="field.label" placeholder="Label (e.g. ቀን)" class="field-input" />
+                <input v-model="field.placeholder" placeholder="Default value" class="field-input" />
+                <button @click="removeField(index)" class="remove-btn">×</button>
+              </div>
+              <div v-if="field.key" class="field-variable-tag" @click="copyVariable(fieldVar(field.key))" title="Click to copy">
+                <span class="tag-icon">📋</span>
+                <code>{{ fieldVar(field.key) }}</code>
+                <span class="tag-copy-hint">click to copy</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeCreateModal" class="cancel-btn">ይቅር</button>
+          <button @click="saveTemplate" class="save-btn" :disabled="!newTemplate.name || !newTemplate.content">አስቀምጥ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Employee Picker Modal -->
+    <div v-if="showEmployeePicker" class="modal-overlay" @click.self="showEmployeePicker = false">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h2>ሰራተኛ ይምረጡ</h2>
+          <button @click="showEmployeePicker = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input v-model="employeeSearch" placeholder="በስም ወይም መታወቂያ ይፈልጉ..." class="modal-search" />
+          <div class="employees-list">
+            <div v-for="emp in filteredEmployees" :key="emp.id" @click="selectEmployee(emp)" class="employee-item">
+              <div class="emp-avatar">{{ emp.fullName.charAt(0) }}</div>
+              <div class="emp-info">
+                <div class="emp-name">{{ emp.fullName }}</div>
+                <div class="emp-dept">{{ emp.department }} • {{ emp.position }}</div>
+                <div class="emp-id">መታወቂያ: {{ emp.idNumber }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Toast -->
     <div class="toast-container">
-      <div
-        v-for="toast in toasts"
-        :key="toast.id"
-        :class="['toast', toast.type]"
-      >
+      <div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type]">
         {{ toast.message }}
       </div>
     </div>
@@ -147,302 +197,312 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
-import { useRouter } from "vue-router";
-import fullBackgroundImage from "@/assets/documentBackground.png";
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-const router = useRouter();
+// Import document components
+import DynamicDocument from './components/documents/DynamicDocument.vue'
+import Tureta from './components/documents/tureta.vue'
+import GuaranteeLetter1 from './components/documents/GuaranteeLetter1.vue'
+
+import { QuillEditor } from '@vueup/vue-quill'
+import '@vueup/vue-quill/dist/vue-quill.snow.css'
+import '@vueup/vue-quill/dist/vue-quill.bubble.css'
+
+// Import Services
+import letterTemplateService from '@/stores/letterTemplateService'
+import employeesService from '@/stores/employee'
+
+const router = useRouter()
+
+// Custom Components Map
+const customComponents = {
+  'Tureta': Tureta,
+  'GuaranteeLetter1': GuaranteeLetter1
+}
+
+// Letter Templates State
+const dbDocuments = ref([])
+const loadingTemplates = ref(false)
+
+// Complex / Complex Static Templates
+const staticDocuments = [
+  {
+    id: 'static-tureta',
+    name: 'የሠራተኞች ቅጽ (Tureta registration Form)',
+    component: 'Tureta',
+    isStatic: true,
+    fields: [
+      { key: 'referenceNumber', label: 'የደብዳቤ ቁጥር', placeholder: '001/2025' }
+    ],
+    meta: { includeHeader: false, includeFooter: false, includeBackground: false }
+  }
+]
+
+// Combined list of database + static templates
+const documents = computed(() => {
+  return [...staticDocuments, ...dbDocuments.value]
+})
 
 // State
-const showSettings = ref(false);
-const showToolbar = ref(false);
-const toolbarPosition = ref({ top: 0, left: 0 });
-const documentContent = ref(null);
-const toasts = ref([]);
-const savedHtml = ref("");
+const selectedDocument = ref(null)
+const selectedEmployee = ref(null)
+const documentData = ref({})
+const showAdjustmentModal = ref(false)
+const showCreateModal = ref(false)
+const showEmployeePicker = ref(false)
+const employeeSearch = ref('')
+const toasts = ref([])
+const loadingEmployees = ref(false)
 
-// Form fields
-const employeeName = ref("");
-const employeeId = ref("");
-const hireDate = ref("");
-
-// FIXED: changeFontSize function
-const changeFontSize = (size) => {
-  const selection = window.getSelection();
-  if (!selection.rangeCount || selection.isCollapsed) return;
-
-  const range = selection.getRangeAt(0);
-  const span = document.createElement("span");
-  span.style.fontSize = `${size}px`;
-
-  try {
-    range.surroundContents(span);
-  } catch (e) {
-    const text = range.extractContents();
-    span.appendChild(text);
-    range.insertNode(span);
+const newTemplate = ref({
+  id: null,
+  name: '',
+  content: '',
+  fields: [],
+  meta: {
+    includeHeader: true,
+    includeFooter: true,
+    includeBackground: false
   }
+})
 
-  saveContent();
-};
+// Employees
+const allEmployees = ref([])
 
-// FIXED: changeFontName function
-const changeFontName = (font) => {
-  const selection = window.getSelection();
-  if (!selection.rangeCount || selection.isCollapsed) return;
-
-  const range = selection.getRangeAt(0);
-  const span = document.createElement("span");
-  span.style.fontFamily = font;
-
+// Fetch Templates from Backend
+const fetchTemplates = async () => {
+  loadingTemplates.value = true
   try {
-    range.surroundContents(span);
-  } catch (e) {
-    const text = range.extractContents();
-    span.appendChild(text);
-    range.insertNode(span);
+    const response = await letterTemplateService.getAllLetterTemplates()
+    if (response.success) {
+      dbDocuments.value = response.data
+      
+      // Update selectedDocument reference
+      if (selectedDocument.value) {
+        const fresh = documents.value.find(d => d.id === selectedDocument.value.id)
+        if (fresh) {
+          selectedDocument.value = fresh
+          onDocumentChange()
+        }
+      } else if (documents.value.length > 0) {
+        selectedDocument.value = documents.value[0]
+        onDocumentChange()
+      }
+    } else {
+      addToast(response.error, 'error')
+    }
+  } catch (err) {
+    addToast('Error loading templates', 'error')
+  } finally {
+    loadingTemplates.value = false
   }
+}
 
-  saveContent();
-};
+// Fetch Employees from Backend
+const fetchEmployees = async (search = '') => {
+  loadingEmployees.value = true
+  const response = await employeesService.getEmployees({ search, limit: 100 })
+  if (response.success) {
+    allEmployees.value = response.data.map(emp => ({
+      ...emp,
+      fullName: emp.fullName || `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+      idNumber: emp.employeeCode || emp.employeeId,
+      position: emp.Position?.title || emp.position,
+      department: emp.Department?.name || emp.departmentName,
+      startDate: emp.hireDate,
+      salary: emp.basicSalary
+    }))
+  }
+  loadingEmployees.value = false
+}
 
-const documentHtml = computed(() => {
-  if (savedHtml.value) return savedHtml.value;
+watch(employeeSearch, (newSearch) => {
+  fetchEmployees(newSearch)
+})
 
-  return `
-<div class="letter">
-  <div class="header-row">
-    <div class="ref-number">ቁጥር ሱደቲ/ሰሀ/2015/18</div>
-    <div class="date-text">ቀን 15/01/2018</div>
-  </div>
-  
-  <div class="recipient-line">
-    ለ ኤልሚ ኦሊንዶ ኮንትራክተርስ ኃላ/ የተ/የግ/ማ
-  </div>
-  <div class="address-line">
-    አዲስ አበባ
-  </div>
-  
-  <div class="subject-line">
-    ጉዳዩ ፡ ትብብርን ይመለከታል
-  </div>
-  
-  <div class="body-text">
-    በድርጅታችን ሱፐር ደብል ቲ ጀነራል ትሬዲንግ ኃ.የተ.የግል ማህበር ውስጥ ተቀጥረው እያገለገሉ ለሚገኙት ለአቶ/ወ/ሮ/ወ/ሪት <strong>${employeeName.value || "__________"}</strong> በደብዳቤ ቁጥር <strong>${employeeId.value || "__________"}</strong> በቀን <strong>${hireDate.value || "__________"}</strong> ዓ.ም ከመስሪያ ቤታችሁ በተጻፈ ደብዳቤ አቶ/ወ/ሮ/ወ/ሪት ተመስገን እሸቱ ዋስትና መግባታቸው ይታወቃል።
-  </div>
-  
-  <div class="body-text">
-    ሆኖም ግን በአንድ አንድ መስሪያ ቤቶች ስም ተጽፈው የሚላኩ የዋስትና ደብዳቤዎችን ትክክለኛነት በምናጣራበት ወቅት ከመ/ቤቱ በትክክለኛው መንገድ ያልወጡ ለመሆኑ ማረገገጥ ችለናል። ስለሆነም ይህንን ችግር ለመፍታት እና ህገወጥ ድርጊቱንም በጋራ ከወዲሁ ለመቅረፍ እንዲያስችለን የድርጅታችሁ ትብብር አስፈላጊ ሆኖ አግኝተነዋል። በዚህም መሰረት ከላይ ቁጥሩና ቀኑ የተጠቀሰውን ደብዳቤ ኮፒ የላክን በመሆኑ ደብዳቤው ከድርጅታችሁ ስለመውጣቱ ወይም ስለትክክለኛነቱ በሚመለከተው አካል ፊርማ እና በድርጅቱ ማህተም ታረጋግጡልን ዘንድ በማክበር እንጠይቃለን።
-  </div>
-  
-  <div class="signature-section">
-    <div class="salutation">ከሰላምታ ጋር</div>
-  </div>
-</div>
-`;
-});
+const filteredEmployees = computed(() => allEmployees.value)
+
+const documentFields = computed(() => {
+  if (!selectedDocument.value) return []
+  return selectedDocument.value.fields || []
+})
 
 // Methods
-const goBack = () => router.push("/");
-const openSettings = () => (showSettings.value = true);
-const updateDocument = () => {
-  showSettings.value = false;
-  addToast("ለውጦች ተቀብለዋል", "success");
-};
+const goBack = () => {
+  router.push('/employees')
+}
 
-const saveContent = () => {
-  if (documentContent.value) {
-    savedHtml.value = documentContent.value.innerHTML;
-  }
-};
-
-const execCommand = (command, value = null) => {
-  document.execCommand(command, false, value);
-  documentContent.value?.focus();
-  saveContent();
-};
-
-const showToolbarAtSelection = () => {
-  const selection = window.getSelection();
-  if (
-    !selection ||
-    selection.isCollapsed ||
-    selection.toString().length === 0
-  ) {
-    hideToolbar();
-    return;
-  }
-
-  const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
-
-  if (rect && rect.width > 0) {
-    toolbarPosition.value = {
-      top: rect.top + window.scrollY - 50,
-      left: rect.left + window.scrollX + rect.width / 2 - 150,
-    };
-    showToolbar.value = true;
-  }
-};
-
-const hideToolbar = () => {
-  setTimeout(() => {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) {
-      showToolbar.value = false;
+const openCreateModal = () => {
+  newTemplate.value = {
+    id: null,
+    name: '',
+    content: '',
+    fields: [],
+    meta: {
+      includeHeader: true,
+      includeFooter: true,
+      includeBackground: false
     }
-  }, 200);
-};
+  }
+  showCreateModal.value = true
+}
+
+const openEditModal = () => {
+  if (!selectedDocument.value || selectedDocument.value.isStatic) return
+  newTemplate.value = {
+    id: selectedDocument.value.id,
+    name: selectedDocument.value.name,
+    content: selectedDocument.value.content,
+    fields: (selectedDocument.value.fields || []).map(f => ({ ...f })),
+    meta: {
+      includeHeader: selectedDocument.value.meta?.includeHeader ?? true,
+      includeFooter: selectedDocument.value.meta?.includeFooter ?? true,
+      includeBackground: selectedDocument.value.meta?.includeBackground ?? false
+    }
+  }
+  showCreateModal.value = true
+}
+
+const closeCreateModal = () => {
+  showCreateModal.value = false
+}
+
+const addField = () => {
+  newTemplate.value.fields.push({ key: '', label: '', placeholder: '', value: '' })
+}
+
+const removeField = (index) => {
+  newTemplate.value.fields.splice(index, 1)
+}
+
+const saveTemplate = async () => {
+  if (!newTemplate.value.name || !newTemplate.value.content) return
+  
+  const filteredFields = (newTemplate.value.fields || [])
+    .filter(f => f.key && f.key.trim() !== '')
+    .map(f => ({
+      key: f.key.trim(),
+      label: f.label || f.key,
+      placeholder: f.placeholder || '',
+      value: f.value || ''
+    }))
+
+  const templateToSave = {
+    name: newTemplate.value.name,
+    content: newTemplate.value.content,
+    fields: filteredFields,
+    meta: newTemplate.value.meta
+  }
+  
+  let response
+  if (newTemplate.value.id) {
+    response = await letterTemplateService.updateLetterTemplate(newTemplate.value.id, templateToSave)
+  } else {
+    response = await letterTemplateService.createLetterTemplate(templateToSave)
+  }
+
+  if (response.success) {
+    addToast(response.message || 'ተቀምጧል', 'success')
+    const savedId = response.data?.id || newTemplate.value.id
+    
+    await fetchTemplates()
+    
+    if (savedId) {
+      const saved = documents.value.find(d => d.id === savedId)
+      if (saved) {
+        selectedDocument.value = saved
+        onDocumentChange()
+      }
+    }
+    
+    closeCreateModal()
+  } else {
+    addToast(response.error, 'error')
+  }
+}
+
+const onDocumentChange = () => {
+  if (selectedDocument.value) {
+    const oldData = { ...documentData.value }
+    documentData.value = {}
+    const fields = selectedDocument.value.fields || []
+    fields.forEach(field => {
+      documentData.value[field.key] = oldData[field.key] || field.value || field.placeholder || ''
+    })
+    addToast(`${selectedDocument.value.name} ተመርጧል`, 'success')
+  }
+}
+
+const selectEmployee = (employee) => {
+  selectedEmployee.value = employee
+  showEmployeePicker.value = false
+  employeeSearch.value = ''
+  addToast(`${employee.fullName} ተመርጧል`, 'success')
+}
+
+const clearEmployee = () => {
+  selectedEmployee.value = null
+  addToast('ሰራተኛ ተወግዷል', 'info')
+}
+
+const openAdjustmentModal = () => {
+  showAdjustmentModal.value = true
+}
+
+const closeAdjustmentModal = () => {
+  showAdjustmentModal.value = false
+}
+
+const handleInlineSave = async (updatedContent) => {
+  if (!selectedDocument.value || selectedDocument.value.isStatic) return
+  
+  const response = await letterTemplateService.updateLetterTemplate(selectedDocument.value.id, {
+    content: updatedContent,
+    meta: selectedDocument.value.meta,
+    fields: selectedDocument.value.fields
+  })
+
+  if (response.success) {
+    selectedDocument.value.content = updatedContent
+    addToast('ደብዳቤው በቋሚነት ተቀምጧል', 'success')
+    await fetchTemplates()
+  } else {
+    addToast(response.error, 'error')
+  }
+}
+
+const saveAdjustments = () => {
+  closeAdjustmentModal()
+  addToast('ሰነዱ ተዘምኗል', 'success')
+}
 
 const printDocument = () => {
-  saveContent();
+  window.print()
+}
 
-  const printWindow = window.open("", "_blank");
-  const currentContent = documentContent.value?.innerHTML || documentHtml.value;
+const fieldVar = (key) => `{{ formData.${key} }}`
 
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>የዋስትና ደብዳቤ</title>
-        <style>
-          @page {
-            size: A4;
-            margin: 0;
-          }
-          html, body {
-            width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 0;
-            background: white;
-          }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .right-float-buttons,
-          .rich-text-toolbar,
-          .modal-overlay,
-          .toast-container {
-            display: none !important;
-          }
-          body * {
-            visibility: hidden;
-          }
-          .document-container,
-          .document-container * {
-            visibility: visible;
-          }
-          .document-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            margin: 0;
-            padding: 0;
-          }
-          .document-wrapper {
-            width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 0;
-            box-shadow: none;
-            background-image: url('${fullBackgroundImage}');
-            background-size: 100% 100%;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-color: white;
-          }
-          .document-content {
-            padding-top: 68mm;
-            padding-left: 15mm;
-            padding-right: 15mm;
-            padding-bottom: 20mm;
-            font-family: "Nyala", "Abyssinica SIL", serif;
-            line-height: 2;
-            color: #000;
-            background: transparent;
-          }
-          .header-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-          }
-          .ref-number, .date-text {
-            font-weight: bold;
-          }
-          .recipient-line {
-            margin-bottom: 5px;
-          }
-          .address-line {
-            margin-bottom: 30px;
-          }
-          .subject-line {
-            text-align: center;
-            font-weight: bold;
-            margin: 30px 0 30px 0;
-          }
-          .body-text {
-            text-align: justify;
-            margin-bottom: 20px;
-          }
-          .signature-section {
-            text-align: right;
-            margin-top: 60px;
-          }
-          .salutation {
-            margin-bottom: 25px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="document-container">
-          <div class="document-wrapper">
-            <div class="document-content">
-              ${currentContent}
-            </div>
-          </div>
-        </div>
-        <script>
-          window.onload = () => {
-            setTimeout(() => {
-              window.print();
-              window.close();
-            }, 200);
-          };
-        <\/script>
-      </body>
-    </html>
-  `);
-
-  printWindow.document.close();
-  addToast("ወደ አታሚ ተልኳል", "success");
-};
+const copyVariable = (text) => {
+  navigator.clipboard.writeText(text).then(() => {
+    addToast(`ተገልብጧል (Copied): ${text}`, 'success')
+  }).catch(() => {
+    addToast('መገልበጥ አልተሳካም', 'info')
+  })
+}
 
 const addToast = (message, type) => {
-  const id = Date.now();
-  toasts.value.push({ id, message, type });
-  setTimeout(
-    () => (toasts.value = toasts.value.filter((t) => t.id !== id)),
-    3000,
-  );
-};
+  const id = Date.now()
+  toasts.value.push({ id, message, type })
+  setTimeout(() => {
+    toasts.value = toasts.value.filter(t => t.id !== id)
+  }, 3000)
+}
 
-// Click outside to hide toolbar
-const handleClickOutside = (event) => {
-  if (
-    showToolbar.value &&
-    documentContent.value &&
-    !documentContent.value.contains(event.target)
-  ) {
-    hideToolbar();
-  }
-};
-
-setTimeout(() => {
-  document.addEventListener("click", handleClickOutside);
-}, 100);
+onMounted(() => {
+  fetchTemplates()
+  fetchEmployees()
+})
 </script>
 
 <style scoped>
@@ -453,58 +513,9 @@ setTimeout(() => {
 }
 
 .documents-page {
+  width: 100%;
   min-height: 100vh;
-  background: #e5e5e5;
-  padding: 20px;
-}
-
-/* Toolbar */
-.rich-text-toolbar {
-  position: fixed;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 8px 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  z-index: 1000;
-  border: 1px solid #ddd;
-  transform: translateX(-50%);
-  max-width: 320px;
-}
-
-.toolbar-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.toolbar-btn:hover {
-  background: #f0f0f0;
-}
-
-.toolbar-select {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  background: white;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 24px;
-  background: #ddd;
-  margin: 0 4px;
+  background: #f1f5f9;
 }
 
 /* Floating Buttons */
@@ -527,9 +538,9 @@ setTimeout(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s ease;
   border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .float-btn svg {
@@ -539,12 +550,42 @@ setTimeout(() => {
 
 .back-float {
   background: white;
-  color: #333;
+  color: #1e293b;
 }
 
-.settings-float {
+.back-float:hover {
+  background: #e2e8f0;
+  transform: scale(1.05);
+}
+
+.create-float {
+  background: #10b981;
+  color: white;
+}
+
+.create-float:hover {
+  background: #059669;
+  transform: scale(1.05);
+}
+
+.edit-template-float {
+  background: #3b82f6;
+  color: white;
+}
+
+.edit-template-float:hover:not(:disabled) {
+  background: #2563eb;
+  transform: scale(1.05);
+}
+
+.adjust-float {
   background: #f59e0b;
   color: white;
+}
+
+.adjust-float:hover:not(:disabled) {
+  background: #d97706;
+  transform: scale(1.05);
 }
 
 .print-float {
@@ -552,106 +593,61 @@ setTimeout(() => {
   color: white;
 }
 
-.float-btn:hover {
+.print-float:hover:not(:disabled) {
   transform: scale(1.05);
+}
+
+.float-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty Preview */
+.empty-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #94a3b8;
+  text-align: center;
+  background: #f1f5f9;
+}
+
+.empty-icon {
+  font-size: 80px;
+  margin-bottom: 20px;
+  opacity: 0.3;
+}
+
+.empty-preview h3 {
+  font-size: 20px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.empty-preview p {
+  font-size: 14px;
 }
 
 /* Document Container */
 .document-container {
   display: flex;
   justify-content: center;
-  align-items: center;
-  min-height: calc(100vh - 40px);
+  align-items: flex-start;
+  padding: 20px 0 60px 0;
+  min-height: 100vh;
+  background: #f1f5f9;
 }
 
-.document-wrapper {
-  width: 210mm;
-  min-height: 297mm;
-  background-image: url("@/assets/documentBackground.png");
-  background-size: contain;
-  background-position: top center;
-  background-repeat: no-repeat;
-  background-color: white;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  position: relative;
-}
-
-.document-content {
-  padding-top: 68mm;
-  padding-left: 15mm;
-  padding-right: 15mm;
-  padding-bottom: 20mm;
-  font-family: "Nyala", "Abyssinica SIL", serif;
-  font-size: 18px;
-  line-height: 2;
-  color: #000;
-  outline: none;
-  background: transparent;
-  position: relative;
-  z-index: 2;
-}
-
-/* REMOVED the conflicting rule: .document-content * { font-size: inherit; } */
-
-.document-content:focus {
-  outline: 2px solid #6a11cb;
-}
-
-.document-content .header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 30px;
-}
-
-.document-content .ref-number {
-  font-weight: bold;
-  text-align: left;
-}
-
-.document-content .date-text {
-  font-weight: bold;
-  text-align: right;
-}
-
-.document-content .recipient-line {
-  margin-bottom: 5px;
-}
-
-.document-content .address-line {
-  margin-bottom: 30px;
-}
-
-.document-content .subject-line {
-  text-align: center;
-  font-weight: bold;
-  margin: 30px 0 30px 0;
-}
-
-.document-content .body-text {
-  text-align: justify;
-  margin-bottom: 20px;
-}
-
-.document-content .signature-section {
-  text-align: right;
-  margin-top: 60px;
-  width: 100%;
-}
-
-.document-content .salutation {
-  margin-bottom: 25px;
-}
-
-/* Modal */
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0,0,0,0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -662,11 +658,19 @@ setTimeout(() => {
   background: white;
   border-radius: 16px;
   width: 90%;
-  max-width: 450px;
+  max-width: 500px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.modal-large {
+  max-width: 750px;
+}
+
+.modal-adjustment {
+  max-width: 500px;
 }
 
 .modal-header {
@@ -674,12 +678,13 @@ setTimeout(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .modal-header h2 {
   font-size: 18px;
   font-weight: 600;
+  color: #1e293b;
 }
 
 .close-btn {
@@ -687,6 +692,11 @@ setTimeout(() => {
   border: none;
   font-size: 24px;
   cursor: pointer;
+  color: #94a3b8;
+}
+
+.close-btn:hover {
+  color: #ef4444;
 }
 
 .modal-body {
@@ -697,47 +707,332 @@ setTimeout(() => {
 
 .modal-footer {
   padding: 16px 20px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #e2e8f0;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
 }
 
-.field-group {
-  margin-bottom: 16px;
+.modal-section {
+  margin-bottom: 20px;
 }
 
-.field-group label {
+.modal-label {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 6px;
-  color: #666;
+  color: #475569;
+  margin-bottom: 8px;
+  text-transform: uppercase;
 }
 
-.field-group input {
+.modal-select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+}
+
+.employee-select-wrapper {
+  width: 100%;
+}
+
+.selected-employee-modal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.emp-info-modal {
+  flex: 1;
+}
+
+.emp-name-modal {
+  font-weight: 600;
+  color: #166534;
   font-size: 14px;
 }
 
-.cancel-btn {
-  padding: 8px 20px;
-  background: #e0e0e0;
+.emp-detail-modal {
+  font-size: 12px;
+  color: #15803d;
+}
+
+.remove-emp-modal {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fee2e2;
   border: none;
-  border-radius: 8px;
+  color: #ef4444;
+  font-size: 18px;
   cursor: pointer;
 }
 
-.save-btn {
+.select-emp-modal-btn {
+  width: 100%;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #6a11cb;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.select-emp-modal-btn:hover {
+  background: #f3e8ff;
+  border-color: #6a11cb;
+}
+
+.modal-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 20px 0;
+}
+
+.modal-field {
+  margin-bottom: 16px;
+}
+
+.modal-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.modal-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.cancel-btn, .save-btn {
   padding: 8px 20px;
-  background: #10b981;
-  color: white;
   border: none;
   border-radius: 8px;
+  font-weight: 600;
   cursor: pointer;
+  font-size: 13px;
+}
+
+.cancel-btn {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.save-btn {
+  background: #10b981;
+  color: white;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-search {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.employees-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.employee-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+}
+
+.employee-item:hover {
+  background: #f8fafc;
+  border-color: #6a11cb;
+}
+
+.emp-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6a11cb, #7c3aed);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.emp-info {
+  flex: 1;
+}
+
+.emp-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.emp-dept {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.emp-id {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* Template Builder Specific */
+.editor-container {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+.editor-container :deep(.ql-editor) {
+  min-height: 250px;
+  font-family: 'Times New Roman', 'Ethiopic', 'Nyala', serif;
+  font-size: 14px;
+}
+.editor-container :deep(.ql-toolbar) {
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: 1px solid #e2e8f0;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  background: #f8fafc;
+}
+.editor-container :deep(.ql-container) {
+  border: none;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.modal-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.help-text {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.field-row-inputs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.field-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.add-field-btn {
+  background: #f1f5f9;
+  color: #6a11cb;
+  border: 1px dashed #cbd5e1;
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.add-field-btn:hover {
+  background: #e2e8f0;
+}
+
+.remove-btn {
+  background: #fee2e2;
+  color: #ef4444;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.field-variable-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid #c4b5fd;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: fit-content;
+}
+
+.field-variable-tag:hover {
+  background: #f3e8ff;
+  border-color: #7c3aed;
+}
+
+.field-variable-tag code {
+  font-family: monospace;
+  font-size: 12px;
+  color: #7c3aed;
+  font-weight: bold;
+}
+
+.tag-copy-hint {
+  font-size: 10px;
+  color: #6b7280;
 }
 
 /* Toast */
@@ -763,6 +1058,10 @@ setTimeout(() => {
   background: #10b981;
 }
 
+.toast.info {
+  background: #3b82f6;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(100%);
@@ -774,38 +1073,122 @@ setTimeout(() => {
   }
 }
 
+/* Scrollbar */
+.modal-body::-webkit-scrollbar,
+.employees-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.modal-body::-webkit-scrollbar-track,
+.employees-list::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.modal-body::-webkit-scrollbar-thumb,
+.employees-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+/* Branding Options */
+.branding-options {
+  background: #f8fafc;
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.checkbox-group {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #1e293b;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
-  .document-wrapper {
-    width: 100%;
-  }
-
-  .document-content {
-    padding-top: 35mm;
-    padding-left: 10mm;
-    padding-right: 10mm;
-  }
-
   .right-float-buttons {
     right: 16px;
+    gap: 8px;
   }
-
+  
   .float-btn {
     width: 44px;
     height: 44px;
   }
+  
+  .float-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .modal-container {
+    max-width: 95%;
+  }
 }
 
 @media print {
+  /* Hide UI elements and App Navigation */
   .right-float-buttons,
-  .rich-text-toolbar,
+  .toast-container,
   .modal-overlay,
-  .toast-container {
+  .empty-preview,
+  :global(.header),
+  :global(.sidebar),
+  :global(.footer) {
     display: none !important;
   }
 
-  .document-container {
+  /* Reset layout for natural flow */
+  :global(body), :global(#app), :global(.app-layout), :global(.layout-body), :global(.main-container) {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    position: static !important;
+  }
+
+  :global(.content-wrapper) {
     padding: 0 !important;
     margin: 0 !important;
+    display: block !important;
+    position: static !important;
+  }
+
+  .documents-page {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  .document-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    position: static !important;
   }
 }
 </style>
