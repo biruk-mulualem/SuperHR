@@ -1,191 +1,112 @@
-<!-- views/storemanagement/itemRequests/printrequests.vue -->
 <template>
+  <div class="top-actions no-print" v-if="requestData || !loading">
+    <button class="btn-back-top" @click="goBack">← Back to Requests</button>
+    <button class="btn-print-top" @click="printPage">🖨️ Print Form</button>
+  </div>
+
   <div class="print-page" v-if="requestData">
-    <!-- ==================== TOP ACTION BUTTONS ==================== -->
-    <div class="top-actions no-print">
-      <button class="btn-back-top" @click="goBack">← Back to Requests</button>
-      <button class="btn-print-top" @click="printPage">🖨️ Print</button>
-    </div>
-
-    <!-- Print Header -->
-    <div class="print-header">
-      <div class="header-content">
-        <h1>📦 Item Request Form</h1>
-        <div class="request-code">#{{ requestData.requestCode || requestData.id }}</div>
-      </div>
-      <div class="print-date">Printed: {{ new Date().toLocaleString() }}</div>
-    </div>
-
-    <!-- Status Banner -->
-    <div class="status-banner" :class="requestData.status">
-      <span class="status-label">Status:</span>
-      <span :class="['status-badge', requestData.status]">
-        {{ requestData.status }}
-      </span>
-    </div>
-
-    <!-- Two Column Grid for Request Info and Store Details -->
-    <div class="print-grid">
-      <!-- Left Column -->
-      <div class="print-column">
-        <!-- Request Information -->
-        <div class="print-card">
-          <h4>📋 Request Information</h4>
-          <div class="print-field">
-            <span class="field-label">Request Code</span>
-            <span class="field-value">{{ requestData.requestCode || requestData.id }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Requested By</span>
-            <span class="field-value">{{ getRequesterName() }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Requested Date</span>
-            <span class="field-value">{{ formatDate(requestData.requestedDate) }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Created At</span>
-            <span class="field-value">{{ formatDateTime(requestData.createdAt) }}</span>
-          </div>
-          <div v-if="requestData.approvedAt" class="print-field">
-            <span class="field-label">Approved At</span>
-            <span class="field-value">{{ formatDateTime(requestData.approvedAt) }}</span>
-          </div>
-          <div v-if="requestData.finalizedAt" class="print-field">
-            <span class="field-label">Finalized At</span>
-            <span class="field-value">{{ formatDateTime(requestData.finalizedAt) }}</span>
-          </div>
-          <div v-if="requestData.updatedAt" class="print-field">
-            <span class="field-label">Last Updated</span>
-            <span class="field-value">{{ formatDateTime(requestData.updatedAt) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Column -->
-      <div class="print-column">
-        <!-- Store Details -->
-        <div class="print-card">
-          <h4>🏪 Store Details</h4>
-          <div class="print-field">
-            <span class="field-label">Asking Store</span>
-            <span class="field-value">{{ getStoreName(requestData.askingStoreId) }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Asking Store Code</span>
-            <span class="field-value">{{ getStoreCode(requestData.askingStoreId) }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Supplying Store</span>
-            <span class="field-value">{{ getStoreName(requestData.supplyingStoreId) }}</span>
-          </div>
-          <div class="print-field">
-            <span class="field-label">Supplying Store Code</span>
-            <span class="field-value">{{ getStoreCode(requestData.supplyingStoreId) }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================================================================ -->
-    <!-- FULL WIDTH ITEMS SECTION WITH BRAND, MODEL, SPECIFICATION       -->
-    <!-- ================================================================ -->
-    <div class="items-full-section">
-      <div class="section-title">
-        <h3>📦 Items Requested</h3>
-        <span class="item-count-badge">{{ requestData.items?.length || 0 }} item(s)</span>
-      </div>
+    <header class="form-header">
+      <h1 class="motto">WE TRUST IN GOD!!!</h1>
+      <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
+      <h3 class="form-subtitle-title">ITEM REQUISITION FROM A STORE TO B STORE</h3>
       
-      <div class="items-table-wrapper">
-        <table class="print-items-table">
-          <thead>
-            <tr>
-              <th class="col-sno">#</th>
-              <th class="col-item-name">Item Name</th>
-              <th class="col-item-code">Item Code</th>
-              <th class="col-brand">Brand</th>
-              <th class="col-model">Model</th>
-              <th class="col-uom">UOM</th>
-              <th class="col-qty">Qty</th>
-              <th class="col-spec">Specification</th>
-              <th class="col-remark">Remark</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="!requestData.items || requestData.items.length === 0">
-              <td colspan="9" class="text-center no-items">No items in this request</td>
-            </tr>
-            <tr v-for="(item, index) in requestData.items" :key="index">
-              <td class="text-center">{{ index + 1 }}</td>
-              <td>{{ getItemName(item.itemId) }}</td>
-              <td>{{ getItemCode(item.itemId) }}</td>
-              <td>{{ getItemBrand(item.itemId) || 'N/A' }}</td>
-              <td>{{ getItemModel(item.itemId) || 'N/A' }}</td>
-              <td>{{ getItemUOM(item.itemId) || 'N/A' }}</td>
-              <td class="text-center qty-highlight">{{ item.quantity }}</td>
-              <td class="spec-cell">{{ getItemSpecification(item.itemId) || 'N/A' }}</td>
-              <td>{{ item.remark || '-' }}</td>
-            </tr>
-            <tr class="total-row">
-              <td colspan="8" class="text-right"><strong>Total Items:</strong></td>
-              <td class="text-center"><strong>{{ requestData.items?.length || 0 }}</strong></td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="date-row">
+        <strong>DATE:-</strong> {{ formatDate(requestData.requestedDate) }}
+      </div>
+    </header>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">No</th>
+          <th style="width: 22%;">Item</th>
+          <th style="width: 8%;">U.O.M</th>
+          <th style="width: 6%;">Qty</th>
+          <th style="width: 10%;">Brand</th>
+          <th style="width: 15%;">Specification</th>
+          <th style="width: 10%;">Location</th>
+          <th style="width: 10%;">Store Balance</th>
+          <th style="width: 12%;">Name&Signature</th>
+          <th style="width: 12%;">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-if="!requestData.items || requestData.items.length === 0">
+          <td colspan="10" class="no-items">No items in this request</td>
+        </tr>
+        <tr v-for="(item, index) in requestData.items" :key="index">
+          <td>{{ index + 1 }}</td>
+          <td class="text-left">{{ getItemName(item.itemId) }}</td>
+          <td>{{ getItemUOM(item.itemId) || 'Pcs' }}</td>
+          <td class="font-bold">{{ item.quantity }}</td>
+          <td>{{ getItemBrand(item.itemId) || '-' }}</td>
+          <td>{{ getItemSpecification(item.itemId) || '-' }}</td>
+          <td>{{ getItemModel(item.itemId) || '-' }}</td>
+          <td>-</td>
+          <td></td>
+          <td>{{ item.remark || '-' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="meta-grid">
+      <div class="meta-col">
+        <div class="block-header text-center">Department / Store</div>
+        <div class="block-body dept-body">
+          <strong>{{ getStoreName(requestData.askingStoreId) }}</strong>
+        </div>
+      </div>
+
+      <div class="meta-col">
+        <div class="block-header text-center">Requested By</div>
+        <div class="block-body workflow-body">
+          <p><strong>Name:-</strong> {{ getRequesterName() }}</p>
+          <p><strong>Signature</strong> _______________________</p>
+        </div>
+      </div>
+
+      <div class="meta-col">
+        <div class="block-header text-center">Approved</div>
+        <div class="block-body workflow-body">
+          <p><strong>Name :-</strong> ____________________</p>
+          <p><strong>Signature</strong> _______________________</p>
+        </div>
       </div>
     </div>
 
-    <!-- ================================================================ -->
-    <!-- GENERAL REMARK SECTION                                           -->
-    <!-- ================================================================ -->
-    <div class="remark-full-section">
-      <div class="section-title">
-        <h4>📝 General Remark</h4>
+    <div class="footer-sections">
+      <div class="input-row">
+        <div class="gray-label">Reason</div>
+        <div class="lines-container">
+          <div class="reason-content-text">
+            {{ requestData.remark || 'No reason/remark provided.' }}
+          </div>
+        </div>
       </div>
-      <div class="remark-text" :class="{ empty: !requestData.remark }">
-        {{ requestData.remark || 'No general remarks provided' }}
-      </div>
-    </div>
 
-    <!-- Signature Section -->
-    <div class="signature-section">
-      <div class="signature-field">
-        <div class="signature-line"></div>
-        <span class="signature-label">Requested By Signature</span>
+      <div class="input-row short-width">
+        <div class="gray-label">Comment</div>
+        <div class="lines-container">
+          <div class="write-line"></div>
+          <div class="write-line"></div>
+        </div>
       </div>
-      <div class="signature-field">
-        <div class="signature-line"></div>
-        <span class="signature-label">Approved By Signature</span>
-      </div>
-      <div class="signature-field">
-        <div class="signature-line"></div>
-        <span class="signature-label">Received By Signature</span>
-      </div>
-    </div>
 
-    <!-- Footer -->
-    <div class="print-footer">
-      <div class="footer-line"></div>
-      <div class="footer-text">
-        <span>Generated by Store Management System</span>
-        <span>Page 1 of 1</span>
+      <div class="checked-by-section">
+        <div class="gray-label inline-label">Checked By</div>
+        <div class="checked-by-body">
+          <p><strong>Name</strong> _____________________________.</p>
+          <p><strong>Signature</strong> _____________________</p>
+        </div>
       </div>
-    </div>
-
-    <!-- Bottom Action Buttons (hidden when printing) -->
-    <div class="action-buttons no-print">
-      <button class="btn-back" @click="goBack">← Back to Requests</button>
-      <button class="btn-print" @click="printPage">🖨️ Print</button>
     </div>
   </div>
 
-  <!-- Loading State -->
   <div v-else-if="loading" class="loading-state">
     <div class="spinner"></div>
     <p>Loading request data...</p>
   </div>
 
-  <!-- Error State -->
   <div v-else class="error-state">
     <div class="error-icon">❌</div>
     <h2>Request Not Found</h2>
@@ -281,11 +202,6 @@ const getItemModel = (itemId: number): string => {
   return item?.model || ''
 }
 
-const getItemStandardName = (itemId: number): string => {
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
-  return item?.standardName || ''
-}
-
 const getItemUOM = (itemId: number): string => {
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   if (item?.uom) {
@@ -321,26 +237,12 @@ const formatDate = (dateString?: string): string => {
   })
 }
 
-const formatDateTime = (dateString?: string): string => {
-  if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
 // -- Navigation --
 const goBack = (): void => {
   router.push('/item-requests')
 }
 
-const printPage = (): void => {
-  window.print()
-}
+const printPage = (): void => { window.print() }
 
 // ================================================================
 // LIFECYCLE
@@ -362,29 +264,26 @@ onMounted(async () => {
 
 <style scoped>
 /* ================================================================
-   PRINT PAGE STYLES
+   PAGE SETUP & INTERACTIVE UI
    ================================================================ */
-
 .print-page {
-  max-width: 1100px;
+  font-family: 'Arial', sans-serif;
+  color: #000;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 30px;
-  background: white;
-  font-family: Arial, sans-serif;
-  color: #1e293b;
+  padding: 20px;
+  background-color: #ffffff;
 }
 
-/* ================================================================
-   TOP ACTION BUTTONS
-   ================================================================ */
 .top-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  max-width: 1000px;
+  margin: 10px auto 20px auto;
   padding: 12px 16px;
   background: #f8fafc;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #e2e8f0;
 }
 
@@ -392,599 +291,260 @@ onMounted(async () => {
   background: #f1f5f9;
   color: #1e293b;
   border: 1px solid #e2e8f0;
-  padding: 8px 20px;
-  border-radius: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.2s;
-}
-
-.btn-back-top:hover {
-  background: #e2e8f0;
 }
 
 .btn-print-top {
-  background: #3b82f6;
+  background: #2563eb;
   color: white;
   border: none;
-  padding: 8px 20px;
-  border-radius: 8px;
+  padding: 8px 18px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn-print-top:hover {
-  background: #2563eb;
-}
-
-/* Header */
-.print-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 16px;
-  margin-bottom: 24px;
-}
-
-.header-content h1 {
-  font-size: 26px;
-  margin: 0;
-  color: #0f172a;
-}
-
-.request-code {
-  font-size: 16px;
-  color: #64748b;
-  margin-top: 4px;
-}
-
-.print-date {
-  font-size: 13px;
-  color: #94a3b8;
-  text-align: right;
-}
-
-/* Status Banner */
-.status-banner {
-  padding: 12px 20px;
-  border-radius: 8px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 15px;
-}
-
-.status-banner.pending { background: #fef3c7; }
-.status-banner.approved { background: #dbeafe; }
-.status-banner.rejected { background: #fee2e2; }
-.status-banner.finalized { background: #dcfce7; }
-
-.status-label {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.status-badge.pending { background: #f59e0b; color: white; }
-.status-badge.approved { background: #3b82f6; color: white; }
-.status-badge.rejected { background: #ef4444; color: white; }
-.status-badge.finalized { background: #22c55e; color: white; }
-
-/* Print Grid for Request Info and Store Details */
-.print-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 30px;
-}
-
-.print-card {
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 18px 20px;
-  border: 1px solid #e2e8f0;
-}
-
-.print-card h4 {
-  margin: 0 0 14px 0;
-  font-size: 15px;
-  color: #0f172a;
-  border-bottom: 2px solid #e2e8f0;
-  padding-bottom: 10px;
-}
-
-.print-field {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 14px;
-}
-
-.print-field:last-child {
-  border-bottom: none;
-}
-
-.field-label {
-  color: #64748b;
-}
-
-.field-value {
-  font-weight: 500;
-  color: #0f172a;
 }
 
 /* ================================================================
-   FULL WIDTH ITEMS SECTION
+   FORM COMPONENT TYPOGRAPHY & HEADERS
    ================================================================ */
-.items-full-section {
-  background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+.form-header {
+  text-align: center;
+  margin-bottom: 5px;
 }
 
-.section-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #e2e8f0;
+.motto {
+  font-family: 'Georgia', serif;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  margin: 0 0 4px 0;
 }
 
-.section-title h3 {
-  margin: 0;
-  font-size: 17px;
-  color: #0f172a;
-  font-weight: 600;
+.company-name {
+  font-size: 21px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
 }
 
-.section-title h4 {
-  margin: 0;
-  font-size: 15px;
-  color: #0f172a;
-  font-weight: 600;
+.form-subtitle-title {
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 0 0 15px 0;
+  color: #1a1a1a;
 }
 
-.item-count-badge {
-  background: #3b82f6;
-  color: white;
-  padding: 2px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
+.date-row {
+  text-align: right;
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
-.items-table-wrapper {
-  overflow-x: auto;
-}
-
-.print-items-table {
+/* ================================================================
+   TABLE CONFIGURATION
+   ================================================================ */
+.items-table {
   width: 100%;
   border-collapse: collapse;
+  margin-bottom: 25px;
   font-size: 12px;
 }
 
-.print-items-table thead th {
-  background: #f1f5f9;
-  padding: 10px 12px;
+.items-table th, 
+.items-table td {
+  border: 1px solid #7f7f7f;
+  padding: 6px 4px;
+  text-align: center;
+  height: 24px;
+}
+
+.items-table th {
+  background-color: #e6e6e6;
+  font-weight: bold;
+}
+
+.items-table td.text-left {
   text-align: left;
-  font-weight: 600;
-  color: #475569;
-  border-bottom: 2px solid #e2e8f0;
-  white-space: nowrap;
+  padding-left: 6px;
 }
 
-.print-items-table tbody td {
-  padding: 8px 12px;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
+.font-bold {
+  font-weight: bold;
 }
 
-.print-items-table tbody tr:last-child td {
-  border-bottom: none;
+.no-items {
+  padding: 20px !important;
+  color: #7f7f7f;
+  font-style: italic;
 }
 
-.print-items-table .total-row {
-  background: #f8fafc;
-  font-weight: 500;
-  border-top: 2px solid #e2e8f0;
+/* ================================================================
+   WORKFLOW LAYOUT BLOCKS
+   ================================================================ */
+.meta-grid {
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 25px;
 }
 
-.print-items-table .total-row td {
-  padding: 10px 12px;
+.meta-col {
+  flex: 1;
 }
 
-/* Column widths */
-.col-sno { width: 35px; text-align: center; }
-.col-item-name { min-width: 130px; }
-.col-item-code { min-width: 90px; }
-.col-brand { min-width: 90px; }
-.col-model { min-width: 100px; }
-.col-uom { width: 70px; }
-.col-qty { width: 60px; text-align: center; }
-.col-spec { min-width: 160px; max-width: 250px; }
-.col-remark { min-width: 120px; }
-
-.qty-highlight {
-  font-weight: 700;
-  color: #2563eb;
+.block-header {
+  background-color: #d9d9d9;
+  border: 1px solid #7f7f7f;
+  padding: 5px;
+  font-weight: bold;
   font-size: 14px;
-}
-
-.spec-cell {
-  font-size: 11px;
-  color: #475569;
-  line-height: 1.4;
 }
 
 .text-center {
   text-align: center;
 }
 
-.text-right {
-  text-align: right;
+.block-body {
+  padding-top: 10px;
+  font-size: 13px;
 }
 
-.no-items {
-  padding: 20px !important;
-  color: #94a3b8;
+.dept-body {
   text-align: center;
+  padding-top: 12px;
+}
+
+.workflow-body p {
+  margin: 6px 0;
 }
 
 /* ================================================================
-   REMARK FULL SECTION
+   DYNAMIC INPUT ROWS WITH PRINT-FRIENDLY BACKGROUNDS
    ================================================================ */
-.remark-full-section {
-  background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-bottom: 24px;
-}
-
-.remark-text {
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  font-size: 14px;
-  line-height: 1.8;
-  min-height: 50px;
-  border: 1px solid #e2e8f0;
-}
-
-.remark-text.empty {
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* Signature Section */
-.signature-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 30px;
-  margin: 30px 0 20px;
-  padding: 20px 0;
-  border-top: 2px solid #e2e8f0;
-}
-
-.signature-field {
-  text-align: center;
-}
-
-.signature-line {
-  border-bottom: 2px solid #cbd5e1;
-  height: 40px;
-  margin-bottom: 8px;
-}
-
-.signature-label {
-  font-size: 12px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-/* Footer */
-.print-footer {
-  margin-top: 32px;
-  border-top: 2px solid #e2e8f0;
-  padding-top: 16px;
-}
-
-.footer-text {
+.footer-sections {
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #94a3b8;
+  flex-direction: column;
+  gap: 15px;
 }
 
-/* Bottom Action Buttons */
-.action-buttons {
+.input-row {
   display: flex;
+  width: 85%;
+}
+
+.input-row.short-width {
+  width: 65%;
+}
+
+.gray-label {
+  background-color: #d9d9d9; 
+  color: #000000; 
+  font-weight: bold;
+  width: 220px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 16px;
-  margin-top: 30px;
-  padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  font-size: 13px;
+  border: 1px solid #7f7f7f;
 }
 
-.btn-back {
-  background: #f1f5f9;
-  color: #1e293b;
-  border: 1px solid #e2e8f0;
-  padding: 10px 24px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+.lines-container {
+  flex-grow: 1;
+  border: 1px solid #7f7f7f;
+  background-color: #ffffff;
 }
 
-.btn-back:hover {
-  background: #e2e8f0;
+.reason-content-text {
+  font-size: 13px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  min-height: 46px;
+  box-sizing: border-box;
 }
 
-.btn-print {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 10px 24px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s;
+.write-line {
+  height: 22px;
+  border-bottom: 1px solid #7f7f7f;
+  background-color: #ffffff;
 }
 
-.btn-print:hover {
-  background: #2563eb;
+.write-line:last-child {
+  border-bottom: none;
+  background-color: #f9f9f9;
 }
 
-/* Loading State */
-.loading-state {
+.checked-by-section {
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.inline-label {
+  width: 220px;
+  padding: 4px 0;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.checked-by-body {
+  font-size: 13px;
+  padding-left: 2px;
+}
+
+.checked-by-body p {
+  margin: 6px 0;
+}
+
+/* ================================================================
+   LOADING & ERROR LAYOUT SYSTEM
+   ================================================================ */
+.loading-state, .error-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 400px;
+  min-height: 300px;
+  font-family: sans-serif;
 }
-
 .spinner {
-  border: 4px solid #f1f5f9;
-  border-top: 4px solid #3b82f6;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #2563eb;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 35px;
+  height: 35px;
   animation: spin 1s linear infinite;
 }
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.loading-state p {
-  margin-top: 16px;
-  color: #94a3b8;
-}
-
-/* Error State */
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  text-align: center;
-}
-
-.error-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-}
-
-.error-state h2 {
-  color: #1e293b;
-  margin-bottom: 8px;
-}
-
-.error-state p {
-  color: #94a3b8;
-  margin-bottom: 24px;
-}
-
 /* ================================================================
-   PRINT STYLES
+   CRITICAL PRINT DRIVER OVERRIDES
    ================================================================ */
-
 @media print {
   .no-print {
     display: none !important;
   }
-
+  body {
+    background-color: #fff;
+  }
   .print-page {
-    padding: 15px !important;
     max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
-
-  .print-card {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .items-full-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    border-color: #cbd5e1 !important;
-  }
-
-  .remark-full-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    border-color: #cbd5e1 !important;
-  }
-
-  .signature-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .print-grid {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .status-banner {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .print-items-table {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .print-items-table thead th {
-    background: #e2e8f0 !important;
+  .gray-label, .block-header, .items-table th {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-  }
-
-  .status-badge {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-}
-
-/* ================================================================
-   RESPONSIVE
-   ================================================================ */
-
-@media (max-width: 768px) {
-  .print-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .signature-section {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .print-header {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .print-date {
-    text-align: left;
-  }
-
-  .action-buttons {
-    flex-direction: column;
-  }
-
-  .action-buttons button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .print-items-table {
-    font-size: 10px;
-  }
-
-  .print-items-table thead th,
-  .print-items-table tbody td {
-    padding: 4px 6px;
-  }
-
-  .items-full-section {
-    padding: 12px 14px;
-  }
-
-  .remark-full-section {
-    padding: 12px 14px;
-  }
-
-  .section-title h3 {
-    font-size: 14px;
-  }
-
-  .col-sno { width: 25px; }
-  .col-item-name { min-width: 80px; }
-  .col-item-code { min-width: 60px; }
-  .col-brand { min-width: 60px; }
-  .col-model { min-width: 70px; }
-  .col-uom { width: 50px; }
-  .col-qty { width: 45px; }
-  .col-spec { min-width: 100px; max-width: 150px; }
-  .col-remark { min-width: 80px; }
-
-  .top-actions {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .top-actions button {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-@media print and (max-width: 768px) {
-  .print-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .signature-section {
-    grid-template-columns: 1fr;
-  }
-
-  .items-full-section {
-    border-color: #cbd5e1 !important;
-  }
-
-  .remark-full-section {
-    border-color: #cbd5e1 !important;
-  }
-}
-
-@media (max-width: 480px) {
-  .print-items-table {
-    font-size: 9px;
-  }
-
-  .print-items-table thead th,
-  .print-items-table tbody td {
-    padding: 3px 4px;
-  }
-
-  .items-full-section {
-    padding: 8px 10px;
-  }
-
-  .remark-full-section {
-    padding: 8px 10px;
-  }
-
-  .section-title h3 {
-    font-size: 12px;
-  }
-
-  .spec-cell {
-    font-size: 9px;
+    background-color: #d9d9d9 !important;
+    color: #000000 !important;
   }
 }
 </style>
+

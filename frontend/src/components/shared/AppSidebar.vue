@@ -131,12 +131,12 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
-    { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
     {
       name: 'Store',
       path: '/store',
       icon: 'BuildingStorefrontIcon',
       dropdownMenu: [
+        { name: 'inventory',         path: '/inventory',         icon: 'ChartBarIcon'},
         { name: 'Stores List',       path: '/store-management',  icon: 'ClockIcon' },
         { name: 'Store Groups',      path: '/group-management',  icon: 'UserIcon' },
         { name: 'Store to Store',    path: '/store-to-store',    icon: 'UserIcon' },
