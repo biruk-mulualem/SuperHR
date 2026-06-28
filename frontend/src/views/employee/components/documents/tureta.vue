@@ -38,7 +38,7 @@
         <h3 class="inner-form-title">በጡረታ ዕድሜ የተሰናበቱ ሠራተኞች የግል ፣ የአገልግሎትና የቤተሰብ ሁኔታ መግለጫ ፎርም</h3>
         <strong style="font-size:80%;display: block; width: 100%;  text-align: left; text-decoration: underline;">ማሳሰብያ፡</strong>
         <p class="top-instruction-copy">
-          ይህ ቅጽ ሲሞላ በርዝራዥ መጻፍ የለበትም፤ በጠቋሚ ብዕርና በግልጽ ፊደላት ተሞልቶ መፈረም ይኖርበታል። በቲ ማህተም የተመሰረተ ተራ ቁጥር እየተሰጠው በየመዝገቡ መሠረት መመዝገብ ይችላል። በዚህ ቅጽ ላይ የሚመዘገበው ዘመነ ዓመት በሙሉ በኢትዮጵያ አቆጣጠር መሆን አለበት።
+          ይህ ቅጽ-ሲሞላ በርዝራዥ መጻፍ የለበትም፤ በጠቋሚ ብዕርና በግልጽ ፊደላት ተሞልቶ መፈረም ይኖርበታል። በቲ ማህተም የተመሰረተ ተራ ቁጥር እየተሰጠው በየመዝገቡ መሠረት መመዝገብ ይችላል። በዚህ ቅጽ ላይ የሚመዘገበው ዘመነ ዓመት በሙሉ በኢትዮጵያ አቆጣጠር መሆን አለበት።
         </p>
       </section>
 
@@ -199,7 +199,7 @@
       </main>
 
       <footer class="legal-notice-footer">
-        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው፣ በሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
+        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው Reefሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
       </footer>
     </div>
 
@@ -265,7 +265,7 @@
 
             <div class="landscape-footnote-area">
               <p class="footnote-item">
-                <strong>ማሳሰቢያ፡- 1.</strong> የቅጥር፣ የአገልግሎት ማስረጃ፣ ቅድሚያ ያለው የሥራ መደብና የህይወት ታሪክ እዚህ ተያይዞ መቅረብ አለበት::
+                <strong>ማሳሰቢያ፡- 1.</strong> የቅጥር Reefየአገልግሎት ማስረጃ Reefቅድሚያ ያለው የሥራ መደብና የህይወት ታሪክ እዚህ ተያይዞ መቅረብ አለበት::
               </p>
             </div>
           </div>
@@ -274,7 +274,7 @@
       </main>
 
       <footer class="legal-notice-footer">
-        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው፣ በሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
+        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው Reefሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
       </footer>
     </div>
 
@@ -357,7 +357,7 @@
           </table>
 
           <div class="table-disclaimer-box margin-top-xs">
-            <p class="nested-disclaimer-footnote font-bold">ማሳሰቢያ፡- 1. የልደት ምስክር ወረቀት ተያይዞ ይቅረብ::</p>
+            <p class="nested-disclaimer-footnote font-bold">масаሰቢያ፡- 1. የልደት ምስክር ወረቀት ተያይዞ ይቅረብ::</p>
             <p class="nested-disclaimer-footnote font-bold">2. የጉዲፈቻ ልጅ ከሆነ የፍርድ ቤት ውሳኔ ተያይዞ መቅረብ ይኖርበታል።</p>
             <p class="nested-disclaimer-footnote font-bold">3. የአካል/የአዕምሮ ጉዳት ካለበት ማረጋገጫ ይቅረብ::</p>
           </div>
@@ -444,7 +444,7 @@
       </main>
 
       <footer class="legal-notice-footer">
-        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው፣ በሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
+        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው Reefሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
       </footer>
     </div>
 
@@ -538,7 +538,7 @@
       </main>
 
       <footer class="legal-notice-footer">
-        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው፣ በሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
+        ማሳሰቢያ፡- ማናቸውም መረጃዎች በታማኝነት መሞላት ሲኖርባቸው Reefሀሰተኛ የመረጃ አቀራረብ በሕግ ተጠያቂ ያደርጋል፡፡
       </footer>
     </div>
 
@@ -548,7 +548,6 @@
 <script setup>
 import { computed } from 'vue';
 
-// 1. Props Definitions using macro
 const props = defineProps({
   formData: {
     type: Object,
@@ -571,12 +570,10 @@ const props = defineProps({
       hireDate: "2018-04-25",
       basicSalary: "12000.00",
       profilePictureUrl: "", 
-      
       nationalityAcquisition: {
         type: "by_birth", 
         documentUrl: ""
       },
-      
       currentAddress: {
         region: "አዲስ አበባ",
         subcity: "ንፋስ ስልክ ላፍቶ",
@@ -585,7 +582,6 @@ const props = defineProps({
         poBox: "4192",
         houseNumber: "1052"
       },
-      
       currentCompany: {
         companyName: "ሱፐር ድንቅ ቴክኖሎጂ ትሬዲንግ ኃ/የተ/የግ ማህበር",
         companyTin: "0003600429",
@@ -593,7 +589,6 @@ const props = defineProps({
         poBox: "8840",
         companyEmail: "info@superdinq.com"
       },
-      
       workExperience: [
         {
           companyTin: "0014829301",
@@ -616,14 +611,12 @@ const props = defineProps({
           terminationReason: "የሥራ ውል ማብቃት"
         }
       ],
-      
       spouseInfo: {
         fullName: "ራሄል በቀለ ወልደማርያም",
         tinNumber: "0024910394",
         dateOfBirth: "1984-05-18",
         profilePictureUrl: ""
       },
-      
       children: [
         {
           name: "ናሆም አሸናፊ ንጉሴ",
@@ -640,7 +633,6 @@ const props = defineProps({
           isAdopted: "አይደለም"
         }
       ],
-      
       parentsInfo: {
         father: {
           fullName: "ንጉሴ በዘአብ ወንድሙ",
@@ -659,7 +651,6 @@ const props = defineProps({
   }
 });
 
-// 2. Computed Properties
 const employeeFullName = computed(() => {
   const f = props.employee.firstName || '';
   const m = props.employee.middleName ? props.employee.middleName + ' ' : '';
@@ -671,7 +662,6 @@ const paddedWorkExperience = computed(() => {
   const rows = [];
   const maxRows = 7;
   const actualData = props.employee.workExperience || [];
-  
   for (let i = 0; i < maxRows; i++) {
     if (i < actualData.length) {
       rows.push({ seq: i + 1, ...actualData[i] });
@@ -690,7 +680,6 @@ const paddedChildren = computed(() => {
   const rows = [];
   const maxRows = 4;
   const actualData = props.employee.children || [];
-  
   for (let i = 0; i < maxRows; i++) {
     if (i < actualData.length) {
       rows.push({ seq: i + 1, ...actualData[i] });
@@ -704,7 +693,6 @@ const paddedChildren = computed(() => {
   return rows;
 });
 
-// 3. Methods / Helper Functions
 const translateGender = (val) => {
   if (!val) return "";
   const lower = val.toLowerCase();
@@ -715,9 +703,8 @@ const translateGender = (val) => {
 
 const extractDatePart = (dateString, part) => {
   if (!dateString) return "";
-  const parts = dateString.split("-"); // Expects YYYY-MM-DD
+  const parts = dateString.split("-");
   if (parts.length !== 3) return "";
-  
   if (part === "year") return parts[0];
   if (part === "month") return parts[1];
   if (part === "day") return parts[2];
@@ -784,73 +771,17 @@ const extractDatePart = (dateString, part) => {
 .text-center { text-align: center; }
 .weight-light { font-weight: 400; font-size: 11px; }
 .line-height-loose { line-height: 2; }
-
-.asterisk {
-  font-weight: 800;
-  color: #000000;
-  margin-right: 2px;
-}
+.asterisk { font-weight: 800; color: #000000; margin-right: 2px; }
 
 /* ==========================================================================
    3. Corporate/Government Letterheads 
    ========================================================================== */
-.header-blueprint {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 26px;
-}
-
-.header-left-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  flex-grow: 1;
-  padding-left: 60px;
-}
-
-.logo { 
-  width: 0.94in; 
-  height: 0.92in; 
-  object-fit: contain; 
-  display: block; 
-  margin: 0 auto 6px auto; 
-}
-
-.gov-title-main {
-  font-size: 20px;
-  font-weight: 800;
-  color: #000000;
-  margin: 0;
-  letter-spacing: -0.2px;
-  transform: scaleX(0.96);
-}
-
-.gov-title-sub {
-  font-size: 16.5px;
-  font-weight: 800;
-  color: #000000;
-  margin: 4px 0 0 0;
-  transform: scaleX(0.96);
-}
-
-.pension-meta-box {
-  border: 1px solid #000000;
-  padding: 10px 14px;
-  width: 400px;
-  margin-top: 16px;
-  align-self: flex-start;
-  text-align: left;
-  box-sizing: border-box;
-  background-color: #ffffff;
-}
-
-.meta-inline-row {
-  display: flex;
-  align-items: flex-end;
-  font-size: 13.5px;
-}
+.header-blueprint { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 26px; }
+.header-left-stack { display: flex; flex-direction: column; align-items: center; text-align: center; flex-grow: 1; padding-left: 60px; }
+.logo { width: 0.94in; height: 0.92in; object-fit: contain; display: block; margin: 0 auto 6px auto; }
+.gov-title-main { font-size: 20px; font-weight: 800; color: #000000; margin: 0; letter-spacing: -0.2px; transform: scaleX(0.96); }
+.pension-meta-box { border: 1px solid #000000; padding: 10px 14px; width: 400px; margin-top: 16px; align-self: flex-start; text-align: left; box-sizing: border-box; background-color: #ffffff; }
+.meta-inline-row { display: flex; align-items: flex-end; font-size: 13.5px; }
 
 .passport-photo-frame,
 .spouse-photo-frame {
@@ -869,380 +800,153 @@ const extractDatePart = (dateString, part) => {
   color: #000000;
   overflow: hidden;
 }
-
-.photo-render {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
+.photo-render { width: 100%; height: 100%; object-fit: cover; }
 .passport-photo-frame { margin-top: 60px; }
 
-.document-title-banner {
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.inner-form-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #000000;
-  text-underline-offset: 4px;
-  line-height: 1.4;
-}
-
-.top-instruction-copy {
-  font-size: 12.5px;
-  font-style: italic;
-  text-align: justify;
-  width: 80%;
-  margin: 0 auto;
-  line-height: 1.6;
-  color: #000000;
-}
+.document-title-banner { text-align: center; margin-bottom: 24px; }
+.inner-form-title { font-size: 16px; font-weight: 800; color: #000000; line-height: 1.4; }
+.top-instruction-copy { font-size: 12.5px; font-style: italic; text-align: justify; width: 80%; margin: 0 auto; line-height: 1.6; color: #000000; }
 
 /* ==========================================================================
    4. Form Elements & Alignment
    ========================================================================== */
-.form-sheet-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex-grow: 1;
-}
-
-.form-row-line {
-  display: flex;
-  align-items: flex-end;
-  font-size: 14.5px;
-  width: 100%;
-}
-
-.form-block-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  font-size: 14.5px;
-}
-
-.field-label {
-  white-space: nowrap;
-  margin-right: 6px;
-  color: #000000;
-}
-
+.form-sheet-body { display: flex; flex-direction: column; gap: 16px; flex-grow: 1; }
+.form-row-line { display: flex; align-items: flex-end; font-size: 14.5px; width: 100%; }
+.form-block-stack { display: flex; flex-direction: column; align-items: flex-start; font-size: 14.5px; }
+.field-label { white-space: nowrap; margin-right: 6px; color: #000000; }
 .indent-level-1 { padding-left: 45px; }
-.width-100-pc   { width: 100%; }
-.justify-end    { justify-content: flex-end; }
+.width-100-pc { width: 100%; }
+.justify-end { justify-content: flex-end; }
 
-.address-tabulated-container {
-  padding-left: 35px;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.half-width-column {
-  display: flex;
-  align-items: flex-end;
-  width: 50%;
-  box-sizing: border-box;
-}
-
-.label-width-long  { width: 140px; flex-shrink: 0; }
+.address-tabulated-container { padding-left: 35px; width: 100%; box-sizing: border-box; margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.half-width-column { display: flex; align-items: flex-end; width: 50%; box-sizing: border-box; }
+.label-width-long { width: 140px; flex-shrink: 0; }
 .label-width-short { width: 80px; flex-shrink: 0; }
 
 /* Micro Margins & Padding Controls */
-.margin-left-xs   { margin-left: 8px; }
-.margin-left-md   { margin-left: 14px; }
-.margin-left-lg   { margin-left: 22px; }
-.margin-left-xl   { margin-left: 42px; }
-.margin-top-xs    { margin-top: 8px; }
-.margin-top-sm    { margin-top: 10px; }
-.margin-top-md    { margin-top: 16px; }
-.margin-top-lg    { margin-top: 24px; }
-.margin-top-xl    { margin-top: 40px; }
+.margin-left-xs { margin-left: 8px; }
+.margin-left-md { margin-left: 14px; }
+.margin-left-lg { margin-left: 22px; }
+.margin-left-xl { margin-left: 42px; }
+.margin-top-xs { margin-top: 8px; }
+.margin-top-sm { margin-top: 10px; }
+.margin-top-md { margin-top: 16px; }
+.margin-top-lg { margin-top: 24px; }
+.margin-top-xl { margin-top: 40px; }
 .margin-bottom-md { margin-bottom: 16px; }
-
-.padding-left-md  { padding-left: 18px; }
-.padding-left-lg  { padding-left: 28px; }
-.padding-left-sm  { padding-left: 10px; }
+.padding-left-md { padding-left: 18px; }
+.padding-left-lg { padding-left: 28px; }
+.padding-left-sm { padding-left: 10px; }
 
 /* Forms Line Components */
 .data-text-fill { color: #000000; line-height: 20px; padding-bottom: 1px; }
 .blank-line-fill { border-bottom: 1.5px dotted #000000; height: 20px; display: inline-block; }
-.line-thick { border-bottom: 2px solid #000000; }
 .line-medium { border-bottom: 1.5px solid #000000; }
 
-.flex-grow   { flex-grow: 1; }
-.width-250   { width: 250px; }
-.width-220   { width: 220px; }
-.width-180   { width: 180px; }
-.width-150   { width: 150px; }
-.width-140   { width: 140px; }
-.width-130   { width: 130px; }
-.width-120   { width: 120px; }
-.width-80    { width: 80px; }
-.width-50    { width: 50px; }
+.flex-grow { flex-grow: 1; }
+.width-250 { width: 250px; }
+.width-220 { width: 220px; }
+.width-180 { width: 180px; }
+.width-150 { width: 150px; }
+.width-140 { width: 140px; }
+.width-130 { width: 130px; }
+.width-120 { width: 120px; }
+.width-80 { width: 80px; }
+.width-50 { width: 50px; }
 
-.section-header-row {
-  border-bottom: 1px solid #000000;
-  margin-top: 12px;
-  margin-bottom: 4px;
-  width: max-content;
-}
-
-.section-header-text {
-  font-size: 15px;
-  font-weight: 800;
-  color: #000000;
-  padding-bottom: 1px;
-}
+.section-header-row { border-bottom: 1px solid #000000; margin-top: 12px; margin-bottom: 4px; width: max-content; }
+.section-header-text { font-size: 15px; font-weight: 800; color: #000000; padding-bottom: 1px; }
 
 /* Vector Checkbox System */
-.checkbox-alignment-row {
-  display: flex;
-  gap: 36px;
-  margin-top: 10px;
-}
-
-.checkbox-item-wrapper {
-  display: flex;
-  align-items: center;
-  font-size: 14.5px;
-  color: #000000;
-}
-
-.vector-checkbox-box {
-  width: 15px;
-  height: 15px;
-  border: 1.5px solid #000000;
-  margin-right: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 800;
-  background-color: #ffffff;
-}
-
+.checkbox-alignment-row { display: flex; gap: 36px; margin-top: 10px; }
+.checkbox-item-wrapper { display: flex; align-items: center; font-size: 14.5px; color: #000000; }
+.vector-checkbox-box { width: 15px; height: 15px; border: 1.5px solid #000000; margin-right: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background-color: #ffffff; }
 .weight-heavy { font-weight: 800; }
 .nested-disclaimer-footnote { font-size: 12px; font-style: italic; margin: 4px 0 0 0; color: #000000; }
 
 /* ==========================================================================
    5. Page 2 Landscape Ledger Table Architecture
    ========================================================================== */
-.service-ledger-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  box-sizing: border-box;
-}
+.service-ledger-table { width: 100%; border-collapse: collapse; margin-top: 10px; box-sizing: border-box; }
+.service-ledger-table th, .service-ledger-table td { border: 1.5px solid #000000; color: #000000; vertical-align: middle; box-sizing: border-box; }
+.service-ledger-table th { background-color: #ffffff; font-size: 11px; font-weight: 800; text-align: center; padding: 6px 3px; line-height: 1.3; }
 
-.service-ledger-table th,
-.service-ledger-table td {
-  border: 1.5px solid #000000;
-  color: #000000;
-  vertical-align: middle;
-  box-sizing: border-box;
-}
-
-.service-ledger-table th {
-  background-color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  text-align: center;
-  padding: 6px 3px;
-  line-height: 1.3;
-}
-
-.th-seq        { width: 3.5%; }
-.th-tin        { width: 11%; }
-.th-org-name   { width: 16%; }
-.th-srv-type   { width: 16%; }
+.th-seq { width: 3.5%; }
+.th-tin { width: 11%; }
+.th-org-name { width: 16%; }
+.th-srv-type { width: 16%; }
 .th-span-group { width: 18%; }
-.th-sub-date   { width: 9%; }
-.th-salary     { width: 8%; }
-.th-provident  { width: 11%; }
-.th-reason     { width: 8.5%; }
-.th-pension    { width: 8%; }
+.th-sub-date { width: 9%; }
+.th-salary { width: 8%; }
+.th-provident { width: 11%; }
+.th-reason { width: 8.5%; }
+.th-pension { width: 8%; }
 
 .service-ledger-table tbody tr { height: 26px; }
 .service-ledger-table tbody td { padding: 0 4px; font-size: 12.5px; }
-
-/* Fixed Footnote Area on Page 2 */
-.landscape-footnote-area { 
-  width: 100%; 
-  margin-top: 15px; 
-}
+.landscape-footnote-area { width: 100%; margin-top: 15px; }
 .footnote-item { font-size: 12.5px; margin: 0; color: #000000; text-align: left; }
 
 /* ==========================================================================
    6. Page 3 Specific Portrait Layout Matrix Elements
    ========================================================================== */
-.section-c-header-container {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  width: 100%;
-}
+.section-c-header-container { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; }
+.section-c-title-area { display: flex; flex-direction: column; flex-grow: 1; }
+.children-matrix-table { width: 100%; border-collapse: collapse; margin-top: 10px; box-sizing: border-box; }
+.children-matrix-table th, .children-matrix-table td { border: 1.5px solid #000000; color: #000000; vertical-align: middle; box-sizing: border-box; }
+.children-matrix-table th { background-color: #ffffff; font-size: 11.5px; font-weight: 800; text-align: center; padding: 6px 3px; line-height: 1.3; }
 
-.section-c-title-area {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-}
-
-/* Children Matrix Table Styles */
-.children-matrix-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  box-sizing: border-box;
-}
-
-.children-matrix-table th,
-.children-matrix-table td {
-  border: 1.5px solid #000000;
-  color: #000000;
-  vertical-align: middle;
-  box-sizing: border-box;
-}
-
-.children-matrix-table th {
-  background-color: #ffffff;
-  font-size: 11.5px;
-  font-weight: 800;
-  text-align: center;
-  padding: 6px 3px;
-  line-height: 1.3;
-}
-
-.ch-seq        { width: 5%; }
-.ch-name       { width: 28%; }
-.ch-dob        { width: 17%; }
-.ch-gender     { width: 10%; }
+.ch-seq { width: 5%; }
+.ch-name { width: 28%; }
+.ch-dob { width: 17%; }
+.ch-gender { width: 10%; }
 .ch-disability { width: 22%; }
-.ch-learning   { width: 18%; }
+.ch-learning { width: 18%; }
 
 .children-matrix-table tbody tr { height: 28px; }
 .children-matrix-table tbody td { padding: 0 4px; font-size: 13px; }
-
 .table-disclaimer-box { display: flex; flex-direction: column; gap: 2px; }
 .declaration-container { border: 1.5px dashed #000000; padding: 12px; box-sizing: border-box; width: 100%; }
 
 /* ==========================================================================
    7. Page 4 Specific Form Verification Structural Styles
    ========================================================================== */
-.employer-verification-text-block {
-  width: 100%;
-  box-sizing: border-box;
-  text-align: justify;
-}
-
-.sign-seal-matrix-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  padding: 0 10px;
-  box-sizing: border-box;
-}
-
-.stamp-box-frame {
-  border: 1.5px dashed #000000;
-  width: 160px;
-  height: 90px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: #000000;
-  background-color: #ffffff;
-}
-
-.manager-signature-line-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* Agency Internal Processing Container System */
-.agency-bordered-box {
-  border: 2px solid #000000;
-  padding: 22px 20px;
-  box-sizing: border-box;
-  width: 100%;
-  background-color: #ffffff;
-}
-
-.agency-box-title {
-  margin: 0 0 20px 0;
-  font-size: 15.5px;
-  letter-spacing: -0.2px;
-}
-
-.agency-checklist-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-}
-
-.checklist-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  font-size: 14.5px;
-  padding-right: 15px;
-  box-sizing: border-box;
-}
-
-.vector-square-box {
-  width: 18px;
-  height: 18px;
-  border: 1.5px solid #000000;
-  background-color: #ffffff;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.agency-officer-metadata {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.min-label-width {
-  min-width: 160px;
-}
+.employer-verification-text-block { width: 100%; box-sizing: border-box; text-align: justify; }
+.sign-seal-matrix-row { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0 10px; box-sizing: border-box; }
+.stamp-box-frame { border: 1.5px dashed #000000; width: 160px; height: 90px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #000000; background-color: #ffffff; }
+.manager-signature-line-block { display: flex; flex-direction: column; align-items: center; }
+.agency-bordered-box { border: 2px solid #000000; padding: 22px 20px; box-sizing: border-box; width: 100%; background-color: #ffffff; }
+.agency-box-title { margin: 0 0 20px 0; font-size: 15.5px; letter-spacing: -0.2px; }
+.agency-checklist-stack { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.checklist-row { display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 14.5px; padding-right: 15px; box-sizing: border-box; }
+.vector-square-box { width: 18px; height: 18px; border: 1.5px solid #000000; background-color: #ffffff; display: inline-block; flex-shrink: 0; }
+.agency-officer-metadata { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.min-label-width { min-width: 160px; }
 
 /* ==========================================================================
    8. Global Light Gray Footer Configuration
    ========================================================================== */
-.legal-notice-footer {
-  border-top: none;
-  padding-top: 14px;
-  font-size: 12.5px;
-  font-weight: 800;
-  text-align: center;
-  color: #7f7f7f;
-  line-height: 1.5;
-  margin-top: auto;
-}
-
-
+.legal-notice-footer { border-top: none; padding-top: 14px; font-size: 12.5px; font-weight: 800; text-align: center; color: #7f7f7f; line-height: 1.5; margin-top: auto; }
 </style>
 
-<!-- Print styles MUST be unscoped: @page named rules and the `page` property
-     are global CSS features that break when Vue adds scoped data-attributes -->
 <style>
+/* 1. Define distinct page layout schemas globally */
+@page portraitPageSetting {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@page landscapePageSetting {
+  size: A4 landscape;
+  margin: 0;
+}
+
+/* 2. Fallback rule */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
 @media print {
   body {
     background: none !important;
@@ -1251,7 +955,10 @@ const extractDatePart = (dateString, part) => {
     print-color-adjust: exact !important;
   }
 
+  /* CRUCIAL FIX: Resetting flexbox to block. 
+     Flexbox stops browser print layout engines from rotating separate named pages! */
   .document-blueprint-package {
+    display: block !important;
     background: none !important;
     padding: 0 !important;
     gap: 0 !important;
@@ -1259,34 +966,28 @@ const extractDatePart = (dateString, part) => {
   
   .print-container {
     box-shadow: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     page-break-inside: avoid !important;
   }
 
+  /* Enforce Portrait on Page 1, 3, and 4 */
   .portrait-page {
-    page: portraitPage;
+    page: portraitPageSetting !important;
     width: 210mm !important;
     height: 297mm !important;
     padding: 15mm 18mm 20mm 18mm !important;
     page-break-after: always !important;
+    break-after: page !important;
   }
 
+  /* ENFORCE LANDSCAPE ON PAGE 2 ONLY */
   .landscape-page {
-    page: landscapePage;
+    page: landscapePageSetting !important;
     width: 297mm !important;
     height: 210mm !important;
     padding: 20mm 18mm 18mm 18mm !important;
     page-break-after: always !important;
+    break-after: page !important;
   }
-}
-
-@page portraitPage {
-  size: A4 portrait;
-  margin: 0;
-}
-
-@page landscapePage {
-  size: A4 landscape;
-  margin: 0;
 }
 </style>
