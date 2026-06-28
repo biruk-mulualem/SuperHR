@@ -89,8 +89,8 @@ const itemRoutes=require('./routes/itemRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const storeToStoreRelationshipRoutes = require('./routes/storeToStoreRelationshipRoutes');
 const itemRequestRoutes = require('./routes/itemRequestRoutes');
-
-
+const transactionRoutes = require('./routes/transactionRoutes');
+const auditRoutes = require('./routes/auditRoutes');
 const balanceRoutes = require('./routes/balanceRoutes');
 
 
@@ -141,9 +141,10 @@ app.use('/api/items', itemRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/store-to-store-relationships', storeToStoreRelationshipRoutes);
-
+app.use('/api/transactions', transactionRoutes);
 app.use('/api/item-requests', itemRequestRoutes);
 app.use('/api/balances', balanceRoutes);
+app.use('/api/audit', auditRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

@@ -179,6 +179,19 @@ export interface ProcessRequestsResult {
     processed: number;
     failed: number;
     logs: string[];
+    missingItems?: any[];
+    processedItems?: any[];
+    autoInitializedItems?: any[];
+    skippedGroups?: any[];
+    partialRequests?: any[];
+    requestIds: number[];
+    processedRequestIds?: number[];
+    storeId: number;
+    groupId: number;
+    storeName: string;
+    groupName: string;
+    userId: number;
+    totalRequests: number;
 }
 
 export interface ImportResult {
@@ -204,6 +217,53 @@ export interface ItemRequest {
         itemCode: string;
         quantity: number;
         uomCode: string;
+    }[];
+    isProcessedByGroup?: boolean;
+    isFullyProcessed?: boolean;
+    processingStatus?: {
+        status: string;
+        label: string;
+        processed: number;
+        total: number;
+        remaining: number;
+    };
+    canProcess?: boolean;
+    action?: string;
+    actionLabel?: string;
+    actionClass?: string;
+}
+
+export interface RequestGroupProcessing {
+    id: number;
+    requestId: number;
+    groupId: number;
+    storeId: number;
+    processedAt: string | null;
+    status: 'pending' | 'processed' | 'skipped';
+    remark: string | null;
+    processedBy: number | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RequestProcessingStatus {
+    requestId: number;
+    requestCode: string;
+    totalGroups: number;
+    processedCount: number;
+    isFullyProcessed: boolean;
+    groups: {
+        groupId: number;
+        groupName: string;
+        groupCode: string;
+        status: 'pending' | 'processed' | 'skipped';
+        processedAt: string | null;
+        processedBy: {
+            userId: number;
+            username: string;
+            fullName: string;
+        } | null;
+        remark: string | null;
     }[];
 }
 
@@ -416,14 +476,28 @@ class BalanceService {
 
     /**
      * Get approved requests for a store
+     * If groupId is provided, only returns requests not yet processed by that group
      */
-    async getApprovedRequests(storeId: number): Promise<{ success: boolean; data: ItemRequest[] }> {
-        const response = await api.get(`/balances/requests/approved/${storeId}`);
+    async getApprovedRequests(storeId: number, groupId?: number): Promise<{ 
+        success: boolean; 
+        data: ItemRequest[];
+        meta?: {
+            total: number;
+            remaining: number;
+            groupId: number | null;
+            storeId: number;
+        };
+    }> {
+        let url = `/balances/requests/approved/${storeId}`;
+        if (groupId) {
+            url += `?groupId=${groupId}`;
+        }
+        const response = await api.get(url);
         return response.data;
     }
 
     /**
-     * Process approved requests
+     * Process approved requests for a specific group
      */
     async processRequests(payload: ProcessRequestsPayload): Promise<{ 
         success: boolean; 
@@ -431,6 +505,97 @@ class BalanceService {
         data: ProcessRequestsResult 
     }> {
         const response = await api.post('/balances/requests/process', payload);
+        return response.data;
+    }
+
+    /**
+     * Process a single request for a specific group
+     */
+    async processRequestForGroup(requestId: number, payload: { groupId: number; storeId: number }): Promise<{
+        success: boolean;
+        message: string;
+        data: {
+            requestId: number;
+            requestCode: string;
+            groupId: number;
+            groupName: string;
+            storeId: number;
+            storeName: string;
+            action: string;
+            actionLabel: string;
+            autoInitializedItems: any[];
+            processedItems: any[];
+            errors: string[];
+            isFullyProcessed: boolean;
+            totalGroups: number;
+            processedGroups: number;
+            remainingGroups: number[];
+            remainingGroupNames: string[];
+        };
+    }> {
+        const response = await api.post(`/balances/requests/${requestId}/process-group`, payload);
+        return response.data;
+    }
+
+    /**
+     * Get processing status for a request
+     */
+    async getRequestProcessingStatus(requestId: number): Promise<{
+        success: boolean;
+        data: RequestProcessingStatus;
+    }> {
+        const response = await api.get(`/balances/requests/${requestId}/group-status`);
+        return response.data;
+    }
+
+    /**
+     * Get all request processing statuses
+     */
+    async getAllRequestProcessingStatus(storeId?: number): Promise<{
+        success: boolean;
+        data: any[];
+    }> {
+        let url = '/balances/requests/processing-status';
+        if (storeId) {
+            url += `?storeId=${storeId}`;
+        }
+        const response = await api.get(url);
+        return response.data;
+    }
+
+    /**
+     * Skip group processing (Admin only)
+     */
+    async skipGroupProcessing(requestId: number, payload: { groupId: number; remark?: string }): Promise<{
+        success: boolean;
+        message: string;
+        data: any;
+    }> {
+        const response = await api.post(`/balances/requests/${requestId}/skip-group`, payload);
+        return response.data;
+    }
+
+    /**
+     * Check if items are initialized for a group
+     */
+    async checkGroupInitialization(requestId: number, groupId: number, storeId: number): Promise<{
+        success: boolean;
+        data: {
+            requestId: number;
+            requestCode: string;
+            groupId: number;
+            storeId: number;
+            totalItems: number;
+            initializedCount: number;
+            missingCount: number;
+            allInitialized: boolean;
+            missingItems: any[];
+            initializedItems: any[];
+            canProcess: boolean;
+            message: string;
+        };
+    }> {
+        const response = await api.get(`/balances/requests/check-initialization?requestId=${requestId}&groupId=${groupId}&storeId=${storeId}`);
         return response.data;
     }
 
@@ -582,6 +747,25 @@ class BalanceService {
     }
 
     // ================================================================
+    // STORE-GROUP RELATIONS
+    // ================================================================
+
+    /**
+     * Get store-group relations
+     */
+    async getStoreGroupRelations(storeId?: number): Promise<{
+        success: boolean;
+        data: any[];
+    }> {
+        let url = '/balances/store-group-relations';
+        if (storeId) {
+            url += `?storeId=${storeId}`;
+        }
+        const response = await api.get(url);
+        return response.data;
+    }
+
+    // ================================================================
     // UTILITY METHODS
     // ================================================================
 
@@ -656,6 +840,42 @@ class BalanceService {
         return type === 'Stock In' ? 'stock-in' : 'stock-out';
     }
 
+    // ============================================
+    // GET USER STORE AND GROUP ACCESS
+    // ============================================
+    async getUserStoreAndGroup(): Promise<{
+        success: boolean;
+        data: {
+            userId: number;
+            username: string;
+            fullName: string;
+            email: string;
+            role: string;
+            isActive: boolean;
+            isAdmin: boolean;
+            hasAssignments: boolean;
+            assignedStoreId: number | null;
+            assignedGroupId: number | null;
+            assignedStore: {
+                id: number;
+                name: string;
+                code: string;
+                location: string;
+                status: string;
+            } | null;
+            assignedGroup: {
+                id: number;
+                name: string;
+                code: string;
+                description: string;
+                status: string;
+            } | null;
+        };
+    }> {
+        const response = await api.get('/balances/user/store-group');
+        return response.data;
+    }
+
     /**
      * Get reference type label
      */
@@ -667,7 +887,8 @@ class BalanceService {
             'adjustment': '📊 Adjustment',
             'return': '↩️ Return',
             'sale': '💰 Sale',
-            'request': '📋 Request'
+            'request': '📋 Request',
+            'auto_initialization': '🤖 Auto-Initialization'
         };
         return labels[type] || type;
     }
@@ -680,18 +901,6 @@ class BalanceService {
         if (balance <= minStock) return 'text-warning';
         return 'text-success';
     }
-
-    /**
- * Get groups for a store (or all store-group relations)
- */
-
-    async getStoreGroupRelations(storeId?: number): Promise<{ success: boolean; data: any[] }> {
-    const params = new URLSearchParams();
-    if (storeId) params.append('storeId', storeId.toString());
-    
-    const response = await api.get(`/balances/store-group-relations${params.toString() ? `?${params.toString()}` : ''}`);
-    return response.data;
-}
 
     /**
      * Calculate base balance (balance * conversion value)
@@ -725,6 +934,29 @@ class BalanceService {
             return `⚠️ ${itemName} is low on stock (${balance} remaining, minimum ${minStock})`;
         }
         return '';
+    }
+
+    /**
+     * Get processing status label for a request
+     */
+    getRequestProcessingStatusLabel(status: string): string {
+        const labels: Record<string, string> = {
+            'pending': '⏳ Pending',
+            'partial': '🔄 Partially Processed',
+            'completed': '✅ Completed',
+            'finalized': '✅ Finalized'
+        };
+        return labels[status] || status;
+    }
+
+    /**
+     * Check if a request can be processed by the current group
+     */
+    canProcessRequest(request: ItemRequest, groupId: number): boolean {
+        if (request.status === 'finalized') return false;
+        if (request.isProcessedByGroup) return false;
+        if (request.isFullyProcessed) return false;
+        return true;
     }
 }
 

@@ -79,7 +79,8 @@ const roleTitle = computed(() => {
     finance: 'Finance Officer',
     employee: 'Employee',
     attendance: 'Attendance Manager',
-    store: 'Store Manager',
+    storekeeper: 'Store Manager',
+    store_it:'Store IT',
     checker: 'checker'
   }
   return titles[userRole.value] || 'User'
@@ -127,21 +128,31 @@ const roleMenus = {
     { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
     { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
   ],
-  store: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+  storekeeper: [
+    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
     { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
     { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
-    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+    // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+  ],
+    store_it: [
+    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
+    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
+    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+    // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
   checker: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+    // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
 
 
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },

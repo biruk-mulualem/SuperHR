@@ -23,6 +23,8 @@ module.exports = (sequelize, DataTypes) => {
         as: 'items',
         onDelete: 'CASCADE',
       });
+
+      
     }
 
     // Get full request info with all details

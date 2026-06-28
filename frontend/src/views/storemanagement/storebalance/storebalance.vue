@@ -5,7 +5,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>💰 Store Balance</h2>
-        <span class="total-badge">{{ totalItems }} Items</span>
+        <span class="total-badge">{{ filteredBalances.length }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -26,13 +26,13 @@
     <div class="filter-bar">
       <select v-model="filterStore" class="filter-select" @change="onFilterChange">
         <option value="">All Stores</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">
+        <option v-for="store in availableStores" :key="store.id" :value="store.id">
           {{ store.name }}
         </option>
       </select>
       <select v-model="filterGroup" class="filter-select" @change="onFilterChange">
         <option value="">All Groups</option>
-        <option v-for="group in allGroups" :key="group.id" :value="group.id">
+        <option v-for="group in availableGroups" :key="group.id" :value="group.id">
           {{ group.name }}
         </option>
       </select>
@@ -129,9 +129,8 @@
               <div class="uom-wrapper">
                 <div class="uom-code">{{ item.uomCode || getItemUnit(item.itemId) }}</div>
                 <div class="conversion-info" v-if="(item.conversionValue || getConversionValue(item.itemId)) > 1">
-                  {{ item.conversionValue || getConversionValue(item.itemId) }} 
-                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }} = 1 
-                  {{ item.uomCode || getItemUnit(item.itemId) }}
+                 1 {{ item.uomCode || getItemUnit(item.itemId) }} = {{ item.conversionValue || getConversionValue(item.itemId) }} 
+                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }} 
                 </div>
                 <div class="conversion-info base" v-else>
                   1 {{ item.uomCode || getItemUnit(item.itemId) }} = 1 {{ item.uomCode || getItemUnit(item.itemId) }}
@@ -156,7 +155,7 @@
             </td>
             <td>
               <div class="action-buttons">
-                <button class="icon-btn" @click="editBalance(item)" title="Edit">✏️</button>
+                <!-- <button class="icon-btn" @click="editBalance(item)" title="Edit">✏️</button> -->
                 <button class="icon-btn" @click="toggleStatus(item)" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
                   {{ item.status === 'Active' ? '⏸️' : '▶️' }}
                 </button>
@@ -212,26 +211,39 @@
               <span>Set up initial stock balance for a specific item in a store.</span>
             </div>
             <form @submit.prevent="saveBalance" class="balance-form">
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Store *</label>
-                  <select v-model="form.storeId" required>
-                    <option value="">Select Store</option>
-                    <option v-for="store in stores" :key="store.id" :value="store.id">
-                      {{ store.name }}
-                    </option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Group *</label>
-                  <select v-model="form.groupId" required>
-                    <option value="">Select Group</option>
-                    <option v-for="group in allGroups" :key="group.id" :value="group.id">
-                      {{ group.name }}
-                    </option>
-                  </select>
-                </div>
-              </div>
+             <!-- In the modal body, update the store and group selects -->
+<div class="form-row">
+  <div class="form-group">
+    <label>Store *</label>
+    <select v-model="form.storeId" required :disabled="!isAdmin && userData?.assignedStore">
+      <option value="">Select Store</option>
+      <option v-for="store in availableStores" :key="store.id" :value="store.id">
+        {{ store.name }}
+      </option>
+    </select>
+    <span v-if="!isAdmin && userData?.assignedStore" class="hint pre-filled">
+      📌 Pre-filled with your assigned store: <strong>{{ userData.assignedStore.name }}</strong>
+    </span>
+    <span v-else-if="!isAdmin && !userData?.assignedStore" class="hint warning">
+      ⚠️ No store assigned. Please select a store.
+    </span>
+  </div>
+  <div class="form-group">
+    <label>Group *</label>
+    <select v-model="form.groupId" required :disabled="!isAdmin && userData?.assignedGroup">
+      <option value="">Select Group</option>
+      <option v-for="group in availableGroups" :key="group.id" :value="group.id">
+        {{ group.name }}
+      </option>
+    </select>
+    <span v-if="!isAdmin && userData?.assignedGroup" class="hint pre-filled">
+      📌 Pre-filled with your assigned group: <strong>{{ userData.assignedGroup.name }}</strong>
+    </span>
+    <span v-else-if="!isAdmin && !userData?.assignedGroup" class="hint warning">
+      ⚠️ No group assigned. Please select a group.
+    </span>
+  </div>
+</div>
               <div class="form-row">
                 <div class="form-group">
                   <label>Item *</label>
@@ -450,15 +462,18 @@
             </ul>
           </div>
 
-          <!-- Step 1: Select Store -->
+          <!-- Step 1: Select Store - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group">
             <label>1. Select Store *</label>
-            <select v-model="selectedStoreId" required @change="onStoreSelect">
+            <select v-model="selectedStoreId" required @change="onStoreSelect" :disabled="!isAdmin && userData?.assignedStore">
               <option value="">Select a store</option>
-              <option v-for="store in stores" :key="store.id" :value="store.id">
+              <option v-for="store in availableStores" :key="store.id" :value="store.id">
                 {{ store.name }}
               </option>
             </select>
+            <span v-if="!isAdmin && userData?.assignedStore" class="hint" style="color: #2563eb;">
+              📌 Using your assigned store: {{ userData?.assignedStore?.name }}
+            </span>
           </div>
 
           <!-- Step 2: Select Requests -->
@@ -485,18 +500,18 @@
             </div>
           </div>
 
-          <!-- Step 3: Select Group - FILTERED BY STORE -->
+          <!-- Step 3: Select Group - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group" v-if="selectedRequestIds.length > 0">
             <label>3. Select Group to Apply Changes *</label>
-            <select v-model="selectedGroupId" required>
+            <select v-model="selectedGroupId" required :disabled="!isAdmin && userData?.assignedGroup">
               <option value="">Select a group</option>
-              <option v-for="group in availableGroupsForStore" :key="group.id" :value="group.id">
+              <option v-for="group in availableGroups" :key="group.id" :value="group.id">
                 {{ group.name }}
               </option>
             </select>
-            <p v-if="availableGroupsForStore.length === 0" class="hint-text" style="color: #f59e0b; margin-top: 4px;">
-              ⚠️ No groups found for this store. Please initialize balances first.
-            </p>
+            <span v-if="!isAdmin && userData?.assignedGroup" class="hint" style="color: #2563eb;">
+              📌 Using your assigned group: {{ userData?.assignedGroup?.name }}
+            </span>
           </div>
 
           <!-- Preview Selected Requests -->
@@ -607,11 +622,27 @@
     </div>
   </div>
 </template>
-
-
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import balanceService from '@/stores/balanceService'
+
+// ================================================================
+// USER DATA
+// ================================================================
+
+const getUserData = () => {
+  try {
+    const data = JSON.parse(localStorage.getItem('user') || '{}')
+    console.log('👤 User data from localStorage:', data)
+    return data
+  } catch (error) {
+    console.error('Error parsing user data:', error)
+    return {}
+  }
+}
+
+const userData = ref(getUserData())
+const isAdmin = computed(() => userData.value?.isAdmin || false)
 
 // ================================================================
 // STORE DATA - Will be populated from API
@@ -645,6 +676,7 @@ const isLoading = ref(false)
 const isLoadingStores = ref(false)
 const isLoadingGroups = ref(false)
 const isLoadingItems = ref(false)
+const isLoadingRequests = ref(false)
 
 // ================================================================
 // STATE
@@ -711,17 +743,62 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// COMPUTED - FILTERED DATA (All data after filters)
+// COMPUTED - AVAILABLE DATA BASED ON USER ROLE
+// ================================================================
+
+const availableStores = computed(() => {
+  if (isAdmin.value) {
+    return stores.value
+  }
+  if (userData.value?.assignedStore) {
+    return stores.value.filter(s => s.id === userData.value.assignedStore.id)
+  }
+  return []
+})
+
+const availableGroups = computed(() => {
+  if (isAdmin.value) {
+    return allGroups.value
+  }
+  if (userData.value?.assignedGroup) {
+    return allGroups.value.filter(g => g.id === userData.value.assignedGroup.id)
+  }
+  return []
+})
+
+// ================================================================
+// COMPUTED - FILTERED BALANCES
 // ================================================================
 
 const hasActiveFilters = computed(() => {
   return filterStore.value || filterGroup.value || filterStatus.value || searchQuery.value
 })
 
-// All balances after applying filters
 const filteredBalances = computed(() => {
-  let result = balances.value
+  console.log('🔄 Computing filtered balances...')
+  console.log('📊 Raw balances:', balances.value.length)
   
+  let result = [...balances.value]
+  
+  // 🔥 FIRST: Filter by user's assigned store/group if not admin
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    const assignedStoreId = userData.value.assignedStore?.id
+    const assignedGroupId = userData.value.assignedGroup?.id
+    
+    console.log('🔒 Filtering by assigned store ID:', assignedStoreId)
+    console.log('🔒 Filtering by assigned group ID:', assignedGroupId)
+    
+    if (assignedStoreId) {
+      result = result.filter(item => item.storeId === assignedStoreId)
+      console.log('📊 After store filter:', result.length)
+    }
+    if (assignedGroupId) {
+      result = result.filter(item => item.groupId === assignedGroupId)
+      console.log('📊 After group filter:', result.length)
+    }
+  }
+  
+  // 🔥 THEN: Apply UI filters (search, store, group, status)
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter(item => {
@@ -732,29 +809,40 @@ const filteredBalances = computed(() => {
     })
   }
   
-  if (filterStore.value) {
-    result = result.filter(item => item.storeId === Number(filterStore.value))
+  // 🔥 Apply store filter if filterStore has a valid value
+  if (filterStore.value && filterStore.value !== '') {
+    const storeId = Number(filterStore.value)
+    if (!isNaN(storeId)) {
+      result = result.filter(item => item.storeId === storeId)
+    }
   }
   
-  if (filterGroup.value) {
-    result = result.filter(item => item.groupId === Number(filterGroup.value))
+  // 🔥 Apply group filter if filterGroup has a valid value
+  if (filterGroup.value && filterGroup.value !== '') {
+    const groupId = Number(filterGroup.value)
+    if (!isNaN(groupId)) {
+      result = result.filter(item => item.groupId === groupId)
+    }
   }
   
   if (filterStatus.value) {
     result = result.filter(item => item.status === filterStatus.value)
   }
   
+  console.log('✅ Final filtered count:', result.length)
   return result
 })
 
 // ================================================================
-// COMPUTED - PAGINATED DATA (Current page only)
+// COMPUTED - PAGINATED DATA (For display in table)
 // ================================================================
 
 const paginatedBalances = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
-  return filteredBalances.value.slice(start, end)
+  const paginated = filteredBalances.value.slice(start, end)
+  console.log('📄 Paginated items:', paginated.length, 'Page:', currentPage.value)
+  return paginated
 })
 
 const totalPages = computed(() => {
@@ -762,30 +850,32 @@ const totalPages = computed(() => {
 })
 
 // ================================================================
-// COMPUTED - STATS (From DISPLAYED items only)
+// COMPUTED - STATS
 // ================================================================
 
-// Total stores from displayed items (paginated)
 const totalStores = computed(() => {
-  const uniqueStores = new Set(paginatedBalances.value.map(item => item.storeId))
+  const uniqueStores = new Set(filteredBalances.value.map(item => item.storeId))
   return uniqueStores.size
 })
 
-// Total items from displayed items (paginated)
 const totalItems = computed(() => {
-  return paginatedBalances.value.length
+  return filteredBalances.value.length
 })
 
-// Low stock items from displayed items (paginated)
 const lowStockItems = computed(() => {
-  return paginatedBalances.value.filter(item => 
+  return filteredBalances.value.filter(item => 
     item.balance <= item.minStock && item.balance > 0
   ).length
 })
 
-// Pending approved requests from all item requests (global)
 const pendingRequestsCount = computed(() => {
-  return itemRequests.value.filter(req => req.status === 'approved').length
+  // Count requests that are approved but not fully processed
+  return itemRequests.value.filter(req => {
+    if (req.status !== 'approved') return false
+    // Check if this group has already processed this request
+    if (req.isProcessedByGroup) return false
+    return true
+  }).length
 })
 
 const selectedRequests = computed(() => {
@@ -793,29 +883,11 @@ const selectedRequests = computed(() => {
 })
 
 // ================================================================
-// COMPUTED - Filter groups by selected store (for process modal)
-// ================================================================
-
-const availableGroupsForStore = computed(() => {
-  if (!selectedStoreId.value) {
-    return allGroups.value
-  }
-  
-  // Get all balance records for this store
-  const storeBalances = balances.value.filter(b => b.storeId === Number(selectedStoreId.value))
-  
-  // Get unique group IDs from these balances
-  const groupIds = new Set(storeBalances.map(b => b.groupId))
-  
-  // Return only groups that have balances in this store
-  return allGroups.value.filter(group => groupIds.has(group.id))
-})
-
-// ================================================================
 // HELPER METHODS
 // ================================================================
 
 const getItemName = (itemId) => {
+  if (!itemId) return 'Unknown'
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.itemName || 'Unknown'
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -823,6 +895,7 @@ const getItemName = (itemId) => {
 }
 
 const getItemCode = (itemId) => {
+  if (!itemId) return 'N/A'
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.itemCode || 'N/A'
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -830,6 +903,7 @@ const getItemCode = (itemId) => {
 }
 
 const getItemCommonName = (itemId) => {
+  if (!itemId) return ''
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.itemCommonName || ''
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -837,6 +911,7 @@ const getItemCommonName = (itemId) => {
 }
 
 const getItemUnit = (itemId) => {
+  if (!itemId) return ''
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.uomCode || ''
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -844,6 +919,7 @@ const getItemUnit = (itemId) => {
 }
 
 const getBaseUOM = (itemId) => {
+  if (!itemId) return ''
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.conversionUomCode || balance.uomCode || ''
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -851,6 +927,7 @@ const getBaseUOM = (itemId) => {
 }
 
 const getConversionValue = (itemId) => {
+  if (!itemId) return 1
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.conversionValue || 1
   const item = inventoryItems.value.find(i => i.id === itemId)
@@ -863,20 +940,21 @@ const getBaseBalance = (item) => {
 }
 
 const getStoreName = (storeId) => {
+  if (!storeId) return 'Unknown'
   const balance = balances.value.find(b => b.storeId === storeId)
   if (balance) return balance.storeName || 'Unknown'
-  const store = stores.value.find(s => s.id === storeId)
+  const store = availableStores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
 const getGroupName = (groupId) => {
+  if (!groupId) return 'Unknown'
   const balance = balances.value.find(b => b.groupId === groupId)
   if (balance) return balance.groupName || 'Unknown'
-  const group = allGroups.value.find(g => g.id === groupId)
+  const group = availableGroups.value.find(g => g.id === groupId)
   return group ? group.name : 'Unknown'
 }
 
-// Helper to get item name by code (for import preview)
 const getItemNameByCode = (itemCode) => {
   if (!itemCode) return null
   const item = inventoryItems.value.find(i => i.code === itemCode)
@@ -937,6 +1015,18 @@ const getSelectedTotalItems = () => {
 }
 
 // ================================================================
+// UI HELPERS
+// ================================================================
+
+const onItemChange = () => {
+  if (!editingBalance.value) {
+    form.value.balance = 0
+  }
+}
+
+const onBalanceChange = () => {}
+
+// ================================================================
 // API METHODS
 // ================================================================
 
@@ -945,6 +1035,7 @@ const fetchStores = async () => {
   try {
     const response = await balanceService.getStores()
     stores.value = response.data || []
+    console.log('🏪 Stores loaded:', stores.value.length)
   } catch (error) {
     console.error('Error fetching stores:', error)
     showToastMessage('Failed to load stores', 'error')
@@ -958,6 +1049,7 @@ const fetchGroups = async () => {
   try {
     const response = await balanceService.getGroups()
     allGroups.value = response.data || []
+    console.log('📋 Groups loaded:', allGroups.value.length)
   } catch (error) {
     console.error('Error fetching groups:', error)
     showToastMessage('Failed to load groups', 'error')
@@ -971,6 +1063,7 @@ const fetchItems = async () => {
   try {
     const response = await balanceService.getActiveItems()
     inventoryItems.value = response.data || []
+    console.log('📦 Items loaded:', inventoryItems.value.length)
   } catch (error) {
     console.error('Error fetching items:', error)
     showToastMessage('Failed to load items', 'error')
@@ -982,26 +1075,100 @@ const fetchItems = async () => {
 const fetchBalances = async () => {
   isLoading.value = true
   try {
-    const response = await balanceService.getBalances({
-      storeId: filterStore.value ? Number(filterStore.value) : undefined,
-      groupId: filterGroup.value ? Number(filterGroup.value) : undefined,
-      status: filterStatus.value || undefined,
-      search: searchQuery.value || undefined,
-      page: currentPage.value,
-      limit: pageSize.value
-    })
+    const filters = {}
     
+    // 🔥 If not admin, filter by their assigned store and group
+    if (!isAdmin.value && userData.value?.hasAccess) {
+      if (userData.value.assignedStore) {
+        filters.assignedStoreId = userData.value.assignedStore.id
+        console.log('🔒 API Filtering by assigned store:', userData.value.assignedStore.id)
+      }
+      if (userData.value.assignedGroup) {
+        filters.assignedGroupId = userData.value.assignedGroup.id
+        console.log('🔒 API Filtering by assigned group:', userData.value.assignedGroup.id)
+      }
+    }
+    
+    // 🔥 Add UI filters if they have valid values
+    if (filterStore.value && filterStore.value !== '') {
+      const storeId = Number(filterStore.value)
+      if (!isNaN(storeId)) {
+        filters.storeId = storeId
+        console.log('🔍 UI Store filter:', storeId)
+      }
+    }
+    if (filterGroup.value && filterGroup.value !== '') {
+      const groupId = Number(filterGroup.value)
+      if (!isNaN(groupId)) {
+        filters.groupId = groupId
+        console.log('🔍 UI Group filter:', groupId)
+      }
+    }
+    if (filterStatus.value) {
+      filters.status = filterStatus.value
+      console.log('🔍 UI Status filter:', filterStatus.value)
+    }
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+      console.log('🔍 UI Search filter:', searchQuery.value)
+    }
+    
+    filters.page = currentPage.value
+    filters.limit = 100
+    
+    console.log('📊 Fetching balances with filters:', filters)
+    
+    const response = await balanceService.getBalances(filters)
     balances.value = response.data || []
+    console.log('✅ Balances loaded:', balances.value.length)
+    if (balances.value.length > 0) {
+      console.log('✅ First balance:', balances.value[0])
+    }
     
     if (response.pagination) {
-      currentPage.value = response.pagination.page || 1
-      pageSize.value = response.pagination.limit || 5
+      currentPage.value = response.pagination.page
     }
+    
   } catch (error) {
     console.error('Error fetching balances:', error)
     showToastMessage('Failed to load balances', 'error')
   } finally {
     isLoading.value = false
+  }
+}
+
+// ================================================================
+// 🔥 FETCH APPROVED REQUESTS - FIXED
+// ================================================================
+
+const fetchApprovedRequests = async () => {
+  isLoadingRequests.value = true
+  try {
+    let response
+    
+    if (!isAdmin.value && userData.value?.hasAccess && userData.value.assignedStore) {
+      const storeId = userData.value.assignedStore.id
+      const groupId = userData.value.assignedGroup?.id
+      
+      console.log('🔍 Fetching approved requests for store:', storeId, 'group:', groupId)
+      
+      // ✅ Pass both storeId and groupId to filter out already processed requests
+      response = await balanceService.getApprovedRequests(storeId, groupId)
+    } else if (isAdmin.value) {
+      console.log('📋 Admin: Fetching all approved requests')
+      response = await balanceService.getApprovedRequests(0)
+    } else {
+      console.log('⚠️ No store assigned, fetching all approved requests')
+      response = await balanceService.getApprovedRequests(0)
+    }
+    
+    itemRequests.value = response.data || []
+    console.log('📋 Approved requests loaded:', itemRequests.value.length)
+  } catch (error) {
+    console.error('Error fetching approved requests:', error)
+    showToastMessage('Failed to load approved requests', 'error')
+  } finally {
+    isLoadingRequests.value = false
   }
 }
 
@@ -1032,7 +1199,6 @@ const clearFilters = () => {
 const changePage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
     currentPage.value = page
-    fetchBalances()
   }
 }
 
@@ -1040,6 +1206,14 @@ const changePageSize = () => {
   currentPage.value = 1
   fetchBalances()
 }
+
+// ================================================================
+// BALANCE CRUD
+// ================================================================
+
+// ================================================================
+// BALANCE CRUD - UPDATED WITH USER PREFILL
+// ================================================================
 
 // ================================================================
 // BALANCE CRUD
@@ -1059,14 +1233,60 @@ const openAddBalanceModal = () => {
     remaining: 0,
     percentage: 0
   }
-  form.value = {
-    storeId: '',
-    groupId: '',
-    itemId: '',
-    balance: 0,
-    status: 'Active',
-    minStock: 0,
+  
+  // 🔥 Pre-fill store and group for non-admin users
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    // Get the assigned store and group from user data
+    const assignedStoreId = userData.value.assignedStore?.id
+    const assignedGroupId = userData.value.assignedGroup?.id
+    const assignedStoreName = userData.value.assignedStore?.name
+    const assignedGroupName = userData.value.assignedGroup?.name
+    
+    // Validate that the assigned store and group exist in the available lists
+    const storeExists = assignedStoreId ? availableStores.value.some(s => s.id === assignedStoreId) : false
+    const groupExists = assignedGroupId ? availableGroups.value.some(g => g.id === assignedGroupId) : false
+    
+    // Pre-fill the form with validated values
+    form.value = {
+      storeId: (assignedStoreId && storeExists) ? assignedStoreId : '',
+      groupId: (assignedGroupId && groupExists) ? assignedGroupId : '',
+      itemId: '',
+      balance: 0,
+      status: 'Active',
+      minStock: 0,
+    }
+    
+    console.log('📝 Form pre-filled with:', {
+      storeId: form.value.storeId,
+      storeName: assignedStoreName,
+      groupId: form.value.groupId,
+      groupName: assignedGroupName,
+      storeExists,
+      groupExists
+    })
+    
+    // Show a toast with the pre-filled info
+    if (form.value.storeId && form.value.groupId) {
+      showToastMessage(`📌 Pre-filled with your assigned store: ${assignedStoreName} and group: ${assignedGroupName}`, 'info')
+    } else if (form.value.storeId) {
+      showToastMessage(`📌 Pre-filled with your assigned store: ${assignedStoreName}`, 'info')
+    } else if (form.value.groupId) {
+      showToastMessage(`📌 Pre-filled with your assigned group: ${assignedGroupName}`, 'info')
+    } else {
+      showToastMessage('⚠️ No assigned store or group found. Please select manually.', 'warning')
+    }
+  } else {
+    // Admin or no assigned store/group - leave empty
+    form.value = {
+      storeId: '',
+      groupId: '',
+      itemId: '',
+      balance: 0,
+      status: 'Active',
+      minStock: 0,
+    }
   }
+  
   showBalanceModal.value = true
 }
 
@@ -1385,6 +1605,16 @@ const processApprovedRequests = async () => {
   storeRequests.value = []
   selectAllRequests.value = false
   showProcessModal.value = true
+  
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    if (userData.value.assignedStore) {
+      selectedStoreId.value = String(userData.value.assignedStore.id)
+      await onStoreSelect()
+    }
+    if (userData.value.assignedGroup) {
+      selectedGroupId.value = String(userData.value.assignedGroup.id)
+    }
+  }
 }
 
 const closeProcessModal = () => {
@@ -1400,16 +1630,34 @@ const onStoreSelect = async () => {
   selectedRequestIds.value = []
   storeRequests.value = []
   selectAllRequests.value = false
-  selectedGroupId.value = '' // Reset group selection when store changes
+  selectedGroupId.value = ''
   
   if (!selectedStoreId.value) {
+    console.log('⚠️ No store selected')
     return
   }
   
+  if (!isAdmin.value && userData.value?.assignedStore) {
+    if (Number(selectedStoreId.value) !== userData.value.assignedStore.id) {
+      showToastMessage('You do not have access to this store', 'error')
+      selectedStoreId.value = ''
+      return
+    }
+  }
+  
   try {
-    const response = await balanceService.getApprovedRequests(Number(selectedStoreId.value))
+    const storeId = Number(selectedStoreId.value)
+    const groupId = userData.value?.assignedGroup?.id
+    
+    console.log('🔍 Fetching approved requests for store ID:', storeId, 'group ID:', groupId)
+    
+    // ✅ Pass both storeId and groupId
+    const response = await balanceService.getApprovedRequests(storeId, groupId)
     storeRequests.value = response.data || []
     
+    console.log(`✅ Found ${storeRequests.value.length} unprocessed approved requests for store ${storeId}`)
+    
+    // Auto-select all unprocessed requests
     selectAllRequests.value = storeRequests.value.length > 0
     if (selectAllRequests.value) {
       selectedRequestIds.value = storeRequests.value.map(req => req.id)
@@ -1442,6 +1690,13 @@ const confirmProcessRequests = async () => {
     return
   }
   
+  if (!isAdmin.value && userData.value?.assignedGroup) {
+    if (Number(selectedGroupId.value) !== userData.value.assignedGroup.id) {
+      showToastMessage('You do not have access to this group', 'error')
+      return
+    }
+  }
+  
   processing.value = true
 
   try {
@@ -1452,9 +1707,14 @@ const confirmProcessRequests = async () => {
     })
 
     if (response.success) {
-      const { processed, failed, missingItems, processedItems } = response.data || {}
+      const { processed, failed, missingItems, processedItems, autoInitializedItems, partialRequests } = response.data || {}
       
       let message = response.message || 'Requests processed!'
+      
+      // Build detailed message
+      if (autoInitializedItems && autoInitializedItems.length > 0) {
+        message += `\n\n📦 Auto-initialized ${autoInitializedItems.length} item(s)`
+      }
       
       if (processedItems && processedItems.length > 0) {
         message += `\n\n✅ Processed ${processedItems.length} items`
@@ -1464,12 +1724,17 @@ const confirmProcessRequests = async () => {
         message += `\n\n⚠️ ${missingItems.length} items need initialization`
       }
       
+      if (partialRequests && partialRequests.length > 0) {
+        message += `\n\n⏳ ${partialRequests.length} request(s) partially processed`
+      }
+      
       showToastMessage(message, failed > 0 ? 'warning' : 'success')
     } else {
       showToastMessage(response.error || 'Failed to process requests', 'error')
     }
     
     await fetchBalances()
+    await fetchApprovedRequests() // Refresh the requests list
     closeProcessModal()
   } catch (error) {
     console.error('Error processing requests:', error)
@@ -1586,7 +1851,15 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 // LIFECYCLE HOOKS
 // ================================================================
+
 onMounted(async () => {
+  userData.value = getUserData()
+  console.log('👤 User data loaded:', userData.value)
+  console.log('👑 Is Admin:', isAdmin.value)
+  console.log('🏪 Assigned Store:', userData.value.assignedStore)
+  console.log('📋 Assigned Group:', userData.value.assignedGroup)
+  
+  // Fetch all data
   await Promise.all([
     fetchStores(),
     fetchGroups(),
@@ -1594,77 +1867,63 @@ onMounted(async () => {
     fetchBalances()
   ])
   
-  itemRequests.value = [
-    {
-      id: 1,
-      requestCode: 'REQ-001',
-      askingStoreId: 2,
-      supplyingStoreId: 1,
-      status: 'approved',
-      requestedDate: '2024-01-15',
-      items: [
-        { itemId: 1, quantity: 10 },
-        { itemId: 6, quantity: 5 }
-      ],
-      remark: 'Stock transfer for production'
-    },
-    {
-      id: 2,
-      requestCode: 'REQ-002',
-      askingStoreId: 3,
-      supplyingStoreId: 2,
-      status: 'approved',
-      requestedDate: '2024-01-16',
-      items: [
-        { itemId: 9, quantity: 20 },
-        { itemId: 10, quantity: 10 }
-      ],
-      remark: 'Paint order for new project'
-    },
-    {
-      id: 3,
-      requestCode: 'REQ-003',
-      askingStoreId: 4,
-      supplyingStoreId: 6,
-      status: 'approved',
-      requestedDate: '2024-01-17',
-      items: [
-        { itemId: 14, quantity: 15 },
-        { itemId: 15, quantity: 100 }
-      ],
-      remark: 'Metal sheets for construction'
-    },
-    {
-      id: 4,
-      requestCode: 'REQ-004',
-      askingStoreId: 1,
-      supplyingStoreId: 7,
-      status: 'approved',
-      requestedDate: '2024-01-18',
-      items: [
-        { itemId: 17, quantity: 5 },
-        { itemId: 18, quantity: 10 }
-      ],
-      remark: 'Tools for maintenance team'
-    },
-    {
-      id: 5,
-      requestCode: 'REQ-005',
-      askingStoreId: 8,
-      supplyingStoreId: 9,
-      status: 'approved',
-      requestedDate: '2024-01-19',
-      items: [
-        { itemId: 19, quantity: 50 },
-        { itemId: 20, quantity: 30 }
-      ],
-      remark: 'Calcium and finishing materials'
-    },
-  ]
+  // 🔥 FIX: Set filter values for non-admin users
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    if (userData.value.assignedStore) {
+      filterStore.value = String(userData.value.assignedStore.id)
+      console.log('🔒 Auto-selected store filter:', userData.value.assignedStore.name, 'ID:', userData.value.assignedStore.id)
+    }
+    if (userData.value.assignedGroup) {
+      filterGroup.value = String(userData.value.assignedGroup.id)
+      console.log('🔒 Auto-selected group filter:', userData.value.assignedGroup.name, 'ID:', userData.value.assignedGroup.id)
+    }
+    
+    // Refresh balances with filters applied
+    await fetchBalances()
+  }
+  
+  // 🔥 FIX: Fetch approved requests after user data is loaded
+  await fetchApprovedRequests()
+})
+
+// Watch for user data changes
+watch(() => localStorage.getItem('user'), (newVal) => {
+  if (newVal) {
+    userData.value = getUserData()
+    console.log('👤 User data updated:', userData.value)
+    // Refresh data when user changes
+    fetchBalances()
+    fetchApprovedRequests()
+  }
 })
 </script>
 
 <style scoped>
+
+/* In the style section, add these */
+.hint.pre-filled {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.hint.warning {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.hint.info {
+  color: #3b82f6;
+}
+
+select:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+select:disabled + .hint {
+  margin-top: 4px;
+}
 /* ================================================================
    SECTION CARD
    ================================================================ */

@@ -2,8 +2,131 @@
 'use strict';
 
 const db = require('../models');
-const { ItemRequest, ItemRequestDetail, Store, Item, UOM, User } = db;
+const { ItemRequest, ItemRequestDetail, Store, Item, UOM, User,StoreBalance } = db;
 const { Op } = require('sequelize');
+
+
+
+// controllers/itemRequestController.js - Add this validation function
+
+/**
+ * Validate if the supplying store has enough stock for the requested items
+ */
+const validateStockAvailability = async (supplyingStoreId, items) => {
+  const errors = [];
+  const stockInfo = [];
+
+  for (const item of items) {
+    // Check if the item has a balance in the supplying store
+    const balance = await StoreBalance.findOne({
+      where: {
+        storeId: supplyingStoreId,
+        itemId: item.itemId,
+        status: 'Active'
+      }
+    });
+
+    if (!balance) {
+      errors.push({
+        itemId: item.itemId,
+        requestedQuantity: item.quantity,
+        availableQuantity: 0,
+        message: `This item is not available in the selected supplying store`
+      });
+      continue;
+    }
+
+    const availableQuantity = parseFloat(balance.balance);
+    const requestedQuantity = parseFloat(item.quantity);
+
+    stockInfo.push({
+      itemId: item.itemId,
+      availableQuantity,
+      requestedQuantity,
+      balance: balance
+    });
+
+    if (requestedQuantity > availableQuantity) {
+      errors.push({
+        itemId: item.itemId,
+        requestedQuantity,
+        availableQuantity,
+        shortage: requestedQuantity - availableQuantity,
+        message: `Insufficient stock. Available: ${availableQuantity}, Requested: ${requestedQuantity}`
+      });
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    stockInfo
+  };
+};
+
+
+// controllers/itemRequestController.js - Add this endpoint
+
+/**
+ * Check stock availability for items in a store
+ * GET /api/item-requests/check-stock
+ */
+exports.checkStockAvailability = async (req, res) => {
+  try {
+    const { storeId, items } = req.query; // items: JSON array of {itemId, quantity}
+
+    if (!storeId || !items) {
+      return res.status(400).json({
+        success: false,
+        error: 'Store ID and items are required'
+      });
+    }
+
+    const parsedItems = JSON.parse(items);
+    const validationResult = await validateStockAvailability(parseInt(storeId), parsedItems);
+
+    // Get full item details for the response
+    const itemDetails = await Promise.all(
+      parsedItems.map(async (item) => {
+        const itemData = await Item.findByPk(item.itemId, {
+          include: [{ model: UOM, as: 'uom' }]
+        });
+        const stockInfo = validationResult.stockInfo.find(s => s.itemId === item.itemId);
+        return {
+          ...item,
+          itemName: itemData?.name || 'Unknown',
+          itemCode: itemData?.code || 'N/A',
+          uomCode: itemData?.uom?.code || 'Units',
+          availableQuantity: stockInfo?.availableQuantity || 0,
+          isAvailable: stockInfo?.availableQuantity > 0,
+          hasEnoughStock: stockInfo?.availableQuantity >= item.quantity,
+          shortage: stockInfo ? Math.max(0, item.quantity - stockInfo.availableQuantity) : item.quantity
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        isValid: validationResult.isValid,
+        items: itemDetails,
+        errors: validationResult.errors,
+        summary: {
+          totalItems: parsedItems.length,
+          availableItems: itemDetails.filter(i => i.isAvailable).length,
+          itemsWithShortage: itemDetails.filter(i => i.hasEnoughStock === false).length
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Check stock error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check stock availability'
+    });
+  }
+};
+
 
 // ================================================================
 // GET ALL REQUESTS (with pagination and filters)
@@ -416,6 +539,11 @@ exports.getByDateRange = async (req, res) => {
 // ================================================================
 // CREATE REQUEST
 // ================================================================
+// controllers/itemRequestController.js - Complete createRequest with stock validation
+
+// ================================================================
+// CREATE REQUEST - WITH STOCK VALIDATION
+// ================================================================
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -430,8 +558,11 @@ exports.createRequest = async (req, res) => {
       remark
     } = req.body;
 
-    // Validate required fields
+    // ================================================================
+    // 1. VALIDATE REQUIRED FIELDS
+    // ================================================================
     if (!askingStoreId || !supplyingStoreId) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         error: 'Asking store and supplying store are required'
@@ -439,28 +570,52 @@ exports.createRequest = async (req, res) => {
     }
 
     // Validate that asking and supplying stores are not the same
-    if (askingStoreId === supplyingStoreId) {
+    if (parseInt(askingStoreId) === parseInt(supplyingStoreId)) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         error: 'Asking store and supplying store cannot be the same'
       });
     }
 
-    // Validate stores exist
+    // ================================================================
+    // 2. VALIDATE STORES EXIST
+    // ================================================================
     const askingStore = await Store.findByPk(askingStoreId);
     const supplyingStore = await Store.findByPk(supplyingStoreId);
 
     if (!askingStore || !supplyingStore) {
+      await t.rollback();
       return res.status(404).json({
         success: false,
         error: 'One or both stores not found'
       });
     }
 
-    // Validate user exists (if provided)
+    // Check if stores are active
+    if (askingStore.status !== 'Active') {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Asking store "${askingStore.name}" is not active`
+      });
+    }
+
+    if (supplyingStore.status !== 'Active') {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Supplying store "${supplyingStore.name}" is not active`
+      });
+    }
+
+    // ================================================================
+    // 3. VALIDATE USER EXISTS
+    // ================================================================
     if (requestedById) {
       const user = await User.findByPk(requestedById);
       if (!user) {
+        await t.rollback();
         return res.status(404).json({
           success: false,
           error: 'User not found'
@@ -468,49 +623,209 @@ exports.createRequest = async (req, res) => {
       }
     }
 
-    // Validate items
+    // ================================================================
+    // 4. VALIDATE ITEMS
+    // ================================================================
     if (!items || items.length === 0) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         error: 'At least one item is required'
       });
     }
 
+    // Get all item details for validation and stock check
+    const itemDetails = [];
+    const itemIds = items.map(item => item.itemId);
+
+    // Fetch all items at once
+    const itemRecords = await Item.findAll({
+      where: { itemId: { [Op.in]: itemIds } },
+      include: [
+        { model: UOM, as: 'uom' }
+      ]
+    });
+
+    // Create a map for quick lookup
+    const itemMap = {};
+    itemRecords.forEach(record => {
+      itemMap[record.itemId] = record;
+    });
+
     // Validate each item
+    const validationErrors = [];
+    const validatedItems = [];
+
     for (const item of items) {
-      if (!item.itemId || !item.quantity) {
-        return res.status(400).json({
-          success: false,
-          error: 'Each item must have itemId and quantity'
+      // Check if item exists
+      const itemRecord = itemMap[item.itemId];
+      if (!itemRecord) {
+        validationErrors.push({
+          itemId: item.itemId,
+          itemName: 'Unknown Item',
+          itemCode: 'N/A',
+          requestedQuantity: item.quantity,
+          message: `Item with ID ${item.itemId} not found in database`
         });
+        continue;
       }
 
-      const itemExists = await Item.findByPk(item.itemId);
-      if (!itemExists) {
-        return res.status(404).json({
-          success: false,
-          error: `Item with ID ${item.itemId} not found`
+      // Check if item is active
+      if (itemRecord.status !== 'Active') {
+        validationErrors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: item.quantity,
+          message: `Item "${itemRecord.name}" is ${itemRecord.status}`
+        });
+        continue;
+      }
+
+      // Validate quantity
+      if (!item.quantity || item.quantity <= 0) {
+        validationErrors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: item.quantity || 0,
+          message: 'Quantity must be greater than 0'
+        });
+        continue;
+      }
+
+      validatedItems.push({
+        ...item,
+        itemRecord,
+        itemName: itemRecord.name,
+        itemCode: itemRecord.code,
+        uomCode: itemRecord.uom?.code || 'Units'
+      });
+    }
+
+    // If there are validation errors, return them
+    if (validationErrors.length > 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Item validation failed',
+        message: 'Some items are invalid or inactive',
+        errors: validationErrors
+      });
+    }
+
+    // ================================================================
+    // 5. 🔥 STOCK AVAILABILITY VALIDATION
+    // ================================================================
+    const stockErrors = [];
+    const stockInfo = [];
+
+    for (const item of validatedItems) {
+      // Check if the item has a balance in the supplying store
+      const balance = await StoreBalance.findOne({
+        where: {
+          storeId: supplyingStoreId,
+          itemId: item.itemId,
+          status: 'Active'
+        }
+      });
+
+      if (!balance) {
+        stockErrors.push({
+          itemId: item.itemId,
+          itemName: item.itemName,
+          itemCode: item.itemCode,
+          requestedQuantity: item.quantity,
+          availableQuantity: 0,
+          uomCode: item.uomCode,
+          message: `"${item.itemName}" is not available in the supplying store "${supplyingStore.name}"`,
+          action: 'Initialize balance for this item in the store first'
+        });
+        continue;
+      }
+
+      const availableQuantity = parseFloat(balance.balance);
+      const requestedQuantity = parseFloat(item.quantity);
+
+      stockInfo.push({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        itemCode: item.itemCode,
+        availableQuantity,
+        requestedQuantity,
+        uomCode: item.uomCode,
+        balanceId: balance.id,
+        currentBalance: balance
+      });
+
+      // Check if there's enough stock
+      if (requestedQuantity > availableQuantity) {
+        const shortage = requestedQuantity - availableQuantity;
+        stockErrors.push({
+          itemId: item.itemId,
+          itemName: item.itemName,
+          itemCode: item.itemCode,
+          requestedQuantity,
+          availableQuantity,
+          shortage,
+          uomCode: item.uomCode,
+          message: `Insufficient stock for "${item.itemName}". Available: ${availableQuantity} ${item.uomCode}, Requested: ${requestedQuantity} ${item.uomCode}`,
+          suggestion: `Reduce quantity to ${availableQuantity} ${item.uomCode} or less`
         });
       }
     }
 
-    // Generate request code
+    // ================================================================
+    // 6. RETURN STOCK ERRORS IF ANY
+    // ================================================================
+    if (stockErrors.length > 0) {
+      await t.rollback();
+      
+      // Check if all items have stock errors or some are valid
+      const allItemsHaveStockIssues = stockErrors.length === validatedItems.length;
+      
+      return res.status(400).json({
+        success: false,
+        error: 'Stock validation failed',
+        message: allItemsHaveStockIssues 
+          ? 'None of the requested items are available in the supplying store'
+          : 'Some items do not have enough stock in the supplying store',
+        errors: stockErrors,
+        stockInfo: stockInfo,
+        summary: {
+          totalItems: validatedItems.length,
+          itemsWithStock: stockInfo.filter(s => s.availableQuantity > 0).length,
+          itemsWithoutStock: stockErrors.filter(e => e.availableQuantity === 0).length,
+          itemsWithShortage: stockErrors.filter(e => e.availableQuantity > 0 && e.shortage > 0).length,
+          storeName: supplyingStore.name,
+          storeId: supplyingStoreId
+        }
+      });
+    }
+
+    // ================================================================
+    // 7. GENERATE REQUEST CODE
+    // ================================================================
     const requestCode = await ItemRequest.generateRequestCode();
 
-    // Create the main request
+    // ================================================================
+    // 8. CREATE THE REQUEST
+    // ================================================================
     const request = await ItemRequest.create({
       requestCode,
       askingStoreId,
       supplyingStoreId,
       requestedById: requestedById || null,
-      requestedDate,
+      requestedDate: requestedDate || new Date().toISOString().split('T')[0],
       status: status || 'pending',
       remark: remark || null
     }, { transaction: t });
 
-    // Create the item details
+    // ================================================================
+    // 9. CREATE THE ITEM DETAILS
+    // ================================================================
     await Promise.all(
-      items.map(async (item) => {
+      validatedItems.map(async (item) => {
         return ItemRequestDetail.create({
           requestId: request.requestId,
           itemId: item.itemId,
@@ -520,9 +835,14 @@ exports.createRequest = async (req, res) => {
       })
     );
 
+    // ================================================================
+    // 10. COMMIT TRANSACTION
+    // ================================================================
     await t.commit();
 
-    // Fetch the complete request with details
+    // ================================================================
+    // 11. FETCH COMPLETE REQUEST WITH DETAILS
+    // ================================================================
     const completeRequest = await ItemRequest.findByPk(request.requestId, {
       include: [
         {
@@ -554,20 +874,60 @@ exports.createRequest = async (req, res) => {
       ]
     });
 
+    // ================================================================
+    // 12. RETURN SUCCESS RESPONSE WITH STOCK INFO
+    // ================================================================
     res.status(201).json({
       success: true,
       message: 'Request created successfully',
-      data: completeRequest
+      data: {
+        request: completeRequest,
+        stockValidation: {
+          allItemsAvailable: true,
+          items: stockInfo.map(s => ({
+            itemId: s.itemId,
+            itemName: s.itemName,
+            itemCode: s.itemCode,
+            availableQuantity: s.availableQuantity,
+            requestedQuantity: s.requestedQuantity,
+            uomCode: s.uomCode,
+            hasStock: s.availableQuantity > 0,
+            hasEnoughStock: s.requestedQuantity <= s.availableQuantity
+          })),
+          summary: {
+            totalItems: validatedItems.length,
+            allItemsAvailable: true,
+            storeName: supplyingStore.name
+          }
+        }
+      }
     });
+
   } catch (error) {
+    // ================================================================
+    // 13. ROLLBACK ON ERROR
+    // ================================================================
     await t.rollback();
-    console.error('Create request error:', error);
+    console.error('❌ Create request error:', error);
+    
+    // Check for specific errors
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        message: error.errors.map(e => e.message).join(', ')
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to create request'
     });
   }
 };
+
+
+
 
 // ================================================================
 // UPDATE REQUEST

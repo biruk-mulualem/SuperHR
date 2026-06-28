@@ -26,13 +26,13 @@
     <div class="filter-bar">
       <select v-model="filterStore" class="filter-select" @change="onFilterChange">
         <option value="">All Stores</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">
+        <option v-for="store in availableStores" :key="store.id" :value="store.id">
           {{ store.name }}
         </option>
       </select>
       <select v-model="filterGroup" class="filter-select" @change="onFilterChange">
         <option value="">All Groups</option>
-        <option v-for="group in allGroups" :key="group.id" :value="group.id">
+        <option v-for="group in availableGroups" :key="group.id" :value="group.id">
           {{ group.name }}
         </option>
       </select>
@@ -98,7 +98,12 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="paginatedBalances.length === 0">
+          <tr v-if="isLoading">
+            <td colspan="8" class="text-center">
+              <div class="loading-spinner">Loading...</div>
+            </td>
+          </tr>
+          <tr v-else-if="paginatedBalances.length === 0">
             <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
@@ -109,39 +114,44 @@
           </tr>
           <tr v-for="(item, index) in paginatedBalances" :key="item.id">
             <td class="text-center">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
-            <td class="store-name">{{ getStoreName(item.storeId) }}</td>
+            <td class="store-name">{{ item.storeName || getStoreName(item.storeId) }}</td>
             <td>
-              <span class="group-tag">{{ getGroupName(item.groupId) }}</span>
+              <span class="group-tag">{{ item.groupName || getGroupName(item.groupId) }}</span>
             </td>
             <td>
               <div class="item-name-wrapper">
-                <div class="item-code">{{ getItemCode(item.itemId) }}</div>
-                <div class="standard-name">{{ getItemName(item.itemId) }}</div>
-                <div class="common-name">{{ getItemCommonName(item.itemId) }}</div>
+                <div class="item-code">{{ item.itemCode || getItemCode(item.itemId) }}</div>
+                <div class="standard-name">{{ item.itemName || getItemName(item.itemId) }}</div>
+                <div class="common-name">{{ item.itemCommonName || getItemCommonName(item.itemId) }}</div>
               </div>
             </td>
             <td>
               <div class="uom-wrapper">
-                <div class="uom-code">{{ getItemUnit(item.itemId) }}</div>
-                <div class="conversion-info" v-if="getConversionValue(item.itemId) > 1">
-                  {{ getConversionValue(item.itemId) }} {{ getBaseUOM(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}
+                <div class="uom-code">{{ item.uomCode || getItemUnit(item.itemId) }}</div>
+                <div class="conversion-info" v-if="(item.conversionValue || getConversionValue(item.itemId)) > 1">
+                  {{ item.conversionValue || getConversionValue(item.itemId) }} 
+                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }} = 1 
+                  {{ item.uomCode || getItemUnit(item.itemId) }}
                 </div>
-                <div class="conversion-info base" v-else>1 {{ getItemUnit(item.itemId) }} = 1 {{ getItemUnit(item.itemId) }}</div>
+                <div class="conversion-info base" v-else>
+                  1 {{ item.uomCode || getItemUnit(item.itemId) }} = 1 {{ item.uomCode || getItemUnit(item.itemId) }}
+                </div>
               </div>
             </td>
             <td>
               <div class="balance-wrapper">
-                <div class="balance-value" :class="getBalanceClass(item)">
+                <div class="balance-value" :class="item.statusClass || getBalanceClass(item)">
                   {{ formatNumber(item.balance) }}
                 </div>
                 <div class="base-balance">
-                  = {{ formatNumber(getBaseBalance(item)) }} {{ getBaseUOM(item.itemId) }}
+                  = {{ formatNumber(item.baseBalance || getBaseBalance(item)) }} 
+                  {{ item.conversionUomCode || getBaseUOM(item.itemId) }}
                 </div>
               </div>
             </td>
             <td>
-              <span :class="['status-badge', item.status.toLowerCase()]">
-                {{ item.status }}
+              <span :class="['status-badge', (item.status || 'inactive').toLowerCase()]">
+                {{ item.status || 'Inactive' }}
               </span>
             </td>
             <td>
@@ -173,6 +183,7 @@
         <option :value="5">5 per page</option>
         <option :value="10">10 per page</option>
         <option :value="20">20 per page</option>
+        <option :value="50">50 per page</option>
       </select>
     </div>
 
@@ -204,21 +215,27 @@
               <div class="form-row">
                 <div class="form-group">
                   <label>Store *</label>
-                  <select v-model="form.storeId" required>
+                  <select v-model="form.storeId" required :disabled="!isAdmin && userData?.assignedStore">
                     <option value="">Select Store</option>
-                    <option v-for="store in stores" :key="store.id" :value="store.id">
+                    <option v-for="store in availableStores" :key="store.id" :value="store.id">
                       {{ store.name }}
                     </option>
                   </select>
+                  <span v-if="!isAdmin && userData?.assignedStore" class="hint" style="color: #2563eb;">
+                    📌 You can only create balances for your assigned store
+                  </span>
                 </div>
                 <div class="form-group">
                   <label>Group *</label>
-                  <select v-model="form.groupId" required>
+                  <select v-model="form.groupId" required :disabled="!isAdmin && userData?.assignedGroup">
                     <option value="">Select Group</option>
-                    <option v-for="group in allGroups" :key="group.id" :value="group.id">
+                    <option v-for="group in availableGroups" :key="group.id" :value="group.id">
                       {{ group.name }}
                     </option>
                   </select>
+                  <span v-if="!isAdmin && userData?.assignedGroup" class="hint" style="color: #2563eb;">
+                    📌 You can only create balances for your assigned group
+                  </span>
                 </div>
               </div>
               <div class="form-row">
@@ -267,11 +284,14 @@
                 <ul class="csv-format-list">
                   <li><strong>storeId</strong> - Store ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
                   <li><strong>groupId</strong> - Group ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
-                  <li><strong>itemId</strong> - Item ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
+                  <li><strong>itemCode</strong> - Item Code (required) <span class="hint-text">e.g., SDT000001</span></li>
                   <li><strong>balance</strong> - Initial balance (required) <span class="hint-text">e.g., 100</span></li>
                   <li><strong>minStock</strong> - Minimum stock level (optional) <span class="hint-text">e.g., 10</span></li>
                   <li><strong>status</strong> - Status (optional, defaults to Active) <span class="hint-text">Active/Inactive</span></li>
                 </ul>
+                <p class="info-text" style="margin-top: 8px;">
+                  💡 <strong>Note:</strong> Use <strong>itemCode</strong> (e.g., SDT000001) instead of numeric itemId for easier import.
+                </p>
                 <button class="btn-template" @click="downloadTemplate" :disabled="importing">
                   📄 Download CSV Template
                 </button>
@@ -279,11 +299,11 @@
             </div>
 
             <!-- File Upload -->
-          <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload($event)" 
-     :class="{ 'drag-over': isDragOver, 'disabled': importing }"
-     @dragover.prevent="!importing && (isDragOver = true)" 
-     @dragleave.prevent="!importing && (isDragOver = false)"
-     @drop.prevent="!importing && handleCsvDrop($event)">
+            <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload($event)" 
+              :class="{ 'drag-over': isDragOver, 'disabled': importing }"
+              @dragover.prevent="!importing && (isDragOver = true)" 
+              @dragleave.prevent="!importing && (isDragOver = false)"
+              @drop.prevent="!importing && handleCsvDrop($event)">
               <div v-if="csvFile" class="file-preview">
                 <span class="file-icon">📄</span>
                 <span class="file-name">{{ csvFile.name }}</span>
@@ -325,7 +345,8 @@
                     <tr>
                       <th>Store</th>
                       <th>Group</th>
-                      <th>Item</th>
+                      <th>Item Code</th>
+                      <th>Item Name</th>
                       <th>Balance</th>
                       <th>Status</th>
                     </tr>
@@ -334,12 +355,13 @@
                     <tr v-for="(item, index) in importPreviewData.slice(0, 10)" :key="index">
                       <td>{{ getStoreName(Number(item.storeId)) || item.storeId }}</td>
                       <td>{{ getGroupName(Number(item.groupId)) || item.groupId }}</td>
-                      <td>{{ getItemName(Number(item.itemId)) || item.itemId }}</td>
+                      <td><strong>{{ item.itemCode || item.itemId }}</strong></td>
+                      <td>{{ getItemNameByCode(item.itemCode) || getItemName(Number(item.itemId)) || 'Unknown' }}</td>
                       <td>{{ item.balance }}</td>
                       <td>{{ item.status || 'Active' }}</td>
                     </tr>
                     <tr v-if="importPreviewData.length > 10">
-                      <td colspan="5" class="preview-more">
+                      <td colspan="6" class="preview-more">
                         ... and {{ importPreviewData.length - 10 }} more items
                       </td>
                     </tr>
@@ -375,14 +397,14 @@
           >
             {{ saving ? 'Saving...' : (editingBalance ? 'Update' : 'Initialize') }}
           </button>
-        <button 
-  v-if="initTab === 'import' && !editingBalance"
-  class="btn-primary" 
-  @click="processImport" 
-  :disabled="!csvFile || importing || importPreviewData.length === 0"
->
-  {{ importing ? 'Importing...' : 'Import Balances' }}
-</button>
+          <button 
+            v-if="initTab === 'import' && !editingBalance"
+            class="btn-primary" 
+            @click="processImport" 
+            :disabled="!csvFile || importing || importPreviewData.length === 0"
+          >
+            {{ importing ? 'Importing...' : 'Import Balances' }}
+          </button>
         </div>
       </div>
     </div>
@@ -434,15 +456,18 @@
             </ul>
           </div>
 
-          <!-- Step 1: Select Store -->
+          <!-- Step 1: Select Store - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group">
             <label>1. Select Store *</label>
-            <select v-model="selectedStoreId" required @change="onStoreSelect">
+            <select v-model="selectedStoreId" required @change="onStoreSelect" :disabled="!isAdmin && userData?.assignedStore">
               <option value="">Select a store</option>
-              <option v-for="store in stores" :key="store.id" :value="store.id">
+              <option v-for="store in availableStores" :key="store.id" :value="store.id">
                 {{ store.name }}
               </option>
             </select>
+            <span v-if="!isAdmin && userData?.assignedStore" class="hint" style="color: #2563eb;">
+              📌 Using your assigned store: {{ userData?.assignedStore?.name }}
+            </span>
           </div>
 
           <!-- Step 2: Select Requests -->
@@ -469,15 +494,18 @@
             </div>
           </div>
 
-          <!-- Step 3: Select Group -->
+          <!-- Step 3: Select Group - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group" v-if="selectedRequestIds.length > 0">
             <label>3. Select Group to Apply Changes *</label>
-            <select v-model="selectedGroupId" required>
+            <select v-model="selectedGroupId" required :disabled="!isAdmin && userData?.assignedGroup">
               <option value="">Select a group</option>
-              <option v-for="group in allGroups" :key="group.id" :value="group.id">
+              <option v-for="group in availableGroups" :key="group.id" :value="group.id">
                 {{ group.name }}
               </option>
             </select>
+            <span v-if="!isAdmin && userData?.assignedGroup" class="hint" style="color: #2563eb;">
+              📌 Using your assigned group: {{ userData?.assignedGroup?.name }}
+            </span>
           </div>
 
           <!-- Preview Selected Requests -->
@@ -588,163 +616,61 @@
     </div>
   </div>
 </template>
-
-
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import balanceService from '@/stores/balanceService'
 
 // ================================================================
-// STORE DATA
+// USER DATA
 // ================================================================
-const stores = [
-  { id: 1, name: 'Main Store', code: 'STORE-001' },
-  { id: 2, name: 'Fiber Mini Store', code: 'STORE-002' },
-  { id: 3, name: 'Paint Mini Store', code: 'STORE-003' },
-  { id: 4, name: 'Fiber Mini Mini Store', code: 'STORE-004' },
-  { id: 5, name: 'Paint Mini Mini Store', code: 'STORE-005' },
-  { id: 6, name: 'Metal Store', code: 'STORE-006' },
-  { id: 7, name: 'Technic Store', code: 'STORE-007' },
-  { id: 8, name: 'Calcium Store', code: 'STORE-008' },
-  { id: 9, name: 'Finishing Store', code: 'STORE-009' },
-]
+
+const getUserData = () => {
+  try {
+    const data = JSON.parse(localStorage.getItem('user') || '{}')
+    console.log('👤 User data from localStorage:', data)
+    return data
+  } catch (error) {
+    console.error('Error parsing user data:', error)
+    return {}
+  }
+}
+
+const userData = ref(getUserData())
+const isAdmin = computed(() => userData.value?.isAdmin || false)
 
 // ================================================================
-// GROUPS DATA
+// STORE DATA - Will be populated from API
 // ================================================================
-const allGroups = [
-  { id: 1, name: 'Storekeeper' },
-  { id: 2, name: 'IT' },
-  { id: 3, name: 'Auditor' },
-  { id: 4, name: 'Supplier' },
-  { id: 5, name: 'Quality Control' },
-  { id: 6, name: 'Warehouse' },
-  { id: 7, name: 'Logistics' },
-]
+const stores = ref([])
 
 // ================================================================
-// INVENTORY ITEMS (Master List with Conversion)
+// GROUPS DATA - Will be populated from API
 // ================================================================
-const inventoryItems = [
-  { id: 1, code: 'ITEM-001', standardName: 'Cement 50kg', commonName: 'Cement', unit: 'bags', baseUom: 'KG', conversionValue: 50 },
-  { id: 2, code: 'ITEM-002', standardName: 'Steel Rod 12mm', commonName: 'Steel Rod', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 3, code: 'ITEM-003', standardName: 'Laptop Dell Latitude', commonName: 'Laptop', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 4, code: 'ITEM-004', standardName: 'Printer HP LaserJet', commonName: 'Printer', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 5, code: 'ITEM-005', standardName: 'Audit File Folders', commonName: 'Audit Files', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 6, code: 'ITEM-006', standardName: 'Fiber Sheets 4x8', commonName: 'Fiber Sheets', unit: 'm²', baseUom: 'm²', conversionValue: 1 },
-  { id: 7, code: 'ITEM-007', standardName: 'Adhesive Glue 5L', commonName: 'Adhesive', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 8, code: 'ITEM-008', standardName: 'Monitor 24 Inch', commonName: 'Monitor', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 9, code: 'ITEM-009', standardName: 'Paint White 20L', commonName: 'White Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 10, code: 'ITEM-010', standardName: 'Paint Red 20L', commonName: 'Red Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 11, code: 'ITEM-011', standardName: 'Paint Blue 20L', commonName: 'Blue Paint', unit: 'ltr', baseUom: 'L', conversionValue: 1 },
-  { id: 12, code: 'ITEM-012', standardName: 'Fiber Glass Mat', commonName: 'Fiber Glass', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 13, code: 'ITEM-013', standardName: 'Quality Control Reports', commonName: 'QC Reports', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 14, code: 'ITEM-014', standardName: 'Metal Sheets 2mm', commonName: 'Metal Sheets', unit: 'm²', baseUom: 'm²', conversionValue: 1 },
-  { id: 15, code: 'ITEM-015', standardName: 'Screws M6x30', commonName: 'Screws', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 16, code: 'ITEM-016', standardName: 'Network Switch 24 Port', commonName: 'Network Switch', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 17, code: 'ITEM-017', standardName: 'Technic Parts Kit', commonName: 'Technic Parts', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-  { id: 18, code: 'ITEM-018', standardName: 'Tools Set 50pcs', commonName: 'Tools Set', unit: 'sets', baseUom: 'Each', conversionValue: 1 },
-  { id: 19, code: 'ITEM-019', standardName: 'Calcium Powder 25kg', commonName: 'Calcium Powder', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 20, code: 'ITEM-020', standardName: 'Finishing Materials Set', commonName: 'Finishing Materials', unit: 'kg', baseUom: 'KG', conversionValue: 1 },
-  { id: 21, code: 'ITEM-021', standardName: 'Quality Check Tools Kit', commonName: 'QC Tools', unit: 'pcs', baseUom: 'Each', conversionValue: 1 },
-]
+const allGroups = ref([])
 
 // ================================================================
-// BALANCE DATA
+// INVENTORY ITEMS - Will be populated from API
 // ================================================================
-const balances = ref([
-  { id: 1, storeId: 1, groupId: 1, itemId: 1, balance: 150, minStock: 50, status: 'Active' },
-  { id: 2, storeId: 1, groupId: 1, itemId: 2, balance: 80, minStock: 30, status: 'Active' },
-  { id: 3, storeId: 1, groupId: 2, itemId: 3, balance: 5, minStock: 2, status: 'Active' },
-  { id: 4, storeId: 1, groupId: 2, itemId: 4, balance: 3, minStock: 1, status: 'Active' },
-  { id: 5, storeId: 1, groupId: 3, itemId: 5, balance: 200, minStock: 100, status: 'Active' },
-  { id: 6, storeId: 2, groupId: 1, itemId: 6, balance: 300, minStock: 100, status: 'Active' },
-  { id: 7, storeId: 2, groupId: 1, itemId: 7, balance: 45, minStock: 20, status: 'Active' },
-  { id: 8, storeId: 2, groupId: 2, itemId: 8, balance: 2, minStock: 1, status: 'Active' },
-  { id: 9, storeId: 3, groupId: 1, itemId: 9, balance: 200, minStock: 50, status: 'Active' },
-  { id: 10, storeId: 3, groupId: 1, itemId: 10, balance: 80, minStock: 30, status: 'Active' },
-  { id: 11, storeId: 3, groupId: 1, itemId: 11, balance: 0, minStock: 20, status: 'Active' },
-  { id: 12, storeId: 4, groupId: 1, itemId: 12, balance: 150, minStock: 40, status: 'Active' },
-  { id: 13, storeId: 4, groupId: 3, itemId: 13, balance: 50, minStock: 20, status: 'Active' },
-  { id: 14, storeId: 6, groupId: 1, itemId: 14, balance: 120, minStock: 40, status: 'Active' },
-  { id: 15, storeId: 6, groupId: 1, itemId: 15, balance: 500, minStock: 100, status: 'Active' },
-  { id: 16, storeId: 6, groupId: 2, itemId: 16, balance: 4, minStock: 2, status: 'Active' },
-  { id: 17, storeId: 7, groupId: 1, itemId: 17, balance: 200, minStock: 50, status: 'Active' },
-  { id: 18, storeId: 7, groupId: 1, itemId: 18, balance: 15, minStock: 5, status: 'Active' },
-  { id: 19, storeId: 8, groupId: 1, itemId: 19, balance: 100, minStock: 30, status: 'Active' },
-  { id: 20, storeId: 9, groupId: 1, itemId: 20, balance: 75, minStock: 25, status: 'Active' },
-  { id: 21, storeId: 9, groupId: 3, itemId: 21, balance: 8, minStock: 3, status: 'Active' },
-])
+const inventoryItems = ref([])
 
 // ================================================================
-// ITEM REQUESTS (Demo Approved Requests)
+// BALANCE DATA - Will be populated from API
 // ================================================================
-const itemRequests = ref([
-  {
-    id: 1,
-    requestCode: 'REQ-001',
-    askingStoreId: 2,
-    supplyingStoreId: 1,
-    status: 'approved',
-    requestedDate: '2024-01-15',
-    items: [
-      { itemId: 1, quantity: 10 },
-      { itemId: 6, quantity: 5 }
-    ],
-    remark: 'Stock transfer for production'
-  },
-  {
-    id: 2,
-    requestCode: 'REQ-002',
-    askingStoreId: 3,
-    supplyingStoreId: 2,
-    status: 'approved',
-    requestedDate: '2024-01-16',
-    items: [
-      { itemId: 9, quantity: 20 },
-      { itemId: 10, quantity: 10 }
-    ],
-    remark: 'Paint order for new project'
-  },
-  {
-    id: 3,
-    requestCode: 'REQ-003',
-    askingStoreId: 4,
-    supplyingStoreId: 6,
-    status: 'approved',
-    requestedDate: '2024-01-17',
-    items: [
-      { itemId: 14, quantity: 15 },
-      { itemId: 15, quantity: 100 }
-    ],
-    remark: 'Metal sheets for construction'
-  },
-  {
-    id: 4,
-    requestCode: 'REQ-004',
-    askingStoreId: 1,
-    supplyingStoreId: 7,
-    status: 'approved',
-    requestedDate: '2024-01-18',
-    items: [
-      { itemId: 17, quantity: 5 },
-      { itemId: 18, quantity: 10 }
-    ],
-    remark: 'Tools for maintenance team'
-  },
-  {
-    id: 5,
-    requestCode: 'REQ-005',
-    askingStoreId: 8,
-    supplyingStoreId: 9,
-    status: 'approved',
-    requestedDate: '2024-01-19',
-    items: [
-      { itemId: 19, quantity: 50 },
-      { itemId: 20, quantity: 30 }
-    ],
-    remark: 'Calcium and finishing materials'
-  },
-])
+const balances = ref([])
+
+// ================================================================
+// ITEM REQUESTS - Will be populated from API
+// ================================================================
+const itemRequests = ref([])
+
+// ================================================================
+// LOADING STATES
+// ================================================================
+const isLoading = ref(false)
+const isLoadingStores = ref(false)
+const isLoadingGroups = ref(false)
+const isLoadingItems = ref(false)
+const isLoadingRequests = ref(false)
 
 // ================================================================
 // STATE
@@ -811,60 +737,127 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// COMPUTED
+// COMPUTED - AVAILABLE DATA BASED ON USER ROLE
 // ================================================================
+
+const availableStores = computed(() => {
+  if (isAdmin.value) {
+    return stores.value
+  }
+  if (userData.value?.assignedStore) {
+    return stores.value.filter(s => s.id === userData.value.assignedStore.id)
+  }
+  return []
+})
+
+const availableGroups = computed(() => {
+  if (isAdmin.value) {
+    return allGroups.value
+  }
+  if (userData.value?.assignedGroup) {
+    return allGroups.value.filter(g => g.id === userData.value.assignedGroup.id)
+  }
+  return []
+})
+
+// ================================================================
+// COMPUTED - FILTERED BALANCES
+// ================================================================
+
 const hasActiveFilters = computed(() => {
   return filterStore.value || filterGroup.value || filterStatus.value || searchQuery.value
 })
 
 const filteredBalances = computed(() => {
-  let result = balances.value
+  console.log('🔄 Computing filtered balances...')
+  console.log('📊 Raw balances:', balances.value.length)
   
+  let result = [...balances.value]
+  
+  // 🔥 FIRST: Filter by user's assigned store/group if not admin
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    const assignedStoreId = userData.value.assignedStore?.id
+    const assignedGroupId = userData.value.assignedGroup?.id
+    
+    console.log('🔒 Filtering by assigned store ID:', assignedStoreId)
+    console.log('🔒 Filtering by assigned group ID:', assignedGroupId)
+    
+    if (assignedStoreId) {
+      result = result.filter(item => item.storeId === assignedStoreId)
+      console.log('📊 After store filter:', result.length)
+    }
+    if (assignedGroupId) {
+      result = result.filter(item => item.groupId === assignedGroupId)
+      console.log('📊 After group filter:', result.length)
+    }
+  }
+  
+  // 🔥 THEN: Apply UI filters (search, store, group, status)
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter(item => {
-      const itemName = getItemName(item.itemId).toLowerCase()
-      const itemCode = getItemCode(item.itemId).toLowerCase()
-      const storeName = getStoreName(item.storeId).toLowerCase()
+      const itemName = (item.itemName || getItemName(item.itemId) || '').toLowerCase()
+      const itemCode = (item.itemCode || getItemCode(item.itemId) || '').toLowerCase()
+      const storeName = (item.storeName || getStoreName(item.storeId) || '').toLowerCase()
       return itemName.includes(s) || itemCode.includes(s) || storeName.includes(s)
     })
   }
   
-  if (filterStore.value) {
-    result = result.filter(item => item.storeId === Number(filterStore.value))
+  // 🔥 Apply store filter if filterStore has a valid value
+  if (filterStore.value && filterStore.value !== '') {
+    const storeId = Number(filterStore.value)
+    if (!isNaN(storeId)) {
+      result = result.filter(item => item.storeId === storeId)
+    }
   }
   
-  if (filterGroup.value) {
-    result = result.filter(item => item.groupId === Number(filterGroup.value))
+  // 🔥 Apply group filter if filterGroup has a valid value
+  if (filterGroup.value && filterGroup.value !== '') {
+    const groupId = Number(filterGroup.value)
+    if (!isNaN(groupId)) {
+      result = result.filter(item => item.groupId === groupId)
+    }
   }
   
   if (filterStatus.value) {
     result = result.filter(item => item.status === filterStatus.value)
   }
   
+  console.log('✅ Final filtered count:', result.length)
   return result
 })
 
+// ================================================================
+// COMPUTED - PAGINATED DATA (For display in table)
+// ================================================================
+
 const paginatedBalances = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
-  return filteredBalances.value.slice(start, start + pageSize.value)
+  const end = start + pageSize.value
+  const paginated = filteredBalances.value.slice(start, end)
+  console.log('📄 Paginated items:', paginated.length, 'Page:', currentPage.value)
+  return paginated
 })
 
 const totalPages = computed(() => {
   return Math.ceil(filteredBalances.value.length / pageSize.value) || 1
 })
 
+// ================================================================
+// COMPUTED - STATS
+// ================================================================
+
 const totalStores = computed(() => {
-  const uniqueStores = new Set(balances.value.map(item => item.storeId))
+  const uniqueStores = new Set(filteredBalances.value.map(item => item.storeId))
   return uniqueStores.size
 })
 
 const totalItems = computed(() => {
-  return balances.value.length
+  return filteredBalances.value.length
 })
 
 const lowStockItems = computed(() => {
-  return balances.value.filter(item => 
+  return filteredBalances.value.filter(item => 
     item.balance <= item.minStock && item.balance > 0
   ).length
 })
@@ -880,45 +873,53 @@ const selectedRequests = computed(() => {
 // ================================================================
 // HELPER METHODS
 // ================================================================
+
 const getItemName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.standardName : 'Unknown'
+  if (!itemId) return 'Unknown'
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemName || 'Unknown'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || item.name : 'Unknown'
 }
 
 const getItemCode = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.code : 'Unknown'
+  if (!itemId) return 'N/A'
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemCode || 'N/A'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.code : 'N/A'
 }
 
 const getItemCommonName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.commonName : 'Unknown'
+  if (!itemId) return ''
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.itemCommonName || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || item.name : ''
 }
 
 const getItemUnit = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.unit : ''
+  if (!itemId) return ''
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.uomCode || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.uomCode || '' : ''
 }
 
 const getBaseUOM = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.baseUom || item.unit : ''
+  if (!itemId) return ''
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.conversionUomCode || balance.uomCode || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.conversionUomCode || item.uomCode || '' : ''
 }
 
 const getConversionValue = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
+  if (!itemId) return 1
+  const balance = balances.value.find(b => b.itemId === itemId)
+  if (balance) return balance.conversionValue || 1
+  const item = inventoryItems.value.find(i => i.id === itemId)
   return item ? item.conversionValue || 1 : 1
-}
-
-const getConversionDisplay = (itemId) => {
-  if (!itemId) return ''
-  const val = getConversionValue(itemId)
-  const base = getBaseUOM(itemId)
-  const unit = getItemUnit(itemId)
-  if (val > 1) {
-    return `${val} ${base} = 1 ${unit}`
-  }
-  return `1 ${unit} = 1 ${unit}`
 }
 
 const getBaseBalance = (item) => {
@@ -927,13 +928,25 @@ const getBaseBalance = (item) => {
 }
 
 const getStoreName = (storeId) => {
-  const store = stores.find(s => s.id === storeId)
+  if (!storeId) return 'Unknown'
+  const balance = balances.value.find(b => b.storeId === storeId)
+  if (balance) return balance.storeName || 'Unknown'
+  const store = availableStores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
 const getGroupName = (groupId) => {
-  const group = allGroups.find(g => g.id === groupId)
+  if (!groupId) return 'Unknown'
+  const balance = balances.value.find(b => b.groupId === groupId)
+  if (balance) return balance.groupName || 'Unknown'
+  const group = availableGroups.value.find(g => g.id === groupId)
   return group ? group.name : 'Unknown'
+}
+
+const getItemNameByCode = (itemCode) => {
+  if (!itemCode) return null
+  const item = inventoryItems.value.find(i => i.code === itemCode)
+  return item ? item.standardName || item.name : null
 }
 
 const formatNumber = (num) => {
@@ -992,16 +1005,199 @@ const getSelectedTotalItems = () => {
 // ================================================================
 // UI HELPERS
 // ================================================================
+
 const onItemChange = () => {
   if (!editingBalance.value) {
     form.value.balance = 0
   }
 }
+
 const onBalanceChange = () => {}
+
+// ================================================================
+// API METHODS
+// ================================================================
+
+const fetchStores = async () => {
+  isLoadingStores.value = true
+  try {
+    const response = await balanceService.getStores()
+    stores.value = response.data || []
+    console.log('🏪 Stores loaded:', stores.value.length)
+  } catch (error) {
+    console.error('Error fetching stores:', error)
+    showToastMessage('Failed to load stores', 'error')
+  } finally {
+    isLoadingStores.value = false
+  }
+}
+
+const fetchGroups = async () => {
+  isLoadingGroups.value = true
+  try {
+    const response = await balanceService.getGroups()
+    allGroups.value = response.data || []
+    console.log('📋 Groups loaded:', allGroups.value.length)
+  } catch (error) {
+    console.error('Error fetching groups:', error)
+    showToastMessage('Failed to load groups', 'error')
+  } finally {
+    isLoadingGroups.value = false
+  }
+}
+
+const fetchItems = async () => {
+  isLoadingItems.value = true
+  try {
+    const response = await balanceService.getActiveItems()
+    inventoryItems.value = response.data || []
+    console.log('📦 Items loaded:', inventoryItems.value.length)
+  } catch (error) {
+    console.error('Error fetching items:', error)
+    showToastMessage('Failed to load items', 'error')
+  } finally {
+    isLoadingItems.value = false
+  }
+}
+
+const fetchBalances = async () => {
+  isLoading.value = true
+  try {
+    const filters = {}
+    
+    // 🔥 If not admin, filter by their assigned store and group
+    if (!isAdmin.value && userData.value?.hasAccess) {
+      if (userData.value.assignedStore) {
+        filters.assignedStoreId = userData.value.assignedStore.id
+        console.log('🔒 API Filtering by assigned store:', userData.value.assignedStore.id)
+      }
+      if (userData.value.assignedGroup) {
+        filters.assignedGroupId = userData.value.assignedGroup.id
+        console.log('🔒 API Filtering by assigned group:', userData.value.assignedGroup.id)
+      }
+    }
+    
+    // 🔥 Add UI filters if they have valid values
+    if (filterStore.value && filterStore.value !== '') {
+      const storeId = Number(filterStore.value)
+      if (!isNaN(storeId)) {
+        filters.storeId = storeId
+        console.log('🔍 UI Store filter:', storeId)
+      }
+    }
+    if (filterGroup.value && filterGroup.value !== '') {
+      const groupId = Number(filterGroup.value)
+      if (!isNaN(groupId)) {
+        filters.groupId = groupId
+        console.log('🔍 UI Group filter:', groupId)
+      }
+    }
+    if (filterStatus.value) {
+      filters.status = filterStatus.value
+      console.log('🔍 UI Status filter:', filterStatus.value)
+    }
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+      console.log('🔍 UI Search filter:', searchQuery.value)
+    }
+    
+    filters.page = currentPage.value
+    filters.limit = 100
+    
+    console.log('📊 Fetching balances with filters:', filters)
+    
+    const response = await balanceService.getBalances(filters)
+    balances.value = response.data || []
+    console.log('✅ Balances loaded:', balances.value.length)
+    if (balances.value.length > 0) {
+      console.log('✅ First balance:', balances.value[0])
+    }
+    
+    if (response.pagination) {
+      currentPage.value = response.pagination.page
+    }
+    
+  } catch (error) {
+    console.error('Error fetching balances:', error)
+    showToastMessage('Failed to load balances', 'error')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ================================================================
+// 🔥 FETCH APPROVED REQUESTS - FIXED
+// ================================================================
+
+const fetchApprovedRequests = async () => {
+  isLoadingRequests.value = true
+  try {
+    let response
+    
+    // 🔥 FIX: Only fetch by store if we have a valid assigned store
+    if (!isAdmin.value && userData.value?.hasAccess && userData.value.assignedStore) {
+      const storeId = userData.value.assignedStore.id
+      console.log('🔍 Fetching approved requests for assigned store:', storeId)
+      response = await balanceService.getApprovedRequests(storeId)
+    } else if (isAdmin.value) {
+      // For admin, fetch all approved requests (pass null or 0)
+      console.log('📋 Admin: Fetching all approved requests')
+      response = await balanceService.getApprovedRequests(0)
+    } else {
+      // Fallback: no store assigned
+      console.log('⚠️ No store assigned, fetching all approved requests')
+      response = await balanceService.getApprovedRequests(0)
+    }
+    
+    itemRequests.value = response.data || []
+    console.log('📋 Approved requests loaded:', itemRequests.value.length)
+  } catch (error) {
+    console.error('Error fetching approved requests:', error)
+    showToastMessage('Failed to load approved requests', 'error')
+  } finally {
+    isLoadingRequests.value = false
+  }
+}
+
+// ================================================================
+// FILTERS & PAGINATION
+// ================================================================
+
+const onSearchChange = () => { 
+  currentPage.value = 1
+  fetchBalances()
+}
+
+const onFilterChange = () => { 
+  currentPage.value = 1
+  fetchBalances()
+}
+
+const clearFilters = () => {
+  filterStore.value = ''
+  filterGroup.value = ''
+  filterStatus.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+  showToastMessage('Filters cleared', 'info')
+  fetchBalances()
+}
+
+const changePage = (page) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+  }
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
+  fetchBalances()
+}
 
 // ================================================================
 // BALANCE CRUD
 // ================================================================
+
 const openAddBalanceModal = () => {
   editingBalance.value = null
   initTab.value = 'manual'
@@ -1016,14 +1212,29 @@ const openAddBalanceModal = () => {
     remaining: 0,
     percentage: 0
   }
-  form.value = {
-    storeId: '',
-    groupId: '',
-    itemId: '',
-    balance: 0,
-    status: 'Active',
-    minStock: 0,
+  
+  // 🔥 Pre-fill store and group for non-admin users
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    form.value = {
+      storeId: userData.value.assignedStore?.id || '',
+      groupId: userData.value.assignedGroup?.id || '',
+      itemId: '',
+      balance: 0,
+      status: 'Active',
+      minStock: 0,
+    }
+    console.log('📝 Form pre-filled with store:', form.value.storeId, 'group:', form.value.groupId)
+  } else {
+    form.value = {
+      storeId: '',
+      groupId: '',
+      itemId: '',
+      balance: 0,
+      status: 'Active',
+      minStock: 0,
+    }
   }
+  
   showBalanceModal.value = true
 }
 
@@ -1058,7 +1269,7 @@ const closeBalanceModal = () => {
   }
 }
 
-const saveBalance = () => {
+const saveBalance = async () => {
   if (!form.value.storeId) {
     showToastMessage('Please select a store', 'error')
     return
@@ -1076,79 +1287,65 @@ const saveBalance = () => {
     return
   }
 
-  const exists = balances.value.some(b => 
-    b.storeId === Number(form.value.storeId) &&
-    b.groupId === Number(form.value.groupId) &&
-    b.itemId === Number(form.value.itemId) &&
-    b.id !== (editingBalance.value?.id || -1)
-  )
-  
-  if (exists) {
-    showToastMessage('This item already has a balance in this store and group', 'error')
-    return
-  }
+  saving.value = true
 
-  if (editingBalance.value) {
-    const index = balances.value.findIndex(b => b.id === editingBalance.value.id)
-    if (index !== -1) {
-      balances.value[index] = {
-        ...balances.value[index],
-        storeId: Number(form.value.storeId),
-        groupId: Number(form.value.groupId),
-        itemId: Number(form.value.itemId),
-        balance: balances.value[index].balance,
-        status: form.value.status,
-        minStock: Number(form.value.minStock),
-      }
-    }
-    showToastMessage('Balance updated successfully!', 'success')
-  } else {
-    balances.value.push({
-      id: balances.value.length + 1,
+  try {
+    const payload = {
       storeId: Number(form.value.storeId),
       groupId: Number(form.value.groupId),
       itemId: Number(form.value.itemId),
       balance: Number(form.value.balance),
-      status: form.value.status,
-      minStock: Number(form.value.minStock),
-    })
-    showToastMessage('Balance initialized successfully!', 'success')
+      minStock: Number(form.value.minStock) || 0,
+      status: form.value.status || 'Active'
+    }
+
+    let response
+    if (editingBalance.value) {
+      response = await balanceService.updateBalance(editingBalance.value.id, payload)
+      showToastMessage('Balance updated successfully!', 'success')
+    } else {
+      response = await balanceService.createBalance(payload)
+      showToastMessage('Balance initialized successfully!', 'success')
+    }
+
+    await fetchBalances()
+    closeBalanceModal()
+  } catch (error) {
+    console.error('Error saving balance:', error)
+    if (error.response?.data?.error) {
+      showToastMessage(error.response.data.error, 'error')
+    } else {
+      showToastMessage('Failed to save balance', 'error')
+    }
+  } finally {
+    saving.value = false
   }
-  closeBalanceModal()
 }
 
 // ================================================================
 // IMPORT FUNCTIONS
 // ================================================================
-const downloadTemplate = () => {
-  const headers = ['storeId', 'groupId', 'itemId', 'balance', 'minStock', 'status']
-  const sampleData = [
-    { storeId: 1, groupId: 1, itemId: 1, balance: 100, minStock: 10, status: 'Active' },
-    { storeId: 2, groupId: 1, itemId: 6, balance: 200, minStock: 50, status: 'Active' },
-  ]
-  
-  let csvContent = headers.join(',') + '\n'
-  sampleData.forEach(row => {
-    const values = headers.map(h => row[h] || '')
-    csvContent += values.join(',') + '\n'
-  })
 
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `balance_import_template_${new Date().toISOString().split('T')[0]}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  
-  showToastMessage('Template CSV downloaded successfully!', 'success')
+const downloadTemplate = async () => {
+  try {
+    const blob = await balanceService.downloadTemplate()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `balance_import_template_${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    showToastMessage('Template CSV downloaded successfully!', 'success')
+  } catch (error) {
+    console.error('Error downloading template:', error)
+    showToastMessage('Failed to download template', 'error')
+  }
 }
 
 const triggerCsvUpload = (event) => {
   if (importing.value) return
-  // Use the event directly to trigger the file input
   if (csvFileInput.value) {
     csvFileInput.value.click()
   }
@@ -1187,19 +1384,26 @@ const parseCsvFile = (file) => {
   reader.onload = (e) => {
     try {
       const text = e.target.result
-      const lines = text.split('\n').filter(line => line.trim())
+      const lines = text.split('\n')
+        .filter(line => line.trim() && !line.trim().startsWith('#'))
       
       if (lines.length < 2) {
         showToastMessage('CSV file must contain headers and at least one data row', 'error')
         return
       }
       
-      // Parse headers - trim and convert to lowercase
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
       console.log('Headers:', headers)
       
-      // Check if required headers exist
-      const requiredHeaders = ['storeid', 'groupid', 'itemid', 'balance']
+      const requiredHeaders = ['storeid', 'groupid', 'balance']
+      const hasItemId = headers.includes('itemid')
+      const hasItemCode = headers.includes('itemcode')
+      
+      if (!hasItemId && !hasItemCode) {
+        showToastMessage('CSV must contain either "itemId" or "itemCode" column', 'error')
+        return
+      }
+      
       const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
       if (missingHeaders.length > 0) {
         showToastMessage(`Missing required headers: ${missingHeaders.join(', ')}`, 'error')
@@ -1214,18 +1418,18 @@ const parseCsvFile = (file) => {
           obj[h] = values[idx] || ''
         })
         
-        // Skip empty rows
-        if (!obj.storeid && !obj.groupid && !obj.itemid && !obj.balance) {
+        const itemId = obj.itemid ? parseInt(obj.itemid) : null
+        const itemCode = obj.itemcode || null
+        
+        if ((!itemId && !itemCode) || !obj.storeid || !obj.groupid || !obj.balance) {
           continue
         }
         
-        // Validate data
         const storeId = parseInt(obj.storeid)
         const groupId = parseInt(obj.groupid)
-        const itemId = parseInt(obj.itemid)
         const balance = parseFloat(obj.balance)
         
-        if (isNaN(storeId) || isNaN(groupId) || isNaN(itemId) || isNaN(balance)) {
+        if (isNaN(storeId) || isNaN(groupId) || isNaN(balance)) {
           console.warn(`Skipping row ${i + 1}: Invalid data`, obj)
           continue
         }
@@ -1234,6 +1438,7 @@ const parseCsvFile = (file) => {
           storeId: storeId,
           groupId: groupId,
           itemId: itemId,
+          itemCode: itemCode,
           balance: balance,
           minStock: parseInt(obj.minstock) || 0,
           status: obj.status || 'Active'
@@ -1263,8 +1468,8 @@ const parseCsvFile = (file) => {
   }
   reader.readAsText(file)
 }
+
 const processImport = async () => {
-  // Check if we have data to import
   if (!csvFile.value || importPreviewData.value.length === 0) {
     showToastMessage('No data to import. Please upload a valid CSV file.', 'error')
     return
@@ -1284,114 +1489,14 @@ const processImport = async () => {
   }
 
   try {
-    let successCount = 0
-    let failedCount = 0
-    const errors = []
-
-    for (let i = 0; i < importPreviewData.value.length; i++) {
-      const item = importPreviewData.value[i]
-      
-      const storeExists = stores.some(s => s.id === item.storeId)
-      const groupExists = allGroups.some(g => g.id === item.groupId)
-      const itemExists = inventoryItems.some(inv => inv.id === item.itemId)
-      
-      if (!storeExists) {
-        failedCount++
-        errors.push(`Row ${i + 1}: Store ID ${item.storeId} does not exist`)
-        importProgress.value = {
-          ...importProgress.value,
-          processed: i + 1,
-          success: successCount,
-          failed: failedCount,
-          remaining: totalItems - (i + 1),
-          percentage: ((i + 1) / totalItems) * 100
-        }
-        continue
-      }
-      
-      if (!groupExists) {
-        failedCount++
-        errors.push(`Row ${i + 1}: Group ID ${item.groupId} does not exist`)
-        importProgress.value = {
-          ...importProgress.value,
-          processed: i + 1,
-          success: successCount,
-          failed: failedCount,
-          remaining: totalItems - (i + 1),
-          percentage: ((i + 1) / totalItems) * 100
-        }
-        continue
-      }
-      
-      if (!itemExists) {
-        failedCount++
-        errors.push(`Row ${i + 1}: Item ID ${item.itemId} does not exist`)
-        importProgress.value = {
-          ...importProgress.value,
-          processed: i + 1,
-          success: successCount,
-          failed: failedCount,
-          remaining: totalItems - (i + 1),
-          percentage: ((i + 1) / totalItems) * 100
-        }
-        continue
-      }
-      
-      // Check if balance already exists for this store, group, and item
-      const exists = balances.value.some(b => 
-        b.storeId === item.storeId &&
-        b.groupId === item.groupId &&
-        b.itemId === item.itemId
-      )
-      
-      if (exists) {
-        failedCount++
-        errors.push(`Row ${i + 1}: Balance already exists for Store ${item.storeId}, Group ${item.groupId}, Item ${item.itemId}`)
-        importProgress.value = {
-          ...importProgress.value,
-          processed: i + 1,
-          success: successCount,
-          failed: failedCount,
-          remaining: totalItems - (i + 1),
-          percentage: ((i + 1) / totalItems) * 100
-        }
-        continue
-      }
-      
-      // Add the balance
-      balances.value.push({
-        id: balances.value.length + 1,
-        storeId: item.storeId,
-        groupId: item.groupId,
-        itemId: item.itemId,
-        balance: item.balance,
-        minStock: item.minStock || 0,
-        status: item.status || 'Active'
-      })
-      
-      successCount++
-      
-      importProgress.value = {
-        ...importProgress.value,
-        processed: i + 1,
-        success: successCount,
-        failed: failedCount,
-        remaining: totalItems - (i + 1),
-        percentage: ((i + 1) / totalItems) * 100
-      }
-    }
-
-    importResults.value = {
-      success: successCount,
-      failed: failedCount,
-      total: totalItems,
-      errors: errors
-    }
-
-    showToastMessage(`Import completed: ${successCount} imported, ${failedCount} failed`, failedCount > 0 ? 'warning' : 'success')
+    const response = await balanceService.importBalances(csvFile.value)
     
-    // If all succeeded, close the modal after a delay
-    if (failedCount === 0) {
+    importResults.value = response.data
+    showToastMessage(`Import completed: ${response.data.success} imported, ${response.data.failed} failed`, response.data.failed > 0 ? 'warning' : 'success')
+    
+    await fetchBalances()
+    
+    if (response.data.failed === 0) {
       setTimeout(() => {
         closeBalanceModal()
       }, 1500)
@@ -1408,6 +1513,7 @@ const processImport = async () => {
 // ================================================================
 // DELETE BALANCE
 // ================================================================
+
 const openDeleteModal = (item) => {
   if (item.status === 'Active') {
     showToastMessage('Cannot delete active balance. Please deactivate it first.', 'error')
@@ -1422,12 +1528,15 @@ const closeDeleteModal = () => {
   deleteTarget.value = null
 }
 
-const confirmDelete = () => {
+const confirmDelete = async () => {
   if (deleteTarget.value) {
-    const index = balances.value.findIndex(b => b.id === deleteTarget.value.id)
-    if (index !== -1) {
-      balances.value.splice(index, 1)
+    try {
+      await balanceService.deleteBalance(deleteTarget.value.id)
       showToastMessage(`Balance record for ${getItemName(deleteTarget.value.itemId)} deleted successfully!`, 'success')
+      await fetchBalances()
+    } catch (error) {
+      console.error('Error deleting balance:', error)
+      showToastMessage('Failed to delete balance', 'error')
     }
     closeDeleteModal()
   }
@@ -1436,13 +1545,24 @@ const confirmDelete = () => {
 // ================================================================
 // PROCESS REQUESTS
 // ================================================================
-const processApprovedRequests = () => {
+
+const processApprovedRequests = async () => {
   selectedStoreId.value = ''
   selectedGroupId.value = ''
   selectedRequestIds.value = []
   storeRequests.value = []
   selectAllRequests.value = false
   showProcessModal.value = true
+  
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    if (userData.value.assignedStore) {
+      selectedStoreId.value = String(userData.value.assignedStore.id)
+      await onStoreSelect()
+    }
+    if (userData.value.assignedGroup) {
+      selectedGroupId.value = String(userData.value.assignedGroup.id)
+    }
+  }
 }
 
 const closeProcessModal = () => {
@@ -1454,26 +1574,40 @@ const closeProcessModal = () => {
   selectAllRequests.value = false
 }
 
-const onStoreSelect = () => {
+const onStoreSelect = async () => {
   selectedRequestIds.value = []
   storeRequests.value = []
   selectAllRequests.value = false
+  selectedGroupId.value = ''
   
   if (!selectedStoreId.value) {
+    console.log('⚠️ No store selected')
     return
   }
   
-  const storeId = Number(selectedStoreId.value)
-  storeRequests.value = itemRequests.value.filter(req => 
-    req.status === 'approved' && 
-    (req.askingStoreId === storeId || req.supplyingStoreId === storeId)
-  )
+  if (!isAdmin.value && userData.value?.assignedStore) {
+    if (Number(selectedStoreId.value) !== userData.value.assignedStore.id) {
+      showToastMessage('You do not have access to this store', 'error')
+      selectedStoreId.value = ''
+      return
+    }
+  }
   
-  selectAllRequests.value = storeRequests.value.length > 0
-  if (selectAllRequests.value) {
-    selectedRequestIds.value = storeRequests.value.map(req => req.id)
-  } else {
-    selectedRequestIds.value = []
+  try {
+    const storeId = Number(selectedStoreId.value)
+    console.log('🔍 Fetching approved requests for store ID:', storeId)
+    
+    const response = await balanceService.getApprovedRequests(storeId)
+    storeRequests.value = response.data || []
+    console.log(`✅ Found ${storeRequests.value.length} approved requests for store ${storeId}`)
+    
+    selectAllRequests.value = storeRequests.value.length > 0
+    if (selectAllRequests.value) {
+      selectedRequestIds.value = storeRequests.value.map(req => req.id)
+    }
+  } catch (error) {
+    console.error('Error fetching approved requests:', error)
+    showToastMessage('Failed to fetch approved requests', 'error')
   }
 }
 
@@ -1494,69 +1628,51 @@ const onRequestSelect = () => {
 }
 
 const confirmProcessRequests = async () => {
-  if (!selectedStoreId.value || selectedRequestIds.value.length === 0 || !selectedGroupId.value) return
+  if (!selectedStoreId.value || selectedRequestIds.value.length === 0 || !selectedGroupId.value) {
+    showToastMessage('Please select a store, requests, and a group', 'warning')
+    return
+  }
+  
+  if (!isAdmin.value && userData.value?.assignedGroup) {
+    if (Number(selectedGroupId.value) !== userData.value.assignedGroup.id) {
+      showToastMessage('You do not have access to this group', 'error')
+      return
+    }
+  }
   
   processing.value = true
-  const storeId = Number(selectedStoreId.value)
-  const groupId = Number(selectedGroupId.value)
-  let processedCount = 0
-  let failedCount = 0
-  const logs = []
 
   try {
-    for (const req of selectedRequests.value) {
-      for (const item of req.items) {
-        const balanceIndex = balances.value.findIndex(b => 
-          b.storeId === storeId && 
-          b.groupId === groupId &&
-          b.itemId === item.itemId
-        )
-        
-        if (balanceIndex === -1) {
-          failedCount++
-          logs.push(`❌ Item ${getItemName(item.itemId)} not found in store balance (Store: ${getStoreName(storeId)}, Group: ${getGroupName(groupId)})`)
-          continue
-        }
+    const response = await balanceService.processRequests({
+      storeId: Number(selectedStoreId.value),
+      groupId: Number(selectedGroupId.value),
+      requestIds: selectedRequestIds.value.map(id => Number(id))
+    })
 
-        if (req.askingStoreId === storeId) {
-          balances.value[balanceIndex].balance += Number(item.quantity)
-          logs.push(`✅ ADDED ${item.quantity} ${getItemUnit(item.itemId)} of ${getItemName(item.itemId)} to ${getStoreName(storeId)} (Group: ${getGroupName(groupId)})`)
-        } else if (req.supplyingStoreId === storeId) {
-          if (balances.value[balanceIndex].balance < item.quantity) {
-            failedCount++
-            logs.push(`❌ Insufficient balance for ${getItemName(item.itemId)} in ${getStoreName(storeId)} (Available: ${balances.value[balanceIndex].balance}, Required: ${item.quantity})`)
-            continue
-          }
-          balances.value[balanceIndex].balance -= Number(item.quantity)
-          logs.push(`✅ REMOVED ${item.quantity} ${getItemUnit(item.itemId)} of ${getItemName(item.itemId)} from ${getStoreName(storeId)} (Group: ${getGroupName(groupId)})`)
-        }
-        processedCount++
+    if (response.success) {
+      const { processed, failed, missingItems, processedItems } = response.data || {}
+      
+      let message = response.message || 'Requests processed!'
+      
+      if (processedItems && processedItems.length > 0) {
+        message += `\n\n✅ Processed ${processedItems.length} items`
       }
       
-      const reqIndex = itemRequests.value.findIndex(r => r.id === req.id)
-      if (reqIndex !== -1) {
-        itemRequests.value[reqIndex].status = 'finalized'
+      if (missingItems && missingItems.length > 0) {
+        message += `\n\n⚠️ ${missingItems.length} items need initialization`
       }
+      
+      showToastMessage(message, failed > 0 ? 'warning' : 'success')
+    } else {
+      showToastMessage(response.error || 'Failed to process requests', 'error')
     }
-
-    let message = `✅ Processed ${processedCount} items successfully`
-    if (failedCount > 0) {
-      message += `, ${failedCount} failed`
-    }
-    showToastMessage(message, failedCount > 0 ? 'warning' : 'success')
     
-    console.log('=== Process Requests Log ===')
-    console.log(`Store: ${getStoreName(storeId)}`)
-    console.log(`Group: ${getGroupName(groupId)}`)
-    console.log(`Requests Processed: ${selectedRequests.value.length}`)
-    console.log('----------------------------------------')
-    logs.forEach(log => console.log(log))
-    console.log('=========================================')
-    
+    await fetchBalances()
+    await fetchApprovedRequests() // Refresh the requests list
     closeProcessModal()
   } catch (error) {
     console.error('Error processing requests:', error)
-    showToastMessage('Error processing requests', 'error')
+    showToastMessage(error.response?.data?.error || 'Error processing requests', 'error')
   } finally {
     processing.value = false
   }
@@ -1565,6 +1681,7 @@ const confirmProcessRequests = async () => {
 // ================================================================
 // TOGGLE STATUS
 // ================================================================
+
 const toggleStatus = (item) => {
   toggleItem.value = item
   toggleNewStatus.value = item.status === 'Active' ? 'Inactive' : 'Active'
@@ -1577,38 +1694,24 @@ const closeToggleModal = () => {
   toggleNewStatus.value = ''
 }
 
-const confirmToggle = () => {
+const confirmToggle = async () => {
   if (toggleItem.value) {
-    const index = balances.value.findIndex(b => b.id === toggleItem.value.id)
-    if (index !== -1) {
-      balances.value[index].status = toggleNewStatus.value
+    try {
+      await balanceService.toggleStatus(toggleItem.value.id)
       showToastMessage(`Status changed to ${toggleNewStatus.value}`, 'success')
+      await fetchBalances()
+    } catch (error) {
+      console.error('Error toggling status:', error)
+      showToastMessage('Failed to change status', 'error')
     }
     closeToggleModal()
   }
 }
 
 // ================================================================
-// FILTERS & PAGINATION
-// ================================================================
-const onSearchChange = () => { currentPage.value = 1 }
-const onFilterChange = () => { currentPage.value = 1 }
-
-const clearFilters = () => {
-  filterStore.value = ''
-  filterGroup.value = ''
-  filterStatus.value = ''
-  searchQuery.value = ''
-  currentPage.value = 1
-  showToastMessage('Filters cleared', 'info')
-}
-
-const changePage = (page) => { currentPage.value = page }
-const changePageSize = () => { currentPage.value = 1 }
-
-// ================================================================
 // PRINT & EXPORT
 // ================================================================
+
 const printReport = () => {
   const printContents = document.getElementById('printable-area').innerHTML
   const originalContents = document.body.innerHTML
@@ -1649,68 +1752,25 @@ const closeExportModal = () => {
   showExportModal.value = false
 }
 
-const exportSelectedReport = () => {
+const exportSelectedReport = async () => {
   exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredBalances.value
-    
-    if (exportType.value === 'full') {
-      headers = ['#', 'Store', 'Group', 'Item Code', 'Item Name', 'UOM', 'Conversion', 'Balance', 'Base Balance', 'Status']
-      rows = data.map((item, index) => [
-        index + 1,
-        getStoreName(item.storeId),
-        getGroupName(item.groupId),
-        getItemCode(item.itemId),
-        getItemName(item.itemId),
-        getItemUnit(item.itemId),
-        getConversionDisplay(item.itemId),
-        item.balance,
-        getBaseBalance(item),
-        item.status
-      ])
-    } else {
-      const storeSummary = {}
-      data.forEach(item => {
-        const key = item.storeId
-        if (!storeSummary[key]) {
-          storeSummary[key] = {
-            storeName: getStoreName(item.storeId),
-            totalItems: 0,
-            totalBalance: 0,
-            totalBaseBalance: 0
-          }
-        }
-        storeSummary[key].totalItems++
-        storeSummary[key].totalBalance += item.balance
-        storeSummary[key].totalBaseBalance += getBaseBalance(item)
-      })
-      headers = ['Store Name', 'Total Items', 'Total Balance', 'Total Base Balance']
-      rows = Object.values(storeSummary).map(summary => [
-        summary.storeName,
-        summary.totalItems,
-        summary.totalBalance,
-        summary.totalBaseBalance
-      ])
-    }
-    
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
-    })
-    
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
+  try {
+    const blob = await balanceService.exportBalances(exportType.value)
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `store_balance_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
-    URL.revokeObjectURL(url)
+    window.URL.revokeObjectURL(url)
     
+    showToastMessage('Export completed successfully!', 'success')
+  } catch (error) {
+    console.error('Export error:', error)
+    showToastMessage('Failed to export data', 'error')
+  } finally {
     exporting.value = false
     closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
-  }, 500)
+  }
 }
 
 const showToastMessage = (msg, type = 'success') => {
@@ -1721,198 +1781,58 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
+
+// ================================================================
+// LIFECYCLE HOOKS
+// ================================================================
+
+onMounted(async () => {
+  userData.value = getUserData()
+  console.log('👤 User data loaded:', userData.value)
+  console.log('👑 Is Admin:', isAdmin.value)
+  console.log('🏪 Assigned Store:', userData.value.assignedStore)
+  console.log('📋 Assigned Group:', userData.value.assignedGroup)
+  
+  // Fetch all data
+  await Promise.all([
+    fetchStores(),
+    fetchGroups(),
+    fetchItems(),
+    fetchBalances()
+  ])
+  
+  // 🔥 FIX: Set filter values for non-admin users
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    if (userData.value.assignedStore) {
+      filterStore.value = String(userData.value.assignedStore.id)
+      console.log('🔒 Auto-selected store filter:', userData.value.assignedStore.name, 'ID:', userData.value.assignedStore.id)
+    }
+    if (userData.value.assignedGroup) {
+      filterGroup.value = String(userData.value.assignedGroup.id)
+      console.log('🔒 Auto-selected group filter:', userData.value.assignedGroup.name, 'ID:', userData.value.assignedGroup.id)
+    }
+    
+    // Refresh balances with filters applied
+    await fetchBalances()
+  }
+  
+  // 🔥 FIX: Fetch approved requests after user data is loaded
+  await fetchApprovedRequests()
+})
+
+// Watch for user data changes
+watch(() => localStorage.getItem('user'), (newVal) => {
+  if (newVal) {
+    userData.value = getUserData()
+    console.log('👤 User data updated:', userData.value)
+    // Refresh data when user changes
+    fetchBalances()
+    fetchApprovedRequests()
+  }
+})
 </script>
+
 <style scoped>
-/* ... keep all existing styles ... */
-
-/* Additional styles for the process modal */
-.process-modal .modal-container {
-  max-width: 650px;
-}
-
-.process-info {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: #f0fdf4;
-  border-radius: 8px;
-  border: 1px solid #bbf7d0;
-}
-
-.process-info-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.process-info .info-icon {
-  font-size: 16px;
-}
-
-.info-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.process-rules {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #475569;
-}
-
-.process-rules li {
-  margin: 4px 0;
-}
-
-.text-success {
-  color: #22c55e;
-  font-weight: 600;
-}
-
-.text-danger {
-  color: #ef4444;
-  font-weight: 600;
-}
-
-.requests-checkbox-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 4px;
-}
-
-.request-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.request-checkbox:hover {
-  background: #f8fafc;
-}
-
-.request-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.request-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-
-.req-code {
-  font-weight: 600;
-  color: #2563eb;
-}
-
-.req-date {
-  color: #94a3b8;
-}
-
-.req-items-count {
-  color: #475569;
-  font-size: 11px;
-}
-
-.req-action {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 4px;
-}
-
-.req-action.action-add {
-  color: #22c55e;
-  background: #dcfce7;
-}
-
-.req-action.action-remove {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.select-all-container {
-  margin-bottom: 8px;
-  padding: 6px 0;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-  cursor: pointer;
-}
-
-.no-requests {
-  text-align: center;
-  padding: 30px 20px;
-  color: #94a3b8;
-}
-
-.no-requests-icon {
-  font-size: 32px;
-  display: block;
-  margin-bottom: 8px;
-}
-
-/* Toast styles */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 3px solid #10b981;
-  white-space: nowrap;
-  max-width: 90vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 13px;
-}
-
-.toast.error {
-  border-left-color: #ef4444;
-}
-
-.toast.info {
-  border-left-color: #3b82f6;
-}
-
-.toast.warning {
-  border-left-color: #f59e0b;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -2155,6 +2075,413 @@ const showToastMessage = (msg, type = 'success') => {
 .stat-label {
   font-size: 11px;
   color: #64748b;
+}
+
+/* ================================================================
+   TABLE
+   ================================================================ */
+.table-container {
+  overflow-x: auto;
+}
+
+.balance-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 700px;
+}
+
+.balance-table th,
+.balance-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.balance-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.store-name {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.item-name-wrapper {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 11px;
+}
+
+.standard-name {
+  font-size: 12px;
+  color: #1e293b;
+}
+
+.common-name {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.group-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.uom-wrapper {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.uom-code {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.conversion-info {
+  font-size: 9px;
+  color: #64748b;
+}
+
+.conversion-info.base {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.balance-wrapper {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.balance-value {
+  font-weight: 600;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.balance-value.normal {
+  color: #166534;
+}
+
+.balance-value.low {
+  color: #f59e0b;
+}
+
+.balance-value.zero {
+  color: #ef4444;
+}
+
+.base-balance {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* ================================================================
+   STATUS BADGE
+   ================================================================ */
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.inactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ================================================================
+   ACTION BUTTONS
+   ================================================================ */
+.action-buttons {
+  display: flex;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.icon-btn:hover {
+  background: #f1f5f9;
+}
+
+.delete-btn {
+  color: #ef4444;
+}
+
+.delete-btn:hover {
+  background: #fee2e2;
+}
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 4px 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #3b82f6;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.limit-select {
+  padding: 3px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   MODALS
+   ================================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal-container {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
+}
+
+.process-modal .modal-container {
+  max-width: 650px;
+}
+
+.toggle-modal .modal-container {
+  max-width: 380px;
+}
+
+.export-modal .modal-container {
+  max-width: 380px;
+}
+
+.delete-modal .modal-container {
+  max-width: 400px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #94a3b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.modal-close:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+/* ================================================================
+   FORMS
+   ================================================================ */
+.balance-form .form-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.balance-form .form-group {
+  flex: 1;
+  min-width: 120px;
+}
+
+.balance-form .form-group label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.balance-form .form-group input,
+.balance-form .form-group select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.balance-form .form-group input:focus,
+.balance-form .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.balance-form .form-group input:read-only {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.balance-form .hint {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.process-modal .form-group {
+  margin-bottom: 12px;
+}
+
+.process-modal .form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.process-modal .form-group select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.process-modal .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 /* ================================================================
@@ -2455,289 +2782,8 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   TABLE
-   ================================================================ */
-.table-container {
-  overflow-x: auto;
-}
-
-.balance-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  min-width: 700px;
-}
-
-.balance-table th,
-.balance-table td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: middle;
-}
-
-.balance-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  color: #475569;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.store-name {
-  font-weight: 500;
-  font-size: 12px;
-}
-
-.item-name-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-
-.item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 11px;
-}
-
-.standard-name {
-  font-size: 12px;
-  color: #1e293b;
-}
-
-.common-name {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  background: #eff6ff;
-  color: #2563eb;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.uom-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-
-.uom-code {
-  font-weight: 600;
-  font-size: 13px;
-  color: #1e293b;
-}
-
-.conversion-info {
-  font-size: 9px;
-  color: #64748b;
-}
-
-.conversion-info.base {
-  color: #94a3b8;
-  font-style: italic;
-}
-
-.balance-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-
-.balance-value {
-  font-weight: 600;
-  font-size: 14px;
-  padding: 2px 4px;
-  border-radius: 3px;
-}
-
-.balance-value.normal {
-  color: #166534;
-}
-
-.balance-value.low {
-  color: #f59e0b;
-}
-
-.balance-value.zero {
-  color: #ef4444;
-}
-
-.base-balance {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-/* ================================================================
-   STATUS BADGE
-   ================================================================ */
-.status-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.status-badge.active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-badge.inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-/* ================================================================
-   ACTION BUTTONS
-   ================================================================ */
-.action-buttons {
-  display: flex;
-  gap: 2px;
-  flex-wrap: nowrap;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 3px 5px;
-  border-radius: 4px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.icon-btn:hover {
-  background: #f1f5f9;
-}
-
-.delete-btn {
-  color: #ef4444;
-}
-
-.delete-btn:hover {
-  background: #fee2e2;
-}
-
-/* ================================================================
-   DELETE MODAL
-   ================================================================ */
-.delete-modal .modal-container {
-  max-width: 400px;
-}
-
-.delete-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.delete-warning {
-  color: #dc2626;
-  font-weight: 600;
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #fee2e2;
-  border-radius: 6px;
-  border: 1px solid #fecaca;
-  font-size: 13px;
-  text-align: center;
-}
-
-.delete-question {
-  font-size: 14px;
-  color: #475569;
-  text-align: center;
-  margin-top: 8px;
-}
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-danger:hover {
-  background: #dc2626;
-}
-
-/* ================================================================
-   BUTTONS
-   ================================================================ */
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e2e8f0;
-}
-
-/* ================================================================
    PROCESS REQUESTS MODAL
    ================================================================ */
-.process-modal .modal-container {
-  max-width: 650px;
-}
-
 .process-info {
   margin-bottom: 16px;
   padding: 12px 16px;
@@ -2753,7 +2799,7 @@ const showToastMessage = (msg, type = 'success') => {
   margin-bottom: 8px;
 }
 
-.info-icon {
+.process-info .info-icon {
   font-size: 16px;
 }
 
@@ -2782,34 +2828,6 @@ const showToastMessage = (msg, type = 'success') => {
 .text-danger {
   color: #ef4444;
   font-weight: 600;
-}
-
-.init-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: #eff6ff;
-  border-radius: 8px;
-  border: 1px solid #bfdbfe;
-  margin-bottom: 14px;
-  font-size: 13px;
-  color: #1e293b;
-}
-
-.select-all-container {
-  margin-bottom: 8px;
-  padding: 6px 0;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-  cursor: pointer;
 }
 
 .requests-checkbox-list {
@@ -2878,6 +2896,33 @@ const showToastMessage = (msg, type = 'success') => {
 .req-action.action-remove {
   color: #ef4444;
   background: #fee2e2;
+}
+
+.select-all-container {
+  margin-bottom: 8px;
+  padding: 6px 0;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.no-requests {
+  text-align: center;
+  padding: 30px 20px;
+  color: #94a3b8;
+}
+
+.no-requests-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 8px;
 }
 
 .requests-preview {
@@ -2990,244 +3035,165 @@ const showToastMessage = (msg, type = 'success') => {
   color: #94a3b8;
 }
 
-.no-requests {
-  text-align: center;
-  padding: 30px 20px;
-  color: #94a3b8;
-}
-
-.no-requests-icon {
-  font-size: 32px;
-  display: block;
-  margin-bottom: 8px;
-}
-
 /* ================================================================
-   PAGINATION
+   TOAST
    ================================================================ */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #e2e8f0;
-  flex-wrap: wrap;
-}
-
-.page-btn {
-  padding: 4px 12px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #3b82f6;
-}
-
-.page-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 12px;
-  color: #64748b;
-  white-space: nowrap;
-}
-
-.limit-select {
-  padding: 3px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-/* ================================================================
-   MODALS
-   ================================================================ */
-.modal-overlay {
+.toast {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 1000;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+  animation: slideIn 0.3s ease;
+  border-left: 3px solid #10b981;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
 }
 
-.modal-container {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
+.toast.error {
+  border-left-color: #ef4444;
+}
+
+.toast.info {
+  border-left-color: #3b82f6;
+}
+
+.toast.warning {
+  border-left-color: #f59e0b;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 30px !important;
+}
+
+.empty-content {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
-}
-
-.process-modal .modal-container {
-  max-width: 650px;
-}
-
-.toggle-modal .modal-container {
-  max-width: 380px;
-}
-
-.export-modal .modal-container {
-  max-width: 380px;
-}
-
-.delete-modal .modal-container {
-  max-width: 400px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 14px 18px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
+  gap: 10px;
 }
 
-.modal-header h3 {
+.empty-icon {
+  font-size: 36px;
+  opacity: 0.3;
+}
+
+.empty-content p {
+  color: #64748b;
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.modal-body {
-  padding: 16px 18px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
-  flex-shrink: 0;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: #94a3b8;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.modal-close:hover {
-  background: #f1f5f9;
-  color: #1e293b;
+  font-size: 14px;
 }
 
 /* ================================================================
-   FORMS
+   DELETE MODAL
    ================================================================ */
-.balance-form .form-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-.balance-form .form-group {
-  flex: 1;
-  min-width: 120px;
-}
-
-.balance-form .form-group label {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: #475569;
-  margin-bottom: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.balance-form .form-group input,
-.balance-form .form-group select {
-  width: 100%;
-  padding: 5px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  font-family: inherit;
-}
-
-.balance-form .form-group input:focus,
-.balance-form .form-group select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.balance-form .form-group input:read-only {
-  background: #f1f5f9;
-  color: #64748b;
-  cursor: not-allowed;
-}
-
-.balance-form .hint {
-  display: block;
-  font-size: 10px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.process-modal .form-group {
+.delete-icon {
+  font-size: 48px;
+  text-align: center;
   margin-bottom: 12px;
 }
 
-.process-modal .form-group label {
-  display: block;
-  font-size: 12px;
+.delete-warning {
+  color: #dc2626;
   font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-
-.process-modal .form-group select {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
   border-radius: 6px;
+  border: 1px solid #fecaca;
   font-size: 13px;
-  font-family: inherit;
+  text-align: center;
 }
 
-.process-modal .form-group select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+.delete-question {
+  font-size: 14px;
+  color: #475569;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
 }
 
 /* ================================================================
@@ -3276,74 +3242,17 @@ const showToastMessage = (msg, type = 'success') => {
   border-color: #3b82f6;
 }
 
-/* ================================================================
-   EMPTY STATE
-   ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 30px !important;
-}
-
-.empty-content {
+.init-info {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 10px;
-}
-
-.empty-icon {
-  font-size: 36px;
-  opacity: 0.3;
-}
-
-.empty-content p {
-  color: #64748b;
-  margin: 0;
-  font-size: 14px;
-}
-
-/* ================================================================
-   TOAST
-   ================================================================ */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 10px 16px;
+  padding: 10px 14px;
+  background: #eff6ff;
   border-radius: 8px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 3px solid #10b981;
-  white-space: nowrap;
-  max-width: 90vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border: 1px solid #bfdbfe;
+  margin-bottom: 14px;
   font-size: 13px;
-}
-
-.toast.error {
-  border-left-color: #ef4444;
-}
-
-.toast.info {
-  border-left-color: #3b82f6;
-}
-
-.toast.warning {
-  border-left-color: #f59e0b;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  color: #1e293b;
 }
 
 /* ================================================================
