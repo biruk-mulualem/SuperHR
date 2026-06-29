@@ -21,7 +21,7 @@
           <span v-else>🔄</span>
           {{ refreshing ? 'Refreshing...' : 'Refresh' }}
         </button>
-        <button class="btn-export" @click="openExportModal" :disabled="exporting || filteredAuditData.length === 0">
+        <button class="btn-export" @click="openExportModal" :disabled="exporting">
           📊 {{ exporting ? 'Exporting...' : 'Export' }}
         </button>
       </div>
@@ -55,7 +55,7 @@
     <div class="filter-bar">
       <select v-model="selectedStoreId" class="filter-select" @change="onStoreChange">
         <option v-for="store in stores" :key="store.id" :value="store.id">
-          {{ store.name }} <span v-if="storeBalanceCounts[store.id] > 0">({{ storeBalanceCounts[store.id] }})</span>
+          {{ store.name }}
         </option>
       </select>
       <select v-model="filterCategory" class="filter-select" @change="onFilterChange">
@@ -75,22 +75,7 @@
 
     <!-- ==================== PRODUCT COMPARISON TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <!-- Loading State -->
-      <div v-if="loading" class="loading-state">
-        <div class="spinner-large"></div>
-        <p>Loading audit data...</p>
-      </div>
-      
-      <!-- Error State -->
-      <div v-else-if="error" class="error-state">
-        <div class="error-icon">❌</div>
-        <h3>Error Loading Data</h3>
-        <p>{{ error }}</p>
-        <button class="btn-retry" @click="retryLoad">Retry</button>
-      </div>
-      
-      <!-- Table -->
-      <table v-else-if="filteredAuditData.length > 0" class="audit-table">
+      <table class="audit-table">
         <thead>
           <tr>
             <th rowspan="2" style="width:35px">#</th>
@@ -109,18 +94,18 @@
           </tr>
         </thead>
         <tbody>
-          <template v-for="(item, index) in paginatedAuditData" :key="item.productId || item.itemId">
+          <template v-for="(item, index) in paginatedAuditData" :key="item.productId">
             <tr :class="getRowClass(item)">
               <td class="text-center">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
               <td class="code">{{ item.code }}</td>
               <td>
                 <div class="product-info">
-                  <span class="common-name">{{ item.commonName || item.itemName }}</span>
-                  <span class="standard-name">{{ item.standardName || '' }}</span>
+                  <span class="common-name">{{ item.commonName }}</span>
+                  <span class="standard-name">{{ item.standardName }}</span>
                 </div>
               </td>
               <td>{{ item.category || '-' }}</td>
-              <td>{{ item.uom || item.uomCode || '-' }}</td>
+              <td>{{ item.uom }}</td>
               
               <!-- Group Balances -->
               <td v-for="group in activeGroups" :key="group.id" 
@@ -129,7 +114,7 @@
               </td>
               
               <td>
-                <span :class="['status-badge', getStatusClass(item.status)]">
+                <span :class="['status-badge', item.status.toLowerCase()]">
                   {{ item.status }}
                 </span>
               </td>
@@ -138,32 +123,24 @@
                   @click="openTransactionModal(item)" 
                   class="btn-transaction"
                   title="View Transactions"
-                  :disabled="!item.itemId"
                 >
                   📋
                 </button>
               </td>
             </tr>
           </template>
+          
+          <tr v-if="paginatedAuditData.length === 0" class="empty-row">
+            <td :colspan="5 + activeGroups.length + 2" class="empty-cell">
+              <div class="empty-state">
+                <div class="empty-icon">📦</div>
+                <h3>No products found</h3>
+                <p>No products are currently tracked in this store</p>
+              </div>
+            </td>
+          </tr>
         </tbody>
       </table>
-      
-      <!-- Empty State -->
-      <div v-else-if="!loading && !error" class="empty-state">
-        <div class="empty-icon">📦</div>
-        <h3>No Products Found</h3>
-        <p v-if="selectedStore">
-          No products are currently tracked in <strong>{{ selectedStore.name }}</strong>
-        </p>
-        <p v-else>Please select a store to view audit data</p>
-        <div class="empty-actions">
-          <p class="empty-hint">💡 To add products, you need to:</p>
-          <ul class="empty-list">
-            <li>1. Create items in the Items module</li>
-            <li>2. Initialize balances for each store-group combination</li>
-          </ul>
-        </div>
-      </div>
     </div>
 
     <!-- Pagination -->
@@ -192,13 +169,13 @@
         <div class="modal-body">
           <!-- Product Info -->
           <div class="transaction-product">
-            <h4>{{ selectedItem?.commonName || selectedItem?.itemName }}</h4>
+            <h4>{{ selectedItem?.commonName }}</h4>
             <div class="product-meta">
               <span><strong>Code:</strong> {{ selectedItem?.code }}</span>
-              <span><strong>Category:</strong> {{ selectedItem?.category || '-' }}</span>
+              <span><strong>Category:</strong> {{ selectedItem?.category }}</span>
               <span><strong>Store:</strong> {{ selectedStoreName }}</span>
               <span><strong>Status:</strong> 
-                <span :class="['status-badge', getStatusClass(selectedItem?.status)]">
+                <span :class="['status-badge', selectedItem?.status?.toLowerCase()]">
                   {{ selectedItem?.status }}
                 </span>
               </span>
@@ -234,23 +211,23 @@
                 v-for="(tx, idx) in getGroupTransactions(selectedGroupTab)" 
                 :key="idx"
                 class="transaction-item"
-                :class="(tx.transactionType || tx.type || 'adjustment').toLowerCase()"
+                :class="tx.type.toLowerCase()"
               >
                 <div class="tx-header">
-                  <span class="tx-date">{{ formatDate(tx.createdAt || tx.date) }}</span>
-                  <span :class="['tx-type-badge', (tx.transactionType || tx.type || 'adjustment').toLowerCase()]">
-                    {{ tx.transactionType || tx.type || 'ADJUSTMENT' }}
+                  <span class="tx-date">{{ formatDate(tx.date) }}</span>
+                  <span :class="['tx-type-badge', tx.type.toLowerCase()]">
+                    {{ tx.type }}
                   </span>
-                  <span class="tx-reference" v-if="tx.referenceId || tx.reference">Ref: {{ tx.referenceId || tx.reference }}</span>
+                  <span class="tx-reference" v-if="tx.reference">Ref: {{ tx.reference }}</span>
                 </div>
                 <div class="tx-details">
-                  <span class="tx-quantity" :class="(tx.changeAmount || tx.quantity || 0) > 0 ? 'positive' : 'negative'">
-                    {{ (tx.changeAmount || tx.quantity || 0) > 0 ? '+' : '' }}{{ tx.changeAmount || tx.quantity || 0 }}
+                  <span class="tx-quantity" :class="tx.quantity > 0 ? 'positive' : 'negative'">
+                    {{ tx.quantity > 0 ? '+' : '' }}{{ tx.quantity }}
                   </span>
-                  <span class="tx-balance">Balance: {{ tx.newBalance || tx.balanceAfter || 0 }}</span>
-                  <span class="tx-user" v-if="tx.changedBy || tx.user">👤 {{ tx.changedBy || tx.user }}</span>
+                  <span class="tx-balance">Balance: {{ tx.balanceAfter }}</span>
+                  <span class="tx-user" v-if="tx.user">👤 {{ tx.user }}</span>
                 </div>
-                <div class="tx-notes" v-if="tx.remark || tx.notes">💬 {{ tx.remark || tx.notes }}</div>
+                <div class="tx-notes" v-if="tx.notes">💬 {{ tx.notes }}</div>
               </div>
             </div>
           </div>
@@ -286,7 +263,7 @@
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeExportModal">Cancel</button>
-          <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting || filteredAuditData.length === 0">
+          <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
             {{ exporting ? 'Exporting...' : 'Export' }}
           </button>
         </div>
@@ -302,7 +279,6 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import auditService from '@/stores/auditService'
 
 // ================================================================
 // STATE
@@ -319,15 +295,9 @@ const loading = ref(false)
 const refreshing = ref(false)
 const exporting = ref(false)
 const loadingTransactions = ref(false)
-const error = ref(null)
 
 // Stock data for selected store
 const storeStockData = ref([])
-const auditData = ref(null)
-const categoriesList = ref([])
-
-// Store balance counts
-const storeBalanceCounts = ref({})
 
 // Modal
 const showTransactionModal = ref(false)
@@ -356,22 +326,10 @@ const selectedStoreName = computed(() => {
 })
 
 const activeGroups = computed(() => {
-  // Get groups from the audit data
-  if (auditData.value?.groups) {
-    return auditData.value.groups.map(g => ({
-      id: g.groupId,      // Use groupId as the id for the frontend
-      groupId: g.groupId,
-      name: g.name,
-      code: g.code || ''
-    }))
-  }
   return selectedStore.value?.groups || []
 })
 
 const categories = computed(() => {
-  if (auditData.value?.categories && auditData.value.categories.length > 0) {
-    return auditData.value.categories
-  }
   const cats = new Set()
   storeStockData.value.forEach(item => {
     if (item.category) cats.add(item.category)
@@ -385,9 +343,9 @@ const filteredAuditData = computed(() => {
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter(item => 
-      (item.code || '').toLowerCase().includes(s) ||
-      (item.commonName || item.itemName || '').toLowerCase().includes(s) ||
-      (item.standardName || '').toLowerCase().includes(s)
+      item.code.toLowerCase().includes(s) ||
+      item.commonName.toLowerCase().includes(s) ||
+      item.standardName?.toLowerCase().includes(s)
     )
   }
   
@@ -427,395 +385,217 @@ const conflictCount = computed(() => {
 // METHODS
 // ================================================================
 
-/**
- * Get status class for badge
- */
-const getStatusClass = (status) => {
-  if (!status) return 'unknown'
-  const map = {
-    'Matched': 'matched',
-    'Outlier': 'outlier',
-    'Conflict': 'conflict',
-    'No Data': 'unknown'
-  }
-  return map[status] || 'unknown'
-}
-
-// -- Load Categories --
-const loadCategories = async () => {
-  try {
-    console.log('📂 Loading categories...')
-    const result = await auditService.getCategories()
-    if (result.success) {
-      categoriesList.value = result.data.map(cat => cat.name)
-    }
-  } catch (err) {
-    console.error('❌ Error loading categories:', err)
-  }
-}
-
-// -- Load Stores --
-const loadStores = async () => {
-  try {
-    console.log('🏪 Loading stores...')
-    const result = await auditService.getStoresWithGroups()
-    console.log('📥 Stores response:', result)
-    
-    if (result.success && result.data.length > 0) {
-      // Log the first store to see its structure
-      console.log('🔍 First store raw data:', JSON.stringify(result.data[0], null, 2))
-      console.log('🔍 Store IDs from API:', result.data.map(s => ({ id: s.id, name: s.name })))
-      
-      // Use the actual IDs from the backend - DO NOT override them
-      stores.value = result.data.map((store) => {
-        // Use the actual ID from the backend
-        const storeId = store.id;
-        
-        console.log(`📋 Store: ${store.name}, ID: ${storeId}`);
-        
-        return {
-          ...store,
-          id: storeId, // Use the actual ID from backend
-          groups: (store.groups || []).map(group => ({
-            ...group,
-            id: group.id || group.groupId,
-            groupId: group.groupId || group.id
-          }))
-        }
-      })
-      
-      console.log('📋 Stores loaded with IDs:', stores.value.map(s => ({ id: s.id, name: s.name })))
-      
-      // Auto-select a store with balances
-      await autoSelectStore()
-    } else {
-      console.warn('No stores found')
-      error.value = 'No stores available'
-    }
-  } catch (err) {
-    console.error('❌ Error loading stores:', err)
-    error.value = 'Failed to load stores'
-    showToastMessage('Failed to load stores', 'error')
-  }
-}
-/**
- * Auto-select a store with balances
- */
-// In your Vue component, update the autoSelectStore function
-/**
- * Auto-select a store with balances
- */
-const autoSelectStore = async () => {
-  console.log('🔄 Auto-selecting store...');
-  console.log('📋 Available stores:', stores.value);
-  
-  // Check if we have stores
-  if (!stores.value || stores.value.length === 0) {
-    console.warn('No stores available to auto-select');
-    return;
-  }
-  
-  // Filter stores with valid IDs
-  const storesToCheck = stores.value.filter(store => {
-    if (!store.id) {
-      console.warn(`⚠️ Store "${store.name}" has no ID, skipping`);
-      return false;
-    }
-    return true;
-  });
-  
-  if (storesToCheck.length === 0) {
-    console.warn('No valid stores to check');
-    return;
-  }
-  
-  console.log(`📋 Checking ${storesToCheck.length} stores:`, storesToCheck.map(s => ({ id: s.id, name: s.name })));
-  
-  // First, load balance counts for all stores
-  for (const store of storesToCheck) {
-    try {
-      console.log(`🔍 Checking store ${store.id}: ${store.name}`);
-      const result = await auditService.getStoreAudit(store.id, {
-        includeTransactions: false,
-        transactionLimit: 1
-      });
-      if (result.success) {
-        const count = result.data.summary?.totalItems || 0;
-        storeBalanceCounts.value[store.id] = count;
-        console.log(`📊 Store ${store.name} (${store.id}): ${count} products`);
-      }
-    } catch (err) {
-      console.warn(`Could not get balance count for store ${store.id}:`, err);
-      storeBalanceCounts.value[store.id] = 0;
-    }
-  }
-  
-  // Find a store with balances
-  let storeWithBalances = null;
-  for (const store of storesToCheck) {
-    const count = storeBalanceCounts.value[store.id] || 0;
-    if (count > 0) {
-      storeWithBalances = store;
-      break;
-    }
-  }
-  
-  // Select the store
-  if (storeWithBalances) {
-    console.log(`✅ Auto-selecting store with balances: ${storeWithBalances.name} (ID: ${storeWithBalances.id})`);
-    selectedStoreId.value = storeWithBalances.id;
-  } else if (storesToCheck.length > 0) {
-    const firstStore = storesToCheck[0];
-    console.log(`ℹ️ No stores with balances, selecting first store: ${firstStore.name} (ID: ${firstStore.id})`);
-    selectedStoreId.value = firstStore.id;
-  } else {
-    console.warn('No stores available');
-    return;
-  }
-  
-  // Load the selected store
-  if (selectedStoreId.value) {
-    console.log(`📥 Loading store data for ID: ${selectedStoreId.value}`);
-    await loadStoreData(selectedStoreId.value);
-  }
-}
-
-// -- Load Store Data --
-const loadStoreData = async (storeId) => {
-  if (!storeId) {
-    storeStockData.value = []
-    return
-  }
-  
+// -- Load Data --
+const loadData = () => {
   loading.value = true
-  error.value = null
-  
-  try {
-    console.log(`🔍 Loading audit data for store: ${storeId}`)
-    const result = await auditService.getStoreAudit(storeId, {
-      includeTransactions: true,
-      transactionLimit: 10
-    })
-    
-    console.log('📥 Audit response received')
-    
-    if (result.success) {
-      auditData.value = result.data
-      
-      // Store categories from response
-      if (result.data.categories) {
-        categoriesList.value = result.data.categories
-      }
-      
-      // Transform the data for the table
-      const transformedData = transformAuditData(result.data)
-      console.log(`🔄 Transformed ${transformedData.length} items`)
-      storeStockData.value = transformedData
-      
-      // Update store balance count
-      storeBalanceCounts.value[storeId] = transformedData.length
-      
-      // Update store groups from audit data
-      if (result.data.store) {
-        const existingStore = stores.value.find(s => s.id === result.data.store.id)
-        if (existingStore && result.data.groups) {
-          existingStore.groups = result.data.groups.map(g => ({
-            id: g.groupId,
-            groupId: g.groupId,
-            name: g.name,
-            code: g.code || ''
-          }))
-        }
-      }
-      
-      if (transformedData.length === 0) {
-        console.log(`ℹ️ No products found for this store`)
-      } else {
-        showToastMessage(`Loaded ${transformedData.length} products`, 'success')
-      }
-    } else {
-      console.error('Failed to load audit data:', result)
-      error.value = result.error || 'Failed to load audit data'
-      showToastMessage('Failed to load audit data', 'error')
+  setTimeout(() => {
+    stores.value = getMockStores()
+    // Set first store as default
+    if (stores.value.length > 0) {
+      selectedStoreId.value = stores.value[0].id
+      storeStockData.value = getMockStoreStockData(selectedStoreId.value)
     }
-  } catch (err) {
-    console.error('❌ Error loading store audit:', err)
-    error.value = err.message || 'Failed to load audit data'
-    showToastMessage('Failed to load audit data', 'error')
-  } finally {
     loading.value = false
-  }
+  }, 300)
 }
 
-/**
- * Transform backend audit data into the format expected by the table
- */
-/**
- * Transform backend audit data into the format expected by the table
- */
-const transformAuditData = (data) => {
-  console.log('🔄 Transform audit data:', data)
-  
-  if (!data) {
-    console.warn('No data provided')
-    return []
-  }
-  
-  // If we have comparison items directly from the backend
-  if (data.comparison && data.comparison.items) {
-    console.log('✅ Using comparison items from backend:', data.comparison.items.length)
+const getMockStores = () => {
+  return [
+    { 
+      id: 'store-1', 
+      name: 'Fiber Main Store', 
+      groups: [
+        { id: 'g1', name: 'Storekeeper' },
+        { id: 'g2', name: 'IT' },
+        { id: 'g3', name: 'Auditor' },
+        { id: 'g4', name: 'Supplier' }
+      ] 
+    },
+    { 
+      id: 'store-2', 
+      name: 'Paint Main Store', 
+      groups: [
+        { id: 'g5', name: 'Storekeeper' },
+        { id: 'g6', name: 'IT' },
+        { id: 'g7', name: 'Auditor' }
+      ] 
+    },
+    { 
+      id: 'store-3', 
+      name: 'Fiber Mini Store', 
+      groups: [
+        { id: 'g8', name: 'Storekeeper' },
+        { id: 'g9', name: 'IT' },
+        { id: 'g10', name: 'Auditor' }
+      ] 
+    }
+  ]
+}
+
+const getMockStoreStockData = (storeId) => {
+  const allProducts = [
+    { 
+      productId: 'p1', 
+      code: 'SDT000001', 
+      commonName: 'Fiberglass Resin', 
+      standardName: 'Fiberglass Reinforced Polyester Resin',
+      category: 'Fiber Raw Material', 
+      uom: 'KG' 
+    },
+    { 
+      productId: 'p2', 
+      code: 'SDT000002', 
+      commonName: 'Titanium Dioxide Pigment', 
+      standardName: 'Titanium Dioxide White Pigment',
+      category: 'Paint Raw Material', 
+      uom: 'KG' 
+    },
+    { 
+      productId: 'p3', 
+      code: 'SDT000003', 
+      commonName: 'Steel Sheets', 
+      standardName: 'Industrial Steel Sheets 2mm',
+      category: 'Metals', 
+      uom: 'Each' 
+    },
+    { 
+      productId: 'p4', 
+      code: 'SDT000004', 
+      commonName: 'Industrial Solvent', 
+      standardName: 'Industrial Solvent 99% Purity',
+      category: 'Chemicals', 
+      uom: 'L' 
+    },
+    { 
+      productId: 'p5', 
+      code: 'SDT000005', 
+      commonName: 'Epoxy Hardener', 
+      standardName: 'Epoxy Resin Hardener Type II',
+      category: 'Hardeners', 
+      uom: 'KG' 
+    }
+  ]
+
+  const store = stores.value.find(s => s.id === storeId)
+  if (!store) return []
+
+  return allProducts.map((product, productIndex) => {
+    const groupBalances = {}
+    const values = []
     
-    // Get the total number of groups
-    const totalGroups = data.groups ? data.groups.length : 0
-    console.log(`📋 Total groups: ${totalGroups}`)
-    
-    const transformed = data.comparison.items.map(item => {
-      const groupBalances = item.groupBalances || {}
+    store.groups.forEach((group, index) => {
+      let baseValue = 100 - (index * 3) + Math.floor(Math.random() * 6)
       
-      // Get all values
-      const values = Object.values(groupBalances).filter(v => v !== undefined && v !== null)
-      const missingCount = totalGroups - values.length
-      
-      console.log(`📊 Item ${item.code} - Values: ${JSON.stringify(values)}, Missing: ${missingCount}/${totalGroups}`)
-      
-      // Determine status with new logic
-      let status = 'No Data'
-      let statusClass = 'unknown'
-      
-      if (values.length === 0) {
-        status = 'No Data'
-        statusClass = 'no-data'
-      } else if (missingCount > 0) {
-        // Some groups are missing data - this is a conflict!
-        status = 'Conflict'
-        statusClass = 'conflict'
-      } else {
-        // All groups have data, check if they match
-        const uniqueValues = [...new Set(values)]
-        if (uniqueValues.length === 1) {
-          status = 'Matched'
-          statusClass = 'matched'
-        } else if (uniqueValues.length === 2) {
-          status = 'Outlier'
-          statusClass = 'outlier'
-        } else {
-          status = 'Conflict'
-          statusClass = 'conflict'
-        }
+      // Create different scenarios for demo
+      // Matched: Product 2 (p2) - all groups have the same value
+      if (product.productId === 'p2') {
+        baseValue = 150 // All groups match
+      }
+      // Outlier: Product 1 (p1) - Auditor is different
+      else if (product.productId === 'p1' && group.id === 'g3') {
+        baseValue = 145 // Auditor is different (Outlier)
+      } 
+      // Outlier: Product 4 (p4) - Supplier is different
+      else if (product.productId === 'p4' && group.id === 'g4') {
+        baseValue = 155 // Supplier is different (Outlier)
+      }
+      // Outlier: Product 3 (p3) - Storekeeper is different
+      else if (product.productId === 'p3' && group.id === 'g1') {
+        baseValue = 120 // Storekeeper is different
+      }
+      // Conflict: Product 5 (p5) - All three different (only for stores with 3+ groups)
+      else if (product.productId === 'p5' && store.groups.length >= 3) {
+        if (group.id === 'g8') baseValue = 20
+        else if (group.id === 'g9') baseValue = 25
+        else if (group.id === 'g10') baseValue = 30
+        else baseValue = 22 // for other groups
+      }
+      // Outlier: Product 1 in store-2
+      else if (storeId === 'store-2' && product.productId === 'p1' && group.id === 'g6') {
+        baseValue = 95 // IT is different
+      }
+      else {
+        baseValue = Math.max(0, Math.round(100 + (index * 2) + Math.floor(Math.random() * 5)))
       }
       
-      return {
-        productId: item.itemId,
-        itemId: item.itemId,
-        code: item.code || '',
-        commonName: item.commonName || item.itemName || 'Unknown',
-        itemName: item.itemName || 'Unknown',
-        standardName: item.standardName || '',
-        category: item.category || 'General',
-        uom: item.uomCode || '',
-        uomCode: item.uomCode || '',
-        groupBalances: groupBalances,
-        status: status,
-        statusClass: statusClass,
-        // Add metadata for debugging
-        _debug: {
-          totalGroups: totalGroups,
-          missingCount: missingCount,
-          values: values
-        }
-      }
+      groupBalances[group.id] = baseValue
+      values.push(baseValue)
     })
     
-    console.log('✅ Transformed items:', transformed)
-    return transformed
-  }
-  
-  // Fallback: Build from groups data
-  if (!data.groups) {
-    console.warn('No groups found')
-    return []
-  }
-  
-  console.log('🔄 Building from groups data (legacy format)')
-  const groups = data.groups || []
-  const totalGroups = groups.length
-  const itemMap = new Map()
-  
-  // Collect all item IDs from all groups
-  groups.forEach(group => {
-    const balances = group.balances || []
-    balances.forEach(balance => {
-      if (!itemMap.has(balance.itemId)) {
-        itemMap.set(balance.itemId, {
-          productId: balance.itemId,
-          itemId: balance.itemId,
-          code: balance.itemCode || '',
-          commonName: balance.itemCommonName || balance.itemName || 'Unknown',
-          itemName: balance.itemName || 'Unknown',
-          standardName: balance.itemCommonName || '',
-          category: balance.category || 'General',
-          uom: balance.uomCode || '',
-          uomCode: balance.uomCode || '',
-          groupBalances: {},
-          status: 'Matched'
-        })
-      }
-    })
-  })
-  
-  // Now populate balances from each group
-  groups.forEach(group => {
-    const groupId = group.groupId
-    const balances = group.balances || []
+    // Determine status
+    const uniqueValues = [...new Set(values)]
+    let status
     
-    balances.forEach(balance => {
-      const item = itemMap.get(balance.itemId)
-      if (item) {
-        item.groupBalances[groupId] = balance.balance
-      }
-    })
-  })
-  
-  // Determine status for each item with the new logic
-  itemMap.forEach((item) => {
-    const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null)
-    const missingCount = totalGroups - values.length
-    
-    if (values.length === 0) {
-      item.status = 'No Data'
-      item.statusClass = 'no-data'
-    } else if (missingCount > 0) {
-      // Missing data = Conflict!
-      item.status = 'Conflict'
-      item.statusClass = 'conflict'
+    if (uniqueValues.length === 1) {
+      status = 'Matched'
+    } else if (uniqueValues.length === 2) {
+      status = 'Outlier'
     } else {
-      const uniqueValues = [...new Set(values)]
-      if (uniqueValues.length === 1) {
-        item.status = 'Matched'
-        item.statusClass = 'matched'
-      } else if (uniqueValues.length === 2) {
-        item.status = 'Outlier'
-        item.statusClass = 'outlier'
-      } else {
-        item.status = 'Conflict'
-        item.statusClass = 'conflict'
-      }
+      status = 'Conflict'
+    }
+    
+    return {
+      ...product,
+      groupBalances,
+      status
     }
   })
+}
+
+// -- Get Mock Transactions --
+const getMockTransactions = (productId, groupId) => {
+  const types = ['STOCK_IN', 'STOCK_OUT', 'ADJUSTMENT']
+  const users = ['Biruk Mulualem', 'Dagmawi Hadgu', 'Melkamu Zewdu', 'Melaku Tewodros', 'Tamrat Zerihun']
+  const notes = ['Regular stock in', 'Customer order', 'Inventory adjustment', 'Damaged goods return', 'Supplier delivery']
+  const references = ['PO-2024-001', 'SO-2024-001', 'ADJ-2024-001', 'RET-2024-001']
   
-  const result = Array.from(itemMap.values())
-  console.log(`✅ Transformed ${result.length} items from groups`)
-  return result
+  const transactions = []
+  let runningBalance = 100 + Math.floor(Math.random() * 50)
+  
+  // Ensure at least one transaction of each type
+  const forcedTypes = ['STOCK_IN', 'STOCK_OUT', 'STOCK_IN']
+  forcedTypes.forEach((type, i) => {
+    const qty = type === 'STOCK_IN' ? Math.floor(Math.random() * 20) + 5 : -(Math.floor(Math.random() * 15) + 3)
+    runningBalance += qty
+    transactions.push({
+      date: new Date(Date.now() - (i * 86400000 * 5)).toISOString(),
+      type: type,
+      quantity: qty,
+      balanceAfter: runningBalance,
+      user: users[i % users.length],
+      reference: references[i % references.length] + '-' + String(i + 1).padStart(3, '0'),
+      notes: notes[i % notes.length]
+    })
+  })
+  
+  // Add random transactions
+  for (let i = 0; i < 7; i++) {
+    const type = types[Math.floor(Math.random() * types.length)]
+    const qty = type === 'STOCK_IN' ? Math.floor(Math.random() * 20) + 5 : -(Math.floor(Math.random() * 15) + 3)
+    runningBalance += qty
+    
+    transactions.push({
+      date: new Date(Date.now() - ((i + 3) * 86400000 * 2)).toISOString(),
+      type: type,
+      quantity: qty,
+      balanceAfter: runningBalance,
+      user: users[Math.floor(Math.random() * users.length)],
+      reference: references[Math.floor(Math.random() * references.length)] + '-' + String(i + 4).padStart(3, '0'),
+      notes: notes[Math.floor(Math.random() * notes.length)]
+    })
+  }
+  
+  return transactions.sort((a, b) => new Date(b.date) - new Date(a.date))
 }
 
 // -- Store Change --
-const onStoreChange = async () => {
+const onStoreChange = () => {
   if (selectedStoreId.value) {
+    storeStockData.value = getMockStoreStockData(selectedStoreId.value)
     currentPage.value = 1
     filterCategory.value = ''
     filterStatus.value = ''
     searchQuery.value = ''
-    await loadStoreData(selectedStoreId.value)
   } else {
     storeStockData.value = []
   }
@@ -823,16 +603,14 @@ const onStoreChange = async () => {
 
 // -- Get Group Value --
 const getGroupValue = (item, groupId) => {
-  const value = item.groupBalances?.[groupId]
-  return value !== undefined && value !== null ? value : '-'
+  return item.groupBalances?.[groupId] ?? '-'
 }
 
 // -- Row Class --
 const getRowClass = (item) => {
   if (item.status === 'Conflict') return 'conflict-row'
   if (item.status === 'Outlier') return 'outlier-row'
-  if (item.status === 'Matched') return 'matched-row'
-  return ''
+  return 'matched-row'
 }
 
 // -- Cell Class --
@@ -859,93 +637,72 @@ const getCellClass = (item, groupId) => {
   }
 }
 
-// -- Transaction Modal --
-// -- Transaction Modal --
-const openTransactionModal = async (item) => {
-  if (!item.itemId) {
-    showToastMessage('No item ID found for this product', 'error')
-    return
-  }
+// -- Is Mismatch Value (Outlier) --
+const isMismatchValue = (item, groupId) => {
+  const value = getGroupValue(item, groupId)
+  const values = Object.values(item.groupBalances || {})
+  if (values.length === 0) return false
   
+  const uniqueValues = [...new Set(values)]
+  if (uniqueValues.length !== 2) return false
+  
+  const majorityValue = values.find(v => values.filter(x => x === v).length > 1)
+  return value !== majorityValue
+}
+
+// -- Is Majority Value --
+const isMajorityValue = (item, groupId) => {
+  const value = getGroupValue(item, groupId)
+  const values = Object.values(item.groupBalances || {})
+  if (values.length === 0) return false
+  
+  const uniqueValues = [...new Set(values)]
+  if (uniqueValues.length !== 2) return false
+  
+  const majorityValue = values.find(v => values.filter(x => x === v).length > 1)
+  return value === majorityValue
+}
+
+// -- Get Mismatch Groups --
+const getMismatchGroups = (item) => {
+  if (!item) return []
+  const mismatches = []
+  const groups = selectedStore.value?.groups || []
+  groups.forEach(group => {
+    if (isMismatchValue(item, group.id)) {
+      mismatches.push(group)
+    }
+  })
+  return mismatches
+}
+
+// -- Get Majority Groups --
+const getMajorityGroups = (item) => {
+  if (!item) return []
+  const majority = []
+  const groups = selectedStore.value?.groups || []
+  groups.forEach(group => {
+    if (isMajorityValue(item, group.id)) {
+      majority.push(group)
+    }
+  })
+  return majority
+}
+
+// -- Transaction Modal --
+const openTransactionModal = (item) => {
   selectedItem.value = item
-  const groups = activeGroups.value
-  selectedGroupTab.value = groups.length > 0 ? groups[0].id : ''
+  selectedGroupTab.value = activeGroups.value[0]?.id || ''
   groupTransactions.value = {}
   
+  // Load transactions for all groups
   loadingTransactions.value = true
-  
-  try {
-    console.log(`🔍 Fetching transactions for item ${item.itemId} in store ${selectedStoreId.value}`)
-    
-    const result = await auditService.getItemTransactions(
-      selectedStoreId.value,
-      item.itemId,
-      20
-    )
-    
-    console.log('📥 Transactions response:', result)
-    
-    if (result.success && result.data) {
-      const data = result.data
-      console.log('📊 Group transactions:', data.groupTransactions)
-      
-      // Populate transactions for each group
-      if (data.groupTransactions) {
-        Object.entries(data.groupTransactions).forEach(([groupId, groupData]) => {
-          console.log(`📋 Group ${groupId}: ${groupData.transactions.length} transactions`)
-          groupTransactions.value[groupId] = groupData.transactions.map(tx => ({
-            ...tx,
-            date: tx.createdAt,
-            type: tx.transactionType || 'ADJUSTMENT',
-            quantity: tx.changeAmount,
-            balanceAfter: tx.newBalance,
-            user: tx.changedBy,
-            reference: tx.referenceId,
-            notes: tx.remark
-          }))
-        })
-      }
-      
-      // If no transactions found, show a message
-      if (Object.keys(groupTransactions.value).length === 0) {
-        showToastMessage('No transactions found for this item', 'info')
-      }
-    } else {
-      console.warn('No transactions found or API error:', result)
-      // Try fallback: load transactions for each group individually
-      for (const group of groups) {
-        try {
-          const groupResult = await auditService.getGroupTransactions(
-            selectedStoreId.value,
-            group.id,
-            { page: 1, limit: 20 }
-          )
-          if (groupResult.success) {
-            const itemTransactions = groupResult.data.transactions?.filter(
-              tx => tx.itemId === item.itemId || tx.itemCode === item.code
-            ) || []
-            groupTransactions.value[group.id] = itemTransactions.map(tx => ({
-              ...tx,
-              date: tx.createdAt,
-              type: tx.transactionType || 'ADJUSTMENT',
-              quantity: tx.changeAmount,
-              balanceAfter: tx.newBalance,
-              user: tx.changedBy,
-              reference: tx.referenceId,
-              notes: tx.remark
-            }))
-          }
-        } catch (err) {
-          console.warn(`Failed to load transactions for group ${group.id}:`, err)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('❌ Failed to load transactions:', error)
-    showToastMessage('Failed to load transactions', 'error')
-  } finally {
+  setTimeout(() => {
+    activeGroups.value.forEach(group => {
+      groupTransactions.value[group.id] = getMockTransactions(item.productId, group.id)
+    })
     loadingTransactions.value = false
-  }
+  }, 500)
   
   showTransactionModal.value = true
 }
@@ -962,13 +719,8 @@ const getGroupTransactions = (groupId) => {
 }
 
 const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  try {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return dateStr
-  }
+  const d = new Date(dateStr)
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 // -- Filters --
@@ -989,26 +741,15 @@ const clearFilters = () => {
 }
 
 // -- Refresh --
-const refreshData = async () => {
+const refreshData = () => {
   refreshing.value = true
-  try {
-    await loadStoreData(selectedStoreId.value)
-    showToastMessage('Data refreshed successfully!', 'success')
-  } catch (error) {
-    showToastMessage('Failed to refresh data', 'error')
-  } finally {
+  setTimeout(() => {
+    if (selectedStoreId.value) {
+      storeStockData.value = getMockStoreStockData(selectedStoreId.value)
+    }
     refreshing.value = false
-  }
-}
-
-// -- Retry --
-const retryLoad = () => {
-  error.value = null
-  if (selectedStoreId.value) {
-    loadStoreData(selectedStoreId.value)
-  } else {
-    loadStores()
-  }
+    showToastMessage('Data refreshed successfully!', 'success')
+  }, 1000)
 }
 
 // -- Export --
@@ -1021,24 +762,69 @@ const closeExportModal = () => {
   showExportModal.value = false
 }
 
-const exportSelectedReport = async () => {
+const exportSelectedReport = () => {
   exporting.value = true
-  try {
-    const blob = await auditService.exportAuditData(selectedStoreId.value, {
-      includeTransactions: exportType.value === 'full'
+  setTimeout(() => {
+    let headers = [], rows = []
+    const data = filteredAuditData.value
+    
+    if (exportType.value === 'full') {
+      headers = ['Code', 'Product Name', 'Category', 'UOM', ...activeGroups.value.map(g => g.name), 'Status']
+      rows = data.map(item => [
+        item.code,
+        item.commonName,
+        item.category || '',
+        item.uom,
+        ...activeGroups.value.map(g => item.groupBalances?.[g.id] || '-'),
+        item.status
+      ])
+    } else if (exportType.value === 'outlier') {
+      headers = ['Code', 'Product Name', 'Category', 'UOM', 'Outlier Group', 'Majority Groups']
+      rows = data.filter(item => item.status === 'Outlier').map(item => [
+        item.code,
+        item.commonName,
+        item.category || '',
+        item.uom,
+        getMismatchGroups(item).map(g => g.name).join(', '),
+        getMajorityGroups(item).map(g => g.name).join(', ')
+      ])
+    } else if (exportType.value === 'conflict') {
+      headers = ['Code', 'Product Name', 'Category', 'UOM', 'Groups', 'Values']
+      rows = data.filter(item => item.status === 'Conflict').map(item => [
+        item.code,
+        item.commonName,
+        item.category || '',
+        item.uom,
+        activeGroups.value.map(g => g.name).join(', '),
+        activeGroups.value.map(g => item.groupBalances?.[g.id] || '-').join(', ')
+      ])
+    } else {
+      headers = ['Code', 'Product Name', 'Category', 'Status']
+      rows = data.map(item => [
+        item.code,
+        item.commonName,
+        item.category || '',
+        item.status
+      ])
+    }
+    
+    let csv = headers.join(',') + '\n'
+    rows.forEach(row => {
+      csv += row.join(',') + '\n'
     })
     
-    const filename = `audit_report_${selectedStoreName.value || 'store'}_${new Date().toISOString().split('T')[0]}.csv`
-    auditService.downloadFile(blob, filename)
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `audit_report_${selectedStoreName.value}_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
     
-    showToastMessage('Export completed successfully!', 'success')
-  } catch (error) {
-    console.error('Export failed:', error)
-    showToastMessage('Failed to export data', 'error')
-  } finally {
     exporting.value = false
     closeExportModal()
-  }
+    showToastMessage('Export completed successfully!', 'success')
+  }, 500)
 }
 
 // -- Pagination --
@@ -1064,8 +850,7 @@ const showToastMessage = (msg, type = 'success') => {
 // LIFECYCLE
 // ================================================================
 onMounted(() => {
-  loadStores()
-  loadCategories()
+  loadData()
 })
 </script>
 
@@ -1183,74 +968,6 @@ onMounted(() => {
 .btn-refresh:disabled, .btn-export:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-/* ================================================================
-   LOADING STATE
-   ================================================================ */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: #94a3b8;
-}
-
-.spinner-large {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  margin-bottom: 12px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ================================================================
-   ERROR STATE
-   ================================================================ */
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-}
-
-.error-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-
-.error-state h3 {
-  color: #dc2626;
-  margin-bottom: 8px;
-}
-
-.error-state p {
-  color: #64748b;
-  margin-bottom: 16px;
-}
-
-.btn-retry {
-  padding: 8px 24px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.btn-retry:hover {
-  background: #2563eb;
 }
 
 /* ================================================================
@@ -1421,6 +1138,32 @@ onMounted(() => {
   background: #dcfce7;
 }
 
+.empty-row td {
+  padding: 40px 20px;
+}
+
+.empty-cell {
+  text-align: center;
+}
+
+.empty-state {
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.empty-state h3 {
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.empty-state p {
+  color: #94a3b8;
+}
+
 /* Cell colors */
 .outlier-cell {
   background: #fee2e2 !important;
@@ -1463,11 +1206,6 @@ onMounted(() => {
   color: #991b1b;
 }
 
-.status-badge.unknown {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
 /* Transaction Button */
 .btn-transaction {
   background: #e0e7ff;
@@ -1479,69 +1217,9 @@ onMounted(() => {
   transition: all 0.2s;
 }
 
-.btn-transaction:hover:not(:disabled) {
+.btn-transaction:hover {
   background: #c7d2fe;
   transform: scale(1.05);
-}
-
-.btn-transaction:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ================================================================
-   EMPTY STATE
-   ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-
-.empty-state h3 {
-  color: #1e293b;
-  margin-bottom: 8px;
-  font-size: 20px;
-}
-
-.empty-state p {
-  color: #64748b;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-
-.empty-state p strong {
-  color: #1e293b;
-}
-
-.empty-actions {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 20px 24px;
-  max-width: 500px;
-  margin: 0 auto;
-  text-align: left;
-}
-
-.empty-hint {
-  color: #475569 !important;
-  font-weight: 500;
-  margin-bottom: 8px !important;
-}
-
-.empty-list {
-  color: #64748b;
-  margin: 0;
-  padding-left: 20px;
-}
-
-.empty-list li {
-  padding: 4px 0;
-  font-size: 13px;
 }
 
 /* ================================================================
@@ -1677,6 +1355,10 @@ onMounted(() => {
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .no-transactions {

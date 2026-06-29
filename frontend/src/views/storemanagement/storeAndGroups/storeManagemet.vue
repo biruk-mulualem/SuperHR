@@ -141,11 +141,11 @@
                 <select v-model="storeForm.location">
                   <option value="">Select Location...</option>
                   <option value="Wana Gebi">Wana Gebi</option>
-                  <option value="Wana Gebi Kuter 2">Wana Gebi Kuter 2</option>
-                  <option value="Wana Gebi Kuter 3">Wana Gebi Kuter 3</option>
-                  <option value="Addis Ababa">Addis Ababa</option>
-                  <option value="Bahir Dar">Bahir Dar</option>
-                  <option value="Hawassa">Hawassa</option>
+                  <option value="Gebi Kuter 2"> Gebi Kuter 2</option>
+                  <option value="Gebi Kuter 3"> Gebi Kuter 3</option>
+                  <option value="Mekanisa office">Mekanisa office</option>
+                  <option value="Other Location">Other Location</option>
+                  
                 </select>
               </div>
             </div>

@@ -9,7 +9,17 @@ const { authMiddleware } = require('../middleware/authMiddleware');
 // Apply auth middleware to all routes
 router.use(authMiddleware());
 
+// ================================================================
+// STOCK VALIDATION ROUTES (MUST COME BEFORE PARAM ROUTES)
+// ================================================================
 
+/**
+ * GET /api/item-requests/check-stock
+ * Check stock availability for items in a store
+ * Query params: storeId, items (JSON array)
+ * Example: /api/item-requests/check-stock?storeId=1&items=[{"itemId":1,"quantity":50}]
+ */
+router.get('/check-stock', itemRequestController.checkStockAvailability);
 
 // ================================================================
 // GET ACTIVE STORES (for dropdown)
@@ -70,4 +80,3 @@ router.patch('/:id/status', itemRequestController.updateStatus);
 router.delete('/:id', itemRequestController.deleteRequest);
 
 module.exports = router;
-

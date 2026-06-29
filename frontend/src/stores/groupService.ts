@@ -25,6 +25,7 @@ export interface User {
   fullName: string;
   username: string;
   email: string;
+  role?: string; // Add this line
 }
 
 export interface GroupStats {
@@ -322,23 +323,42 @@ class GroupService {
   // USER MANAGEMENT IN GROUPS
   // ================================================================
 
-  /**
-   * Get all users (for dropdown)
-   * GET /api/groups/users
-   */
-  async getAllUsers(): Promise<UsersResponse> {
-    try {
-      const response = await api.get('/groups/users');
-      return response.data;
-    } catch (error: any) {
-      console.error('Get all users error:', error);
-      return {
-        success: false,
-        data: [],
-        error: error.response?.data?.error || 'Failed to fetch users'
-      };
+
+
+
+
+
+/**
+ * Get all users (for dropdown)
+ * GET /api/groups/users/all
+ */
+async getAllUsers(): Promise<UsersResponse> {
+  try {
+     const response = await api.get('/groups/users');
+    // Ensure role is included
+    if (response.data.success && response.data.data) {
+      response.data.data = response.data.data.map((user: any) => ({
+        ...user,
+        id: user.id || user.userId,
+        userId: user.userId || user.id,
+        role: user.role || 'User'
+      }));
     }
+    return response.data;
+  } catch (error: any) {
+    console.error('Get all users error:', error);
+    return {
+      success: false,
+      data: [],
+      error: error.response?.data?.error || 'Failed to fetch users'
+    };
   }
+}
+
+
+
+
+
 
   /**
    * Get users in a group

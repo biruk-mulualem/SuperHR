@@ -1,11 +1,10 @@
-<!-- pages/StoreTransaction.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
         <h2>📋 Store Transactions</h2>
-        <span class="total-badge">{{ filteredTransactions.length }} Transactions</span>
+        <span class="total-badge">{{ transactions.length }} Transactions</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -30,18 +29,36 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="filter-bar">
-      <select v-model="filterStore" class="filter-select" @change="onFilterChange">
-        <option value="">All Stores</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">
-          {{ store.name }}
-        </option>
-      </select>
-      <select v-model="filterGroup" class="filter-select" @change="onFilterChange">
-        <option value="">All Groups</option>
-        <option v-for="group in allGroups" :key="group.id" :value="group.id">
-          {{ group.name }}
-        </option>
-      </select>
+      <div class="filter-group">
+        <select 
+          v-model="filterStore" 
+          class="filter-select" 
+          @change="onFilterChange"
+          :disabled="!userIsAdmin && !!userAssignedStoreId"
+        >
+          <option value="">All Stores</option>
+          <option v-for="store in stores" :key="store.id" :value="store.id">
+            {{ store.name }}
+          </option>
+        </select>
+       
+      </div>
+      
+      <div class="filter-group">
+        <select 
+          v-model="filterGroup" 
+          class="filter-select" 
+          @change="onFilterChange"
+          :disabled="!userIsAdmin && !!userAssignedGroupId"
+        >
+          <option value="">All Groups</option>
+          <option v-for="group in allGroups" :key="group.id" :value="group.id">
+            {{ group.name }}
+          </option>
+        </select>
+       
+      </div>
+      
       <select v-model="filterItem" class="filter-select" @change="onFilterChange">
         <option value="">All Items</option>
         <option v-for="item in inventoryItems" :key="item.id" :value="item.id">
@@ -63,13 +80,13 @@
         <option value="6months">Last 6 Months</option>
         <option value="12months">Last 12 Months</option>
       </select>
-      <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters">
+      <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters && userIsAdmin">
         ✕ Clear Filters
       </button>
     </div>
 
     <!-- ==================== STATS ==================== -->
-    <div class="stats-grid">
+    <div class="stats-grid" v-if="!isLoading">
       <div class="stat-card">
         <div class="stat-icon">📥</div>
         <div class="stat-content">
@@ -95,7 +112,11 @@
 
     <!-- ==================== TRANSACTION TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <table class="transaction-table">
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading transactions...</p>
+      </div>
+      <table v-else class="transaction-table">
         <thead>
           <tr>
             <th style="width:35px"></th>
@@ -105,12 +126,11 @@
             <th>Type</th>
             <th>Item</th>
             <th>Qty</th>
-           
           </tr>
         </thead>
         <tbody>
           <tr v-if="paginatedTransactions.length === 0">
-            <td colspan="8" class="empty-state">
+            <td colspan="7" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">📋</span>
                 <p>No transactions found</p>
@@ -129,9 +149,9 @@
                 </button>
               </td>
               <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
-              <td class="store-name">{{ getStoreShortName(transaction.storeId) }}</td>
+              <td class="store-name">{{ getStoreName(transaction.storeId) }}</td>
               <td>
-                <span class="group-tag">{{ getGroupShortName(transaction.groupId) }}</span>
+                <span class="group-tag">{{ getGroupName(transaction.groupId) }}</span>
               </td>
               <td>
                 <span :class="['type-badge', transaction.type === 'Stock In' ? 'stock-in' : 'stock-out']">
@@ -150,12 +170,11 @@
                   {{ transaction.type === 'Stock In' ? '+' : '-' }}{{ formatNumber(transaction.quantity) }}
                 </span>
               </td>
-             
             </tr>
 
             <!-- Expanded Detail Row -->
             <tr v-if="expandedRow === transaction.id" class="detail-expand-row">
-              <td colspan="8">
+              <td colspan="7">
                 <div class="expand-details">
                   <div class="detail-container">
                     <div class="detail-row">
@@ -197,7 +216,7 @@
     </div>
 
     <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="filteredTransactions.length > 0">
+    <div class="pagination" v-if="transactions.length > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -209,6 +228,7 @@
         <option :value="5">5</option>
         <option :value="10">10</option>
         <option :value="20">20</option>
+        <option :value="50">50</option>
       </select>
     </div>
 
@@ -246,267 +266,35 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-
-// ================================================================
-// STORE DATA
-// ================================================================
-const stores = [
-  { id: 1, name: 'Main Store', code: 'STORE-001' },
-  { id: 2, name: 'Fiber Mini Store', code: 'STORE-002' },
-  { id: 3, name: 'Paint Mini Store', code: 'STORE-003' },
-  { id: 4, name: 'Fiber Mini Mini Store', code: 'STORE-004' },
-  { id: 5, name: 'Paint Mini Mini Store', code: 'STORE-005' },
-  { id: 6, name: 'Metal Store', code: 'STORE-006' },
-  { id: 7, name: 'Technic Store', code: 'STORE-007' },
-  { id: 8, name: 'Calcium Store', code: 'STORE-008' },
-  { id: 9, name: 'Finishing Store', code: 'STORE-009' },
-]
-
-// ================================================================
-// GROUPS DATA
-// ================================================================
-const allGroups = [
-  { id: 1, name: 'Storekeeper' },
-  { id: 2, name: 'IT' },
-  { id: 3, name: 'Auditor' },
-  { id: 4, name: 'Supplier' },
-  { id: 5, name: 'Quality Control' },
-  { id: 6, name: 'Warehouse' },
-  { id: 7, name: 'Logistics' },
-]
-
-// ================================================================
-// INVENTORY ITEMS (Master List)
-// ================================================================
-const inventoryItems = [
-  { id: 1, code: 'ITEM-001', standardName: 'Cement 50kg', commonName: 'Cement', unit: 'bags' },
-  { id: 2, code: 'ITEM-002', standardName: 'Steel Rod 12mm', commonName: 'Steel Rod', unit: 'pcs' },
-  { id: 3, code: 'ITEM-003', standardName: 'Laptop Dell Latitude', commonName: 'Laptop', unit: 'pcs' },
-  { id: 4, code: 'ITEM-004', standardName: 'Printer HP LaserJet', commonName: 'Printer', unit: 'pcs' },
-  { id: 5, code: 'ITEM-005', standardName: 'Audit File Folders', commonName: 'Audit Files', unit: 'pcs' },
-  { id: 6, code: 'ITEM-006', standardName: 'Fiber Sheets 4x8', commonName: 'Fiber Sheets', unit: 'm²' },
-  { id: 7, code: 'ITEM-007', standardName: 'Adhesive Glue 5L', commonName: 'Adhesive', unit: 'ltr' },
-  { id: 8, code: 'ITEM-008', standardName: 'Monitor 24 Inch', commonName: 'Monitor', unit: 'pcs' },
-  { id: 9, code: 'ITEM-009', standardName: 'Paint White 20L', commonName: 'White Paint', unit: 'ltr' },
-  { id: 10, code: 'ITEM-010', standardName: 'Paint Red 20L', commonName: 'Red Paint', unit: 'ltr' },
-  { id: 11, code: 'ITEM-011', standardName: 'Paint Blue 20L', commonName: 'Blue Paint', unit: 'ltr' },
-  { id: 12, code: 'ITEM-012', standardName: 'Fiber Glass Mat', commonName: 'Fiber Glass', unit: 'kg' },
-  { id: 13, code: 'ITEM-013', standardName: 'Quality Control Reports', commonName: 'QC Reports', unit: 'pcs' },
-  { id: 14, code: 'ITEM-014', standardName: 'Metal Sheets 2mm', commonName: 'Metal Sheets', unit: 'm²' },
-  { id: 15, code: 'ITEM-015', standardName: 'Screws M6x30', commonName: 'Screws', unit: 'pcs' },
-  { id: 16, code: 'ITEM-016', standardName: 'Network Switch 24 Port', commonName: 'Network Switch', unit: 'pcs' },
-  { id: 17, code: 'ITEM-017', standardName: 'Technic Parts Kit', commonName: 'Technic Parts', unit: 'pcs' },
-  { id: 18, code: 'ITEM-018', standardName: 'Tools Set 50pcs', commonName: 'Tools Set', unit: 'sets' },
-  { id: 19, code: 'ITEM-019', standardName: 'Calcium Powder 25kg', commonName: 'Calcium Powder', unit: 'kg' },
-  { id: 20, code: 'ITEM-020', standardName: 'Finishing Materials Set', commonName: 'Finishing Materials', unit: 'kg' },
-  { id: 21, code: 'ITEM-021', standardName: 'Quality Check Tools Kit', commonName: 'QC Tools', unit: 'pcs' },
-]
-
-// ================================================================
-// TRANSACTION DATA
-// ================================================================
-const transactions = ref([
-  { 
-    id: 1, 
-    storeId: 1, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 1, 
-    quantity: 50, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Biruk Mulualem',
-    remark: 'Purchase order #PO-2024-001',
-    createdAt: '2026-06-20T10:00:00Z'
-  },
-  { 
-    id: 2, 
-    storeId: 2, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 6, 
-    quantity: 100, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Dagmawi Hadgu',
-    remark: 'Transfer from Main Store',
-    createdAt: '2026-06-20T10:30:00Z'
-  },
-  { 
-    id: 3, 
-    storeId: 1, 
-    groupId: 1,
-    type: 'Stock Out', 
-    itemId: 2, 
-    quantity: 20, 
-    sourceStore: '',
-    destinationStore: 'Fiber Mini Store',
-    updatedBy: 'Melkamu Zewdu',
-    remark: 'Issued to Fiber Mini Store',
-    createdAt: '2026-06-20T11:00:00Z'
-  },
-  { 
-    id: 4, 
-    storeId: 3, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 9, 
-    quantity: 200, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Nuru Seid',
-    remark: 'Purchase order #PO-2024-002',
-    createdAt: '2026-06-21T09:00:00Z'
-  },
-  { 
-    id: 5, 
-    storeId: 1, 
-    groupId: 2,
-    type: 'Stock Out', 
-    itemId: 3, 
-    quantity: 2, 
-    sourceStore: '',
-    destinationStore: 'IT Department',
-    updatedBy: 'Eshete Worke',
-    remark: 'Issued to IT Department',
-    createdAt: '2026-06-21T14:00:00Z'
-  },
-  { 
-    id: 6, 
-    storeId: 4, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 12, 
-    quantity: 150, 
-    sourceStore: 'Fiber Mini Store',
-    destinationStore: '',
-    updatedBy: 'Zerihun Tesfaye',
-    remark: 'Transfer from Fiber Mini Store',
-    createdAt: '2026-06-22T08:30:00Z'
-  },
-  { 
-    id: 7, 
-    storeId: 6, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 14, 
-    quantity: 120, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Henok Ayele',
-    remark: 'Purchase order #PO-2024-003',
-    createdAt: '2026-06-22T10:00:00Z'
-  },
-  { 
-    id: 8, 
-    storeId: 1, 
-    groupId: 2,
-    type: 'Stock Out', 
-    itemId: 4, 
-    quantity: 1, 
-    sourceStore: '',
-    destinationStore: 'Office',
-    updatedBy: 'Sintayehu Worku',
-    remark: 'Issued to Office',
-    createdAt: '2026-06-23T09:30:00Z'
-  },
-  { 
-    id: 9, 
-    storeId: 7, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 17, 
-    quantity: 200, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Tadese Jemberu',
-    remark: 'Transfer from Main Store',
-    createdAt: '2026-06-23T11:00:00Z'
-  },
-  { 
-    id: 10, 
-    storeId: 1, 
-    groupId: 3,
-    type: 'Stock In', 
-    itemId: 5, 
-    quantity: 100, 
-    sourceStore: 'Supplier',
-    destinationStore: '',
-    updatedBy: 'Melaku Tewodros',
-    remark: 'Supplier delivery #DEL-2024-001',
-    createdAt: '2026-06-24T08:00:00Z'
-  },
-  { 
-    id: 11, 
-    storeId: 2, 
-    groupId: 1,
-    type: 'Stock Out', 
-    itemId: 7, 
-    quantity: 10, 
-    sourceStore: '',
-    destinationStore: 'Production',
-    updatedBy: 'Biruk Mulualem',
-    remark: 'Issued to Production',
-    createdAt: '2026-06-24T10:30:00Z'
-  },
-  { 
-    id: 12, 
-    storeId: 9, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 20, 
-    quantity: 75, 
-    sourceStore: 'Main Store',
-    destinationStore: '',
-    updatedBy: 'Meskerem Tesfaye',
-    remark: 'Purchase order #PO-2024-004',
-    createdAt: '2026-06-24T13:00:00Z'
-  },
-  { 
-    id: 13, 
-    storeId: 1, 
-    groupId: 1,
-    type: 'Stock Out', 
-    itemId: 1, 
-    quantity: 30, 
-    sourceStore: '',
-    destinationStore: 'Paint Mini Store',
-    updatedBy: 'Dagmawi Hadgu',
-    remark: 'Transfer to Paint Mini Store',
-    createdAt: '2026-06-25T09:00:00Z'
-  },
-  { 
-    id: 14, 
-    storeId: 3, 
-    groupId: 1,
-    type: 'Stock Out', 
-    itemId: 10, 
-    quantity: 20, 
-    sourceStore: '',
-    destinationStore: 'External Customer',
-    updatedBy: 'Nuru Seid',
-    remark: 'Customer order #CUST-2024-001',
-    createdAt: '2026-06-25T11:30:00Z'
-  },
-  { 
-    id: 15, 
-    storeId: 6, 
-    groupId: 1,
-    type: 'Stock In', 
-    itemId: 15, 
-    quantity: 500, 
-    sourceStore: 'Supplier',
-    destinationStore: '',
-    updatedBy: 'Henok Ayele',
-    remark: 'Supplier delivery #DEL-2024-002',
-    createdAt: '2026-06-25T14:00:00Z'
-  },
-])
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import transactionService from '@/stores/transactionService'
+import balanceService from '@/stores/balanceService'
 
 // ================================================================
 // STATE
 // ================================================================
+const authStore = useAuthStore()
+
+const transactions = ref([])
+const stores = ref([])
+const allGroups = ref([])
+const inventoryItems = ref([])
+const isLoading = ref(true)
+const paginationInfo = ref({
+  page: 1,
+  limit: 10,
+  total: 0,
+  totalPages: 1
+})
+
+// User data
+const userAssignedStoreId = ref(null)
+const userAssignedStoreName = ref(null)
+const userAssignedGroupId = ref(null)
+const userAssignedGroupName = ref(null)
+const userIsAdmin = ref(false)
+
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterGroup = ref('')
@@ -514,7 +302,7 @@ const filterItem = ref('')
 const filterType = ref('')
 const filterDate = ref('')
 const currentPage = ref(1)
-const pageSize = ref(5)
+const pageSize = ref(10)
 const expandedRow = ref(null)
 const exporting = ref(false)
 const exportType = ref('full')
@@ -531,40 +319,11 @@ const hasActiveFilters = computed(() => {
   return filterStore.value || filterGroup.value || filterItem.value || filterType.value || filterDate.value || searchQuery.value
 })
 
+// Filter transactions client-side for date filter only (API handles other filters)
 const filteredTransactions = computed(() => {
   let result = transactions.value
   
-  if (searchQuery.value) {
-    const s = searchQuery.value.toLowerCase()
-    result = result.filter(t => {
-      const itemName = getItemName(t.itemId).toLowerCase()
-      const itemCode = getItemCode(t.itemId).toLowerCase()
-      const storeName = getStoreName(t.storeId).toLowerCase()
-      const groupName = getGroupName(t.groupId).toLowerCase()
-      const fromTo = t.type === 'Stock In' ? t.sourceStore : t.destinationStore
-      return itemName.includes(s) || itemCode.includes(s) || storeName.includes(s) || 
-             groupName.includes(s) ||
-             (t.updatedBy && t.updatedBy.toLowerCase().includes(s)) ||
-             (t.remark && t.remark.toLowerCase().includes(s))
-    })
-  }
-  
-  if (filterStore.value) {
-    result = result.filter(t => t.storeId === Number(filterStore.value))
-  }
-  
-  if (filterGroup.value) {
-    result = result.filter(t => t.groupId === Number(filterGroup.value))
-  }
-  
-  if (filterItem.value) {
-    result = result.filter(t => t.itemId === Number(filterItem.value))
-  }
-  
-  if (filterType.value) {
-    result = result.filter(t => t.type === filterType.value)
-  }
-  
+  // Only apply date filter client-side
   if (filterDate.value) {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -609,12 +368,14 @@ const filteredTransactions = computed(() => {
 })
 
 const paginatedTransactions = computed(() => {
+  const data = filteredTransactions.value
   const start = (currentPage.value - 1) * pageSize.value
-  return filteredTransactions.value.slice(start, start + pageSize.value)
+  return data.slice(start, start + pageSize.value)
 })
 
 const totalPages = computed(() => {
-  return Math.ceil(filteredTransactions.value.length / pageSize.value) || 1
+  const data = filteredTransactions.value
+  return Math.ceil(data.length / pageSize.value) || 1
 })
 
 const totalStockIn = computed(() => {
@@ -630,70 +391,172 @@ const totalTransactions = computed(() => {
 })
 
 // ================================================================
+// USER DATA
+// ================================================================
+
+const loadUserData = () => {
+  const user = authStore.user
+  if (user) {
+    userIsAdmin.value = user.isAdmin || user.role === 'admin' || user.role === 'Admin'
+    
+    // Check if user has assignedStore property
+    if (user && 'assignedStore' in user && user.assignedStore) {
+      const assignedStore = user.assignedStore
+      userAssignedStoreId.value = assignedStore.id || null
+      userAssignedStoreName.value = assignedStore.name || null
+    } else {
+      userAssignedStoreId.value = null
+      userAssignedStoreName.value = null
+    }
+    
+    // Check if user has assignedGroup property
+    if (user && 'assignedGroup' in user && user.assignedGroup) {
+      const assignedGroup = user.assignedGroup
+      userAssignedGroupId.value = assignedGroup.id || null
+      userAssignedGroupName.value = assignedGroup.name || null
+    } else {
+      userAssignedGroupId.value = null
+      userAssignedGroupName.value = null
+    }
+  }
+}
+
+// ================================================================
+// API METHODS
+// ================================================================
+
+const fetchStores = async () => {
+  try {
+    const response = await balanceService.getStores()
+    stores.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching stores:', error)
+  }
+}
+
+const fetchGroups = async () => {
+  try {
+    const response = await balanceService.getGroups()
+    allGroups.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching groups:', error)
+  }
+}
+
+const fetchItems = async () => {
+  try {
+    const response = await balanceService.getActiveItems()
+    inventoryItems.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching items:', error)
+  }
+}
+
+const fetchTransactions = async () => {
+  isLoading.value = true
+  try {
+    const filters = {}
+    
+    // If non-admin with assigned store, filter by their store
+    if (!userIsAdmin.value && userAssignedStoreId.value) {
+      filters.storeId = userAssignedStoreId.value
+    }
+    
+    // If non-admin with assigned group, filter by their group
+    if (!userIsAdmin.value && userAssignedGroupId.value) {
+      filters.groupId = userAssignedGroupId.value
+    }
+    
+    // Add UI filters (these override role-based filters if set)
+    // But for non-admin users, we don't allow changing store/group filters
+    if (userIsAdmin.value) {
+      if (filterStore.value) {
+        filters.storeId = Number(filterStore.value)
+      }
+      if (filterGroup.value) {
+        filters.groupId = Number(filterGroup.value)
+      }
+    } else {
+      // Non-admin users: store and group are forced from user data
+      // Only allow item, type, and date filters
+      if (filterItem.value) {
+        filters.itemId = Number(filterItem.value)
+      }
+      if (filterType.value) {
+        filters.transactionType = filterType.value
+      }
+    }
+    
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+    }
+    
+    filters.page = currentPage.value
+    filters.limit = pageSize.value
+    
+    const response = await transactionService.getTransactions(filters)
+    
+    transactions.value = response.data || []
+    
+    if (response.pagination) {
+      paginationInfo.value = {
+        page: response.pagination.page || 1,
+        limit: response.pagination.limit || 10,
+        total: response.pagination.total || 0,
+        totalPages: response.pagination.totalPages || 1
+      }
+      currentPage.value = paginationInfo.value.page
+      pageSize.value = paginationInfo.value.limit
+    }
+  } catch (error) {
+    console.error('Error fetching transactions:', error)
+    showToastMessage('Failed to load transactions', 'error')
+    transactions.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ================================================================
 // HELPER METHODS
 // ================================================================
 const getItemName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.standardName : 'Unknown'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || item.name : 'Unknown'
 }
 
 const getItemCode = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
+  const item = inventoryItems.value.find(i => i.id === itemId)
   return item ? item.code : 'Unknown'
 }
 
 const getItemCommonName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.commonName : 'Unknown'
-}
-
-const getItemShortName = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.commonName : 'Unknown'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.commonName : ''
 }
 
 const getItemUnit = (itemId) => {
-  const item = inventoryItems.find(i => i.id === itemId)
-  return item ? item.unit : ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.uomCode || '' : ''
 }
 
 const getStoreName = (storeId) => {
-  const store = stores.find(s => s.id === storeId)
+  const store = stores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
 const getStoreShortName = (storeId) => {
-  if (typeof storeId === 'string') {
-    if (storeId.includes('Store')) {
-      return storeId.replace(' Store', '')
-    }
-    if (storeId.includes('Department')) {
-      return storeId.replace(' Department', '')
-    }
-    return storeId.length > 15 ? storeId.substring(0, 12) + '...' : storeId
-  }
-  const store = stores.find(s => s.id === storeId)
+  const store = stores.value.find(s => s.id === storeId)
   return store ? store.name.replace(' Store', '') : 'Unknown'
 }
 
-const getShortStoreName = (name) => {
-  if (!name) return 'Other'
-  if (name.includes('Store')) {
-    return name.replace(' Store', '')
-  }
-  if (name.includes('Department')) {
-    return name.replace(' Department', '')
-  }
-  return name.length > 15 ? name.substring(0, 12) + '...' : name
-}
-
 const getGroupName = (groupId) => {
-  const group = allGroups.find(g => g.id === groupId)
+  const group = allGroups.value.find(g => g.id === groupId)
   return group ? group.name : 'Unknown'
 }
 
 const getGroupShortName = (groupId) => {
-  const group = allGroups.find(g => g.id === groupId)
+  const group = allGroups.value.find(g => g.id === groupId)
   return group ? group.name.substring(0, 8) : 'Unknown'
 }
 
@@ -702,6 +565,7 @@ const formatNumber = (num) => {
 }
 
 const formatDateTime = (dateString) => {
+  if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -713,6 +577,7 @@ const formatDateTime = (dateString) => {
 }
 
 const formatDateShort = (dateString) => {
+  if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleDateString('en-US', { 
     month: 'short', 
@@ -732,8 +597,15 @@ const toggleExpand = (id) => {
 // ================================================================
 // FILTERS & PAGINATION
 // ================================================================
-const onSearchChange = () => { currentPage.value = 1 }
-const onFilterChange = () => { currentPage.value = 1 }
+const onSearchChange = () => { 
+  currentPage.value = 1
+  fetchTransactions()
+}
+
+const onFilterChange = () => { 
+  currentPage.value = 1
+  fetchTransactions()
+}
 
 const clearFilters = () => {
   filterStore.value = ''
@@ -744,10 +616,19 @@ const clearFilters = () => {
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
+  fetchTransactions()
 }
 
-const changePage = (page) => { currentPage.value = page }
-const changePageSize = () => { currentPage.value = 1 }
+const changePage = (page) => {
+  const total = Math.ceil(filteredTransactions.value.length / pageSize.value) || 1
+  if (page >= 1 && page <= total) {
+    currentPage.value = page
+  }
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
+}
 
 // ================================================================
 // PRINT & EXPORT
@@ -772,7 +653,7 @@ const printReport = () => {
       <body>
         <h2>📋 Store Transaction Report</h2>
         <p>Generated: ${new Date().toLocaleString()}</p>
-        <p>Total Transactions: ${filteredTransactions.value.length}</p>
+        <p>Total Transactions: ${transactions.value.length}</p>
         ${printContents}
         <div class="print-footer">Printed from Store Management System</div>
       </body>
@@ -793,71 +674,57 @@ const closeExportModal = () => {
   showExportModal.value = false
 }
 
-const exportSelectedReport = () => {
+const exportSelectedReport = async () => {
   exporting.value = true
-  setTimeout(() => {
-    let headers = [], rows = []
-    const data = filteredTransactions.value
+  try {
+    const filters = {}
     
-    if (exportType.value === 'full') {
-      headers = ['#', 'Date & Time', 'Store', 'Group', 'Type', 'Item Code', 'Item Name', 'Common Name', 'UOM', 'Quantity', 'From / To', 'Updated By', 'Remark']
-      rows = data.map((t, index) => [
-        index + 1,
-        formatDateTime(t.createdAt),
-        getStoreName(t.storeId),
-        getGroupName(t.groupId),
-        t.type,
-        getItemCode(t.itemId),
-        getItemName(t.itemId),
-        getItemCommonName(t.itemId),
-        getItemUnit(t.itemId),
-        t.type === 'Stock In' ? `+${t.quantity}` : `-${t.quantity}`,
-        t.type === 'Stock In' ? t.sourceStore : t.destinationStore,
-        t.updatedBy || 'System',
-        t.remark || '-'
-      ])
+    // Add filters for export
+    if (userIsAdmin.value) {
+      if (filterStore.value) {
+        filters.storeId = Number(filterStore.value)
+      }
+      if (filterGroup.value) {
+        filters.groupId = Number(filterGroup.value)
+      }
     } else {
-      const storeSummary = {}
-      data.forEach(t => {
-        const key = t.storeId
-        if (!storeSummary[key]) {
-          storeSummary[key] = {
-            storeName: getStoreName(t.storeId),
-            stockIn: 0,
-            stockOut: 0
-          }
-        }
-        if (t.type === 'Stock In') {
-          storeSummary[key].stockIn += t.quantity
-        } else {
-          storeSummary[key].stockOut += t.quantity
-        }
-      })
-      headers = ['Store Name', 'Total Stock In', 'Total Stock Out']
-      rows = Object.values(storeSummary).map(summary => [
-        summary.storeName,
-        summary.stockIn,
-        summary.stockOut
-      ])
+      // Non-admin users: force store and group from user data
+      if (userAssignedStoreId.value) {
+        filters.storeId = userAssignedStoreId.value
+      }
+      if (userAssignedGroupId.value) {
+        filters.groupId = userAssignedGroupId.value
+      }
     }
     
-    let csv = headers.join(',') + '\n'
-    rows.forEach(row => {
-      csv += row.join(',') + '\n'
-    })
+    if (filterItem.value) {
+      filters.itemId = Number(filterItem.value)
+    }
+    if (filterType.value) {
+      filters.transactionType = filterType.value
+    }
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+    }
+    filters.type = exportType.value
     
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
+    const blob = await transactionService.exportTransactions(filters)
+    
+    const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `store_transactions_${new Date().toISOString().split('T')[0]}.csv`
     a.click()
-    URL.revokeObjectURL(url)
+    window.URL.revokeObjectURL(url)
     
-    exporting.value = false
     closeExportModal()
     showToastMessage('Export completed successfully!', 'success')
-  }, 500)
+  } catch (error) {
+    console.error('Export error:', error)
+    showToastMessage('Failed to export transactions', 'error')
+  } finally {
+    exporting.value = false
+  }
 }
 
 const showToastMessage = (msg, type = 'success') => {
@@ -868,6 +735,39 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
+
+// ================================================================
+// LIFECYCLE HOOKS
+// ================================================================
+onMounted(async () => {
+  // Load user data first
+  loadUserData()
+  
+  try {
+    await Promise.all([
+      fetchStores(),
+      fetchGroups(),
+      fetchItems()
+    ])
+    
+    // If non-admin with assigned store and/or group, set the filters
+    if (!userIsAdmin.value) {
+      if (userAssignedStoreId.value) {
+        filterStore.value = String(userAssignedStoreId.value)
+        console.log('🔒 Auto-selected store filter:', userAssignedStoreName.value)
+      }
+      if (userAssignedGroupId.value) {
+        filterGroup.value = String(userAssignedGroupId.value)
+        console.log('🔒 Auto-selected group filter:', userAssignedGroupName.value)
+      }
+    }
+    
+    await fetchTransactions()
+  } catch (error) {
+    console.error('Error loading page:', error)
+    showToastMessage('Failed to load data', 'error')
+  }
+})
 </script>
 
 <style scoped>
@@ -975,6 +875,7 @@ const showToastMessage = (msg, type = 'success') => {
   white-space: nowrap;
 }
 .btn-export:hover:not(:disabled) { background: #059669; }
+.btn-export:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-print {
   background: #8b5cf6;
@@ -1036,6 +937,13 @@ const showToastMessage = (msg, type = 'success') => {
   align-items: center;
 }
 
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
 .filter-select {
   padding: 6px 12px;
   border: 1px solid #e2e8f0;
@@ -1043,6 +951,22 @@ const showToastMessage = (msg, type = 'success') => {
   background: white;
   font-size: 13px;
   cursor: pointer;
+  min-width: 150px;
+}
+
+.filter-select:disabled {
+  background: #f1f5f9;
+  color: #475569;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.filter-hint {
+  font-size: 10px;
+  color: #2563eb;
+  font-weight: 500;
+  padding-left: 4px;
+  white-space: nowrap;
 }
 
 .btn-clear-filters {
@@ -1110,6 +1034,7 @@ const showToastMessage = (msg, type = 'success') => {
    ================================================================ */
 .table-container {
   overflow-x: auto;
+  min-height: 200px;
 }
 
 .transaction-table {
@@ -1219,25 +1144,6 @@ const showToastMessage = (msg, type = 'success') => {
   color: #991b1b;
 }
 
-.from-to-info {
-  font-size: 12px;
-}
-
-.from-to-info .from-label {
-  color: #166534;
-  font-weight: 600;
-}
-
-.from-to-info .to-label {
-  color: #991b1b;
-  font-weight: 600;
-}
-
-.from-to-info strong {
-  font-weight: 600;
-  color: #1e293b;
-}
-
 /* ================================================================
    EXPAND ROW
    ================================================================ */
@@ -1298,6 +1204,29 @@ const showToastMessage = (msg, type = 'success') => {
 }
 .detail-card > div:last-child { border-bottom: none; }
 .detail-card .value { font-weight: 500; color: #1e293b; }
+
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #64748b;
+}
+.loading-state .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 /* ================================================================
    PAGINATION
@@ -1455,13 +1384,14 @@ const showToastMessage = (msg, type = 'success') => {
    PRINT STYLES
    ================================================================ */
 @media print {
-  .btn-export, .btn-print, .search-box, .filter-bar, .pagination, .action-buttons, .icon-btn, .expand-btn {
+  .btn-export, .btn-print, .search-box, .filter-bar, .pagination, .action-buttons, .expand-btn {
     display: none !important;
   }
   .section-card { box-shadow: none !important; padding: 0 !important; }
   .transaction-table th, .transaction-table td { border: 1px solid #ddd !important; }
   .stats-grid { display: none !important; }
   .detail-expand-row { display: table-row !important; }
+  .loading-state { display: none !important; }
 }
 
 /* ================================================================
@@ -1474,6 +1404,7 @@ const showToastMessage = (msg, type = 'success') => {
   .search-box input { width: 100%; }
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
+  .filter-group { width: 100%; }
 }
 
 @media (max-width: 600px) {

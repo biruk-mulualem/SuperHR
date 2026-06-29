@@ -33,7 +33,12 @@
         <option value="Active">Active</option>
         <option value="Inactive">Inactive</option>
       </select>
-      <button class="btn-clear-filters" @click="clearFilters" v-if="filterStore || filterStatus">
+      <select v-model="filterStoreAssignment" class="filter-select" @change="onFilterChange">
+        <option value="">All Groups</option>
+        <option value="assigned">Assigned to Store</option>
+        <option value="unassigned">Unassigned (No Store)</option>
+      </select>
+      <button class="btn-clear-filters" @click="clearFilters" v-if="filterStore || filterStatus || filterStoreAssignment">
         ✕ Clear Filters
       </button>
       <div class="filter-actions">
@@ -58,7 +63,7 @@
             <th>Store</th>
             <th>Store Status</th>
             <th>Members</th>
-            <th>Status</th>
+            <th>Group Status</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -79,12 +84,14 @@
               <strong>{{ group.name }}</strong>
             </td>
             <td>
-              <span class="store-tag">{{ group.storeName || '-' }}</span>
+              <span v-if="group.storeId" class="store-tag">{{ group.storeName || '-' }}</span>
+              <span v-else class="store-tag unassigned">No Store</span>
             </td>
             <td>
-              <span :class="['status-badge', group.storeStatus?.toLowerCase() || 'inactive']">
+              <span v-if="group.storeId" :class="['status-badge', group.storeStatus?.toLowerCase() || 'inactive']">
                 {{ group.storeStatus || 'Inactive' }}
               </span>
+              <span v-else class="status-badge inactive">N/A</span>
             </td>
             <td>
               <div class="member-list">
@@ -106,7 +113,7 @@
               <div class="action-buttons">
                 <button @click="openEditGroup(group)" class="icon-btn" title="Edit Group">✏️</button>
                 <button 
-                  v-if="isEffectivelyActive(group)" 
+                  v-if="canManageMembers(group)" 
                   @click="openManageMembers(group)" 
                   class="icon-btn" 
                   title="Manage Members"
@@ -158,13 +165,14 @@
                 <input v-model="groupForm.name" type="text" required placeholder="e.g., Storekeeper" />
               </div>
               <div class="form-group">
-                <label>Store *</label>
-                <select v-model="groupForm.storeId" required class="store-select">
-                  <option value="">Select Store...</option>
+                <label>Store (Optional)</label>
+                <select v-model="groupForm.storeId" class="store-select">
+                  <option value="">No Store Assigned</option>
                   <option v-for="store in activeStores" :key="store.id" :value="store.id">
                     {{ store.name }}
                   </option>
                 </select>
+                <span class="hint">Groups without a store can still be created and managed</span>
               </div>
             </div>
             <div class="form-row">
@@ -201,8 +209,9 @@
               <select v-model="selectedMemberId" class="member-select">
                 <option value="">Select a member...</option>
                 <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                  {{ user.fullName }} ({{ user.username }})
-                </option>
+        {{ user.fullName }} ({{ user.username }}) 
+        <span v-if="user.role" class="role-indicator">- {{ user.role }}</span>
+      </option>
               </select>
               <button @click="addMemberToGroup" class="btn-add-member" :disabled="!selectedMemberId || addingMember">
                 {{ addingMember ? 'Adding...' : '➕ Add Member' }}
@@ -222,6 +231,10 @@
               <div v-for="user in selectedGroup?.users" :key="user.id" class="member-item">
                 <span class="member-name">{{ user.fullName }}</span>
                 <span class="member-username">{{ user.username }}</span>
+
+                 <span :class="['role-badge', getRoleClass(user.role)]">
+        {{ user.role || 'User' }}
+      </span>
                 <button @click="openRemoveMemberModal(user)" class="remove-member-btn" title="Remove from group">✕</button>
               </div>
             </div>
@@ -250,9 +263,9 @@
             </div>
             <div class="detail-row">
               <span class="detail-label">Store:</span>
-              <span class="detail-value">{{ toggleGroup?.storeName }}</span>
+              <span class="detail-value">{{ toggleGroup?.storeName || 'No Store Assigned' }}</span>
             </div>
-            <div class="detail-row">
+            <div class="detail-row" v-if="toggleGroup?.storeId">
               <span class="detail-label">Store Status:</span>
               <span :class="['status-badge', toggleGroup?.storeStatus?.toLowerCase() || 'inactive']">
                 {{ toggleGroup?.storeStatus || 'Inactive' }}
@@ -278,7 +291,7 @@
           <p v-else class="warning-subtext">
             Activated groups will allow adding new members.
           </p>
-          <div v-if="toggleNewStatus === 'Active' && toggleGroup?.storeStatus !== 'Active'" class="error-box">
+          <div v-if="toggleNewStatus === 'Active' && toggleGroup?.storeId && toggleGroup?.storeStatus !== 'Active'" class="error-box">
             <span class="error-icon">❌</span>
             <span class="error-text">Cannot activate group because the store is {{ toggleGroup?.storeStatus?.toLowerCase() }}</span>
           </div>
@@ -292,7 +305,7 @@
           <button 
             class="btn-primary" 
             @click="confirmToggleStatus" 
-            :disabled="(toggleNewStatus === 'Active' && toggleGroup?.storeStatus !== 'Active') || toggling"
+            :disabled="(toggleNewStatus === 'Active' && toggleGroup?.storeId && toggleGroup?.storeStatus !== 'Active') || toggling"
           >
             {{ toggling ? 'Processing...' : 'Confirm' }}
           </button>
@@ -370,6 +383,7 @@ const pageSize = ref(5)
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterStatus = ref('')
+const filterStoreAssignment = ref('')
 const totalItems = ref(0)
 
 // Group Modal
@@ -381,6 +395,23 @@ const groupForm = ref({
   storeId: '',
   status: 'Active'
 })
+
+
+const getRoleClass = (role) => {
+  if (!role) return 'role-user'
+  
+  const roleMap = {
+    'admin': 'role-admin',
+    'Admin': 'role-admin',
+    'manager': 'role-manager',
+    'Manager': 'role-manager',
+    'superadmin': 'role-superadmin',
+    'Superadmin': 'role-superadmin',
+    'user': 'role-user',
+    'User': 'role-user',
+  }
+  return roleMap[role] || 'role-user'
+}
 
 // Members Modal
 const showMembersModal = ref(false)
@@ -437,6 +468,12 @@ const filteredGroups = computed(() => {
     result = result.filter(g => g.status === filterStatus.value)
   }
   
+  if (filterStoreAssignment.value === 'assigned') {
+    result = result.filter(g => g.storeId && g.storeId !== null)
+  } else if (filterStoreAssignment.value === 'unassigned') {
+    result = result.filter(g => !g.storeId || g.storeId === null)
+  }
+  
   return result
 })
 
@@ -445,7 +482,7 @@ const totalPages = computed(() => {
 })
 
 const paginatedGroups = computed(() => {
-  return groups.value
+  return filteredGroups.value
 })
 
 const availableUsers = computed(() => {
@@ -473,13 +510,23 @@ const getRemainingMemberCount = (group) => {
 
 // -- Status Helper Methods --
 const getEffectiveStatus = (group) => {
+  // If group has no store assigned, just use its own status
+  if (!group.storeId) {
+    return group.status || 'Inactive'
+  }
+  // If group has a store, check both statuses
   if (group.status === 'Active' && group.storeStatus !== 'Active') {
     return 'Inactive'
   }
   return group.status || 'Active'
 }
 
-const isEffectivelyActive = (group) => {
+const canManageMembers = (group) => {
+  // Groups without a store can always manage members regardless of status
+  if (!group.storeId) {
+    return true
+  }
+  // Groups with a store need to be active and have active store
   return group.status === 'Active' && group.storeStatus === 'Active'
 }
 
@@ -571,7 +618,8 @@ const saveGroup = async () => {
       response = await groupService.createGroup(groupForm.value)
       if (response.success) {
         const store = stores.value.find(s => s.id === response.data.storeId)
-        showToastMessage(`Group "${response.data.name}" added to ${store?.name || ''} with code ${response.data.code}!`, 'success')
+        const storeMsg = store ? ` to ${store.name}` : ' (No Store Assigned)'
+        showToastMessage(`Group "${response.data.name}" created with code ${response.data.code}${storeMsg}!`, 'success')
         await loadGroups()
       }
     }
@@ -585,10 +633,12 @@ const saveGroup = async () => {
 
 // -- Members Management --
 const openManageMembers = (group) => {
-  if (!isEffectivelyActive(group)) {
-    showToastMessage('Cannot manage members of an inactive group', 'error')
-    return
+  // Allow managing members even if group has no store or is inactive
+  // But show warning if inactive
+  if (group.status === 'Inactive') {
+    showToastMessage('This group is inactive. You can still manage members but the group will not be usable until activated.', 'warning')
   }
+  
   selectedGroup.value = JSON.parse(JSON.stringify(group))
   selectedMemberId.value = ''
   showMembersModal.value = true
@@ -677,8 +727,8 @@ const closeToggleModal = () => {
 const confirmToggleStatus = async () => {
   if (!toggleGroup.value) return
   
-  // Check if trying to activate with inactive store
-  if (toggleNewStatus === 'Active' && toggleGroup.value.storeStatus !== 'Active') {
+  // Check if trying to activate with inactive store (only if group has a store)
+  if (toggleNewStatus === 'Active' && toggleGroup.value.storeId && toggleGroup.value.storeStatus !== 'Active') {
     toggleError.value = `Cannot activate group because the store "${toggleGroup.value.storeName}" is ${toggleGroup.value.storeStatus?.toLowerCase()}`
     return
   }
@@ -697,14 +747,12 @@ const confirmToggleStatus = async () => {
       await loadGroups()
       closeToggleModal()
     } else {
-      // Show backend error message
       const errorMsg = response.error || response.message || 'Failed to update status'
       toggleError.value = errorMsg
       showToastMessage(errorMsg, 'error')
     }
   } catch (error) {
     console.error('Toggle status error:', error)
-    // Display backend error message if available
     const errorMsg = error.response?.data?.message || error.message || 'Failed to update status'
     toggleError.value = errorMsg
     showToastMessage(errorMsg, 'error')
@@ -727,6 +775,7 @@ const onFilterChange = () => {
 const clearFilters = () => {
   filterStore.value = ''
   filterStatus.value = ''
+  filterStoreAssignment.value = ''
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
@@ -796,6 +845,7 @@ const printReport = () => {
           h2 { text-align: center; margin-bottom: 20px; }
           .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
           .member-tag { display: inline-block; padding: 2px 8px; background: #dcfce7; margin: 2px; border-radius: 4px; font-size: 10px; }
+          .unassigned { background: #fef3c7; color: #92400e; }
         </style>
       </head>
       <body>
@@ -838,7 +888,7 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 // WATCHERS
 // ================================================================
-watch([filterStore, filterStatus], () => {
+watch([filterStore, filterStatus, filterStoreAssignment], () => {
   currentPage.value = 1
   loadGroups()
 })
@@ -856,9 +906,80 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* ================================================================
-   SECTION CARD
-   ================================================================ */
+
+
+
+
+
+
+
+
+
+
+
+/* Role badge styles */
+.role-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.role-admin {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.role-superadmin {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.role-manager {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.role-user {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.role-indicator {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+
+
+
+
+
+
+
+.store-tag.unassigned {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.hint {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+
 .section-card {
   background: white;
   border-radius: 16px;

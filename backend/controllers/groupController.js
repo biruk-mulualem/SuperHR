@@ -1,7 +1,7 @@
 // controllers/groupController.js
 'use strict';
 
-const { Group, Store, User, StoreGroupRelation, UserGroupRelation, sequelize } = require('../models');
+const { Group, Store, User, Role ,StoreGroupRelation, UserGroupRelation, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 // ================================================================
@@ -28,6 +28,8 @@ const generateGroupCode = async () => {
   return `GRP-${String(nextNumber).padStart(3, '0')}`;
 };
 
+// controllers/groupController.js - Update formatGroupResponse
+
 /**
  * Format group response with store and users
  */
@@ -50,9 +52,11 @@ const formatGroupResponse = (group) => {
     storeStatus: store?.status || null,
     users: users.map(user => ({
       id: user.userId || user.id,
+      userId: user.userId || user.id,
       fullName: user.fullName,
       username: user.username,
       email: user.email,
+      role: user.Role?.name || user.role || 'User', // Include role
     })),
     totalMembers: users.length,
     createdAt: plainGroup.createdAt,
@@ -123,6 +127,12 @@ const deactivateStoreGroups = async (storeId, transaction) => {
  * Get all groups with pagination and filtering
  * GET /api/groups
  */
+// controllers/groupController.js - Update getAllGroups
+
+/**
+ * Get all groups with pagination and filtering
+ * GET /api/groups
+ */
 exports.getAllGroups = async (req, res) => {
   try {
     const {
@@ -165,6 +175,13 @@ exports.getAllGroups = async (req, res) => {
         as: 'users',
         through: { attributes: [] },
         attributes: ['userId', 'fullName', 'username', 'email'],
+        include: [
+          {
+            model: Role,
+            attributes: ['name'],
+            required: false,
+          }
+        ],
         where: { isActive: true },
         required: false,
       },
@@ -208,6 +225,12 @@ exports.getAllGroups = async (req, res) => {
  * Get single group by ID
  * GET /api/groups/:id
  */
+// controllers/groupController.js - Update getGroupById
+
+/**
+ * Get single group by ID
+ * GET /api/groups/:id
+ */
 exports.getGroupById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -225,6 +248,13 @@ exports.getGroupById = async (req, res) => {
           as: 'users',
           through: { attributes: [] },
           attributes: ['userId', 'fullName', 'username', 'email'],
+          include: [
+            {
+              model: Role,
+              attributes: ['name'],
+              required: false,
+            }
+          ],
         },
       ],
     });
@@ -725,24 +755,36 @@ exports.generateGroupCode = async (req, res) => {
 // USER MANAGEMENT IN GROUPS
 // ================================================================
 
+
 /**
  * Get all users (for dropdown)
- * GET /api/groups/users
+ * GET /api/groups/users/all
  */
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.findAll({
       where: { isActive: true },
       attributes: ['userId', 'fullName', 'username', 'email'],
+      include: [
+        {
+          model: Role,
+          attributes: ['name'],
+          required: false,
+        }
+      ],
       order: [['fullName', 'ASC']],
     });
 
     const formattedUsers = users.map(user => ({
       id: user.userId,
+      userId: user.userId,
       fullName: user.fullName,
       username: user.username,
       email: user.email,
+      role: user.Role?.name || 'User',
     }));
+
+    console.log(`✅ Found ${formattedUsers.length} users with roles`);
 
     res.status(200).json({
       success: true,
@@ -757,7 +799,6 @@ exports.getAllUsers = async (req, res) => {
     });
   }
 };
-
 /**
  * Get users in a group
  * GET /api/groups/:groupId/users

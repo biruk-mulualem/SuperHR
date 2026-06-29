@@ -16,50 +16,56 @@ const { uploadSingleBalance } = require("../middleware/uploadMiddleware");
 // Get all balances with filters and pagination
 router.get(
     '/',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
+
     balanceController.getBalances
 );
 
 // Get balance statistics
 router.get(
     '/stats',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
+
     balanceController.getStats
 );
 
 // Get low stock items
 router.get(
     '/low-stock',
-    authMiddleware('admin', 'storekeeper', 'auditor'),
     balanceController.getLowStockItems
 );
 
 // Download CSV template
 router.get(
     '/template/download',
-    authMiddleware('admin', 'storekeeper'),
     balanceController.downloadTemplate
 );
 
 // Export balances
 router.get(
     '/export',
-    authMiddleware('admin', 'storekeeper', 'auditor'),
     balanceController.exportBalances
 );
+
+
+// In your routes file (e.g., routes/balanceRoutes.js)
+
+// ============================================
+// REQUEST GROUP PROCESSING ROUTES
+// ============================================
+router.get('/requests/:requestId/group-status', balanceController.getRequestGroupStatus);
+router.post('/requests/:requestId/process-group', balanceController.processRequestForGroup);
+router.get('/requests/processing-status', balanceController.getAllRequestProcessingStatus);
+router.post('/requests/:requestId/skip-group', balanceController.skipGroupProcessing);
 
 // ============================================
 // 2. STORE ROUTES (BEFORE /:id)
 // ============================================
 router.get(
     '/stores',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getStores
 );
 
 router.get(
     '/stores/:id',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getStoreById
 );
 
@@ -68,13 +74,11 @@ router.get(
 // ============================================
 router.get(
     '/groups',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getGroups
 );
 
 router.get(
     '/groups/:id',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getGroupById
 );
 
@@ -83,19 +87,16 @@ router.get(
 // ============================================
 router.get(
     '/items',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getItems
 );
 
 router.get(
     '/items/active',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getActiveItems
 );
 
 router.get(
     '/items/:id',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getItemById
 );
 
@@ -104,13 +105,11 @@ router.get(
 // ============================================
 router.get(
     '/users',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getUsers
 );
 
 router.get(
     '/users/:id',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getUserById
 );
 
@@ -119,19 +118,16 @@ router.get(
 // ============================================
 router.get(
     '/summary/by-store',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getSummaryByStore
 );
 
 router.get(
     '/summary/by-group',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getSummaryByGroup
 );
 
 router.get(
     '/summary/by-item',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getSummaryByItem
 );
 
@@ -140,28 +136,44 @@ router.get(
 // ============================================
 router.get(
     '/requests/approved/:storeId',
-    authMiddleware('admin', 'storekeeper', 'auditor'),
     balanceController.getApprovedRequests
 );
 
 router.post(
     '/requests/process',
-    authMiddleware('admin', 'storekeeper', 'auditor'),
     balanceController.processRequests
 );
+
+// ============================================
+//  STORE-GROUP RELATIONS (MUST COME BEFORE /:id)
+// ============================================
+router.get(
+    '/store-group-relations',
+    balanceController.getStoreGroupRelations  // No auth middleware
+);
+
+
+// balanceRoutes.js - Add this route at the TOP
+
+// ============================================
+// USER ACCESS ROUTE - MUST BE FIRST!
+// ============================================
+router.get(
+    '/user/store-group',
+    authMiddleware,
+    balanceController.getUserStoreAndGroupAccess
+); 
 
 // ============================================
 // 8. WILDCARD /:id ROUTES - MUST BE LAST!
 // ============================================
 router.get(
     '/:id',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
     balanceController.getBalanceById
 );
 
 router.get(
     '/:id/history',
-    authMiddleware('admin', 'storekeeper', 'auditor'),
     balanceController.getBalanceHistory
 );
 
@@ -170,40 +182,30 @@ router.get(
 // ============================================
 router.post(
     '/',
-    authMiddleware('admin', 'storekeeper'),
     balanceController.createBalance
 );
 
 router.post(
     '/import',
-    authMiddleware('admin', 'storekeeper'),
     uploadSingleBalance,
     balanceController.importBalances
 );
 
 router.put(
     '/:id',
-    authMiddleware('admin', 'storekeeper'),
     balanceController.updateBalance
 );
 
 router.patch(
     '/:id/toggle-status',
-    authMiddleware('admin', 'storekeeper'),
     balanceController.toggleStatus
 );
 
 router.delete(
     '/:id',
-    authMiddleware('admin'),
     balanceController.deleteBalance
 );
 
-// Get store-group relations
-router.get(
-    '/store-group-relations',
-    authMiddleware('admin', 'storekeeper', 'auditor', 'manager'),
-    balanceController.getStoreGroupRelations
-);
+
 
 module.exports = router;

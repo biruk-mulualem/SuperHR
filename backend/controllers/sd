@@ -18,7 +18,7 @@ const {
   Group,
   Item,
   UOM,
-    StoreGroupRelation,
+    StoreGroupRelation, // Add this
   User,
   sequelize,
 } = require("../models");
@@ -43,7 +43,6 @@ const getBaseBalance = (balance, conversionValue) => {
   return balance * conversionValue;
 };
 
-
 // ============================================
 // 1. GET ALL BALANCES WITH FILTERS
 // ============================================
@@ -60,6 +59,7 @@ exports.getBalances = async (req, res) => {
 
     const whereClause = {};
     
+    // USE CAMELCASE - matches model with field mappings
     if (storeId) {
       whereClause.storeId = parseInt(storeId);
     }
@@ -84,15 +84,7 @@ exports.getBalances = async (req, res) => {
       {
         model: Item,
         as: "item",
-        attributes: [
-          "id", 
-          "code", 
-          "name", 
-          "standardName",
-          "conversionValue",  // ✅ This will fetch the real value
-          "uomId",
-          "conversionUomId"
-        ],
+        attributes: ["id", "code", "name", "standardName"],
         include: [
           {
             model: UOM,
@@ -111,6 +103,8 @@ exports.getBalances = async (req, res) => {
     // Search filter
     if (search && search.trim()) {
       const searchTerm = `%${search.trim()}%`;
+      // Use a different approach for search with includes
+      // We'll handle it in the where clause with $ notation
       whereClause[Op.or] = [
         { '$item.name$': { [Op.iLike]: searchTerm } },
         { '$item.code$': { [Op.iLike]: searchTerm } },
@@ -130,19 +124,12 @@ exports.getBalances = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    // Format response - Use real conversion value from item
+    // Format response
     const formattedRows = rows.map((record) => {
       const item = record.item;
       const uom = item?.uom;
       const conversionUom = item?.conversionUom;
-      
-      // ✅ Get the REAL conversion value from the item
-      const conversionValue = item?.conversionValue !== undefined && item?.conversionValue !== null 
-        ? parseFloat(item.conversionValue) 
-        : 1;
-
-      // Log for debugging
-      console.log(`📊 Item ${item?.code}: conversionValue = ${conversionValue}, uom = ${uom?.code}, conversionUom = ${conversionUom?.code}`);
+      const conversionValue = parseFloat(item?.conversionValue) || 1;
 
       return {
         id: record.id,
@@ -157,7 +144,7 @@ exports.getBalances = async (req, res) => {
         uomCode: uom?.code || null,
         uomName: uom?.name || null,
         conversionUomCode: conversionUom?.code || null,
-        conversionValue: conversionValue, // ✅ Real conversion value
+        conversionValue: conversionValue,
         balance: parseFloat(record.balance),
         minStock: parseFloat(record.minStockAlert) || 0,
         baseBalance: getBaseBalance(parseFloat(record.balance), conversionValue),
@@ -752,27 +739,25 @@ exports.deleteBalance = async (req, res) => {
 };
 
 // ============================================
-// GET APPROVED REQUESTS - WITH GROUP PROCESSING FILTER
+// 9. GET APPROVED REQUESTS - FIXED
 // ============================================
+// balanceController.js - FIXED getApprovedRequests
+
 exports.getApprovedRequests = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const groupId = req.query.groupId; // Get groupId from query params
 
-    console.log('🔍 Fetching approved requests for storeId:', storeId, 'groupId:', groupId);
+    console.log('🔍 Fetching approved requests for storeId:', storeId);
 
-    // Build the where clause
-    const whereClause = {
-      status: 'approved',
-      [Op.or]: [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) },
-      ],
-    };
-
-    // Get the requests WITHOUT the groupProcessing include
+    // Use correct field names from the model
     const requests = await ItemRequest.findAll({
-      where: whereClause,
+      where: {
+        status: 'approved',  // Status is 'approved' (lowercase)
+        [Op.or]: [
+          { askingStoreId: parseInt(storeId) },
+          { supplyingStoreId: parseInt(storeId) },
+        ],
+      },
       include: [
         {
           model: Store,
@@ -811,41 +796,11 @@ exports.getApprovedRequests = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    console.log(`✅ Found ${requests.length} total approved requests`);
+    console.log(`✅ Found ${requests.length} approved requests`);
 
-    // 🔥 Get processing records separately
-    let filteredRequests = requests;
-    if (groupId) {
-      const requestIds = requests.map(r => r.requestId);
-      
-      // Get RequestGroupProcessing model from sequelize
-      const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-      
-      if (RequestGroupProcessing) {
-        const processingRecords = await RequestGroupProcessing.findAll({
-          where: {
-            requestId: { [Op.in]: requestIds },
-            groupId: parseInt(groupId),
-          },
-          attributes: ['requestId', 'status']
-        });
-
-        // Create a set of processed request IDs
-        const processedRequestIds = new Set(
-          processingRecords
-            .filter(r => r.status === 'processed')
-            .map(r => r.requestId)
-        );
-
-        // Filter out requests that have been processed by this group
-        filteredRequests = requests.filter(r => !processedRequestIds.has(r.requestId));
-        console.log(`✅ ${filteredRequests.length} requests remaining after filtering out processed ones`);
-      }
-    }
-
-    // Format the response
-    const formattedRequests = filteredRequests.map((request) => ({
-      id: request.requestId,
+    // Format the response using the correct field names
+    const formattedRequests = requests.map((request) => ({
+      id: request.requestId,  // Use requestId (the model's primary key)
       requestCode: request.requestCode,
       askingStoreId: request.askingStoreId,
       askingStoreName: request.askingStore?.name || null,
@@ -867,12 +822,6 @@ exports.getApprovedRequests = async (req, res) => {
     res.status(200).json({
       success: true,
       data: formattedRequests,
-      meta: {
-        total: requests.length,
-        remaining: filteredRequests.length,
-        groupId: groupId || null,
-        storeId: parseInt(storeId),
-      },
     });
   } catch (error) {
     console.error("❌ Get approved requests error:", error);
@@ -881,20 +830,20 @@ exports.getApprovedRequests = async (req, res) => {
 };
 
 // ============================================
-// PROCESS REQUESTS - COMPLETE PRODUCTION VERSION
+// 10. PROCESS REQUESTS - FIXED
 // ============================================
+
+// balanceController.js - UPDATED processRequests method
 
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
     const { storeId, groupId, requestIds } = req.body;
+    const userId = req.user ? req.user.userId : 1;
 
     console.log('📤 Processing requests payload:', { storeId, groupId, requestIds });
 
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
     if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -902,6 +851,7 @@ exports.processRequests = async (req, res) => {
       });
     }
 
+    // Filter out null/undefined request IDs
     const validRequestIds = requestIds.filter(id => id != null && id !== '');
     if (validRequestIds.length === 0) {
       return res.status(400).json({
@@ -912,106 +862,7 @@ exports.processRequests = async (req, res) => {
 
     console.log('✅ Valid request IDs:', validRequestIds);
 
-    // ================================================================
-    // 2. GET VALID USER ID (NO HARDCODING)
-    // ================================================================
-    let userId = req.user?.userId || null;
-    
-    // If no user from request, find a valid active user
-    if (!userId) {
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ['userId'],
-        order: [['userId', 'ASC']]
-      });
-      userId = defaultUser ? defaultUser.userId : null;
-    }
-    
-    // If still no user, get any user (fallback)
-    if (!userId) {
-      const anyUser = await User.findOne({
-        attributes: ['userId'],
-        order: [['userId', 'ASC']]
-      });
-      userId = anyUser ? anyUser.userId : null;
-    }
-    
-    // If still no user, throw error
-    if (!userId) {
-      throw new Error('No valid user found to process request');
-    }
-
-    console.log('👤 Using userId:', userId);
-
-    // ================================================================
-    // 3. GET RequestGroupProcessing MODEL FROM SEQUELIZE
-    // ================================================================
-    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-    if (!RequestGroupProcessing) {
-      throw new Error('RequestGroupProcessing model not found');
-    }
-
-    // ================================================================
-    // 4. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
-    const group = await Group.findByPk(parseInt(groupId));
-    if (!group) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: 'Group not found'
-      });
-    }
-
-    if (group.status !== 'Active') {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`
-      });
-    }
-
-    // ================================================================
-    // 5. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
-    const store = await Store.findByPk(parseInt(storeId));
-    if (!store) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: 'Store not found'
-      });
-    }
-
-    if (store.status !== 'Active') {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`
-      });
-    }
-
-    // ================================================================
-    // 6. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
-    const storeGroupRelation = await StoreGroupRelation.findOne({
-      where: {
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId)
-      }
-    });
-
-    if (!storeGroupRelation) {
-      await transaction.rollback();
-      return res.status(403).json({
-        success: false,
-        error: `Group "${group.name}" does not have access to store "${store.name}"`
-      });
-    }
-
-    // ================================================================
-    // 7. GET REQUESTS WITH THEIR ITEMS
-    // ================================================================
+    // Get requests with their items
     const requests = await ItemRequest.findAll({
       where: {
         requestId: { [Op.in]: validRequestIds.map(id => parseInt(id)) },
@@ -1025,9 +876,9 @@ exports.processRequests = async (req, res) => {
             {
               model: Item,
               as: "item",
-              attributes: ["id", "code", "name", "standardName", "conversionValue", "status"]
-            }
-          ]
+              attributes: ["id", "code", "name", "standardName"],
+            },
+          ],
         },
       ],
     });
@@ -1035,200 +886,58 @@ exports.processRequests = async (req, res) => {
     console.log(`✅ Found ${requests.length} requests to process`);
 
     if (requests.length === 0) {
-      await transaction.rollback();
       return res.status(404).json({
         success: false,
         error: "No approved requests found with the provided IDs",
       });
     }
 
-    // ================================================================
-    // 8. PROCESS EACH REQUEST
-    // ================================================================
     let processedCount = 0;
     let failedCount = 0;
     const logs = [];
     const missingItems = [];
     const processedItems = [];
-    const allAutoInitializedItems = [];
-    const allSkippedGroups = [];
-    const processedRequestIds = [];
-    const partialRequests = [];
 
     for (const request of requests) {
       console.log(`📋 Processing request: ${request.requestCode}`);
-
-      // ================================================================
-      // 8a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-      // ================================================================
-      const existingRecord = await RequestGroupProcessing.findOne({
-        where: {
-          requestId: request.requestId,
-          groupId: parseInt(groupId)
-        }
-      });
-
-      if (existingRecord && existingRecord.status === 'processed') {
-        logs.push(`⏭️ Group "${group.name}" has already processed request ${request.requestCode}`);
-        processedRequestIds.push(request.requestId);
-        continue;
-      }
-
-      if (existingRecord && existingRecord.status === 'skipped') {
-        logs.push(`⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`);
-        allSkippedGroups.push({
-          requestCode: request.requestCode,
-          groupName: group.name,
-          reason: existingRecord.remark || 'Skipped by admin'
-        });
-        processedRequestIds.push(request.requestId);
-        continue;
-      }
-
-      // ================================================================
-      // 8b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-      // ================================================================
-      if (request.askingStoreId !== parseInt(storeId) && request.supplyingStoreId !== parseInt(storeId)) {
-        logs.push(`❌ Request ${request.requestCode} is not relevant to store ${store.name}`);
-        failedCount++;
-        continue;
-      }
-
-      // ================================================================
-      // 8c. DETERMINE ACTION (Stock In or Stock Out)
-      // ================================================================
-      let action, transactionType, changeMultiplier, actionLabel;
-      if (request.askingStoreId === parseInt(storeId)) {
-        action = 'STOCK_IN';
-        transactionType = 'Stock In';
-        changeMultiplier = 1;
-        actionLabel = 'RECEIVED';
-      } else if (request.supplyingStoreId === parseInt(storeId)) {
-        action = 'STOCK_OUT';
-        transactionType = 'Stock Out';
-        changeMultiplier = -1;
-        actionLabel = 'SENT';
-      } else {
-        logs.push(`❌ Request ${request.requestCode}: Store is neither asking nor supplying`);
-        failedCount++;
-        continue;
-      }
-
-      console.log(`📋 Action: ${action} for request ${request.requestCode}`);
-
-      // ================================================================
-      // 8d. CHECK ITEMS, AUTO-INITIALIZE IF NEEDED, AND PROCESS
-      // ================================================================
-      const requestResults = [];
-      const requestErrors = [];
-      const requestAutoInitialized = [];
-
+      
       for (const item of request.items) {
-        try {
-          // Validate item exists
-          if (!item.item) {
-            requestErrors.push(`Item ID ${item.itemId} not found in database`);
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: 'N/A',
-              itemName: 'Unknown Item (deleted)',
-              reason: 'Item not found in database',
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId)
-            });
-            continue;
-          }
+        // Check if balance exists for this store and group
+        const balance = await StoreBalance.findOne({
+          where: {
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: item.itemId,
+          },
+        });
 
-          // Validate item is active
-          if (item.item.status !== 'Active') {
-            requestErrors.push(`Item "${item.item.code}" is ${item.item.status}`);
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || 'N/A',
-              itemName: item.item.standardName || item.item.name || 'Unknown Item',
-              reason: `Item status is ${item.item.status}`,
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId)
-            });
-            continue;
-          }
-
-          // Check if balance exists for this store, group, and item
-          let balance = await StoreBalance.findOne({
-            where: {
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId
-            }
+        // If balance doesn't exist, log it and skip
+        if (!balance) {
+          failedCount++;
+          const itemName = item.item?.standardName || item.item?.name || `Item ID ${item.itemId}`;
+          const itemCode = item.item?.code || 'N/A';
+          logs.push(`❌ Item "${itemName}" (${itemCode}) not found in store balance for Store ID ${storeId}, Group ID ${groupId}`);
+          missingItems.push({
+            itemId: item.itemId,
+            itemCode: itemCode,
+            itemName: itemName,
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
           });
+          continue;
+        }
 
-          // If balance doesn't exist, auto-initialize it with 0
-          if (!balance) {
-            console.log(`📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`);
-            
-            balance = await StoreBalance.create({
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              balance: 0,
-              minStockAlert: 0,
-              status: 'Active'
-            }, { transaction });
+        const previousBalance = parseFloat(balance.balance);
+        const quantity = parseFloat(item.quantity);
+        let newBalance, transactionType, changeAmount;
 
-            // Create history record for auto-initialization
-            await StoreBalanceHistory.create({
-              balanceId: balance.id,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              previousBalance: 0,
-              newBalance: 0,
-              changeAmount: 0,
-              transactionType: 'Stock In',
-              referenceType: 'auto_initialization',
-              referenceId: request.requestId,
-              changedBy: userId,
-              remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`
-            }, { transaction });
+        // Check if this store is the asking or supplying store
+        if (request.askingStoreId === parseInt(storeId)) {
+          // ADD to balance
+          changeAmount = quantity;
+          newBalance = previousBalance + changeAmount;
+          transactionType = "Stock In";
 
-            requestAutoInitialized.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || 'N/A',
-              itemName: item.item.standardName || item.item.name || 'Unknown Item'
-            });
-
-            allAutoInitializedItems.push({
-              requestCode: request.requestCode,
-              itemCode: item.item.code || 'N/A',
-              itemName: item.item.standardName || item.item.name || 'Unknown Item'
-            });
-          }
-
-          // Check if balance is active
-          if (balance.status !== 'Active') {
-            requestErrors.push(`Balance for item "${item.item.code}" is ${balance.status}`);
-            continue;
-          }
-
-          // Now process the stock movement
-          const previousBalance = parseFloat(balance.balance);
-          const quantity = parseFloat(item.quantity);
-          const changeAmount = quantity * changeMultiplier;
-          const newBalance = previousBalance + changeAmount;
-
-          // For STOCK_OUT, check if we have enough balance
-          if (action === 'STOCK_OUT' && newBalance < 0) {
-            requestErrors.push(`Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`);
-            continue;
-          }
-
-          // Update the balance
-          balance.balance = newBalance;
-          await balance.save({ transaction });
-
-          // Create history record for the stock movement
           await StoreBalanceHistory.create({
             balanceId: balance.id,
             storeId: parseInt(storeId),
@@ -1236,180 +945,99 @@ exports.processRequests = async (req, res) => {
             itemId: item.itemId,
             previousBalance: previousBalance,
             newBalance: newBalance,
-            changeAmount: Math.abs(changeAmount),
+            changeAmount: changeAmount,
             transactionType: transactionType,
-            sourceStoreId: action === 'STOCK_IN' ? request.supplyingStoreId : null,
-            destinationStoreId: action === 'STOCK_OUT' ? request.askingStoreId : null,
-            referenceType: 'request',
+            sourceStoreId: request.supplyingStoreId,
+            referenceType: "request",
             referenceId: request.requestId,
             changedBy: userId,
-            remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ''}`
+            remark: `Processed request ${request.requestCode} - ADD ${quantity} of ${item.item?.code || item.itemId}`,
           }, { transaction });
 
-          requestResults.push({
-            itemId: item.itemId,
-            itemName: item.item?.standardName || item.item?.name || 'Unknown',
-            itemCode: item.item?.code || 'N/A',
-            previousBalance,
-            newBalance,
-            changeAmount: Math.abs(changeAmount),
-            action: action === 'STOCK_IN' ? 'ADDED' : 'REMOVED',
-            wasAutoInitialized: requestAutoInitialized.some(ai => ai.itemId === item.itemId)
-          });
+          balance.balance = newBalance;
+          await balance.save({ transaction });
 
           processedCount++;
+          const itemName = item.item?.standardName || item.item?.name || `Item ID ${item.itemId}`;
+          const itemCode = item.item?.code || 'N/A';
+          logs.push(`✅ ADDED ${changeAmount} of "${itemName}" (${itemCode}) to balance (${previousBalance} → ${newBalance})`);
           processedItems.push({
-            requestCode: request.requestCode,
             itemId: item.itemId,
-            itemCode: item.item?.code || 'N/A',
-            itemName: item.item?.standardName || item.item?.name || 'Unknown',
-            action: action === 'STOCK_IN' ? 'ADDED' : 'REMOVED',
-            quantity: Math.abs(changeAmount),
+            itemCode: itemCode,
+            itemName: itemName,
+            action: 'ADD',
+            quantity: changeAmount,
             previousBalance,
-            newBalance
+            newBalance,
           });
 
-          console.log(`✅ ${action === 'STOCK_IN' ? 'ADDED' : 'REMOVED'} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`);
-
-        } catch (itemError) {
-          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
-          requestErrors.push(`Error processing item ${item.itemId}: ${itemError.message}`);
-        }
-      }
-
-      // ================================================================
-      // 8e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-      // ================================================================
-      if (requestResults.length > 0 || requestErrors.length > 0) {
-        const remark = requestResults.length > 0 
-          ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ''}` 
-          : 'No items processed - errors occurred';
-
-        if (existingRecord) {
-          existingRecord.status = 'processed';
-          existingRecord.processedAt = new Date();
-          existingRecord.processedBy = userId;
-          existingRecord.remark = remark;
-          await existingRecord.save({ transaction });
-        } else {
-          await RequestGroupProcessing.create({
-            requestId: request.requestId,
-            groupId: parseInt(groupId),
-            storeId: parseInt(storeId),
-            processedAt: new Date(),
-            status: 'processed',
-            processedBy: userId,
-            remark: remark
-          }, { transaction });
-        }
-
-        // Log results
-        if (requestResults.length > 0) {
-          logs.push(`✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ''}`);
-        }
-      }
-
-      // Log any errors
-      if (requestErrors.length > 0) {
-        logs.push(`⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`);
-        requestErrors.forEach(err => logs.push(`   - ${err}`));
-        failedCount += requestErrors.length;
-      }
-
-      processedRequestIds.push(request.requestId);
-
-      // ================================================================
-      // 8f. CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-      // ================================================================
-      const storeWithGroups = await Store.findByPk(parseInt(storeId), {
-        include: [
-          {
-            model: Group,
-            as: 'groups',
-            through: { attributes: [] },
-            attributes: ['groupId', 'name', 'status'],
-            where: { status: 'Active' }
+        } else if (request.supplyingStoreId === parseInt(storeId)) {
+          // REMOVE from balance
+          changeAmount = quantity;
+          if (previousBalance < changeAmount) {
+            failedCount++;
+            const itemName = item.item?.standardName || item.item?.name || `Item ID ${item.itemId}`;
+            const itemCode = item.item?.code || 'N/A';
+            logs.push(`❌ Insufficient balance for "${itemName}" (${itemCode}) - Balance: ${previousBalance}, Requested: ${changeAmount}`);
+            continue;
           }
-        ]
-      });
+          newBalance = previousBalance - changeAmount;
+          transactionType = "Stock Out";
 
-      const allGroupIds = storeWithGroups?.groups?.map(g => g.groupId) || [];
-      const processedRecords = await RequestGroupProcessing.findAll({
-        where: {
-          requestId: request.requestId,
-          status: 'processed'
+          await StoreBalanceHistory.create({
+            balanceId: balance.id,
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: item.itemId,
+            previousBalance: previousBalance,
+            newBalance: newBalance,
+            changeAmount: changeAmount,
+            transactionType: transactionType,
+            destinationStoreId: request.askingStoreId,
+            referenceType: "request",
+            referenceId: request.requestId,
+            changedBy: userId,
+            remark: `Processed request ${request.requestCode} - REMOVE ${quantity} of ${item.item?.code || item.itemId}`,
+          }, { transaction });
+
+          balance.balance = newBalance;
+          await balance.save({ transaction });
+
+          processedCount++;
+          const itemName = item.item?.standardName || item.item?.name || `Item ID ${item.itemId}`;
+          const itemCode = item.item?.code || 'N/A';
+          logs.push(`✅ REMOVED ${changeAmount} of "${itemName}" (${itemCode}) from balance (${previousBalance} → ${newBalance})`);
+          processedItems.push({
+            itemId: item.itemId,
+            itemCode: itemCode,
+            itemName: itemName,
+            action: 'REMOVE',
+            quantity: changeAmount,
+            previousBalance,
+            newBalance,
+          });
         }
-      });
-      const processedGroupIds = processedRecords.map(r => r.groupId);
-      
-      const allProcessed = allGroupIds.every(g => processedGroupIds.includes(g));
-      const remainingGroups = allGroupIds.filter(g => !processedGroupIds.includes(g));
-
-      if (allProcessed && allGroupIds.length > 0) {
-        request.status = 'finalized';
-        request.finalizedAt = new Date();
-        await request.save({ transaction });
-        console.log(`✅ Request ${request.requestCode} fully processed and finalized by all ${allGroupIds.length} groups`);
-        logs.push(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
-      } else if (remainingGroups.length > 0) {
-        const remainingNames = remainingGroups.map(g => {
-          const grp = storeWithGroups?.groups?.find(g2 => g2.groupId === g);
-          return grp ? grp.name : g;
-        });
-        const msg = `⏳ Request ${request.requestCode} PARTIALLY PROCESSED - ${remainingGroups.length} group(s) remaining: ${remainingNames.join(', ')}`;
-        logs.push(msg);
-        partialRequests.push({
-          requestCode: request.requestCode,
-          remainingGroups: remainingNames,
-          remainingCount: remainingGroups.length
-        });
-      } else if (allGroupIds.length === 0) {
-        // No groups in store, automatically finalize
-        request.status = 'finalized';
-        request.finalizedAt = new Date();
-        await request.save({ transaction });
-        logs.push(`✅ Request ${request.requestCode} FINALIZED - No groups in store, auto-finalized`);
       }
+
+      // Update request status
+      request.status = "finalized";
+      request.finalizedAt = new Date();
+      await request.save({ transaction });
     }
 
     await transaction.commit();
 
-    // ================================================================
-    // 9. PREPARE RESPONSE
-    // ================================================================
-    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ''}`;
+    // Prepare response with detailed information
+    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} failed` : ''}`;
     
-    // Build detailed logs
-    const detailedLogs = [...logs];
-    
-    if (allAutoInitializedItems.length > 0) {
-      detailedLogs.unshift(`\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}":`);
-      allAutoInitializedItems.forEach(item => {
-        detailedLogs.push(`   - ${item.itemCode}: ${item.itemName} (from request ${item.requestCode})`);
-      });
-      detailedLogs.push(`\n💡 Items were initialized with 0 balance and activated automatically.`);
-    }
-
-    if (allSkippedGroups.length > 0) {
-      detailedLogs.push(`\n⏭️ Skipped groups:`);
-      allSkippedGroups.forEach(item => {
-        detailedLogs.push(`   - ${item.groupName}: ${item.reason}`);
-      });
-    }
-
+    // If there are missing items, include them in the response with helpful instructions
     if (missingItems.length > 0) {
-      detailedLogs.push(`\n📋 Missing or inactive items:`);
+      logs.push(`\n📋 Missing items in store balance (Store: ${storeId}, Group: ${groupId}):`);
       missingItems.forEach(item => {
-        detailedLogs.push(`   - ${item.itemCode}: ${item.itemName} (${item.reason || 'Not found'})`);
+        logs.push(`   - ${item.itemCode} - ${item.itemName} (ID: ${item.itemId})`);
       });
-      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
-    }
-
-    if (partialRequests.length > 0) {
-      detailedLogs.push(`\n⏳ Partially processed requests:`);
-      partialRequests.forEach(req => {
-        detailedLogs.push(`   - ${req.requestCode}: ${req.remainingCount} group(s) remaining (${req.remainingGroups.join(', ')})`);
-      });
+      logs.push(`\n💡 To fix: Initialize balances for these items using the "Initialize Balance" button.`);
+      logs.push(`   Select Store ID: ${storeId}, Group ID: ${groupId}, and the missing items above.`);
     }
 
     res.status(200).json({
@@ -1418,23 +1046,14 @@ exports.processRequests = async (req, res) => {
       data: {
         processed: processedCount,
         failed: failedCount,
-        logs: detailedLogs,
+        logs: logs,
         missingItems: missingItems,
         processedItems: processedItems,
-        autoInitializedItems: allAutoInitializedItems,
-        skippedGroups: allSkippedGroups,
-        partialRequests: partialRequests,
         requestIds: validRequestIds,
-        processedRequestIds: processedRequestIds,
         storeId: parseInt(storeId),
         groupId: parseInt(groupId),
-        storeName: store.name,
-        groupName: group.name,
-        userId: userId,
-        totalRequests: requests.length
       },
     });
-
   } catch (error) {
     await transaction.rollback();
     console.error("❌ Process requests error:", error);
@@ -1731,185 +1350,124 @@ exports.getItemById = async (req, res) => {
 // ============================================
 // 17. DOWNLOAD CSV TEMPLATE
 // ============================================
-// balanceController.js - Updated downloadTemplate with user context
+// balanceController.js - UPDATED downloadTemplate with item codes
 
+// ============================================
+// 9. DOWNLOAD CSV TEMPLATE - WITH ITEM CODES
+// ============================================
 exports.downloadTemplate = async (req, res) => {
   try {
-    const userId = req.user?.userId;
-    let userAssignedStoreId = null;
-    let userAssignedGroupId = null;
-    let userAssignedStoreName = null;
-    let userAssignedGroupName = null;
-
-    // Get user's assigned store and group if logged in
-    if (userId) {
-      try {
-        const accessResult = await getUserStoreAndGroup(userId);
-        if (accessResult.success) {
-          userAssignedStoreId = accessResult.data.assignedStoreId;
-          userAssignedGroupId = accessResult.data.assignedGroupId;
-          userAssignedStoreName = accessResult.data.assignedStore?.name;
-          userAssignedGroupName = accessResult.data.assignedGroup?.name;
-          
-          console.log('👤 User assigned store:', userAssignedStoreId, userAssignedStoreName);
-          console.log('👤 User assigned group:', userAssignedGroupId, userAssignedGroupName);
-        }
-      } catch (err) {
-        console.warn('Could not get user access:', err);
-      }
-    }
-
-    // Get all active stores
-    const sampleStores = await Store.findAll({
-      attributes: ['id', 'name', 'code'],
-      where: { status: 'Active' },
-      order: [['name', 'ASC']],
-      raw: true
-    });
-
-    // Get all active groups
-    const sampleGroups = await Group.findAll({
-      attributes: ['id', 'name', 'code'],
-      where: { status: 'Active' },
-      order: [['name', 'ASC']],
-      raw: true
-    });
-
-    // Get sample items
+    // Get some sample items with their codes
     const sampleItems = await Item.findAll({
-      attributes: ['code', 'standardName', 'name'],
+      limit: 5,
+      attributes: ['id', 'code', 'standardName'],
       where: { status: 'Active' },
-      order: [['code', 'ASC']],
-      limit: 10,
-      raw: true
+      order: [['code', 'ASC']]
     });
 
-    // Determine which store and group to use as default
-    let defaultStoreId = userAssignedStoreId || (sampleStores.length > 0 ? sampleStores[0].id : 14);
-    let defaultGroupId = userAssignedGroupId || (sampleGroups.length > 0 ? sampleGroups[0].id : 25);
-    
-    // If user has assigned store but no assigned group, use the first group
-    if (userAssignedStoreId && !userAssignedGroupId && sampleGroups.length > 0) {
-      defaultGroupId = sampleGroups[0].id;
-    }
-    
-    // If user has assigned group but no assigned store, use the first store
-    if (userAssignedGroupId && !userAssignedStoreId && sampleStores.length > 0) {
-      defaultStoreId = sampleStores[0].id;
-    }
+    // Get sample stores and groups
+    const sampleStores = await Store.findAll({
+      limit: 3,
+      attributes: ['id', 'name'],
+      order: [['id', 'ASC']]
+    });
 
-    console.log('📋 Default Store ID:', defaultStoreId);
-    console.log('📋 Default Group ID:', defaultGroupId);
+    const sampleGroups = await Group.findAll({
+      limit: 3,
+      attributes: ['id', 'name'],
+      order: [['id', 'ASC']]
+    });
 
-    // Build the template content
-    let csvContent = '';
+    // Create headers - now using itemCode instead of itemId
+    const headers = ["storeId", "groupId", "itemCode", "balance", "minStock", "status"];
     
-    // Add header comments
-    csvContent += '# ============================================\n';
-    csvContent += '# STORE BALANCE IMPORT TEMPLATE\n';
-    csvContent += '# ============================================\n';
-    csvContent += '#\n';
-    csvContent += '# INSTRUCTIONS:\n';
-    csvContent += '# 1. Use the itemCode (e.g., SDT000001) instead of numeric itemId\n';
-    csvContent += '# 2. You can find item codes in the Items list\n';
-    csvContent += '# 3. Required columns: storeId, groupId, itemCode, balance\n';
-    csvContent += '# 4. Optional: minStock, status (defaults to "Active")\n';
-    csvContent += '# 5. All columns must be in the order shown above\n';
-    csvContent += '#\n';
+    // Build sample data with actual item codes from database
+    const sampleData = [];
     
-    // Show user's assigned store and group if available
-    if (userAssignedStoreId && userAssignedGroupId) {
-      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
-      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
-      csvContent += '#\n';
-      csvContent += '# ✅ The template below uses your assigned store and group\n';
-      csvContent += '#\n';
-    } else if (userAssignedStoreId) {
-      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
-      csvContent += '# ⚠️ No group assigned. Using the first available group.\n';
-      csvContent += '#\n';
-    } else if (userAssignedGroupId) {
-      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
-      csvContent += '# ⚠️ No store assigned. Using the first available store.\n';
-      csvContent += '#\n';
-    }
-    
-    // Add store info
-    if (sampleStores && sampleStores.length > 0) {
-      csvContent += '# Available Stores:\n';
-      sampleStores.forEach(store => {
-        const isDefault = store.id === defaultStoreId;
-        csvContent += `#   ${store.id} = ${store.name} (${store.code || 'N/A'})${isDefault ? ' ✅ DEFAULT' : ''}\n`;
-      });
-    }
-    csvContent += '#\n';
-    
-    // Add group info
-    if (sampleGroups && sampleGroups.length > 0) {
-      csvContent += '# Available Groups:\n';
-      sampleGroups.forEach(group => {
-        const isDefault = group.id === defaultGroupId;
-        csvContent += `#   ${group.id} = ${group.name} (${group.code || 'N/A'})${isDefault ? ' ✅ DEFAULT' : ''}\n`;
-      });
-    }
-    csvContent += '#\n';
-    
-    // Add sample item codes
-    if (sampleItems && sampleItems.length > 0) {
-      csvContent += '# Sample Item Codes:\n';
-      sampleItems.forEach(item => {
-        const itemName = item.standardName || item.name || 'Unknown';
-        csvContent += `#   ${item.code}: ${itemName}\n`;
-      });
-    }
-    csvContent += '# ============================================\n';
-    
-    // Add headers (use comma separator)
-    csvContent += 'storeId,groupId,itemCode,balance,minStock,status\n';
-    
-    // Add sample data rows with user's default store/group
-    if (sampleItems && sampleItems.length > 0) {
-      // Use the first 6 items
-      const itemsToUse = sampleItems.slice(0, 6);
-      
-      itemsToUse.forEach((item, index) => {
-        const balance = (index + 1) * 50;
-        const minStock = (index + 1) * 5;
-        
-        // Use the user's default store and group for ALL rows
-        // This makes it easier for the user - they just need to change quantities
-        csvContent += `${defaultStoreId},${defaultGroupId},${item.code},${balance},${minStock},Active\n`;
+    // If we have sample items, use them
+    if (sampleItems.length > 0 && sampleStores.length > 0 && sampleGroups.length > 0) {
+      sampleItems.slice(0, 3).forEach((item, index) => {
+        const storeIndex = index % sampleStores.length;
+        const groupIndex = index % sampleGroups.length;
+        sampleData.push({
+          storeId: sampleStores[storeIndex].id,
+          groupId: sampleGroups[groupIndex].id,
+          itemCode: item.code,  // Use the actual item code like "SDT000001"
+          balance: (index + 1) * 50,
+          minStock: (index + 1) * 5,
+          status: "Active"
+        });
       });
     } else {
-      // Fallback with user's default IDs
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002001,50,5,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002002,100,10,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002003,150,15,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002004,200,20,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002005,250,25,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002006,300,30,Active\n`;
+      // Fallback sample data if no items found
+      sampleData.push(
+        { storeId: 1, groupId: 1, itemCode: "SDT000001", balance: 100, minStock: 10, status: "Active" },
+        { storeId: 2, groupId: 2, itemCode: "SDT000002", balance: 200, minStock: 20, status: "Active" },
+        { storeId: 3, groupId: 3, itemCode: "SDT000003", balance: 150, minStock: 15, status: "Active" }
+      );
     }
 
-    // Add BOM for Excel compatibility
-    const csvWithBOM = "\uFEFF" + csvContent;
+    // Generate CSV content
+    let csvContent = headers.join(",") + "\n";
+    
+    // Add data rows
+    sampleData.forEach((row) => {
+      const values = headers.map((h) => row[h] || "");
+      csvContent += values.join(",") + "\n";
+    });
+
+    // Add comments/instructions as comments in CSV
+    const comments = [
+      '# ============================================',
+      '# STORE BALANCE IMPORT TEMPLATE',
+      '# ============================================',
+      '#',
+      '# INSTRUCTIONS:',
+      '# 1. Use the itemCode (e.g., SDT000001) instead of numeric itemId',
+      '# 2. You can find item codes in the Items list',
+      '# 3. Required columns: storeId, groupId, itemCode, balance',
+      '# 4. Optional: minStock, status (defaults to "Active")',
+      '# 5. All columns must be in the order shown above',
+      '#',
+      '# Sample item codes from your system:',
+    ];
+
+    // Add sample item codes as comments
+    const itemCodes = await Item.findAll({
+      limit: 10,
+      attributes: ['code', 'standardName'],
+      where: { status: 'Active' },
+      order: [['code', 'ASC']]
+    });
+
+    itemCodes.forEach(item => {
+      comments.push(`#   - ${item.code}: ${item.standardName}`);
+    });
+
+    comments.push('# ============================================');
+    
+    // Add comments at the top of the CSV
+    csvContent = comments.join("\n") + "\n" + csvContent;
+    csvContent = "\uFEFF" + csvContent; // Add BOM for Excel
 
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename=balance_import_template_${new Date().toISOString().split("T")[0]}.csv`);
-    res.send(csvWithBOM);
+    res.send(csvContent);
     
   } catch (error) {
-    console.error("❌ Download template error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to download template' 
-    });
+    console.error("Download template error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
+
 // ============================================
 // 18. IMPORT BALANCES FROM CSV
 // ============================================
-// balanceController.js - FIXED importBalances with valid user ID
+// balanceController.js - UPDATED importBalances method with item code support
 
+// ============================================
+// 10. IMPORT BALANCES FROM CSV - WITH ITEM CODE SUPPORT
+// ============================================
 exports.importBalances = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -1921,133 +1479,51 @@ exports.importBalances = async (req, res) => {
       });
     }
 
-    // ✅ FIX: Get a valid user ID from the database
-    let userId = req.user?.userId || null;
-    
-    // If no user from request, find a valid active user
-    if (!userId) {
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ['userId'],
-        order: [['userId', 'ASC']]
-      });
-      userId = defaultUser ? defaultUser.userId : null;
-    }
-    
-    // If still no user, get any user (fallback)
-    if (!userId) {
-      const anyUser = await User.findOne({
-        attributes: ['userId'],
-        order: [['userId', 'ASC']]
-      });
-      userId = anyUser ? anyUser.userId : null;
-    }
-    
-    // If still no user, use null (history will be skipped)
-    if (!userId) {
-      console.warn('⚠️ No valid user found, skipping history records');
-    }
-
-    console.log('👤 Using userId for import:', userId);
-
+    const userId = req.user ? req.user.userId : 1;
     const results = [];
     const errors = [];
     let successCount = 0;
     let failedCount = 0;
 
-    // Read the file content first to detect separator
-    const fileContent = fs.readFileSync(req.file.path, 'utf8');
-    const lines = fileContent.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
-
-    if (lines.length < 2) {
-      throw new Error('CSV file must contain headers and at least one data row');
-    }
-
-    // Detect separator - check if first line has tabs or commas
-    const firstLine = lines[0];
-    const hasTabs = firstLine.includes('\t');
-    const hasCommas = firstLine.includes(',');
-    
-    let separator = ',';
-    if (hasTabs && !hasCommas) {
-      separator = '\t';
-      console.log('📋 Detected tab-separated values (TSV)');
-    } else if (hasCommas) {
-      separator = ',';
-      console.log('📋 Detected comma-separated values (CSV)');
-    } else {
-      console.log('📋 Could not detect separator, using comma');
-    }
-
-    // Parse headers
-    const headers = lines[0].split(separator).map(h => h.trim().toLowerCase());
-    console.log('📋 Headers:', headers);
-
-    // Required columns
-    const requiredHeaders = ['storeid', 'groupid', 'balance'];
-    const hasItemId = headers.includes('itemid');
-    const hasItemCode = headers.includes('itemcode');
-
-    if (!hasItemId && !hasItemCode) {
-      throw new Error('CSV must contain either "itemId" or "itemCode" column');
-    }
-
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    if (missingHeaders.length > 0) {
-      throw new Error(`Missing required headers: ${missingHeaders.join(', ')}`);
-    }
-
-    // Parse data rows
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      const values = line.split(separator).map(v => v.trim());
-      const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx] || '';
-      });
-
-      results.push(row);
-    }
-
-    console.log(`📄 Parsed ${results.length} rows from CSV`);
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on("data", (data) => results.push(data))
+        .on("end", resolve)
+        .on("error", reject);
+    });
 
     for (let i = 0; i < results.length; i++) {
       const row = results[i];
       const rowNumber = i + 2;
 
       try {
-        // Get values from CSV
-        const storeId = parseInt(row.storeid);
-        const groupId = parseInt(row.groupid);
-        const itemCode = (row.itemcode || row.itemid || '').trim();
+        // Get values from CSV - support both itemId and itemCode
+        const storeId = parseInt(row.storeId);
+        const groupId = parseInt(row.groupId);
+        const itemCode = row.itemCode || row.itemId; // Support both column names
         const balance = parseFloat(row.balance);
-        const minStock = parseInt(row.minstock) || 0;
+        const minStock = parseInt(row.minStock) || 0;
         const status = row.status || "Active";
-
-        console.log(`📊 Row ${rowNumber}: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`);
 
         // Validate required fields
         if (isNaN(storeId) || isNaN(groupId) || !itemCode || isNaN(balance)) {
-          throw new Error(`storeId, groupId, itemCode, and balance are required. Got: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`);
+          throw new Error("storeId, groupId, itemCode, and balance are required");
         }
 
         // Find the item by code
         const item = await Item.findOne({
-          where: { code: itemCode },
-          attributes: ['itemId', 'code', 'name', 'standardName']
+          where: { code: itemCode.trim() },
+          attributes: ['id', 'code', 'name', 'standardName']
         });
 
         if (!item) {
           failedCount++;
           errors.push(`Row ${rowNumber}: Item with code "${itemCode}" not found`);
-          console.log(`❌ Row ${rowNumber}: Item not found: ${itemCode}`);
           continue;
         }
 
-        const itemId = item.itemId;
-        console.log(`✅ Row ${rowNumber}: Found item: ${itemCode} (ID: ${itemId})`);
+        const itemId = item.id;
 
         // Check if balance already exists
         const existing = await StoreBalance.findOne({
@@ -2061,7 +1537,6 @@ exports.importBalances = async (req, res) => {
         if (existing) {
           failedCount++;
           errors.push(`Row ${rowNumber}: Balance already exists for item "${itemCode}" (${item.standardName || item.name})`);
-          console.log(`⏭️ Row ${rowNumber}: Balance already exists for ${itemCode}`);
           continue;
         }
 
@@ -2075,27 +1550,23 @@ exports.importBalances = async (req, res) => {
           status: status,
         }, { transaction });
 
-        // ✅ Create history record only if we have a valid userId
-        if (userId) {
-          await StoreBalanceHistory.create({
-            balanceId: balanceRecord.id,
-            storeId: storeId,
-            groupId: groupId,
-            itemId: itemId,
-            previousBalance: 0,
-            newBalance: balance,
-            changeAmount: balance,
-            transactionType: "Stock In",
-            referenceType: "initialization",
-            changedBy: userId,
-            remark: `CSV import - Initial balance setup for ${itemCode}`,
-          }, { transaction });
-        } else {
-          console.warn(`⚠️ No valid userId, skipping history for row ${rowNumber}`);
-        }
+        // Create history record
+        await StoreBalanceHistory.create({
+          balanceId: balanceRecord.id,
+          storeId: storeId,
+          groupId: groupId,
+          itemId: itemId,
+          previousBalance: 0,
+          newBalance: balance,
+          changeAmount: balance,
+          transactionType: "Stock In",
+          referenceType: "initialization",
+          changedBy: userId,
+          remark: `CSV import - Initial balance setup for ${itemCode}`,
+        }, { transaction });
 
         successCount++;
-        console.log(`✅ Row ${rowNumber}: Imported ${itemCode} - Balance: ${balance}`);
+        console.log(`✅ Imported: ${itemCode} (${item.standardName || item.name}) - Balance: ${balance}`);
 
       } catch (rowError) {
         failedCount++;
@@ -2107,14 +1578,19 @@ exports.importBalances = async (req, res) => {
     await transaction.commit();
     safeDelete(req.file.path);
 
+    // Prepare response with detailed info
     const responseData = {
       total: results.length,
       success: successCount,
       failed: failedCount,
-      errors: errors.slice(0, 20),
+      errors: errors.slice(0, 20), // Limit errors to avoid huge response
     };
 
-    console.log(`📊 Import completed: ${successCount} success, ${failedCount} failed`);
+    // If there are errors, log them for debugging
+    if (errors.length > 0) {
+      console.log(`⚠️ Import completed with ${errors.length} errors:`);
+      errors.slice(0, 10).forEach(err => console.log(`   - ${err}`));
+    }
 
     res.status(200).json({
       success: true,
@@ -2132,6 +1608,7 @@ exports.importBalances = async (req, res) => {
     });
   }
 };
+
 // ============================================
 // 19. EXPORT BALANCES
 // ============================================
@@ -2883,753 +2360,6 @@ exports.getUserStoreAndGroupAccess = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get user access'
-    });
-  }
-};
-
-
-
-
-
-
-
-
-
-
-// ============================================
-// GET REQUEST GROUP PROCESSING STATUS
-// ============================================
-exports.getRequestGroupStatus = async (req, res) => {
-  try {
-    const { requestId } = req.params;
-
-    const request = await ItemRequest.findByPk(requestId);
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: 'Request not found'
-      });
-    }
-
-    // Get all groups that have access to this store (asking or supplying)
-    const storeId = request.askingStoreId || request.supplyingStoreId;
-    
-    // Get groups for this store via StoreGroupRelation
-    const storeWithGroups = await Store.findByPk(storeId, {
-      include: [
-        {
-          model: Group,
-          as: 'groups',
-          through: { attributes: [] },
-          attributes: ['groupId', 'name', 'code', 'description', 'status']
-        }
-      ]
-    });
-
-    const allGroups = storeWithGroups?.groups || [];
-
-    // Get processing records for this request
-    const processingRecords = await RequestGroupProcessing.findAll({
-      where: { requestId: parseInt(requestId) },
-      include: [
-        {
-          model: Group,
-          as: 'group',
-          attributes: ['groupId', 'name', 'code']
-        },
-        {
-          model: User,
-          as: 'processedByUser',
-          attributes: ['userId', 'username', 'fullName']
-        }
-      ]
-    });
-
-    // Build the response
-    const groupsWithStatus = allGroups.map(group => {
-      const record = processingRecords.find(r => r.groupId === group.groupId);
-      return {
-        groupId: group.groupId,
-        groupName: group.name,
-        groupCode: group.code,
-        status: record?.status || 'pending',
-        processedAt: record?.processedAt || null,
-        processedBy: record?.processedByUser ? {
-          userId: record.processedByUser.userId,
-          username: record.processedByUser.username,
-          fullName: record.processedByUser.fullName
-        } : null,
-        remark: record?.remark || null
-      };
-    });
-
-    const processedCount = groupsWithStatus.filter(g => g.status === 'processed').length;
-    const totalGroups = groupsWithStatus.length;
-    const isFullyProcessed = processedCount === totalGroups && totalGroups > 0;
-
-    res.status(200).json({
-      success: true,
-      data: {
-        requestId: parseInt(requestId),
-        requestCode: request.requestCode,
-        totalGroups: totalGroups,
-        processedCount: processedCount,
-        isFullyProcessed: isFullyProcessed,
-        groups: groupsWithStatus
-      }
-    });
-  } catch (error) {
-    console.error('❌ Get request group status error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP
-// ============================================
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH AUTO-INITIALIZATION
-// ============================================
-exports.processRequestForGroup = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { requestId } = req.params;
-    const { groupId, storeId } = req.body;
-    const userId = req.user?.userId || 1;
-
-    console.log('📤 Processing request for group:', { requestId, groupId, storeId, userId });
-
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
-    if (!groupId || !storeId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Group ID and Store ID are required'
-      });
-    }
-
-    // ================================================================
-    // 2. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
-    const group = await Group.findByPk(parseInt(groupId));
-    if (!group) {
-      return res.status(404).json({
-        success: false,
-        error: 'Group not found'
-      });
-    }
-
-    if (group.status !== 'Active') {
-      return res.status(400).json({
-        success: false,
-        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`
-      });
-    }
-
-    // ================================================================
-    // 3. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
-    const store = await Store.findByPk(parseInt(storeId));
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: 'Store not found'
-      });
-    }
-
-    if (store.status !== 'Active') {
-      return res.status(400).json({
-        success: false,
-        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`
-      });
-    }
-
-    // ================================================================
-    // 4. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
-    const storeGroupRelation = await StoreGroupRelation.findOne({
-      where: {
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId)
-      }
-    });
-
-    if (!storeGroupRelation) {
-      return res.status(403).json({
-        success: false,
-        error: `Group "${group.name}" does not have access to store "${store.name}"`
-      });
-    }
-
-    // ================================================================
-    // 5. CHECK IF REQUEST EXISTS AND IS APPROVED
-    // ================================================================
-    const request = await ItemRequest.findByPk(requestId, {
-      include: [
-        {
-          model: ItemRequestDetail,
-          as: 'items',
-          include: [
-            {
-              model: Item,
-              as: 'item',
-              attributes: ['id', 'code', 'name', 'standardName', 'conversionValue', 'status']
-            }
-          ]
-        }
-      ]
-    });
-
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: 'Request not found'
-      });
-    }
-
-    if (request.status !== 'approved') {
-      return res.status(400).json({
-        success: false,
-        error: `Request is ${request.status}. Only approved requests can be processed.`
-      });
-    }
-
-    if (request.status === 'finalized') {
-      return res.status(400).json({
-        success: false,
-        error: 'This request has already been finalized'
-      });
-    }
-
-    // ================================================================
-    // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-    // ================================================================
-    const existingRecord = await RequestGroupProcessing.findOne({
-      where: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId)
-      }
-    });
-
-    if (existingRecord && existingRecord.status === 'processed') {
-      return res.status(400).json({
-        success: false,
-        error: 'This group has already processed this request'
-      });
-    }
-
-    if (existingRecord && existingRecord.status === 'skipped') {
-      return res.status(400).json({
-        success: false,
-        error: 'This group has been skipped for this request by an administrator'
-      });
-    }
-
-    // ================================================================
-    // 7. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-    // ================================================================
-    if (request.askingStoreId !== parseInt(storeId) && request.supplyingStoreId !== parseInt(storeId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'This store is neither the asking nor supplying store for this request'
-      });
-    }
-
-    // ================================================================
-    // 8. 🔥 CHECK AND AUTO-INITIALIZE MISSING ITEMS
-    // ================================================================
-    const missingItems = [];
-    const inactiveItems = [];
-    const initializedItems = [];
-    const autoInitializedItems = [];
-
-    for (const item of request.items) {
-      // Check if item exists and is active
-      if (!item.item) {
-        missingItems.push({
-          itemId: item.itemId,
-          itemCode: 'N/A',
-          itemName: 'Unknown Item (deleted)',
-          reason: 'Item not found in database'
-        });
-        continue;
-      }
-
-      if (item.item.status !== 'Active') {
-        inactiveItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || 'N/A',
-          itemName: item.item.standardName || item.item.name || 'Unknown Item',
-          reason: `Item status is ${item.item.status}`
-        });
-        continue;
-      }
-
-      // Check if balance exists for this store, group, and item
-      let balance = await StoreBalance.findOne({
-        where: {
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          itemId: item.itemId
-        }
-      });
-
-      if (!balance) {
-        // 🔥 AUTO-INITIALIZE THE BALANCE WITH 0
-        console.log(`📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`);
-        
-        balance = await StoreBalance.create({
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          itemId: item.itemId,
-          balance: 0, // Start with 0 balance
-          minStockAlert: 0,
-          status: 'Active'
-        }, { transaction });
-
-        // Create history record for initialization
-        await StoreBalanceHistory.create({
-          balanceId: balance.id,
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          itemId: item.itemId,
-          previousBalance: 0,
-          newBalance: 0,
-          changeAmount: 0,
-          transactionType: 'Stock In',
-          referenceType: 'auto_initialization',
-          referenceId: request.requestId,
-          changedBy: userId,
-          remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`
-        }, { transaction });
-
-        autoInitializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || 'N/A',
-          itemName: item.item.standardName || item.item.name || 'Unknown Item',
-          initializedBalance: 0
-        });
-
-        initializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || 'N/A',
-          itemName: item.item.standardName || item.item.name || 'Unknown Item',
-          currentBalance: 0,
-          minStock: 0,
-          wasAutoInitialized: true
-        });
-
-      } else if (balance.status !== 'Active') {
-        inactiveItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || 'N/A',
-          itemName: item.item.standardName || item.item.name || 'Unknown Item',
-          currentBalance: parseFloat(balance.balance),
-          reason: `Balance status is ${balance.status}`
-        });
-      } else {
-        initializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || 'N/A',
-          itemName: item.item.standardName || item.item.name || 'Unknown Item',
-          currentBalance: parseFloat(balance.balance),
-          minStock: parseFloat(balance.minStockAlert) || 0,
-          wasAutoInitialized: false
-        });
-      }
-    }
-
-    // If there are inactive items (cannot auto-fix), halt the process
-    if (inactiveItems.length > 0) {
-      let errorMessage = `Cannot process request. The following items are inactive:\n\n`;
-      inactiveItems.forEach(item => {
-        errorMessage += `  - ${item.itemCode}: ${item.itemName} (${item.reason})\n`;
-      });
-      errorMessage += `\n💡 Please activate these items before processing.`;
-
-      return res.status(400).json({
-        success: false,
-        error: 'Inactive items found',
-        message: errorMessage,
-        data: {
-          autoInitializedItems: autoInitializedItems,
-          inactiveItems: inactiveItems,
-          initializedItems: initializedItems,
-          totalItems: request.items.length,
-          initializedCount: initializedItems.length,
-          autoInitializedCount: autoInitializedItems.length,
-          inactiveCount: inactiveItems.length,
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          storeName: store.name,
-          groupName: group.name
-        }
-      });
-    }
-
-    // Log auto-initialized items
-    if (autoInitializedItems.length > 0) {
-      console.log(`✅ Auto-initialized ${autoInitializedItems.length} items for group ${group.name}:`);
-      autoInitializedItems.forEach(item => {
-        console.log(`   - ${item.itemCode}: ${item.itemName} (Balance: 0)`);
-      });
-    }
-
-    console.log(`✅ All ${request.items.length} items are ready for processing (${autoInitializedItems.length} auto-initialized)`);
-
-    // ================================================================
-    // 9. DETERMINE ACTION (Stock In or Stock Out)
-    // ================================================================
-    let action, transactionType, changeMultiplier, actionLabel;
-    if (request.askingStoreId === parseInt(storeId)) {
-      action = 'STOCK_IN';
-      transactionType = 'Stock In';
-      changeMultiplier = 1;
-      actionLabel = 'RECEIVED';
-    } else if (request.supplyingStoreId === parseInt(storeId)) {
-      action = 'STOCK_OUT';
-      transactionType = 'Stock Out';
-      changeMultiplier = -1;
-      actionLabel = 'SENT';
-    } else {
-      return res.status(400).json({
-        success: false,
-        error: 'This store is neither the asking nor supplying store for this request'
-      });
-    }
-
-    console.log(`📋 Action: ${action} for request ${request.requestCode}`);
-
-    // ================================================================
-    // 10. PROCESS EACH ITEM IN THE REQUEST
-    // ================================================================
-    const results = [];
-    const errors = [];
-
-    for (const item of request.items) {
-      try {
-        // Find the balance for this store, group, and item
-        const balance = await StoreBalance.findOne({
-          where: {
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId
-          }
-        });
-
-        if (!balance) {
-          errors.push(`Item "${item.item?.name || item.itemId}" not found in balance (should have been auto-initialized)`);
-          continue;
-        }
-
-        const previousBalance = parseFloat(balance.balance);
-        const quantity = parseFloat(item.quantity);
-        const changeAmount = quantity * changeMultiplier;
-        const newBalance = previousBalance + changeAmount;
-
-        // Check if we have enough stock for Stock Out
-        if (action === 'STOCK_OUT' && newBalance < 0) {
-          errors.push(`Insufficient balance for "${item.item?.name || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`);
-          continue;
-        }
-
-        // Update the balance
-        balance.balance = newBalance;
-        await balance.save({ transaction });
-
-        // Create history record
-        await StoreBalanceHistory.create({
-          balanceId: balance.id,
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          itemId: item.itemId,
-          previousBalance: previousBalance,
-          newBalance: newBalance,
-          changeAmount: Math.abs(changeAmount),
-          transactionType: transactionType,
-          sourceStoreId: action === 'STOCK_IN' ? request.supplyingStoreId : null,
-          destinationStoreId: action === 'STOCK_OUT' ? request.askingStoreId : null,
-          referenceType: 'request',
-          referenceId: request.requestId,
-          changedBy: userId,
-          remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ''}`
-        }, { transaction });
-
-        results.push({
-          itemId: item.itemId,
-          itemName: item.item?.standardName || item.item?.name || 'Unknown',
-          itemCode: item.item?.code || 'N/A',
-          previousBalance,
-          newBalance,
-          changeAmount: Math.abs(changeAmount),
-          action: action === 'STOCK_IN' ? 'ADDED' : 'REMOVED',
-          wasAutoInitialized: autoInitializedItems.some(ai => ai.itemId === item.itemId)
-        });
-
-        console.log(`✅ ${action === 'STOCK_IN' ? 'ADDED' : 'REMOVED'} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`);
-
-      } catch (itemError) {
-        console.error(`❌ Error processing item ${item.itemId}:`, itemError);
-        errors.push(`Error processing item ${item.itemId}: ${itemError.message}`);
-      }
-    }
-
-    // ================================================================
-    // 11. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-    // ================================================================
-    const remark = results.length > 0 
-      ? `Processed ${results.length} items (${results.map(r => `${r.itemCode}: ${r.action} ${r.changeAmount}${r.wasAutoInitialized ? ' [auto-initialized]' : ''}`).join(', ')})` 
-      : 'No items processed';
-
-    if (existingRecord) {
-      existingRecord.status = 'processed';
-      existingRecord.processedAt = new Date();
-      existingRecord.processedBy = userId;
-      existingRecord.remark = remark;
-      await existingRecord.save({ transaction });
-    } else {
-      await RequestGroupProcessing.create({
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId),
-        storeId: parseInt(storeId),
-        processedAt: new Date(),
-        status: 'processed',
-        processedBy: userId,
-        remark: remark
-      }, { transaction });
-    }
-
-    // ================================================================
-    // 12. CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-    // ================================================================
-    const storeWithGroups = await Store.findByPk(parseInt(storeId), {
-      include: [
-        {
-          model: Group,
-          as: 'groups',
-          through: { attributes: [] },
-          attributes: ['groupId', 'name', 'status'],
-          where: { status: 'Active' }
-        }
-      ]
-    });
-
-    const allGroupIds = storeWithGroups?.groups?.map(g => g.groupId) || [];
-    const processedRecords = await RequestGroupProcessing.findAll({
-      where: {
-        requestId: parseInt(requestId),
-        status: 'processed'
-      }
-    });
-    const processedGroupIds = processedRecords.map(r => r.groupId);
-    
-    const allProcessed = allGroupIds.every(g => processedGroupIds.includes(g));
-    const remainingGroups = allGroupIds.filter(g => !processedGroupIds.includes(g));
-
-    if (allProcessed && allGroupIds.length > 0) {
-      request.status = 'finalized';
-      request.finalizedAt = new Date();
-      await request.save({ transaction });
-      console.log(`✅ Request ${request.requestCode} fully processed and finalized by all ${allGroupIds.length} groups`);
-    }
-
-    await transaction.commit();
-
-    // ================================================================
-    // 13. PREPARE RESPONSE
-    // ================================================================
-    const responseData = {
-      requestId: parseInt(requestId),
-      requestCode: request.requestCode,
-      groupId: parseInt(groupId),
-      groupName: group.name,
-      storeId: parseInt(storeId),
-      storeName: store.name,
-      action: action,
-      actionLabel: actionLabel,
-      autoInitializedItems: autoInitializedItems,
-      processedItems: results,
-      errors: errors,
-      isFullyProcessed: allProcessed && allGroupIds.length > 0,
-      totalGroups: allGroupIds.length,
-      processedGroups: processedGroupIds.length,
-      remainingGroups: remainingGroups,
-      remainingGroupNames: remainingGroups.map(g => {
-        const grp = storeWithGroups?.groups?.find(g2 => g2.groupId === g);
-        return grp ? grp.name : g;
-      })
-    };
-
-    let statusMessage = `Request ${request.requestCode} processed for group ${group.name}`;
-    if (autoInitializedItems.length > 0) {
-      statusMessage += ` (${autoInitializedItems.length} item(s) auto-initialized)`;
-    }
-    if (responseData.isFullyProcessed) {
-      statusMessage += ` ✅ FULLY PROCESSED - All ${allGroupIds.length} groups have processed this request`;
-    } else if (remainingGroups.length > 0) {
-      statusMessage += ` ⏳ ${remainingGroups.length} group(s) remaining: ${responseData.remainingGroupNames.join(', ')}`;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: statusMessage,
-      data: responseData
-    });
-
-  } catch (error) {
-    await transaction.rollback();
-    console.error('❌ Process request for group error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to process request for group'
-    });
-  }
-};
-
-// ============================================
-// GET ALL REQUEST PROCESSING STATUS
-// ============================================
-exports.getAllRequestProcessingStatus = async (req, res) => {
-  try {
-    const { storeId } = req.query;
-
-    const whereClause = { status: 'approved' };
-    if (storeId) {
-      whereClause[Op.or] = [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) }
-      ];
-    }
-
-    const requests = await ItemRequest.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: RequestGroupProcessing,
-          as: 'groupProcessing',
-          include: [
-            {
-              model: Group,
-              as: 'group',
-              attributes: ['groupId', 'name', 'code']
-            }
-          ]
-        },
-        {
-          model: Store,
-          as: 'askingStore',
-          attributes: ['id', 'name', 'code']
-        },
-        {
-          model: Store,
-          as: 'supplyingStore',
-          attributes: ['id', 'name', 'code']
-        }
-      ]
-    });
-
-    const result = requests.map(request => {
-      const processedGroups = request.groupProcessing?.filter(g => g.status === 'processed') || [];
-      
-      // Get all groups for this store
-      const storeId = request.askingStoreId || request.supplyingStoreId;
-      
-      return {
-        requestId: request.requestId,
-        requestCode: request.requestCode,
-        askingStoreId: request.askingStoreId,
-        supplyingStoreId: request.supplyingStoreId,
-        status: request.status,
-        processedGroups: processedGroups.map(g => ({
-          groupId: g.groupId,
-          groupName: g.group?.name || null,
-          processedAt: g.processedAt
-        })),
-        processedCount: processedGroups.length,
-        // Note: totalGroups would need to be calculated from store-group relations
-        // This will be done in the frontend or with additional query
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      data: result
-    });
-  } catch (error) {
-    console.error('❌ Get all request processing status error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// SKIP GROUP PROCESSING (Admin Only)
-// ============================================
-exports.skipGroupProcessing = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { requestId } = req.params;
-    const { groupId, remark } = req.body;
-    const userId = req.user?.userId || 1;
-
-    // Check if user is admin
-    const user = await User.findByPk(userId);
-    if (!user || (user.role !== 'admin' && user.role !== 'Admin')) {
-      return res.status(403).json({
-        success: false,
-        error: 'Only admins can skip group processing'
-      });
-    }
-
-    const request = await ItemRequest.findByPk(requestId);
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: 'Request not found'
-      });
-    }
-
-    // Create or update the group processing record
-    const [record, created] = await RequestGroupProcessing.findOrCreate({
-      where: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId)
-      },
-      defaults: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId),
-        storeId: request.askingStoreId || request.supplyingStoreId,
-        status: 'skipped',
-        processedAt: new Date(),
-        processedBy: userId,
-        remark: remark || 'Skipped by admin'
-      },
-      transaction
-    });
-
-    if (!created) {
-      record.status = 'skipped';
-      record.processedAt = new Date();
-      record.processedBy = userId;
-      record.remark = remark || 'Skipped by admin';
-      await record.save({ transaction });
-    }
-
-    await transaction.commit();
-
-    res.status(200).json({
-      success: true,
-      message: `Group ${groupId} skipped for request ${request.requestCode}`,
-      data: record
-    });
-  } catch (error) {
-    await transaction.rollback();
-    console.error('❌ Skip group processing error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to skip group processing'
     });
   }
 };

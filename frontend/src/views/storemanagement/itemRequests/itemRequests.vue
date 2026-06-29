@@ -1,4 +1,3 @@
-<!-- views/storemanagement/itemRequests/itemRequests.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -17,7 +16,13 @@
             @input="onSearchChange"
           />
         </div>
-        <button class="btn-add" @click="openCreateModal">➕ New Request</button>
+        <button 
+          v-if="canCreateRequests" 
+          class="btn-add" 
+          @click="openCreateModal"
+        >
+          ➕ New Request
+        </button>
       </div>
     </div>
 
@@ -70,7 +75,13 @@
               <div class="empty-content">
                 <span class="empty-icon">📦</span>
                 <p>No requests found</p>
-                <button class="btn-secondary" @click="openCreateModal">Create First Request</button>
+                <button 
+                  v-if="canCreateRequests" 
+                  class="btn-secondary" 
+                  @click="openCreateModal"
+                >
+                  Create First Request
+                </button>
               </div>
             </td>
           </tr>
@@ -102,7 +113,12 @@
                   <button class="icon-btn print-btn" @click="printRequest(req)" title="Print Request">
                     🖨️
                   </button>
-                  <button v-if="req.status !== 'finalized'" class="icon-btn" @click="editRequest(req)" title="Edit">
+                  <button 
+                    v-if="req.status !== 'finalized'" 
+                    class="icon-btn" 
+                    @click="editRequest(req)" 
+                    title="Edit"
+                  >
                     ✏️
                   </button>
                   <button 
@@ -121,14 +137,14 @@
                   >
                     🚫
                   </button>
-                  <button 
+                  <!-- <button 
                     v-if="req.status === 'approved'"
                     class="icon-btn" 
                     @click="openStatusConfirmation(req, 'finalized')" 
                     title="Finalize"
                   >
                     📋
-                  </button>
+                  </button> -->
                 </div>
               </td>
             </tr>
@@ -211,7 +227,11 @@
                       <button class="btn-print-detail" @click="printRequest(req)">
                         🖨️ Print Request
                       </button>
-                      <button v-if="req.status !== 'finalized'" class="btn-edit-detail" @click="editRequest(req)">
+                      <button 
+                        v-if="req.status !== 'finalized'" 
+                        class="btn-edit-detail" 
+                        @click="editRequest(req)"
+                      >
                         ✏️ Edit
                       </button>
                       <button 
@@ -270,26 +290,105 @@
           <button class="modal-close" @click="closeModal">✕</button>
         </div>
         <div class="modal-body">
-          <form @submit.prevent="saveRequest" class="request-form">
+          <!-- ================================================================ -->
+          <!-- 🔥 VALIDATION ERRORS DISPLAY -->
+          <!-- ================================================================ -->
+         <!-- ================================================================ -->
+<!-- 🔥 VALIDATION ERRORS DISPLAY -->
+<!-- ================================================================ -->
+<div v-if="showValidationErrors && validationErrors.length > 0" class="validation-error-box">
+  <div class="validation-error-header">
+    <span class="error-icon">❌</span>
+    <span class="error-title">Request Validation Failed</span>
+  </div>
+  
+  <!-- Display the main message -->
+  <div class="validation-error-message">{{ validationMessage }}</div>
+  
+  <!-- Display each error -->
+  <div class="validation-error-list">
+    <div v-for="(error, index) in validationErrors" :key="index" class="validation-error-item">
+      <!-- Error Header with Item Info -->
+      <div class="error-item-header">
+        <span class="error-item-icon">📦</span>
+        <span class="error-item-title">
+          <strong>{{ error.itemName || 'Unknown Item' }}</strong>
+          <span v-if="error.itemCode" class="error-code">({{ error.itemCode }})</span>
+          <span v-if="error.requestedQuantity" class="error-quantity">
+            Requested: {{ error.requestedQuantity }}
+          </span>
+        </span>
+      </div>
+      
+      <!-- Error Message -->
+      <div class="error-item-message">{{ error.message }}</div>
+      
+      <!-- Missing Groups (if any) -->
+      <div v-if="error.groupsWithoutBalance && error.groupsWithoutBalance.length > 0" class="error-groups">
+        <span class="groups-label">📋 Missing Groups:</span>
+        <span v-for="(group, idx) in error.groupsWithoutBalance" :key="idx" class="group-tag">
+          {{ group.groupName }}
+        </span>
+      </div>
+      
+      <!-- Balance Details (if any) -->
+      <div v-if="error.balanceDetails && error.balanceDetails.length > 0" class="error-balance-details">
+        <span class="balance-label">📊 Balance Variation:</span>
+        <div class="balance-list">
+          <span v-for="(detail, idx) in error.balanceDetails" :key="idx" class="balance-item">
+            {{ detail.groupName }}: {{ detail.balance }}
+          </span>
+        </div>
+      </div>
+      
+      <!-- Shortage (if any) -->
+      <div v-if="error.shortage" class="error-shortage">
+        ⚠️ Shortage: <strong>{{ error.shortage }}</strong> {{ error.uomCode || 'units' }}
+      </div>
+    </div>
+  </div>
+  
+  <!-- Dismiss Button -->
+  <div class="validation-actions">
+    <button class="btn-secondary" @click="closeValidationErrors">✕ Dismiss</button>
+  </div>
+</div>
+
+          <!-- ================================================================ -->
+          <!-- REQUEST FORM -->
+          <!-- ================================================================ -->
+          <form @submit.prevent="saveRequest" class="request-form" v-show="!showValidationErrors">
             <!-- Store Selection -->
             <div class="form-row">
               <div class="form-group">
                 <label>Asking Store (Source) *</label>
-                <select v-model="form.askingStoreId" required>
+                <select 
+                  v-model="form.askingStoreId" 
+                  required 
+                  :disabled="!!userAssignedStoreId || editingRequest"
+                >
                   <option value="">Select Store</option>
                   <option v-for="store in activeStores" :key="store.storeId || store.id" :value="store.storeId || store.id">
                     {{ store.name }}
                   </option>
                 </select>
+                <span v-if="userAssignedStoreId" class="hint">
+                  📌 Using your assigned store: {{ getUserAssignedStoreName() }}
+                </span>
               </div>
               <div class="form-group">
                 <label>Supplying Store (Target) *</label>
                 <select v-model="form.supplyingStoreId" required>
                   <option value="">Select Store</option>
-                  <option v-for="store in filteredSupplyingStores" :key="store.storeId || store.id" :value="store.storeId || store.id">
+                  <option 
+                    v-for="store in filteredSupplyingStores" 
+                    :key="store.storeId || store.id" 
+                    :value="store.storeId || store.id"
+                  >
                     {{ store.name }}
                   </option>
                 </select>
+                <span class="hint">Select the store that will supply the items</span>
               </div>
             </div>
 
@@ -315,7 +414,11 @@
                   <label>Item *</label>
                   <select v-model="item.itemId" required @change="updateItemDetails(index)">
                     <option value="">Select Item</option>
-                    <option v-for="itemOption in items" :key="itemOption.itemId || itemOption.id" :value="itemOption.itemId || itemOption.id">
+                    <option 
+                      v-for="itemOption in items" 
+                      :key="itemOption.itemId || itemOption.id" 
+                      :value="itemOption.itemId || itemOption.id"
+                    >
                       {{ itemOption.name }} - {{ itemOption.standardName || 'N/A' }} ({{ itemOption.code }})
                     </option>
                   </select>
@@ -429,6 +532,10 @@
                 <span>Total Items:</span>
                 <strong>{{ form.items.length }}</strong>
               </div>
+              <div class="summary-item">
+                <span>Total Quantity:</span>
+                <strong>{{ getTotalQuantity() }}</strong>
+              </div>
             </div>
 
             <div v-if="formErrors.length > 0" class="form-errors">
@@ -441,6 +548,7 @@
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeModal">Cancel</button>
           <button 
+            v-show="!showValidationErrors"
             class="btn-primary" 
             @click="saveRequest" 
             :disabled="saving || !isFormValid"
@@ -549,6 +657,11 @@ const loading = ref(false)
 const loadingStores = ref(false)
 const loadingItems = ref(false)
 
+// User data
+const userAssignedStoreId = ref<number | null>(null)
+const userAssignedStoreName = ref<string | null>(null)
+const userIsAdmin = ref(false)
+
 // Filters & Search
 const searchQuery = ref('')
 const filterStatus = ref('all')
@@ -556,6 +669,11 @@ const filterStore = ref('all')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const totalItems = ref(0)
+
+// 🔥 Validation Errors
+const validationErrors = ref<any[]>([])
+const validationMessage = ref<string>('')
+const showValidationErrors = ref(false)
 
 // Expand
 const expandedRow = ref<number | null>(null)
@@ -624,7 +742,6 @@ const hasActiveFilters = computed(() => {
          searchQuery.value
 })
 
-// API handles filtering and pagination, so we just use requests directly
 const paginatedRequests = computed(() => {
   return requests.value
 })
@@ -633,9 +750,37 @@ const totalPages = computed(() => {
   return Math.ceil(totalItems.value / pageSize.value) || 1
 })
 
+// -- User Permissions --
+const canCreateRequests = computed(() => {
+  if (userIsAdmin.value) return true
+  return !!userAssignedStoreId.value
+})
+
 // ================================================================
 // METHODS
 // ================================================================
+
+// -- User Data --
+const loadUserData = () => {
+  const user = authStore.user
+  if (user) {
+    const userData = user as any
+    userIsAdmin.value = userData.isAdmin || user.role === 'admin' || user.role === 'Admin'
+    
+    if (user && 'assignedStore' in user && user.assignedStore) {
+      const assignedStore = user.assignedStore as any
+      userAssignedStoreId.value = assignedStore.id || null
+      userAssignedStoreName.value = assignedStore.name || null
+    } else {
+      userAssignedStoreId.value = null
+      userAssignedStoreName.value = null
+    }
+  }
+}
+
+const getUserAssignedStoreName = (): string => {
+  return userAssignedStoreName.value || 'No store assigned'
+}
 
 // -- Load Data --
 const loadStores = async () => {
@@ -675,13 +820,24 @@ const loadItems = async () => {
 const loadRequests = async () => {
   loading.value = true
   try {
-    const response = await itemRequestService.getRequests({
+    const filters: any = {
       page: currentPage.value,
       limit: pageSize.value,
       search: searchQuery.value || undefined,
-      status: filterStatus.value === 'all' ? undefined : filterStatus.value as any,
-      storeId: filterStore.value === 'all' ? undefined : Number(filterStore.value)
-    })
+    }
+
+    if (!userIsAdmin.value && userAssignedStoreId.value) {
+      filters.storeId = userAssignedStoreId.value
+    }
+
+    if (filterStatus.value !== 'all') {
+      filters.status = filterStatus.value
+    }
+    if (filterStore.value !== 'all') {
+      filters.storeId = Number(filterStore.value)
+    }
+
+    const response = await itemRequestService.getRequests(filters)
     
     if (response.success) {
       requests.value = response.data.requests
@@ -796,6 +952,10 @@ const getCurrentUserId = (): number | undefined => {
   return authStore.user?.userId
 }
 
+const getTotalQuantity = (): number => {
+  return form.value.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+}
+
 // -- Item Row Management --
 const addItemRow = (): void => {
   form.value.items.push({
@@ -822,12 +982,30 @@ const toggleExpand = (id?: number): void => {
   expandedRow.value = expandedRow.value === id ? null : id
 }
 
+// -- Validation Error Display --
+const closeValidationErrors = (): void => {
+  showValidationErrors.value = false
+  validationErrors.value = []
+  validationMessage.value = ''
+}
+
 // -- Modal Methods --
 const openCreateModal = (): void => {
+  if (!canCreateRequests.value) {
+    showToastMessage('You do not have permission to create requests', 'error')
+    return
+  }
+
   editingRequest.value = null
   const today: string = new Date().toISOString().split('T')[0]
+  
+  // Clear validation errors
+  closeValidationErrors()
+  
+  const askingStoreId = userIsAdmin.value ? '' : String(userAssignedStoreId.value || '')
+  
   form.value = {
-    askingStoreId: '',
+    askingStoreId: askingStoreId,
     supplyingStoreId: '',
     items: [{ itemId: 0, quantity: 1, remark: '' }],
     requestedBy: getCurrentUser(),
@@ -842,9 +1020,15 @@ const openCreateModal = (): void => {
 const editRequest = (req: ItemRequest): void => {
   editingRequest.value = req
   const today: string = new Date().toISOString().split('T')[0]
-  const requestedDate: string = req.requestedDate ?? today
+  const requestedDate = req.requestedDate || today
+  
+  // Clear validation errors
+  closeValidationErrors()
+  
+  const askingStoreId = String(req.askingStoreId)
+  
   form.value = {
-    askingStoreId: String(req.askingStoreId),
+    askingStoreId: askingStoreId,
     supplyingStoreId: String(req.supplyingStoreId),
     items: req.items
       ? req.items.map(item => ({ ...item, itemId: Number((item as any).itemId || 0) }))
@@ -861,10 +1045,14 @@ const editRequest = (req: ItemRequest): void => {
 const closeModal = (): void => {
   showModal.value = false
   editingRequest.value = null
+  closeValidationErrors()
 }
 
 // -- Save Request --
+// -- Save Request --
 const saveRequest = async (): Promise<void> => {
+  // Clear previous validation errors
+  closeValidationErrors()
   formErrors.value = []
 
   if (!form.value.askingStoreId) {
@@ -920,25 +1108,60 @@ const saveRequest = async (): Promise<void> => {
       response = await itemRequestService.updateRequest(requestId!, requestData)
       if (response.success) {
         showToastMessage('Request updated successfully! Status reset to Pending', 'success')
+        await loadRequests()
+        closeModal()
+        saving.value = false
+        return
       } else {
         showToastMessage(response.error || 'Failed to update request', 'error')
+        saving.value = false
         return
       }
     } else {
       response = await itemRequestService.createRequest(requestData)
+      
+      console.log('📦 API Response:', response)
+      
+      // 🔥 FIX: Check for validation errors in the response
+      if (!response.success) {
+        // Check if this is a validation error response
+        if (response.errors && response.errors.length > 0) {
+          console.log('🔍 Validation Errors:', JSON.stringify(response.errors, null, 2))
+          validationErrors.value = response.errors
+          validationMessage.value = response.message || 'The request cannot be created due to the following issues:'
+          showValidationErrors.value = true
+          showToastMessage('Validation failed - please fix the issues below', 'error')
+          saving.value = false
+          return
+        } else {
+          showToastMessage(response.error || 'Failed to create request', 'error')
+          saving.value = false
+          return
+        }
+      }
+      
       if (response.success) {
         showToastMessage('Request created successfully!', 'success')
-      } else {
-        showToastMessage(response.error || 'Failed to create request', 'error')
+        await loadRequests()
+        closeModal()
+        saving.value = false
         return
       }
     }
-
-    currentPage.value = 1
-    await loadRequests()
-    closeModal()
   } catch (error: any) {
-    showToastMessage(error.message || 'Failed to save request', 'error')
+    console.error('Save request error:', error)
+    const errorData = error.response?.data
+    
+    // 🔥 Check if the error response contains validation errors
+    if (errorData && errorData.errors && errorData.errors.length > 0) {
+      console.log('🔍 Error Response Errors:', JSON.stringify(errorData.errors, null, 2))
+      validationErrors.value = errorData.errors
+      validationMessage.value = errorData.message || 'The request cannot be created due to the following issues:'
+      showValidationErrors.value = true
+      showToastMessage('Validation failed - please fix the issues below', 'error')
+    } else {
+      showToastMessage(error.message || 'Failed to save request', 'error')
+    }
   } finally {
     saving.value = false
   }
@@ -1078,20 +1301,17 @@ const showToastMessage = (msg: string, type: 'success' | 'error' | 'info' | 'war
 // WATCHERS
 // ================================================================
 
-// Watch for filter changes
 watch([filterStatus, filterStore, searchQuery], () => {
   currentPage.value = 1
   loadRequests()
 })
 
-// Watch for page changes
 watch(currentPage, (newPage, oldPage) => {
   if (newPage !== oldPage) {
     loadRequests()
   }
 })
 
-// Watch for page size changes
 watch(pageSize, () => {
   currentPage.value = 1
   loadRequests()
@@ -1102,16 +1322,182 @@ watch(pageSize, () => {
 // ================================================================
 
 onMounted(async () => {
+  loadUserData()
+  
   await Promise.all([
     loadStores(),
     loadItems(),
     loadRequests()
   ])
+
+  if (!userIsAdmin.value && userAssignedStoreId.value) {
+    filterStore.value = String(userAssignedStoreId.value)
+  }
 })
 </script>
 
-
 <style scoped>
+
+/* ================================================================
+   VALIDATION ERROR BOX
+   ================================================================ */
+.validation-error-box {
+  background: #fef2f2;
+  border: 2px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.validation-error-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.validation-error-header .error-icon {
+  font-size: 20px;
+}
+
+.validation-error-header .error-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.validation-error-message {
+  color: #7f1d1d;
+  font-size: 14px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+.validation-error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 350px;
+  overflow-y: auto;
+}
+
+.validation-error-item {
+  background: white;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.error-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.error-item-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.error-item-title {
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.error-code {
+  color: #64748b;
+  font-weight: normal;
+  margin-left: 4px;
+}
+
+.error-quantity {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.error-item-message {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 6px;
+  padding-left: 28px;
+}
+
+.error-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-left: 28px;
+  margin-top: 4px;
+}
+
+.groups-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.group-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.error-balance-details {
+  padding-left: 28px;
+  margin-top: 4px;
+}
+
+.balance-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.balance-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.balance-item {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.error-shortage {
+  padding-left: 28px;
+  margin-top: 6px;
+  padding: 4px 12px;
+  background: #fee2e2;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #991b1b;
+}
+
+.validation-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -2249,6 +2635,168 @@ onMounted(async () => {
 
 .toast.warning {
   background: #f59e0b;
+}
+
+/* ================================================================
+   VALIDATION ERROR BOX
+   ================================================================ */
+.validation-error-box {
+  background: #fef2f2;
+  border: 2px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.validation-error-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.validation-error-header .error-icon {
+  font-size: 20px;
+}
+
+.validation-error-header .error-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.validation-error-message {
+  color: #7f1d1d;
+  font-size: 14px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+.validation-error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 350px;
+  overflow-y: auto;
+}
+
+.validation-error-item {
+  background: white;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.error-item {
+  display: flex;
+  gap: 10px;
+}
+
+.error-item-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.error-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-item-title {
+  font-size: 14px;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.error-code {
+  color: #64748b;
+  font-weight: normal;
+  margin-left: 4px;
+}
+
+.error-quantity {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.error-item-message {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.error-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.groups-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.group-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.error-balance-details {
+  margin-top: 6px;
+}
+
+.balance-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.balance-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.balance-item {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.error-shortage {
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: #fee2e2;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #991b1b;
+}
+
+.validation-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 /* ================================================================

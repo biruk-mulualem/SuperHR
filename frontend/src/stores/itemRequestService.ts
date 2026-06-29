@@ -94,6 +94,40 @@ export interface ItemRequestStats {
   }>;
 }
 
+// ✅ Validation Error Types
+export interface ValidationError {
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  requestedQuantity: number;
+  error: string;
+  message: string;
+  groupsWithoutBalance?: Array<{
+    groupId: number;
+    groupName: string;
+  }>;
+  balanceDetails?: Array<{
+    groupName: string;
+    balance: number;
+  }>;
+  shortage?: number;
+  uomCode?: string;
+}
+
+export interface ValidationErrorResponse {
+  success: false;
+  error: string;
+  message: string;
+  errors: ValidationError[];
+  data?: {
+    supplyingStoreId: number;
+    supplyingStoreName: string;
+    totalGroups: number;
+    validatedItems: any[];
+    failedItems: number;
+  };
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: {
@@ -114,6 +148,8 @@ export interface SingleRequestResponse {
   data: ItemRequest;
   message?: string;
   error?: string;
+  // ✅ ADD THIS - For validation errors
+  errors?: ValidationError[];
 }
 
 export interface StatsResponse {
@@ -428,10 +464,20 @@ class ItemRequestService {
       return response.data;
     } catch (error: any) {
       console.error('Create request error:', error);
+      
+      // 🔥 FIX: Check if the error response contains validation errors
+      const errorData = error.response?.data;
+      
+      // If this is a validation error response with errors array
+      if (errorData && errorData.errors && errorData.errors.length > 0) {
+        // Return the full validation error response
+        return errorData as SingleRequestResponse;
+      }
+      
       return {
         success: false,
         data: {} as ItemRequest,
-        error: error.response?.data?.error || 'Failed to create request'
+        error: error.response?.data?.error || error.response?.data?.message || 'Failed to create request'
       };
     }
   }
@@ -446,10 +492,20 @@ class ItemRequestService {
       return response.data;
     } catch (error: any) {
       console.error('Update request error:', error);
+      
+      // 🔥 Check if the error response contains validation errors
+      const errorData = error.response?.data;
+      
+      // If this is a validation error response with errors array
+      if (errorData && errorData.errors && errorData.errors.length > 0) {
+        // Return the full validation error response
+        return errorData as SingleRequestResponse;
+      }
+      
       return {
         success: false,
         data: {} as ItemRequest,
-        error: error.response?.data?.error || 'Failed to update request'
+        error: error.response?.data?.error || error.response?.data?.message || 'Failed to update request'
       };
     }
   }

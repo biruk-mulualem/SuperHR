@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Role, Department, Employee,Position } = require('../models');
+const { User, Role, Department, Employee,Position,Group,StoreGroupRelation ,Store } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -107,30 +107,37 @@ exports.login = async (req, res) => {
           model: Employee, 
           as: 'employee',
           required: false,
-         attributes: [
-  'employeeId', 'employeeCode', 'firstName', 'lastName', 
-  'middleName', 'profilePicture', 'profilePictureUrl', 'profilePicturePublicId',
-  'phoneNumber', 
-  'hireDateEC',    // Use the correct field name
-  'hireDateGC',    // Include this too if needed
-  'positionId', 
-  'employmentType', 
-  'employmentStatus',
-  'dateOfBirthEC', // Fix: Use dateOfBirthEC instead of dateOfBirth
-  'dateOfBirthGC', // Include this too if needed
-  'gender', 
-  'maritalStatus', 
-  'nationality',
-  'personalEmail', 
-  'workEmail', 
-  'emergencyContact',
-  'currentAddress', 
-  'permanentAddress', 
-  'basicSalary',
-  'bankAccount', 
-  'workLocation', 
-  'managerId'
-]
+          attributes: [
+            'employeeId', 'employeeCode', 'firstName', 'lastName', 
+            'middleName', 'profilePicture', 'profilePictureUrl', 'profilePicturePublicId',
+            'phoneNumber', 
+            'hireDateEC',
+            'hireDateGC',
+            'positionId', 
+            'employmentType', 
+            'employmentStatus',
+            'dateOfBirthEC',
+            'dateOfBirthGC',
+            'gender', 
+            'maritalStatus', 
+            'nationality',
+            'personalEmail', 
+            'workEmail', 
+            'emergencyContact',
+            'currentAddress', 
+            'permanentAddress', 
+            'basicSalary',
+            'bankAccount', 
+            'workLocation', 
+            'managerId'
+          ]
+        },
+        // ✅ Get user's groups
+        {
+          model: Group,
+          as: 'groups',
+          through: { attributes: [] },
+          attributes: ['groupId', 'name', 'code', 'description', 'status']
         }
       ]
     });
@@ -154,6 +161,7 @@ exports.login = async (req, res) => {
     const roleName = user.Role?.name;
     const departmentName = user.Department?.name;
     const employee = user.employee;
+    const userGroups = user.groups || [];
     
     if (!roleName) {
       console.error('User has no role assigned:', user.userId);
@@ -161,6 +169,58 @@ exports.login = async (req, res) => {
         success: false, 
         error: 'User role not configured. Please contact administrator.' 
       });
+    }
+
+    // ✅ GET THE STORE FOR EACH GROUP
+    const groupsWithStores = [];
+    let assignedStore = null;
+    let assignedGroup = null;
+    let isAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(roleName);
+
+    if (!isAdmin && userGroups.length > 0) {
+      // For non-admin users, find their store
+      for (const group of userGroups) {
+        const storeGroupRelation = await StoreGroupRelation.findOne({
+          where: { groupId: group.groupId },
+          include: [
+            {
+              model: Store,
+              as: 'store',
+              attributes: ['storeId', 'name', 'code', 'location', 'status']
+            }
+          ]
+        });
+
+        if (storeGroupRelation && storeGroupRelation.store) {
+          // ✅ IMPORTANT: Store uses 'storeId' as the primary key
+          const storeData = {
+            id: storeGroupRelation.store.storeId,  // ✅ Use storeId as id
+            name: storeGroupRelation.store.name,
+            code: storeGroupRelation.store.code,
+            location: storeGroupRelation.store.location,
+            status: storeGroupRelation.store.status
+          };
+
+          const groupData = {
+            id: group.groupId,  // ✅ Group uses groupId as id
+            name: group.name,
+            code: group.code,
+            description: group.description,
+            status: group.status
+          };
+
+          groupsWithStores.push({
+            group: groupData,
+            store: storeData
+          });
+
+          // Use the first group-store relation as the primary one
+          if (!assignedStore) {
+            assignedStore = storeData;
+            assignedGroup = groupData;
+          }
+        }
+      }
     }
 
     // Generate tokens
@@ -205,7 +265,7 @@ exports.login = async (req, res) => {
       }
     }
 
-    // Build complete user response
+    // ✅ BUILD COMPLETE USER RESPONSE WITH GROUPS AND STORE
     const userResponse = {
       userId: user.userId,
       username: user.username,
@@ -229,8 +289,8 @@ exports.login = async (req, res) => {
       fullEmployeeName: employee?.firstName && employee?.lastName 
         ? `${employee.firstName} ${employee.lastName}` 
         : user.fullName,
-       dateOfBirthEC: employee?.dateOfBirthEC,    // Use the correct field
-  dateOfBirthGC: employee?.dateOfBirthGC,    // Use the correct field
+      dateOfBirthEC: employee?.dateOfBirthEC,
+      dateOfBirthGC: employee?.dateOfBirthGC,
       gender: employee?.gender,
       maritalStatus: employee?.maritalStatus,
       nationality: employee?.nationality,
@@ -250,7 +310,33 @@ exports.login = async (req, res) => {
       employmentStatus: employee?.employmentStatus,
       basicSalary: employee?.basicSalary,
       bankAccount: employee?.bankAccount,
-      workLocation: employee?.workLocation
+      workLocation: employee?.workLocation,
+      
+      // ✅ ===== GROUP & STORE ACCESS =====
+      isAdmin: isAdmin,
+      groups: userGroups.map(g => ({
+        id: g.groupId,  // ✅ Use groupId as id
+        name: g.name,
+        code: g.code,
+        description: g.description,
+        status: g.status
+      })),
+      assignedStore: assignedStore ? {
+        id: assignedStore.id,  // ✅ Store ID is now properly set
+        name: assignedStore.name,
+        code: assignedStore.code,
+        location: assignedStore.location,
+        status: assignedStore.status
+      } : null,
+      assignedGroup: assignedGroup ? {
+        id: assignedGroup.id,  // ✅ Group ID is now properly set
+        name: assignedGroup.name,
+        code: assignedGroup.code,
+        description: assignedGroup.description,
+        status: assignedGroup.status
+      } : null,
+      groupsWithStores: groupsWithStores,
+      hasAccess: isAdmin || (assignedStore && assignedGroup)
     };
 
     res.status(200).json({
