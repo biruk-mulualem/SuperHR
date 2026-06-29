@@ -197,20 +197,30 @@
           </table>
         </div>
 
-        <div class="pagination" v-if="filteredItems.length > 0">
-          <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
-            ← Previous
-          </button>
-          <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-          <button class="page-btn" :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)">
-            Next →
-          </button>
-          <select v-model="pageSize" @change="changePageSize" class="limit-select">
-            <option :value="10">10 per page</option>
-            <option :value="20">20 per page</option>
-            <option :value="50">50 per page</option>
-          </select>
-        </div>
+    <div class="pagination" v-if="filteredItems.length > 0">
+  <button 
+    class="page-btn" 
+    :disabled="!canGoPrev" 
+    @click="changePage(currentPage - 1)"
+  >
+    ← Previous
+  </button>
+  <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+  <button 
+    class="page-btn" 
+    :disabled="!canGoNext" 
+    @click="changePage(currentPage + 1)"
+  >
+    Next →
+  </button>
+  <select v-model="pageSize" @change="changePageSize" class="limit-select">
+    <option :value="5">5 per page</option>
+    <option :value="10">10 per page</option>
+    <option :value="20">20 per page</option>
+    <option :value="50">50 per page</option>
+  </select>
+  <span class="total-items">Total: {{ filteredItems.length }} items</span>
+</div>
       </div>
 
       <!-- ============================================================ -->
@@ -772,9 +782,8 @@
     <span>{{ toastMessage }}</span>
   </div>
 </template>
-
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent, watch } from 'vue';
 import itemService from '@/stores/itemService';
 
 // Import Quill editor dynamically
@@ -914,17 +923,27 @@ const activeCategoryNames = computed(() => {
 });
 
 const filteredItems = computed(() => {
-  return items.value;
+  return items.value || [];
 });
 
+// ✅ FIXED: Total pages with proper validation
 const totalPages = computed(() => {
-  return Math.ceil(filteredItems.value.length / pageSize.value) || 1;
+  const total = filteredItems.value.length;
+  const perPage = pageSize.value;
+  if (total === 0) return 1;
+  return Math.ceil(total / perPage);
 });
 
+// ✅ FIXED: Paginated items with proper slicing
 const paginatedItems = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
-  return filteredItems.value.slice(start, start + pageSize.value);
+  const end = start + pageSize.value;
+  return filteredItems.value.slice(start, end);
 });
+
+// ✅ FIXED: Pagination helper computed properties
+const canGoPrev = computed(() => currentPage.value > 1);
+const canGoNext = computed(() => currentPage.value < totalPages.value);
 
 const paginatedCategories = computed(() => {
   const start = (categoryPage.value - 1) * categoryPageSize.value;
@@ -984,6 +1003,43 @@ const formatFileSize = (bytes) => {
 };
 
 // ================================================================
+// ✅ FIXED: PAGINATION METHODS
+// ================================================================
+
+const changePage = (page) => {
+  // Validate page number
+  if (page < 1) {
+    currentPage.value = 1;
+    return;
+  }
+  if (page > totalPages.value) {
+    currentPage.value = totalPages.value;
+    return;
+  }
+  currentPage.value = page;
+  loadItems();
+};
+
+const changePageSize = () => {
+  currentPage.value = 1;
+  loadItems();
+};
+
+const onSearchChange = () => {
+  currentPage.value = 1;
+  loadItems();
+};
+
+const onFilterChange = () => {
+  currentPage.value = 1;
+  loadItems();
+};
+
+const toggleExpand = (id) => { 
+  expandedRow.value = expandedRow.value === id ? null : id; 
+};
+
+// ================================================================
 // DOWNLOAD TEMPLATE CSV
 // ================================================================
 
@@ -1010,7 +1066,7 @@ const downloadTemplate = () => {
       description: 'This is a sample description for the item',
       brand: 'BrandX',
       model: 'Model-100',
-      barcode: '1234567890123', // No scientific notation
+      barcode: '1234567890123',
       categoryName: 'Electronics',
       uomCode: 'Each',
       conversionUomCode: 'Dozen',
@@ -1024,7 +1080,7 @@ const downloadTemplate = () => {
       description: 'Another sample item description',
       brand: 'BrandY',
       model: 'Model-200',
-      barcode: '9876543210987', // No scientific notation
+      barcode: '9876543210987',
       categoryName: 'Chemicals',
       uomCode: 'KG',
       conversionUomCode: 'L',
@@ -1039,9 +1095,8 @@ const downloadTemplate = () => {
   sampleData.forEach(row => {
     const values = headers.map(header => {
       let value = row[header] || '';
-      // For barcode, keep as string
       if (header === 'barcode') {
-        value = `="${value}"`; // This forces Excel to treat as text
+        value = `="${value}"`;
       }
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         return `"${value.replace(/"/g, '""')}"`;
@@ -1122,6 +1177,11 @@ const loadItems = async () => {
     
     if (response.success) {
       items.value = response.data.items;
+      
+      // ✅ FIXED: Ensure current page is valid after loading
+      if (currentPage.value > totalPages.value) {
+        currentPage.value = totalPages.value;
+      }
     } else {
       showToastMessage(response.error || 'Failed to load items', 'error');
     }
@@ -1472,10 +1532,6 @@ const handleCsvDrop = (event) => {
   }
 };
 
-// ================================================================
-// IMPORT - Updated parseCsvFile with better data handling
-// ================================================================
-
 const parseCsvFile = (file) => {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -1487,30 +1543,22 @@ const parseCsvFile = (file) => {
         return;
       }
       
-      // Parse headers - handle quoted headers
       const headers = parseCSVLine(lines[0]);
-      
-      // Parse data rows
       const data = [];
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         const obj = {};
         headers.forEach((h, idx) => {
           let value = values[idx] || '';
-          // Clean up the value
           value = value.trim();
-          // Handle barcode - prevent scientific notation
           if (h === 'barcode' && value) {
-            // Remove any non-numeric characters and convert to string
             value = value.replace(/[^0-9]/g, '');
           }
-          // Handle numeric values
           if (['conversionValue', 'costPrice'].includes(h) && value) {
             value = parseFloat(value) || 0;
           }
           obj[h] = value;
         });
-        // Ensure required fields
         if (obj.name) {
           data.push(obj);
         }
@@ -1526,7 +1574,6 @@ const parseCsvFile = (file) => {
   reader.readAsText(file);
 };
 
-// Helper function to parse CSV lines with quoted values
 const parseCSVLine = (line) => {
   const result = [];
   let current = '';
@@ -1551,6 +1598,7 @@ const parseCSVLine = (line) => {
   result.push(current.trim());
   return result;
 };
+
 const processImport = async () => {
   if (!csvFile.value || importPreviewData.value.length === 0) {
     showToastMessage('No data to import', 'error');
@@ -1583,7 +1631,6 @@ const processImport = async () => {
           .map(r => `${r.data?.name || 'Unknown'}: ${r.error}`)
       };
       
-      // Update progress with final values
       importProgress.value = {
         total: response.data.total,
         processed: response.data.total,
@@ -1598,7 +1645,6 @@ const processImport = async () => {
       await loadCategories();
       await loadUOMs();
       
-      // Auto close modal after 2 seconds with a success message
       setTimeout(() => {
         closeImportModal();
       }, 2000);
@@ -1799,31 +1845,6 @@ const closeExportModal = () => {
   showExportModal.value = false;
 };
 
-// -- Pagination --
-const changePage = (page) => { 
-  currentPage.value = page;
-  loadItems();
-};
-
-const changePageSize = () => { 
-  currentPage.value = 1;
-  loadItems();
-};
-
-const onSearchChange = () => { 
-  currentPage.value = 1;
-  loadItems();
-};
-
-const onFilterChange = () => { 
-  currentPage.value = 1;
-  loadItems();
-};
-
-const toggleExpand = (id) => { 
-  expandedRow.value = expandedRow.value === id ? null : id; 
-};
-
 // -- Toast --
 const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg;
@@ -1843,7 +1864,6 @@ onMounted(async () => {
   ]);
 });
 </script>
-
 <style scoped>
 /* ================================================================
    ALL EXISTING STYLES REMAIN THE SAME
