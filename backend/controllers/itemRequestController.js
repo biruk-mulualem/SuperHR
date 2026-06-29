@@ -6,16 +6,76 @@ const { ItemRequest, ItemRequestDetail, Store, Item, UOM, User,StoreBalance } = 
 const { Op } = require('sequelize');
 
 
+// ================================================================
+// HELPER: Check if store should skip stock validation
+// ================================================================
+const STOCK_VALIDATION_SKIP_STORES = ['STORE-003', 'STORE-004'];
+
+
+const shouldSkipStockValidation = (storeCode) => {
+  return STOCK_VALIDATION_SKIP_STORES.includes(storeCode);
+};
 
 // controllers/itemRequestController.js - Add this validation function
 
-/**
- * Validate if the supplying store has enough stock for the requested items
- */
 const validateStockAvailability = async (supplyingStoreId, items) => {
   const errors = [];
   const stockInfo = [];
 
+  // Get the store details to check if we should skip validation
+  const store = await Store.findByPk(supplyingStoreId);
+  if (!store) {
+    return {
+      isValid: false,
+      errors: [{ message: 'Store not found' }],
+      stockInfo: []
+    };
+  }
+
+  // 🔥 SKIP STOCK VALIDATION FOR SPECIFIC STORES
+  if (shouldSkipStockValidation(store.code)) {
+    console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
+    
+    // For skipped stores, we still check if items exist but don't check balances
+    for (const item of items) {
+      const itemRecord = await Item.findByPk(item.itemId, {
+        include: [{ model: UOM, as: 'uom' }]
+      });
+      
+      if (!itemRecord) {
+        errors.push({
+          itemId: item.itemId,
+          requestedQuantity: item.quantity,
+          message: `Item with ID ${item.itemId} not found`
+        });
+        continue;
+      }
+      
+      stockInfo.push({
+        itemId: item.itemId,
+        itemName: itemRecord.name,
+        itemCode: itemRecord.code,
+        uomCode: itemRecord.uom?.code || 'Units',
+        availableQuantity: Number.MAX_SAFE_INTEGER, // Use a large number instead of string
+        requestedQuantity: item.quantity,
+        balance: null,
+        stockValidationSkipped: true,
+        skipReason: `Store ${store.code} is exempt from stock validation`
+      });
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      stockInfo,
+      validationSkipped: true,
+      skipReason: `Store ${store.code} is exempt from stock validation`
+    };
+  }
+
+  // ================================================================
+  // NORMAL STOCK VALIDATION FOR OTHER STORES
+  // ================================================================
   for (const item of items) {
     // Check if the item has a balance in the supplying store
     const balance = await StoreBalance.findOne({
@@ -41,6 +101,9 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
 
     stockInfo.push({
       itemId: item.itemId,
+      itemName: item.itemName || 'Unknown',
+      itemCode: item.itemCode || 'N/A',
+      uomCode: item.uomCode || 'Units',
       availableQuantity,
       requestedQuantity,
       balance: balance
@@ -49,9 +112,12 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     if (requestedQuantity > availableQuantity) {
       errors.push({
         itemId: item.itemId,
+        itemName: item.itemName || 'Unknown',
+        itemCode: item.itemCode || 'N/A',
         requestedQuantity,
         availableQuantity,
         shortage: requestedQuantity - availableQuantity,
+        uomCode: item.uomCode || 'Units',
         message: `Insufficient stock. Available: ${availableQuantity}, Requested: ${requestedQuantity}`
       });
     }
@@ -60,9 +126,11 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
   return {
     isValid: errors.length === 0,
     errors,
-    stockInfo
+    stockInfo,
+    validationSkipped: false
   };
 };
+
 
 
 // controllers/itemRequestController.js - Add this endpoint
@@ -71,9 +139,12 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
  * Check stock availability for items in a store
  * GET /api/item-requests/check-stock
  */
+// ================================================================
+// CHECK STOCK AVAILABILITY (with skip condition)
+// ================================================================
 exports.checkStockAvailability = async (req, res) => {
   try {
-    const { storeId, items } = req.query; // items: JSON array of {itemId, quantity}
+    const { storeId, items } = req.query;
 
     if (!storeId || !items) {
       return res.status(400).json({
@@ -98,9 +169,11 @@ exports.checkStockAvailability = async (req, res) => {
           itemCode: itemData?.code || 'N/A',
           uomCode: itemData?.uom?.code || 'Units',
           availableQuantity: stockInfo?.availableQuantity || 0,
-          isAvailable: stockInfo?.availableQuantity > 0,
-          hasEnoughStock: stockInfo?.availableQuantity >= item.quantity,
-          shortage: stockInfo ? Math.max(0, item.quantity - stockInfo.availableQuantity) : item.quantity
+          isAvailable: validationResult.validationSkipped ? true : (stockInfo?.availableQuantity > 0),
+          hasEnoughStock: validationResult.validationSkipped ? true : (stockInfo?.availableQuantity >= item.quantity),
+          shortage: validationResult.validationSkipped ? 0 : (stockInfo ? Math.max(0, item.quantity - stockInfo.availableQuantity) : item.quantity),
+          stockValidationSkipped: validationResult.validationSkipped || false,
+          skipReason: validationResult.skipReason || null
         };
       })
     );
@@ -109,12 +182,15 @@ exports.checkStockAvailability = async (req, res) => {
       success: true,
       data: {
         isValid: validationResult.isValid,
+        validationSkipped: validationResult.validationSkipped,
+        skipReason: validationResult.skipReason,
         items: itemDetails,
         errors: validationResult.errors,
         summary: {
           totalItems: parsedItems.length,
           availableItems: itemDetails.filter(i => i.isAvailable).length,
-          itemsWithShortage: itemDetails.filter(i => i.hasEnoughStock === false).length
+          itemsWithShortage: itemDetails.filter(i => i.hasEnoughStock === false).length,
+          validationSkipped: validationResult.validationSkipped
         }
       }
     });
@@ -541,9 +617,6 @@ exports.getByDateRange = async (req, res) => {
 // ================================================================
 // controllers/itemRequestController.js - Complete createRequest with stock validation
 
-// ================================================================
-// CREATE REQUEST - WITH STOCK VALIDATION
-// ================================================================
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -635,7 +708,8 @@ exports.createRequest = async (req, res) => {
     }
 
     // Get all item details for validation and stock check
-    const itemDetails = [];
+    const validatedItems = [];
+    const validationErrors = [];
     const itemIds = items.map(item => item.itemId);
 
     // Fetch all items at once
@@ -653,9 +727,6 @@ exports.createRequest = async (req, res) => {
     });
 
     // Validate each item
-    const validationErrors = [];
-    const validatedItems = [];
-
     for (const item of items) {
       // Check if item exists
       const itemRecord = itemMap[item.itemId];
@@ -715,74 +786,18 @@ exports.createRequest = async (req, res) => {
     }
 
     // ================================================================
-    // 5. 🔥 STOCK AVAILABILITY VALIDATION
+    // 5. 🔥 STOCK AVAILABILITY VALIDATION (with skip condition)
     // ================================================================
-    const stockErrors = [];
-    const stockInfo = [];
-
-    for (const item of validatedItems) {
-      // Check if the item has a balance in the supplying store
-      const balance = await StoreBalance.findOne({
-        where: {
-          storeId: supplyingStoreId,
-          itemId: item.itemId,
-          status: 'Active'
-        }
-      });
-
-      if (!balance) {
-        stockErrors.push({
-          itemId: item.itemId,
-          itemName: item.itemName,
-          itemCode: item.itemCode,
-          requestedQuantity: item.quantity,
-          availableQuantity: 0,
-          uomCode: item.uomCode,
-          message: `"${item.itemName}" is not available in the supplying store "${supplyingStore.name}"`,
-          action: 'Initialize balance for this item in the store first'
-        });
-        continue;
-      }
-
-      const availableQuantity = parseFloat(balance.balance);
-      const requestedQuantity = parseFloat(item.quantity);
-
-      stockInfo.push({
-        itemId: item.itemId,
-        itemName: item.itemName,
-        itemCode: item.itemCode,
-        availableQuantity,
-        requestedQuantity,
-        uomCode: item.uomCode,
-        balanceId: balance.id,
-        currentBalance: balance
-      });
-
-      // Check if there's enough stock
-      if (requestedQuantity > availableQuantity) {
-        const shortage = requestedQuantity - availableQuantity;
-        stockErrors.push({
-          itemId: item.itemId,
-          itemName: item.itemName,
-          itemCode: item.itemCode,
-          requestedQuantity,
-          availableQuantity,
-          shortage,
-          uomCode: item.uomCode,
-          message: `Insufficient stock for "${item.itemName}". Available: ${availableQuantity} ${item.uomCode}, Requested: ${requestedQuantity} ${item.uomCode}`,
-          suggestion: `Reduce quantity to ${availableQuantity} ${item.uomCode} or less`
-        });
-      }
-    }
+    const stockValidation = await validateStockAvailability(supplyingStoreId, validatedItems);
 
     // ================================================================
-    // 6. RETURN STOCK ERRORS IF ANY
+    // 6. RETURN STOCK ERRORS IF ANY (only for non-skipped stores)
     // ================================================================
-    if (stockErrors.length > 0) {
+    if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
       await t.rollback();
       
       // Check if all items have stock errors or some are valid
-      const allItemsHaveStockIssues = stockErrors.length === validatedItems.length;
+      const allItemsHaveStockIssues = stockValidation.errors.length === validatedItems.length;
       
       return res.status(400).json({
         success: false,
@@ -790,15 +805,16 @@ exports.createRequest = async (req, res) => {
         message: allItemsHaveStockIssues 
           ? 'None of the requested items are available in the supplying store'
           : 'Some items do not have enough stock in the supplying store',
-        errors: stockErrors,
-        stockInfo: stockInfo,
+        errors: stockValidation.errors,
+        stockInfo: stockValidation.stockInfo,
         summary: {
           totalItems: validatedItems.length,
-          itemsWithStock: stockInfo.filter(s => s.availableQuantity > 0).length,
-          itemsWithoutStock: stockErrors.filter(e => e.availableQuantity === 0).length,
-          itemsWithShortage: stockErrors.filter(e => e.availableQuantity > 0 && e.shortage > 0).length,
+          itemsWithStock: stockValidation.stockInfo.filter(s => s.availableQuantity > 0).length,
+          itemsWithoutStock: stockValidation.errors.filter(e => e.availableQuantity === 0).length,
+          itemsWithShortage: stockValidation.errors.filter(e => e.availableQuantity > 0 && e.shortage > 0).length,
           storeName: supplyingStore.name,
-          storeId: supplyingStoreId
+          storeId: supplyingStoreId,
+          validationSkipped: false
         }
       });
     }
@@ -877,27 +893,50 @@ exports.createRequest = async (req, res) => {
     // ================================================================
     // 12. RETURN SUCCESS RESPONSE WITH STOCK INFO
     // ================================================================
+    const stockInfoResponse = stockValidation.validationSkipped 
+      ? stockValidation.stockInfo.map(s => ({
+          itemId: s.itemId,
+          itemName: s.itemName,
+          itemCode: s.itemCode,
+          availableQuantity: Number.MAX_SAFE_INTEGER, // Use number instead of string
+          availableQuantityDisplay: 'Unlimited (SKIPPED)', // Add display version
+          requestedQuantity: s.requestedQuantity,
+          uomCode: s.uomCode,
+          hasStock: true,
+          hasEnoughStock: true,
+          stockValidationSkipped: true,
+          skipReason: s.skipReason
+        }))
+      : stockValidation.stockInfo.map(s => ({
+          itemId: s.itemId,
+          itemName: s.itemName || 'Unknown',
+          itemCode: s.itemCode || 'N/A',
+          availableQuantity: s.availableQuantity,
+          requestedQuantity: s.requestedQuantity,
+          uomCode: s.uomCode || 'Units',
+          hasStock: s.availableQuantity > 0,
+          hasEnoughStock: s.requestedQuantity <= s.availableQuantity,
+          stockValidationSkipped: false
+        }));
+
     res.status(201).json({
       success: true,
-      message: 'Request created successfully',
+      message: stockValidation.validationSkipped 
+        ? `Request created successfully (Stock validation skipped for ${supplyingStore.code})`
+        : 'Request created successfully',
       data: {
         request: completeRequest,
         stockValidation: {
-          allItemsAvailable: true,
-          items: stockInfo.map(s => ({
-            itemId: s.itemId,
-            itemName: s.itemName,
-            itemCode: s.itemCode,
-            availableQuantity: s.availableQuantity,
-            requestedQuantity: s.requestedQuantity,
-            uomCode: s.uomCode,
-            hasStock: s.availableQuantity > 0,
-            hasEnoughStock: s.requestedQuantity <= s.availableQuantity
-          })),
+          allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
+          validationSkipped: stockValidation.validationSkipped,
+          skipReason: stockValidation.skipReason || null,
+          items: stockInfoResponse,
           summary: {
             totalItems: validatedItems.length,
-            allItemsAvailable: true,
-            storeName: supplyingStore.name
+            allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
+            storeName: supplyingStore.name,
+            storeCode: supplyingStore.code,
+            validationSkipped: stockValidation.validationSkipped
           }
         }
       }
@@ -925,8 +964,6 @@ exports.createRequest = async (req, res) => {
     });
   }
 };
-
-
 
 
 // ================================================================

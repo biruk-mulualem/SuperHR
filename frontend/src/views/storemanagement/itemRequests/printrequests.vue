@@ -8,7 +8,7 @@
     <header class="form-header">
       <h1 class="motto">WE TRUST IN GOD!!!</h1>
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
-      <h3 class="form-subtitle-title">ITEM REQUISITION FROM {{requestData.askingStore.name}} TO {{requestData.supplyingStore.name}}</h3>
+      <h3 class="form-subtitle-title">ITEM REQUISITION FROM {{requestData?.askingStore?.name}} TO {{requestData?.supplyingStore?.name}}</h3>
       
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>

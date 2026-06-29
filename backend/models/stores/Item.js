@@ -211,6 +211,11 @@ module.exports = (sequelize, DataTypes) => {
       sequelize,
       modelName: 'Item',
       tableName: 'items',
+      // ================================================================
+      // 🔥 ADD THESE FOR UTF-8 SUPPORT
+      // ================================================================
+      charset: 'utf8mb4',
+      collate: 'utf8mb4_unicode_ci',
       timestamps: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at',

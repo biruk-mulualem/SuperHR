@@ -7,7 +7,16 @@
     "port": 5432,
     "dialect": "postgres",
     "dialectOptions": {
-      "ssl": false
+      "ssl": false,
+      "client_encoding": "UTF8"
+    },
+    "define": {
+      "charset": "utf8mb4",
+      "collate": "utf8mb4_unicode_ci",
+      "timestamps": true,
+      "underscored": true,
+      "createdAt": "created_at",
+      "updatedAt": "updated_at"
     },
     "logging": true
   },
@@ -19,7 +28,16 @@
     "port": 5432,
     "dialect": "postgres",
     "dialectOptions": {
-      "ssl": false
+      "ssl": false,
+      "client_encoding": "UTF8"
+    },
+    "define": {
+      "charset": "utf8mb4",
+      "collate": "utf8mb4_unicode_ci",
+      "timestamps": true,
+      "underscored": true,
+      "createdAt": "created_at",
+      "updatedAt": "updated_at"
     },
     "logging": false
   },
@@ -27,7 +45,16 @@
     "use_env_variable": "DATABASE_URL",
     "dialect": "postgres",
     "dialectOptions": {
-      "ssl": { "require": true, "rejectUnauthorized": false }
+      "ssl": { "require": true, "rejectUnauthorized": false },
+      "client_encoding": "UTF8"
+    },
+    "define": {
+      "charset": "utf8mb4",
+      "collate": "utf8mb4_unicode_ci",
+      "timestamps": true,
+      "underscored": true,
+      "createdAt": "created_at",
+      "updatedAt": "updated_at"
     }
   }
 }
