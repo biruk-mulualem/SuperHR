@@ -2668,24 +2668,85 @@ module.exports = {
         type: Sequelize.DATE,
       },
     });
-    await queryInterface.createTable('categories', {
+    await queryInterface.createTable('stores', {
       id: {
         type: Sequelize.INTEGER,
         primaryKey: true,
         autoIncrement: true,
       },
-      name: {
+      code: {
         type: Sequelize.STRING,
         allowNull: false,
         unique: true,
       },
-      description: {
-        type: Sequelize.TEXT,
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false,
+      },
+      location: {
+        type: Sequelize.STRING,
       },
       status: {
-        type: Sequelize.ENUM('Active', 'Inactive'),
+        type: Sequelize.ENUM('Active', 'Inactive', 'Closed'),
         allowNull: false,
         defaultValue: "Active",
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+    await queryInterface.createTable('item_requests', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      request_code: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      asking_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      supplying_store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      requested_by_id: {
+        type: Sequelize.INTEGER,
+      },
+      requested_date: {
+        type: Sequelize.DATEONLY,
+        allowNull: false,
+      },
+      status: {
+        type: Sequelize.ENUM('pending', 'approved', 'rejected', 'finalized'),
+        allowNull: false,
+        defaultValue: "pending",
+      },
+      remark: {
+        type: Sequelize.TEXT,
+      },
+      approved_at: {
+        type: Sequelize.DATE,
+      },
+      finalized_at: {
+        type: Sequelize.DATE,
       },
       created_at: {
         type: Sequelize.DATE,
@@ -2718,6 +2779,92 @@ module.exports = {
       name: {
         type: Sequelize.STRING,
         allowNull: false,
+      },
+      description: {
+        type: Sequelize.TEXT,
+      },
+      status: {
+        type: Sequelize.ENUM('Active', 'Inactive'),
+        allowNull: false,
+        defaultValue: "Active",
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+    await queryInterface.createTable('request_group_processing', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+        allowNull: false,
+      },
+      request_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      group_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      store_id: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      processed_at: {
+        type: Sequelize.DATE,
+      },
+      status: {
+        type: Sequelize.ENUM('pending', 'processed', 'skipped'),
+        allowNull: false,
+        defaultValue: "pending",
+      },
+      remark: {
+        type: Sequelize.TEXT,
+      },
+      processed_by: {
+        type: Sequelize.INTEGER,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      created_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+      updated_at: {
+        type: Sequelize.DATE,
+        allowNull: false,
+      },
+    });
+    await queryInterface.createTable('categories', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      name: {
+        type: Sequelize.STRING,
+        allowNull: false,
+        unique: true,
       },
       description: {
         type: Sequelize.TEXT,
@@ -2856,103 +3003,6 @@ module.exports = {
       },
       spec_pdf_url: {
         type: Sequelize.TEXT,
-      },
-      created_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      created_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-    });
-    await queryInterface.createTable('stores', {
-      id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-      },
-      code: {
-        type: Sequelize.STRING,
-        allowNull: false,
-        unique: true,
-      },
-      name: {
-        type: Sequelize.STRING,
-        allowNull: false,
-      },
-      location: {
-        type: Sequelize.STRING,
-      },
-      status: {
-        type: Sequelize.ENUM('Active', 'Inactive', 'Closed'),
-        allowNull: false,
-        defaultValue: "Active",
-      },
-      created_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      created_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-      updated_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-      },
-    });
-    await queryInterface.createTable('item_requests', {
-      id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-      },
-      request_code: {
-        type: Sequelize.STRING,
-        allowNull: false,
-        unique: true,
-      },
-      asking_store_id: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-      },
-      supplying_store_id: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-      },
-      requested_by_id: {
-        type: Sequelize.INTEGER,
-      },
-      requested_date: {
-        type: Sequelize.DATEONLY,
-        allowNull: false,
-      },
-      status: {
-        type: Sequelize.ENUM('pending', 'approved', 'rejected', 'finalized'),
-        allowNull: false,
-        defaultValue: "pending",
-      },
-      remark: {
-        type: Sequelize.TEXT,
-      },
-      approved_at: {
-        type: Sequelize.DATE,
-      },
-      finalized_at: {
-        type: Sequelize.DATE,
       },
       created_at: {
         type: Sequelize.DATE,
@@ -4530,45 +4580,6 @@ module.exports = {
       onDelete: 'NO ACTION',
     }
     });
-    await queryInterface.addConstraint('items', {
-      fields: ['category_id'],
-      ...{
-      type: 'foreign key',
-      name: 'items_category_id_fkey',
-      references: {
-        table: 'categories',
-        field: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
-    }
-    });
-    await queryInterface.addConstraint('items', {
-      fields: ['uom_id'],
-      ...{
-      type: 'foreign key',
-      name: 'items_uom_id_fkey',
-      references: {
-        table: 'uom',
-        field: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'NO ACTION',
-    }
-    });
-    await queryInterface.addConstraint('items', {
-      fields: ['conversion_uom_id'],
-      ...{
-      type: 'foreign key',
-      name: 'items_conversion_uom_id_fkey',
-      references: {
-        table: 'uom',
-        field: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL',
-    }
-    });
     await queryInterface.addConstraint('item_requests', {
       fields: ['asking_store_id'],
       ...{
@@ -4603,6 +4614,97 @@ module.exports = {
       references: {
         table: 'users',
         field: 'user_id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    }
+    });
+    await queryInterface.addConstraint('request_group_processing', {
+      fields: ['request_id'],
+      ...{
+      type: 'foreign key',
+      name: 'request_group_processing_request_id_fkey',
+      references: {
+        table: 'item_requests',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('request_group_processing', {
+      fields: ['group_id'],
+      ...{
+      type: 'foreign key',
+      name: 'request_group_processing_group_id_fkey',
+      references: {
+        table: 'groups',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('request_group_processing', {
+      fields: ['store_id'],
+      ...{
+      type: 'foreign key',
+      name: 'request_group_processing_store_id_fkey',
+      references: {
+        table: 'stores',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'CASCADE',
+    }
+    });
+    await queryInterface.addConstraint('request_group_processing', {
+      fields: ['processed_by'],
+      ...{
+      type: 'foreign key',
+      name: 'request_group_processing_processed_by_fkey',
+      references: {
+        table: 'users',
+        field: 'user_id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    }
+    });
+    await queryInterface.addConstraint('items', {
+      fields: ['category_id'],
+      ...{
+      type: 'foreign key',
+      name: 'items_category_id_fkey',
+      references: {
+        table: 'categories',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    }
+    });
+    await queryInterface.addConstraint('items', {
+      fields: ['uom_id'],
+      ...{
+      type: 'foreign key',
+      name: 'items_uom_id_fkey',
+      references: {
+        table: 'uom',
+        field: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'NO ACTION',
+    }
+    });
+    await queryInterface.addConstraint('items', {
+      fields: ['conversion_uom_id'],
+      ...{
+      type: 'foreign key',
+      name: 'items_conversion_uom_id_fkey',
+      references: {
+        table: 'uom',
+        field: 'id'
       },
       onUpdate: 'CASCADE',
       onDelete: 'SET NULL',
@@ -4899,12 +5001,13 @@ module.exports = {
     await queryInterface.dropTable('returned_payments');
     await queryInterface.dropTable('unclaimed_salaries');
     await queryInterface.dropTable('unclaimed_payroll');
-    await queryInterface.dropTable('categories');
-    await queryInterface.dropTable('groups');
-    await queryInterface.dropTable('uom');
-    await queryInterface.dropTable('items');
     await queryInterface.dropTable('stores');
     await queryInterface.dropTable('item_requests');
+    await queryInterface.dropTable('groups');
+    await queryInterface.dropTable('request_group_processing');
+    await queryInterface.dropTable('categories');
+    await queryInterface.dropTable('uom');
+    await queryInterface.dropTable('items');
     await queryInterface.dropTable('item_request_details');
     await queryInterface.dropTable('store_balances');
     await queryInterface.dropTable('store_balance_histories');
