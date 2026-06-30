@@ -295,7 +295,15 @@ const router = createRouter({
 
 
 
-        
+        {
+  path: "report",
+  name: "report",
+  component: () => import("@/views/report/report.vue"),
+  meta: {
+    title: "Report",
+    roles: ["admin", "hr", "finance", "store", "storekeeper", "store_it", "checker"]
+  },
+},
 
 
         
