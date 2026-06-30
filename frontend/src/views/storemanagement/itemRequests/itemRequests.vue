@@ -423,12 +423,13 @@
                     </option>
                   </select>
                 </div>
-                <div class="form-group">
+               
+              </div>
+              <div class="form-row">
+                 <div class="form-group">
                   <label>UOM</label>
                   <input :value="getItemUOM(Number(item.itemId))" type="text" readonly />
                 </div>
-              </div>
-              <div class="form-row">
                 <div class="form-group">
                   <label>Quantity *</label>
                   <input 

@@ -1,11 +1,11 @@
-<!-- pages/inventory.vue - FULLY UPDATED WITH RICH TEXT EDITOR -->
+<!-- pages/inventory.vue - COMPLETE FILE WITH WORKING PAGINATION -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
         <h2>📦 Item Master Data</h2>
-       
+        <span class="total-badge">{{ totalItems }} Items</span>
       </div>
 
       <div class="header-filters">
@@ -15,7 +15,7 @@
             type="text"
             v-model="searchQuery"
             placeholder="Search items..."
-            @input="onSearchChange"
+            @input="handleSearch"
           />
         </div>
         <button class="btn-import" @click="openImportModal" :disabled="importing">
@@ -50,7 +50,6 @@
       </button>
     </div>
 
-     
     <!-- ==================== TAB CONTENT ==================== -->
     <div class="tab-content">
 
@@ -59,20 +58,23 @@
       <!-- ============================================================ -->
       <div v-if="activeTab === 'items'" class="items-tab">
         <div class="filter-bar">
-          <select v-model="filterCategory" class="filter-select" @change="onFilterChange">
+          <select v-model="filterCategory" class="filter-select" @change="handleFilterChange">
             <option value="">All Categories</option>
             <option v-for="cat in activeCategoryNames" :key="cat" :value="cat">{{ cat }}</option>
           </select>
-          <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
+          <select v-model="filterStatus" class="filter-select" @change="handleFilterChange">
             <option value="">All Status</option>
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
             <option value="Discontinued">Discontinued</option>
           </select>
-          <select v-model="filterUOM" class="filter-select" @change="onFilterChange">
+          <select v-model="filterUOM" class="filter-select" @change="handleFilterChange">
             <option value="">All UOM</option>
             <option v-for="uom in activeUOMs" :key="uom.code" :value="uom.code">{{ uom.code }}</option>
           </select>
+          <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters">
+            ✕ Clear Filters
+          </button>
         </div>
 
         <div v-if="loading" class="loading-state">
@@ -80,7 +82,7 @@
           <p>Loading items...</p>
         </div>
 
-        <div v-else-if="filteredItems.length === 0" class="empty-state">
+        <div v-else-if="items.length === 0" class="empty-state">
           <div class="empty-icon">🧪</div>
           <h3>No items found</h3>
           <p>Add your first item to the master catalog</p>
@@ -101,7 +103,7 @@
               </tr>
             </thead>
             <tbody>
-              <template v-for="item in paginatedItems" :key="item.itemId || item.id">
+              <template v-for="item in items" :key="item.itemId || item.id">
                 <tr
                   :class="{
                     'expanded-row': expandedRow === (item.itemId || item.id),
@@ -197,30 +199,43 @@
           </table>
         </div>
 
-    <div class="pagination" v-if="filteredItems.length > 0">
-  <button 
-    class="page-btn" 
-    :disabled="!canGoPrev" 
-    @click="changePage(currentPage - 1)"
-  >
-    ← Previous
-  </button>
-  <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-  <button 
-    class="page-btn" 
-    :disabled="!canGoNext" 
-    @click="changePage(currentPage + 1)"
-  >
-    Next →
-  </button>
-  <select v-model="pageSize" @change="changePageSize" class="limit-select">
-    <option :value="5">5 per page</option>
-    <option :value="10">10 per page</option>
-    <option :value="20">20 per page</option>
-    <option :value="50">50 per page</option>
-  </select>
-  <span class="total-items">Total: {{ filteredItems.length }} items</span>
-</div>
+        <!-- ============================================================ -->
+        <!-- ✅ WORKING PAGINATION - USING API RESPONSE                  -->
+        <!-- ============================================================ -->
+        <div v-if="totalItems > 0" class="pagination-container">
+          <div class="pagination-info">
+            <span>Showing {{ items.length }} of {{ totalItems }} items</span>
+            <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+          </div>
+          
+          <div class="pagination-controls">
+            <button 
+              class="page-btn" 
+              :disabled="currentPage === 1" 
+              @click="goToPage(currentPage - 1)"
+            >
+              ← Previous
+            </button>
+            
+            
+            
+            <button 
+              class="page-btn" 
+              :disabled="currentPage === totalPages" 
+              @click="goToPage(currentPage + 1)"
+            >
+              Next →
+            </button>
+            
+            <select v-model="itemsPerPage" @change="handlePageSizeChange" class="limit-select">
+              <option :value="5">5 per page</option>
+              <option :value="10">10 per page</option>
+              <option :value="20">20 per page</option>
+              <option :value="50">50 per page</option>
+              <option :value="100">100 per page</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <!-- ============================================================ -->
@@ -642,9 +657,7 @@
     </div>
   </div>
 
-  <!-- ================================================================ -->
-  <!-- IMPORT MODAL - UPDATED WITH PROGRESS                           -->
-  <!-- ================================================================ -->
+  <!-- IMPORT MODAL -->
   <div v-if="showImportModal" class="modal-overlay" @click.self="!importing && closeImportModal()">
     <div class="modal-container import-modal">
       <div class="modal-header">
@@ -652,7 +665,6 @@
         <button class="modal-close" @click="!importing && closeImportModal()" :disabled="importing">✕</button>
       </div>
       <div class="modal-body">
-        <!-- Import Info -->
         <div class="import-info">
           <div class="info-box">
             <span class="info-icon">ℹ️</span>
@@ -680,7 +692,6 @@
           </div>
         </div>
 
-        <!-- File Upload -->
         <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload()" 
              :class="{ 'drag-over': isDragOver, 'disabled': importing }"
              @dragover.prevent="!importing && (isDragOver = true)" 
@@ -702,7 +713,6 @@
                  @change="handleCsvUpload" style="display:none" :disabled="importing" />
         </div>
 
-        <!-- Progress Bar -->
         <div v-if="importing" class="import-progress">
           <div class="progress-info">
             <span>Importing items...</span>
@@ -718,7 +728,6 @@
           </div>
         </div>
 
-        <!-- Preview imported data -->
         <div v-if="importPreviewData.length > 0 && !importing" class="import-preview">
           <h4>Preview ({{ importPreviewData.length }} items)</h4>
           <div class="preview-table-container">
@@ -752,7 +761,6 @@
           </div>
         </div>
 
-        <!-- Import results -->
         <div v-if="importResults && !importing" class="import-results">
           <div class="result-summary">
             <span class="result-success">✅ {{ importResults.success }} imported</span>
@@ -782,8 +790,9 @@
     <span>{{ toastMessage }}</span>
   </div>
 </template>
+
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent, watch } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import itemService from '@/stores/itemService';
 
 // Import Quill editor dynamically
@@ -803,7 +812,9 @@ const filterCategory = ref('');
 const filterStatus = ref('');
 const filterUOM = ref('');
 const currentPage = ref(1);
-const pageSize = ref(10);
+const itemsPerPage = ref(10);
+const totalItems = ref(0);
+const totalPagesFromServer = ref(1);
 
 const activeTab = ref('items');
 const expandedRow = ref(null);
@@ -922,28 +933,10 @@ const activeCategoryNames = computed(() => {
   return categories.value.filter(c => c.status === 'Active').map(c => c.name);
 });
 
-const filteredItems = computed(() => {
-  return items.value || [];
-});
-
-// ✅ FIXED: Total pages with proper validation
+// ✅ Use totalPages from server response directly
 const totalPages = computed(() => {
-  const total = filteredItems.value.length;
-  const perPage = pageSize.value;
-  if (total === 0) return 1;
-  return Math.ceil(total / perPage);
+  return totalPagesFromServer.value || 1;
 });
-
-// ✅ FIXED: Paginated items with proper slicing
-const paginatedItems = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  const end = start + pageSize.value;
-  return filteredItems.value.slice(start, end);
-});
-
-// ✅ FIXED: Pagination helper computed properties
-const canGoPrev = computed(() => currentPage.value > 1);
-const canGoNext = computed(() => currentPage.value < totalPages.value);
 
 const paginatedCategories = computed(() => {
   const start = (categoryPage.value - 1) * categoryPageSize.value;
@@ -961,6 +954,38 @@ const paginatedUOMs = computed(() => {
 
 const uomTotalPages = computed(() => {
   return Math.ceil(uomList.value.length / uomPageSize.value) || 1;
+});
+
+const hasActiveFilters = computed(() => {
+  return filterCategory.value || filterStatus.value || filterUOM.value || searchQuery.value;
+});
+
+// Display page numbers with ellipsis
+const displayedPages = computed(() => {
+  const total = totalPages.value;
+  const current = currentPage.value;
+  const pages = [];
+  
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) {
+      pages.push(i);
+    }
+  } else {
+    pages.push(1);
+    if (current > 3) {
+      pages.push('...');
+    }
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    if (current < total - 2) {
+      pages.push('...');
+    }
+    pages.push(total);
+  }
+  return pages;
 });
 
 // ================================================================
@@ -1002,41 +1027,128 @@ const formatFileSize = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
+const toggleExpand = (id) => { 
+  expandedRow.value = expandedRow.value === id ? null : id; 
+};
+
 // ================================================================
-// ✅ FIXED: PAGINATION METHODS
+// PAGINATION METHODS
 // ================================================================
 
-const changePage = (page) => {
-  // Validate page number
-  if (page < 1) {
-    currentPage.value = 1;
-    return;
-  }
-  if (page > totalPages.value) {
-    currentPage.value = totalPages.value;
-    return;
-  }
+const goToPage = (page) => {
+  if (page === '...') return;
+  if (page < 1 || page > totalPages.value) return;
   currentPage.value = page;
   loadItems();
 };
 
-const changePageSize = () => {
+const handleSearch = () => {
   currentPage.value = 1;
   loadItems();
 };
 
-const onSearchChange = () => {
+const handleFilterChange = () => {
   currentPage.value = 1;
   loadItems();
 };
 
-const onFilterChange = () => {
+const handlePageSizeChange = () => {
   currentPage.value = 1;
   loadItems();
 };
 
-const toggleExpand = (id) => { 
-  expandedRow.value = expandedRow.value === id ? null : id; 
+const clearFilters = () => {
+  searchQuery.value = '';
+  filterCategory.value = '';
+  filterStatus.value = '';
+  filterUOM.value = '';
+  currentPage.value = 1;
+  loadItems();
+  showToastMessage('Filters cleared', 'info');
+};
+
+// ================================================================
+// LOAD DATA
+// ================================================================
+
+const loadCategories = async () => {
+  try {
+    const response = await itemService.getCategories();
+    if (response.success) {
+      categories.value = response.data;
+    } else {
+      showToastMessage(response.error || 'Failed to load categories', 'error');
+    }
+  } catch (error) {
+    console.error('Load categories error:', error);
+    showToastMessage('Failed to load categories', 'error');
+  }
+};
+
+const loadUOMs = async () => {
+  try {
+    const response = await itemService.getUOMs();
+    if (response.success) {
+      uomList.value = response.data;
+    } else {
+      showToastMessage(response.error || 'Failed to load UOMs', 'error');
+    }
+  } catch (error) {
+    console.error('Load UOMs error:', error);
+    showToastMessage('Failed to load UOMs', 'error');
+  }
+};
+
+const loadItems = async () => {
+  loading.value = true;
+  try {
+    let categoryId = undefined;
+    if (filterCategory.value) {
+      const category = categories.value.find(c => c.name === filterCategory.value);
+      categoryId = category?.categoryId || category?.id;
+    }
+    
+    let uomId = undefined;
+    if (filterUOM.value) {
+      const uom = uomList.value.find(u => u.code === filterUOM.value);
+      uomId = uom?.uomId || uom?.id;
+    }
+
+    const response = await itemService.getItems({
+      page: currentPage.value,
+      limit: itemsPerPage.value,
+      search: searchQuery.value || undefined,
+      categoryId: categoryId,
+      status: filterStatus.value || undefined,
+      uomId: uomId
+    });
+    
+    if (response.success) {
+      // ✅ Items from response.data.items
+      items.value = response.data.items || [];
+      
+      // ✅ Total from response.data.pagination.total
+      totalItems.value = response.data.pagination?.total || response.data.total || response.data.items?.length || 0;
+      
+      // ✅ Total pages from response.data.pagination.totalPages
+      totalPagesFromServer.value = response.data.pagination?.totalPages || 1;
+      
+      // If current page is beyond total pages, go to last page
+      if (currentPage.value > totalPages.value && totalPages.value > 0) {
+        currentPage.value = totalPages.value;
+        // Reload with corrected page
+        await loadItems();
+        return;
+      }
+    } else {
+      showToastMessage(response.error || 'Failed to load items', 'error');
+    }
+  } catch (error) {
+    console.error('Load items error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to load items', 'error');
+  } finally {
+    loading.value = false;
+  }
 };
 
 // ================================================================
@@ -1117,80 +1229,6 @@ const downloadTemplate = () => {
   URL.revokeObjectURL(url);
   
   showToastMessage('Template CSV downloaded successfully!', 'success');
-};
-
-// ================================================================
-// LOAD DATA
-// ================================================================
-
-const loadCategories = async () => {
-  try {
-    const response = await itemService.getCategories();
-    if (response.success) {
-      categories.value = response.data;
-    } else {
-      showToastMessage(response.error || 'Failed to load categories', 'error');
-    }
-  } catch (error) {
-    console.error('Load categories error:', error);
-    showToastMessage('Failed to load categories', 'error');
-  }
-};
-
-const loadUOMs = async () => {
-  try {
-    const response = await itemService.getUOMs();
-    if (response.success) {
-      uomList.value = response.data;
-    } else {
-      showToastMessage(response.error || 'Failed to load UOMs', 'error');
-    }
-  } catch (error) {
-    console.error('Load UOMs error:', error);
-    showToastMessage('Failed to load UOMs', 'error');
-  }
-};
-
-const loadItems = async () => {
-  loading.value = true;
-  try {
-    let categoryId = undefined;
-    if (filterCategory.value) {
-      const category = categories.value.find(c => c.name === filterCategory.value);
-      categoryId = category?.categoryId || category?.id;
-    }
-    
-    let uomId = undefined;
-    if (filterUOM.value) {
-      const uom = uomList.value.find(u => u.code === filterUOM.value);
-      uomId = uom?.uomId || uom?.id;
-    }
-
-    const response = await itemService.getItems({
-      page: currentPage.value,
-      limit: pageSize.value,
-      search: searchQuery.value || undefined,
-      categoryId: categoryId,
-      status: filterStatus.value || undefined,
-      uomId: uomId
-    });
-    
-    if (response.success) {
-      items.value = response.data.items;
-      
-      // ✅ FIXED: Ensure current page is valid after loading
-      if (currentPage.value > totalPages.value) {
-        currentPage.value = totalPages.value;
-      }
-    } else {
-      showToastMessage(response.error || 'Failed to load items', 'error');
-    }
-  } catch (error) {
-    console.error('Load items error:', error);
-    showToastMessage(error.response?.data?.error || 'Failed to load items', 'error');
-  } finally {
-    loading.value = false;
-  }
 };
 
 // ================================================================
@@ -1845,6 +1883,13 @@ const closeExportModal = () => {
   showExportModal.value = false;
 };
 
+// -- Remove CSV --
+const removeCsvFile = () => {
+  csvFile.value = null;
+  importPreviewData.value = [];
+  importResults.value = null;
+};
+
 // -- Toast --
 const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg;
@@ -1857,466 +1902,13 @@ const showToastMessage = (msg, type = 'success') => {
 // LIFECYCLE
 // ================================================================
 onMounted(async () => {
-  await Promise.all([
-    loadCategories(),
-    loadUOMs(),
-    loadItems()
-  ]);
+  await loadCategories();
+  await loadUOMs();
+  await loadItems();
 });
 </script>
+
 <style scoped>
-/* ================================================================
-   ALL EXISTING STYLES REMAIN THE SAME
-   ================================================================ */
-
-.btn-template {
-  background: #f59e0b;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  margin-top: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-}
-.btn-template:hover:not(:disabled) {
-  background: #d97706;
-}
-.btn-template:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ================================================================
-   IMPORT STYLES
-   ================================================================ */
-
-.btn-import {
-  background: #8b5cf6;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-}
-.btn-import:hover:not(:disabled) { background: #7c3aed; }
-.btn-import:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.import-modal {
-  max-width: 850px;
-}
-
-.import-info {
-  margin-bottom: 16px;
-}
-
-.info-box {
-  display: flex;
-  gap: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.info-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.info-text {
-  font-size: 13px;
-  color: #475569;
-  margin: 4px 0;
-}
-
-.csv-format-list {
-  margin: 8px 0 0 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #475569;
-}
-
-.csv-format-list li {
-  margin: 2px 0;
-}
-
-.import-upload {
-  border-color: #8b5cf6;
-  background: #faf5ff;
-  min-height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s;
-}
-
-.import-upload.drag-over {
-  border-color: #7c3aed;
-  background: #ede9fe;
-}
-
-.import-upload.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.import-upload.disabled:hover {
-  border-color: #8b5cf6;
-  background: #faf5ff;
-}
-
-/* Progress Bar */
-.import-progress {
-  margin: 16px 0;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: #475569;
-  margin-bottom: 8px;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #e2e8f0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-status {
-  display: flex;
-  gap: 16px;
-  margin-top: 8px;
-  font-size: 12px;
-}
-
-.status-success { color: #16a34a; }
-.status-failed { color: #dc2626; }
-.status-remaining { color: #475569; }
-
-/* Import Results */
-.import-results {
-  margin-top: 16px;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.result-summary {
-  display: flex;
-  gap: 16px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.result-success { color: #16a34a; }
-.result-failed { color: #dc2626; }
-.result-total { color: #475569; }
-
-.result-errors {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.result-errors ul {
-  margin: 4px 0 0 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #dc2626;
-}
-
-.result-errors li {
-  margin: 2px 0;
-}
-
-/* ================================================================
-   QUILL EDITOR STYLES
-   ================================================================ */
-
-.quill-editor {
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.quill-editor :deep(.ql-toolbar) {
-  border-radius: 8px 8px 0 0;
-  border: none;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
-}
-
-.quill-editor :deep(.ql-container) {
-  border-radius: 0 0 8px 8px;
-  border: none;
-  min-height: 150px;
-  font-size: 14px;
-}
-
-.quill-editor :deep(.ql-editor) {
-  min-height: 150px;
-}
-
-.quill-editor :deep(.ql-editor p) {
-  margin-bottom: 8px;
-}
-
-.quill-editor :deep(.ql-editor ul),
-.quill-editor :deep(.ql-editor ol) {
-  padding-left: 20px;
-  margin-bottom: 8px;
-}
-
-/* ================================================================
-   SPECIFICATION DISPLAY
-   ================================================================ */
-
-.spec-text-content {
-  background: white;
-  padding: 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1.8;
-  border: 1px solid #e2e8f0;
-}
-
-.spec-text-content :deep(p) {
-  margin-bottom: 8px;
-}
-
-.spec-text-content :deep(ul),
-.spec-text-content :deep(ol) {
-  padding-left: 20px;
-  margin-bottom: 8px;
-}
-
-.spec-text-content :deep(strong) {
-  font-weight: 600;
-}
-
-.spec-text-content :deep(em) {
-  font-style: italic;
-}
-
-.spec-text-content :deep(blockquote) {
-  border-left: 3px solid #3b82f6;
-  padding-left: 12px;
-  margin: 8px 0;
-  color: #475569;
-}
-
-.spec-text-content :deep(code) {
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-/* ================================================================
-   ALL EXISTING STYLES CONTINUE BELOW
-   ================================================================ */
-
-
-.btn-template {
-  background: #f59e0b;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  margin-top: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-}
-.btn-template:hover {
-  background: #d97706;
-}
-/* ================================================================
-   ADD THESE NEW STYLES FOR IMPORT
-   ================================================================ */
-
-.btn-import {
-  background: #8b5cf6;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-}
-.btn-import:hover:not(:disabled) { background: #7c3aed; }
-
-.import-modal {
-  max-width: 750px;
-}
-
-.import-info {
-  margin-bottom: 16px;
-}
-
-.info-box {
-  display: flex;
-  gap: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.info-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.info-text {
-  font-size: 13px;
-  color: #475569;
-  margin: 4px 0;
-}
-
-.csv-format-list {
-  margin: 8px 0 0 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #475569;
-}
-
-.csv-format-list li {
-  margin: 2px 0;
-}
-
-.import-upload {
-  border-color: #8b5cf6;
-  background: #faf5ff;
-  min-height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.import-upload.drag-over {
-  border-color: #7c3aed;
-  background: #ede9fe;
-}
-
-.import-preview {
-  margin-top: 16px;
-}
-
-.import-preview h4 {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 8px;
-}
-
-.preview-table-container {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.preview-table th {
-  background: #f8fafc;
-  padding: 8px 12px;
-  text-align: left;
-  font-weight: 600;
-  color: #475569;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.preview-table td {
-  padding: 6px 12px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.preview-more {
-  text-align: center;
-  color: #94a3b8;
-  font-style: italic;
-  padding: 8px;
-}
-
-.import-results {
-  margin-top: 16px;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.result-summary {
-  display: flex;
-  gap: 16px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.result-success { color: #16a34a; }
-.result-failed { color: #dc2626; }
-.result-total { color: #475569; }
-
-.result-errors {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.result-errors ul {
-  margin: 4px 0 0 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #dc2626;
-}
-
-.result-errors li {
-  margin: 2px 0;
-}
-
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -2359,9 +1951,6 @@ onMounted(async () => {
   color: #475569;
 }
 
-/* ================================================================
-   HEADER FILTERS
-   ================================================================ */
 .header-filters {
   display: flex;
   gap: 12px;
@@ -2401,6 +1990,22 @@ onMounted(async () => {
 /* ================================================================
    BUTTONS
    ================================================================ */
+.btn-import {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-import:hover:not(:disabled) { background: #7c3aed; }
+.btn-import:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .btn-export {
   background: #10b981;
   color: white;
@@ -2473,6 +2078,24 @@ onMounted(async () => {
 }
 .btn-pdf-open:hover { background: #2563eb; }
 
+.btn-template {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-template:hover:not(:disabled) { background: #d97706; }
+.btn-template:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .icon-btn {
   background: none;
   border: none;
@@ -2483,7 +2106,20 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 .icon-btn:hover { background: #f1f5f9; }
-.delete-btn:hover { color: #ef4444; background: #fee2e2; }
+
+.btn-clear-filters {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
+  transition: all 0.2s;
+}
+.btn-clear-filters:hover {
+  background: #e2e8f0;
+}
 
 /* ================================================================
    TABS
@@ -2528,6 +2164,7 @@ onMounted(async () => {
   gap: 10px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .filter-select {
@@ -2664,7 +2301,6 @@ onMounted(async () => {
   font-size: 13px;
   line-height: 1.8;
   border: 1px solid #e2e8f0;
-  white-space: pre-wrap;
 }
 
 .spec-pdf-content {
@@ -2716,10 +2352,7 @@ onMounted(async () => {
   padding: 6px 0;
   border-bottom: 1px solid #e2e8f0;
 }
-
-.detail-row:last-child {
-  border-bottom: none;
-}
+.detail-row:last-child { border-bottom: none; }
 
 .detail-label {
   font-weight: 500;
@@ -2783,6 +2416,7 @@ onMounted(async () => {
 .category-modal { max-width: 450px; }
 .export-modal { max-width: 400px; }
 .deactivate-modal { max-width: 450px; }
+.import-modal { max-width: 750px; }
 
 .modal-header {
   display: flex;
@@ -2818,6 +2452,9 @@ onMounted(async () => {
 }
 .modal-close:hover { background: #f1f5f9; color: #1e293b; }
 
+/* ================================================================
+   FORM STYLES
+   ================================================================ */
 .form-section-title {
   font-size: 14px;
   font-weight: 600;
@@ -2933,6 +2570,268 @@ onMounted(async () => {
 
 .form-error { color: #ef4444; font-size: 13px; margin-top: 8px; }
 
+/* ================================================================
+   QUILL EDITOR
+   ================================================================ */
+.quill-editor {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.quill-editor :deep(.ql-toolbar) {
+  border-radius: 8px 8px 0 0;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.quill-editor :deep(.ql-container) {
+  border-radius: 0 0 8px 8px;
+  border: none;
+  min-height: 150px;
+  font-size: 14px;
+}
+.quill-editor :deep(.ql-editor) { min-height: 150px; }
+
+/* ================================================================
+   IMPORT STYLES
+   ================================================================ */
+.import-info { margin-bottom: 16px; }
+.info-box {
+  display: flex;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.info-icon { font-size: 20px; flex-shrink: 0; }
+.info-text { font-size: 13px; color: #475569; margin: 4px 0; }
+.csv-format-list {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+.csv-format-list li { margin: 2px 0; }
+
+.import-upload {
+  border-color: #8b5cf6;
+  background: #faf5ff;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+}
+.import-upload.drag-over {
+  border-color: #7c3aed;
+  background: #ede9fe;
+}
+.import-upload.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.import-progress {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.progress-status {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.status-success { color: #16a34a; }
+.status-failed { color: #dc2626; }
+.status-remaining { color: #475569; }
+
+.import-preview { margin-top: 16px; }
+.import-preview h4 { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 8px; }
+.preview-table-container {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.preview-table th {
+  background: #f8fafc;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.preview-table td { padding: 6px 12px; border-top: 1px solid #f1f5f9; }
+.preview-more { text-align: center; color: #94a3b8; font-style: italic; padding: 8px; }
+
+.import-results {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.result-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.result-success { color: #16a34a; }
+.result-failed { color: #dc2626; }
+.result-total { color: #475569; }
+.result-errors {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+.result-errors ul {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #dc2626;
+}
+.result-errors li { margin: 2px 0; }
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+.pagination-container {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pagination-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #64748b;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pagination-info .page-info {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.page-number {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #475569;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-number:hover:not(.active):not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.page-number.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+  font-weight: 600;
+}
+
+.page-number:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-btn {
+  padding: 6px 14px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1e293b;
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.limit-select {
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1e293b;
+}
+
+/* ================================================================
+   EXPORT
+   ================================================================ */
 .export-options {
   display: flex;
   flex-direction: column;
@@ -2977,37 +2876,11 @@ onMounted(async () => {
 .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
 .empty-state h3 { color: #1e293b; margin-bottom: 8px; }
 .empty-state p { color: #94a3b8; }
-
-/* ================================================================
-   PAGINATION
-   ================================================================ */
-.pagination {
+.empty-content {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-.page-btn {
-  padding: 6px 14px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.page-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #3b82f6; }
-.page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.page-info { font-size: 12px; color: #64748b; }
-.limit-select {
-  padding: 4px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  background: white;
-  cursor: pointer;
+  gap: 12px;
 }
 
 /* ================================================================
@@ -3052,5 +2925,38 @@ onMounted(async () => {
   .pagination { flex-wrap: wrap; }
   .item-table, .category-table, .uom-table { min-width: 500px; }
   .modal-container { margin: 10px; max-height: 95vh; }
+  
+  .pagination-controls {
+    gap: 6px;
+  }
+  
+  .page-number {
+    min-width: 28px;
+    height: 28px;
+    font-size: 12px;
+    padding: 0 6px;
+  }
+  
+  .page-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  
+  .pagination-info {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .page-numbers {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>
