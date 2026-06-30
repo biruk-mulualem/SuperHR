@@ -24,6 +24,9 @@
         <button class="btn-export" @click="openExportModal" :disabled="exporting || filteredAuditData.length === 0">
           📊 {{ exporting ? 'Exporting...' : 'Export' }}
         </button>
+        <button class="btn-print" @click="printReport" :disabled="filteredAuditData.length === 0">
+          🖨️ Print
+        </button>
       </div>
     </div>
 
@@ -302,11 +305,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import auditService from '@/stores/auditService'
 
 // ================================================================
 // STATE
 // ================================================================
+const router = useRouter()
 const stores = ref([])
 const selectedStoreId = ref('')
 const searchQuery = ref('')
@@ -1060,6 +1065,14 @@ const showToastMessage = (msg, type = 'success') => {
   }, 3000)
 }
 
+// -- Print --
+const printReport = () => {
+  localStorage.setItem('printAuditData', JSON.stringify(filteredAuditData.value))
+  localStorage.setItem('printAuditStoreName', selectedStoreName.value || 'Unknown Store')
+  localStorage.setItem('printAuditGroups', JSON.stringify(activeGroups.value))
+  router.push('/print-audit')
+}
+
 // ================================================================
 // LIFECYCLE
 // ================================================================
@@ -1180,7 +1193,26 @@ onMounted(() => {
   background: #059669;
 }
 
-.btn-refresh:disabled, .btn-export:disabled {
+.btn-print {
+  background: #3b82f6;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-print:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-refresh:disabled, .btn-export:disabled, .btn-print:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

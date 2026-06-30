@@ -10,10 +10,10 @@
       <h1 class="motto">እግዚአብሔር ይባረክ!!!</h1>
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
       
-      <h3 class="form-subtitle-title">STORE BALANCE REPORT: {{ currentStoreName }} - {{ currentGroupName }}</h3>
+      <h3 class="form-subtitle-title"> {{ currentStoreName }} BALANCE REPORT </h3>
       
       <div class="date-row">
-        <!-- <span><strong>STORE KEEPER / GROUP:-</strong> {{ currentGroupName }}</span> -->
+        <span><strong>Group:</strong> {{ currentGroupName }}</span>
         <span style="margin-left: auto;"><strong>PRINTED DATE:-</strong> {{ formatCurrentDate() }}</span>
       </div>
     </header>
@@ -22,30 +22,26 @@
       <thead>
         <tr>
           <th style="width: 4%;">No</th>
-          <th style="width: 14%;">Store</th>
-          <th style="width: 14%;">Group</th>
           <th style="width: 12%;">Item Code</th>
-          <th style="width: 20%;">Item Name</th>
+          <th style="width: 20%;">Standard Name</th>
+          <th style="width: 20%;">Common Name</th>
           <th style="width: 6%;">U.O.M</th>
           <th style="width: 10%;">Balance</th>
-          <th style="width: 10%;">Base Balance</th>
-          <th style="width: 10%;">Status</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="(item, index) in balanceItems" :key="item.id || index">
           <td>{{ index + 1 }}</td>
-          <td>{{ item.storeName || '-' }}</td>
-          <td>{{ item.groupName || '-' }}</td>
           <td><strong>{{ item.itemCode || '-' }}</strong></td>
           <td class="text-left">
             {{ item.itemName || '-' }}
-            <div v-if="item.itemCommonName" style="font-size: 0.9em; color: #555;">({{ item.itemCommonName }})</div>
           </td>
+           <td class="text-left">
+            {{ item.itemCommonName }}
+          </td>
+
           <td>{{ item.uomCode || 'Pcs' }}</td>
           <td class="font-bold highlight-balance">{{ item.balance || 0 }}</td>
-          <td>{{ item.baseBalance || 0 }} {{ item.conversionUomCode || item.uomCode || 'Pcs' }}</td>
-          <td>{{ item.status || '-' }}</td>
         </tr>
       </tbody>
     </table>

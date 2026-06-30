@@ -232,12 +232,21 @@ const router = createRouter({
           },
         },
        
-          {
+        {
           path: "audit",
           name: "audit",
           component: () => import("@/views/storemanagement/audit/audit.vue"),
           meta: { 
             title: "audit ", 
+            roles: ["admin", "storekeeper","store_it","checker"] 
+          },
+        },
+        {
+          path: "print-audit",
+          name: "print-audit",
+          component: () => import("@/views/storemanagement/audit/printaudit.vue"),
+          meta: { 
+            title: "print audit ", 
             roles: ["admin", "storekeeper","store_it","checker"] 
           },
         },
