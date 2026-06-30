@@ -192,6 +192,7 @@
                         <div><span>Item Code</span><span class="value">{{ getItemCode(transaction.itemId) }}</span></div>
                         <div><span>Item Name</span><span class="value">{{ getItemName(transaction.itemId) }}</span></div>
                         <div><span>Common Name</span><span class="value">{{ getItemCommonName(transaction.itemId) }}</span></div>
+                         <!-- the common name is not displaying  -->
                         <div><span>Unit of Measure</span><span class="value">{{ getItemUnit(transaction.itemId) }}</span></div>
                         <div><span>Quantity</span><span class="value">{{ transaction.type === 'Stock In' ? '+' : '-' }} {{ formatNumber(transaction.quantity) }}</span></div>
                         <div>
@@ -523,26 +524,41 @@ const fetchTransactions = async () => {
 // ================================================================
 // HELPER METHODS
 // ================================================================
-const getItemName = (itemId) => {
+const getItemName = (itemId, transaction) => {
+  // If transaction is provided, use its data
+  if (transaction && transaction.itemName) {
+    return transaction.itemName
+  }
+  // Fallback to lookup
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.standardName || item.name : 'Unknown'
+  return item ? item.name || item.standardName || 'Unknown' : 'Unknown'
 }
 
-const getItemCode = (itemId) => {
+const getItemCode = (itemId, transaction) => {
+  if (transaction && transaction.itemCode) {
+    return transaction.itemCode
+  }
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.code : 'Unknown'
+  return item ? item.code || 'Unknown' : 'Unknown'
 }
 
-const getItemCommonName = (itemId) => {
+const getItemCommonName = (itemId, transaction) => {
+  // ✅ Use the transaction's itemCommonName directly
+  if (transaction && transaction.itemCommonName) {
+    return transaction.itemCommonName
+  }
+  // Fallback to lookup
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.commonName : ''
+  return item ? item.standardName || item.name || '' : ''
 }
 
-const getItemUnit = (itemId) => {
+const getItemUnit = (itemId, transaction) => {
+  if (transaction && transaction.uomCode) {
+    return transaction.uomCode
+  }
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.uomCode || '' : ''
+  return item ? item.uomCode || item.uom?.code || '' : ''
 }
-
 const getStoreName = (storeId) => {
   const store = stores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'

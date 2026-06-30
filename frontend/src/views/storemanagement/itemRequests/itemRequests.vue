@@ -419,16 +419,17 @@
                       :key="itemOption.itemId || itemOption.id" 
                       :value="itemOption.itemId || itemOption.id"
                     >
-                      {{ itemOption.name }} - {{ itemOption.standardName || 'N/A' }} ({{ itemOption.code }})
+                     {{ itemOption.standardName || 'N/A' }}( {{ itemOption.name }})-----{{ itemOption.uom?.name }}
                     </option>
                   </select>
                 </div>
-                <div class="form-group">
+               
+              </div>
+              <div class="form-row">
+                 <div class="form-group">
                   <label>UOM</label>
                   <input :value="getItemUOM(Number(item.itemId))" type="text" readonly />
                 </div>
-              </div>
-              <div class="form-row">
                 <div class="form-group">
                   <label>Quantity *</label>
                   <input 

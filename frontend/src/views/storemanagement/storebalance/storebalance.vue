@@ -18,7 +18,12 @@
           />
         </div>
         <button class="btn-add" @click="openAddBalanceModal">📦 Initialize Balance</button>
-        <button class="btn-process-requests" @click="processApprovedRequests">📋 Process Approved Requests</button>
+       <button class="btn-process-requests" @click="processApprovedRequests">
+  📋 Process Approved Requests
+  <span v-if="pendingRequestsCount > 0" class="badge-count">
+    {{ pendingRequestsCount }}
+  </span>
+</button>
       </div>
     </div>
 
@@ -477,28 +482,37 @@
           </div>
 
           <!-- Step 2: Select Requests -->
-          <div v-if="selectedStoreId && storeRequests.length > 0" class="form-group">
-            <label>2. Select Requests to Process</label>
-            <div class="select-all-container">
-              <label class="select-all-label">
-                <input type="checkbox" v-model="selectAllRequests" @change="toggleAllRequests" />
-                Select All ({{ storeRequests.length }} requests)
-              </label>
-            </div>
-            <div class="requests-checkbox-list">
-              <label v-for="req in storeRequests" :key="req.id" class="request-checkbox">
-                <input type="checkbox" v-model="selectedRequestIds" :value="req.id" @change="onRequestSelect" />
-                <div class="request-info">
-                  <span class="req-code">{{ req.requestCode }}</span>
-                  <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
-                  <span class="req-items-count">{{ req.items.length }} items</span>
-                  <span class="req-action" :class="getItemActionClass(req)">
-                    {{ getItemActionLabel(req) }}
-                  </span>
-                </div>
-              </label>
-            </div>
-          </div>
+         <!-- In the process modal - Step 2: Select Requests -->
+<div v-if="selectedStoreId && storeRequests.length > 0" class="form-group">
+  <label>2. Select Requests to Process</label>
+  <div class="select-all-container">
+    <label class="select-all-label">
+      <input type="checkbox" v-model="selectAllRequests" @change="toggleAllRequests" />
+      Select All ({{ storeRequests.length }} requests)
+    </label>
+  </div>
+  <div class="requests-checkbox-list">
+    <label v-for="req in storeRequests" :key="req.id" class="request-checkbox">
+      <input type="checkbox" v-model="selectedRequestIds" :value="req.id" @change="onRequestSelect" />
+      <div class="request-info">
+        <span class="req-code">{{ req.requestCode }}</span>
+        <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
+        <span class="req-items-count">{{ req.items?.length || 0 }} items</span>
+        <!-- ✅ Show action based on store role -->
+        <span class="req-action" :class="getItemActionClass(req)">
+          {{ getItemActionLabel(req) }}
+        </span>
+        <!-- ✅ Show processing status -->
+        <span v-if="req.isProcessedByGroup" class="req-status processed">
+          ✅ Processed
+        </span>
+        <span v-else class="req-status pending">
+          ⏳ Pending
+        </span>
+      </div>
+    </label>
+  </div>
+</div>
 
           <!-- Step 3: Select Group - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group" v-if="selectedRequestIds.length > 0">
@@ -871,11 +885,11 @@ const lowStockItems = computed(() => {
 })
 
 const pendingRequestsCount = computed(() => {
-  // Count requests that are approved but not fully processed
+  // Count requests that are approved and NOT yet processed by this group
   return itemRequests.value.filter(req => {
     if (req.status !== 'approved') return false
-    // Check if this group has already processed this request
-    if (req.isProcessedByGroup) return false
+    // The backend already filters out processed requests via getApprovedRequests
+    // So all requests in itemRequests are unprocessed for this group
     return true
   }).length
 })
@@ -1143,6 +1157,10 @@ const fetchBalances = async () => {
 // 🔥 FETCH APPROVED REQUESTS - FIXED
 // ================================================================
 
+// ================================================================
+// 🔥 FETCH APPROVED REQUESTS - FIXED
+// ================================================================
+
 const fetchApprovedRequests = async () => {
   isLoadingRequests.value = true
   try {
@@ -1164,8 +1182,12 @@ const fetchApprovedRequests = async () => {
       response = await balanceService.getApprovedRequests(0)
     }
     
+    // ✅ Store only unprocessed requests (backend already filters)
     itemRequests.value = response.data || []
-    console.log('📋 Approved requests loaded:', itemRequests.value.length)
+    
+    // ✅ Log the count for debugging
+    console.log(`📋 ${itemRequests.value.length} unprocessed approved requests loaded`)
+    
   } catch (error) {
     console.error('Error fetching approved requests:', error)
     showToastMessage('Failed to load approved requests', 'error')
@@ -1601,13 +1623,17 @@ const confirmDelete = async () => {
 // ================================================================
 
 const processApprovedRequests = async () => {
+  // Clear previous selections
   selectedStoreId.value = ''
   selectedGroupId.value = ''
   selectedRequestIds.value = []
   storeRequests.value = []
   selectAllRequests.value = false
+  
+  // Show the modal
   showProcessModal.value = true
   
+  // Auto-select for non-admin users
   if (!isAdmin.value && userData.value?.hasAccess) {
     if (userData.value.assignedStore) {
       selectedStoreId.value = String(userData.value.assignedStore.id)
@@ -1617,8 +1643,10 @@ const processApprovedRequests = async () => {
       selectedGroupId.value = String(userData.value.assignedGroup.id)
     }
   }
+  
+  // ✅ Refresh the pending count
+  await fetchApprovedRequests()
 }
-
 const closeProcessModal = () => {
   showProcessModal.value = false
   selectedStoreId.value = ''
@@ -1653,16 +1681,23 @@ const onStoreSelect = async () => {
     
     console.log('🔍 Fetching approved requests for store ID:', storeId, 'group ID:', groupId)
     
-    // ✅ Pass both storeId and groupId
     const response = await balanceService.getApprovedRequests(storeId, groupId)
     storeRequests.value = response.data || []
     
     console.log(`✅ Found ${storeRequests.value.length} unprocessed approved requests for store ${storeId}`)
     
-    // Auto-select all unprocessed requests
-    selectAllRequests.value = storeRequests.value.length > 0
-    if (selectAllRequests.value) {
+    if (storeRequests.value.length > 0) {
+      // ✅ Show each request with its status
+      storeRequests.value.forEach(req => {
+        console.log(`  📋 ${req.requestCode} - ${req.items?.length || 0} items`)
+      })
+      
+      selectAllRequests.value = true
       selectedRequestIds.value = storeRequests.value.map(req => req.id)
+    } else {
+      selectAllRequests.value = false
+      selectedRequestIds.value = []
+      showToastMessage('✅ No pending requests for this store', 'info')
     }
   } catch (error) {
     console.error('Error fetching approved requests:', error)
@@ -1709,35 +1744,111 @@ const confirmProcessRequests = async () => {
     })
 
     if (response.success) {
-      const { processed, failed, missingItems, processedItems, autoInitializedItems, partialRequests } = response.data || {}
+      const { 
+        processed, 
+        failed, 
+        missingItems, 
+        processedItems, 
+        autoInitializedItems, 
+        partialRequests,
+        logs,
+        processedRequestIds,
+        totalRequests
+      } = response.data || {}
       
-      let message = response.message || 'Requests processed!'
+      // ✅ Get the IDs that were processed (or already processed)
+      const processedIds = processedRequestIds || []
       
-      // Build detailed message
+      // ✅ Remove ALL processed requests from the list
+      // This includes both newly processed and already processed ones
+      storeRequests.value = storeRequests.value.filter(
+        req => !processedIds.includes(req.id)
+      )
+      
+      // ✅ Update selected request IDs
+      selectedRequestIds.value = storeRequests.value.map(req => req.id)
+      
+      // ✅ Build a clear message
+      let message = ''
+      let hasErrors = false
+      
+      // Check if any items were actually processed
+      if (processed > 0 || processedItems?.length > 0) {
+        message += `✅ Processed ${processed || processedItems?.length || 0} items successfully. `
+      }
+      
+      // Check for auto-initialized items
       if (autoInitializedItems && autoInitializedItems.length > 0) {
-        message += `\n\n📦 Auto-initialized ${autoInitializedItems.length} item(s)`
+        message += `\n📦 Auto-initialized ${autoInitializedItems.length} item(s): `
+        autoInitializedItems.slice(0, 3).forEach(item => {
+          message += `${item.itemCode || item.itemName}, `
+        })
+        if (autoInitializedItems.length > 3) {
+          message += `+${autoInitializedItems.length - 3} more. `
+        }
       }
       
-      if (processedItems && processedItems.length > 0) {
-        message += `\n\n✅ Processed ${processedItems.length} items`
-      }
-      
+      // Check for missing items
       if (missingItems && missingItems.length > 0) {
-        message += `\n\n⚠️ ${missingItems.length} items need initialization`
+        hasErrors = true
+        message += `\n⚠️ ${missingItems.length} item(s) need initialization: `
+        missingItems.slice(0, 3).forEach(item => {
+          message += `${item.itemCode || 'Unknown'}, `
+        })
+        if (missingItems.length > 3) {
+          message += `+${missingItems.length - 3} more. `
+        }
+        message += `\n💡 Please initialize these items first.`
       }
       
+      // ✅ Check if requests were already processed by this group
+      const alreadyProcessedCount = processedIds.length - (processedItems?.length || 0)
+      
+      if (alreadyProcessedCount > 0 && processed === 0) {
+        message += `\n⏭️ ${alreadyProcessedCount} request(s) were already processed by your group and have been removed from your list.`
+      }
+      
+      // ✅ Show partial request status
       if (partialRequests && partialRequests.length > 0) {
-        message += `\n\n⏳ ${partialRequests.length} request(s) partially processed`
+        message += `\n\n⏳ ${partialRequests.length} request(s) partially processed:`
+        partialRequests.forEach(req => {
+          const remainingNames = req.remainingGroups.join(', ')
+          message += `\n   • ${req.requestCode}: ${req.remainingCount} group(s) remaining (${remainingNames})`
+        })
+        message += `\n\n💡 The request will be finalized when ALL groups have processed it.`
       }
       
-      showToastMessage(message, failed > 0 ? 'warning' : 'success')
+      // ✅ If no message was built, use a default
+      if (!message) {
+        message = response.message || 'Requests processed!'
+      }
+      
+      // ✅ Check if any requests are still pending
+      const remainingCount = storeRequests.value.length
+      
+      if (remainingCount === 0) {
+        message += `\n\n🎉 All requests have been processed by your group!`
+        
+        // Close the modal after a delay
+        setTimeout(() => {
+          closeProcessModal()
+          showToastMessage('🎉 All requests processed by your group!', 'success')
+        }, 2000)
+      } else {
+        message += `\n\n📋 ${remainingCount} request(s) remaining in your list.`
+      }
+      
+      showToastMessage(message, hasErrors ? 'warning' : 'success')
+      
+      // ✅ Refresh data
+      await Promise.all([
+        fetchBalances(),
+        fetchApprovedRequests()
+      ])
+      
     } else {
       showToastMessage(response.error || 'Failed to process requests', 'error')
     }
-    
-    await fetchBalances()
-    await fetchApprovedRequests() // Refresh the requests list
-    closeProcessModal()
   } catch (error) {
     console.error('Error processing requests:', error)
     showToastMessage(error.response?.data?.error || 'Error processing requests', 'error')
@@ -1882,6 +1993,32 @@ watch(() => localStorage.getItem('user'), (newVal) => {
 
 <style scoped>
 
+.req-status {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.req-status.processed {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.req-status.pending {
+  color: #f59e0b;
+  background: #fef3c7;
+}
+.badge-count {
+  display: inline-block;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 12px;
+  margin-left: 4px;
+}
 /* In the style section, add these */
 .hint.pre-filled {
   color: #2563eb;
