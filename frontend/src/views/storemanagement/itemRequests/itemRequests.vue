@@ -419,7 +419,7 @@
                       :key="itemOption.itemId || itemOption.id" 
                       :value="itemOption.itemId || itemOption.id"
                     >
-                      {{ itemOption.name }} - {{ itemOption.standardName || 'N/A' }} ({{ itemOption.code }})
+                     {{ itemOption.standardName || 'N/A' }}( {{ itemOption.name }})-----{{ itemOption.uom?.name }}
                     </option>
                   </select>
                 </div>

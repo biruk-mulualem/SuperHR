@@ -173,7 +173,7 @@
                               <span>Conversion Value</span>
                               <span class="value">{{ item.conversionValue || 1 }}</span>
                             </div>
-                            <div><span>Cost Price</span><span class="value">${{ formatCurrency(item.costPrice) }}</span></div>
+                            <div><span>Cost Price</span><span class="value">ETB {{ formatCurrency(item.costPrice) }}</span></div>
                           </div>
                         </div>
 

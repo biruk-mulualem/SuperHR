@@ -6,10 +6,12 @@
 
   <div class="print-page" v-if="requestData">
     <header class="form-header">
-      <h1 class="motto">WE TRUST IN GOD!!!</h1>
+      <h1 class="motto">WE TRUST IN GOD!!!</h1> <h1 class="motto">    እግዚአብሔር ይባረክ!!!</h1>
+  
+
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
-      <!-- <h3 class="form-subtitle-title">ITEM REQUISITION FROM {{requestData.askingStore.name}} TO {{requestData.supplyingStore.name}}</h3>
-       -->
+      <h3 class="form-subtitle-title">ITEM VOUCHER FOR {{ requestData?.askingStore?.name || '-' }} </h3>
+      
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>
         <span><strong>DATE:-</strong> {{ formatDate(requestData.requestedDate) }}</span>
@@ -27,7 +29,7 @@
           <th style="width: 15%;">Specification</th>
           <th style="width: 9%;">Location</th>
           <th style="width: 6%;">Store Balance</th>
-          <th style="width: 12%;">Name&Signature</th>
+        
           <th style="width: 16%;">Remark</th>
         </tr>
       </thead>
@@ -44,7 +46,7 @@
           <td>{{ stripHtml(getItemSpecification(item.itemId)) || '-' }}</td>
           <td>{{ getItemModel(item.itemId) || '-' }}</td>
           <td>-</td>
-          <td></td>
+          
           <td>{{ item.remark || '-' }}</td>
         </tr>
       </tbody>
