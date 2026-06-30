@@ -7,8 +7,9 @@
   <div class="print-page" v-if="requestData">
     <header class="form-header">
       <h1 class="motto">WE TRUST IN GOD!!!</h1>
+      <h1 class="motto"> እግዚአብሔር ይባረክ!!!</h1>
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
-      <h3 class="form-subtitle-title">ITEM REQUISITION FROM {{requestData?.askingStore?.name}} TO {{requestData?.supplyingStore?.name}}</h3>
+      <h3 class="form-subtitle-title">Item Voucher For {{requestData?.askingStore?.name}}</h3>
       
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>
@@ -24,10 +25,10 @@
           <th style="width: 5%;">U.O.M</th>
           <th style="width: 5%;">Qty</th>
           <th style="width: 10%;">Brand</th>
+          <th style="width: 10%;">Model</th>
           <th style="width: 15%;">Specification</th>
           <th style="width: 9%;">Location</th>
           <th style="width: 6%;">Store Balance</th>
-          <th style="width: 12%;">Name&Signature</th>
           <th style="width: 16%;">Remark</th>
         </tr>
       </thead>
@@ -41,10 +42,10 @@
           <td>{{ getItemUOM(item.itemId) || 'Pcs' }}</td>
           <td class="font-bold">{{ item.quantity }}</td>
           <td>{{ getItemBrand(item.itemId) || '-' }}</td>
+          <td>{{ requestData.items[index].item.model  }}</td>
           <td>{{ stripHtml(getItemSpecification(item.itemId)) || '-' }}</td>
           <td>{{ getItemModel(item.itemId) || '-' }}</td>
           <td>-</td>
-          <td></td>
           <td>{{ item.remark || '-' }}</td>
         </tr>
       </tbody>
@@ -80,7 +81,7 @@
         <div class="gray-label">Reason</div>
         <div class="lines-container">
           <div class="reason-content-text">
-            {{ requestData.remark || 'No reason/remark provided.' }}
+            {{ requestData.remark }}
           </div>
         </div>
       </div>

@@ -5,9 +5,6 @@ const db = require('./models');
 const models = db.sequelize.models;
 
 function generateMigration() {
-  let upCode = `module.exports = {\n  up: async (queryInterface, Sequelize) => {\n`;
-  let downCode = `  down: async (queryInterface, Sequelize) => {\n`;
-
   // Determine a safe order to create tables by analyzing foreign keys
   const tableDeps = {};
   const tables = [];
@@ -56,7 +53,21 @@ function generateMigration() {
     visit(tableName);
   }
 
-  let constraintsCode = ``;
+  const migrationsDir = path.join(__dirname, 'migrations');
+  if (!fs.existsSync(migrationsDir)) {
+    fs.mkdirSync(migrationsDir);
+  } else {
+    // Clean up old migration files, but preserve 'commands' file
+    const files = fs.readdirSync(migrationsDir);
+    for (const file of files) {
+      if (file !== 'commands' && file !== 'commands.js' && file.endsWith('.js')) {
+        fs.unlinkSync(path.join(migrationsDir, file));
+      }
+    }
+  }
+
+  let counter = 1;
+  const timestampBase = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
 
   for (const tableName of sortedTables) {
     let targetModel = null;
@@ -68,6 +79,10 @@ function generateMigration() {
     }
 
     if (!targetModel) continue;
+
+    let upCode = `module.exports = {\n  up: async (queryInterface, Sequelize) => {\n`;
+    let downCode = `  down: async (queryInterface, Sequelize) => {\n`;
+    let constraintsCode = ``;
 
     let attrsCode = `{\n`;
     for (const key of Object.keys(targetModel.rawAttributes)) {
@@ -107,7 +122,6 @@ function generateMigration() {
           refTable = refTable.tableName;
         }
         
-        // Push to constraints instead of inline to handle circular dependencies properly
         let constraintOpts = `{\n      type: 'foreign key',\n      name: '${tableName}_${fieldName}_fkey',\n      references: {\n        table: '${refTable}',\n        field: '${attr.references.key}'\n      },\n`;
         if (attr.onUpdate) constraintOpts += `      onUpdate: '${attr.onUpdate}',\n`;
         if (attr.onDelete) constraintOpts += `      onDelete: '${attr.onDelete}',\n`;
@@ -120,31 +134,19 @@ function generateMigration() {
     attrsCode += `    }`;
 
     upCode += `    await queryInterface.createTable('${tableName}', ${attrsCode});\n`;
+    upCode += constraintsCode;
+    upCode += `  },\n`;
     downCode += `    await queryInterface.dropTable('${tableName}');\n`;
-  }
+    downCode += `  }\n};\n`;
 
-  upCode += constraintsCode;
-  upCode += `  },\n`;
-  downCode += `  }\n};\n`;
-
-  const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
-  const filePath = path.join(__dirname, 'migrations', `${timestamp}-initial-migration.js`);
-  
-  const migrationsDir = path.join(__dirname, 'migrations');
-  if (!fs.existsSync(migrationsDir)) {
-    fs.mkdirSync(migrationsDir);
-  } else {
-    // Clean up old migration files, but preserve 'commands' file
-    const files = fs.readdirSync(migrationsDir);
-    for (const file of files) {
-      if (file !== 'commands' && file !== 'commands.js' && file.endsWith('.js')) {
-        fs.unlinkSync(path.join(migrationsDir, file));
-      }
-    }
+    const paddedCounter = String(counter).padStart(3, '0');
+    const filePath = path.join(migrationsDir, `${timestampBase}${paddedCounter}-create-${tableName}.js`);
+    
+    fs.writeFileSync(filePath, upCode + downCode);
+    console.log(`Generated migration: ${filePath}`);
+    
+    counter++;
   }
-  
-  fs.writeFileSync(filePath, upCode + downCode);
-  console.log(`Generated migration: ${filePath}`);
   process.exit(0);
 }
 

@@ -262,13 +262,30 @@ const router = createRouter({
           },
         },
 
-
+        {
+          path: "print-store-balance",
+          name: "print-store-balance",
+          component: () => import("@/views/storemanagement/storebalance/printstorebalance.vue"),
+          meta: { 
+            title: "print store balance ", 
+            roles: ["admin", "storekeeper","store_it","checker"] 
+          },
+        },
               {
           path: "store-transaction",
           name: "store-transaction",
           component: () => import("@/views/storemanagement/storetransaction/storetransaction.vue"),
           meta: { 
             title: "general store transaction ", 
+            roles: ["admin", "storekeeper","store_it","checker"] 
+          },
+        },
+        {
+          path: "print-store-transaction",
+          name: "print-store-transaction",
+          component: () => import("@/views/storemanagement/storetransaction/printstoretransaction.vue"),
+          meta: { 
+            title: "print store transaction ", 
             roles: ["admin", "storekeeper","store_it","checker"] 
           },
         },

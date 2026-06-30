@@ -624,8 +624,10 @@
 </template>
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import balanceService from '@/stores/balanceService'
 
+const router = useRouter()
 // ================================================================
 // USER DATA
 // ================================================================
@@ -1779,34 +1781,14 @@ const confirmToggle = async () => {
 // ================================================================
 
 const printReport = () => {
-  const printContents = document.getElementById('printable-area').innerHTML
-  const originalContents = document.body.innerHTML
-  
-  document.body.innerHTML = `
-    <html>
-      <head>
-        <title>Store Balance Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background: #f5f5f5; }
-          h2 { text-align: center; margin-bottom: 20px; }
-          .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <h2>💰 Store Balance Report</h2>
-        <p>Generated: ${new Date().toLocaleString()}</p>
-        ${printContents}
-        <div class="print-footer">Printed from Store Management System</div>
-      </body>
-    </html>
-  `
-  
-  window.print()
-  document.body.innerHTML = originalContents
-  window.location.reload()
+  localStorage.setItem('printBalanceData', JSON.stringify(filteredBalances.value))
+  router.push({ 
+    path: '/print-store-balance', 
+    query: { 
+      storeId: filterStore.value, 
+      groupId: filterGroup.value 
+    } 
+  })
 }
 
 const openExportModal = () => {

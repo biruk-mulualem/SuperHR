@@ -267,7 +267,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+
 import transactionService from '@/stores/transactionService'
 import balanceService from '@/stores/balanceService'
 
@@ -275,6 +277,7 @@ import balanceService from '@/stores/balanceService'
 // STATE
 // ================================================================
 const authStore = useAuthStore()
+const router = useRouter()
 
 const transactions = ref([])
 const stores = ref([])
@@ -634,35 +637,17 @@ const changePageSize = () => {
 // PRINT & EXPORT
 // ================================================================
 const printReport = () => {
-  const printContents = document.getElementById('printable-area').innerHTML
-  const originalContents = document.body.innerHTML
-  
-  document.body.innerHTML = `
-    <html>
-      <head>
-        <title>Store Transaction Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background: #f5f5f5; }
-          h2 { text-align: center; margin-bottom: 20px; }
-          .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <h2>📋 Store Transaction Report</h2>
-        <p>Generated: ${new Date().toLocaleString()}</p>
-        <p>Total Transactions: ${transactions.value.length}</p>
-        ${printContents}
-        <div class="print-footer">Printed from Store Management System</div>
-      </body>
-    </html>
-  `
-  
-  window.print()
-  document.body.innerHTML = originalContents
-  window.location.reload()
+  const printData = filteredTransactions.value.map(t => ({
+    ...t,
+    storeName: getStoreName(t.storeId),
+    groupName: getGroupName(t.groupId),
+    itemName: getItemName(t.itemId),
+    itemCode: getItemCode(t.itemId),
+    itemCommonName: getItemCommonName(t.itemId),
+    uom: getItemUnit(t.itemId)
+  }))
+  localStorage.setItem('printTransactionData', JSON.stringify(printData))
+  router.push('/print-store-transaction')
 }
 
 const openExportModal = () => {
