@@ -50,7 +50,7 @@
     </div>
 
     <!-- ==================== STATS ==================== -->
-    <div class="stats-grid" v-if="!isLoading">
+    <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon">📦</div>
         <div class="stat-content">
@@ -61,14 +61,14 @@
       <div class="stat-card">
         <div class="stat-icon">💰</div>
         <div class="stat-content">
-          <div class="stat-number">{{ formatCurrency(totalInventoryValue) }}</div>
+          <div class="stat-number">${{ formatCurrency(totalInventoryValue) }}</div>
           <div class="stat-label">Total Inventory Value</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📊</div>
         <div class="stat-content">
-          <div class="stat-number">{{ formatCurrency(averageCost) }}</div>
+          <div class="stat-number">${{ formatCurrency(averageCost) }}</div>
           <div class="stat-label">Average Cost Per Item</div>
         </div>
       </div>
@@ -83,11 +83,7 @@
 
     <!-- ==================== COST TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <div v-if="isLoading" class="loading-state">
-        <div class="spinner"></div>
-        <p>Loading cost data...</p>
-      </div>
-      <table v-else class="cost-table">
+      <table class="cost-table">
         <thead>
           <tr>
             <th style="width:35px"></th>
@@ -108,7 +104,6 @@
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
                 <p>No cost data found</p>
-                <p class="empty-sub">Please initialize item balances and costs</p>
               </div>
             </td>
           </tr>
@@ -145,7 +140,6 @@
               <td class="cost-cell">
                 <div class="cost-wrapper">
                   <span class="unit-cost">${{ formatCurrency(item.unitCost) }}</span>
-                  <span class="cost-currency" v-if="item.currency">/ {{ item.currency }}</span>
                 </div>
                 <button class="edit-cost-btn" @click="openEditCost(item)" title="Edit Cost">✏️</button>
               </td>
@@ -197,7 +191,7 @@
                     </div>
 
                     <!-- Cost History -->
-                    <div class="detail-card full-width" v-if="item.costHistory && item.costHistory.length > 0">
+                    <div class="detail-card full-width">
                       <h4>📈 Cost History</h4>
                       <table class="history-table">
                         <thead>
@@ -210,17 +204,12 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-for="history in item.costHistory.slice(0, 5)" :key="history.id">
+                          <tr v-for="history in item.costHistory" :key="history.id">
                             <td>{{ formatDate(history.createdAt) }}</td>
                             <td>${{ formatCurrency(history.previousCost) }}</td>
                             <td>${{ formatCurrency(history.newCost) }}</td>
                             <td>{{ history.changedBy || 'System' }}</td>
                             <td>{{ history.reason || '-' }}</td>
-                          </tr>
-                          <tr v-if="item.costHistory.length > 5">
-                            <td colspan="5" class="text-center more-history">
-                              ... and {{ item.costHistory.length - 5 }} more entries
-                            </td>
                           </tr>
                         </tbody>
                       </table>
@@ -252,10 +241,10 @@
         Next →
       </button>
       <select v-model="pageSize" @change="changePageSize" class="limit-select">
+        <option :value="5">5</option>
         <option :value="10">10</option>
         <option :value="20">20</option>
         <option :value="50">50</option>
-        <option :value="100">100</option>
       </select>
     </div>
 
@@ -343,27 +332,327 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import costService from '@/stores/costService'
-import balanceService from '@/stores/balanceService'
+import { ref, computed } from 'vue'
+
+// ================================================================
+// DEMO DATA
+// ================================================================
+
+// Stores
+const stores = ref([
+  { id: 1, name: 'Main Store', code: 'STORE-001' },
+  { id: 2, name: 'Warehouse A', code: 'STORE-002' },
+  { id: 3, name: 'Warehouse B', code: 'STORE-003' },
+  { id: 4, name: 'Retail Store', code: 'STORE-004' }
+])
+
+// Groups
+const groups = ref([
+  { id: 1, name: 'Fiber Mainstore IT', code: 'GRP-001' },
+  { id: 2, name: 'Fiber Ministore IT', code: 'GRP-002' },
+  { id: 3, name: 'Fiber Storekeeper', code: 'GRP-003' },
+  { id: 4, name: 'HR Department', code: 'GRP-004' }
+])
+
+// Demo Cost Items
+const costItems = ref([
+  {
+    id: 1,
+    itemCode: 'SDT000001',
+    itemName: 'Dell Laptop',
+    itemStandardName: 'Dell Latitude 3420',
+    storeId: 1,
+    storeName: 'Main Store',
+    storeCode: 'STORE-001',
+    groupId: 1,
+    groupName: 'Fiber Mainstore IT',
+    groupCode: 'GRP-001',
+    categoryName: 'Electronics',
+    brand: 'Dell',
+    model: 'Latitude 3420',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 25,
+    unitCost: 850.00,
+    totalValue: 21250.00,
+    status: 'Active',
+    costHistory: [
+      { id: 1, previousCost: 800.00, newCost: 850.00, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' },
+      { id: 2, previousCost: 750.00, newCost: 800.00, changedBy: 'Manager', reason: 'Supplier update', createdAt: '2024-05-20T14:20:00' }
+    ]
+  },
+  {
+    id: 2,
+    itemCode: 'SDT000002',
+    itemName: 'HP Monitor',
+    itemStandardName: 'HP 24" LED Monitor',
+    storeId: 1,
+    storeName: 'Main Store',
+    storeCode: 'STORE-001',
+    groupId: 1,
+    groupName: 'Fiber Mainstore IT',
+    groupCode: 'GRP-001',
+    categoryName: 'Electronics',
+    brand: 'HP',
+    model: 'E243',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 40,
+    unitCost: 320.00,
+    totalValue: 12800.00,
+    status: 'Active',
+    costHistory: [
+      { id: 1, previousCost: 300.00, newCost: 320.00, changedBy: 'Admin', reason: 'Market adjustment', createdAt: '2024-06-10T09:15:00' }
+    ]
+  },
+  {
+    id: 3,
+    itemCode: 'SDT000003',
+    itemName: 'Office Chair',
+    itemStandardName: 'Ergonomic Office Chair',
+    storeId: 2,
+    storeName: 'Warehouse A',
+    storeCode: 'STORE-002',
+    groupId: 2,
+    groupName: 'Fiber Ministore IT',
+    groupCode: 'GRP-002',
+    categoryName: 'Furniture',
+    brand: 'Herman Miller',
+    model: 'Aeron',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 15,
+    unitCost: 1200.00,
+    totalValue: 18000.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 4,
+    itemCode: 'SDT000004',
+    itemName: 'Wireless Keyboard',
+    itemStandardName: 'Logitech MX Keys',
+    storeId: 3,
+    storeName: 'Warehouse B',
+    storeCode: 'STORE-003',
+    groupId: 3,
+    groupName: 'Fiber Storekeeper',
+    groupCode: 'GRP-003',
+    categoryName: 'Electronics',
+    brand: 'Logitech',
+    model: 'MX Keys',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 60,
+    unitCost: 95.00,
+    totalValue: 5700.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 5,
+    itemCode: 'SDT000005',
+    itemName: 'USB Flash Drive',
+    itemStandardName: 'SanDisk 64GB USB',
+    storeId: 1,
+    storeName: 'Main Store',
+    storeCode: 'STORE-001',
+    groupId: 1,
+    groupName: 'Fiber Mainstore IT',
+    groupCode: 'GRP-001',
+    categoryName: 'Accessories',
+    brand: 'SanDisk',
+    model: 'Ultra 64GB',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 200,
+    unitCost: 12.50,
+    totalValue: 2500.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 6,
+    itemCode: 'SDT000006',
+    itemName: 'Paper Ream (A4)',
+    itemStandardName: 'A4 Copy Paper 80gsm',
+    storeId: 2,
+    storeName: 'Warehouse A',
+    storeCode: 'STORE-002',
+    groupId: 2,
+    groupName: 'Fiber Ministore IT',
+    groupCode: 'GRP-002',
+    categoryName: 'Stationery',
+    brand: 'Double A',
+    model: '80gsm',
+    uomCode: 'REAM',
+    conversionValue: 500,
+    conversionUomCode: 'SHEETS',
+    balance: 150,
+    unitCost: 4.50,
+    totalValue: 675.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 7,
+    itemCode: 'SDT000007',
+    itemName: 'Ink Cartridge',
+    itemStandardName: 'HP 62XL Ink Cartridge',
+    storeId: 3,
+    storeName: 'Warehouse B',
+    storeCode: 'STORE-003',
+    groupId: 3,
+    groupName: 'Fiber Storekeeper',
+    groupCode: 'GRP-003',
+    categoryName: 'Consumables',
+    brand: 'HP',
+    model: '62XL',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 80,
+    unitCost: 35.00,
+    totalValue: 2800.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 8,
+    itemCode: 'SDT000008',
+    itemName: 'Desk Phone',
+    itemStandardName: 'IP Office Phone',
+    storeId: 1,
+    storeName: 'Main Store',
+    storeCode: 'STORE-001',
+    groupId: 4,
+    groupName: 'HR Department',
+    groupCode: 'GRP-004',
+    categoryName: 'Electronics',
+    brand: 'Cisco',
+    model: '8841',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 30,
+    unitCost: 180.00,
+    totalValue: 5400.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 9,
+    itemCode: 'SDT000009',
+    itemName: 'Filing Cabinet',
+    itemStandardName: '4-Drawer Vertical File',
+    storeId: 2,
+    storeName: 'Warehouse A',
+    storeCode: 'STORE-002',
+    groupId: 4,
+    groupName: 'HR Department',
+    groupCode: 'GRP-004',
+    categoryName: 'Furniture',
+    brand: 'Steelcase',
+    model: '4-Drawer',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 10,
+    unitCost: 450.00,
+    totalValue: 4500.00,
+    status: 'Inactive',
+    costHistory: [
+      { id: 1, previousCost: 400.00, newCost: 450.00, changedBy: 'Admin', reason: 'Cost adjustment', createdAt: '2024-05-01T10:00:00' }
+    ]
+  },
+  {
+    id: 10,
+    itemCode: 'SDT000010',
+    itemName: 'Whiteboard Marker',
+    itemStandardName: 'Dry Erase Marker',
+    storeId: 3,
+    storeName: 'Warehouse B',
+    storeCode: 'STORE-003',
+    groupId: 3,
+    groupName: 'Fiber Storekeeper',
+    groupCode: 'GRP-003',
+    categoryName: 'Stationery',
+    brand: 'Expo',
+    model: 'Low Odor',
+    uomCode: 'BOX',
+    conversionValue: 12,
+    conversionUomCode: 'PCS',
+    balance: 30,
+    unitCost: 8.00,
+    totalValue: 240.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 11,
+    itemCode: 'SDT000011',
+    itemName: 'Network Switch',
+    itemStandardName: 'Cisco 2960 Switch',
+    storeId: 1,
+    storeName: 'Main Store',
+    storeCode: 'STORE-001',
+    groupId: 1,
+    groupName: 'Fiber Mainstore IT',
+    groupCode: 'GRP-001',
+    categoryName: 'Networking',
+    brand: 'Cisco',
+    model: '2960-24',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 8,
+    unitCost: 650.00,
+    totalValue: 5200.00,
+    status: 'Active',
+    costHistory: []
+  },
+  {
+    id: 12,
+    itemCode: 'SDT000012',
+    itemName: 'Projector',
+    itemStandardName: 'Epson Projector',
+    storeId: 4,
+    storeName: 'Retail Store',
+    storeCode: 'STORE-004',
+    groupId: 2,
+    groupName: 'Fiber Ministore IT',
+    groupCode: 'GRP-002',
+    categoryName: 'Electronics',
+    brand: 'Epson',
+    model: 'EB-X51',
+    uomCode: 'PCS',
+    conversionValue: 1,
+    conversionUomCode: 'PCS',
+    balance: 3,
+    unitCost: 950.00,
+    totalValue: 2850.00,
+    status: 'Active',
+    costHistory: []
+  }
+])
 
 // ================================================================
 // STATE
 // ================================================================
-const costItems = ref([])
-const stores = ref([])
-const groups = ref([])
-const isLoading = ref(false)
-const exporting = ref(false)
-const saving = ref(false)
-
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterGroup = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 const expandedRow = ref(null)
+const exporting = ref(false)
+const saving = ref(false)
 
 // Cost Modal
 const showCostModal = ref(false)
@@ -444,51 +733,12 @@ const hasActiveFilters = computed(() => {
 // METHODS
 // ================================================================
 
-const loadStores = async () => {
-  try {
-    const response = await balanceService.getStores()
-    stores.value = response.data || []
-  } catch (error) {
-    console.error('Error fetching stores:', error)
-  }
-}
-
-const loadGroups = async () => {
-  try {
-    const response = await balanceService.getGroups()
-    groups.value = response.data || []
-  } catch (error) {
-    console.error('Error fetching groups:', error)
-  }
-}
-
-const loadCostData = async () => {
-  isLoading.value = true
-  try {
-    const response = await costService.getCostItems({
-      storeId: filterStore.value || undefined,
-      groupId: filterGroup.value || undefined,
-      status: filterStatus.value || undefined,
-      search: searchQuery.value || undefined
-    })
-    
-    costItems.value = response.data || []
-    showToastMessage(`Loaded ${costItems.value.length} items`, 'success')
-  } catch (error) {
-    console.error('Error loading cost data:', error)
-    showToastMessage('Failed to load cost data', 'error')
-  } finally {
-    isLoading.value = false
-  }
-}
-
 const onSearchChange = () => {
   currentPage.value = 1
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
-  loadCostData()
 }
 
 const clearFilters = () => {
@@ -497,7 +747,6 @@ const clearFilters = () => {
   filterStatus.value = ''
   searchQuery.value = ''
   currentPage.value = 1
-  loadCostData()
   showToastMessage('Filters cleared', 'info')
 }
 
@@ -533,63 +782,49 @@ const closeCostModal = () => {
   costReason.value = ''
 }
 
-const saveCost = async () => {
+const saveCost = () => {
   if (!editingItem.value || !newCost.value || newCost.value < 0) return
   
   saving.value = true
-  try {
-    const response = await costService.updateUnitCost({
-      balanceId: editingItem.value.id,
-      itemId: editingItem.value.itemId,
-      storeId: editingItem.value.storeId,
-      groupId: editingItem.value.groupId,
-      newCost: newCost.value,
-      reason: costReason.value
-    })
-    
-    if (response.success) {
-      showToastMessage('Unit cost updated successfully!', 'success')
-      await loadCostData()
-      closeCostModal()
-    } else {
-      showToastMessage(response.error || 'Failed to update cost', 'error')
+  
+  // Simulate API call
+  setTimeout(() => {
+    // Update the cost
+    const item = costItems.value.find(i => i.id === editingItem.value.id)
+    if (item) {
+      const oldCost = item.unitCost
+      item.unitCost = newCost.value
+      item.totalValue = item.balance * newCost.value
+      
+      // Add to history
+      item.costHistory.unshift({
+        id: Date.now(),
+        previousCost: oldCost,
+        newCost: newCost.value,
+        changedBy: 'Current User',
+        reason: costReason.value || 'Manual update',
+        createdAt: new Date().toISOString()
+      })
     }
-  } catch (error) {
-    console.error('Error updating cost:', error)
-    showToastMessage('Failed to update cost', 'error')
-  } finally {
+    
+    showToastMessage('Unit cost updated successfully!', 'success')
+    closeCostModal()
     saving.value = false
-  }
+  }, 500)
 }
 
 // ================================================================
 // EXPORT & PRINT
 // ================================================================
 
-const exportReport = async () => {
+const exportReport = () => {
   exporting.value = true
-  try {
-    const response = await costService.exportCostReport({
-      storeId: filterStore.value || undefined,
-      groupId: filterGroup.value || undefined,
-      status: filterStatus.value || undefined
-    })
-    
-    const blob = new Blob([response.data], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `cost_report_${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    window.URL.revokeObjectURL(url)
-    
+  
+  // Simulate export
+  setTimeout(() => {
     showToastMessage('Export completed!', 'success')
-  } catch (error) {
-    console.error('Export error:', error)
-    showToastMessage('Failed to export', 'error')
-  } finally {
     exporting.value = false
-  }
+  }, 1000)
 }
 
 const printReport = () => {
@@ -607,7 +842,7 @@ const formatCurrency = (value) => {
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) return '0'
-  return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return Number(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 const formatDate = (dateString) => {
@@ -630,18 +865,6 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
-
-// ================================================================
-// LIFECYCLE
-// ================================================================
-
-onMounted(async () => {
-  await Promise.all([
-    loadStores(),
-    loadGroups()
-  ])
-  await loadCostData()
-})
 </script>
 
 <style scoped>
@@ -1155,29 +1378,6 @@ onMounted(async () => {
 .footer-total td {
   padding: 10px;
   border-top: 2px solid #e2e8f0;
-}
-
-/* ================================================================
-   LOADING STATE
-   ================================================================ */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: #64748b;
-}
-.loading-state .spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ================================================================
