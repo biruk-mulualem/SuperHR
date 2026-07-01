@@ -42,7 +42,7 @@
           <td>{{ getItemUOM(item.itemId) || 'Pcs' }}</td>
           <td class="font-bold">{{ item.quantity }}</td>
           <td>{{ getItemBrand(item.itemId) || '-' }}</td>
-          <td>{{ 'requestData.items[index].item.model'  }}</td>
+          <td>{{ requestData.items[index].item.model  }}</td>
           <td>{{ stripHtml(getItemSpecification(item.itemId)) || '-' }}</td>
           <td>{{ getItemModel(item.itemId) || '-' }}</td>
           <td>-</td>
