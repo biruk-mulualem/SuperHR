@@ -136,12 +136,7 @@
       </div>
     </div>
 
-    <!-- Forgot Password -->
-    <div class="forgot-container">
-      <button class="forgot-text" @click="handleForgotPassword">
-        Forgot Password?
-      </button>
-    </div>
+   
 
     <!-- Login Button -->
     <button
@@ -329,7 +324,7 @@ const handleLogin = async () => {
 }
 
 .input-label-focused {
-  color: #6a11cb;
+  color: #d4b012;
 }
 
 .input-label-error {
@@ -354,13 +349,13 @@ const handleLogin = async () => {
 }
 
 .input-container-focused {
-  border-color: #6a11cb;
+  border-color: #d4b012;
   background: white;
   box-shadow: 0 4px 8px rgba(106, 17, 203, 0.1);
 }
 
 .input-container-focused svg {
-  color: #6a11cb;
+  color: #d4b012;
 }
 
 .input-container-error {
@@ -401,7 +396,7 @@ const handleLogin = async () => {
 }
 
 .eye-icon:hover {
-  color: #6a11cb;
+  color: #d4b012;
 }
 
 /* Error Text */
@@ -445,7 +440,7 @@ const handleLogin = async () => {
 .forgot-text {
   background: none;
   border: none;
-  color: #6a11cb;
+  color: #d4b012;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -461,7 +456,7 @@ const handleLogin = async () => {
   width: 100%;
   height: 55px;
   border-radius: 15px;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #d4b012 0%, #d4b012 100%);
   border: none;
   cursor: pointer;
   display: flex;
@@ -469,12 +464,12 @@ const handleLogin = async () => {
   justify-content: center;
   gap: 10px;
   transition: all 0.2s ease;
-  box-shadow: 0 8px 15px rgba(106, 17, 203, 0.3);
+  box-shadow: 0 8px 15px rgba(226, 172, 9, 0.3);
 }
 
 .login-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(106, 17, 203, 0.4);
+  box-shadow: 0 10px 20px rgba(226, 172, 9, 0.3);
 }
 
 .login-button:active {

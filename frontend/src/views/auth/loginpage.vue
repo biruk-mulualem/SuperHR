@@ -13,6 +13,15 @@
       <!-- Left Side - Branding (Full Height) -->
       <div class="brand-section">
         <div class="brand-content">
+           <!-- Motto -->
+          <div class="brand-motto">
+            <p>We Trust In God!!! | <span class="amharic">እግዚአብሔር ይባረክ!!!</span></p>
+          </div>
+
+            <!-- System Name -->
+          <div class="system-name">
+            <p>STOCK MANAGEMENT SYSTEM</p> 
+          </div>
           <!-- Logo -->
           <div class="brand-logo">
             <div class="logo-icon">
@@ -24,74 +33,51 @@
             </div>
           </div>
 
+
+
+          
+          
           <div class="brand-divider"></div>
 
-          <!-- Motto -->
-          <div class="brand-motto">
-            <p>We Trust In God!!! | <span class="amharic">እግዚአብሔር ይባረክ!!!</span></p>
-            
+          <!-- Features -->
+          <div class="brand-features">
+            <div class="feature-item">
+              <span class="feature-dot"></span>
+              <span class="feature-text">📦 Stock Management</span>
+            </div>
+           
+            <div class="feature-item">
+              <span class="feature-dot"></span>
+              <span class="feature-text">📊 Reports &amp; Analytics</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-dot"></span>
+              <span class="feature-text">🔒 Secure &amp; Reliable</span>
+            </div>
           </div>
 
-          <!-- System Name -->
-          <div class="system-name">
-            <p>STOCK MANAGEMENT SYSTEM</p> 
+          <div class="brand-divider"></div>
+
+         
+
+        
+
+          <!-- Version -->
+          <div class="version-info">
+            <p>Version 1.0.0</p>
           </div>
         </div>
       </div>
 
-      <!-- Right Side - Login Form (Full Height with Inner Border) -->
+      <!-- Right Side - Login Form -->
       <div class="login-section">
         <div class="login-card">
           <div class="login-inner-border">
-            <div class="login-header">
-              <h2>Welcome Back!</h2>
-              <p>Please sign in to continue to your account</p>
-            </div>
-
-            <!-- Login Form -->
-            <form @submit.prevent="handleLogin" class="login-form">
-              <div class="form-group">
-                <label>Username / Email</label>
-                <div class="input-wrapper">
-                  <span class="input-icon">👤</span>
-                  <input 
-                    type="text" 
-                    v-model="username" 
-                    placeholder="Enter your username or email"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label>Password</label>
-                <div class="input-wrapper">
-                  <span class="input-icon">🔒</span>
-                  <input 
-                    :type="showPassword ? 'text' : 'password'" 
-                    v-model="password" 
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button 
-                    type="button" 
-                    class="toggle-password" 
-                    @click="showPassword = !showPassword"
-                  >
-                    {{ showPassword ? '🙈' : '👁️' }}
-                  </button>
-                </div>
-              </div>
-
-              <button type="submit" class="btn-login" :disabled="loading">
-                <span v-if="loading" class="spinner"></span>
-                <span v-else>Sign In</span>
-              </button>
-            </form>
-
+            <!-- ✅ Use the working LoginForm component -->
+            <LoginForm />
+            
             <!-- Footer -->
             <div class="login-footer">
-             
               <p>© 2026 Super Double T General Trading PLC. All rights reserved.</p>
               <div class="footer-links">
                 <a href="#">Privacy Policy</a>
@@ -109,36 +95,23 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { ref, onMounted } from 'vue'
+import ParticleBackground from './components/ParticleBackground.vue'
+import LoginForm from './components/LoginForm.vue'
 
-const router = useRouter()
-const authStore = useAuthStore()
+// Animation values - same as your original
+const fadeAnim = ref(0)
+const slideAnim = ref(30)
+const scaleAnim = ref(0.95)
 
-const username = ref('')
-const password = ref('')
-const rememberMe = ref(false)
-const showPassword = ref(false)
-const loading = ref(false)
-
-const handleLogin = async () => {
-  if (!username.value || !password.value) return
-
-  loading.value = true
-  try {
-    await authStore.login({
-      username: username.value,
-      password: password.value,
-      rememberMe: rememberMe.value
-    })
-    router.push('/dashboard')
-  } catch (error) {
-    console.error('Login error:', error)
-  } finally {
-    loading.value = false
-  }
-}
+// Animations - same as your original
+onMounted(() => {
+  setTimeout(() => {
+    fadeAnim.value = 1
+    slideAnim.value = 0
+    scaleAnim.value = 1
+  }, 100)
+})
 </script>
 
 <style scoped>
@@ -288,13 +261,13 @@ const handleLogin = async () => {
    ================================================================ */
 .brand-logo {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .logo-icon {
   display: flex;
   justify-content: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .logo-text {
@@ -323,7 +296,7 @@ const handleLogin = async () => {
   opacity: 0.7;
   letter-spacing: 4px;
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   color: #c9a84c;
 }
 
@@ -334,8 +307,50 @@ const handleLogin = async () => {
   width: 60px;
   height: 3px;
   background: linear-gradient(90deg, #c9a84c, #ffd700);
-  margin: 20px auto;
+  margin: 16px auto;
   border-radius: 2px;
+}
+
+/* ================================================================
+   FEATURES
+   ================================================================ */
+.brand-features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.3s;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.feature-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(6px);
+}
+
+.feature-dot {
+  width: 8px;
+  height: 8px;
+  background: #c9a84c;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.feature-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.5px;
 }
 
 /* ================================================================
@@ -355,8 +370,8 @@ const handleLogin = async () => {
 }
 
 .brand-motto .amharic {
-  font-size: 22px;
-  margin-top: 4px;
+  font-size: 20px;
+  margin-top: 2px;
   color: rgba(255, 255, 255, 0.85);
   font-weight: 600;
 }
@@ -366,8 +381,8 @@ const handleLogin = async () => {
    ================================================================ */
 .system-name {
   text-align: center;
-  margin-top: 10px;
-  padding-top: 16px;
+  margin-top: 8px;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -380,7 +395,22 @@ const handleLogin = async () => {
 }
 
 /* ================================================================
-   LOGIN SECTION (RIGHT) - FULL HEIGHT WITH INNER BORDER
+   VERSION INFO
+   ================================================================ */
+.version-info {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.version-info p {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+/* ================================================================
+   LOGIN SECTION (RIGHT) - WITH INNER BORDER
    ================================================================ */
 .login-section {
   padding: 40px;
@@ -397,7 +427,7 @@ const handleLogin = async () => {
 }
 
 .login-inner-border {
-  padding: 40px 36px;
+  padding: 40px 36px 20px;
   border: 2px solid #c9a84c;
   border-radius: 16px;
   background: #ffffff;
@@ -440,163 +470,14 @@ const handleLogin = async () => {
   padding: 0 8px;
 }
 
-.login-header {
-  position: relative;
-  margin-bottom: 28px;
-}
-
-.login-header h2 {
-  font-size: 26px;
-  font-weight: 700;
-  color: #1a1a2e;
-  margin: 0 0 2px 0;
-}
-
-.login-header p {
-  color: #94a3b8;
-  margin: 0;
-  font-size: 14px;
-}
-
-/* ================================================================
-   LOGIN FORM
-   ================================================================ */
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 16px;
-  opacity: 0.4;
-}
-
-.input-wrapper input {
-  width: 100%;
-  padding: 12px 14px 12px 44px;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 14px;
-  background: #f8fafc;
-  transition: all 0.3s;
-  font-family: inherit;
-}
-
-.input-wrapper input:focus {
-  outline: none;
-  border-color: #c9a84c;
-  background: white;
-  box-shadow: 0 0 0 4px rgba(201, 168, 76, 0.08);
-}
-
-.input-wrapper input::placeholder {
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.toggle-password {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 18px;
-  opacity: 0.4;
-  padding: 4px;
-}
-
-.toggle-password:hover {
-  opacity: 1;
-}
-
-/* ================================================================
-   LOGIN BUTTON
-   ================================================================ */
-.btn-login {
-  padding: 13px;
-  background: #c9a84c;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  letter-spacing: 0.5px;
-  margin-top: 4px;
-}
-
-.btn-login:hover:not(:disabled) {
-  background: #b8973e;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(201, 168, 76, 0.3);
-}
-
-.btn-login:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-login:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  display: inline-block;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* ================================================================
    FOOTER
    ================================================================ */
 .login-footer {
   text-align: center;
-  margin-top: 24px;
+  margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid #e2e8f0;
-}
-
-.login-footer .footer-motto {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1a1a2e;
-  margin: 0 0 6px 0;
 }
 
 .login-footer p {
@@ -650,7 +531,7 @@ const handleLogin = async () => {
   }
   
   .login-inner-border {
-    padding: 30px 24px;
+    padding: 30px 24px 16px;
   }
 }
 
@@ -660,15 +541,7 @@ const handleLogin = async () => {
   }
 
   .login-inner-border {
-    padding: 24px 16px;
-  }
-
-  .login-header h2 {
-    font-size: 22px;
-  }
-
-  .login-footer .footer-motto {
-    font-size: 12px;
+    padding: 24px 16px 12px;
   }
 
   .footer-links {

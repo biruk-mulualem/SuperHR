@@ -146,6 +146,7 @@ const roleMenus = {
         { name: 'Store Transaction', path: '/store-transaction', icon: 'UserIcon' },
         { name: 'item-requests ',    path: '/item-requests',     icon: 'UserIcon' },
         { name: 'Audit',             path: '/audit',             icon: 'ClockIcon' },
+        { name: 'item-cost',         path: '/item-cost',         icon: 'CogIcon' },
       ]
     },
     {
