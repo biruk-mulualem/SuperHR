@@ -102,6 +102,7 @@ const roleMenus = {
     { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+    { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
   ],
   hr: [

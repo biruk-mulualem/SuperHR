@@ -131,6 +131,15 @@ const router = createRouter({
             roles: ["admin", "storekeeper","store_it","checker"] 
           },
         },
+         {
+          path: "item-cost",
+          name: "item-cost",
+          component: () => import("@/views/storemanagement/ItemCost/ItemCost.vue"),
+          meta: { 
+            title: "cost Management", 
+            roles: ["admin", "storekeeper","store_it","checker"] 
+          },
+        },
 
           {
           path: "group-management",
