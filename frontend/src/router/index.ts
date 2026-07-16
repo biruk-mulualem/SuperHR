@@ -219,7 +219,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: { 
             title: "item requests ", 
-            roles: ["admin", "storekeeper","store_it","checker"] 
+            roles: ["admin", "storekeeper","store_it","checker","employee"] 
           },
         },
 
@@ -229,7 +229,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/itemRequests/printrequests.vue"),
           meta: { 
             title: "print requests ", 
-            roles: ["admin", "storekeeper","store_it","checker"] 
+            roles: ["admin", "storekeeper","store_it","checker","employee"] 
           },
         },
 

@@ -18,12 +18,12 @@
           />
         </div>
         <button class="btn-add" @click="openAddBalanceModal">📦 Initialize Balance</button>
-       <button class="btn-process-requests" @click="processApprovedRequests">
-  📋 Process Approved Requests
-  <span v-if="pendingRequestsCount > 0" class="badge-count">
-    {{ pendingRequestsCount }}
-  </span>
-</button>
+        <button class="btn-process-requests" @click="processApprovedRequests">
+          📋 Process Approved Requests
+          <span v-if="pendingRequestsCount > 0" class="badge-count">
+            {{ pendingRequestsCount }}
+          </span>
+        </button>
       </div>
     </div>
 
@@ -160,7 +160,6 @@
             </td>
             <td>
               <div class="action-buttons">
-                <!-- <button class="icon-btn" @click="editBalance(item)" title="Edit">✏️</button> -->
                 <button class="icon-btn" @click="toggleStatus(item)" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
                   {{ item.status === 'Active' ? '⏸️' : '▶️' }}
                 </button>
@@ -192,234 +191,320 @@
     </div>
 
     <!-- ==================== INITIALIZE BALANCE MODAL WITH TABS ==================== -->
-    <div v-if="showBalanceModal" class="modal-overlay" @click.self="closeBalanceModal">
-      <div class="modal-container balance-modal">
-        <div class="modal-header">
-          <h3>{{ editingBalance ? '✏️ Edit Balance' : '📦 Initialize Balance' }}</h3>
-          <button class="modal-close" @click="closeBalanceModal">✕</button>
+
+<!-- ==================== INITIALIZE BALANCE MODAL WITH TABS ==================== -->
+<div v-if="showBalanceModal" class="modal-overlay" @click.self="closeBalanceModal">
+  <div class="modal-container balance-modal">
+    <div class="modal-header">
+      <h3>{{ editingBalance ? '✏️ Edit Balance' : '📦 Initialize Balance' }}</h3>
+      <button class="modal-close" @click="closeBalanceModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Tabs -->
+      <div class="init-tabs" v-if="!editingBalance">
+        <button class="init-tab" :class="{ active: initTab === 'manual' }" @click="initTab = 'manual'">
+          ✍️ Manual
+        </button>
+        <button class="init-tab" :class="{ active: initTab === 'import' }" @click="initTab = 'import'">
+          📥 Import
+        </button>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- MANUAL TAB -->
+      <!-- ============================================================ -->
+      <div v-if="initTab === 'manual' || editingBalance">
+        <div v-if="!editingBalance" class="init-info">
+          <span class="info-icon">ℹ️</span>
+          <span>Set up initial stock balance for a specific item in a store.</span>
         </div>
-        <div class="modal-body">
-          <!-- Tabs -->
-          <div class="init-tabs" v-if="!editingBalance">
-            <button class="init-tab" :class="{ active: initTab === 'manual' }" @click="initTab = 'manual'">
-              ✍️ Manual
-            </button>
-            <button class="init-tab" :class="{ active: initTab === 'import' }" @click="initTab = 'import'">
-              📥 Import
-            </button>
+        <form @submit.prevent="saveBalance" class="balance-form">
+          <!-- Store and Group Selection -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Store *</label>
+              <select v-model="form.storeId" required :disabled="!isAdmin && userData?.assignedStore">
+                <option value="">Select Store</option>
+                <option v-for="store in availableStores" :key="store.id" :value="store.id">
+                  {{ store.name }}
+                </option>
+              </select>
+              <span v-if="!isAdmin && userData?.assignedStore" class="hint pre-filled">
+                📌 Pre-filled with your assigned store: <strong>{{ userData.assignedStore.name }}</strong>
+              </span>
+              <span v-else-if="!isAdmin && !userData?.assignedStore" class="hint warning">
+                ⚠️ No store assigned. Please select a store.
+              </span>
+            </div>
+            <div class="form-group">
+              <label>Group *</label>
+              <select v-model="form.groupId" required :disabled="!isAdmin && userData?.assignedGroup">
+                <option value="">Select Group</option>
+                <option v-for="group in availableGroups" :key="group.id" :value="group.id">
+                  {{ group.name }}
+                </option>
+              </select>
+              <span v-if="!isAdmin && userData?.assignedGroup" class="hint pre-filled">
+                📌 Pre-filled with your assigned group: <strong>{{ userData.assignedGroup.name }}</strong>
+              </span>
+              <span v-else-if="!isAdmin && !userData?.assignedGroup" class="hint warning">
+                ⚠️ No group assigned. Please select a group.
+              </span>
+            </div>
           </div>
 
-          <!-- Manual Tab -->
-          <div v-if="initTab === 'manual' || editingBalance">
-            <div v-if="!editingBalance" class="init-info">
-              <span class="info-icon">ℹ️</span>
-              <span>Set up initial stock balance for a specific item in a store.</span>
-            </div>
-            <form @submit.prevent="saveBalance" class="balance-form">
-             <!-- In the modal body, update the store and group selects -->
-<div class="form-row">
-  <div class="form-group">
-    <label>Store *</label>
-    <select v-model="form.storeId" required :disabled="!isAdmin && userData?.assignedStore">
-      <option value="">Select Store</option>
-      <option v-for="store in availableStores" :key="store.id" :value="store.id">
-        {{ store.name }}
-      </option>
-    </select>
-    <span v-if="!isAdmin && userData?.assignedStore" class="hint pre-filled">
-      📌 Pre-filled with your assigned store: <strong>{{ userData.assignedStore.name }}</strong>
-    </span>
-    <span v-else-if="!isAdmin && !userData?.assignedStore" class="hint warning">
-      ⚠️ No store assigned. Please select a store.
-    </span>
-  </div>
-  <div class="form-group">
-    <label>Group *</label>
-    <select v-model="form.groupId" required :disabled="!isAdmin && userData?.assignedGroup">
-      <option value="">Select Group</option>
-      <option v-for="group in availableGroups" :key="group.id" :value="group.id">
-        {{ group.name }}
-      </option>
-    </select>
-    <span v-if="!isAdmin && userData?.assignedGroup" class="hint pre-filled">
-      📌 Pre-filled with your assigned group: <strong>{{ userData.assignedGroup.name }}</strong>
-    </span>
-    <span v-else-if="!isAdmin && !userData?.assignedGroup" class="hint warning">
-      ⚠️ No group assigned. Please select a group.
-    </span>
+          <!-- Enhanced Item Selection with Stacked Layout -->
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label>Item *</label>
+              
+              <!-- Search -->
+              <div class="item-search-wrapper">
+                <span class="search-icon-small">🔍</span>
+                <input
+                  type="text"
+                  v-model="itemSearchQuery"
+                  placeholder="Search items by code, name, brand, or model..."
+                  @input="resetItemList"
+                  class="item-search-input"
+                />
+              </div>
+              
+        
+<div class="item-select-container" ref="itemSelectContainer">
+  <div class="item-select-scroll" @scroll="onItemScroll">
+    <div 
+      v-for="item in displayedItems" 
+      :key="item.id"
+      class="item-option"
+      :class="{ selected: form.itemId === item.id }"
+      @click="selectItem(item)"
+    >
+      <div class="item-option-content">
+        <!-- Left: Code -->
+        <div class="item-option-left">
+          <span class="item-option-code">{{ item.code }}</span>
+        </div>
+        
+        <!-- Middle: Standard Name (primary) & Name (secondary) - stacked -->
+        <div class="item-option-middle">
+          <div class="item-option-standard-name">{{ item.standardName || item.name }}</div>
+          <div class="item-option-name" v-if="item.name && item.name !== item.standardName">{{ item.name }}</div>
+        </div>
+        
+        <!-- Right: Brand & Model (stacked) -->
+        <div class="item-option-right">
+          <div class="item-option-brand" v-if="item.brand">{{ item.brand }}</div>
+          <div class="item-option-model" v-if="item.model">{{ item.model }}</div>
+        </div>
+        
+        <!-- Far Right: UOM -->
+        <div class="item-option-uom">{{ item.uomCode || 'N/A' }}</div>
+      </div>
+    </div>
+    <div v-if="isLoadingItems" class="item-loading">
+      <div class="spinner-small"></div>
+      Loading more items...
+    </div>
+    <div v-if="filteredItemsList.length === 0 && !isLoadingItems" class="item-no-results">
+      No items found
+    </div>
+    <div v-if="hasMoreItems && !isLoadingItems" class="item-load-more">
+      Scroll for more items...
+    </div>
   </div>
 </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Item *</label>
-                  <select v-model="form.itemId" required @change="onItemChange">
-                    <option value="">Select Item</option>
-                    <option v-for="item in inventoryItems" :key="item.id" :value="item.id">
-                      {{ item.code }} - {{ item.standardName }}
-                    </option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Balance ({{ getItemUnit(form.itemId) }}) *</label>
-                  <input v-model.number="form.balance" type="number" required placeholder="0" min="0" step="1" @input="onBalanceChange" :readonly="!!editingBalance" />
-                  <span class="hint" v-if="form.itemId && form.balance > 0 && !editingBalance">
-                    = {{ formatNumber(form.balance * getConversionValue(Number(form.itemId))) }} {{ getBaseUOM(Number(form.itemId)) }}
-                  </span>
-                  <span class="hint" v-if="editingBalance">Balance cannot be changed after initialization</span>
-                </div>
+
+<!-- Selected Item Display - Update this too -->
+<div v-if="selectedItemDisplay" class="selected-item-display">
+  <span class="selected-badge">✅ Selected:</span>
+  <span class="selected-item-code">{{ selectedItemDisplay.code }}</span>
+  <span class="selected-item-standard-name">{{ selectedItemDisplay.standardName || selectedItemDisplay.name }}</span>
+  <span class="selected-item-name" v-if="selectedItemDisplay.name && selectedItemDisplay.name !== selectedItemDisplay.standardName">{{ selectedItemDisplay.name }}</span>
+  <span class="selected-item-brand" v-if="selectedItemDisplay.brand">Brand: {{ selectedItemDisplay.brand }}</span>
+  <span class="selected-item-model" v-if="selectedItemDisplay.model">Model: {{ selectedItemDisplay.model }}</span>
+  <span class="selected-item-uom">({{ selectedItemDisplay.uomCode || 'N/A' }})</span>
+  <button type="button" class="clear-selection" @click="clearItemSelection">✕</button>
+</div>
+              
+              <!-- Selected Item Display -->
+              <div v-if="selectedItemDisplay" class="selected-item-display">
+                <span class="selected-badge">✅ Selected:</span>
+                <span class="selected-item-code">{{ selectedItemDisplay.code }}</span>
+                <span class="selected-item-name">{{ selectedItemDisplay.standardName || selectedItemDisplay.name }}</span>
+                <span class="selected-item-common" v-if="selectedItemDisplay.commonName">{{ selectedItemDisplay.commonName }}</span>
+                <span class="selected-item-brand" v-if="selectedItemDisplay.brand">Brand: {{ selectedItemDisplay.brand }}</span>
+                <span class="selected-item-model" v-if="selectedItemDisplay.model">Model: {{ selectedItemDisplay.model }}</span>
+                <span class="selected-item-uom">({{ selectedItemDisplay.uomCode || 'N/A' }})</span>
+                <button type="button" class="clear-selection" @click="clearItemSelection">✕</button>
               </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Status</label>
-                  <select v-model="form.status">
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Minimum Stock Alert</label>
-                  <input v-model.number="form.minStock" type="number" placeholder="Min stock level" min="0" step="1" />
-                  <span class="hint">Warning when stock falls below this level</span>
-                </div>
-              </div>
-            </form>
+            </div>
           </div>
-
-          <!-- Import Tab -->
-          <div v-if="initTab === 'import' && !editingBalance">
-            <div class="import-info">
-              <span class="info-icon">📄</span>
-              <div>
-                <p><strong>CSV Format Required:</strong></p>
-                <p class="info-text">Your CSV should have the following columns:</p>
-                <ul class="csv-format-list">
-                  <li><strong>storeId</strong> - Store ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
-                  <li><strong>groupId</strong> - Group ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
-                  <li><strong>itemCode</strong> - Item Code (required) <span class="hint-text">e.g., SDT000001</span></li>
-                  <li><strong>balance</strong> - Initial balance (required) <span class="hint-text">e.g., 100</span></li>
-                  <li><strong>minStock</strong> - Minimum stock level (optional) <span class="hint-text">e.g., 10</span></li>
-                  <li><strong>status</strong> - Status (optional, defaults to Active) <span class="hint-text">Active/Inactive</span></li>
-                </ul>
-                <p class="info-text" style="margin-top: 8px;">
-                  💡 <strong>Note:</strong> Use <strong>itemCode</strong> (e.g., SDT000001) instead of numeric itemId for easier import.
-                </p>
-                <button class="btn-template" @click="downloadTemplate" :disabled="importing">
-                  📄 Download CSV Template
-                </button>
-              </div>
+          
+          <!-- Balance and Status -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Balance ({{ getItemUnit(form.itemId) }}) *</label>
+              <input v-model.number="form.balance" type="number" required placeholder="0" min="0" step="1" @input="onBalanceChange" :readonly="!!editingBalance" />
+              <span class="hint" v-if="form.itemId && form.balance > 0 && !editingBalance">
+                = {{ formatNumber(form.balance * getConversionValue(Number(form.itemId))) }} {{ getBaseUOM(Number(form.itemId)) }}
+              </span>
+              <span class="hint" v-if="editingBalance">Balance cannot be changed after initialization</span>
             </div>
-
-            <!-- File Upload -->
-            <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload($event)" 
-              :class="{ 'drag-over': isDragOver, 'disabled': importing }"
-              @dragover.prevent="!importing && (isDragOver = true)" 
-              @dragleave.prevent="!importing && (isDragOver = false)"
-              @drop.prevent="!importing && handleCsvDrop($event)">
-              <div v-if="csvFile" class="file-preview">
-                <span class="file-icon">📄</span>
-                <span class="file-name">{{ csvFile.name }}</span>
-                <span class="file-size">{{ formatFileSize(csvFile.size) }}</span>
-                <button type="button" @click.stop="!importing && removeCsvFile()" class="remove-file" :disabled="importing">✕</button>
-              </div>
-              <div v-else class="upload-placeholder">
-                <span class="upload-icon">📁</span>
-                <span>Click to upload CSV file</span>
-                <span class="upload-hint">or drag and drop</span>
-                <span class="upload-hint">Supported formats: .csv</span>
-              </div>
-              <input type="file" ref="csvFileInput" accept=".csv" 
-                     @change="handleCsvUpload" style="display:none" :disabled="importing" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Status</label>
+              <select v-model="form.status">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
             </div>
-
-            <!-- Import Progress -->
-            <div v-if="importing" class="import-progress">
-              <div class="progress-info">
-                <span>Importing balances...</span>
-                <span>{{ importProgress.processed }} / {{ importProgress.total }}</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: importProgress.percentage + '%' }"></div>
-              </div>
-              <div class="progress-status">
-                <span class="status-success">✅ {{ importProgress.success }}</span>
-                <span class="status-failed">❌ {{ importProgress.failed }}</span>
-                <span class="status-remaining">⏳ {{ importProgress.remaining }} remaining</span>
-              </div>
+            <div class="form-group">
+              <label>Minimum Stock Alert</label>
+              <input v-model.number="form.minStock" type="number" placeholder="Min stock level" min="0" step="1" />
+              <span class="hint">Warning when stock falls below this level</span>
             </div>
+          </div>
+        </form>
+      </div>
 
-            <!-- Preview imported data -->
-            <div v-if="importPreviewData.length > 0 && !importing" class="import-preview">
-              <h4>Preview ({{ importPreviewData.length }} items)</h4>
-              <div class="preview-table-container">
-                <table class="preview-table">
-                  <thead>
-                    <tr>
-                      <th>Store</th>
-                      <th>Group</th>
-                      <th>Item Code</th>
-                      <th>Item Name</th>
-                      <th>Balance</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(item, index) in importPreviewData.slice(0, 10)" :key="index">
-                      <td>{{ getStoreName(Number(item.storeId)) || item.storeId }}</td>
-                      <td>{{ getGroupName(Number(item.groupId)) || item.groupId }}</td>
-                      <td><strong>{{ item.itemCode || item.itemId }}</strong></td>
-                      <td>{{ getItemNameByCode(item.itemCode) || getItemName(Number(item.itemId)) || 'Unknown' }}</td>
-                      <td>{{ item.balance }}</td>
-                      <td>{{ item.status || 'Active' }}</td>
-                    </tr>
-                    <tr v-if="importPreviewData.length > 10">
-                      <td colspan="6" class="preview-more">
-                        ... and {{ importPreviewData.length - 10 }} more items
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Import results -->
-            <div v-if="importResults && !importing" class="import-results">
-              <div class="result-summary">
-                <span class="result-success">✅ {{ importResults.success }} imported</span>
-                <span class="result-failed">❌ {{ importResults.failed }} failed</span>
-                <span class="result-total">📊 {{ importResults.total }} total</span>
-              </div>
-              <div v-if="importResults.errors && importResults.errors.length > 0" class="result-errors">
-                <p><strong>Errors:</strong></p>
-                <ul>
-                  <li v-for="(err, idx) in importResults.errors.slice(0, 5)" :key="idx">{{ err }}</li>
-                  <li v-if="importResults.errors.length > 5">... and {{ importResults.errors.length - 5 }} more errors</li>
-                </ul>
-              </div>
-            </div>
+      <!-- ============================================================ -->
+      <!-- IMPORT TAB - FULLY INTACT -->
+      <!-- ============================================================ -->
+      <div v-if="initTab === 'import' && !editingBalance">
+        <div class="import-info">
+          <span class="info-icon">📄</span>
+          <div>
+            <p><strong>CSV Format Required:</strong></p>
+            <p class="info-text">Your CSV should have the following columns:</p>
+            <ul class="csv-format-list">
+              <li><strong>storeId</strong> - Store ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
+              <li><strong>groupId</strong> - Group ID (required) <span class="hint-text">e.g., 1, 2, 3</span></li>
+              <li><strong>itemCode</strong> - Item Code (required) <span class="hint-text">e.g., SDT000001</span></li>
+              <li><strong>balance</strong> - Initial balance (required) <span class="hint-text">e.g., 100</span></li>
+              <li><strong>minStock</strong> - Minimum stock level (optional) <span class="hint-text">e.g., 10</span></li>
+              <li><strong>status</strong> - Status (optional, defaults to Active) <span class="hint-text">Active/Inactive</span></li>
+            </ul>
+            <p class="info-text" style="margin-top: 8px;">
+              💡 <strong>Note:</strong> Use <strong>itemCode</strong> (e.g., SDT000001) instead of numeric itemId for easier import.
+            </p>
+            <button class="btn-template" @click="downloadTemplate" :disabled="importing">
+              📄 Download CSV Template
+            </button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeBalanceModal" :disabled="importing">Cancel</button>
-          <button 
-            v-if="initTab === 'manual' || editingBalance"
-            class="btn-primary" 
-            @click="saveBalance" 
-            :disabled="saving || (editingBalance && form.balance !== undefined)"
-          >
-            {{ saving ? 'Saving...' : (editingBalance ? 'Update' : 'Initialize') }}
-          </button>
-          <button 
-            v-if="initTab === 'import' && !editingBalance"
-            class="btn-primary" 
-            @click="processImport" 
-            :disabled="!csvFile || importing || importPreviewData.length === 0"
-          >
-            {{ importing ? 'Importing...' : 'Import Balances' }}
-          </button>
+
+        <!-- File Upload -->
+        <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload($event)" 
+          :class="{ 'drag-over': isDragOver, 'disabled': importing }"
+          @dragover.prevent="!importing && (isDragOver = true)" 
+          @dragleave.prevent="!importing && (isDragOver = false)"
+          @drop.prevent="!importing && handleCsvDrop($event)">
+          <div v-if="csvFile" class="file-preview">
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ csvFile.name }}</span>
+            <span class="file-size">{{ formatFileSize(csvFile.size) }}</span>
+            <button type="button" @click.stop="!importing && removeCsvFile()" class="remove-file" :disabled="importing">✕</button>
+          </div>
+          <div v-else class="upload-placeholder">
+            <span class="upload-icon">📁</span>
+            <span>Click to upload CSV file</span>
+            <span class="upload-hint">or drag and drop</span>
+            <span class="upload-hint">Supported formats: .csv</span>
+          </div>
+          <input type="file" ref="csvFileInput" accept=".csv" 
+                 @change="handleCsvUpload" style="display:none" :disabled="importing" />
+        </div>
+
+        <!-- Import Progress -->
+        <div v-if="importing" class="import-progress">
+          <div class="progress-info">
+            <span>Importing balances...</span>
+            <span>{{ importProgress.processed }} / {{ importProgress.total }}</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: importProgress.percentage + '%' }"></div>
+          </div>
+          <div class="progress-status">
+            <span class="status-success">✅ {{ importProgress.success }}</span>
+            <span class="status-failed">❌ {{ importProgress.failed }}</span>
+            <span class="status-remaining">⏳ {{ importProgress.remaining }} remaining</span>
+          </div>
+        </div>
+
+        <!-- Preview imported data -->
+        <div v-if="importPreviewData.length > 0 && !importing" class="import-preview">
+          <h4>Preview ({{ importPreviewData.length }} items)</h4>
+          <div class="preview-table-container">
+            <table class="preview-table">
+              <thead>
+                <tr>
+                  <th>Store</th>
+                  <th>Group</th>
+                  <th>Item Code</th>
+                  <th>Item Name</th>
+                  <th>Balance</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in importPreviewData.slice(0, 10)" :key="index">
+                  <td>{{ getStoreName(Number(item.storeId)) || item.storeId }}</td>
+                  <td>{{ getGroupName(Number(item.groupId)) || item.groupId }}</td>
+                  <td><strong>{{ item.itemCode || item.itemId }}</strong></td>
+                  <td>{{ getItemNameByCode(item.itemCode) || getItemName(Number(item.itemId)) || 'Unknown' }}</td>
+                  <td>{{ item.balance }}</td>
+                  <td>{{ item.status || 'Active' }}</td>
+                </tr>
+                <tr v-if="importPreviewData.length > 10">
+                  <td colspan="6" class="preview-more">
+                    ... and {{ importPreviewData.length - 10 }} more items
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Import results -->
+        <div v-if="importResults && !importing" class="import-results">
+          <div class="result-summary">
+            <span class="result-success">✅ {{ importResults.success }} imported</span>
+            <span class="result-failed">❌ {{ importResults.failed }} failed</span>
+            <span class="result-total">📊 {{ importResults.total }} total</span>
+          </div>
+          <div v-if="importResults.errors && importResults.errors.length > 0" class="result-errors">
+            <p><strong>Errors:</strong></p>
+            <ul>
+              <li v-for="(err, idx) in importResults.errors.slice(0, 5)" :key="idx">{{ err }}</li>
+              <li v-if="importResults.errors.length > 5">... and {{ importResults.errors.length - 5 }} more errors</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
-
+    <div class="modal-footer">
+      <button class="btn-secondary" @click="closeBalanceModal" :disabled="importing">Cancel</button>
+      <button 
+        v-if="initTab === 'manual' || editingBalance"
+        class="btn-primary" 
+        @click="saveBalance" 
+        :disabled="saving || (editingBalance && form.balance !== undefined) || !form.itemId"
+      >
+        {{ saving ? 'Saving...' : (editingBalance ? 'Update' : 'Initialize') }}
+      </button>
+      <button 
+        v-if="initTab === 'import' && !editingBalance"
+        class="btn-primary" 
+        @click="processImport" 
+        :disabled="!csvFile || importing || importPreviewData.length === 0"
+      >
+        {{ importing ? 'Importing...' : 'Import Balances' }}
+      </button>
+    </div>
+  </div>
+</div>
     <!-- ==================== DELETE CONFIRMATION MODAL ==================== -->
     <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
       <div class="modal-container delete-modal">
@@ -451,7 +536,6 @@
           <button class="modal-close" @click="closeProcessModal">✕</button>
         </div>
         <div class="modal-body">
-          <!-- Info Box -->
           <div class="process-info">
             <div class="process-info-header">
               <span class="info-icon">ℹ️</span>
@@ -467,7 +551,6 @@
             </ul>
           </div>
 
-          <!-- Step 1: Select Store - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group">
             <label>1. Select Store *</label>
             <select v-model="selectedStoreId" required @change="onStoreSelect" :disabled="!isAdmin && userData?.assignedStore">
@@ -481,40 +564,35 @@
             </span>
           </div>
 
-          <!-- Step 2: Select Requests -->
-         <!-- In the process modal - Step 2: Select Requests -->
-<div v-if="selectedStoreId && storeRequests.length > 0" class="form-group">
-  <label>2. Select Requests to Process</label>
-  <div class="select-all-container">
-    <label class="select-all-label">
-      <input type="checkbox" v-model="selectAllRequests" @change="toggleAllRequests" />
-      Select All ({{ storeRequests.length }} requests)
-    </label>
-  </div>
-  <div class="requests-checkbox-list">
-    <label v-for="req in storeRequests" :key="req.id" class="request-checkbox">
-      <input type="checkbox" v-model="selectedRequestIds" :value="req.id" @change="onRequestSelect" />
-      <div class="request-info">
-        <span class="req-code">{{ req.requestCode }}</span>
-        <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
-        <span class="req-items-count">{{ req.items?.length || 0 }} items</span>
-        <!-- ✅ Show action based on store role -->
-        <span class="req-action" :class="getItemActionClass(req)">
-          {{ getItemActionLabel(req) }}
-        </span>
-        <!-- ✅ Show processing status -->
-        <span v-if="req.isProcessedByGroup" class="req-status processed">
-          ✅ Processed
-        </span>
-        <span v-else class="req-status pending">
-          ⏳ Pending
-        </span>
-      </div>
-    </label>
-  </div>
-</div>
+          <div v-if="selectedStoreId && storeRequests.length > 0" class="form-group">
+            <label>2. Select Requests to Process</label>
+            <div class="select-all-container">
+              <label class="select-all-label">
+                <input type="checkbox" v-model="selectAllRequests" @change="toggleAllRequests" />
+                Select All ({{ storeRequests.length }} requests)
+              </label>
+            </div>
+            <div class="requests-checkbox-list">
+              <label v-for="req in storeRequests" :key="req.id" class="request-checkbox">
+                <input type="checkbox" v-model="selectedRequestIds" :value="req.id" @change="onRequestSelect" />
+                <div class="request-info">
+                  <span class="req-code">{{ req.requestCode }}</span>
+                  <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
+                  <span class="req-items-count">{{ req.items?.length || 0 }} items</span>
+                  <span class="req-action" :class="getItemActionClass(req)">
+                    {{ getItemActionLabel(req) }}
+                  </span>
+                  <span v-if="req.isProcessedByGroup" class="req-status processed">
+                    ✅ Processed
+                  </span>
+                  <span v-else class="req-status pending">
+                    ⏳ Pending
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
 
-          <!-- Step 3: Select Group - PRE-SELECTED FOR NON-ADMIN -->
           <div class="form-group" v-if="selectedRequestIds.length > 0">
             <label>3. Select Group to Apply Changes *</label>
             <select v-model="selectedGroupId" required :disabled="!isAdmin && userData?.assignedGroup">
@@ -528,7 +606,6 @@
             </span>
           </div>
 
-          <!-- Preview Selected Requests -->
           <div v-if="selectedRequestIds.length > 0 && selectedGroupId" class="requests-preview">
             <div class="preview-header">
               <span>📋 {{ selectedRequestIds.length }} request(s) selected</span>
@@ -636,6 +713,7 @@
     </div>
   </div>
 </template>
+
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import balanceService from '@/stores/balanceService'
@@ -647,7 +725,6 @@ import balanceService from '@/stores/balanceService'
 const getUserData = () => {
   try {
     const data = JSON.parse(localStorage.getItem('user') || '{}')
-    console.log('👤 User data from localStorage:', data)
     return data
   } catch (error) {
     console.error('Error parsing user data:', error)
@@ -659,29 +736,22 @@ const userData = ref(getUserData())
 const isAdmin = computed(() => userData.value?.isAdmin || false)
 
 // ================================================================
-// STORE DATA - Will be populated from API
+// STORE DATA
 // ================================================================
 const stores = ref([])
-
-// ================================================================
-// GROUPS DATA - Will be populated from API
-// ================================================================
 const allGroups = ref([])
-
-// ================================================================
-// INVENTORY ITEMS - Will be populated from API
-// ================================================================
 const inventoryItems = ref([])
-
-// ================================================================
-// BALANCE DATA - Will be populated from API
-// ================================================================
 const balances = ref([])
+const itemRequests = ref([])
 
 // ================================================================
-// ITEM REQUESTS - Will be populated from API
+// ITEM SELECTION STATE
 // ================================================================
-const itemRequests = ref([])
+const itemSearchQuery = ref('')
+const itemDisplayLimit = ref(10)
+const isLoadingItems = ref(false)
+const itemSelectContainer = ref(null)
+const selectedItemDisplay = ref(null)
 
 // ================================================================
 // LOADING STATES
@@ -689,7 +759,6 @@ const itemRequests = ref([])
 const isLoading = ref(false)
 const isLoadingStores = ref(false)
 const isLoadingGroups = ref(false)
-const isLoadingItems = ref(false)
 const isLoadingRequests = ref(false)
 
 // ================================================================
@@ -757,6 +826,39 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
+// COMPUTED - ITEM LIST WITH FILTERS
+// ================================================================
+
+// Filter items based on search
+const filteredItemsList = computed(() => {
+  let items = [...inventoryItems.value]
+  
+  if (itemSearchQuery.value) {
+    const query = itemSearchQuery.value.toLowerCase()
+    items = items.filter(item => 
+      item.code?.toLowerCase().includes(query) ||
+      item.name?.toLowerCase().includes(query) ||
+      item.standardName?.toLowerCase().includes(query) ||
+      item.commonName?.toLowerCase().includes(query) ||
+      item.brand?.toLowerCase().includes(query) ||
+      item.model?.toLowerCase().includes(query)
+    )
+  }
+  
+  return items
+})
+
+// Displayed items with infinite scroll
+const displayedItems = computed(() => {
+  return filteredItemsList.value.slice(0, itemDisplayLimit.value)
+})
+
+// Check if more items available
+const hasMoreItems = computed(() => {
+  return displayedItems.value.length < filteredItemsList.value.length
+})
+
+// ================================================================
 // COMPUTED - AVAILABLE DATA BASED ON USER ROLE
 // ================================================================
 
@@ -789,30 +891,20 @@ const hasActiveFilters = computed(() => {
 })
 
 const filteredBalances = computed(() => {
-  console.log('🔄 Computing filtered balances...')
-  console.log('📊 Raw balances:', balances.value.length)
-  
   let result = [...balances.value]
   
-  // 🔥 FIRST: Filter by user's assigned store/group if not admin
   if (!isAdmin.value && userData.value?.hasAccess) {
     const assignedStoreId = userData.value.assignedStore?.id
     const assignedGroupId = userData.value.assignedGroup?.id
     
-    console.log('🔒 Filtering by assigned store ID:', assignedStoreId)
-    console.log('🔒 Filtering by assigned group ID:', assignedGroupId)
-    
     if (assignedStoreId) {
       result = result.filter(item => item.storeId === assignedStoreId)
-      console.log('📊 After store filter:', result.length)
     }
     if (assignedGroupId) {
       result = result.filter(item => item.groupId === assignedGroupId)
-      console.log('📊 After group filter:', result.length)
     }
   }
   
-  // 🔥 THEN: Apply UI filters (search, store, group, status)
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter(item => {
@@ -823,7 +915,6 @@ const filteredBalances = computed(() => {
     })
   }
   
-  // 🔥 Apply store filter if filterStore has a valid value
   if (filterStore.value && filterStore.value !== '') {
     const storeId = Number(filterStore.value)
     if (!isNaN(storeId)) {
@@ -831,7 +922,6 @@ const filteredBalances = computed(() => {
     }
   }
   
-  // 🔥 Apply group filter if filterGroup has a valid value
   if (filterGroup.value && filterGroup.value !== '') {
     const groupId = Number(filterGroup.value)
     if (!isNaN(groupId)) {
@@ -843,20 +933,17 @@ const filteredBalances = computed(() => {
     result = result.filter(item => item.status === filterStatus.value)
   }
   
-  console.log('✅ Final filtered count:', result.length)
   return result
 })
 
 // ================================================================
-// COMPUTED - PAGINATED DATA (For display in table)
+// COMPUTED - PAGINATED DATA
 // ================================================================
 
 const paginatedBalances = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
-  const paginated = filteredBalances.value.slice(start, end)
-  console.log('📄 Paginated items:', paginated.length, 'Page:', currentPage.value)
-  return paginated
+  return filteredBalances.value.slice(start, end)
 })
 
 const totalPages = computed(() => {
@@ -883,11 +970,8 @@ const lowStockItems = computed(() => {
 })
 
 const pendingRequestsCount = computed(() => {
-  // Count requests that are approved and NOT yet processed by this group
   return itemRequests.value.filter(req => {
     if (req.status !== 'approved') return false
-    // The backend already filters out processed requests via getApprovedRequests
-    // So all requests in itemRequests are unprocessed for this group
     return true
   }).length
 })
@@ -895,6 +979,46 @@ const pendingRequestsCount = computed(() => {
 const selectedRequests = computed(() => {
   return storeRequests.value.filter(req => selectedRequestIds.value.includes(req.id))
 })
+
+// ================================================================
+// ITEM SELECTION METHODS
+// ================================================================
+
+const resetItemList = () => {
+  itemDisplayLimit.value = 10
+}
+
+const onItemScroll = (event) => {
+  const element = event.target
+  const scrollTop = element.scrollTop
+  const scrollHeight = element.scrollHeight
+  const clientHeight = element.clientHeight
+  
+  if (scrollTop + clientHeight >= scrollHeight - 50) {
+    if (filteredItemsList.value.length > itemDisplayLimit.value && !isLoadingItems.value) {
+      isLoadingItems.value = true
+      setTimeout(() => {
+        itemDisplayLimit.value = Math.min(
+          itemDisplayLimit.value + 10,
+          filteredItemsList.value.length
+        )
+        isLoadingItems.value = false
+      }, 300)
+    }
+  }
+}
+
+const selectItem = (item) => {
+  form.value.itemId = item.id
+  selectedItemDisplay.value = item
+}
+
+const clearItemSelection = () => {
+  form.value.itemId = ''
+  selectedItemDisplay.value = null
+  itemSearchQuery.value = ''
+  itemDisplayLimit.value = 10
+}
 
 // ================================================================
 // HELPER METHODS
@@ -921,7 +1045,7 @@ const getItemCommonName = (itemId) => {
   const balance = balances.value.find(b => b.itemId === itemId)
   if (balance) return balance.itemCommonName || ''
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.standardName || item.name : ''
+  return item ? item.commonName || item.standardName || item.name : ''
 }
 
 const getItemUnit = (itemId) => {
@@ -1049,7 +1173,6 @@ const fetchStores = async () => {
   try {
     const response = await balanceService.getStores()
     stores.value = response.data || []
-    console.log('🏪 Stores loaded:', stores.value.length)
   } catch (error) {
     console.error('Error fetching stores:', error)
     showToastMessage('Failed to load stores', 'error')
@@ -1063,7 +1186,6 @@ const fetchGroups = async () => {
   try {
     const response = await balanceService.getGroups()
     allGroups.value = response.data || []
-    console.log('📋 Groups loaded:', allGroups.value.length)
   } catch (error) {
     console.error('Error fetching groups:', error)
     showToastMessage('Failed to load groups', 'error')
@@ -1077,7 +1199,17 @@ const fetchItems = async () => {
   try {
     const response = await balanceService.getActiveItems()
     inventoryItems.value = response.data || []
-    console.log('📦 Items loaded:', inventoryItems.value.length)
+    
+    // 🔍 Debug: Log the first item to see all fields
+    if (inventoryItems.value.length > 0) {
+      console.log('📦 First item full data:', inventoryItems.value[0])
+      console.log('📦 Fields available:', Object.keys(inventoryItems.value[0]))
+      console.log('📦 Brand:', inventoryItems.value[0].brand)
+      console.log('📦 Model:', inventoryItems.value[0].model)
+      console.log('📦 Common Name:', inventoryItems.value[0].commonName)
+    }
+    
+    showToastMessage(`Loaded ${inventoryItems.value.length} items`, 'success')
   } catch (error) {
     console.error('Error fetching items:', error)
     showToastMessage('Failed to load items', 'error')
@@ -1091,53 +1223,39 @@ const fetchBalances = async () => {
   try {
     const filters = {}
     
-    // 🔥 If not admin, filter by their assigned store and group
     if (!isAdmin.value && userData.value?.hasAccess) {
       if (userData.value.assignedStore) {
         filters.assignedStoreId = userData.value.assignedStore.id
-        console.log('🔒 API Filtering by assigned store:', userData.value.assignedStore.id)
       }
       if (userData.value.assignedGroup) {
         filters.assignedGroupId = userData.value.assignedGroup.id
-        console.log('🔒 API Filtering by assigned group:', userData.value.assignedGroup.id)
       }
     }
     
-    // 🔥 Add UI filters if they have valid values
     if (filterStore.value && filterStore.value !== '') {
       const storeId = Number(filterStore.value)
       if (!isNaN(storeId)) {
         filters.storeId = storeId
-        console.log('🔍 UI Store filter:', storeId)
       }
     }
     if (filterGroup.value && filterGroup.value !== '') {
       const groupId = Number(filterGroup.value)
       if (!isNaN(groupId)) {
         filters.groupId = groupId
-        console.log('🔍 UI Group filter:', groupId)
       }
     }
     if (filterStatus.value) {
       filters.status = filterStatus.value
-      console.log('🔍 UI Status filter:', filterStatus.value)
     }
     if (searchQuery.value) {
       filters.search = searchQuery.value
-      console.log('🔍 UI Search filter:', searchQuery.value)
     }
     
     filters.page = currentPage.value
     filters.limit = 100
     
-    console.log('📊 Fetching balances with filters:', filters)
-    
     const response = await balanceService.getBalances(filters)
     balances.value = response.data || []
-    console.log('✅ Balances loaded:', balances.value.length)
-    if (balances.value.length > 0) {
-      console.log('✅ First balance:', balances.value[0])
-    }
     
     if (response.pagination) {
       currentPage.value = response.pagination.page
@@ -1152,11 +1270,7 @@ const fetchBalances = async () => {
 }
 
 // ================================================================
-// 🔥 FETCH APPROVED REQUESTS - FIXED
-// ================================================================
-
-// ================================================================
-// 🔥 FETCH APPROVED REQUESTS - FIXED
+// FETCH APPROVED REQUESTS
 // ================================================================
 
 const fetchApprovedRequests = async () => {
@@ -1167,24 +1281,14 @@ const fetchApprovedRequests = async () => {
     if (!isAdmin.value && userData.value?.hasAccess && userData.value.assignedStore) {
       const storeId = userData.value.assignedStore.id
       const groupId = userData.value.assignedGroup?.id
-      
-      console.log('🔍 Fetching approved requests for store:', storeId, 'group:', groupId)
-      
-      // ✅ Pass both storeId and groupId to filter out already processed requests
       response = await balanceService.getApprovedRequests(storeId, groupId)
     } else if (isAdmin.value) {
-      console.log('📋 Admin: Fetching all approved requests')
       response = await balanceService.getApprovedRequests(0)
     } else {
-      console.log('⚠️ No store assigned, fetching all approved requests')
       response = await balanceService.getApprovedRequests(0)
     }
     
-    // ✅ Store only unprocessed requests (backend already filters)
     itemRequests.value = response.data || []
-    
-    // ✅ Log the count for debugging
-    console.log(`📋 ${itemRequests.value.length} unprocessed approved requests loaded`)
     
   } catch (error) {
     console.error('Error fetching approved requests:', error)
@@ -1233,14 +1337,6 @@ const changePageSize = () => {
 // BALANCE CRUD
 // ================================================================
 
-// ================================================================
-// BALANCE CRUD - UPDATED WITH USER PREFILL
-// ================================================================
-
-// ================================================================
-// BALANCE CRUD
-// ================================================================
-
 const openAddBalanceModal = () => {
   editingBalance.value = null
   initTab.value = 'manual'
@@ -1256,19 +1352,20 @@ const openAddBalanceModal = () => {
     percentage: 0
   }
   
-  // 🔥 Pre-fill store and group for non-admin users
+  // Reset item selection
+  itemSearchQuery.value = ''
+  itemDisplayLimit.value = 10
+  selectedItemDisplay.value = null
+  
   if (!isAdmin.value && userData.value?.hasAccess) {
-    // Get the assigned store and group from user data
     const assignedStoreId = userData.value.assignedStore?.id
     const assignedGroupId = userData.value.assignedGroup?.id
     const assignedStoreName = userData.value.assignedStore?.name
     const assignedGroupName = userData.value.assignedGroup?.name
     
-    // Validate that the assigned store and group exist in the available lists
     const storeExists = assignedStoreId ? availableStores.value.some(s => s.id === assignedStoreId) : false
     const groupExists = assignedGroupId ? availableGroups.value.some(g => g.id === assignedGroupId) : false
     
-    // Pre-fill the form with validated values
     form.value = {
       storeId: (assignedStoreId && storeExists) ? assignedStoreId : '',
       groupId: (assignedGroupId && groupExists) ? assignedGroupId : '',
@@ -1278,27 +1375,14 @@ const openAddBalanceModal = () => {
       minStock: 0,
     }
     
-    console.log('📝 Form pre-filled with:', {
-      storeId: form.value.storeId,
-      storeName: assignedStoreName,
-      groupId: form.value.groupId,
-      groupName: assignedGroupName,
-      storeExists,
-      groupExists
-    })
-    
-    // Show a toast with the pre-filled info
     if (form.value.storeId && form.value.groupId) {
       showToastMessage(`📌 Pre-filled with your assigned store: ${assignedStoreName} and group: ${assignedGroupName}`, 'info')
     } else if (form.value.storeId) {
       showToastMessage(`📌 Pre-filled with your assigned store: ${assignedStoreName}`, 'info')
     } else if (form.value.groupId) {
       showToastMessage(`📌 Pre-filled with your assigned group: ${assignedGroupName}`, 'info')
-    } else {
-      showToastMessage('⚠️ No assigned store or group found. Please select manually.', 'warning')
     }
   } else {
-    // Admin or no assigned store/group - leave empty
     form.value = {
       storeId: '',
       groupId: '',
@@ -1341,6 +1425,10 @@ const closeBalanceModal = () => {
     remaining: 0,
     percentage: 0
   }
+  // Reset item selection
+  itemSearchQuery.value = ''
+  itemDisplayLimit.value = 10
+  selectedItemDisplay.value = null
 }
 
 const saveBalance = async () => {
@@ -1467,7 +1555,6 @@ const parseCsvFile = (file) => {
       }
       
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-      console.log('Headers:', headers)
       
       const requiredHeaders = ['storeid', 'groupid', 'balance']
       const hasItemId = headers.includes('itemid')
@@ -1518,8 +1605,6 @@ const parseCsvFile = (file) => {
           status: obj.status || 'Active'
         })
       }
-      
-      console.log('Parsed data:', data)
       
       if (data.length === 0) {
         showToastMessage('No valid data found in CSV file. Please check the format.', 'error')
@@ -1621,17 +1706,14 @@ const confirmDelete = async () => {
 // ================================================================
 
 const processApprovedRequests = async () => {
-  // Clear previous selections
   selectedStoreId.value = ''
   selectedGroupId.value = ''
   selectedRequestIds.value = []
   storeRequests.value = []
   selectAllRequests.value = false
   
-  // Show the modal
   showProcessModal.value = true
   
-  // Auto-select for non-admin users
   if (!isAdmin.value && userData.value?.hasAccess) {
     if (userData.value.assignedStore) {
       selectedStoreId.value = String(userData.value.assignedStore.id)
@@ -1642,9 +1724,9 @@ const processApprovedRequests = async () => {
     }
   }
   
-  // ✅ Refresh the pending count
   await fetchApprovedRequests()
 }
+
 const closeProcessModal = () => {
   showProcessModal.value = false
   selectedStoreId.value = ''
@@ -1661,7 +1743,6 @@ const onStoreSelect = async () => {
   selectedGroupId.value = ''
   
   if (!selectedStoreId.value) {
-    console.log('⚠️ No store selected')
     return
   }
   
@@ -1677,19 +1758,10 @@ const onStoreSelect = async () => {
     const storeId = Number(selectedStoreId.value)
     const groupId = userData.value?.assignedGroup?.id
     
-    console.log('🔍 Fetching approved requests for store ID:', storeId, 'group ID:', groupId)
-    
     const response = await balanceService.getApprovedRequests(storeId, groupId)
     storeRequests.value = response.data || []
     
-    console.log(`✅ Found ${storeRequests.value.length} unprocessed approved requests for store ${storeId}`)
-    
     if (storeRequests.value.length > 0) {
-      // ✅ Show each request with its status
-      storeRequests.value.forEach(req => {
-        console.log(`  📋 ${req.requestCode} - ${req.items?.length || 0} items`)
-      })
-      
       selectAllRequests.value = true
       selectedRequestIds.value = storeRequests.value.map(req => req.id)
     } else {
@@ -1754,28 +1826,21 @@ const confirmProcessRequests = async () => {
         totalRequests
       } = response.data || {}
       
-      // ✅ Get the IDs that were processed (or already processed)
       const processedIds = processedRequestIds || []
       
-      // ✅ Remove ALL processed requests from the list
-      // This includes both newly processed and already processed ones
       storeRequests.value = storeRequests.value.filter(
         req => !processedIds.includes(req.id)
       )
       
-      // ✅ Update selected request IDs
       selectedRequestIds.value = storeRequests.value.map(req => req.id)
       
-      // ✅ Build a clear message
       let message = ''
       let hasErrors = false
       
-      // Check if any items were actually processed
       if (processed > 0 || processedItems?.length > 0) {
         message += `✅ Processed ${processed || processedItems?.length || 0} items successfully. `
       }
       
-      // Check for auto-initialized items
       if (autoInitializedItems && autoInitializedItems.length > 0) {
         message += `\n📦 Auto-initialized ${autoInitializedItems.length} item(s): `
         autoInitializedItems.slice(0, 3).forEach(item => {
@@ -1786,7 +1851,6 @@ const confirmProcessRequests = async () => {
         }
       }
       
-      // Check for missing items
       if (missingItems && missingItems.length > 0) {
         hasErrors = true
         message += `\n⚠️ ${missingItems.length} item(s) need initialization: `
@@ -1799,14 +1863,12 @@ const confirmProcessRequests = async () => {
         message += `\n💡 Please initialize these items first.`
       }
       
-      // ✅ Check if requests were already processed by this group
       const alreadyProcessedCount = processedIds.length - (processedItems?.length || 0)
       
       if (alreadyProcessedCount > 0 && processed === 0) {
         message += `\n⏭️ ${alreadyProcessedCount} request(s) were already processed by your group and have been removed from your list.`
       }
       
-      // ✅ Show partial request status
       if (partialRequests && partialRequests.length > 0) {
         message += `\n\n⏳ ${partialRequests.length} request(s) partially processed:`
         partialRequests.forEach(req => {
@@ -1816,18 +1878,14 @@ const confirmProcessRequests = async () => {
         message += `\n\n💡 The request will be finalized when ALL groups have processed it.`
       }
       
-      // ✅ If no message was built, use a default
       if (!message) {
         message = response.message || 'Requests processed!'
       }
       
-      // ✅ Check if any requests are still pending
       const remainingCount = storeRequests.value.length
       
       if (remainingCount === 0) {
         message += `\n\n🎉 All requests have been processed by your group!`
-        
-        // Close the modal after a delay
         setTimeout(() => {
           closeProcessModal()
           showToastMessage('🎉 All requests processed by your group!', 'success')
@@ -1838,7 +1896,6 @@ const confirmProcessRequests = async () => {
       
       showToastMessage(message, hasErrors ? 'warning' : 'success')
       
-      // ✅ Refresh data
       await Promise.all([
         fetchBalances(),
         fetchApprovedRequests()
@@ -1965,12 +2022,7 @@ const showToastMessage = (msg, type = 'success') => {
 
 onMounted(async () => {
   userData.value = getUserData()
-  console.log('👤 User data loaded:', userData.value)
-  console.log('👑 Is Admin:', isAdmin.value)
-  console.log('🏪 Assigned Store:', userData.value.assignedStore)
-  console.log('📋 Assigned Group:', userData.value.assignedGroup)
   
-  // Fetch all data
   await Promise.all([
     fetchStores(),
     fetchGroups(),
@@ -1978,38 +2030,928 @@ onMounted(async () => {
     fetchBalances()
   ])
   
-  // 🔥 FIX: Set filter values for non-admin users
   if (!isAdmin.value && userData.value?.hasAccess) {
     if (userData.value.assignedStore) {
       filterStore.value = String(userData.value.assignedStore.id)
-      console.log('🔒 Auto-selected store filter:', userData.value.assignedStore.name, 'ID:', userData.value.assignedStore.id)
     }
     if (userData.value.assignedGroup) {
       filterGroup.value = String(userData.value.assignedGroup.id)
-      console.log('🔒 Auto-selected group filter:', userData.value.assignedGroup.name, 'ID:', userData.value.assignedGroup.id)
     }
-    
-    // Refresh balances with filters applied
     await fetchBalances()
   }
   
-  // 🔥 FIX: Fetch approved requests after user data is loaded
   await fetchApprovedRequests()
 })
 
-// Watch for user data changes
 watch(() => localStorage.getItem('user'), (newVal) => {
   if (newVal) {
     userData.value = getUserData()
-    console.log('👤 User data updated:', userData.value)
-    // Refresh data when user changes
     fetchBalances()
     fetchApprovedRequests()
   }
 })
 </script>
 
+
 <style scoped>
+
+/* ================================================================
+   MODALS - UPDATED WIDTHS
+   ================================================================ */
+/* ================================================================
+   ENHANCED ITEM OPTION STYLES - STACKED LAYOUT
+   ================================================================ */
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option:last-child {
+  border-bottom: none;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  width: 100%;
+}
+
+/* Left: Code */
+.item-option-left {
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+/* Middle: Standard Name & Common Name (stacked) */
+.item-option-middle {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-name {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.item-option-common {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+
+/* Right: Brand & Model (stacked) */
+.item-option-right {
+  min-width: 80px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-brand {
+  font-size: 11px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.item-option-model {
+  font-size: 10px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Far Right: UOM */
+.item-option-uom {
+  font-size: 11px;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 12px;
+  border-radius: 10px;
+  min-width: 45px;
+  text-align: center;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Selected Item Display */
+.selected-item-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.selected-badge {
+  font-weight: 600;
+  color: #166534;
+  font-size: 12px;
+}
+
+.selected-item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selected-item-name {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.selected-item-common {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.selected-item-brand {
+  font-size: 12px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-model {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-uom {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.clear-selection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+
+.clear-selection:hover {
+  color: #dc2626;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;  /* ✅ INCREASED FROM 500px to 700px */
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+/* Balance Modal - Extra Wide */
+.balance-modal .modal-container {
+  max-width: 800px;  /* ✅ EVEN WIDER for balance modal */
+}
+
+.process-modal .modal-container {
+  max-width: 750px;
+}
+
+.toggle-modal .modal-container {
+  max-width: 400px;
+}
+
+.export-modal .modal-container {
+  max-width: 400px;
+}
+
+.delete-modal .modal-container {
+  max-width: 450px;
+}
+
+.import-modal .modal-container {
+  max-width: 750px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .balance-modal .modal-container {
+    max-width: 95vw;
+  }
+  
+  .process-modal .modal-container {
+    max-width: 95vw;
+  }
+  
+  .import-modal .modal-container {
+    max-width: 95vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .modal-container {
+    max-width: 98% !important;
+    margin: 10px;
+  }
+  
+  .balance-modal .modal-container {
+    max-width: 98% !important;
+  }
+  
+  .process-modal .modal-container {
+    max-width: 98% !important;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to { 
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+
+
+
+/* ================================================================
+   ENHANCED ITEM OPTION STYLES - STACKED LAYOUT
+   ================================================================ */
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option:last-child {
+  border-bottom: none;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  width: 100%;
+}
+
+/* Left: Code */
+.item-option-left {
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+/* Middle: Standard Name (primary) & Name (secondary) - stacked */
+.item-option-middle {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-standard-name {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.item-option-name {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.2;
+}
+
+/* Right: Brand & Model (stacked) */
+.item-option-right {
+  min-width: 80px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-brand {
+  font-size: 11px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.item-option-model {
+  font-size: 10px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Far Right: UOM */
+.item-option-uom {
+  font-size: 11px;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 12px;
+  border-radius: 10px;
+  min-width: 45px;
+  text-align: center;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Selected Item Display */
+.selected-item-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.selected-badge {
+  font-weight: 600;
+  color: #166534;
+  font-size: 12px;
+}
+
+.selected-item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selected-item-standard-name {
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.selected-item-name {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.selected-item-brand {
+  font-size: 12px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-model {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-uom {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.clear-selection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+
+.clear-selection:hover {
+  color: #dc2626;
+}
+
+/* ================================================================
+   RESPONSIVE - Item Selection
+   ================================================================ */
+@media (max-width: 768px) {
+  .item-option-content {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .item-option-left {
+    min-width: 80px;
+  }
+  
+  .item-option-middle {
+    min-width: 100px;
+    flex: 1 1 100%;
+  }
+  
+  .item-option-right {
+    min-width: 60px;
+  }
+  
+  .item-option-brand,
+  .item-option-model {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+  
+  .selected-item-display {
+    font-size: 12px;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .item-option-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .item-option-left {
+    min-width: auto;
+  }
+  
+  .item-option-right {
+    min-width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .item-option-uom {
+    align-self: flex-start;
+    margin-left: 0;
+  }
+  
+  .selected-item-display {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .clear-selection {
+    align-self: flex-end;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option:last-child {
+  border-bottom: none;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.item-option-name {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.item-option-common {
+  font-size: 11px;
+  color: #94a3b8;
+  min-width: 80px;
+}
+
+.item-option-brand {
+  font-size: 12px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.item-option-model {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.item-option-uom {
+  font-size: 11px;
+  color: #166534;
+  background: #dcfce7;
+  padding: 1px 10px;
+  border-radius: 10px;
+  min-width: 50px;
+  text-align: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+/* ================================================================
+   ENHANCED ITEM SELECTION STYLES
+   ================================================================ */
+
+.full-width {
+  flex: 1 1 100%;
+  min-width: 100%;
+}
+
+.item-filter-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-select-small {
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+  min-width: 150px;
+  cursor: pointer;
+}
+
+.item-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 150px;
+}
+
+.search-icon-small {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.item-search-input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.item-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+}
+
+.item-select-container {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  max-height: 220px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  margin-top: 4px;
+}
+
+.item-select-container:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.item-select-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.item-select-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.item-select-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+  min-width: 90px;
+}
+
+.item-option-name {
+  font-size: 13px;
+  color: #1e293b;
+  flex: 1;
+}
+
+.item-option-common {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.item-option-uom {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.item-loading {
+  text-align: center;
+  padding: 10px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.item-no-results {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.selected-item-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.selected-badge {
+  font-weight: 600;
+  color: #166534;
+  font-size: 12px;
+}
+
+.selected-item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selected-item-name {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.selected-item-uom {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.clear-selection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+
+.clear-selection:hover {
+  color: #dc2626;
+}
+
+/* ================================================================
+   RESPONSIVE - Item Selection
+   ================================================================ */
+@media (max-width: 768px) {
+  .item-filter-row {
+    flex-direction: column;
+  }
+  
+  .filter-select-small {
+    width: 100%;
+  }
+  
+  .item-search-wrapper {
+    width: 100%;
+  }
+  
+  .item-option-content {
+    gap: 6px;
+  }
+  
+  .item-option-common {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .item-option-code {
+    min-width: 70px;
+    font-size: 11px;
+  }
+  
+  .item-option-name {
+    font-size: 12px;
+  }
+  
+  .item-option-uom {
+    font-size: 10px;
+  }
+}
 
 .req-status {
   font-size: 10px;
@@ -2538,21 +3480,12 @@ select:disabled + .hint {
 /* ================================================================
    MODALS
    ================================================================ */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 1000;
-}
+
 
 .modal-container {
   background: white;
   border-radius: 12px;
-  width: 100%;
+  width: 120%;
   max-width: 500px;
   max-height: 90vh;
   display: flex;

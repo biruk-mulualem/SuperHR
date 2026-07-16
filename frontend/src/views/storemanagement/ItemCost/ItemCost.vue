@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>💰 Inventory Cost Calculation</h2>
-        <span class="total-badge">{{ totalItems }} Items</span>
+        <span class="total-badge">{{ filteredItems.length }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -27,56 +27,59 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="filter-bar">
-      <select v-model="filterStore" class="filter-select" @change="onFilterChange">
-        <option value="">All Stores</option>
-        <option v-for="store in stores" :key="store.id" :value="store.id">
-          {{ store.name }}
-        </option>
-      </select>
-      <select v-model="filterGroup" class="filter-select" @change="onFilterChange">
-        <option value="">All Groups</option>
-        <option v-for="group in groups" :key="group.id" :value="group.id">
-          {{ group.name }}
-        </option>
-      </select>
-      <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
-        <option value="">All Status</option>
-        <option value="Active">Active</option>
-        <option value="Inactive">Inactive</option>
-      </select>
+      <div class="filter-group">
+        <label class="filter-label">Store</label>
+        <select v-model="selectedStoreId" class="filter-select" @change="onFilterChange">
+          <option value="">All Stores</option>
+          <option v-for="store in allStores" :key="store.id" :value="store.id">
+            {{ store.name }}
+          </option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label class="filter-label">Status</label>
+        <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
+          <option value="">All Status</option>
+          <option value="Active">Active</option>
+          <option value="Partial">Partial</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      
       <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters">
         ✕ Clear Filters
       </button>
     </div>
 
-    <!-- ==================== STATS ==================== -->
+    <!-- ==================== STATS - Dynamic based on filter ==================== -->
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon">📦</div>
         <div class="stat-content">
-          <div class="stat-number">{{ totalItems }}</div>
+          <div class="stat-number">{{ filteredItems.length }}</div>
           <div class="stat-label">Total Items</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">💰</div>
         <div class="stat-content">
-          <div class="stat-number">${{ formatCurrency(totalInventoryValue) }}</div>
+          <div class="stat-number">${{ formatCurrency(filteredTotalValue) }}</div>
           <div class="stat-label">Total Inventory Value</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">📊</div>
-        <div class="stat-content">
-          <div class="stat-number">${{ formatCurrency(averageCost) }}</div>
-          <div class="stat-label">Average Cost Per Item</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">🏪</div>
         <div class="stat-content">
-          <div class="stat-number">{{ uniqueStores }}</div>
+          <div class="stat-number">{{ filteredStoresCount }}</div>
           <div class="stat-label">Stores</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-content">
+          <div class="stat-number">{{ filteredPartialItems }}</div>
+          <div class="stat-label">Items with Partial Cost</div>
         </div>
       </div>
     </div>
@@ -89,21 +92,20 @@
             <th style="width:35px"></th>
             <th>Item Code</th>
             <th>Item Name</th>
-            <th>Store</th>
-            <th>Group</th>
-            <th>UOM</th>
-            <th>Balance</th>
+            <th>Base UOM</th>
+            <th>Total Qty</th>
             <th>Unit Cost</th>
-            <th>Total Value</th>
+            <th>Total Cost</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="paginatedItems.length === 0">
-            <td colspan="10" class="empty-state">
+            <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
                 <p>No cost data found</p>
+                <p class="empty-sub" v-if="selectedStoreId">Try selecting a different store or clear the filter</p>
               </div>
             </td>
           </tr>
@@ -111,6 +113,7 @@
             <tr
               :class="{
                 'expanded-row': expandedRow === item.id,
+                'partial-row': item.status === 'Partial',
                 'inactive-row': item.status === 'Inactive'
               }"
             >
@@ -126,72 +129,208 @@
                   <span class="item-standard">{{ item.itemStandardName }}</span>
                 </div>
               </td>
-              <td class="store-name">{{ item.storeName }}</td>
-              <td>
-                <span class="group-tag">{{ item.groupName }}</span>
-              </td>
-              <td class="uom-code">{{ item.uomCode }}</td>
+              <td class="uom-code">{{ item.baseUOM }}</td>
               <td class="balance-cell">
-                <span class="balance-value">{{ formatNumber(item.balance) }}</span>
-                <span class="base-balance" v-if="item.conversionValue > 1">
-                  ({{ formatNumber(item.balance * item.conversionValue) }} {{ item.conversionUomCode }})
-                </span>
+                <span class="balance-value">{{ formatNumber(item.totalQty) }}</span>
               </td>
               <td class="cost-cell">
-                <div class="cost-wrapper">
-                  <span class="unit-cost">${{ formatCurrency(item.unitCost) }}</span>
-                </div>
-                <button class="edit-cost-btn" @click="openEditCost(item)" title="Edit Cost">✏️</button>
+                <span class="unit-cost">${{ formatCurrency(item.unitCost) }}</span>
               </td>
               <td class="total-cell">
-                <span class="total-value" :class="{ 'high-value': item.totalValue > 10000 }">
-                  ${{ formatCurrency(item.totalValue) }}
+                <span class="total-value" :class="{ 
+                  'high-value': item.totalCost > 10000,
+                  'inactive-value': item.status === 'Inactive'
+                }">
+                  ${{ formatCurrency(item.totalCost) }}
                 </span>
+                <span v-if="item.status === 'Partial'" class="partial-tag">(Partial)</span>
+                <span v-if="item.status === 'Inactive'" class="inactive-tag">(Inactive)</span>
               </td>
               <td>
-                <span :class="['status-badge', item.status.toLowerCase()]">
+                <span 
+                  :class="['status-badge', item.status.toLowerCase()]"
+                  @click="toggleItemStatus(item)"
+                  style="cursor: pointer;"
+                  title="Click to toggle status"
+                >
                   {{ item.status }}
+                </span>
+                <span v-if="item.status === 'Partial'" class="partial-hint" title="Some stores excluded due to conflicts">
+                  ⚠️
                 </span>
               </td>
             </tr>
 
             <!-- Expanded Detail Row -->
             <tr v-if="expandedRow === item.id" class="detail-expand-row">
-              <td colspan="10">
+              <td colspan="8">
                 <div class="expand-details">
                   <div class="detail-container">
-                    <div class="detail-row-two-cols">
-                      <div class="detail-card">
+                    <!-- Top Section: Item Details & Cost Summary -->
+                    <div class="detail-top-section">
+                      <div class="detail-card item-detail-card">
                         <h4>📋 Item Details</h4>
-                        <div><span>Item Code</span><span class="value">{{ item.itemCode }}</span></div>
-                        <div><span>Item Name</span><span class="value">{{ item.itemName }}</span></div>
-                        <div><span>Standard Name</span><span class="value">{{ item.itemStandardName || '-' }}</span></div>
-                        <div><span>Category</span><span class="value">{{ item.categoryName || '-' }}</span></div>
-                        <div><span>Brand</span><span class="value">{{ item.brand || '-' }}</span></div>
-                        <div><span>Model</span><span class="value">{{ item.model || '-' }}</span></div>
+                        <div class="detail-vertical">
+                          <div><span>Item Code</span><span class="value">{{ item.itemCode }}</span></div>
+                          <div><span>Item Name</span><span class="value">{{ item.itemName }}</span></div>
+                          <div><span>Standard Name</span><span class="value">{{ item.itemStandardName || '-' }}</span></div>
+                          <div><span>Category</span><span class="value">{{ item.categoryName || '-' }}</span></div>
+                          <div><span>Brand</span><span class="value">{{ item.brand || '-' }}</span></div>
+                          <div><span>Model</span><span class="value">{{ item.model || '-' }}</span></div>
+                          <div><span>Base UOM</span><span class="value"><strong>{{ item.baseUOM }}</strong></span></div>
+                          <div>
+                            <span>Status</span>
+                            <span 
+                              :class="['status-badge', item.status.toLowerCase(), 'clickable-status']"
+                              @click="toggleItemStatus(item)"
+                              style="cursor: pointer;"
+                            >
+                              {{ item.status }}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div class="detail-card">
-                        <h4>💰 Cost Details</h4>
-                        <div><span>Unit Cost</span><span class="value">${{ formatCurrency(item.unitCost) }}</span></div>
-                        <div><span>Balance</span><span class="value">{{ formatNumber(item.balance) }} {{ item.uomCode }}</span></div>
-                        <div><span>Conversion</span><span class="value">{{ item.conversionValue }} {{ item.conversionUomCode || item.uomCode }} = 1 {{ item.uomCode }}</span></div>
-                        <div><span>Base Balance</span><span class="value">{{ formatNumber(item.balance * item.conversionValue) }} {{ item.conversionUomCode || item.uomCode }}</span></div>
-                        <div><span>Total Value</span><span class="value highlight-total">${{ formatCurrency(item.totalValue) }}</span></div>
+                      <div class="detail-card cost-summary-card" :class="{ 
+                        'partial-card': item.status === 'Partial',
+                        'inactive-card': item.status === 'Inactive'
+                      }">
+                        <h4>💰 Cost Summary</h4>
+                        <div class="detail-vertical">
+                          <div><span>Unit Cost</span><span class="value">${{ formatCurrency(item.unitCost) }} / {{ item.baseUOM }}</span></div>
+                          <div><span>Total Quantity</span><span class="value">{{ formatNumber(item.totalQty) }} {{ item.baseUOM }}</span></div>
+                          <div><span>Total Cost</span><span class="value highlight-total">${{ formatCurrency(item.totalCost) }}</span></div>
+                          <div v-if="item.status === 'Partial'">
+                            <span>Status</span>
+                            <span class="value partial-text">⚠️ Partial - Some stores excluded</span>
+                          </div>
+                          <div v-if="item.status === 'Inactive'">
+                            <span>Status</span>
+                            <span class="value inactive-text">⛔ Inactive - Excluded from total cost</span>
+                          </div>
+                          <div v-if="item.status === 'Partial' && item.excludedStores.length > 0">
+                            <span>Excluded Stores</span>
+                            <span class="value partial-text">{{ item.excludedStores.join(', ') }}</span>
+                          </div>
+                          <div v-if="selectedStoreId">
+                            <span>Filtered Store</span>
+                            <span class="value highlight-total">{{ getStoreName(Number(selectedStoreId)) }}</span>
+                          </div>
+                        </div>
+                        <div v-if="item.status === 'Partial'" class="partial-note">
+                          <span class="partial-icon">⚠️</span>
+                          <span class="partial-text">Some stores have conflicting quantities and are excluded from total cost.</span>
+                        </div>
+                        <div v-if="item.status === 'Inactive'" class="inactive-note">
+                          <span class="inactive-icon">⛔</span>
+                          <span class="inactive-text">This item is inactive and excluded from total inventory value.</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Store & Group Breakdown -->
+                    <div class="detail-card full-width breakdown-card">
+                      <h4>📊 Store & Group Quantity Breakdown</h4>
+                      
+                      <div class="breakdown-container">
+                        <div 
+                          v-for="store in item.storeBreakdown" 
+                          :key="store.storeId" 
+                          class="store-breakdown-card"
+                          :class="{ 
+                            'store-conflict': store.hasConflict,
+                            'store-excluded': store.isExcluded,
+                            'store-hidden': !isStoreVisible(store.storeId)
+                          }"
+                          v-show="isStoreVisible(store.storeId)"
+                        >
+                          <div class="store-header">
+                            <div class="store-info">
+                              <span class="store-icon">🏪</span>
+                              <span class="store-name">{{ store.storeName }}</span>
+                              <span v-if="store.isExcluded" class="excluded-badge">⛔ Excluded</span>
+                              <span v-if="selectedStoreId && store.storeId === Number(selectedStoreId)" class="active-filter-badge">🎯 Filtered</span>
+                            </div>
+                            <div class="store-status">
+                              <span 
+                                class="store-status-badge" 
+                                :class="store.hasConflict ? 'conflict' : 'active'"
+                              >
+                                {{ store.hasConflict ? '⚠️ Conflict' : '✅ Included' }}
+                              </span>
+                              <span class="store-total-qty">
+                                Qty: {{ formatNumber(store.agreedQuantity) }} {{ item.baseUOM }}
+                                <span v-if="store.hasConflict" class="conflict-note-small">(Groups disagree - excluded)</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div class="groups-list">
+                            <div 
+                              v-for="group in store.groups" 
+                              :key="group.groupId" 
+                              class="group-row"
+                              :class="{ 'group-conflict': store.hasConflict }"
+                            >
+                              <div class="group-info">
+                                <span class="group-dot" :class="{ 'conflict-dot': store.hasConflict }"></span>
+                                <span class="group-name">{{ group.groupName }}</span>
+                              </div>
+                              <div class="group-quantity">
+                                <span class="qty-value">{{ formatNumber(group.quantity) }}</span>
+                                <span class="qty-uom">{{ item.baseUOM }}</span>
+                                <span 
+                                  v-if="group.conversionRate && group.conversionRate > 1" 
+                                  class="conversion-badge"
+                                >
+                                  {{ group.originalUOM }} → {{ item.baseUOM }}
+                                  <span class="conversion-rate">(×{{ group.conversionRate }})</span>
+                                </span>
+                                <span v-if="store.hasConflict" class="conflict-indicator">⚠️</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div v-if="store.hasConflict" class="conflict-warning-bar">
+                            <span class="warning-icon">⛔</span>
+                            <span class="warning-text">
+                              Groups disagree on quantity — this store is <strong>EXCLUDED</strong> from total cost
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div class="detail-card">
-                        <h4>📊 Store & Group</h4>
-                        <div><span>Store</span><span class="value">{{ item.storeName }}</span></div>
-                        <div><span>Store Code</span><span class="value">{{ item.storeCode || '-' }}</span></div>
-                        <div><span>Group</span><span class="value">{{ item.groupName }}</span></div>
-                        <div><span>Group Code</span><span class="value">{{ item.groupCode || '-' }}</span></div>
-                        <div><span>Status</span><span class="value"><span :class="['status-badge', item.status.toLowerCase()]">{{ item.status }}</span></span></div>
+                      <!-- Total Summary -->
+                      <div class="total-summary-bar" :class="{ 
+                        'partial-summary': item.status === 'Partial',
+                        'inactive-summary': item.status === 'Inactive'
+                      }">
+                        <div class="total-summary-item">
+                          <span class="total-label">Total Quantity (Included Stores)</span>
+                          <span class="total-value-highlight">{{ formatNumber(item.totalQty) }} {{ item.baseUOM }}</span>
+                        </div>
+                        <div class="total-summary-item">
+                          <span class="total-label">Total Cost</span>
+                          <span class="total-value-highlight">${{ formatCurrency(item.totalCost) }}</span>
+                        </div>
+                        <div v-if="item.status === 'Partial'" class="total-summary-sub partial-sub">
+                          <span class="sub-label partial-label">⚠️ {{ item.excludedStores.length }} store(s) excluded due to conflicts</span>
+                          <span class="sub-detail">Excluded: {{ item.excludedStores.join(', ') }}</span>
+                        </div>
+                        <div v-if="item.status === 'Inactive'" class="total-summary-sub inactive-sub">
+                          <span class="sub-label inactive-label">⛔ Item is inactive — excluded from total inventory value</span>
+                        </div>
+                        <div v-else-if="item.status !== 'Partial'" class="total-summary-sub">
+                          <span class="sub-label">✅ All stores included — complete cost</span>
+                        </div>
+                        <div v-if="selectedStoreId" class="total-summary-sub filter-info">
+                          <span class="sub-label filter-label">🎯 Showing data for: {{ getStoreName(Number(selectedStoreId)) }}</span>
+                        </div>
                       </div>
                     </div>
 
                     <!-- Cost History -->
-                    <div class="detail-card full-width">
+                    <div class="detail-card full-width" v-if="item.costHistory && item.costHistory.length > 0">
                       <h4>📈 Cost History</h4>
                       <table class="history-table">
                         <thead>
@@ -204,12 +343,17 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-for="history in item.costHistory" :key="history.id">
+                          <tr v-for="history in item.costHistory.slice(0, 5)" :key="history.id">
                             <td>{{ formatDate(history.createdAt) }}</td>
                             <td>${{ formatCurrency(history.previousCost) }}</td>
                             <td>${{ formatCurrency(history.newCost) }}</td>
                             <td>{{ history.changedBy || 'System' }}</td>
                             <td>{{ history.reason || '-' }}</td>
+                          </tr>
+                          <tr v-if="item.costHistory.length > 5">
+                            <td colspan="5" class="text-center more-history">
+                              ... and {{ item.costHistory.length - 5 }} more entries
+                            </td>
                           </tr>
                         </tbody>
                       </table>
@@ -220,10 +364,9 @@
             </tr>
           </template>
         </tbody>
-        <!-- Table Footer with Totals -->
         <tfoot v-if="paginatedItems.length > 0">
           <tr class="footer-total">
-            <td colspan="8" class="text-right"><strong>Page Total:</strong></td>
+            <td colspan="6" class="text-right"><strong>Page Total:</strong></td>
             <td class="total-cell"><strong>${{ formatCurrency(pageTotal) }}</strong></td>
             <td></td>
           </tr>
@@ -248,82 +391,6 @@
       </select>
     </div>
 
-    <!-- ==================== EDIT COST MODAL ==================== -->
-    <div v-if="showCostModal" class="modal-overlay" @click.self="closeCostModal">
-      <div class="modal-container cost-modal">
-        <div class="modal-header">
-          <h3>✏️ Edit Unit Cost</h3>
-          <button class="modal-close" @click="closeCostModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="cost-item-info">
-            <div class="info-row">
-              <span class="label">Item:</span>
-              <span class="value">{{ editingItem?.itemName }} ({{ editingItem?.itemCode }})</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Store:</span>
-              <span class="value">{{ editingItem?.storeName }}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Group:</span>
-              <span class="value">{{ editingItem?.groupName }}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Current Cost:</span>
-              <span class="value current-cost">${{ formatCurrency(editingItem?.unitCost) }}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Balance:</span>
-              <span class="value">{{ formatNumber(editingItem?.balance) }} {{ editingItem?.uomCode }}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Total Value:</span>
-              <span class="value highlight-total">${{ formatCurrency(editingItem?.totalValue) }}</span>
-            </div>
-          </div>
-
-          <form @submit.prevent="saveCost" class="cost-form">
-            <div class="form-group">
-              <label>New Unit Cost ($) *</label>
-              <input 
-                v-model.number="newCost" 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                required 
-                placeholder="Enter new unit cost"
-              />
-              <span class="hint">Enter the cost per {{ editingItem?.uomCode }}</span>
-            </div>
-            <div class="form-group">
-              <label>Reason for Change</label>
-              <textarea v-model="costReason" rows="2" placeholder="Optional: Reason for cost update"></textarea>
-            </div>
-            <div class="form-preview" v-if="newCost !== null && newCost !== undefined && editingItem">
-              <div class="preview-item">
-                <span>New Total Value:</span>
-                <strong class="highlight-total">${{ formatCurrency(editingItem.balance * newCost) }}</strong>
-              </div>
-              <div class="preview-item">
-                <span>Change:</span>
-                <strong :class="editingItem.balance * newCost - editingItem.totalValue > 0 ? 'positive' : 'negative'">
-                  {{ editingItem.balance * newCost - editingItem.totalValue > 0 ? '+' : '' }}
-                  ${{ formatCurrency(editingItem.balance * newCost - editingItem.totalValue) }}
-                </strong>
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeCostModal">Cancel</button>
-          <button class="btn-primary" @click="saveCost" :disabled="saving || !newCost || newCost < 0">
-            {{ saving ? 'Saving...' : 'Update Cost' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- ==================== TOAST ==================== -->
     <div v-if="showToast" class="toast" :class="toastType">
       <span>{{ toastMessage }}</span>
@@ -335,51 +402,111 @@
 import { ref, computed } from 'vue'
 
 // ================================================================
-// DEMO DATA
+// STORE LIST
 // ================================================================
 
-// Stores
-const stores = ref([
-  { id: 1, name: 'Main Store', code: 'STORE-001' },
-  { id: 2, name: 'Warehouse A', code: 'STORE-002' },
-  { id: 3, name: 'Warehouse B', code: 'STORE-003' },
-  { id: 4, name: 'Retail Store', code: 'STORE-004' }
+const allStores = ref([
+  { id: 1, name: 'Fiber Main Store' },
+  { id: 2, name: 'Fiber Mini Store' },
+  { id: 3, name: 'Paint Main Store' },
+  { id: 4, name: 'Fiber Warehouse' }
 ])
 
-// Groups
-const groups = ref([
-  { id: 1, name: 'Fiber Mainstore IT', code: 'GRP-001' },
-  { id: 2, name: 'Fiber Ministore IT', code: 'GRP-002' },
-  { id: 3, name: 'Fiber Storekeeper', code: 'GRP-003' },
-  { id: 4, name: 'HR Department', code: 'GRP-004' }
-])
+// ================================================================
+// DEMO DATA - WITH CORRECT STORE NAMES
+// ================================================================
 
-// Demo Cost Items
-const costItems = ref([
+const getStoreName = (storeId) => {
+  const store = allStores.value.find(s => s.id === storeId)
+  return store ? store.name : 'Unknown Store'
+}
+
+// Helper to process store breakdown
+const processStoreBreakdown = (store) => {
+  const quantities = store.groups.map(g => g.baseQuantity || g.quantity)
+  const firstQty = quantities[0]
+  const allSame = quantities.every(q => q === firstQty)
+  
+  return {
+    ...store,
+    hasConflict: !allSame,
+    isExcluded: !allSame,
+    agreedQuantity: allSame ? firstQty : 0,
+    groups: store.groups.map(g => ({
+      ...g,
+      baseQuantity: g.baseQuantity || g.quantity
+    }))
+  }
+}
+
+// Process all items
+const processItem = (item) => {
+  const processedStores = item.storeBreakdown.map(processStoreBreakdown)
+  
+  const excludedStores = processedStores
+    .filter(s => s.isExcluded)
+    .map(s => s.storeName)
+  
+  const includedStores = processedStores.filter(s => !s.isExcluded)
+  const totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0)
+  const totalCost = totalQty * item.unitCost
+  
+  let status = item.userStatus || 'Active' // Use user-set status if exists
+  if (status !== 'Inactive') {
+    if (excludedStores.length > 0 && includedStores.length > 0) {
+      status = 'Partial'
+    } else if (excludedStores.length === processedStores.length) {
+      status = 'Conflict'
+    } else {
+      status = 'Active'
+    }
+  }
+  
+  return {
+    ...item,
+    storeBreakdown: processedStores,
+    status: status,
+    totalQty: status === 'Inactive' ? 0 : totalQty,
+    totalCost: status === 'Inactive' ? 0 : totalCost,
+    excludedStores: excludedStores,
+    includedStoresCount: includedStores.length,
+    excludedStoresCount: excludedStores.length
+  }
+}
+
+// Raw demo data
+const rawItems = [
   {
     id: 1,
     itemCode: 'SDT000001',
     itemName: 'Dell Laptop',
     itemStandardName: 'Dell Latitude 3420',
-    storeId: 1,
-    storeName: 'Main Store',
-    storeCode: 'STORE-001',
-    groupId: 1,
-    groupName: 'Fiber Mainstore IT',
-    groupCode: 'GRP-001',
     categoryName: 'Electronics',
     brand: 'Dell',
     model: 'Latitude 3420',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 25,
+    baseUOM: 'PCS',
     unitCost: 850.00,
-    totalValue: 21250.00,
-    status: 'Active',
+    userStatus: 'Active',
+    storeBreakdown: [
+      {
+        storeId: 1,
+        storeName: 'Fiber Main Store',
+        groups: [
+          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 15, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 15, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      },
+      {
+        storeId: 2,
+        storeName: 'Fiber Mini Store',
+        groups: [
+          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 12, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 12, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      }
+    ],
     costHistory: [
-      { id: 1, previousCost: 800.00, newCost: 850.00, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' },
-      { id: 2, previousCost: 750.00, newCost: 800.00, changedBy: 'Manager', reason: 'Supplier update', createdAt: '2024-05-20T14:20:00' }
+      { id: 1, previousCost: 800.00, newCost: 850.00, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' }
     ]
   },
   {
@@ -387,70 +514,99 @@ const costItems = ref([
     itemCode: 'SDT000002',
     itemName: 'HP Monitor',
     itemStandardName: 'HP 24" LED Monitor',
-    storeId: 1,
-    storeName: 'Main Store',
-    storeCode: 'STORE-001',
-    groupId: 1,
-    groupName: 'Fiber Mainstore IT',
-    groupCode: 'GRP-001',
     categoryName: 'Electronics',
     brand: 'HP',
     model: 'E243',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 40,
+    baseUOM: 'PCS',
     unitCost: 320.00,
-    totalValue: 12800.00,
-    status: 'Active',
-    costHistory: [
-      { id: 1, previousCost: 300.00, newCost: 320.00, changedBy: 'Admin', reason: 'Market adjustment', createdAt: '2024-06-10T09:15:00' }
-    ]
+    userStatus: 'Active',
+    storeBreakdown: [
+      {
+        storeId: 1,
+        storeName: 'Fiber Main Store',
+        groups: [
+          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 30, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 15, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      },
+      {
+        storeId: 2,
+        storeName: 'Fiber Mini Store',
+        groups: [
+          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 10, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 10, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      }
+    ],
+    costHistory: []
   },
   {
     id: 3,
     itemCode: 'SDT000003',
-    itemName: 'Office Chair',
-    itemStandardName: 'Ergonomic Office Chair',
-    storeId: 2,
-    storeName: 'Warehouse A',
-    storeCode: 'STORE-002',
-    groupId: 2,
-    groupName: 'Fiber Ministore IT',
-    groupCode: 'GRP-002',
-    categoryName: 'Furniture',
-    brand: 'Herman Miller',
-    model: 'Aeron',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 15,
-    unitCost: 1200.00,
-    totalValue: 18000.00,
-    status: 'Active',
-    costHistory: []
+    itemName: 'Dulenti Chemical',
+    itemStandardName: 'Dulenti Chemical Base',
+    categoryName: 'Chemicals',
+    brand: 'Dulenti',
+    model: 'DC-100',
+    baseUOM: 'KG',
+    unitCost: 45.50,
+    userStatus: 'Active',
+    storeBreakdown: [
+      {
+        storeId: 1,
+        storeName: 'Fiber Main Store',
+        groups: [
+          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 3, originalUOM: 'Drum', conversionRate: 165, baseQuantity: 495 },
+          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 3, originalUOM: 'Drum', conversionRate: 165, baseQuantity: 495 }
+        ]
+      },
+      {
+        storeId: 2,
+        storeName: 'Fiber Mini Store',
+        groups: [
+          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 300, originalUOM: 'KG', conversionRate: 1, baseQuantity: 300 }
+        ]
+      },
+      {
+        storeId: 3,
+        storeName: 'Paint Main Store',
+        groups: [
+          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 5, originalUOM: 'Bag', conversionRate: 25, baseQuantity: 125 }
+        ]
+      }
+    ],
+    costHistory: [
+      { id: 1, previousCost: 42.00, newCost: 45.50, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' }
+    ]
   },
   {
     id: 4,
     itemCode: 'SDT000004',
-    itemName: 'Wireless Keyboard',
-    itemStandardName: 'Logitech MX Keys',
-    storeId: 3,
-    storeName: 'Warehouse B',
-    storeCode: 'STORE-003',
-    groupId: 3,
-    groupName: 'Fiber Storekeeper',
-    groupCode: 'GRP-003',
-    categoryName: 'Electronics',
-    brand: 'Logitech',
-    model: 'MX Keys',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 60,
-    unitCost: 95.00,
-    totalValue: 5700.00,
-    status: 'Active',
+    itemName: 'Industrial Paint',
+    itemStandardName: 'Industrial Paint Base',
+    categoryName: 'Chemicals',
+    brand: 'PaintCo',
+    model: 'PC-200',
+    baseUOM: 'L',
+    unitCost: 12.75,
+    userStatus: 'Active',
+    storeBreakdown: [
+      {
+        storeId: 1,
+        storeName: 'Fiber Main Store',
+        groups: [
+          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 1, originalUOM: 'Drum', conversionRate: 200, baseQuantity: 200 },
+          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 2, originalUOM: 'Drum', conversionRate: 200, baseQuantity: 400 }
+        ]
+      },
+      {
+        storeId: 3,
+        storeName: 'Paint Main Store',
+        groups: [
+          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 400, originalUOM: 'L', conversionRate: 1, baseQuantity: 400 }
+        ]
+      }
+    ],
     costHistory: []
   },
   {
@@ -458,207 +614,54 @@ const costItems = ref([
     itemCode: 'SDT000005',
     itemName: 'USB Flash Drive',
     itemStandardName: 'SanDisk 64GB USB',
-    storeId: 1,
-    storeName: 'Main Store',
-    storeCode: 'STORE-001',
-    groupId: 1,
-    groupName: 'Fiber Mainstore IT',
-    groupCode: 'GRP-001',
     categoryName: 'Accessories',
     brand: 'SanDisk',
     model: 'Ultra 64GB',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 200,
+    baseUOM: 'PCS',
     unitCost: 12.50,
-    totalValue: 2500.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 6,
-    itemCode: 'SDT000006',
-    itemName: 'Paper Ream (A4)',
-    itemStandardName: 'A4 Copy Paper 80gsm',
-    storeId: 2,
-    storeName: 'Warehouse A',
-    storeCode: 'STORE-002',
-    groupId: 2,
-    groupName: 'Fiber Ministore IT',
-    groupCode: 'GRP-002',
-    categoryName: 'Stationery',
-    brand: 'Double A',
-    model: '80gsm',
-    uomCode: 'REAM',
-    conversionValue: 500,
-    conversionUomCode: 'SHEETS',
-    balance: 150,
-    unitCost: 4.50,
-    totalValue: 675.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 7,
-    itemCode: 'SDT000007',
-    itemName: 'Ink Cartridge',
-    itemStandardName: 'HP 62XL Ink Cartridge',
-    storeId: 3,
-    storeName: 'Warehouse B',
-    storeCode: 'STORE-003',
-    groupId: 3,
-    groupName: 'Fiber Storekeeper',
-    groupCode: 'GRP-003',
-    categoryName: 'Consumables',
-    brand: 'HP',
-    model: '62XL',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 80,
-    unitCost: 35.00,
-    totalValue: 2800.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 8,
-    itemCode: 'SDT000008',
-    itemName: 'Desk Phone',
-    itemStandardName: 'IP Office Phone',
-    storeId: 1,
-    storeName: 'Main Store',
-    storeCode: 'STORE-001',
-    groupId: 4,
-    groupName: 'HR Department',
-    groupCode: 'GRP-004',
-    categoryName: 'Electronics',
-    brand: 'Cisco',
-    model: '8841',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 30,
-    unitCost: 180.00,
-    totalValue: 5400.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 9,
-    itemCode: 'SDT000009',
-    itemName: 'Filing Cabinet',
-    itemStandardName: '4-Drawer Vertical File',
-    storeId: 2,
-    storeName: 'Warehouse A',
-    storeCode: 'STORE-002',
-    groupId: 4,
-    groupName: 'HR Department',
-    groupCode: 'GRP-004',
-    categoryName: 'Furniture',
-    brand: 'Steelcase',
-    model: '4-Drawer',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 10,
-    unitCost: 450.00,
-    totalValue: 4500.00,
-    status: 'Inactive',
-    costHistory: [
-      { id: 1, previousCost: 400.00, newCost: 450.00, changedBy: 'Admin', reason: 'Cost adjustment', createdAt: '2024-05-01T10:00:00' }
-    ]
-  },
-  {
-    id: 10,
-    itemCode: 'SDT000010',
-    itemName: 'Whiteboard Marker',
-    itemStandardName: 'Dry Erase Marker',
-    storeId: 3,
-    storeName: 'Warehouse B',
-    storeCode: 'STORE-003',
-    groupId: 3,
-    groupName: 'Fiber Storekeeper',
-    groupCode: 'GRP-003',
-    categoryName: 'Stationery',
-    brand: 'Expo',
-    model: 'Low Odor',
-    uomCode: 'BOX',
-    conversionValue: 12,
-    conversionUomCode: 'PCS',
-    balance: 30,
-    unitCost: 8.00,
-    totalValue: 240.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 11,
-    itemCode: 'SDT000011',
-    itemName: 'Network Switch',
-    itemStandardName: 'Cisco 2960 Switch',
-    storeId: 1,
-    storeName: 'Main Store',
-    storeCode: 'STORE-001',
-    groupId: 1,
-    groupName: 'Fiber Mainstore IT',
-    groupCode: 'GRP-001',
-    categoryName: 'Networking',
-    brand: 'Cisco',
-    model: '2960-24',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 8,
-    unitCost: 650.00,
-    totalValue: 5200.00,
-    status: 'Active',
-    costHistory: []
-  },
-  {
-    id: 12,
-    itemCode: 'SDT000012',
-    itemName: 'Projector',
-    itemStandardName: 'Epson Projector',
-    storeId: 4,
-    storeName: 'Retail Store',
-    storeCode: 'STORE-004',
-    groupId: 2,
-    groupName: 'Fiber Ministore IT',
-    groupCode: 'GRP-002',
-    categoryName: 'Electronics',
-    brand: 'Epson',
-    model: 'EB-X51',
-    uomCode: 'PCS',
-    conversionValue: 1,
-    conversionUomCode: 'PCS',
-    balance: 3,
-    unitCost: 950.00,
-    totalValue: 2850.00,
-    status: 'Active',
+    userStatus: 'Active',
+    storeBreakdown: [
+      {
+        storeId: 1,
+        storeName: 'Fiber Main Store',
+        groups: [
+          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 100, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 100, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      },
+      {
+        storeId: 2,
+        storeName: 'Fiber Mini Store',
+        groups: [
+          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 50, originalUOM: 'PCS', conversionRate: 1 },
+          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 50, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      },
+      {
+        storeId: 3,
+        storeName: 'Paint Main Store',
+        groups: [
+          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 50, originalUOM: 'PCS', conversionRate: 1 }
+        ]
+      }
+    ],
     costHistory: []
   }
-])
+]
+
+// Process the data
+const aggregatedItems = ref(rawItems.map(processItem))
 
 // ================================================================
 // STATE
 // ================================================================
 const searchQuery = ref('')
-const filterStore = ref('')
-const filterGroup = ref('')
+const selectedStoreId = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const expandedRow = ref(null)
 const exporting = ref(false)
-const saving = ref(false)
-
-// Cost Modal
-const showCostModal = ref(false)
-const editingItem = ref(null)
-const newCost = ref(null)
-const costReason = ref('')
 
 // Toast
 const showToast = ref(false)
@@ -666,12 +669,89 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
+// STATUS TOGGLE
+// ================================================================
+
+const toggleItemStatus = (item) => {
+  const newStatus = item.status === 'Inactive' ? 'Active' : 'Inactive'
+  const itemIndex = aggregatedItems.value.findIndex(i => i.id === item.id)
+  
+  if (itemIndex !== -1) {
+    // Update userStatus
+    aggregatedItems.value[itemIndex].userStatus = newStatus
+    
+    // Reprocess the item
+    const processed = processItem(aggregatedItems.value[itemIndex])
+    aggregatedItems.value[itemIndex] = processed
+    
+    showToastMessage(`Item "${item.itemName}" status changed to ${newStatus}`, 
+      newStatus === 'Inactive' ? 'warning' : 'success')
+  }
+}
+
+// ================================================================
+// FILTER LOGIC
+// ================================================================
+
+const isStoreVisible = (storeId) => {
+  if (!selectedStoreId.value) return true
+  return storeId === Number(selectedStoreId.value)
+}
+
+const filterItemsByStore = (items) => {
+  if (!selectedStoreId.value) return items
+  
+  return items.map(item => {
+    const filteredBreakdown = item.storeBreakdown.filter(
+      s => s.storeId === Number(selectedStoreId.value)
+    )
+    
+    const includedStores = filteredBreakdown.filter(s => !s.isExcluded)
+    const totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0)
+    const totalCost = totalQty * item.unitCost
+    
+    const excludedStores = filteredBreakdown
+      .filter(s => s.isExcluded)
+      .map(s => s.storeName)
+    
+    let status = item.userStatus === 'Inactive' ? 'Inactive' : 'Active'
+    if (status !== 'Inactive') {
+      if (filteredBreakdown.length === 0) {
+        status = 'Inactive'
+      } else if (excludedStores.length > 0 && includedStores.length > 0) {
+        status = 'Partial'
+      } else if (excludedStores.length === filteredBreakdown.length) {
+        status = 'Conflict'
+      }
+    }
+    
+    return {
+      ...item,
+      storeBreakdown: filteredBreakdown,
+      status: status,
+      totalQty: status === 'Inactive' ? 0 : totalQty,
+      totalCost: status === 'Inactive' ? 0 : totalCost,
+      excludedStores: excludedStores,
+      includedStoresCount: includedStores.length,
+      excludedStoresCount: excludedStores.length,
+      isFiltered: true
+    }
+  }).filter(item => item.storeBreakdown.length > 0 || item.status === 'Inactive')
+}
+
+// ================================================================
 // COMPUTED
 // ================================================================
 
 const filteredItems = computed(() => {
-  let result = [...costItems.value]
+  let result = [...aggregatedItems.value]
   
+  // Apply store filter first
+  if (selectedStoreId.value) {
+    result = filterItemsByStore(result)
+  }
+  
+  // Apply search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(item => 
@@ -681,14 +761,7 @@ const filteredItems = computed(() => {
     )
   }
   
-  if (filterStore.value) {
-    result = result.filter(item => item.storeId === Number(filterStore.value))
-  }
-  
-  if (filterGroup.value) {
-    result = result.filter(item => item.groupId === Number(filterGroup.value))
-  }
-  
+  // Apply status filter
   if (filterStatus.value) {
     result = result.filter(item => item.status === filterStatus.value)
   }
@@ -706,27 +779,35 @@ const totalPages = computed(() => {
   return Math.ceil(filteredItems.value.length / pageSize.value) || 1
 })
 
-const totalItems = computed(() => costItems.value.length)
-const uniqueStores = computed(() => {
-  return new Set(costItems.value.map(item => item.storeId)).size
+// Filtered stats - exclude inactive items
+const filteredTotalValue = computed(() => {
+  return filteredItems.value
+    .filter(item => item.status === 'Active' || item.status === 'Partial')
+    .reduce((sum, item) => sum + (item.totalCost || 0), 0)
 })
 
-const totalInventoryValue = computed(() => {
-  return costItems.value.reduce((sum, item) => sum + (item.totalValue || 0), 0)
+const filteredStoresCount = computed(() => {
+  const stores = new Set()
+  filteredItems.value.forEach(item => {
+    if (item.status !== 'Inactive') {
+      item.storeBreakdown.forEach(s => stores.add(s.storeId))
+    }
+  })
+  return stores.size
 })
 
-const averageCost = computed(() => {
-  if (costItems.value.length === 0) return 0
-  const totalCost = costItems.value.reduce((sum, item) => sum + (item.unitCost || 0), 0)
-  return totalCost / costItems.value.length
+const filteredPartialItems = computed(() => {
+  return filteredItems.value.filter(item => item.status === 'Partial').length
 })
 
 const pageTotal = computed(() => {
-  return paginatedItems.value.reduce((sum, item) => sum + (item.totalValue || 0), 0)
+  return paginatedItems.value
+    .filter(item => item.status === 'Active' || item.status === 'Partial')
+    .reduce((sum, item) => sum + (item.totalCost || 0), 0)
 })
 
 const hasActiveFilters = computed(() => {
-  return filterStore.value || filterGroup.value || filterStatus.value || searchQuery.value
+  return selectedStoreId.value || filterStatus.value || searchQuery.value
 })
 
 // ================================================================
@@ -742,8 +823,7 @@ const onFilterChange = () => {
 }
 
 const clearFilters = () => {
-  filterStore.value = ''
-  filterGroup.value = ''
+  selectedStoreId.value = ''
   filterStatus.value = ''
   searchQuery.value = ''
   currentPage.value = 1
@@ -765,62 +845,11 @@ const toggleExpand = (id) => {
 }
 
 // ================================================================
-// COST EDITING
-// ================================================================
-
-const openEditCost = (item) => {
-  editingItem.value = item
-  newCost.value = item.unitCost
-  costReason.value = ''
-  showCostModal.value = true
-}
-
-const closeCostModal = () => {
-  showCostModal.value = false
-  editingItem.value = null
-  newCost.value = null
-  costReason.value = ''
-}
-
-const saveCost = () => {
-  if (!editingItem.value || !newCost.value || newCost.value < 0) return
-  
-  saving.value = true
-  
-  // Simulate API call
-  setTimeout(() => {
-    // Update the cost
-    const item = costItems.value.find(i => i.id === editingItem.value.id)
-    if (item) {
-      const oldCost = item.unitCost
-      item.unitCost = newCost.value
-      item.totalValue = item.balance * newCost.value
-      
-      // Add to history
-      item.costHistory.unshift({
-        id: Date.now(),
-        previousCost: oldCost,
-        newCost: newCost.value,
-        changedBy: 'Current User',
-        reason: costReason.value || 'Manual update',
-        createdAt: new Date().toISOString()
-      })
-    }
-    
-    showToastMessage('Unit cost updated successfully!', 'success')
-    closeCostModal()
-    saving.value = false
-  }, 500)
-}
-
-// ================================================================
 // EXPORT & PRINT
 // ================================================================
 
 const exportReport = () => {
   exporting.value = true
-  
-  // Simulate export
   setTimeout(() => {
     showToastMessage('Export completed!', 'success')
     exporting.value = false
@@ -985,39 +1014,6 @@ const showToastMessage = (msg, type = 'success') => {
 }
 .btn-print:hover { background: #7c3aed; }
 
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-primary:hover:not(:disabled) { background: #2563eb; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.btn-secondary {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 8px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
-
 .btn-clear-filters {
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
@@ -1036,10 +1032,24 @@ const showToastMessage = (msg, type = 'success') => {
    ================================================================ */
 .filter-bar {
   display: flex;
-  gap: 10px;
+  gap: 16px;
   margin-bottom: 16px;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .filter-select {
@@ -1049,7 +1059,13 @@ const showToastMessage = (msg, type = 'success') => {
   background: white;
   font-size: 13px;
   cursor: pointer;
-  min-width: 120px;
+  min-width: 180px;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* ================================================================
@@ -1111,7 +1127,7 @@ const showToastMessage = (msg, type = 'success') => {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 1000px;
+  min-width: 800px;
 }
 
 .cost-table th,
@@ -1141,6 +1157,57 @@ const showToastMessage = (msg, type = 'success') => {
   text-align: right;
 }
 
+/* ================================================================
+   STATUS BADGE - FIXED COLORS
+   ================================================================ */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.status-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.inactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.conflict {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.clickable-status {
+  cursor: pointer;
+}
+
+.clickable-status:hover {
+  opacity: 0.8;
+}
+
+/* ================================================================
+   TABLE STYLES
+   ================================================================ */
 .item-code {
   font-weight: 600;
   color: #2563eb;
@@ -1164,22 +1231,6 @@ const showToastMessage = (msg, type = 'success') => {
   color: #94a3b8;
 }
 
-.store-name {
-  font-weight: 500;
-  font-size: 12px;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #eff6ff;
-  color: #2563eb;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
 .uom-code {
   font-weight: 600;
   font-size: 12px;
@@ -1195,53 +1246,16 @@ const showToastMessage = (msg, type = 'success') => {
   color: #1e293b;
 }
 
-.base-balance {
-  display: block;
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: normal;
-}
-
 .cost-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.cost-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .unit-cost {
   font-weight: 600;
   font-size: 14px;
   color: #1e293b;
-}
-
-.cost-currency {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.edit-cost-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s;
-  opacity: 0;
-}
-
-.cost-cell:hover .edit-cost-btn {
-  opacity: 1;
-}
-
-.edit-cost-btn:hover {
-  background: #f1f5f9;
 }
 
 .total-cell {
@@ -1257,23 +1271,38 @@ const showToastMessage = (msg, type = 'success') => {
   color: #dc2626;
 }
 
-.status-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
+.total-value.inactive-value {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+.partial-tag {
   font-size: 10px;
+  color: #f59e0b;
   font-weight: 500;
-  white-space: nowrap;
+  margin-left: 4px;
 }
 
-.status-badge.active {
-  background: #dcfce7;
-  color: #166534;
+.inactive-tag {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-left: 4px;
 }
 
-.status-badge.inactive {
-  background: #fee2e2;
-  color: #991b1b;
+.partial-row {
+  background: #fffbeb;
+}
+
+.inactive-row {
+  background: #f8fafc;
+  opacity: 0.7;
+}
+
+.partial-hint {
+  color: #f59e0b;
+  font-size: 14px;
+  margin-left: 4px;
 }
 
 /* ================================================================
@@ -1293,7 +1322,7 @@ const showToastMessage = (msg, type = 'success') => {
 .detail-expand-row td { padding: 0 !important; }
 
 .expand-details {
-  padding: 16px 20px;
+  padding: 20px;
   background: white;
   border-radius: 12px;
   margin: 8px 0;
@@ -1306,16 +1335,19 @@ const showToastMessage = (msg, type = 'success') => {
   gap: 16px;
 }
 
-.detail-row-two-cols {
+/* ================================================================
+   DETAIL TOP SECTION
+   ================================================================ */
+.detail-top-section {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
 .detail-card {
   background: #f8fafc;
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px 20px;
   border: 1px solid #e2e8f0;
 }
 
@@ -1324,24 +1356,410 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 .detail-card h4 {
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
   font-size: 13px;
   font-weight: 600;
   border-left: 3px solid #3b82f6;
   padding-left: 10px;
 }
 
-.detail-card > div {
+.detail-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-vertical > div {
   display: flex;
   justify-content: space-between;
   padding: 4px 0;
   border-bottom: 1px solid #f1f5f9;
   font-size: 12px;
 }
-.detail-card > div:last-child { border-bottom: none; }
-.detail-card .value { font-weight: 500; color: #1e293b; }
-.detail-card .highlight-total { color: #2563eb; font-weight: 700; }
 
+.detail-vertical > div:last-child {
+  border-bottom: none;
+}
+
+.detail-vertical .value { 
+  font-weight: 500; 
+  color: #1e293b; 
+}
+
+.detail-vertical .highlight-total { 
+  color: #2563eb; 
+  font-weight: 700; 
+  font-size: 14px; 
+}
+
+/* ================================================================
+   BREAKDOWN CARD
+   ================================================================ */
+.breakdown-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.breakdown-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.store-breakdown-card {
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.store-breakdown-card.store-conflict {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.store-breakdown-card.store-excluded {
+  opacity: 0.85;
+}
+
+.store-breakdown-card.store-hidden {
+  display: none;
+}
+
+.store-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.store-breakdown-card.store-conflict .store-header {
+  background: #fef3c7;
+  border-bottom-color: #fde68a;
+}
+
+.store-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.store-icon {
+  font-size: 16px;
+}
+
+.store-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.excluded-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.active-filter-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #dbeafe;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.store-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.store-status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.store-status-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.store-status-badge.conflict {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.store-total-qty {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.conflict-note-small {
+  font-size: 10px;
+  color: #f59e0b;
+  font-weight: 400;
+}
+
+.groups-list {
+  padding: 6px 16px;
+}
+
+.group-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.group-row:last-child {
+  border-bottom: none;
+}
+
+.group-row.group-conflict {
+  background: #fffbeb;
+  border-radius: 4px;
+}
+
+.group-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.group-dot.conflict-dot {
+  background: #f59e0b;
+}
+
+.group-name {
+  font-size: 13px;
+  color: #475569;
+}
+
+.group-quantity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qty-value {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.qty-uom {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.conversion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.conversion-rate {
+  font-weight: 400;
+  font-size: 9px;
+  color: #6b8cbf;
+}
+
+.conflict-indicator {
+  color: #f59e0b;
+  font-size: 14px;
+}
+
+.conflict-warning-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: #fef3c7;
+  border-top: 1px solid #fde68a;
+}
+
+.warning-icon {
+  font-size: 14px;
+}
+
+.warning-text {
+  font-size: 11px;
+  color: #92400e;
+}
+
+.warning-text strong {
+  color: #dc2626;
+}
+
+/* ================================================================
+   TOTAL SUMMARY
+   ================================================================ */
+.total-summary-bar {
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #eff6ff;
+  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+}
+
+.total-summary-bar.partial-summary {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.total-summary-bar.inactive-summary {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  opacity: 0.7;
+}
+
+.total-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.total-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.total-value-highlight {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.total-summary-sub {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.total-summary-sub.partial-sub {
+  border-top-color: #fde68a;
+}
+
+.total-summary-sub.inactive-sub {
+  border-top-color: #e2e8f0;
+}
+
+.total-summary-sub.filter-info {
+  border-top-color: #bfdbfe;
+}
+
+.sub-label {
+  font-size: 12px;
+  color: #22c55e;
+}
+
+.sub-label.partial-label {
+  color: #f59e0b;
+}
+
+.sub-label.inactive-label {
+  color: #94a3b8;
+}
+
+.sub-label.filter-label {
+  color: #2563eb;
+}
+
+.sub-detail {
+  display: block;
+  font-size: 11px;
+  color: #92400e;
+  margin-top: 2px;
+}
+
+/* ================================================================
+   COST SUMMARY CARD
+   ================================================================ */
+.cost-summary-card.partial-card {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.cost-summary-card.inactive-card {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  opacity: 0.7;
+}
+
+.partial-text {
+  color: #92400e;
+  font-weight: 600;
+}
+
+.inactive-text {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.partial-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border-radius: 6px;
+  border: 1px solid #fde68a;
+  font-size: 12px;
+}
+
+.inactive-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+}
+
+.partial-icon {
+  font-size: 16px;
+}
+
+.inactive-icon {
+  font-size: 16px;
+}
+
+/* ================================================================
+   HISTORY TABLE
+   ================================================================ */
 .history-table {
   width: 100%;
   border-collapse: collapse;
@@ -1418,140 +1836,6 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   MODAL
-   ================================================================ */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 1000;
-}
-
-.modal-container {
-  background: white;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
-.modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: #1e293b; }
-
-.modal-body {
-  padding: 16px 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 20px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
-  flex-shrink: 0;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: #94a3b8;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.modal-close:hover { background: #f1f5f9; color: #1e293b; }
-
-.cost-item-info {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 13px;
-}
-.info-row:last-child { border-bottom: none; }
-.info-row .label { color: #64748b; }
-.info-row .value { font-weight: 500; color: #1e293b; }
-.current-cost { color: #2563eb; font-weight: 700; }
-.highlight-total { color: #2563eb; font-weight: 700; }
-
-.cost-form .form-group {
-  margin-bottom: 14px;
-}
-.cost-form .form-group label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-.cost-form .form-group input,
-.cost-form .form-group textarea {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  font-family: inherit;
-}
-.cost-form .form-group input:focus,
-.cost-form .form-group textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-.cost-form .hint {
-  display: block;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 4px;
-}
-
-.form-preview {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.preview-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 13px;
-}
-.preview-item .positive { color: #16a34a; }
-.preview-item .negative { color: #dc2626; }
-
-/* ================================================================
    EMPTY STATE
    ================================================================ */
 .empty-state { text-align: center; padding: 40px !important; }
@@ -1582,6 +1866,7 @@ const showToastMessage = (msg, type = 'success') => {
 }
 .toast.error { border-left-color: #ef4444; }
 .toast.info { border-left-color: #3b82f6; }
+.toast.warning { border-left-color: #f59e0b; }
 
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
@@ -1592,14 +1877,18 @@ const showToastMessage = (msg, type = 'success') => {
    RESPONSIVE
    ================================================================ */
 @media (max-width: 1024px) {
-  .detail-row-two-cols {
-    grid-template-columns: 1fr 1fr;
+  .detail-top-section {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
-  .detail-row-two-cols {
+  .detail-top-section {
     grid-template-columns: 1fr;
+  }
+  
+  .detail-vertical {
+    gap: 2px;
   }
   
   .stats-grid {
@@ -1622,19 +1911,27 @@ const showToastMessage = (msg, type = 'success') => {
   
   .filter-bar {
     flex-direction: column;
+    align-items: stretch;
   }
   
-  .filter-bar select {
+  .filter-select {
     width: 100%;
   }
   
   .cost-table {
     font-size: 12px;
-    min-width: 700px;
+    min-width: 600px;
   }
   
-  .modal-container {
-    max-width: 95%;
+  .store-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .store-status {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 
@@ -1648,6 +1945,15 @@ const showToastMessage = (msg, type = 'success') => {
   }
   
   .pagination {
+    flex-wrap: wrap;
+  }
+  
+  .group-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .group-quantity {
     flex-wrap: wrap;
   }
 }

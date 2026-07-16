@@ -1534,6 +1534,10 @@ exports.getGroups = async (req, res) => {
 // 13. GET ACTIVE ITEMS
 // ============================================
 
+// ============================================
+// 13. GET ACTIVE ITEMS - UPDATED WITH MORE FIELDS
+// ============================================
+
 exports.getActiveItems = async (req, res) => {
   try {
     const items = await Item.findAll({
@@ -1552,22 +1556,31 @@ exports.getActiveItems = async (req, res) => {
       ],
       order: [["name", "ASC"]],
       attributes: [
-        "itemId",  // Use itemId here (the model property)
+        "itemId",
         "code", 
         "name", 
-        "standardName", 
+        "standardName",
+        "description",   // ✅ ADD THIS
+        "brand",         // ✅ ADD THIS
+        "model",         // ✅ ADD THIS
+        "barcode",       // ✅ ADD THIS
         "conversionValue", 
         "status"
       ],
     });
 
-    // Format the response to include both itemId and id for frontend compatibility
+    // Format the response
     const formattedItems = items.map(item => ({
-      id: item.itemId,           // Map itemId to id for frontend
-      itemId: item.itemId,       // Keep itemId as well
+      id: item.itemId,
+      itemId: item.itemId,
       code: item.code,
       name: item.name,
       standardName: item.standardName,
+      description: item.description || '',
+      brand: item.brand || '',      // ✅ NOW INCLUDED
+      model: item.model || '',      // ✅ NOW INCLUDED
+      barcode: item.barcode || '',
+      commonName: item.standardName || item.name || '', // Use standardName as commonName if not available
       conversionValue: parseFloat(item.conversionValue) || 1,
       status: item.status,
       uomCode: item.uom?.code || null,

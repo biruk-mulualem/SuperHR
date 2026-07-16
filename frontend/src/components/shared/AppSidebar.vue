@@ -102,7 +102,7 @@ const roleMenus = {
     { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
-    { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
+    // { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
   ],
   hr: [
@@ -118,11 +118,12 @@ const roleMenus = {
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
   ],
   employee: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
-    { name: 'My Attendance', path: '/my-attendance', icon: 'ClockIcon', badge: null },
-    { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
-    { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null }
+    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
+    // { name: 'My Attendance', path: '/my-attendance', icon: 'ClockIcon', badge: null },
+    // { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
+    // { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null },
+     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null }
   ],
   attendance: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },

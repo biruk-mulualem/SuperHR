@@ -9,7 +9,7 @@ const { Op } = require('sequelize');
 // ================================================================
 // HELPER: Check if store should skip stock validation
 // ================================================================
-const STOCK_VALIDATION_SKIP_STORES = ['STORE-003', 'STORE-004'];
+const STOCK_VALIDATION_SKIP_STORES = ['STORE-006', 'STORE-007'];
 
 
 const shouldSkipStockValidation = (storeCode) => {
@@ -118,7 +118,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         availableQuantity,
         shortage: requestedQuantity - availableQuantity,
         uomCode: item.uomCode || 'Units',
-        message: `Insufficient stock. Available: ${availableQuantity}, Requested: ${requestedQuantity}`
+        message: `Insufficient stock.`
       });
     }
   }
@@ -802,9 +802,7 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Stock validation failed',
-        message: allItemsHaveStockIssues 
-          ? 'None of the requested items are available in the supplying store'
-          : 'Some items do not have enough stock in the supplying store',
+      
         errors: stockValidation.errors,
         stockInfo: stockValidation.stockInfo,
         summary: {

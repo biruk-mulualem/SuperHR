@@ -1,3 +1,4 @@
+<!-- views/storemanagement/itemrequests/itemrequests.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -16,13 +17,12 @@
             @input="onSearchChange"
           />
         </div>
-        <button 
-          v-if="canCreateRequests" 
-          class="btn-add" 
-          @click="openCreateModal"
-        >
-          ➕ New Request
-        </button>
+       <button 
+  class="btn-add" 
+  @click="openCreateModal"
+>
+  ➕ New Request
+</button>
       </div>
     </div>
 
@@ -137,14 +137,6 @@
                   >
                     🚫
                   </button>
-                  <!-- <button 
-                    v-if="req.status === 'approved'"
-                    class="icon-btn" 
-                    @click="openStatusConfirmation(req, 'finalized')" 
-                    title="Finalize"
-                  >
-                    📋
-                  </button> -->
                 </div>
               </td>
             </tr>
@@ -293,66 +285,55 @@
           <!-- ================================================================ -->
           <!-- 🔥 VALIDATION ERRORS DISPLAY -->
           <!-- ================================================================ -->
-         <!-- ================================================================ -->
-<!-- 🔥 VALIDATION ERRORS DISPLAY -->
-<!-- ================================================================ -->
-<div v-if="showValidationErrors && validationErrors.length > 0" class="validation-error-box">
-  <div class="validation-error-header">
-    <span class="error-icon">❌</span>
-    <span class="error-title">Request Validation Failed</span>
-  </div>
-  
-  <!-- Display the main message -->
-  <div class="validation-error-message">{{ validationMessage }}</div>
-  
-  <!-- Display each error -->
-  <div class="validation-error-list">
-    <div v-for="(error, index) in validationErrors" :key="index" class="validation-error-item">
-      <!-- Error Header with Item Info -->
-      <div class="error-item-header">
-        <span class="error-item-icon">📦</span>
-        <span class="error-item-title">
-          <strong>{{ error.itemName || 'Unknown Item' }}</strong>
-          <span v-if="error.itemCode" class="error-code">({{ error.itemCode }})</span>
-          <span v-if="error.requestedQuantity" class="error-quantity">
-            Requested: {{ error.requestedQuantity }}
-          </span>
-        </span>
-      </div>
-      
-      <!-- Error Message -->
-      <div class="error-item-message">{{ error.message }}</div>
-      
-      <!-- Missing Groups (if any) -->
-      <div v-if="error.groupsWithoutBalance && error.groupsWithoutBalance.length > 0" class="error-groups">
-        <span class="groups-label">📋 Missing Groups:</span>
-        <span v-for="(group, idx) in error.groupsWithoutBalance" :key="idx" class="group-tag">
-          {{ group.groupName }}
-        </span>
-      </div>
-      
-      <!-- Balance Details (if any) -->
-      <div v-if="error.balanceDetails && error.balanceDetails.length > 0" class="error-balance-details">
-        <span class="balance-label">📊 Balance Variation:</span>
-        <div class="balance-list">
-          <span v-for="(detail, idx) in error.balanceDetails" :key="idx" class="balance-item">
-            {{ detail.groupName }}: {{ detail.balance }}
-          </span>
-        </div>
-      </div>
-      
-      <!-- Shortage (if any) -->
-      <div v-if="error.shortage" class="error-shortage">
-        ⚠️ Shortage: <strong>{{ error.shortage }}</strong> {{ error.uomCode || 'units' }}
-      </div>
-    </div>
-  </div>
-  
-  <!-- Dismiss Button -->
-  <div class="validation-actions">
-    <button class="btn-secondary" @click="closeValidationErrors">✕ Dismiss</button>
-  </div>
-</div>
+          <div v-if="showValidationErrors && validationErrors.length > 0" class="validation-error-box">
+            <div class="validation-error-header">
+              <span class="error-icon">❌</span>
+              <span class="error-title">Request Validation Failed</span>
+            </div>
+            
+            <div class="validation-error-message">{{ validationMessage }}</div>
+            
+            <div class="validation-error-list">
+              <div v-for="(error, index) in validationErrors" :key="index" class="validation-error-item">
+                <div class="error-item-header">
+                  <span class="error-item-icon">📦</span>
+                  <span class="error-item-title">
+                    <strong>{{ error.itemName || 'Unknown Item' }}</strong>
+                    <span v-if="error.itemCode" class="error-code">({{ error.itemCode }})</span>
+                    <span v-if="error.requestedQuantity" class="error-quantity">
+                      Requested: {{ error.requestedQuantity }}
+                    </span>
+                  </span>
+                </div>
+                
+                <div class="error-item-message">{{ error.message }}</div>
+                
+                <div v-if="error.groupsWithoutBalance && error.groupsWithoutBalance.length > 0" class="error-groups">
+                  <span class="groups-label">📋 Missing Groups:</span>
+                  <span v-for="(group, idx) in error.groupsWithoutBalance" :key="idx" class="group-tag">
+                    {{ group.groupName }}
+                  </span>
+                </div>
+                
+                <div v-if="error.balanceDetails && error.balanceDetails.length > 0" class="error-balance-details">
+                  <span class="balance-label">📊 Balance Variation:</span>
+                  <div class="balance-list">
+                    <span v-for="(detail, idx) in error.balanceDetails" :key="idx" class="balance-item">
+                      {{ detail.groupName }}: {{ detail.balance }}
+                    </span>
+                  </div>
+                </div>
+                
+                <!-- <div v-if="error.shortage" class="error-shortage">
+                  ⚠️ Shortage: <strong>{{ error.shortage }}</strong> {{ error.uomCode || 'units' }}
+                </div> -->
+              </div>
+            </div>
+            
+            <div class="validation-actions">
+              <button class="btn-secondary" @click="closeValidationErrors">✕ Dismiss</button>
+            </div>
+          </div>
 
           <!-- ================================================================ -->
           <!-- REQUEST FORM -->
@@ -402,62 +383,133 @@
               <p>No items added yet. Click "Add Item" to add items to this request.</p>
             </div>
 
-            <div v-for="(item, index) in form.items" :key="index" class="item-row">
-              <div class="item-row-header">
-                <span class="item-number">Item #{{ index + 1 }}</span>
-                <button type="button" class="btn-remove-item" @click="removeItemRow(index)" v-if="form.items.length > 1">
-                  ✕ Remove
-                </button>
+            <!-- ============================================================ -->
+            <!-- ENHANCED ITEM ROW WITH STACKED DISPLAY -->
+            <!-- ============================================================ -->
+<!-- ============================================================ -->
+<!-- ENHANCED ITEM ROW WITH STACKED DISPLAY - FULL WIDTH -->
+<!-- ============================================================ -->
+<div v-for="(item, index) in form.items" :key="index" class="item-row">
+  <div class="item-row-header">
+    <span class="item-number">Item #{{ index + 1 }}</span>
+    <button type="button" class="btn-remove-item" @click="removeItemRow(index)" v-if="form.items.length > 1">
+      ✕ Remove
+    </button>
+  </div>
+  
+  <!-- Item Selection with Stacked Layout - FULL WIDTH -->
+  <div class="form-row full-width">
+    <div class="form-group full-width">
+      <label>Select Item *</label>
+      
+      <!-- Search -->
+      <div class="item-search-wrapper">
+        <span class="search-icon-small">🔍</span>
+        <input
+          type="text"
+          :ref="el => setSearchInputRef(el, index)"
+          v-model="itemSearchQueries[index]"
+          placeholder="Search items by code, name, brand, or model..."
+          @input="resetItemList(index)"
+          class="item-search-input"
+        />
+      </div>
+      
+      <!-- Item Select with Infinite Scroll - STACKED LAYOUT -->
+      <div class="item-select-container" :ref="el => setItemContainer(el, index)">
+        <div class="item-select-scroll" @scroll="onItemScroll(index)">
+          <div 
+            v-for="itemOption in getDisplayedItems(index)" 
+            :key="itemOption.id"
+            class="item-option"
+            :class="{ selected: item.itemId === (itemOption.itemId || itemOption.id) }"
+            @click="selectItemForRow(index, itemOption)"
+          >
+            <div class="item-option-content">
+              <!-- Left: Code -->
+              <div class="item-option-left">
+                <span class="item-option-code">{{ itemOption.code }}</span>
               </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Item *</label>
-                  <select v-model="item.itemId" required @change="updateItemDetails(index)">
-                    <option value="">Select Item</option>
-                    <option 
-                      v-for="itemOption in items" 
-                      :key="itemOption.itemId || itemOption.id" 
-                      :value="itemOption.itemId || itemOption.id"
-                    >
-                     {{ itemOption.standardName || 'N/A' }}( {{ itemOption.name }})-----{{ itemOption.uom?.name }}
-                    </option>
-                  </select>
-                </div>
-               
+              
+              <!-- Middle: Standard Name & Common Name (stacked) -->
+              <div class="item-option-middle">
+                <div class="item-option-name">{{ itemOption.standardName || itemOption.name }}</div>
+                <div class="item-option-common" v-if="(itemOption as any).commonName">{{ (itemOption as any).commonName }}</div>
               </div>
-              <div class="form-row">
-                 <div class="form-group">
-                  <label>UOM</label>
-                  <input :value="getItemUOM(Number(item.itemId))" type="text" readonly />
-                </div>
-                <div class="form-group">
-                  <label>Quantity *</label>
-                  <input 
-                    v-model.number="item.quantity" 
-                    type="number" 
-                    min="0.01" 
-                    step="0.01" 
-                    required 
-                    placeholder="Enter quantity"
-                  />
-                </div>
-                <div class="form-group">
-                  <label>Standard Name</label>
-                  <input :value="getItemStandardName(Number(item.itemId))" type="text" readonly />
-                </div>
+              
+              <!-- Right: Brand & Model (stacked) -->
+              <div class="item-option-right">
+                <div class="item-option-brand" v-if="itemOption.brand">{{ itemOption.brand }}</div>
+                <div class="item-option-model" v-if="itemOption.model">{{ itemOption.model }}</div>
               </div>
-              <div class="form-row full-width">
-                <div class="form-group">
-                  <label>Item Remark</label>
-                  <textarea 
-                    v-model="item.remark" 
-                    rows="2" 
-                    placeholder="Add remark for this item..."
-                    class="textarea-field"
-                  ></textarea>
-                </div>
-              </div>
+              
+              <!-- Far Right: UOM -->
+              <div class="item-option-uom">{{ itemOption.uom?.code || 'N/A' }}</div>
             </div>
+          </div>
+          <div v-if="isLoadingItemsForRow[index]" class="item-loading">
+            <div class="spinner-small"></div>
+            Loading more items...
+          </div>
+          <div v-if="getFilteredItems(index).length === 0 && !isLoadingItemsForRow[index]" class="item-no-results">
+            No items found
+          </div>
+          <div v-if="hasMoreItems(index) && !isLoadingItemsForRow[index]" class="item-load-more">
+            Scroll for more items...
+          </div>
+        </div>
+      </div>
+      
+      <!-- Selected Item Display -->
+      <div v-if="selectedItemDisplays[index]" class="selected-item-display">
+        <span class="selected-badge">✅ Selected:</span>
+        <span class="selected-item-code">{{ selectedItemDisplays[index].code }}</span>
+        <span class="selected-item-name">{{ selectedItemDisplays[index].standardName || selectedItemDisplays[index].name }}</span>
+        <span class="selected-item-common" v-if="selectedItemDisplays[index].commonName">{{ selectedItemDisplays[index].commonName }}</span>
+        <span class="selected-item-brand" v-if="selectedItemDisplays[index].brand">Brand: {{ selectedItemDisplays[index].brand }}</span>
+        <span class="selected-item-model" v-if="selectedItemDisplays[index].model">Model: {{ selectedItemDisplays[index].model }}</span>
+        <span class="selected-item-uom">({{ selectedItemDisplays[index].uom?.code || 'N/A' }})</span>
+        <button type="button" class="clear-selection" @click="clearItemSelection(index)">✕</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Quantity and UOM - 3 columns -->
+  <div class="form-row">
+    <div class="form-group">
+      <label>UOM</label>
+      <input :value="getItemUOM(Number(item.itemId))" type="text" readonly class="readonly-field" />
+    </div>
+    <div class="form-group">
+      <label>Quantity *</label>
+      <input 
+        v-model.number="item.quantity" 
+        type="number" 
+        min="0.01" 
+        step="0.01" 
+        required 
+        placeholder="Enter quantity"
+      />
+    </div>
+    <div class="form-group">
+      <label>Standard Name</label>
+      <input :value="getItemStandardName(Number(item.itemId))" type="text" readonly class="readonly-field" />
+    </div>
+  </div>
+  
+  <!-- Item Remark - Full Width -->
+  <div class="form-row full-width">
+    <div class="form-group">
+      <label>Item Remark</label>
+      <textarea 
+        v-model="item.remark" 
+        rows="2" 
+        placeholder="Add remark for this item..."
+        class="textarea-field"
+      ></textarea>
+    </div>
+  </div>
+</div>
 
             <!-- Request Details -->
             <div class="form-section-title">📋 Request Details</div>
@@ -637,7 +689,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import itemRequestService from '@/stores/itemRequestService'
@@ -691,6 +743,16 @@ const exportType = ref<'full' | 'summary'>('full')
 const showStatusModal = ref(false)
 const statusTarget = ref<ItemRequest | null>(null)
 const statusAction = ref<'approved' | 'rejected' | 'finalized'>('approved')
+
+// ================================================================
+// ITEM SELECTION STATE (per row)
+// ================================================================
+const itemSearchQueries = ref<Record<number, string>>({})
+const itemDisplayLimits = ref<Record<number, number>>({})
+const isLoadingItemsForRow = ref<Record<number, boolean>>({})
+const itemContainers = ref<Record<number, HTMLElement | null>>({})
+const selectedItemDisplays = ref<Record<number, any>>({})
+const searchInputRefs = ref<Record<number, HTMLInputElement | null>>({})
 
 // Form
 const form = ref({
@@ -756,6 +818,97 @@ const canCreateRequests = computed(() => {
   if (userIsAdmin.value) return true
   return !!userAssignedStoreId.value
 })
+
+// ================================================================
+// METHODS - ITEM SELECTION PER ROW
+// ================================================================
+
+const setItemContainer = (el: any, index: number) => {
+  itemContainers.value[index] = el
+}
+
+const setSearchInputRef = (el: any, index: number) => {
+  searchInputRefs.value[index] = el
+}
+
+const resetItemList = (index: number) => {
+  itemDisplayLimits.value[index] = 10
+}
+
+const onItemScroll = (index: number) => {
+  const element = itemContainers.value[index]
+  if (!element) return
+  
+  const scrollTop = element.scrollTop
+  const scrollHeight = element.scrollHeight
+  const clientHeight = element.clientHeight
+  
+  if (scrollTop + clientHeight >= scrollHeight - 50) {
+    const filtered = getFilteredItems(index)
+    const currentLimit = itemDisplayLimits.value[index] || 10
+    
+    if (filtered.length > currentLimit && !isLoadingItemsForRow.value[index]) {
+      isLoadingItemsForRow.value[index] = true
+      setTimeout(() => {
+        itemDisplayLimits.value[index] = Math.min(
+          currentLimit + 10,
+          filtered.length
+        )
+        isLoadingItemsForRow.value[index] = false
+      }, 300)
+    }
+  }
+}
+
+const getFilteredItems = (rowIndex: number) => {
+  let itemsList = [...items.value]
+  
+  const query = itemSearchQueries.value[rowIndex] || ''
+  if (query) {
+    const q = query.toLowerCase()
+    itemsList = itemsList.filter(item => 
+      item.code?.toLowerCase().includes(q) ||
+      item.name?.toLowerCase().includes(q) ||
+      item.standardName?.toLowerCase().includes(q) ||
+      item.commonName?.toLowerCase().includes(q) ||
+      item.brand?.toLowerCase().includes(q) ||
+      item.model?.toLowerCase().includes(q)
+    )
+  }
+  
+  return itemsList
+}
+
+const getDisplayedItems = (rowIndex: number) => {
+  const limit = itemDisplayLimits.value[rowIndex] || 10
+  return getFilteredItems(rowIndex).slice(0, limit)
+}
+
+const hasMoreItems = (rowIndex: number) => {
+  const limit = itemDisplayLimits.value[rowIndex] || 10
+  return getDisplayedItems(rowIndex).length < getFilteredItems(rowIndex).length
+}
+
+const selectItemForRow = (rowIndex: number, itemOption: any) => {
+  const itemId = itemOption.itemId || itemOption.id
+  form.value.items[rowIndex].itemId = itemId
+  selectedItemDisplays.value[rowIndex] = itemOption
+  // Update UOM and standard name
+  updateItemDetails(rowIndex)
+  
+  // Close the dropdown by blurring the search input
+  const searchInput = searchInputRefs.value[rowIndex]
+  if (searchInput) {
+    searchInput.blur()
+  }
+}
+
+const clearItemSelection = (rowIndex: number) => {
+  form.value.items[rowIndex].itemId = 0
+  selectedItemDisplays.value[rowIndex] = null
+  itemSearchQueries.value[rowIndex] = ''
+  itemDisplayLimits.value[rowIndex] = 10
+}
 
 // ================================================================
 // METHODS
@@ -959,15 +1112,30 @@ const getTotalQuantity = (): number => {
 
 // -- Item Row Management --
 const addItemRow = (): void => {
+  const newIndex = form.value.items.length
   form.value.items.push({
     itemId: 0,
     quantity: 1,
     remark: ''
   })
+  // Initialize search state for new row
+  itemSearchQueries.value[newIndex] = ''
+  itemDisplayLimits.value[newIndex] = 10
+  isLoadingItemsForRow.value[newIndex] = false
+  selectedItemDisplays.value[newIndex] = null
+  itemContainers.value[newIndex] = null
+  searchInputRefs.value[newIndex] = null
 }
 
 const removeItemRow = (index: number): void => {
   form.value.items.splice(index, 1)
+  // Clean up associated state
+  delete itemSearchQueries.value[index]
+  delete itemDisplayLimits.value[index]
+  delete isLoadingItemsForRow.value[index]
+  delete itemContainers.value[index]
+  delete selectedItemDisplays.value[index]
+  delete searchInputRefs.value[index]
 }
 
 const updateItemDetails = (_index: number): void => {
@@ -990,15 +1158,9 @@ const closeValidationErrors = (): void => {
   validationMessage.value = ''
 }
 
-// -- Modal Methods --
 const openCreateModal = (): void => {
-  if (!canCreateRequests.value) {
-    showToastMessage('You do not have permission to create requests', 'error')
-    return
-  }
-
   editingRequest.value = null
-  const today: string = new Date().toISOString().split('T')[0]
+  const today: string = new Date().toISOString().split('T')[0] || ''
   
   // Clear validation errors
   closeValidationErrors()
@@ -1014,6 +1176,15 @@ const openCreateModal = (): void => {
     status: 'pending',
     remark: '',
   }
+  
+  // Initialize item selection state for first row
+  itemSearchQueries.value[0] = ''
+  itemDisplayLimits.value[0] = 10
+  isLoadingItemsForRow.value[0] = false
+  selectedItemDisplays.value[0] = null
+  itemContainers.value[0] = null
+  searchInputRefs.value[0] = null
+  
   formErrors.value = []
   showModal.value = true
 }
@@ -1021,7 +1192,7 @@ const openCreateModal = (): void => {
 const editRequest = (req: ItemRequest): void => {
   editingRequest.value = req
   const today: string = new Date().toISOString().split('T')[0]
-  const requestedDate = req.requestedDate || today
+  const requestedDate: string = String(req.requestedDate || today)
   
   // Clear validation errors
   closeValidationErrors()
@@ -1039,6 +1210,17 @@ const editRequest = (req: ItemRequest): void => {
     status: 'pending',
     remark: req.remark || '',
   }
+  
+  // Initialize item selection state for each row
+  form.value.items.forEach((_, index) => {
+    itemSearchQueries.value[index] = ''
+    itemDisplayLimits.value[index] = 10
+    isLoadingItemsForRow.value[index] = false
+    selectedItemDisplays.value[index] = null
+    itemContainers.value[index] = null
+    searchInputRefs.value[index] = null
+  })
+  
   formErrors.value = []
   showModal.value = true
 }
@@ -1047,9 +1229,17 @@ const closeModal = (): void => {
   showModal.value = false
   editingRequest.value = null
   closeValidationErrors()
+  // Clean up item selection state
+  Object.keys(itemSearchQueries.value).forEach(key => {
+    delete itemSearchQueries.value[Number(key)]
+    delete itemDisplayLimits.value[Number(key)]
+    delete isLoadingItemsForRow.value[Number(key)]
+    delete itemContainers.value[Number(key)]
+    delete selectedItemDisplays.value[Number(key)]
+    delete searchInputRefs.value[Number(key)]
+  })
 }
 
-// -- Save Request --
 // -- Save Request --
 const saveRequest = async (): Promise<void> => {
   // Clear previous validation errors
@@ -1123,9 +1313,7 @@ const saveRequest = async (): Promise<void> => {
       
       console.log('📦 API Response:', response)
       
-      // 🔥 FIX: Check for validation errors in the response
       if (!response.success) {
-        // Check if this is a validation error response
         if (response.errors && response.errors.length > 0) {
           console.log('🔍 Validation Errors:', JSON.stringify(response.errors, null, 2))
           validationErrors.value = response.errors
@@ -1153,7 +1341,6 @@ const saveRequest = async (): Promise<void> => {
     console.error('Save request error:', error)
     const errorData = error.response?.data
     
-    // 🔥 Check if the error response contains validation errors
     if (errorData && errorData.errors && errorData.errors.length > 0) {
       console.log('🔍 Error Response Errors:', JSON.stringify(errorData.errors, null, 2))
       validationErrors.value = errorData.errors
@@ -1338,7 +1525,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-
 /* ================================================================
    VALIDATION ERROR BOX
    ================================================================ */
@@ -1499,6 +1685,7 @@ onMounted(async () => {
   gap: 10px;
   margin-top: 4px;
 }
+
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -2315,6 +2502,42 @@ onMounted(async () => {
   margin-bottom: 8px;
 }
 
+/* ================================================================
+   FORM ROW - FULL WIDTH
+   ================================================================ */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-row.full-width {
+  grid-template-columns: 1fr;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+/* Make sure the item selection takes full width */
+.form-group.full-width .item-search-wrapper {
+  width: 100%;
+}
+
+.form-group.full-width .item-search-input {
+  width: 100%;
+}
+
+.form-group.full-width .item-select-container {
+  width: 100%;
+}
+
+.form-group.full-width .item-select-scroll {
+  width: 100%;
+}
+
+
 .item-row-header {
   display: flex;
   justify-content: space-between;
@@ -2465,6 +2688,300 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   border: 1px solid #fecaca;
+}
+
+/* ================================================================
+   ENHANCED ITEM SELECTION STYLES - STACKED LAYOUT
+   ================================================================ */
+
+.full-width {
+  flex: 1 1 100%;
+  min-width: 100%;
+}
+
+.item-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 150px;
+}
+
+.search-icon-small {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.item-search-input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.item-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+}
+
+.item-select-container {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  max-height: 220px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  margin-top: 4px;
+}
+
+.item-select-container:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.item-select-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.item-select-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.item-select-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ================================================================
+   ITEM OPTION - STACKED LAYOUT
+   ================================================================ */
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option:last-child {
+  border-bottom: none;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  width: 100%;
+}
+
+/* Left: Code */
+.item-option-left {
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+/* Middle: Standard Name & Common Name (stacked) */
+.item-option-middle {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-name {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.item-option-common {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+
+/* Right: Brand & Model (stacked) */
+.item-option-right {
+  min-width: 80px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-option-brand {
+  font-size: 11px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.item-option-model {
+  font-size: 10px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Far Right: UOM */
+.item-option-uom {
+  font-size: 11px;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 12px;
+  border-radius: 10px;
+  min-width: 45px;
+  text-align: center;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Selected Item Display */
+.selected-item-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.selected-badge {
+  font-weight: 600;
+  color: #166534;
+  font-size: 12px;
+}
+
+.selected-item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selected-item-name {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.selected-item-common {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.selected-item-brand {
+  font-size: 12px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-model {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-uom {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.clear-selection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+
+.clear-selection:hover {
+  color: #dc2626;
+}
+
+.item-loading {
+  text-align: center;
+  padding: 10px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.item-no-results {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.item-load-more {
+  text-align: center;
+  padding: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e2e8f0;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 
 /* ================================================================
@@ -2639,168 +3156,6 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   VALIDATION ERROR BOX
-   ================================================================ */
-.validation-error-box {
-  background: #fef2f2;
-  border: 2px solid #fecaca;
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-
-.validation-error-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.validation-error-header .error-icon {
-  font-size: 20px;
-}
-
-.validation-error-header .error-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #991b1b;
-}
-
-.validation-error-message {
-  color: #7f1d1d;
-  font-size: 14px;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: #fee2e2;
-  border-radius: 6px;
-}
-
-.validation-error-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-  max-height: 350px;
-  overflow-y: auto;
-}
-
-.validation-error-item {
-  background: white;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.error-item {
-  display: flex;
-  gap: 10px;
-}
-
-.error-item-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.error-item-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.error-item-title {
-  font-size: 14px;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-
-.error-code {
-  color: #64748b;
-  font-weight: normal;
-  margin-left: 4px;
-}
-
-.error-quantity {
-  font-size: 12px;
-  color: #64748b;
-  margin-left: 8px;
-  font-weight: normal;
-}
-
-.error-item-message {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
-  margin-bottom: 6px;
-}
-
-.error-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin-top: 4px;
-}
-
-.groups-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #fef3c7;
-  color: #92400e;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.error-balance-details {
-  margin-top: 6px;
-}
-
-.balance-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.balance-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.balance-item {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #dbeafe;
-  color: #1e40af;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.error-shortage {
-  margin-top: 6px;
-  padding: 4px 10px;
-  background: #fee2e2;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #991b1b;
-}
-
-.validation-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 4px;
-}
-
-/* ================================================================
    RESPONSIVE
    ================================================================ */
 @media (max-width: 1024px) {
@@ -2917,6 +3272,36 @@ onMounted(async () => {
   .col-actions {
     min-width: 180px;
   }
+
+  /* Item option responsive */
+  .item-option-content {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .item-option-left {
+    min-width: 80px;
+  }
+  
+  .item-option-middle {
+    min-width: 100px;
+    flex: 1 1 100%;
+  }
+  
+  .item-option-right {
+    min-width: 60px;
+  }
+  
+  .item-option-brand,
+  .item-option-model {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+  
+  .selected-item-display {
+    font-size: 12px;
+    gap: 4px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2948,6 +3333,37 @@ onMounted(async () => {
   .col-items { min-width: 100px; }
   .col-store { min-width: 80px; }
   .col-actions { min-width: 160px; }
+
+  /* Item option responsive - mobile */
+  .item-option-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  
+  .item-option-left {
+    min-width: auto;
+  }
+  
+  .item-option-right {
+    min-width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .item-option-uom {
+    align-self: flex-start;
+    margin-left: 0;
+  }
+  
+  .selected-item-display {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .clear-selection {
+    align-self: flex-end;
+  }
 }
 
 /* ================================================================
