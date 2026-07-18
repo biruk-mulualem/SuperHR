@@ -201,6 +201,15 @@ const router = createRouter({
             roles: ["admin", "storekeeper","store_it","checker"] 
           },
         },
+         {
+          path: "store-balance/print",
+          name: "print-store-balance",
+          component: () => import("@/views/storemanagement/storebalance/print-balance.vue"),
+          meta: { 
+            title: "Print Store Balance", 
+            roles: ["admin", "storekeeper", "store_it", "checker"] 
+          },
+        },
 
 
               {
@@ -212,6 +221,16 @@ const router = createRouter({
             roles: ["admin", "storekeeper","store_it","checker"] 
           },
         },
+
+        {
+  path: "store-transaction/print",
+  name: "print-transactions",
+  component: () => import("@/views/storemanagement/storetransaction/print-transactions.vue"),
+  meta: { 
+    title: "Print Transactions", 
+    roles: ["admin", "storekeeper", "store_it", "checker"] 
+  },
+},
 
                {
           path: "item-requests",
@@ -232,6 +251,9 @@ const router = createRouter({
             roles: ["admin", "storekeeper","store_it","checker","employee"] 
           },
         },
+
+
+        
 
 
 

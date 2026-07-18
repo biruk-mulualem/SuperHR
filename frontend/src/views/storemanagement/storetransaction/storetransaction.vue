@@ -1,10 +1,11 @@
+<!-- views/storemanagement/storetransaction/storetransaction.vue - COMPLETE WITH WORKING PAGINATION -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
         <h2>📋 Store Transactions</h2>
-        <span class="total-badge">{{ transactions.length }} Transactions</span>
+        <span class="total-badge">{{ totalItems }} Transactions</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -20,9 +21,9 @@
           <button class="btn-export" @click="openExportModal" :disabled="exporting">
             <span v-if="exporting" class="spinner-small"></span>
             <span v-else>📊</span>
-            {{ exporting ? "Exporting..." : "Export" }}
+            {{ exporting ? "Report..." : "Report" }}
           </button>
-          <button class="btn-print" @click="printReport">🖨️ Print</button>
+          <!-- <button class="btn-print" @click="printReport">🖨️ Print</button> -->
         </div>
       </div>
     </div>
@@ -41,7 +42,6 @@
             {{ store.name }}
           </option>
         </select>
-       
       </div>
       
       <div class="filter-group">
@@ -56,15 +56,22 @@
             {{ group.name }}
           </option>
         </select>
-       
       </div>
       
-      <select v-model="filterItem" class="filter-select" @change="onFilterChange">
-        <option value="">All Items</option>
-        <option v-for="item in inventoryItems" :key="item.id" :value="item.id">
-          {{ item.code }} - {{ item.standardName }}
-        </option>
-      </select>
+      <!-- ✅ CATEGORY FILTER -->
+      <div class="filter-group">
+        <select 
+          v-model="filterCategory" 
+          class="filter-select" 
+          @change="onFilterChange"
+        >
+          <option value="">All Categories</option>
+          <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+            {{ cat.name }}
+          </option>
+        </select>
+      </div>
+      
       <select v-model="filterType" class="filter-select" @change="onFilterChange">
         <option value="">All Types</option>
         <option value="Stock In">📥 Stock In</option>
@@ -80,6 +87,7 @@
         <option value="6months">Last 6 Months</option>
         <option value="12months">Last 12 Months</option>
       </select>
+
       <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters && userIsAdmin">
         ✕ Clear Filters
       </button>
@@ -104,7 +112,7 @@
       <div class="stat-card">
         <div class="stat-icon">📊</div>
         <div class="stat-content">
-          <div class="stat-number">{{ totalTransactions }}</div>
+          <div class="stat-number">{{ totalItems }}</div>
           <div class="stat-label">Total</div>
         </div>
       </div>
@@ -121,15 +129,15 @@
           <tr>
             <th style="width:35px"></th>
             <th>Date</th>
-            <th>Store</th>
-            <th>Group</th>
-            <th>Type</th>
+            <th>Item Code</th>
             <th>Item</th>
+            <th>Category</th>
+            <th>Type</th>
             <th>Qty</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="paginatedTransactions.length === 0">
+          <tr v-if="transactions.length === 0">
             <td colspan="7" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">📋</span>
@@ -137,7 +145,7 @@
               </div>
             </td>
           </tr>
-          <template v-for="(transaction, index) in paginatedTransactions" :key="transaction.id">
+          <template v-for="(transaction, index) in transactions" :key="transaction.id">
             <tr
               :class="{
                 'expanded-row': expandedRow === transaction.id
@@ -149,21 +157,28 @@
                 </button>
               </td>
               <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
-              <td class="store-name">{{ getStoreName(transaction.storeId) }}</td>
               <td>
-                <span class="group-tag">{{ getGroupName(transaction.groupId) }}</span>
+                <span class="item-code">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span>
+              </td>
+              <td>
+                <div class="item-info">
+                  <!-- ✅ COMMON NAME - Primary (always shown) -->
+                  <div class="item-common-name">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</div>
+                  <!-- ✅ STANDARD NAME - Secondary (only shown if exists) -->
+                  <div class="item-standard-name" v-if="transaction.itemStandardName || getItemStandardName(transaction.itemId)">
+                    {{ transaction.itemStandardName || getItemStandardName(transaction.itemId) }}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="category-tag" :class="transaction.categoryName ? 'has-category' : 'no-category'">
+                  {{ transaction.categoryName || 'Uncategorized' }}
+                </span>
               </td>
               <td>
                 <span :class="['type-badge', transaction.type === 'Stock In' ? 'stock-in' : 'stock-out']">
                   {{ transaction.type === 'Stock In' ? '📥' : '📤' }}
                 </span>
-              </td>
-              <td>
-                <div class="item-info">
-                  <div class="item-code">{{ getItemCode(transaction.itemId) }}</div>
-                  <div class="item-name">{{ getItemName(transaction.itemId) }}</div>
-                  <div class="item-common">{{ getItemCommonName(transaction.itemId) }}</div>
-                </div>
               </td>
               <td class="quantity-amount">
                 <span :class="['quantity-value', transaction.type === 'Stock In' ? 'positive' : 'negative']">
@@ -189,11 +204,11 @@
 
                       <div class="detail-card">
                         <h4>📦 Item Details</h4>
-                        <div><span>Item Code</span><span class="value">{{ getItemCode(transaction.itemId) }}</span></div>
-                        <div><span>Item Name</span><span class="value">{{ getItemName(transaction.itemId) }}</span></div>
-                        <div><span>Common Name</span><span class="value">{{ getItemCommonName(transaction.itemId) }}</span></div>
-                         <!-- the common name is not displaying  -->
-                        <div><span>Unit of Measure</span><span class="value">{{ getItemUnit(transaction.itemId) }}</span></div>
+                        <div><span>Item Code</span><span class="value">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span></div>
+                        <div><span>Common Name</span><span class="value">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</span></div>
+                        <div><span>Standard Name</span><span class="value">{{ transaction.itemStandardName || getItemStandardName(transaction.itemId) || '-' }}</span></div>
+                        <div><span>Category</span><span class="value">{{ transaction.categoryName || 'Uncategorized' }}</span></div>
+                        <div><span>Unit of Measure</span><span class="value">{{ transaction.uomCode || getItemUnit(transaction.itemId) }}</span></div>
                         <div><span>Quantity</span><span class="value">{{ transaction.type === 'Stock In' ? '+' : '-' }} {{ formatNumber(transaction.quantity) }}</span></div>
                         <div>
                           <span>{{ transaction.type === 'Stock In' ? 'From' : 'To' }}</span>
@@ -205,6 +220,7 @@
                         <h4>📝 Additional Information</h4>
                         <div><span>Updated By</span><span class="value">{{ transaction.updatedBy || 'System' }}</span></div>
                         <div><span>Remark</span><span class="value">{{ transaction.remark || '-' }}</span></div>
+                        <div><span>Reference Type</span><span class="value">{{ transaction.referenceType || '-' }}</span></div>
                       </div>
                     </div>
                   </div>
@@ -217,7 +233,7 @@
     </div>
 
     <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="transactions.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -226,10 +242,10 @@
         Next →
       </button>
       <select v-model="pageSize" @change="changePageSize" class="limit-select">
-        <option :value="5">5</option>
-        <option :value="10">10</option>
-        <option :value="20">20</option>
-        <option :value="50">50</option>
+        <option :value="5">5 per page</option>
+        <option :value="10">10 per page</option>
+        <option :value="20">20 per page</option>
+        <option :value="50">50 per page</option>
       </select>
     </div>
 
@@ -237,7 +253,7 @@
     <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
       <div class="modal-container export-modal">
         <div class="modal-header">
-          <h3>📊 Export Transaction Data</h3>
+          <h3>📊 Generate Transaction Data</h3>
           <button class="modal-close" @click="closeExportModal">✕</button>
         </div>
         <div class="modal-body">
@@ -253,7 +269,7 @@
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeExportModal">Cancel</button>
           <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
-            {{ exporting ? 'Exporting...' : 'Export' }}
+            {{ exporting ? 'Generating...' : 'Generate Report' }}
           </button>
         </div>
       </div>
@@ -268,6 +284,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import transactionService from '@/stores/transactionService'
 import balanceService from '@/stores/balanceService'
@@ -275,11 +292,13 @@ import balanceService from '@/stores/balanceService'
 // ================================================================
 // STATE
 // ================================================================
+const router = useRouter()
 const authStore = useAuthStore()
 
 const transactions = ref([])
 const stores = ref([])
 const allGroups = ref([])
+const categories = ref([])
 const inventoryItems = ref([])
 const isLoading = ref(true)
 const paginationInfo = ref({
@@ -299,6 +318,7 @@ const userIsAdmin = ref(false)
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterGroup = ref('')
+const filterCategory = ref('')
 const filterItem = ref('')
 const filterType = ref('')
 const filterDate = ref('')
@@ -316,67 +336,18 @@ const toastType = ref('success')
 // ================================================================
 // COMPUTED
 // ================================================================
+
 const hasActiveFilters = computed(() => {
-  return filterStore.value || filterGroup.value || filterItem.value || filterType.value || filterDate.value || searchQuery.value
+  return filterStore.value || filterGroup.value || filterCategory.value || filterItem.value || filterType.value || filterDate.value || searchQuery.value
 })
 
-// Filter transactions client-side for date filter only (API handles other filters)
-const filteredTransactions = computed(() => {
-  let result = transactions.value
-  
-  // Only apply date filter client-side
-  if (filterDate.value) {
-    const now = new Date()
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    
-    result = result.filter(t => {
-      const date = new Date(t.createdAt)
-      const tDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-      
-      switch(filterDate.value) {
-        case 'today':
-          return tDate.getTime() === today.getTime()
-        case 'yesterday':
-          const yesterday = new Date(today)
-          yesterday.setDate(yesterday.getDate() - 1)
-          return tDate.getTime() === yesterday.getTime()
-        case 'week':
-          const weekStart = new Date(today)
-          weekStart.setDate(weekStart.getDate() - 7)
-          return tDate >= weekStart
-        case 'month':
-          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-          return tDate >= monthStart
-        case '3months':
-          const threeMonthsAgo = new Date(today)
-          threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-          return tDate >= threeMonthsAgo
-        case '6months':
-          const sixMonthsAgo = new Date(today)
-          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-          return tDate >= sixMonthsAgo
-        case '12months':
-          const twelveMonthsAgo = new Date(today)
-          twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
-          return tDate >= twelveMonthsAgo
-        default:
-          return true
-      }
-    })
-  }
-  
-  return result
-})
-
-const paginatedTransactions = computed(() => {
-  const data = filteredTransactions.value
-  const start = (currentPage.value - 1) * pageSize.value
-  return data.slice(start, start + pageSize.value)
-})
-
+// ✅ Use server-side pagination - transactions already contains the current page
 const totalPages = computed(() => {
-  const data = filteredTransactions.value
-  return Math.ceil(data.length / pageSize.value) || 1
+  return paginationInfo.value.totalPages || 1
+})
+
+const totalItems = computed(() => {
+  return paginationInfo.value.total || 0
 })
 
 const totalStockIn = computed(() => {
@@ -385,10 +356,6 @@ const totalStockIn = computed(() => {
 
 const totalStockOut = computed(() => {
   return transactions.value.filter(t => t.type === 'Stock Out').length
-})
-
-const totalTransactions = computed(() => {
-  return transactions.value.length
 })
 
 // ================================================================
@@ -400,7 +367,6 @@ const loadUserData = () => {
   if (user) {
     userIsAdmin.value = user.isAdmin || user.role === 'admin' || user.role === 'Admin'
     
-    // Check if user has assignedStore property
     if (user && 'assignedStore' in user && user.assignedStore) {
       const assignedStore = user.assignedStore
       userAssignedStoreId.value = assignedStore.id || null
@@ -410,7 +376,6 @@ const loadUserData = () => {
       userAssignedStoreName.value = null
     }
     
-    // Check if user has assignedGroup property
     if (user && 'assignedGroup' in user && user.assignedGroup) {
       const assignedGroup = user.assignedGroup
       userAssignedGroupId.value = assignedGroup.id || null
@@ -444,6 +409,18 @@ const fetchGroups = async () => {
   }
 }
 
+const fetchCategories = async () => {
+  try {
+    const response = await balanceService.getActiveCategories()
+    if (response.success) {
+      categories.value = response.data || []
+      console.log(`✅ Loaded ${categories.value.length} categories for transactions`)
+    }
+  } catch (error) {
+    console.error('Error fetching categories:', error)
+  }
+}
+
 const fetchItems = async () => {
   try {
     const response = await balanceService.getActiveItems()
@@ -453,6 +430,7 @@ const fetchItems = async () => {
   }
 }
 
+// ✅ FIXED: fetchTransactions with server-side pagination
 const fetchTransactions = async () => {
   isLoading.value = true
   try {
@@ -468,8 +446,7 @@ const fetchTransactions = async () => {
       filters.groupId = userAssignedGroupId.value
     }
     
-    // Add UI filters (these override role-based filters if set)
-    // But for non-admin users, we don't allow changing store/group filters
+    // Add UI filters
     if (userIsAdmin.value) {
       if (filterStore.value) {
         filters.storeId = Number(filterStore.value)
@@ -478,8 +455,6 @@ const fetchTransactions = async () => {
         filters.groupId = Number(filterGroup.value)
       }
     } else {
-      // Non-admin users: store and group are forced from user data
-      // Only allow item, type, and date filters
       if (filterItem.value) {
         filters.itemId = Number(filterItem.value)
       }
@@ -488,10 +463,15 @@ const fetchTransactions = async () => {
       }
     }
     
+    if (filterCategory.value) {
+      filters.categoryId = Number(filterCategory.value)
+    }
+    
     if (searchQuery.value) {
       filters.search = searchQuery.value
     }
     
+    // ✅ Server-side pagination
     filters.page = currentPage.value
     filters.limit = pageSize.value
     
@@ -521,59 +501,51 @@ const fetchTransactions = async () => {
 // ================================================================
 // HELPER METHODS
 // ================================================================
-const getItemName = (itemId, transaction) => {
-  // If transaction is provided, use its data
-  if (transaction && transaction.itemName) {
-    return transaction.itemName
-  }
-  // Fallback to lookup
+
+const getItemStandardName = (itemId) => {
+  if (!itemId) return null
+  const transaction = transactions.value.find(t => t.itemId === itemId)
+  if (transaction) return transaction.itemStandardName || null
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.name || item.standardName || 'Unknown' : 'Unknown'
+  return item ? item.standardName || null : null
+}
+
+const getItemCommonName = (itemId) => {
+  if (!itemId) return 'Unnamed'
+  const transaction = transactions.value.find(t => t.itemId === itemId)
+  if (transaction) return transaction.itemCommonName || 'Unnamed'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? (item.name || item.standardName || 'Unnamed') : 'Unnamed'
 }
 
 const getItemCode = (itemId, transaction) => {
   if (transaction && transaction.itemCode) {
     return transaction.itemCode
   }
+  const t = transactions.value.find(tx => tx.itemId === itemId)
+  if (t) return t.itemCode || 'N/A'
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.code || 'Unknown' : 'Unknown'
-}
-
-const getItemCommonName = (itemId, transaction) => {
-  // ✅ Use the transaction's itemCommonName directly
-  if (transaction && transaction.itemCommonName) {
-    return transaction.itemCommonName
-  }
-  // Fallback to lookup
-  const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.standardName || item.name || '' : ''
+  return item ? item.code || 'N/A' : 'N/A'
 }
 
 const getItemUnit = (itemId, transaction) => {
   if (transaction && transaction.uomCode) {
     return transaction.uomCode
   }
+  const t = transactions.value.find(tx => tx.itemId === itemId)
+  if (t) return t.uomCode || ''
   const item = inventoryItems.value.find(i => i.id === itemId)
-  return item ? item.uomCode || item.uom?.code || '' : ''
+  return item ? item.uomCode || '' : ''
 }
+
 const getStoreName = (storeId) => {
   const store = stores.value.find(s => s.id === storeId)
   return store ? store.name : 'Unknown'
 }
 
-const getStoreShortName = (storeId) => {
-  const store = stores.value.find(s => s.id === storeId)
-  return store ? store.name.replace(' Store', '') : 'Unknown'
-}
-
 const getGroupName = (groupId) => {
   const group = allGroups.value.find(g => g.id === groupId)
   return group ? group.name : 'Unknown'
-}
-
-const getGroupShortName = (groupId) => {
-  const group = allGroups.value.find(g => g.id === groupId)
-  return group ? group.name.substring(0, 8) : 'Unknown'
 }
 
 const formatNumber = (num) => {
@@ -606,6 +578,7 @@ const formatDateShort = (dateString) => {
 // ================================================================
 // UI HELPERS
 // ================================================================
+
 const toggleExpand = (id) => {
   expandedRow.value = expandedRow.value === id ? null : id
 }
@@ -613,6 +586,7 @@ const toggleExpand = (id) => {
 // ================================================================
 // FILTERS & PAGINATION
 // ================================================================
+
 const onSearchChange = () => { 
   currentPage.value = 1
   fetchTransactions()
@@ -626,6 +600,7 @@ const onFilterChange = () => {
 const clearFilters = () => {
   filterStore.value = ''
   filterGroup.value = ''
+  filterCategory.value = ''
   filterItem.value = ''
   filterType.value = ''
   filterDate.value = ''
@@ -636,49 +611,34 @@ const clearFilters = () => {
 }
 
 const changePage = (page) => {
-  const total = Math.ceil(filteredTransactions.value.length / pageSize.value) || 1
-  if (page >= 1 && page <= total) {
-    currentPage.value = page
-  }
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  fetchTransactions()
 }
 
 const changePageSize = () => {
   currentPage.value = 1
+  fetchTransactions()
 }
 
 // ================================================================
 // PRINT & EXPORT
 // ================================================================
+
 const printReport = () => {
-  const printContents = document.getElementById('printable-area').innerHTML
-  const originalContents = document.body.innerHTML
+  const query = {}
+  if (filterStore.value) query.storeId = filterStore.value
+  if (filterGroup.value) query.groupId = filterGroup.value
+  if (filterCategory.value) query.categoryId = filterCategory.value
+  if (filterItem.value) query.itemId = filterItem.value
+  if (filterType.value) query.type = filterType.value
+  if (filterDate.value) query.date = filterDate.value
+  if (searchQuery.value) query.search = searchQuery.value
   
-  document.body.innerHTML = `
-    <html>
-      <head>
-        <title>Store Transaction Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background: #f5f5f5; }
-          h2 { text-align: center; margin-bottom: 20px; }
-          .print-footer { text-align: center; margin-top: 20px; font-size: 11px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <h2>📋 Store Transaction Report</h2>
-        <p>Generated: ${new Date().toLocaleString()}</p>
-        <p>Total Transactions: ${transactions.value.length}</p>
-        ${printContents}
-        <div class="print-footer">Printed from Store Management System</div>
-      </body>
-    </html>
-  `
-  
-  window.print()
-  document.body.innerHTML = originalContents
-  window.location.reload()
+  router.push({
+    name: 'print-transactions',
+    query: query
+  })
 }
 
 const openExportModal = () => {
@@ -690,12 +650,12 @@ const closeExportModal = () => {
   showExportModal.value = false
 }
 
+
 const exportSelectedReport = async () => {
   exporting.value = true
   try {
     const filters = {}
     
-    // Add filters for export
     if (userIsAdmin.value) {
       if (filterStore.value) {
         filters.storeId = Number(filterStore.value)
@@ -704,13 +664,16 @@ const exportSelectedReport = async () => {
         filters.groupId = Number(filterGroup.value)
       }
     } else {
-      // Non-admin users: force store and group from user data
       if (userAssignedStoreId.value) {
         filters.storeId = userAssignedStoreId.value
       }
       if (userAssignedGroupId.value) {
         filters.groupId = userAssignedGroupId.value
       }
+    }
+    
+    if (filterCategory.value) {
+      filters.categoryId = Number(filterCategory.value)
     }
     
     if (filterItem.value) {
@@ -729,12 +692,12 @@ const exportSelectedReport = async () => {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `store_transactions_${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `Store_Transactions_Report_${new Date().toISOString().split('T')[0]}.xlsx`
     a.click()
     window.URL.revokeObjectURL(url)
     
     closeExportModal()
-    showToastMessage('Export completed successfully!', 'success')
+    showToastMessage('Excel export completed successfully!', 'success')
   } catch (error) {
     console.error('Export error:', error)
     showToastMessage('Failed to export transactions', 'error')
@@ -755,18 +718,18 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 // LIFECYCLE HOOKS
 // ================================================================
+
 onMounted(async () => {
-  // Load user data first
   loadUserData()
   
   try {
     await Promise.all([
       fetchStores(),
       fetchGroups(),
+      fetchCategories(),
       fetchItems()
     ])
     
-    // If non-admin with assigned store and/or group, set the filters
     if (!userIsAdmin.value) {
       if (userAssignedStoreId.value) {
         filterStore.value = String(userAssignedStoreId.value)
@@ -1120,26 +1083,59 @@ onMounted(async () => {
   color: #991b1b;
 }
 
+/* ================================================================
+   ITEM INFO - UPDATED
+   ================================================================ */
 .item-info {
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  gap: 1px;
 }
 
 .item-code {
   font-weight: 600;
   color: #2563eb;
-  font-size: 11px;
-}
-
-.item-name {
   font-size: 12px;
-  color: #1e293b;
 }
 
-.item-common {
-  font-size: 10px;
+/* ✅ COMMON NAME - Primary (always shown) */
+.item-common-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.3;
+}
+
+/* ✅ STANDARD NAME - Secondary (only shown if exists) */
+.item-standard-name {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+/* ================================================================
+   CATEGORY TAG STYLES
+   ================================================================ */
+.category-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.category-tag.has-category {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.category-tag.no-category {
+  background: #f1f5f9;
   color: #94a3b8;
+  font-style: italic;
 }
 
 .quantity-amount {
@@ -1408,6 +1404,33 @@ onMounted(async () => {
   .stats-grid { display: none !important; }
   .detail-expand-row { display: table-row !important; }
   .loading-state { display: none !important; }
+  
+  .category-tag {
+    border: 1px solid #ddd;
+    padding: 1px 6px;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .category-tag.has-category {
+    background: #e0e7ff !important;
+    color: #4338ca !important;
+  }
+  
+  .category-tag.no-category {
+    background: #f1f5f9 !important;
+    color: #94a3b8 !important;
+  }
+  
+  .item-common-name {
+    font-weight: 600 !important;
+    color: #000 !important;
+  }
+  
+  .item-standard-name {
+    color: #555 !important;
+    font-style: italic !important;
+  }
 }
 
 /* ================================================================
@@ -1421,6 +1444,19 @@ onMounted(async () => {
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
   .filter-group { width: 100%; }
+  
+  .item-common-name {
+    font-size: 12px;
+  }
+  
+  .item-standard-name {
+    font-size: 10px;
+  }
+  
+  .category-tag {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
 }
 
 @media (max-width: 600px) {

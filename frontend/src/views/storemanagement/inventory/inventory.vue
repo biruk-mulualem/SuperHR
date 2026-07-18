@@ -117,12 +117,13 @@
                     </button>
                   </td>
                   <td class="sku">{{ item.code }}</td>
-                  <td>
-                    <div class="item-info">
-                      <span class="common-name">{{ item.name }}</span>
-                      <span class="standard-name">{{ item.standardName }}</span>
-                    </div>
-                  </td>
+                 <td>
+  <div class="item-info">
+    <span class="common-name">{{ item.name }}</span>
+    <span class="standard-name">{{ item.standardName }}</span>
+ 
+  </div>
+</td>
                   <td>{{ item.category?.name || '-' }}</td>
                   <td>{{ item.uom?.code || '-' }}</td>
                   <td>
@@ -156,25 +157,34 @@
                             <div><span>Barcode</span><span class="value">{{ item.barcode || '-' }}</span></div>
                           </div>
 
-                          <div class="detail-card">
-                            <h4>💰 Pricing & Unit</h4>
-                            <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom }}</span></div>
-                            
-                            <!-- Conversion Display -->
-                            <div>
-                              <span>Conversion</span>
-                              <span class="value">{{ getConversionDisplay(item) }}</span>
-                            </div>
-                            <div>
-                              <span>Conversion Unit</span>
-                              <span class="value">{{ item.conversionUom?.code || item.conversionUom || item.uom }}</span>
-                            </div>
-                            <div>
-                              <span>Conversion Value</span>
-                              <span class="value">{{ item.conversionValue || 1 }}</span>
-                            </div>
-                            <div><span>Cost Price</span><span class="value">ETB {{ formatCurrency(item.costPrice) }}</span></div>
-                          </div>
+                        <!-- ============================================================ -->
+<!-- CONVERSION DISPLAY - UPDATED                                -->
+<!-- ============================================================ -->
+<div class="detail-card">
+  <h4>💰 Pricing & Unit</h4>
+  <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom || '-' }}</span></div>
+  
+  <!-- ✅ Conversion Display - FIXED -->
+  <div>
+    <span>Conversion</span>
+    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+      {{ getConversionDisplay(item) }}
+    </span>
+  </div>
+  <div>
+    <span>Conversion Unit</span>
+    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+      {{ getConversionUnitDisplay(item) }}
+    </span>
+  </div>
+  <div>
+    <span>Conversion Value</span>
+    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+      {{ getConversionValueDisplay(item) }}
+    </span>
+  </div>
+  <div><span>Cost Price</span><span class="value">ETB {{ formatCurrency(item.costPrice) }}</span></div>
+</div>
                         </div>
 
                         <div class="detail-card full-width">
@@ -632,30 +642,55 @@
   </div>
 
   <!-- EXPORT MODAL -->
-  <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
-    <div class="modal-container export-modal">
-      <div class="modal-header">
-        <h3>📊 Export Item Data</h3>
-        <button class="modal-close" @click="closeExportModal">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="export-options">
-          <div class="export-option" @click="exportType = 'full'">
-            <input type="radio" v-model="exportType" value="full" /> Full Item Catalog
+ <!-- EXPORT MODAL -->
+<div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
+  <div class="modal-container export-modal">
+    <div class="modal-header">
+      <h3>📊 Export Item Data</h3>
+      <button class="modal-close" @click="closeExportModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="export-options">
+        <div class="export-section">
+          <label class="export-label">Select Export Format:</label>
+          <div class="format-options">
+            <label class="format-option" @click="exportFormat = 'xlsx'">
+              <input type="radio" v-model="exportFormat" value="xlsx" /> 
+              📊 Excel (.xlsx)
+              <span class="format-desc">Recommended - Full formatting</span>
+            </label>
+            <label class="format-option" @click="exportFormat = 'csv'">
+              <input type="radio" v-model="exportFormat" value="csv" /> 
+              📄 CSV (.csv)
+              <span class="format-desc">Compatible with all spreadsheets</span>
+            </label>
           </div>
-          <div class="export-option" @click="exportType = 'summary'">
-            <input type="radio" v-model="exportType" value="summary" /> Summary
+        </div>
+        
+        <div class="export-section">
+          <label class="export-label">Data Scope:</label>
+          <div class="scope-options">
+            <label class="scope-option" @click="exportScope = 'all'">
+              <input type="radio" v-model="exportScope" value="all" /> 
+              All Items
+            </label>
+            <label class="scope-option" @click="exportScope = 'filtered'">
+              <input type="radio" v-model="exportScope" value="filtered" /> 
+              Filtered Items
+              <span class="scope-desc" v-if="hasActiveFilters">({{ items.length }} items)</span>
+            </label>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" @click="closeExportModal">Cancel</button>
-        <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
-          {{ exporting ? 'Exporting...' : 'Export' }}
-        </button>
-      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" @click="closeExportModal">Cancel</button>
+      <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
+        {{ exporting ? 'Exporting...' : '📥 Export' }}
+      </button>
     </div>
   </div>
+</div>
 
   <!-- IMPORT MODAL -->
   <div v-if="showImportModal" class="modal-overlay" @click.self="!importing && closeImportModal()">
@@ -815,6 +850,9 @@ const currentPage = ref(1);
 const itemsPerPage = ref(10);
 const totalItems = ref(0);
 const totalPagesFromServer = ref(1);
+// Add to your existing state
+const exportFormat = ref('xlsx');
+const exportScope = ref('all');
 
 const activeTab = ref('items');
 const expandedRow = ref(null);
@@ -997,17 +1035,65 @@ const getUOMCode = (id) => {
   return uom?.code || '';
 };
 
+// ================================================================
+// HELPER METHODS - FIXED CONVERSION DISPLAY
+// ================================================================
+
 const getConversionDisplay = (item) => {
-  if (!item) return '';
-  const uomCode = item.uom?.code || item.uom;
-  const convUnit = item.conversionUom?.code || item.conversionUom;
-  const convValue = item.conversionValue;
+  if (!item) return 'No conversion';
   
-  if (convUnit && convValue && convValue > 0) {
+  const uomCode = item.uom?.code || item.uom || '';
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const convValue = parseFloat(item.conversionValue) || 0;
+  
+  // ✅ Only show conversion if there's a conversion unit AND value > 0 AND different from base UOM
+  if (convUnit && convValue > 0 && convUnit !== uomCode) {
     return `${convValue} ${convUnit} = 1 ${uomCode}`;
   }
-  return `1 ${uomCode} = 1 ${uomCode}`;
+  
+  return 'No conversion';
 };
+
+const getConversionUnitDisplay = (item) => {
+  if (!item) return '-';
+  
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const convValue = parseFloat(item.conversionValue) || 0;
+  const uomCode = item.uom?.code || item.uom || '';
+  
+  // ✅ Only show conversion unit if it exists, has value > 0, and is different from base UOM
+  if (convUnit && convValue > 0 && convUnit !== uomCode) {
+    return convUnit;
+  }
+  
+  return '-';
+};
+
+const getConversionValueDisplay = (item) => {
+  if (!item) return '0';
+  
+  const convValue = parseFloat(item.conversionValue) || 0;
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const uomCode = item.uom?.code || item.uom || '';
+  
+  // ✅ Only show conversion value if conversion unit exists and is different from base UOM
+  if (convUnit && convValue > 0 && convUnit !== uomCode) {
+    return convValue;
+  }
+  
+  return '0';
+};
+
+const hasConversion = (item) => {
+  if (!item) return false;
+  
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const convValue = parseFloat(item.conversionValue) || 0;
+  const uomCode = item.uom?.code || item.uom || '';
+  
+  return !!(convUnit && convValue > 0 && convUnit !== uomCode);
+};
+
 
 const getNewStatus = (currentStatus) => {
   return currentStatus === 'Active' ? 'Inactive' : 'Active';
@@ -1469,6 +1555,7 @@ const toggleUOMStatus = async (uom) => {
 // ================================================================
 // EXPORT
 // ================================================================
+
 const exportSelectedReport = async () => {
   exporting.value = true;
   try {
@@ -1478,31 +1565,22 @@ const exportSelectedReport = async () => {
       categoryId = category?.categoryId || category?.id;
     }
     
-    const response = await itemService.exportItems({
+    const params = {
       categoryId: categoryId,
-      status: filterStatus.value || undefined
-    });
+      status: filterStatus.value || undefined,
+      format: exportFormat.value || 'xlsx', // 'xlsx' or 'csv'
+    };
+
+    const result = await itemService.downloadExport(params);
     
-    if (response.success && response.data.length > 0) {
-      const headers = Object.keys(response.data[0]);
-      const rows = response.data.map(item => headers.map(key => item[key]));
-      const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-      
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `item_catalog_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      showToastMessage('Export completed!', 'success');
+    if (result.success) {
+      showToastMessage('Export completed successfully!', 'success');
     } else {
-      showToastMessage(response.error || 'No data to export', 'error');
+      showToastMessage(result.error || 'Failed to export', 'error');
     }
   } catch (error) {
     console.error('Export error:', error);
-    showToastMessage(error.response?.data?.error || 'Failed to export', 'error');
+    showToastMessage(error.message || 'Failed to export', 'error');
   } finally {
     exporting.value = false;
     closeExportModal();

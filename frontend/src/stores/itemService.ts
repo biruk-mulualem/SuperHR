@@ -755,8 +755,9 @@ class ItemService {
   }
 
   /**
-   * Export items as CSV data
+   * Export items as CSV data (JSON response)
    * GET /api/items/export
+   * @deprecated Use exportItemsFile for file download
    */
   async exportItems(params?: {
     categoryId?: number | string;
@@ -785,6 +786,74 @@ class ItemService {
         data: [],
         total: 0,
         error: error.response?.data?.error || 'Failed to export items'
+      };
+    }
+  }
+
+  /**
+   * Export items as file (Excel or CSV)
+   * GET /api/items/export
+   * Returns a Blob for file download
+   */
+  async exportItemsFile(params?: {
+    categoryId?: number | string;
+    status?: string;
+    format?: 'xlsx' | 'csv';
+  }): Promise<Blob> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.categoryId) queryParams.append('categoryId', params.categoryId.toString());
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.format) queryParams.append('format', params.format);
+      else queryParams.append('format', 'xlsx');
+
+      const url = queryParams.toString() 
+        ? `/items/export?${queryParams.toString()}`
+        : '/items/export';
+
+      const response = await api.get(url, {
+        responseType: 'blob',
+      });
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('Export items file error:', error);
+      throw new Error(error.response?.data?.error || 'Failed to export items');
+    }
+  }
+
+  /**
+   * Download exported file with proper filename
+   * GET /api/items/export
+   */
+  async downloadExport(params?: {
+    categoryId?: number | string;
+    status?: string;
+    format?: 'xlsx' | 'csv';
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const blob = await this.exportItemsFile(params);
+      
+      // Get filename from content-disposition or generate one
+      const ext = params?.format === 'csv' ? 'csv' : 'xlsx';
+      const filename = `items_export_${new Date().toISOString().split('T')[0]}.${ext}`;
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error('Download export error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to download export'
       };
     }
   }

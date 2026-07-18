@@ -1,12 +1,25 @@
+// stores/balanceService.ts - COMPLETE FILE WITH CATEGORY SUPPORT
+
 import api from "./interceptor";
 
 // ============================================
 // TYPES & INTERFACES
 // ============================================
 
+export interface Category {
+    id: number;
+    categoryId: number;
+    name: string;
+    description?: string;
+    status: 'Active' | 'Inactive';
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export interface BalanceFilters {
     storeId?: number;
     groupId?: number;
+    categoryId?: number;  // ✅ ADDED
     status?: string;
     search?: string;
     page?: number;
@@ -25,6 +38,8 @@ export interface BalanceRecord {
     itemCode: string;
     itemName: string;
     itemCommonName: string;
+    categoryId: number | null;      // ✅ ADDED
+    categoryName: string | null;    // ✅ ADDED
     uomCode: string;
     uomName: string;
     conversionUomCode: string;
@@ -307,7 +322,7 @@ export interface Group {
 }
 
 // ============================================
-// ITEM TYPES
+// ITEM TYPES - UPDATED WITH CATEGORY
 // ============================================
 
 export interface Item {
@@ -321,6 +336,8 @@ export interface Item {
     model?: string;
     barcode?: string;
     categoryId?: number;
+    categoryName?: string;     // ✅ ADDED
+    category?: Category;       // ✅ ADDED
     uomId?: number;
     uomCode?: string;
     uomName?: string;
@@ -353,6 +370,7 @@ export interface User {
 // ============================================
 // BALANCE SERVICE CLASS
 // ============================================
+
 class BalanceService {
     // ================================================================
     // BALANCE CRUD OPERATIONS
@@ -366,6 +384,7 @@ class BalanceService {
         
         if (filters.storeId) params.append('storeId', filters.storeId.toString());
         if (filters.groupId) params.append('groupId', filters.groupId.toString());
+        if (filters.categoryId) params.append('categoryId', filters.categoryId.toString()); // ✅ ADDED
         if (filters.status) params.append('status', filters.status);
         if (filters.search) params.append('search', filters.search);
         if (filters.page) params.append('page', filters.page.toString());
@@ -432,6 +451,115 @@ class BalanceService {
     }
 
     // ================================================================
+    // CATEGORY METHODS - ✅ NEW
+    // ================================================================
+
+    /**
+     * Get all categories with pagination and filtering
+     */
+    async getCategories(params?: { 
+        page?: number; 
+        limit?: number; 
+        search?: string;
+        status?: string;
+    }): Promise<{ 
+        success: boolean; 
+        data: Category[];
+        pagination?: {
+            page: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+        };
+        error?: string;
+    }> {
+        try {
+            const queryParams = new URLSearchParams();
+            if (params?.page) queryParams.append('page', params.page.toString());
+            if (params?.limit) queryParams.append('limit', params.limit.toString());
+            if (params?.search) queryParams.append('search', params.search);
+            if (params?.status) queryParams.append('status', params.status);
+            
+            const url = queryParams.toString() 
+                ? `/balances/categories?${queryParams.toString()}`
+                : '/balances/categories';
+            
+            const response = await api.get(url);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get categories error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch categories'
+            };
+        }
+    }
+
+    /**
+     * Get active categories only (for dropdowns)
+     */
+    async getActiveCategories(): Promise<{ 
+        success: boolean; 
+        data: Category[];
+        error?: string;
+    }> {
+        try {
+            const response = await api.get('/balances/categories/active');
+            return response.data;
+        } catch (error: any) {
+            console.error('Get active categories error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch active categories'
+            };
+        }
+    }
+
+    /**
+     * Get category by ID
+     */
+    async getCategoryById(id: number): Promise<{ 
+        success: boolean; 
+        data: Category;
+        error?: string;
+    }> {
+        try {
+            const response = await api.get(`/balances/categories/${id}`);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get category by ID error:', error);
+            return {
+                success: false,
+                data: {} as Category,
+                error: error.response?.data?.error || 'Failed to fetch category'
+            };
+        }
+    }
+
+    /**
+     * Get items by category
+     */
+    async getItemsByCategory(categoryId: number): Promise<{
+        success: boolean;
+        data: Item[];
+        error?: string;
+    }> {
+        try {
+            const response = await api.get(`/balances/categories/${categoryId}/items`);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get items by category error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch items by category'
+            };
+        }
+    }
+
+    // ================================================================
     // CSV IMPORT / EXPORT
     // ================================================================
 
@@ -448,27 +576,49 @@ class BalanceService {
     /**
      * Import balances from CSV file
      */
-    async importBalances(file: File): Promise<{ success: boolean; message: string; data: ImportResult }> {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const response = await api.post('/balances/import', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            }
-        });
-        return response.data;
-    }
-
+   async importBalances(file: File): Promise<{ success: boolean; message: string; data: ImportResult }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/balances/import', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        },
+        timeout: 120000  // 👈 ADD THIS - 120 seconds (2 minutes)
+    });
+    return response.data;
+}
     /**
      * Export balances as CSV
      */
-    async exportBalances(type: 'full' | 'summary' = 'full'): Promise<Blob> {
-        const response = await api.get(`/balances/export?type=${type}`, {
-            responseType: 'blob'
-        });
-        return response.data;
-    }
+   // ================================================================
+// CSV IMPORT / EXPORT
+// ================================================================
+
+// balanceService.ts
+/**
+ * Export balances as Excel (.xlsx)
+ */
+async exportBalances(
+  type: 'full' | 'summary' = 'full', 
+  storeId?: number, 
+  groupId?: number,
+  categoryId?: number,
+  status?: string
+): Promise<Blob> {
+    let url = `/balances/export?type=${type}`;
+    if (storeId) url += `&storeId=${storeId}`;
+    if (groupId) url += `&groupId=${groupId}`;
+    if (categoryId) url += `&categoryId=${categoryId}`;
+    if (status) url += `&status=${status}`;
+    
+    console.log('📊 Export URL:', url);
+    
+    const response = await api.get(url, {
+        responseType: 'blob'
+    });
+    return response.data;
+}
 
     // ================================================================
     // REQUEST PROCESSING
@@ -686,13 +836,19 @@ class BalanceService {
     }
 
     // ================================================================
-    // ITEM ENDPOINTS
+    // ITEM ENDPOINTS - UPDATED WITH CATEGORY
     // ================================================================
 
     /**
-     * Get all items
+     * Get all items with pagination and filtering
      */
-    async getItems(params?: { page?: number; limit?: number; search?: string; categoryId?: number; status?: string }): Promise<PaginatedResponse<Item>> {
+    async getItems(params?: { 
+        page?: number; 
+        limit?: number; 
+        search?: string; 
+        categoryId?: number;
+        status?: string;
+    }): Promise<PaginatedResponse<Item>> {
         const queryParams = new URLSearchParams();
         if (params?.page) queryParams.append('page', params.page.toString());
         if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -763,6 +919,83 @@ class BalanceService {
         }
         const response = await api.get(url);
         return response.data;
+    }
+
+    // ================================================================
+    // GET USER STORE AND GROUP ACCESS
+    // ================================================================
+    async getUserStoreAndGroup(): Promise<{
+        success: boolean;
+        data: {
+            userId: number;
+            username: string;
+            fullName: string;
+            email: string;
+            role: string;
+            isActive: boolean;
+            isAdmin: boolean;
+            hasAssignments: boolean;
+            assignedStoreId: number | null;
+            assignedGroupId: number | null;
+            assignedStore: {
+                id: number;
+                name: string;
+                code: string;
+                location: string;
+                status: string;
+            } | null;
+            assignedGroup: {
+                id: number;
+                name: string;
+                code: string;
+                description: string;
+                status: string;
+            } | null;
+        };
+    }> {
+        const response = await api.get('/balances/user/store-group');
+        return response.data;
+    }
+
+    // ================================================================
+    // CATEGORY UTILITY METHODS
+    // ================================================================
+
+    /**
+     * Get category display color
+     */
+    getCategoryColor(categoryName: string | null): string {
+        if (!categoryName) return '#94a3b8';
+        const colors: Record<string, string> = {
+            'Raw Material': '#8b5cf6',
+            'Finished Good': '#10b981',
+            'Packaging': '#3b82f6',
+            'Chemicals': '#ef4444',
+            'Electronics': '#f59e0b',
+            'Hardware': '#64748b',
+            'Software': '#06b6d4',
+            'Office Supplies': '#8b5cf6',
+            'Safety Equipment': '#22c55e',
+            'Spare Parts': '#f97316',
+            'Consumables': '#ec4899',
+        };
+        return colors[categoryName] || '#94a3b8';
+    }
+
+    /**
+     * Get category display class
+     */
+    getCategoryClass(categoryName: string | null): string {
+        if (!categoryName) return 'no-category';
+        return 'has-category';
+    }
+
+    /**
+     * Get category display badge
+     */
+    getCategoryBadge(categoryName: string | null): string {
+        if (!categoryName) return '📂 Uncategorized';
+        return `📁 ${categoryName}`;
     }
 
     // ================================================================
@@ -838,42 +1071,6 @@ class BalanceService {
      */
     getTransactionTypeClass(type: string): string {
         return type === 'Stock In' ? 'stock-in' : 'stock-out';
-    }
-
-    // ============================================
-    // GET USER STORE AND GROUP ACCESS
-    // ============================================
-    async getUserStoreAndGroup(): Promise<{
-        success: boolean;
-        data: {
-            userId: number;
-            username: string;
-            fullName: string;
-            email: string;
-            role: string;
-            isActive: boolean;
-            isAdmin: boolean;
-            hasAssignments: boolean;
-            assignedStoreId: number | null;
-            assignedGroupId: number | null;
-            assignedStore: {
-                id: number;
-                name: string;
-                code: string;
-                location: string;
-                status: string;
-            } | null;
-            assignedGroup: {
-                id: number;
-                name: string;
-                code: string;
-                description: string;
-                status: string;
-            } | null;
-        };
-    }> {
-        const response = await api.get('/balances/user/store-group');
-        return response.data;
     }
 
     /**

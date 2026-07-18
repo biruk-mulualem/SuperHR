@@ -82,7 +82,7 @@
         <div class="gray-label">Reason</div>
         <div class="lines-container">
           <div class="reason-content-text">
-            {{ requestData.remark || 'No reason/remark provided.' }}
+            {{ requestData.remark || '' }}
           </div>
         </div>
       </div>

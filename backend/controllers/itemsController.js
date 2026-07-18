@@ -205,9 +205,21 @@ exports.getItemByCode = async (req, res) => {
  * Create a new item
  * POST /api/items
  */
+// controllers/itemsController.js - FIXED createItem
+
+/**
+ * Create a new item
+ * POST /api/items
+ */
+// controllers/itemsController.js - FIXED createItem
+
+/**
+ * Create a new item
+ * POST /api/items
+ */
 exports.createItem = async (req, res) => {
   try {
-    const {
+    let {
       name,
       standardName,
       description,
@@ -224,7 +236,7 @@ exports.createItem = async (req, res) => {
       specPdfName,
       specPdfSize,
       specPdfUrl,
-    } = req.body;
+    } = req.body; // ✅ Use 'let' instead of 'const' for variables that might be reassigned
 
     // Validation
     if (!name) {
@@ -272,14 +284,25 @@ exports.createItem = async (req, res) => {
       });
     }
 
-    // Check if conversion UOM exists
+    // ✅ FIX: Check if conversion UOM exists - ONLY if provided AND different from base UOM
+    let finalConversionUomId = null; // ✅ Use a new variable
+    let finalConversionValue = conversionValue || 0;
+
     if (conversionUomId) {
-      const conversionUom = await UOM.findByPk(conversionUomId);
-      if (!conversionUom) {
-        return res.status(400).json({
-          success: false,
-          message: 'Conversion UOM not found',
-        });
+      // ✅ Only validate if conversionUomId is provided and different from uomId
+      if (parseInt(conversionUomId) !== parseInt(uomId)) {
+        const conversionUom = await UOM.findByPk(conversionUomId);
+        if (!conversionUom) {
+          return res.status(400).json({
+            success: false,
+            message: 'Conversion UOM not found',
+          });
+        }
+        finalConversionUomId = conversionUomId;
+      } else {
+        // ✅ If same as base UOM, set to null (no conversion)
+        finalConversionUomId = null;
+        finalConversionValue = 0;
       }
     }
 
@@ -290,22 +313,22 @@ exports.createItem = async (req, res) => {
     const item = await Item.create({
       code,
       name,
-      standardName,
-      description,
-      brand,
-      model,
-      barcode,
-      categoryId,
-      uomId,
-      conversionUomId,
-      conversionValue: conversionValue || 0,
+      standardName: standardName || null,
+      description: description || null,
+      brand: brand || null,
+      model: model || null,
+      barcode: barcode || null,
+      categoryId: categoryId || null,
+      uomId: parseInt(uomId),
+      conversionUomId: finalConversionUomId, // ✅ Use the new variable
+      conversionValue: finalConversionValue, // ✅ Use the new variable
       costPrice: costPrice || 0,
       status: 'Active',
       specType: specType || 'text',
-      specText,
-      specPdfName,
-      specPdfSize,
-      specPdfUrl,
+      specText: specText || null,
+      specPdfName: specPdfName || null,
+      specPdfSize: specPdfSize || null,
+      specPdfUrl: specPdfUrl || null,
     });
 
     // Fetch created item with associations
@@ -346,10 +369,12 @@ exports.createItem = async (req, res) => {
  * Update an item
  * PUT /api/items/:id
  */
+
+
 exports.updateItem = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
+    let {
       name,
       standardName,
       description,
@@ -366,7 +391,7 @@ exports.updateItem = async (req, res) => {
       specPdfName,
       specPdfSize,
       specPdfUrl,
-    } = req.body;
+    } = req.body; // ✅ Use 'let' for variables that might be reassigned
 
     // Find item
     const item = await Item.findByPk(id);
@@ -415,24 +440,34 @@ exports.updateItem = async (req, res) => {
       }
     }
 
+    // ✅ Handle conversion UOM properly
+    let finalConversionUomId = conversionUomId !== undefined ? conversionUomId : item.conversionUomId;
+    let finalConversionValue = conversionValue !== undefined ? conversionValue : item.conversionValue;
+
+    // If conversionUomId is provided and same as uomId, set to null
+    if (finalConversionUomId && uomId && parseInt(finalConversionUomId) === parseInt(uomId)) {
+      finalConversionUomId = null;
+      finalConversionValue = 0;
+    }
+
     // Update item
     await item.update({
       name: name || item.name,
-      standardName,
-      description,
-      brand,
-      model,
-      barcode,
-      categoryId,
+      standardName: standardName !== undefined ? standardName : item.standardName,
+      description: description !== undefined ? description : item.description,
+      brand: brand !== undefined ? brand : item.brand,
+      model: model !== undefined ? model : item.model,
+      barcode: barcode !== undefined ? barcode : item.barcode,
+      categoryId: categoryId !== undefined ? categoryId : item.categoryId,
       uomId: uomId || item.uomId,
-      conversionUomId,
-      conversionValue: conversionValue !== undefined ? conversionValue : item.conversionValue,
+      conversionUomId: finalConversionUomId,
+      conversionValue: finalConversionValue,
       costPrice: costPrice !== undefined ? costPrice : item.costPrice,
       specType: specType || item.specType,
-      specText,
-      specPdfName,
-      specPdfSize,
-      specPdfUrl,
+      specText: specText !== undefined ? specText : item.specText,
+      specPdfName: specPdfName !== undefined ? specPdfName : item.specPdfName,
+      specPdfSize: specPdfSize !== undefined ? specPdfSize : item.specPdfSize,
+      specPdfUrl: specPdfUrl !== undefined ? specPdfUrl : item.specPdfUrl,
     });
 
     // Fetch updated item with associations
@@ -904,9 +939,16 @@ exports.bulkCreateItems = async (req, res) => {
  * Export items as CSV
  * GET /api/items/export
  */
+// controllers/itemsController.js
+const ExcelJS = require('exceljs');
+
+/**
+ * Export items as Excel file
+ * GET /api/items/export
+ */
 exports.exportItems = async (req, res) => {
   try {
-    const { categoryId, status } = req.query;
+    const { categoryId, status, format = 'xlsx' } = req.query;
     const whereClause = {};
 
     if (categoryId) {
@@ -927,25 +969,321 @@ exports.exportItems = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
-    // Format data for CSV
-    const csvData = items.map(item => ({
-      Code: item.code,
-      Name: item.name,
-      'Standard Name': item.standardName || '',
-      Category: item.category ? item.category.name : '',
-      UOM: item.uom ? item.uom.code : '',
-      'Conversion UOM': item.conversionUom ? item.conversionUom.code : '',
-      'Conversion Value': item.conversionValue,
-      'Cost Price': item.costPrice,
-      Status: item.status,
-      Created: item.createdAt,
-    }));
+    // If CSV format is requested, return CSV
+    if (format === 'csv') {
+      const csvData = items.map(item => ({
+        Code: item.code,
+        Name: item.name,
+        'Standard Name': item.standardName || '',
+        Category: item.category ? item.category.name : '',
+        UOM: item.uom ? item.uom.code : '',
+        'Conversion UOM': item.conversionUom ? item.conversionUom.code : '',
+        'Conversion Value': item.conversionValue,
+        'Cost Price': item.costPrice,
+        Status: item.status,
+        Created: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '',
+      }));
 
-    res.status(200).json({
-      success: true,
-      data: csvData,
-      total: csvData.length,
+      // Return CSV
+      const headers = Object.keys(csvData[0] || {});
+      let csvContent = headers.join(',') + '\n';
+      csvData.forEach(row => {
+        csvContent += headers.map(h => {
+          let val = row[h] || '';
+          if (typeof val === 'string' && val.includes(',')) {
+            val = `"${val}"`;
+          }
+          return val;
+        }).join(',') + '\n';
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=items_export_${new Date().toISOString().split('T')[0]}.csv`);
+      return res.send(csvContent);
+    }
+
+    // ============================================================
+    // EXCEL EXPORT (Default)
+    // ============================================================
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Inventory Management System';
+    workbook.created = new Date();
+    
+    // Create main sheet
+    const worksheet = workbook.addWorksheet('Items', {
+      properties: { tabColor: { argb: 'FF3B82F6' } },
+      pageSetup: { orientation: 'landscape', fitToPage: true }
     });
+
+    // ============================================================
+    // STYLES
+    // ============================================================
+    const headerStyle = {
+      font: { 
+        name: 'Segoe UI', 
+        size: 11, 
+        bold: true, 
+        color: { argb: 'FFFFFFFF' } 
+      },
+      fill: { 
+        type: 'pattern', 
+        pattern: 'solid', 
+        fgColor: { argb: 'FF3B82F6' } 
+      },
+      border: {
+        top: { style: 'thin', color: { argb: 'FF2563EB' } },
+        bottom: { style: 'thin', color: { argb: 'FF2563EB' } },
+        left: { style: 'thin', color: { argb: 'FF2563EB' } },
+        right: { style: 'thin', color: { argb: 'FF2563EB' } }
+      },
+      alignment: { 
+        horizontal: 'center', 
+        vertical: 'middle',
+        wrapText: true
+      }
+    };
+
+    const cellStyle = {
+      font: { name: 'Segoe UI', size: 10 },
+      border: {
+        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+      },
+      alignment: { 
+        vertical: 'middle',
+        wrapText: true
+      }
+    };
+
+    const statusStyles = {
+      'Active': {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } },
+        font: { color: { argb: 'FF166534' }, bold: true }
+      },
+      'Inactive': {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
+        font: { color: { argb: 'FF92400E' }, bold: true }
+      },
+      'Discontinued': {
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } },
+        font: { color: { argb: 'FF991B1B' }, bold: true }
+      }
+    };
+
+    // ============================================================
+    // HEADER ROWS (Title & Metadata)
+    // ============================================================
+    
+    // Title Row
+    worksheet.mergeCells('A1:J1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = '📦 Item Master Data Export';
+    titleCell.font = { name: 'Segoe UI', size: 18, bold: true, color: { argb: 'FF1E293B' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 40;
+
+    // Metadata Row
+    worksheet.mergeCells('A2:J2');
+    const metaCell = worksheet.getCell('A2');
+    metaCell.value = `Exported on: ${new Date().toLocaleString()} | Total Items: ${items.length} | Status: ${status || 'All'}`;
+    metaCell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF64748B' } };
+    metaCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(2).height = 25;
+
+    // Blank row
+    worksheet.getRow(3).height = 10;
+
+    // ============================================================
+    // COLUMN HEADERS
+    // ============================================================
+    const columns = [
+      { header: '#', key: 'index', width: 6 },
+      { header: 'Item Code', key: 'code', width: 16 },
+      { header: 'Item Name', key: 'name', width: 30 },
+      { header: 'Standard Name', key: 'standardName', width: 25 },
+      { header: 'Category', key: 'category', width: 20 },
+      { header: 'UOM', key: 'uom', width: 12 },
+      { header: 'Conversion UOM', key: 'conversionUom', width: 14 },
+      { header: 'Conversion Value', key: 'conversionValue', width: 14 },
+      { header: 'Cost Price', key: 'costPrice', width: 14 },
+      { header: 'Status', key: 'status', width: 14 },
+    ];
+
+    // Set column widths
+    columns.forEach((col, index) => {
+      worksheet.getColumn(index + 1).width = col.width;
+    });
+
+    // Write headers
+    const headerRow = worksheet.getRow(4);
+    columns.forEach((col, index) => {
+      const cell = headerRow.getCell(index + 1);
+      cell.value = col.header;
+      Object.assign(cell, headerStyle);
+    });
+    headerRow.height = 30;
+
+    // ============================================================
+    // DATA ROWS
+    // ============================================================
+    let rowIndex = 5;
+    let totalCost = 0;
+
+    items.forEach((item, idx) => {
+      const row = worksheet.getRow(rowIndex);
+      row.height = 25;
+
+      const cells = [
+        idx + 1,
+        item.code,
+        item.name,
+        item.standardName || '-',
+        item.category ? item.category.name : '-',
+        item.uom ? item.uom.code : '-',
+        item.conversionUom ? item.conversionUom.code : '-',
+        item.conversionValue || 0,
+        item.costPrice || 0,
+        item.status,
+      ];
+
+      cells.forEach((val, colIndex) => {
+        const cell = row.getCell(colIndex + 1);
+        cell.value = val;
+        Object.assign(cell, cellStyle);
+        
+        // Right align numbers
+        if ([7, 8, 9].includes(colIndex)) {
+          cell.alignment = { ...cellStyle.alignment, horizontal: 'right' };
+        }
+        
+        // Center align index
+        if (colIndex === 0) {
+          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
+        }
+
+        // Apply status styling
+        if (colIndex === 9 && statusStyles[val]) {
+          Object.assign(cell, statusStyles[val]);
+          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
+        }
+      });
+
+      // Accumulate total cost
+      totalCost += parseFloat(item.costPrice) || 0;
+      rowIndex++;
+    });
+
+    // ============================================================
+    // FOOTER ROWS (Summary)
+    // ============================================================
+    const footerStart = rowIndex + 1;
+    
+    // Blank row
+    worksheet.getRow(footerStart).height = 10;
+    
+    // Summary section
+    const summaryRow = worksheet.getRow(footerStart + 1);
+    summaryRow.height = 28;
+    
+    // Merge summary cells
+    worksheet.mergeCells(`A${footerStart + 1}:I${footerStart + 1}`);
+    const summaryCell = worksheet.getCell(`A${footerStart + 1}`);
+    summaryCell.value = `📊 Summary: Total Items: ${items.length} | Total Cost: ${totalCost.toFixed(2)}`;
+    summaryCell.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF1E293B' } };
+    summaryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    summaryCell.border = {
+      top: { style: 'medium', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'medium', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'medium', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'medium', color: { argb: 'FFCBD5E1' } }
+    };
+    summaryCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // ============================================================
+    // CATEGORY BREAKDOWN SHEET (Optional)
+    // ============================================================
+    const categoryWorksheet = workbook.addWorksheet('Category Breakdown', {
+      properties: { tabColor: { argb: 'FF10B981' } }
+    });
+
+    // Category breakdown headers
+    const catColumns = [
+      { header: '#', key: 'index', width: 8 },
+      { header: 'Category', key: 'category', width: 30 },
+      { header: 'Item Count', key: 'count', width: 16 },
+      { header: 'Total Cost', key: 'totalCost', width: 18 },
+      { header: 'Avg Cost', key: 'avgCost', width: 18 },
+    ];
+
+    catColumns.forEach((col, index) => {
+      categoryWorksheet.getColumn(index + 1).width = col.width;
+    });
+
+    // Category header row
+    const catHeaderRow = categoryWorksheet.getRow(1);
+    catColumns.forEach((col, index) => {
+      const cell = catHeaderRow.getCell(index + 1);
+      cell.value = col.header;
+      Object.assign(cell, headerStyle);
+    });
+    catHeaderRow.height = 30;
+
+    // Calculate category breakdown
+    const categoryMap = {};
+    items.forEach(item => {
+      const catName = item.category ? item.category.name : 'Uncategorized';
+      if (!categoryMap[catName]) {
+        categoryMap[catName] = { count: 0, totalCost: 0 };
+      }
+      categoryMap[catName].count++;
+      categoryMap[catName].totalCost += parseFloat(item.costPrice) || 0;
+    });
+
+    // Write category data
+    let catRowIndex = 2;
+    const catEntries = Object.entries(categoryMap).sort((a, b) => b[1].count - a[1].count);
+    catEntries.forEach(([catName, data], idx) => {
+      const row = categoryWorksheet.getRow(catRowIndex);
+      row.height = 22;
+      
+      const cells = [
+        idx + 1,
+        catName,
+        data.count,
+        data.totalCost.toFixed(2),
+        (data.totalCost / data.count).toFixed(2)
+      ];
+
+      cells.forEach((val, colIndex) => {
+        const cell = row.getCell(colIndex + 1);
+        cell.value = val;
+        Object.assign(cell, cellStyle);
+        
+        // Right align numbers
+        if ([2, 3, 4].includes(colIndex)) {
+          cell.alignment = { ...cellStyle.alignment, horizontal: 'right' };
+        }
+        if (colIndex === 0) {
+          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
+        }
+      });
+      
+      catRowIndex++;
+    });
+
+    // ============================================================
+    // SEND RESPONSE
+    // ============================================================
+    const filename = `items_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    
+    await workbook.xlsx.write(res);
+    res.end();
+
   } catch (error) {
     console.error('Error in exportItems:', error);
     res.status(500).json({
@@ -961,6 +1299,8 @@ exports.exportItems = async (req, res) => {
  * POST /api/items/import
  */
 // controllers/itemsController.js - Updated importItems
+
+// controllers/itemsController.js - FIXED importItems
 
 /**
  * Import items from CSV data
@@ -1028,22 +1368,29 @@ exports.importItems = async (req, res) => {
               status: 'Active',
             });
           }
+        } else {
+          // ✅ If no UOM code provided, create a default one or throw error
+          throw new Error('UOM code is required');
         }
 
-        // Find or create conversion UOM
+        // ✅ FIX: Find or create conversion UOM - ONLY if conversionUomCode is provided
         let conversionUom = null;
-        if (itemData.conversionUomCode?.trim()) {
+        const conversionUomCode = itemData.conversionUomCode?.trim();
+        
+        // ✅ Only look for conversion UOM if a code was provided AND it's different from base UOM
+        if (conversionUomCode && conversionUomCode.toUpperCase() !== uom.code.toUpperCase()) {
           conversionUom = await UOM.findOne({
-            where: { code: { [Op.iLike]: itemData.conversionUomCode.trim() } },
+            where: { code: { [Op.iLike]: conversionUomCode } },
           });
           if (!conversionUom) {
             conversionUom = await UOM.create({
-              code: itemData.conversionUomCode.trim().toUpperCase(),
-              name: itemData.conversionUomCode.trim(),
+              code: conversionUomCode.toUpperCase(),
+              name: conversionUomCode.trim(),
               status: 'Active',
             });
           }
         }
+        // ✅ If conversionUomCode is empty or same as base UOM, keep it null
 
         // Generate item code
         const code = await Item.generateItemCode();
@@ -1059,7 +1406,7 @@ exports.importItems = async (req, res) => {
           barcode: cleanData.barcode,
           categoryId: category ? category.categoryId : null,
           uomId: uom ? uom.uomId : null,
-          conversionUomId: conversionUom ? conversionUom.uomId : null,
+          conversionUomId: conversionUom ? conversionUom.uomId : null, // ✅ Null if no conversion UOM
           conversionValue: cleanData.conversionValue,
           costPrice: cleanData.costPrice,
           status: 'Active',
@@ -1106,7 +1453,6 @@ exports.importItems = async (req, res) => {
     });
   }
 };
-
 
 /**
  * Upload item specification PDF

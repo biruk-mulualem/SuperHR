@@ -1,4 +1,4 @@
-// balanceRoutes.js - CORRECTED ORDER
+// balanceRoutes.js - COMPLETE WITH CATEGORY ROUTES
 const express = require("express");
 const router = express.Router();
 const balanceController = require("../controllers/balanceController");
@@ -16,14 +16,12 @@ const { uploadSingleBalance } = require("../middleware/uploadMiddleware");
 // Get all balances with filters and pagination
 router.get(
     '/',
-
     balanceController.getBalances
 );
 
 // Get balance statistics
 router.get(
     '/stats',
-
     balanceController.getStats
 );
 
@@ -45,8 +43,33 @@ router.get(
     balanceController.exportBalances
 );
 
+// ============================================
+// ✅ CATEGORY ROUTES - ADD THESE
+// ============================================
 
-// In your routes file (e.g., routes/balanceRoutes.js)
+// Get all categories
+router.get(
+    '/categories',
+    balanceController.getCategories
+);
+
+// Get active categories (for dropdowns)
+router.get(
+    '/categories/active',
+    balanceController.getActiveCategories
+);
+
+// Get category by ID
+router.get(
+    '/categories/:id',
+    balanceController.getCategoryById
+);
+
+// Get items by category
+router.get(
+    '/categories/:id/items',
+    balanceController.getItemsByCategory
+);
 
 // ============================================
 // REQUEST GROUP PROCESSING ROUTES
@@ -145,15 +168,12 @@ router.post(
 );
 
 // ============================================
-//  STORE-GROUP RELATIONS (MUST COME BEFORE /:id)
+// STORE-GROUP RELATIONS (MUST COME BEFORE /:id)
 // ============================================
 router.get(
     '/store-group-relations',
-    balanceController.getStoreGroupRelations  // No auth middleware
+    balanceController.getStoreGroupRelations
 );
-
-
-// balanceRoutes.js - Add this route at the TOP
 
 // ============================================
 // USER ACCESS ROUTE - MUST BE FIRST!
@@ -162,7 +182,7 @@ router.get(
     '/user/store-group',
     authMiddleware,
     balanceController.getUserStoreAndGroupAccess
-); 
+);
 
 // ============================================
 // 8. WILDCARD /:id ROUTES - MUST BE LAST!
@@ -205,7 +225,5 @@ router.delete(
     '/:id',
     balanceController.deleteBalance
 );
-
-
 
 module.exports = router;
