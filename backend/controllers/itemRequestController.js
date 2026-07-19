@@ -1130,6 +1130,7 @@ exports.updateRequest = async (req, res) => {
 // ================================================================
 // UPDATE REQUEST STATUS
 // ================================================================
+
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1153,6 +1154,7 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    // ✅ UPDATED: Allow rejecting approved requests
     // Validate status transitions
     if (request.status === 'finalized') {
       return res.status(400).json({
@@ -1161,19 +1163,18 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    if (request.status === 'approved' && status === 'rejected') {
-      return res.status(400).json({
-        success: false,
-        error: 'Cannot reject an approved request. Edit the request to modify'
-      });
-    }
-
+    // ✅ Keep: Can't approve a rejected request directly
     if (request.status === 'rejected' && status === 'approved') {
       return res.status(400).json({
         success: false,
         error: 'Cannot approve a rejected request. Edit the request to reset status to pending'
       });
     }
+
+    // ❌ REMOVED: The restriction that blocked rejecting approved requests
+
+    // ✅ Allow: pending -> approved, pending -> rejected, approved -> rejected, approved -> finalized
+    // ✅ Allow: pending -> finalized (if needed)
 
     // Update status
     await request.update({

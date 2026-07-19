@@ -157,8 +157,8 @@ const roleMenus = {
   checker: [
     // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
      { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+    // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+    // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
 

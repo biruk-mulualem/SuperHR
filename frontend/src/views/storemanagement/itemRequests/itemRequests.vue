@@ -1,4 +1,4 @@
-<!-- views/storemanagement/itemrequests/itemrequests.vue -->
+<!-- views/storemanagement/itemrequests/itemrequests.vue - WITH HIDDEN STORE FOR NON-ADMIN -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -34,7 +34,10 @@
         <option value="rejected">Rejected</option>
         <option value="finalized">Finalized</option>
       </select>
+      
+      <!-- 🔥 STORE FILTER - HIDDEN FOR NON-ADMIN -->
       <select
+        v-if="userIsAdmin"
         v-model="filterStore"
         class="filter-select"
         @change="onFilterChange"
@@ -48,6 +51,7 @@
           {{ store.name }}
         </option>
       </select>
+      
       <button
         class="btn-clear-filters"
         @click="clearFilters"
@@ -134,39 +138,41 @@
                 </span>
               </td>
               <td>
-                <div class="action-buttons">
-                  <button
-                    class="icon-btn print-btn"
-                    @click="printRequest(req)"
-                    title="Print Request"
-                  >
-                    🖨️
-                  </button>
-                  <button
-                    v-if="req.status !== 'finalized'"
-                    class="icon-btn"
-                    @click="editRequest(req)"
-                    title="Edit"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    v-if="req.status === 'pending'"
-                    class="icon-btn"
-                    @click="openStatusConfirmation(req, 'approved')"
-                    title="Approve"
-                  >
-                    ✅
-                  </button>
-                  <button
-                    v-if="req.status === 'pending'"
-                    class="icon-btn"
-                    @click="openStatusConfirmation(req, 'rejected')"
-                    title="Reject"
-                  >
-                    🚫
-                  </button>
-                </div>
+          
+<div class="action-buttons">
+  <button
+    class="icon-btn print-btn"
+    @click="printRequest(req)"
+    title="Print Request"
+  >
+    🖨️
+  </button>
+  <button
+    v-if="req.status !== 'finalized'"
+    class="icon-btn"
+    @click="editRequest(req)"
+    title="Edit"
+  >
+    ✏️
+  </button>
+  <button
+    v-if="req.status === 'pending'"
+    class="icon-btn"
+    @click="openStatusConfirmation(req, 'approved')"
+    title="Approve"
+  >
+    ✅
+  </button>
+  <!-- 🔥 REJECT BUTTON - Show for pending OR approved -->
+  <button
+    v-if="req.status === 'pending' || req.status === 'approved'"
+    class="icon-btn"
+    @click="openStatusConfirmation(req, 'rejected')"
+    title="Reject"
+  >
+    🚫
+  </button>
+</div>
               </td>
             </tr>
 
@@ -305,42 +311,44 @@
                       <div v-else class="no-remark">No remarks provided</div>
                     </div>
 
-                    <div class="detail-actions">
-                      <button
-                        class="btn-print-detail"
-                        @click="printRequest(req)"
-                      >
-                        🖨️ Print Request
-                      </button>
-                      <button
-                        v-if="req.status !== 'finalized'"
-                        class="btn-edit-detail"
-                        @click="editRequest(req)"
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button
-                        v-if="req.status === 'pending'"
-                        class="btn-approve-detail"
-                        @click="openStatusConfirmation(req, 'approved')"
-                      >
-                        ✅ Approve
-                      </button>
-                      <button
-                        v-if="req.status === 'pending'"
-                        class="btn-reject-detail"
-                        @click="openStatusConfirmation(req, 'rejected')"
-                      >
-                        🚫 Reject
-                      </button>
-                      <button
-                        v-if="req.status === 'approved'"
-                        class="btn-finalize-detail"
-                        @click="openStatusConfirmation(req, 'finalized')"
-                      >
-                        📋 Finalize
-                      </button>
-                    </div>
+                   <!-- In the detail-actions section -->
+<div class="detail-actions">
+  <button
+    class="btn-print-detail"
+    @click="printRequest(req)"
+  >
+    🖨️ Print Request
+  </button>
+  <button
+    v-if="req.status !== 'finalized'"
+    class="btn-edit-detail"
+    @click="editRequest(req)"
+  >
+    ✏️ Edit
+  </button>
+  <button
+    v-if="req.status === 'pending'"
+    class="btn-approve-detail"
+    @click="openStatusConfirmation(req, 'approved')"
+  >
+    ✅ Approve
+  </button>
+  <!-- 🔥 REJECT BUTTON - Show for pending OR approved -->
+  <button
+    v-if="req.status === 'pending' || req.status === 'approved'"
+    class="btn-reject-detail"
+    @click="openStatusConfirmation(req, 'rejected')"
+  >
+    🚫 Reject
+  </button>
+  <button
+    v-if="req.status === 'approved'"
+    class="btn-finalize-detail"
+    @click="openStatusConfirmation(req, 'finalized')"
+  >
+    📋 Finalize
+  </button>
+</div>
                   </div>
                 </div>
               </td>
@@ -452,10 +460,6 @@
                     </span>
                   </div>
                 </div>
-
-                <!-- <div v-if="error.shortage" class="error-shortage">
-                  ⚠️ Shortage: <strong>{{ error.shortage }}</strong> {{ error.uomCode || 'units' }}
-                </div> -->
               </div>
             </div>
 
@@ -474,45 +478,49 @@
             class="request-form"
             v-show="!showValidationErrors"
           >
-            <!-- Store Selection -->
-            <div class="form-row">
-              <div class="form-group">
-                <label>Asking Store (Source) *</label>
-                <select
-                  v-model="form.askingStoreId"
-                  required
-                  :disabled="!!userAssignedStoreId || !!editingRequest"
-                >
-                  <option value="">Select Store</option>
-                  <option
-                    v-for="store in activeStores"
-                    :key="store.storeId || store.id"
-                    :value="store.storeId || store.id"
-                  >
-                    {{ store.name }}
-                  </option>
-                </select>
-                <span v-if="userAssignedStoreId" class="hint">
-                  📌 Using your assigned store: {{ getUserAssignedStoreName() }}
-                </span>
-              </div>
-              <div class="form-group">
-                <label>Supplying Store (Target) *</label>
-                <select v-model="form.supplyingStoreId" required>
-                  <option value="">Select Store</option>
-                  <option
-                    v-for="store in filteredSupplyingStores"
-                    :key="store.storeId || store.id"
-                    :value="store.storeId || store.id"
-                  >
-                    {{ store.name }}
-                  </option>
-                </select>
-                <span class="hint"
-                  >Select the store that will supply the items</span
-                >
-              </div>
-            </div>
+        
+<div class="form-row">
+  <!-- 🔥 ASKING STORE - ONLY VISIBLE FOR ADMIN -->
+  <div class="form-group" v-if="userIsAdmin">
+    <label>Asking Store (Source) *</label>
+    <select
+      v-model="form.askingStoreId"
+      required
+      :disabled="!!userAssignedStoreId || !!editingRequest"
+    >
+      <option value="">Select Store</option>
+      <option
+        v-for="store in activeStores"
+        :key="store.storeId || store.id"
+        :value="store.storeId || store.id"
+      >
+        {{ store.name }}
+      </option>
+    </select>
+    <span v-if="userAssignedStoreId" class="hint">
+      📌 Using your assigned store: {{ getUserAssignedStoreName() }}
+    </span>
+  </div>
+  
+  <!-- 🔥 ASKING STORE - COMPLETELY HIDDEN FOR NON-ADMIN -->
+  
+  <div class="form-group">
+    <label>Supplying Store (Target) *</label>
+    <select v-model="form.supplyingStoreId" required>
+      <option value="">Select Store</option>
+      <option
+        v-for="store in filteredSupplyingStores"
+        :key="store.storeId || store.id"
+        :value="store.storeId || store.id"
+      >
+        {{ store.name }}
+      </option>
+    </select>
+    <span class="hint"
+      >Select the store that will supply the items</span
+    >
+  </div>
+</div>
 
             <!-- Items Section -->
             <div class="form-section-title">
@@ -529,9 +537,6 @@
               </p>
             </div>
 
-            <!-- ============================================================ -->
-            <!-- ENHANCED ITEM ROW WITH STACKED DISPLAY -->
-            <!-- ============================================================ -->
             <!-- ============================================================ -->
             <!-- ENHANCED ITEM ROW WITH STACKED DISPLAY - FULL WIDTH -->
             <!-- ============================================================ -->
@@ -557,9 +562,14 @@
                 <div class="form-group full-width">
                   <label>Select Item *</label>
 
+                  <!-- 🔥 DUPLICATE WARNING -->
+                  <div v-if="item.itemId && isItemAlreadyAdded(item.itemId, index)" class="duplicate-error">
+                    ⚠️ This item is already in the request. Please remove this row or select a different item.
+                  </div>
+
                   <!-- Search -->
                   <div class="item-search-wrapper">
-                    <span class="search-icon-small">🔍</span>
+                   
                     <input
                       type="text"
                       :ref="(el) => setSearchInputRef(el, index)"
@@ -587,6 +597,10 @@
                           selected:
                             item.itemId ===
                             (itemOption.itemId || itemOption.id),
+                          'already-added': isItemAlreadyAdded(
+                            itemOption.itemId || itemOption.id,
+                            index
+                          )
                         }"
                         @click="selectItemForRow(index, itemOption)"
                       >
@@ -599,8 +613,6 @@
                           </div>
 
                           <!-- Middle: Standard Name & Common Name (stacked) -->
-                          <!-- views/storemanagement/itemrequests/itemrequests.vue - UPDATED ITEM OPTION DISPLAY -->
-
                           <div class="item-option-middle">
                             <!-- ✅ COMMON NAME - Primary (always shown) -->
                             <div class="item-option-common-name">
@@ -643,6 +655,17 @@
                           <div class="item-option-uom">
                             {{ itemOption.uom?.code || "N/A" }}
                           </div>
+
+                          <!-- 🔥 Already Added Badge -->
+                          <div
+                            v-if="isItemAlreadyAdded(
+                              itemOption.itemId || itemOption.id,
+                              index
+                            )"
+                            class="already-added-badge"
+                          >
+                            ✅ Already Added
+                          </div>
                         </div>
                       </div>
                       <div
@@ -676,6 +699,9 @@
                   <div
                     v-if="selectedItemDisplays[index]"
                     class="selected-item-display"
+                    :class="{
+                      'selected-duplicate': item.itemId && isItemAlreadyAdded(item.itemId, index)
+                    }"
                   >
                     <span class="selected-badge">✅ Selected:</span>
                     <span class="selected-item-code">{{
@@ -712,6 +738,9 @@
                     >
                       ✕
                     </button>
+                    <span v-if="item.itemId && isItemAlreadyAdded(item.itemId, index)" class="duplicate-tag">
+                      ⚠️ Duplicate
+                    </span>
                   </div>
                 </div>
               </div>
@@ -831,17 +860,7 @@
               </div>
             </div>
 
-            <!-- Summary -->
-            <div class="form-summary" v-if="form.items.length > 0">
-              <div class="summary-item">
-                <span>Total Items:</span>
-                <strong>{{ form.items.length }}</strong>
-              </div>
-              <div class="summary-item">
-                <span>Total Quantity:</span>
-                <strong>{{ getTotalQuantity() }}</strong>
-              </div>
-            </div>
+           
 
             <div v-if="formErrors.length > 0" class="form-errors">
               <div v-for="error in formErrors" :key="error" class="form-error">
@@ -1112,6 +1131,24 @@ const canCreateRequests = computed(() => {
 });
 
 // ================================================================
+// 🔥 DUPLICATE ITEM CHECK
+// ================================================================
+
+const isItemAlreadyAdded = (
+  itemId: number | undefined,
+  currentIndex: number,
+): boolean => {
+  if (!itemId || itemId === 0) return false;
+  
+  // Check if this item already exists in other rows
+  const exists = form.value.items.some(
+    (item, index) => item.itemId === itemId && index !== currentIndex,
+  );
+  
+  return exists;
+};
+
+// ================================================================
 // METHODS - ITEM SELECTION PER ROW
 // ================================================================
 
@@ -1186,6 +1223,16 @@ const selectItemForRow = (rowIndex: number, itemOption: any) => {
   if (!itemRow) return;
 
   const itemId = itemOption.itemId || itemOption.id;
+  
+  // 🔥 CHECK FOR DUPLICATES
+  if (isItemAlreadyAdded(itemId, rowIndex)) {
+    showToastMessage(
+      `"${itemOption.name || itemOption.standardName || 'Item'}" is already added to this request. Please remove the existing one or use a different item.`,
+      "warning"
+    );
+    return; // Don't select the item
+  }
+  
   itemRow.itemId = itemId;
   selectedItemDisplays.value[rowIndex] = itemOption;
   // Update UOM and standard name
@@ -1468,12 +1515,13 @@ const openCreateModal = (): void => {
   // Clear validation errors
   closeValidationErrors();
 
+  // 🔥 For non-admin, use their assigned store ID
   const askingStoreId = userIsAdmin.value
     ? ""
     : String(userAssignedStoreId.value || "");
 
   form.value = {
-    askingStoreId: askingStoreId,
+    askingStoreId: askingStoreId,  // Auto-filled for non-admin
     supplyingStoreId: "",
     items: [{ itemId: 0, quantity: 1, remark: "" }],
     requestedBy: getCurrentUser(),
@@ -1493,7 +1541,6 @@ const openCreateModal = (): void => {
   formErrors.value = [];
   showModal.value = true;
 };
-
 const editRequest = (req: ItemRequest): void => {
   editingRequest.value = req;
   const today: string = new Date().toISOString().split("T")[0] || "";
@@ -1567,6 +1614,37 @@ const saveRequest = async (): Promise<void> => {
   }
   if (form.value.items.length === 0) {
     formErrors.value.push("Please add at least one item");
+  }
+
+  // 🔥 CHECK FOR DUPLICATE ITEMS
+  const itemIds = form.value.items.map(item => item.itemId).filter(id => id && id !== 0);
+  const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index);
+  
+  if (duplicateIds.length > 0) {
+    const duplicateItems = form.value.items.filter(item => 
+      duplicateIds.includes(item.itemId)
+    );
+    
+    // Show validation error
+    duplicateItems.forEach(item => {
+      const itemName = getItemName(Number(item.itemId)) || 'Unknown Item';
+      formErrors.value.push(
+        `⚠️ "${itemName}" (${getItemCode(Number(item.itemId))}) is already added to this request. Please remove the duplicate entry.`
+      );
+    });
+    
+    // Also show in validation errors box
+    validationErrors.value = duplicateItems.map(item => ({
+      itemId: item.itemId,
+      itemName: getItemName(Number(item.itemId)) || 'Unknown Item',
+      itemCode: getItemCode(Number(item.itemId)) || 'N/A',
+      requestedQuantity: item.quantity,
+      message: 'This item is already added to the request. Please remove the duplicate entry.'
+    }));
+    
+    validationMessage.value = 'Duplicate items found in the request. Please fix the following issues:';
+    showValidationErrors.value = true;
+    return;
   }
 
   form.value.items.forEach((item, index) => {
@@ -2947,6 +3025,58 @@ onMounted(async () => {
   border: 1px dashed #e2e8f0;
 }
 
+/* ================================================================
+   DUPLICATE ITEM STYLES - NEW
+   ================================================================ */
+.duplicate-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  margin-bottom: 6px;
+  background: #fee2e2;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
+}
+
+.duplicate-tag {
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+.selected-duplicate {
+  border-color: #dc2626 !important;
+  background: #fee2e2 !important;
+}
+
+.item-option.already-added {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.item-option.already-added:hover {
+  background: #f1f5f9;
+}
+
+.already-added-badge {
+  font-size: 10px;
+  color: #16a34a;
+  background: #dcfce7;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+/* ================================================================
+   FORM ROW - CONTINUED
+   ================================================================ */
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
