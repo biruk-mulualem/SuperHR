@@ -6,7 +6,6 @@ const csv = require("csv-parser");
 const { Parser } = require("json2csv");
 const { Op } = require("sequelize");
 const ExcelJS = require("exceljs");
-// ✅ ADD THIS IMPORT - Right after the other imports
 const { getUserStoreAndGroup } = require("../utils/userAccess");
 
 // Import models using destructuring
@@ -45,8 +44,141 @@ const getBaseBalance = (balance, conversionValue) => {
   return balance * conversionValue;
 };
 
+// ================================================================
+// 🔥 FIXED: HELPER FUNCTION: Check and Finalize Request
+// ================================================================
+
+async function checkAndFinalizeRequest(request, storeId, transaction, logs, finalizedRequests) {
+  try {
+    console.log(`🔍 Checking if all groups have processed request ${request.requestCode}`);
+    console.log(`🔍 Request ID: ${request.requestId}, Store ID: ${storeId}`);
+
+    // Get ALL groups for this store (both asking and supplying)
+    const storeGroupsRaw = await sequelize.query(
+      `SELECT g.id, g.name, g.status 
+       FROM groups g
+       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+       WHERE sgr.store_id = ? AND g.status = 'Active'`,
+      {
+        replacements: [parseInt(storeId)],
+        type: sequelize.QueryTypes.SELECT,
+        transaction: transaction
+      }
+    );
+
+    // Ensure it's an array
+    const groupsArray = Array.isArray(storeGroupsRaw) ? storeGroupsRaw : [];
+    console.log(`📋 Found ${groupsArray.length} groups for store ${storeId}`);
+
+    if (groupsArray.length === 0) {
+      console.log(`⚠️ No groups found for store ${storeId}, auto-finalizing`);
+      
+      await ItemRequest.update(
+        {
+          status: 'finalized',
+          finalizedAt: new Date()
+        },
+        {
+          where: { requestId: request.requestId },
+          transaction: transaction
+        }
+      );
+      
+      request.status = 'finalized';
+      request.finalizedAt = new Date();
+      
+      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - No groups in store, auto-finalized`);
+      
+      if (finalizedRequests) {
+        finalizedRequests.push({
+          requestId: request.requestId,
+          requestCode: request.requestCode,
+          finalizedAt: request.finalizedAt
+        });
+      }
+      
+      return true;
+    }
+
+    const allGroupIds = groupsArray.map(g => parseInt(g.id));
+    console.log(`📋 All groups for store ${storeId}:`, allGroupIds);
+
+    // Get ALL processed records for this request (both processed and skipped)
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    const processedRecords = await RequestGroupProcessing.findAll({
+      where: {
+        requestId: request.requestId,
+        status: { [Op.in]: ['processed', 'skipped'] }
+      },
+      transaction: transaction
+    });
+
+    const processedGroupIds = processedRecords
+      .map(r => parseInt(r.groupId))
+      .filter(id => !isNaN(id));
+
+    console.log(`📋 Processed groups for request ${request.requestCode}:`, processedGroupIds);
+
+    // Check if ALL groups have processed or been skipped
+    const allProcessed = allGroupIds.length > 0 && 
+                          allGroupIds.every(g => processedGroupIds.includes(g));
+    const remainingGroups = allGroupIds.filter(g => !processedGroupIds.includes(g));
+
+    console.log(`📋 allProcessed: ${allProcessed}`);
+    console.log(`📋 remainingGroups:`, remainingGroups);
+
+    if (allProcessed && allGroupIds.length > 0) {
+      console.log(`✅ ALL GROUPS HAVE PROCESSED! Finalizing request ${request.requestCode}`);
+      
+      // Update the request status within the same transaction
+      await ItemRequest.update(
+        {
+          status: 'finalized',
+          finalizedAt: new Date()
+        },
+        {
+          where: { requestId: request.requestId },
+          transaction: transaction
+        }
+      );
+      
+      // Also update the in-memory object
+      request.status = 'finalized';
+      request.finalizedAt = new Date();
+      
+      console.log(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
+      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
+      
+      if (finalizedRequests) {
+        finalizedRequests.push({
+          requestId: request.requestId,
+          requestCode: request.requestCode,
+          finalizedAt: request.finalizedAt
+        });
+      }
+      
+      return true;
+    } else if (remainingGroups.length > 0) {
+      const remainingNames = remainingGroups.map(g => {
+        const grp = groupsArray.find(g2 => parseInt(g2.id) === g);
+        return grp ? grp.name : g;
+      });
+      const msg = `⏳ Request ${request.requestCode} PARTIALLY PROCESSED - ${remainingGroups.length} group(s) remaining: ${remainingNames.join(', ')}`;
+      console.log(msg);
+      if (logs) logs.push(msg);
+      return false;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error(`❌ Error in checkAndFinalizeRequest for ${request.requestCode}:`, error);
+    if (logs) logs.push(`❌ Error checking finalization for ${request.requestCode}: ${error.message}`);
+    return false;
+  }
+}
+
 // ============================================
-// 1. GET ALL BALANCES WITH FILTERS - FIXED
+// 1. GET ALL BALANCES WITH FILTERS
 // ============================================
 
 exports.getBalances = async (req, res) => {
@@ -117,12 +249,10 @@ exports.getBalances = async (req, res) => {
       },
     ];
 
-    // ✅ ADD CATEGORY FILTER
     if (categoryId) {
       include[2].where = { categoryId: parseInt(categoryId) };
     }
 
-    // ✅ FIXED SEARCH - Use correct database column names
     if (search && search.trim()) {
       const searchTerm = `%${search.trim()}%`;
 
@@ -146,7 +276,6 @@ exports.getBalances = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    // ✅ FORMAT RESPONSE - Only return itemStandardName and itemCommonName
     const formattedRows = rows.map((record) => {
       const item = record.item;
       const uom = item?.uom;
@@ -158,7 +287,6 @@ exports.getBalances = async (req, res) => {
           ? parseFloat(item.conversionValue)
           : 1;
 
-      // Get the actual name and standardName separately
       const itemName = item?.name || null;
       const standardName = item?.standardName || null;
 
@@ -170,9 +298,7 @@ exports.getBalances = async (req, res) => {
         groupName: record.group?.name || null,
         itemId: record.itemId,
         itemCode: item?.code || null,
-        // ✅ STANDARD NAME - the standard name (can be null/blank)
         itemStandardName: standardName,
-        // ✅ COMMON NAME - use name as primary (if name is null, use standardName)
         itemCommonName: itemName || standardName || null,
         categoryId: category?.categoryId || null,
         categoryName: category?.name || null,
@@ -211,6 +337,7 @@ exports.getBalances = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 // ============================================
 // GET ALL CATEGORIES
 // ============================================
@@ -248,7 +375,6 @@ exports.getCategories = async (req, res) => {
       ],
     });
 
-    // Format response to include id for frontend
     const formattedRows = rows.map((category) => ({
       id: category.categoryId,
       categoryId: category.categoryId,
@@ -274,111 +400,6 @@ exports.getCategories = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
-// ============================================
-// 2. GET BALANCE STATISTICS
-// ============================================
-exports.getStats = async (req, res) => {
-  try {
-    const totalStoresResult = await StoreBalance.findAll({
-      attributes: [
-        [sequelize.fn("DISTINCT", sequelize.col("storeId")), "storeId"],
-      ],
-    });
-    const totalStores = totalStoresResult.length;
-
-    const totalItems = await StoreBalance.count();
-
-    const lowStockItems = await StoreBalance.count({
-      where: {
-        status: "Active",
-        [Op.and]: [
-          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
-          { balance: { [Op.gt]: 0 } },
-        ],
-      },
-    });
-
-    const pendingRequestsCount = await ItemRequest.count({
-      where: { status: "approved" },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        totalStores,
-        totalItems,
-        lowStockItems,
-        pendingRequestsCount,
-      },
-    });
-  } catch (error) {
-    console.error("Get stats error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 3. GET LOW STOCK ITEMS
-// ============================================
-exports.getLowStockItems = async (req, res) => {
-  try {
-    const records = await StoreBalance.findAll({
-      where: {
-        status: "Active",
-        [Op.and]: [
-          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
-          { balance: { [Op.gt]: 0 } },
-        ],
-      },
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    const formattedRows = records.map((record) => ({
-      id: record.id,
-      storeName: record.store?.name || null,
-      groupName: record.group?.name || null,
-      itemName: record.item?.standardName || record.item?.name || null,
-      itemCode: record.item?.code || null,
-      uomCode: record.item?.uom?.code || null,
-      balance: parseFloat(record.balance),
-      minStockAlert: parseFloat(record.minStockAlert),
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-    });
-  } catch (error) {
-    console.error("Get low stock error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// balanceController.js - Add these methods after getCategories
 
 // ============================================
 // GET ACTIVE CATEGORIES
@@ -539,6 +560,109 @@ exports.getItemsByCategory = async (req, res) => {
 };
 
 // ============================================
+// 2. GET BALANCE STATISTICS
+// ============================================
+exports.getStats = async (req, res) => {
+  try {
+    const totalStoresResult = await StoreBalance.findAll({
+      attributes: [
+        [sequelize.fn("DISTINCT", sequelize.col("storeId")), "storeId"],
+      ],
+    });
+    const totalStores = totalStoresResult.length;
+
+    const totalItems = await StoreBalance.count();
+
+    const lowStockItems = await StoreBalance.count({
+      where: {
+        status: "Active",
+        [Op.and]: [
+          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
+          { balance: { [Op.gt]: 0 } },
+        ],
+      },
+    });
+
+    const pendingRequestsCount = await ItemRequest.count({
+      where: { status: "approved" },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalStores,
+        totalItems,
+        lowStockItems,
+        pendingRequestsCount,
+      },
+    });
+  } catch (error) {
+    console.error("Get stats error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 3. GET LOW STOCK ITEMS
+// ============================================
+exports.getLowStockItems = async (req, res) => {
+  try {
+    const records = await StoreBalance.findAll({
+      where: {
+        status: "Active",
+        [Op.and]: [
+          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
+          { balance: { [Op.gt]: 0 } },
+        ],
+      },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    const formattedRows = records.map((record) => ({
+      id: record.id,
+      storeName: record.store?.name || null,
+      groupName: record.group?.name || null,
+      itemName: record.item?.standardName || record.item?.name || null,
+      itemCode: record.item?.code || null,
+      uomCode: record.item?.uom?.code || null,
+      balance: parseFloat(record.balance),
+      minStockAlert: parseFloat(record.minStockAlert),
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+    });
+  } catch (error) {
+    console.error("Get low stock error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
 // 4. GET BALANCE BY ID
 // ============================================
 exports.getBalanceById = async (req, res) => {
@@ -619,7 +743,7 @@ exports.getBalanceById = async (req, res) => {
 };
 
 // ============================================
-// 5. CREATE BALANCE (INITIALIZE) - FIXED
+// 5. CREATE BALANCE (INITIALIZE)
 // ============================================
 
 exports.createBalance = async (req, res) => {
@@ -628,12 +752,9 @@ exports.createBalance = async (req, res) => {
   try {
     const { storeId, groupId, itemId, balance, minStock, status } = req.body;
 
-    // Get the user ID from the request or use null
     let userId = req.user?.userId || null;
 
-    // If no user ID, try to find a default user or skip the history
     if (!userId) {
-      // Find the first active user to use as fallback
       const defaultUser = await User.findOne({
         where: { isActive: true },
         attributes: ["userId"],
@@ -645,7 +766,6 @@ exports.createBalance = async (req, res) => {
     console.log("📦 Create balance request body:", req.body);
     console.log("👤 Using userId:", userId);
 
-    // Validate required fields
     if (!storeId || !groupId || !itemId) {
       return res.status(400).json({
         success: false,
@@ -653,7 +773,6 @@ exports.createBalance = async (req, res) => {
       });
     }
 
-    // Convert to proper types
     const storeIdInt = parseInt(storeId);
     const groupIdInt = parseInt(groupId);
     const itemIdInt = parseInt(itemId);
@@ -661,7 +780,6 @@ exports.createBalance = async (req, res) => {
     const minStockFloat = parseFloat(minStock) || 0;
     const statusStr = status || "Active";
 
-    // Check if balance already exists
     const existing = await StoreBalance.findOne({
       where: {
         storeId: storeIdInt,
@@ -677,7 +795,6 @@ exports.createBalance = async (req, res) => {
       });
     }
 
-    // Create the balance record
     const balanceRecord = await StoreBalance.create(
       {
         storeId: storeIdInt,
@@ -690,7 +807,6 @@ exports.createBalance = async (req, res) => {
       { transaction },
     );
 
-    // Create history record - only if we have a valid userId
     if (userId) {
       await StoreBalanceHistory.create(
         {
@@ -716,7 +832,6 @@ exports.createBalance = async (req, res) => {
 
     await transaction.commit();
 
-    // Fetch the created record
     const createdRecord = await StoreBalance.findByPk(balanceRecord.id, {
       include: [
         {
@@ -749,7 +864,6 @@ exports.createBalance = async (req, res) => {
       ],
     });
 
-    // Format response
     const item = createdRecord.item;
     const conversionValue = parseFloat(item?.conversionValue) || 1;
 
@@ -804,7 +918,7 @@ exports.createBalance = async (req, res) => {
 };
 
 // ============================================
-// 6. UPDATE BALANCE - FIXED
+// 6. UPDATE BALANCE
 // ============================================
 exports.updateBalance = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -831,12 +945,10 @@ exports.updateBalance = async (req, res) => {
       });
     }
 
-    // Convert values - USE CAMELCASE
     const storeIdInt = storeId ? parseInt(storeId) : balance.storeId;
     const groupIdInt = groupId ? parseInt(groupId) : balance.groupId;
     const itemIdInt = itemId ? parseInt(itemId) : balance.itemId;
 
-    // Check for duplicates
     if (storeId || groupId || itemId) {
       const duplicate = await StoreBalance.findOne({
         where: {
@@ -856,7 +968,6 @@ exports.updateBalance = async (req, res) => {
       }
     }
 
-    // Update the balance - USE CAMELCASE
     await balance.update(
       {
         storeId: storeIdInt,
@@ -871,7 +982,6 @@ exports.updateBalance = async (req, res) => {
 
     await transaction.commit();
 
-    // Fetch updated record
     const updatedRecord = await StoreBalance.findByPk(id, {
       include: [
         {
@@ -904,7 +1014,6 @@ exports.updateBalance = async (req, res) => {
       ],
     });
 
-    // Format response
     const item = updatedRecord.item;
     const conversionValue = parseFloat(item?.conversionValue) || 1;
 
@@ -1042,7 +1151,6 @@ exports.getApprovedRequests = async (req, res) => {
       groupId,
     );
 
-    // Build the where clause
     const whereClause = {
       status: "approved",
       [Op.or]: [
@@ -1051,7 +1159,6 @@ exports.getApprovedRequests = async (req, res) => {
       ],
     };
 
-    // Get the requests WITHOUT the groupProcessing include
     const requests = await ItemRequest.findAll({
       where: whereClause,
       include: [
@@ -1094,16 +1201,13 @@ exports.getApprovedRequests = async (req, res) => {
 
     console.log(`✅ Found ${requests.length} total approved requests`);
 
-    // 🔥 Get processing records separately
     let filteredRequests = requests;
     if (groupId) {
       const requestIds = requests.map((r) => r.requestId);
 
-      // Get RequestGroupProcessing model from sequelize
       const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
 
       if (RequestGroupProcessing) {
-        // 🔥 FIX: Convert groupId to number
         const groupIdInt = parseInt(groupId);
         
         const processingRecords = await RequestGroupProcessing.findAll({
@@ -1114,14 +1218,12 @@ exports.getApprovedRequests = async (req, res) => {
           attributes: ["requestId", "status"],
         });
 
-        // 🔥 FIX: Convert requestIds to numbers when creating the set
         const processedRequestIds = new Set(
           processingRecords
             .filter((r) => r.status === "processed")
             .map((r) => parseInt(r.requestId)),
         );
 
-        // Filter out requests that have been processed by this group
         filteredRequests = requests.filter(
           (r) => !processedRequestIds.has(parseInt(r.requestId)),
         );
@@ -1131,7 +1233,6 @@ exports.getApprovedRequests = async (req, res) => {
       }
     }
 
-    // Format the response
     const formattedRequests = filteredRequests.map((request) => ({
       id: request.requestId,
       requestCode: request.requestCode,
@@ -1173,7 +1274,6 @@ exports.getApprovedRequests = async (req, res) => {
 // PROCESS REQUESTS - COMPLETE PRODUCTION VERSION
 // ============================================
 
-
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -1186,9 +1286,6 @@ exports.processRequests = async (req, res) => {
       requestIds,
     });
 
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
     if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -1206,9 +1303,6 @@ exports.processRequests = async (req, res) => {
 
     console.log("✅ Valid request IDs:", validRequestIds);
 
-    // ================================================================
-    // 2. GET VALID USER ID
-    // ================================================================
     let userId = req.user?.userId || null;
 
     if (!userId) {
@@ -1234,17 +1328,11 @@ exports.processRequests = async (req, res) => {
 
     console.log("👤 Using userId:", userId);
 
-    // ================================================================
-    // 3. GET RequestGroupProcessing MODEL
-    // ================================================================
     const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
     if (!RequestGroupProcessing) {
       throw new Error("RequestGroupProcessing model not found");
     }
 
-    // ================================================================
-    // 4. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
     const group = await Group.findByPk(parseInt(groupId));
     if (!group) {
       await transaction.rollback();
@@ -1262,9 +1350,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 5. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
     const store = await Store.findByPk(parseInt(storeId));
     if (!store) {
       await transaction.rollback();
@@ -1282,9 +1367,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 6. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         storeId: parseInt(storeId),
@@ -1300,9 +1382,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 7. GET REQUESTS WITH THEIR ITEMS
-    // ================================================================
     const requests = await ItemRequest.findAll({
       where: {
         requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
@@ -1340,9 +1419,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 8. PROCESS EACH REQUEST
-    // ================================================================
     let processedCount = 0;
     let failedCount = 0;
     const logs = [];
@@ -1357,9 +1433,6 @@ exports.processRequests = async (req, res) => {
     for (const request of requests) {
       console.log(`📋 Processing request: ${request.requestCode}`);
 
-      // ================================================================
-      // 8a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-      // ================================================================
       const existingRecord = await RequestGroupProcessing.findOne({
         where: {
           requestId: request.requestId,
@@ -1372,8 +1445,6 @@ exports.processRequests = async (req, res) => {
           `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
         );
         processedRequestIds.push(request.requestId);
-        
-        // 🔥 Check if all groups have processed even if this group already did
         await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
         continue;
       }
@@ -1388,15 +1459,10 @@ exports.processRequests = async (req, res) => {
           reason: existingRecord.remark || "Skipped by admin",
         });
         processedRequestIds.push(request.requestId);
-        
-        // 🔥 Check if all groups have processed even if this group was skipped
         await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
         continue;
       }
 
-      // ================================================================
-      // 8b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-      // ================================================================
       if (
         request.askingStoreId !== parseInt(storeId) &&
         request.supplyingStoreId !== parseInt(storeId)
@@ -1408,9 +1474,6 @@ exports.processRequests = async (req, res) => {
         continue;
       }
 
-      // ================================================================
-      // 8c. DETERMINE ACTION
-      // ================================================================
       let action, transactionType, changeMultiplier, actionLabel;
       if (request.askingStoreId === parseInt(storeId)) {
         action = "STOCK_IN";
@@ -1432,9 +1495,6 @@ exports.processRequests = async (req, res) => {
 
       console.log(`📋 Action: ${action} for request ${request.requestCode}`);
 
-      // ================================================================
-      // 8d. CHECK ITEMS, AUTO-INITIALIZE IF NEEDED, AND PROCESS
-      // ================================================================
       const requestResults = [];
       const requestErrors = [];
       const requestAutoInitialized = [];
@@ -1610,9 +1670,6 @@ exports.processRequests = async (req, res) => {
         }
       }
 
-      // ================================================================
-      // 8e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-      // ================================================================
       if (requestResults.length > 0 || requestErrors.length > 0) {
         const remark =
           requestResults.length > 0
@@ -1657,17 +1714,11 @@ exports.processRequests = async (req, res) => {
 
       processedRequestIds.push(request.requestId);
 
-      // ================================================================
-      // 8f. 🔥 CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-      // ================================================================
       await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
     }
 
     await transaction.commit();
 
-    // ================================================================
-    // 9. PREPARE RESPONSE
-    // ================================================================
     const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
 
     const detailedLogs = [...logs];
@@ -1753,143 +1804,6 @@ exports.processRequests = async (req, res) => {
   }
 };
 
-// ================================================================
-// HELPER FUNCTION: Check and Finalize Request
-// ================================================================
-
-// ================================================================
-// HELPER FUNCTION: Check and Finalize Request
-// ================================================================
-
-async function checkAndFinalizeRequest(request, storeId, transaction, logs, finalizedRequests) {
-  try {
-    console.log(`🔍 Checking if all groups have processed request ${request.requestCode}`);
-    console.log(`🔍 Request ID: ${request.requestId}, Store ID: ${storeId}`);
-
-    // 🔥 FIX: Use a simpler query that's guaranteed to return an array
-    const storeGroupsRaw = await sequelize.query(
-      `SELECT g.id, g.name, g.status 
-       FROM groups g
-       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
-       WHERE sgr.store_id = ? AND g.status = 'Active'`,
-      {
-        replacements: [storeId],
-        type: sequelize.QueryTypes.SELECT,
-        transaction: transaction
-      }
-    );
-
-    // 🔥 FIX: Ensure it's an array
-    const groupsArray = Array.isArray(storeGroupsRaw) ? storeGroupsRaw : [];
-    console.log(`📋 Raw groups data:`, groupsArray);
-
-    const allGroupIds = groupsArray.map(g => parseInt(g.id));
-    console.log(`📋 All groups for store ${storeId}:`, allGroupIds);
-
-    // Get ALL processed records for this request
-    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-    const processedRecordsCheck = await RequestGroupProcessing.findAll({
-      where: {
-        requestId: request.requestId,
-        status: 'processed'
-      },
-      transaction: transaction
-    });
-
-    const processedGroupIds = processedRecordsCheck
-      .map(r => parseInt(r.groupId))
-      .filter(id => !isNaN(id));
-
-    console.log(`📋 Processed groups for request ${request.requestCode}:`, processedGroupIds);
-    console.log(`🔍 Comparing: allGroupIds (${allGroupIds.length}):`, allGroupIds);
-    console.log(`🔍 Comparing: processedGroupIds (${processedGroupIds.length}):`, processedGroupIds);
-
-    // Check if ALL groups have processed
-    const allProcessed = allGroupIds.length > 0 && 
-                          allGroupIds.every(g => processedGroupIds.includes(g));
-    const remainingGroups = allGroupIds.filter(g => !processedGroupIds.includes(g));
-
-    console.log(`📋 allProcessed:`, allProcessed);
-    console.log(`📋 remainingGroups:`, remainingGroups);
-
-    if (allProcessed && allGroupIds.length > 0) {
-      console.log(`✅ ALL GROUPS HAVE PROCESSED! Finalizing request ${request.requestCode}`);
-      
-      // Update the request status within the same transaction
-      await ItemRequest.update(
-        {
-          status: 'finalized',
-          finalizedAt: new Date()
-        },
-        {
-          where: { requestId: request.requestId },
-          transaction: transaction
-        }
-      );
-      
-      // Also update the in-memory object
-      request.status = 'finalized';
-      request.finalizedAt = new Date();
-      
-      console.log(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
-      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
-      
-      if (finalizedRequests) {
-        finalizedRequests.push({
-          requestId: request.requestId,
-          requestCode: request.requestCode,
-          finalizedAt: request.finalizedAt
-        });
-      }
-      
-      return true;
-    } else if (remainingGroups.length > 0) {
-      const remainingNames = remainingGroups.map(g => {
-        const grp = groupsArray.find(g2 => parseInt(g2.id) === g);
-        return grp ? grp.name : g;
-      });
-      const msg = `⏳ Request ${request.requestCode} PARTIALLY PROCESSED - ${remainingGroups.length} group(s) remaining: ${remainingNames.join(', ')}`;
-      console.log(msg);
-      if (logs) logs.push(msg);
-      return false;
-    } else if (allGroupIds.length === 0) {
-      // No groups associated with this store - auto-finalize
-      console.log(`⚠️ No groups found for store ${storeId}, auto-finalizing`);
-      
-      await ItemRequest.update(
-        {
-          status: 'finalized',
-          finalizedAt: new Date()
-        },
-        {
-          where: { requestId: request.requestId },
-          transaction: transaction
-        }
-      );
-      
-      request.status = 'finalized';
-      request.finalizedAt = new Date();
-      
-      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - No groups in store, auto-finalized`);
-      
-      if (finalizedRequests) {
-        finalizedRequests.push({
-          requestId: request.requestId,
-          requestCode: request.requestCode,
-          finalizedAt: request.finalizedAt
-        });
-      }
-      
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error(`❌ Error in checkAndFinalizeRequest for ${request.requestCode}:`, error);
-    if (logs) logs.push(`❌ Error checking finalization for ${request.requestCode}: ${error.message}`);
-    return false;
-  }
-}
 // ============================================
 // 11. GET ALL STORES
 // ============================================
@@ -1996,10 +1910,6 @@ exports.getGroups = async (req, res) => {
 // 13. GET ACTIVE ITEMS
 // ============================================
 
-// ============================================
-// 13. GET ACTIVE ITEMS - UPDATED WITH MORE FIELDS
-// ============================================
-
 exports.getActiveItems = async (req, res) => {
   try {
     const items = await Item.findAll({
@@ -2022,16 +1932,15 @@ exports.getActiveItems = async (req, res) => {
         "code",
         "name",
         "standardName",
-        "description", // ✅ ADD THIS
-        "brand", // ✅ ADD THIS
-        "model", // ✅ ADD THIS
-        "barcode", // ✅ ADD THIS
+        "description",
+        "brand",
+        "model",
+        "barcode",
         "conversionValue",
         "status",
       ],
     });
 
-    // Format the response
     const formattedItems = items.map((item) => ({
       id: item.itemId,
       itemId: item.itemId,
@@ -2039,10 +1948,10 @@ exports.getActiveItems = async (req, res) => {
       name: item.name,
       standardName: item.standardName,
       description: item.description || "",
-      brand: item.brand || "", // ✅ NOW INCLUDED
-      model: item.model || "", // ✅ NOW INCLUDED
+      brand: item.brand || "",
+      model: item.model || "",
       barcode: item.barcode || "",
-      commonName: item.standardName || item.name || "", // Use standardName as commonName if not available
+      commonName: item.standardName || item.name || "",
       conversionValue: parseFloat(item.conversionValue) || 1,
       status: item.status,
       uomCode: item.uom?.code || null,
@@ -2159,7 +2068,7 @@ exports.getItemById = async (req, res) => {
         },
       ],
       attributes: [
-        "itemId", // Use itemId here
+        "itemId",
         "code",
         "name",
         "standardName",
@@ -2185,7 +2094,6 @@ exports.getItemById = async (req, res) => {
       });
     }
 
-    // Format response to include id
     const formattedItem = {
       id: item.itemId,
       itemId: item.itemId,
@@ -2221,7 +2129,6 @@ exports.getItemById = async (req, res) => {
 // ============================================
 // 17. DOWNLOAD CSV TEMPLATE
 // ============================================
-// balanceController.js - Updated downloadTemplate with user context
 
 exports.downloadTemplate = async (req, res) => {
   try {
@@ -2231,7 +2138,6 @@ exports.downloadTemplate = async (req, res) => {
     let userAssignedStoreName = null;
     let userAssignedGroupName = null;
 
-    // Get user's assigned store and group if logged in
     if (userId) {
       try {
         const accessResult = await getUserStoreAndGroup(userId);
@@ -2257,7 +2163,6 @@ exports.downloadTemplate = async (req, res) => {
       }
     }
 
-    // Get all active stores
     const sampleStores = await Store.findAll({
       attributes: ["id", "name", "code"],
       where: { status: "Active" },
@@ -2265,7 +2170,6 @@ exports.downloadTemplate = async (req, res) => {
       raw: true,
     });
 
-    // Get all active groups
     const sampleGroups = await Group.findAll({
       attributes: ["id", "name", "code"],
       where: { status: "Active" },
@@ -2273,7 +2177,6 @@ exports.downloadTemplate = async (req, res) => {
       raw: true,
     });
 
-    // Get sample items
     const sampleItems = await Item.findAll({
       attributes: ["code", "standardName", "name"],
       where: { status: "Active" },
@@ -2282,7 +2185,6 @@ exports.downloadTemplate = async (req, res) => {
       raw: true,
     });
 
-    // Determine which store and group to use as default
     let defaultStoreId =
       userAssignedStoreId ||
       (sampleStores.length > 0 ? sampleStores[0].id : 14);
@@ -2290,7 +2192,6 @@ exports.downloadTemplate = async (req, res) => {
       userAssignedGroupId ||
       (sampleGroups.length > 0 ? sampleGroups[0].id : 25);
 
-    // If user has assigned store but no assigned group, use the first group
     if (
       userAssignedStoreId &&
       !userAssignedGroupId &&
@@ -2299,7 +2200,6 @@ exports.downloadTemplate = async (req, res) => {
       defaultGroupId = sampleGroups[0].id;
     }
 
-    // If user has assigned group but no assigned store, use the first store
     if (
       userAssignedGroupId &&
       !userAssignedStoreId &&
@@ -2311,10 +2211,8 @@ exports.downloadTemplate = async (req, res) => {
     console.log("📋 Default Store ID:", defaultStoreId);
     console.log("📋 Default Group ID:", defaultGroupId);
 
-    // Build the template content
     let csvContent = "";
 
-    // Add header comments
     csvContent += "# ============================================\n";
     csvContent += "# STORE BALANCE IMPORT TEMPLATE\n";
     csvContent += "# ============================================\n";
@@ -2329,7 +2227,6 @@ exports.downloadTemplate = async (req, res) => {
     csvContent += "# 5. All columns must be in the order shown above\n";
     csvContent += "#\n";
 
-    // Show user's assigned store and group if available
     if (userAssignedStoreId && userAssignedGroupId) {
       csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
       csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
@@ -2349,7 +2246,6 @@ exports.downloadTemplate = async (req, res) => {
       csvContent += "#\n";
     }
 
-    // Add store info
     if (sampleStores && sampleStores.length > 0) {
       csvContent += "# Available Stores:\n";
       sampleStores.forEach((store) => {
@@ -2359,7 +2255,6 @@ exports.downloadTemplate = async (req, res) => {
     }
     csvContent += "#\n";
 
-    // Add group info
     if (sampleGroups && sampleGroups.length > 0) {
       csvContent += "# Available Groups:\n";
       sampleGroups.forEach((group) => {
@@ -2369,7 +2264,6 @@ exports.downloadTemplate = async (req, res) => {
     }
     csvContent += "#\n";
 
-    // Add sample item codes
     if (sampleItems && sampleItems.length > 0) {
       csvContent += "# Sample Item Codes:\n";
       sampleItems.forEach((item) => {
@@ -2379,24 +2273,18 @@ exports.downloadTemplate = async (req, res) => {
     }
     csvContent += "# ============================================\n";
 
-    // Add headers (use comma separator)
     csvContent += "storeId,groupId,itemCode,balance,minStock,status\n";
 
-    // Add sample data rows with user's default store/group
     if (sampleItems && sampleItems.length > 0) {
-      // Use the first 6 items
       const itemsToUse = sampleItems.slice(0, 6);
 
       itemsToUse.forEach((item, index) => {
         const balance = (index + 1) * 50;
         const minStock = (index + 1) * 5;
 
-        // Use the user's default store and group for ALL rows
-        // This makes it easier for the user - they just need to change quantities
         csvContent += `${defaultStoreId},${defaultGroupId},${item.code},${balance},${minStock},Active\n`;
       });
     } else {
-      // Fallback with user's default IDs
       csvContent += `${defaultStoreId},${defaultGroupId},SDT002001,50,5,Active\n`;
       csvContent += `${defaultStoreId},${defaultGroupId},SDT002002,100,10,Active\n`;
       csvContent += `${defaultStoreId},${defaultGroupId},SDT002003,150,15,Active\n`;
@@ -2405,7 +2293,6 @@ exports.downloadTemplate = async (req, res) => {
       csvContent += `${defaultStoreId},${defaultGroupId},SDT002006,300,30,Active\n`;
     }
 
-    // Add BOM for Excel compatibility
     const csvWithBOM = "\uFEFF" + csvContent;
 
     res.setHeader("Content-Type", "text/csv");
@@ -2422,10 +2309,10 @@ exports.downloadTemplate = async (req, res) => {
     });
   }
 };
+
 // ============================================
 // 18. IMPORT BALANCES FROM CSV
 // ============================================
-// balanceController.js - FIXED importBalances with valid user ID
 
 exports.importBalances = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -2438,10 +2325,8 @@ exports.importBalances = async (req, res) => {
       });
     }
 
-    // ✅ FIX: Get a valid user ID from the database
     let userId = req.user?.userId || null;
 
-    // If no user from request, find a valid active user
     if (!userId) {
       const defaultUser = await User.findOne({
         where: { isActive: true },
@@ -2451,7 +2336,6 @@ exports.importBalances = async (req, res) => {
       userId = defaultUser ? defaultUser.userId : null;
     }
 
-    // If still no user, get any user (fallback)
     if (!userId) {
       const anyUser = await User.findOne({
         attributes: ["userId"],
@@ -2460,7 +2344,6 @@ exports.importBalances = async (req, res) => {
       userId = anyUser ? anyUser.userId : null;
     }
 
-    // If still no user, use null (history will be skipped)
     if (!userId) {
       console.warn("⚠️ No valid user found, skipping history records");
     }
@@ -2472,7 +2355,6 @@ exports.importBalances = async (req, res) => {
     let successCount = 0;
     let failedCount = 0;
 
-    // Read the file content first to detect separator
     const fileContent = fs.readFileSync(req.file.path, "utf8");
     const lines = fileContent
       .split("\n")
@@ -2484,7 +2366,6 @@ exports.importBalances = async (req, res) => {
       );
     }
 
-    // Detect separator - check if first line has tabs or commas
     const firstLine = lines[0];
     const hasTabs = firstLine.includes("\t");
     const hasCommas = firstLine.includes(",");
@@ -2500,13 +2381,11 @@ exports.importBalances = async (req, res) => {
       console.log("📋 Could not detect separator, using comma");
     }
 
-    // Parse headers
     const headers = lines[0]
       .split(separator)
       .map((h) => h.trim().toLowerCase());
     console.log("📋 Headers:", headers);
 
-    // Required columns
     const requiredHeaders = ["storeid", "groupid", "balance"];
     const hasItemId = headers.includes("itemid");
     const hasItemCode = headers.includes("itemcode");
@@ -2520,7 +2399,6 @@ exports.importBalances = async (req, res) => {
       throw new Error(`Missing required headers: ${missingHeaders.join(", ")}`);
     }
 
-    // Parse data rows
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -2541,7 +2419,6 @@ exports.importBalances = async (req, res) => {
       const rowNumber = i + 2;
 
       try {
-        // Get values from CSV
         const storeId = parseInt(row.storeid);
         const groupId = parseInt(row.groupid);
         const itemCode = (row.itemcode || row.itemid || "").trim();
@@ -2553,14 +2430,12 @@ exports.importBalances = async (req, res) => {
           `📊 Row ${rowNumber}: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
         );
 
-        // Validate required fields
         if (isNaN(storeId) || isNaN(groupId) || !itemCode || isNaN(balance)) {
           throw new Error(
             `storeId, groupId, itemCode, and balance are required. Got: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
           );
         }
 
-        // Find the item by code
         const item = await Item.findOne({
           where: { code: itemCode },
           attributes: ["itemId", "code", "name", "standardName"],
@@ -2580,7 +2455,6 @@ exports.importBalances = async (req, res) => {
           `✅ Row ${rowNumber}: Found item: ${itemCode} (ID: ${itemId})`,
         );
 
-        // Check if balance already exists
         const existing = await StoreBalance.findOne({
           where: {
             storeId: storeId,
@@ -2600,7 +2474,6 @@ exports.importBalances = async (req, res) => {
           continue;
         }
 
-        // Create the balance record
         const balanceRecord = await StoreBalance.create(
           {
             storeId: storeId,
@@ -2613,7 +2486,6 @@ exports.importBalances = async (req, res) => {
           { transaction },
         );
 
-        // ✅ Create history record only if we have a valid userId
         if (userId) {
           await StoreBalanceHistory.create(
             {
@@ -2678,6 +2550,9 @@ exports.importBalances = async (req, res) => {
   }
 };
 
+// ============================================
+// 19. EXPORT BALANCES TO EXCEL
+// ============================================
 
 exports.exportBalances = async (req, res) => {
   try {
@@ -2690,13 +2565,11 @@ exports.exportBalances = async (req, res) => {
     const targetCategoryId = categoryId ? parseInt(categoryId) : null;
     const targetStatus = status || null;
     
-    // Build where clause for store_balances
     const whereClause = {};
     if (targetStoreId) whereClause.store_id = targetStoreId;
     if (targetGroupId) whereClause.group_id = targetGroupId;
     if (targetStatus) whereClause.status = targetStatus;
     
-    // Get balances with related data
     const balances = await StoreBalance.findAll({
       where: whereClause,
       include: [
@@ -2733,17 +2606,14 @@ exports.exportBalances = async (req, res) => {
     
     console.log(`✅ Found ${balances.length} balance records`);
     
-    // Get store and group info
     const storeName = balances.length > 0 ? balances[0].store?.name || 'Unknown Store' : 'Unknown Store';
     const groupName = balances.length > 0 ? balances[0].group?.name || 'Unknown Group' : 'Unknown Group';
     const storeCode = balances.length > 0 ? balances[0].store?.code || '' : '';
     const groupCode = balances.length > 0 ? balances[0].group?.code || '' : '';
     const categoryName = balances.length > 0 && balances[0].item?.category ? balances[0].item.category.name : 'All Categories';
     
-    // Get user info
     const userName = req.user?.fullName || req.user?.username || 'Admin';
     
-    // Calculate totals
     let totalItems = balances.length;
     let activeItems = 0;
     let zeroBalanceItems = 0;
@@ -2763,23 +2633,15 @@ exports.exportBalances = async (req, res) => {
       }
     });
     
-    // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Super Double "T" General Trading PLC';
     workbook.created = new Date();
     
-    // ============================================================
-    // SHEET 1: STORE BALANCE REPORT
-    // ============================================================
     const sheet = workbook.addWorksheet('Store Balance Report');
     
     let currentRow = 1;
     
-    // ============================================================
-    // HEADER SECTION
-    // ============================================================
-    
-    // Row 1: Company Name
+    // Company Name
     sheet.mergeCells(`A${currentRow}:F${currentRow}`);
     const companyCell = sheet.getCell(`A${currentRow}`);
     companyCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
@@ -2788,7 +2650,7 @@ exports.exportBalances = async (req, res) => {
     sheet.getRow(currentRow).height = 35;
     currentRow++;
     
-    // Row 2: Slogan
+    // Slogan
     sheet.mergeCells(`A${currentRow}:F${currentRow}`);
     const sloganCell = sheet.getCell(`A${currentRow}`);
     sloganCell.value = 'WE TRUST IN GOD!!!  እግዚአብሔር ይባረክ!!!';
@@ -2797,10 +2659,9 @@ exports.exportBalances = async (req, res) => {
     sheet.getRow(currentRow).height = 25;
     currentRow++;
     
-    // Row 3: Empty row
     currentRow++;
     
-    // Row 4: Report Title
+    // Report Title
     sheet.mergeCells(`A${currentRow}:F${currentRow}`);
     const titleCell = sheet.getCell(`A${currentRow}`);
     titleCell.value = 'STORE BALANCE REPORT';
@@ -2809,11 +2670,9 @@ exports.exportBalances = async (req, res) => {
     sheet.getRow(currentRow).height = 30;
     currentRow++;
     
-    // Row 5: Empty row
     currentRow++;
     
-    // Row 6-9: Store and Group Info
-    // Store Info
+    // Store and Group Info
     const storeRow = sheet.getRow(currentRow);
     storeRow.getCell(1).value = 'Store:';
     storeRow.getCell(1).font = { bold: true };
@@ -2823,7 +2682,6 @@ exports.exportBalances = async (req, res) => {
     storeRow.getCell(5).value = groupName;
     currentRow++;
     
-    // Store Code
     const storeCodeRow = sheet.getRow(currentRow);
     storeCodeRow.getCell(1).value = 'Store Code:';
     storeCodeRow.getCell(1).font = { bold: true };
@@ -2833,7 +2691,6 @@ exports.exportBalances = async (req, res) => {
     storeCodeRow.getCell(5).value = groupCode;
     currentRow++;
     
-    // Category Filter Info
     const categoryRow = sheet.getRow(currentRow);
     categoryRow.getCell(1).value = 'Category:';
     categoryRow.getCell(1).font = { bold: true };
@@ -2843,7 +2700,6 @@ exports.exportBalances = async (req, res) => {
     categoryRow.getCell(5).value = targetStatus || 'All';
     currentRow++;
     
-    // Report Generated Info
     const now = new Date();
     const dateTimeStr = now.toLocaleString('en-US', { 
       year: 'numeric', 
@@ -2863,14 +2719,9 @@ exports.exportBalances = async (req, res) => {
     generatedRow.getCell(5).value = dateTimeStr;
     currentRow++;
     
-    // Empty row
     currentRow++;
     
-    // ============================================================
-    // SUMMARY SECTION (Total Balance REMOVED)
-    // ============================================================
-    
-    // Summary Title
+    // Summary
     sheet.mergeCells(`A${currentRow}:F${currentRow}`);
     const summaryTitleCell = sheet.getCell(`A${currentRow}`);
     summaryTitleCell.value = 'SUMMARY';
@@ -2878,7 +2729,6 @@ exports.exportBalances = async (req, res) => {
     sheet.getRow(currentRow).height = 25;
     currentRow++;
     
-    // Summary Data - NO Total Balance
     const summaryData = [
       ['Total Items:', totalItems, 'Active Items:', activeItems],
       ['Zero Balance Items:', zeroBalanceItems, 'Low Stock Items:', lowStockItems]
@@ -2899,13 +2749,8 @@ exports.exportBalances = async (req, res) => {
       currentRow++;
     });
     
-    // Empty rows before table
     currentRow++;
     currentRow++;
-    
-    // ============================================================
-    // DATA TABLE SECTION
-    // ============================================================
     
     // Table Header
     const headerRow2 = sheet.getRow(currentRow);
@@ -2930,22 +2775,19 @@ exports.exportBalances = async (req, res) => {
     sheet.getRow(currentRow).height = 25;
     currentRow++;
     
-    // Set column widths
-    sheet.getColumn(1).width = 8;   // #
-    sheet.getColumn(2).width = 18;  // Item Code
-    sheet.getColumn(3).width = 45;  // Item Name
-    sheet.getColumn(4).width = 25;  // Category
-    sheet.getColumn(5).width = 12;  // UOM
-    sheet.getColumn(6).width = 14;  // Balance
-    sheet.getColumn(7).width = 12;  // Status
+    sheet.getColumn(1).width = 8;
+    sheet.getColumn(2).width = 18;
+    sheet.getColumn(3).width = 45;
+    sheet.getColumn(4).width = 25;
+    sheet.getColumn(5).width = 12;
+    sheet.getColumn(6).width = 14;
+    sheet.getColumn(7).width = 12;
     
-    // ✅ ADD DATA ROWS
     let rowCounter = 1;
     balances.forEach((record) => {
       const item = record.item;
       const balance = parseFloat(record.balance) || 0;
       
-      // Get the item name
       const itemName = item?.standardName || item?.name || 'Unnamed';
       
       const row = sheet.getRow(currentRow);
@@ -2957,7 +2799,6 @@ exports.exportBalances = async (req, res) => {
       row.getCell(6).value = balance;
       row.getCell(7).value = record.status || 'Active';
       
-      // Color balance cell based on value
       const balanceCell = row.getCell(6);
       const minStock = parseFloat(record.minStockAlert) || 0;
       
@@ -2984,7 +2825,6 @@ exports.exportBalances = async (req, res) => {
         balanceCell.font = { color: { argb: 'FF166534' }, bold: true };
       }
       
-      // Color status cell
       const statusCell = row.getCell(7);
       if (record.status === 'Active') {
         statusCell.fill = {
@@ -3002,7 +2842,6 @@ exports.exportBalances = async (req, res) => {
         statusCell.font = { color: { argb: 'FFDC2626' }, bold: true };
       }
       
-      // Add borders to all cells
       for (let col = 1; col <= 7; col++) {
         row.getCell(col).border = {
           top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -3018,16 +2857,12 @@ exports.exportBalances = async (req, res) => {
     
     console.log(`✅ Added ${rowCounter - 1} data rows to Excel`);
     
-    // Add auto-filter
     const headerRowNumber = headerRow2.number;
     sheet.autoFilter = {
       from: `A${headerRowNumber}`,
       to: `G${headerRowNumber}`
     };
     
-    // ============================================================
-    // GENERATE EXCEL FILE
-    // ============================================================
     const buffer = await workbook.xlsx.writeBuffer();
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -3042,6 +2877,7 @@ exports.exportBalances = async (req, res) => {
     });
   }
 };
+
 // ============================================
 // 20. GET BALANCE HISTORY
 // ============================================
@@ -3401,7 +3237,6 @@ exports.getSummaryByItem = async (req, res) => {
 // ============================================
 // 24. GET ALL ITEMS
 // ============================================
-// balanceController.js - Fix getItems
 
 exports.getItems = async (req, res) => {
   try {
@@ -3448,7 +3283,7 @@ exports.getItems = async (req, res) => {
       offset: offset,
       order: [["name", "ASC"]],
       attributes: [
-        "itemId", // Use itemId here
+        "itemId",
         "code",
         "name",
         "standardName",
@@ -3467,9 +3302,8 @@ exports.getItems = async (req, res) => {
       ],
     });
 
-    // Format response to include id for frontend
     const formattedRows = rows.map((item) => ({
-      id: item.itemId, // Map itemId to id
+      id: item.itemId,
       itemId: item.itemId,
       code: item.code,
       name: item.name,
@@ -3613,7 +3447,6 @@ exports.getStoreGroupRelations = async (req, res) => {
       storeId || "all",
     );
 
-    // If storeId is provided, get groups for that specific store
     if (storeId) {
       const store = await Store.findByPk(parseInt(storeId), {
         include: [
@@ -3652,7 +3485,6 @@ exports.getStoreGroupRelations = async (req, res) => {
       });
     }
 
-    // If no storeId, get all store-group relations
     const relations = await StoreGroupRelation.findAll({
       include: [
         {
@@ -3696,8 +3528,6 @@ exports.getStoreGroupRelations = async (req, res) => {
   }
 };
 
-// balanceController.js - Add this method
-
 // ============================================
 // GET USER STORE AND GROUP ACCESS
 // ============================================
@@ -3712,7 +3542,6 @@ exports.getUserStoreAndGroupAccess = async (req, res) => {
       });
     }
 
-    // Call the utility function
     const result = await getUserStoreAndGroup(userId);
 
     if (!result.success) {
@@ -3759,10 +3588,8 @@ exports.getRequestGroupStatus = async (req, res) => {
       });
     }
 
-    // Get all groups that have access to this store (asking or supplying)
     const storeId = request.askingStoreId || request.supplyingStoreId;
 
-    // Get groups for this store via StoreGroupRelation
     const storeWithGroups = await Store.findByPk(storeId, {
       include: [
         {
@@ -3774,13 +3601,11 @@ exports.getRequestGroupStatus = async (req, res) => {
       ],
     });
 
-    // 🔥 FIX: Convert to numbers
     const allGroups = (storeWithGroups?.groups || []).map(g => ({
       ...g.toJSON ? g.toJSON() : g,
       groupId: parseInt(g.groupId)
     }));
 
-    // Get processing records for this request
     const processingRecords = await RequestGroupProcessing.findAll({
       where: { requestId: parseInt(requestId) },
       include: [
@@ -3797,7 +3622,6 @@ exports.getRequestGroupStatus = async (req, res) => {
       ],
     });
 
-    // Build the response with proper type conversion
     const groupsWithStatus = allGroups.map((group) => {
       const record = processingRecords.find((r) => parseInt(r.groupId) === group.groupId);
       return {
@@ -3841,11 +3665,7 @@ exports.getRequestGroupStatus = async (req, res) => {
 };
 
 // ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH AUTO-INITIALIZATION
-// ============================================
-
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH AUTO-INITIALIZATION
+// PROCESS REQUEST FOR A SPECIFIC GROUP
 // ============================================
 
 exports.processRequestForGroup = async (req, res) => {
@@ -3863,9 +3683,6 @@ exports.processRequestForGroup = async (req, res) => {
       userId,
     });
 
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
     if (!groupId || !storeId) {
       return res.status(400).json({
         success: false,
@@ -3873,9 +3690,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 2. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
     const group = await Group.findByPk(parseInt(groupId));
     if (!group) {
       return res.status(404).json({
@@ -3891,9 +3705,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 3. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
     const store = await Store.findByPk(parseInt(storeId));
     if (!store) {
       return res.status(404).json({
@@ -3909,9 +3720,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 4. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         storeId: parseInt(storeId),
@@ -3926,9 +3734,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 5. CHECK IF REQUEST EXISTS AND IS APPROVED
-    // ================================================================
     const request = await ItemRequest.findByPk(requestId, {
       include: [
         {
@@ -3973,9 +3778,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-    // ================================================================
     const existingRecord = await RequestGroupProcessing.findOne({
       where: {
         requestId: parseInt(requestId),
@@ -3998,9 +3800,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 7. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-    // ================================================================
     if (
       request.askingStoreId !== parseInt(storeId) &&
       request.supplyingStoreId !== parseInt(storeId)
@@ -4012,9 +3811,6 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 8. 🔥 CHECK AND AUTO-INITIALIZE MISSING ITEMS
-    // ================================================================
     const missingItems = [];
     const inactiveItems = [];
     const initializedItems = [];
@@ -4160,9 +3956,6 @@ exports.processRequestForGroup = async (req, res) => {
       `✅ All ${request.items.length} items are ready for processing (${autoInitializedItems.length} auto-initialized)`,
     );
 
-    // ================================================================
-    // 9. DETERMINE ACTION (Stock In or Stock Out)
-    // ================================================================
     let action, transactionType, changeMultiplier, actionLabel;
     if (request.askingStoreId === parseInt(storeId)) {
       action = "STOCK_IN";
@@ -4184,9 +3977,6 @@ exports.processRequestForGroup = async (req, res) => {
 
     console.log(`📋 Action: ${action} for request ${request.requestCode}`);
 
-    // ================================================================
-    // 10. PROCESS EACH ITEM IN THE REQUEST
-    // ================================================================
     const results = [];
     const errors = [];
 
@@ -4268,9 +4058,6 @@ exports.processRequestForGroup = async (req, res) => {
       }
     }
 
-    // ================================================================
-    // 11. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-    // ================================================================
     const remark =
       results.length > 0
         ? `Processed ${results.length} items (${results.map((r) => `${r.itemCode}: ${r.action} ${r.changeAmount}${r.wasAutoInitialized ? " [auto-initialized]" : ""}`).join(", ")})`
@@ -4297,19 +4084,13 @@ exports.processRequestForGroup = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // 12. 🔥 CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-    // ================================================================
-    // Use the helper function to check and finalize
+    // 🔥 Check if all groups have processed this request
     const logs = [];
     const finalizedRequests = [];
     await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
 
     await transaction.commit();
 
-    // ================================================================
-    // 13. PREPARE RESPONSE
-    // ================================================================
     const responseData = {
       requestId: parseInt(requestId),
       requestCode: request.requestCode,
@@ -4404,7 +4185,7 @@ exports.getAllRequestProcessingStatus = async (req, res) => {
         supplyingStoreId: request.supplyingStoreId,
         status: request.status,
         processedGroups: processedGroups.map((g) => ({
-          groupId: parseInt(g.groupId), // 🔥 FIX: Convert to number
+          groupId: parseInt(g.groupId),
           groupName: g.group?.name || null,
           processedAt: g.processedAt,
         })),
@@ -4433,7 +4214,6 @@ exports.skipGroupProcessing = async (req, res) => {
     const { groupId, remark } = req.body;
     const userId = req.user?.userId || 1;
 
-    // Check if user is admin
     const user = await User.findByPk(userId);
     if (!user || (user.role !== "admin" && user.role !== "Admin")) {
       return res.status(403).json({
@@ -4450,11 +4230,9 @@ exports.skipGroupProcessing = async (req, res) => {
       });
     }
 
-    // 🔥 FIX: Convert to numbers
     const requestIdInt = parseInt(requestId);
     const groupIdInt = parseInt(groupId);
 
-    // Create or update the group processing record
     const [record, created] = await RequestGroupProcessing.findOrCreate({
       where: {
         requestId: requestIdInt,

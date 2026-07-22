@@ -2,6 +2,7 @@
 
 const { Op } = require("sequelize");
 const { getUserStoreAndGroup } = require("../utils/userAccess");
+const ExcelJS = require('exceljs');
 
 const {
   StoreBalance,
@@ -215,6 +216,7 @@ const getStatusClass = (status) => {
  * 1. GET STORE AUDIT - MAIN ENDPOINT
  * GET /api/audit/store/:storeId
  */
+
 exports.getStoreAudit = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -486,74 +488,79 @@ exports.getStoreAudit = async (req, res) => {
 
       let transactions = [];
       if (includeTransactions === 'true') {
-        const allTransactions = await StoreBalanceHistory.findAll({
-          where: {
-            storeId: parseInt(storeId),
-            groupId: group.groupId,
-          },
-          include: [
-            {
-              model: Store,
-              as: "store",
-              attributes: ["storeId", "name", "code"],
+        try {
+          const allTransactions = await StoreBalanceHistory.findAll({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: group.groupId,
             },
-            {
-              model: Group,
-              as: "group",
-              attributes: ["groupId", "name", "code"],
-            },
-            {
-              model: Item,
-              as: "item",
-              attributes: ["itemId", "code", "name", "standardName"],
-              include: [
-                {
-                  model: UOM,
-                  as: "uom",
-                  attributes: ["id", "code", "name"],
-                },
-              ],
-            },
-            {
-              model: Store,
-              as: "sourceStore",
-              attributes: ["storeId", "name", "code"],
-            },
-            {
-              model: Store,
-              as: "destinationStore",
-              attributes: ["storeId", "name", "code"],
-            },
-            {
-              model: User,
-              as: "changedByUser",
-              attributes: ["userId", "username", "fullName"],
-            },
-          ],
-          order: [["createdAt", "DESC"]],
-          limit: parseInt(transactionLimit),
-        });
+            include: [
+              {
+                model: Store,
+                as: "store",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: Group,
+                as: "group",
+                attributes: ["groupId", "name", "code"],
+              },
+              {
+                model: Item,
+                as: "item",
+                attributes: ["itemId", "code", "name", "standardName"],
+                include: [
+                  {
+                    model: UOM,
+                    as: "uom",
+                    attributes: ["id", "code", "name"],
+                  },
+                ],
+              },
+              {
+                model: Store,
+                as: "sourceStore",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: Store,
+                as: "destinationStore",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: User,
+                as: "changedByUser",
+                attributes: ["userId", "username", "fullName"],
+              },
+            ],
+            order: [["createdAt", "DESC"]],
+            limit: parseInt(transactionLimit),
+          });
 
-        transactions = allTransactions.map((t) => ({
-          id: t.id,
-          balanceId: t.balanceId,
-          storeName: t.store?.name || null,
-          groupName: t.group?.name || null,
-          itemName: t.item?.standardName || t.item?.name || null,
-          itemCode: t.item?.code || null,
-          uomCode: t.item?.uom?.code || null,
-          previousBalance: parseFloat(t.previousBalance),
-          newBalance: parseFloat(t.newBalance),
-          changeAmount: parseFloat(t.changeAmount),
-          transactionType: t.transactionType,
-          sourceStore: t.sourceStore?.name || null,
-          destinationStore: t.destinationStore?.name || null,
-          referenceType: t.referenceType,
-          referenceId: t.referenceId,
-          changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
-          remark: t.remark,
-          createdAt: t.createdAt,
-        }));
+          transactions = allTransactions.map((t) => ({
+            id: t.id,
+            balanceId: t.balanceId,
+            storeName: t.store?.name || null,
+            groupName: t.group?.name || null,
+            itemName: t.item?.standardName || t.item?.name || null,
+            itemCode: t.item?.code || null,
+            uomCode: t.item?.uom?.code || null,
+            previousBalance: parseFloat(t.previousBalance),
+            newBalance: parseFloat(t.newBalance),
+            changeAmount: parseFloat(t.changeAmount),
+            transactionType: t.transactionType,
+            sourceStore: t.sourceStore?.name || null,
+            destinationStore: t.destinationStore?.name || null,
+            referenceType: t.referenceType,
+            referenceId: t.referenceId,
+            changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+            remark: t.remark,
+            createdAt: t.createdAt,
+          }));
+        } catch (txError) {
+          console.error(`⚠️ Error fetching transactions for group ${group.groupId}:`, txError);
+          // Continue with empty transactions
+        }
       }
 
       return {
@@ -619,24 +626,26 @@ exports.getStoreAudit = async (req, res) => {
           outlier: outlierCount,
           conflict: conflictCount,
           dateDiff: dateDiffCount,
-          matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : 0,
-          outlierPercentage: itemMap.size > 0 ? ((outlierCount / itemMap.size) * 100).toFixed(1) : 0,
-          conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : 0,
-          dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : 0,
+          matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : "0",
+          outlierPercentage: itemMap.size > 0 ? ((outlierCount / itemMap.size) * 100).toFixed(1) : "0",
+          conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : "0",
+          dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : "0",
         },
       },
     };
 
     console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${dateDiffCount} with date differences`);
 
-    res.status(200).json({
+    // ✅ FIX: Make sure we're using the correct response object
+    return res.status(200).json({
       success: true,
       data: responseData,
     });
 
   } catch (error) {
     console.error("❌ Get store audit error:", error);
-    res.status(500).json({
+    // ✅ FIX: Make sure error response uses the correct res object
+    return res.status(500).json({
       success: false,
       error: error.message || 'Failed to get store audit data',
     });
@@ -1410,62 +1419,521 @@ exports.getUserAuditAccess = async (req, res) => {
 // ============================================
 // 8. EXPORT AUDIT DATA
 // ============================================
+
 exports.exportAuditData = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const { format = 'csv' } = req.query;
+    const { format = 'excel' } = req.query;
 
     console.log(`📤 Exporting audit data for store: ${storeId}`);
 
-    // Get audit data
-    const auditResult = await exports.getStoreAudit({
+    // Create a mock request object for getStoreAudit
+    const mockReq = {
       params: { storeId },
       query: { includeTransactions: 'false' },
-    });
+    };
 
-    if (!auditResult.success) {
-      return res.status(500).json({ success: false, error: 'Failed to get audit data for export' });
+    // Create a mock response object to capture the result
+    let auditResult = null;
+    const mockRes = {
+      status: function(code) {
+        return {
+          json: function(data) {
+            auditResult = data;
+            return this;
+          }
+        };
+      }
+    };
+
+    // Call getStoreAudit with mock objects
+    await exports.getStoreAudit(mockReq, mockRes);
+
+    // Check if we got a successful result
+    if (!auditResult || !auditResult.success) {
+      console.error('❌ Failed to get audit data:', auditResult?.error || 'Unknown error');
+      return res.status(500).json({ 
+        success: false, 
+        error: auditResult?.error || 'Failed to get audit data for export' 
+      });
     }
 
     const data = auditResult.data;
 
-    // Build CSV rows from comparison data
+    // Get current date and time
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = now.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Create Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    workbook.created = now;
+    
+    // Create worksheet
+    const worksheet = workbook.addWorksheet('Stock Audit', {
+      properties: { tabColor: { argb: 'FF1A237E' } },
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
+    });
+
+    // Define colors
+    const colors = {
+      primary: 'FF1A237E',
+      secondary: 'FF0D47A1',
+      lightGray: 'FFF5F5F5',
+      border: 'FFE0E0E0',
+      green: 'FF2E7D32',
+      orange: 'FFED6C02',
+      red: 'FFD32F2F',
+      white: 'FFFFFFFF',
+      black: 'FF000000'
+    };
+
+    // ============================================
+    // SECTION 1: COMPANY HEADER
+    // ============================================
+    worksheet.mergeCells('A1:G1');
+    const headerCell = worksheet.getCell('A1');
+    headerCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    headerCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    worksheet.mergeCells('A2:G2');
+    const subHeaderCell = worksheet.getCell('A2');
+    subHeaderCell.value = 'WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!';
+    subHeaderCell.font = { name: 'Arial', size: 12, color: { argb: 'FF000000' } };
+    subHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // ============================================
+    // SECTION 2: REPORT TITLE
+    // ============================================
+    worksheet.addRow([]);
+    worksheet.mergeCells('A4:G4');
+    const titleCell = worksheet.getCell('A4');
+    titleCell.value = 'STOCK AUDIT REPORT';
+    titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // ============================================
+    // SECTION 3: STORE AND GROUP INFO
+    // ============================================
+    worksheet.addRow([]);
+    
+    // Get store and group info
+    const firstGroup = data.groups[0] || {};
+    const groupName = firstGroup.name || 'N/A';
+    const groupCode = firstGroup.code || 'N/A';
+    const categories = (data.categories && data.categories.length > 0) 
+      ? data.categories.join(', ') 
+      : 'All';
+    const generatedBy = req.user?.fullName || req.user?.username || 'Admin';
+
+    // Row 6: Store and Group
+    worksheet.addRow(['Store:', data.store.name, '', 'Group:', groupName]);
+    worksheet.addRow(['Store Code:', data.store.code, '', 'Group Code:', groupCode]);
+    worksheet.addRow(['Category:', categories, '', 'Status:', 'All']);
+    worksheet.addRow(['Generated By:', generatedBy, '', 'Date/Time:', `${dateStr} at ${timeStr}`]);
+
+    // Style the info rows
+    const infoRows = [6, 7, 8, 9];
+    infoRows.forEach(rowNum => {
+      const row = worksheet.getRow(rowNum);
+      row.eachCell((cell, colNumber) => {
+        if (colNumber % 2 === 1) {
+          // Labels (bold)
+          cell.font = { name: 'Arial', size: 10, bold: true };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0F0F0' }
+          };
+        } else {
+          // Values (normal)
+          cell.font = { name: 'Arial', size: 10 };
+        }
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+    });
+
+    // ============================================
+    // SECTION 4: SUMMARY
+    // ============================================
+    worksheet.addRow([]);
+    
+    // Calculate summary data
+    const totalItems = data.summary.totalItems || 0;
+    const activeItems = data.summary.activeItems || 0;
+    const zeroStockItems = data.summary.zeroStockItems || 0;
+    const lowStockItems = data.summary.lowStockItems || 0;
+    
+    // Calculate items with balance differences (outlier + conflict)
+    const itemsWithDiff = (data.comparison?.summary?.outlier || 0) + (data.comparison?.summary?.conflict || 0);
+    const matchedItems = data.comparison?.summary?.matched || 0;
+
+    // Summary title
+    worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
+    const summaryTitle = worksheet.getCell(`A${worksheet.rowCount}`);
+    summaryTitle.value = 'SUMMARY';
+    summaryTitle.font = { name: 'Arial', size: 12, bold: true, color: { argb: colors.primary }, underline: true };
+    summaryTitle.alignment = { horizontal: 'left', vertical: 'middle' };
+
+    worksheet.addRow([]);
+    
+    // Summary values in a clean grid
+    const summaryData = [
+      ['Store:', data.store.name, 'Total Items:', totalItems],
+      ['Group:', groupName, 'Active Items:', activeItems],
+      ['', '', 'Zero Balance Items:', zeroStockItems],
+      ['', '', 'Low Stock Items:', lowStockItems],
+      ['', '', 'Matched Items:', matchedItems],
+      ['', '', 'Items with Balance Difference:', itemsWithDiff]
+    ];
+
+    summaryData.forEach(rowData => {
+      const row = worksheet.addRow(rowData);
+      row.eachCell((cell, colNumber) => {
+        if (colNumber % 2 === 1 && rowData[colNumber - 1] !== '') {
+          // Labels (bold)
+          cell.font = { name: 'Arial', size: 10, bold: true };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0F0F0' }
+          };
+        } else if (colNumber % 2 === 0 && rowData[colNumber - 1] !== '') {
+          // Values (bold with color)
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        }
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+    });
+
+    // ============================================
+    // SECTION 5: MAIN DATA TABLE
+    // ============================================
+    worksheet.addRow([]);
+    
+    // Build headers
     const headers = [
+      '#',
       'Item Code',
       'Item Name',
       'Category',
       'UOM',
-      ...data.groups.map(g => g.name),
-      'Status'
+      ...data.groups.map(g => `${g.name} (Balance)`),
+      'Status',
+      'Balance Diff'
     ];
 
-    const rows = data.comparison.items.map(item => {
-      const row = [
-        item.code || '',
+    // Add header row
+    const headerRow = worksheet.addRow(headers);
+    
+    // Style header
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: colors.primary }
+      };
+      cell.font = {
+        name: 'Arial',
+        size: 10,
+        bold: true,
+        color: { argb: colors.white }
+      };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: true
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: colors.border } },
+        bottom: { style: 'thin', color: { argb: colors.border } },
+        left: { style: 'thin', color: { argb: colors.border } },
+        right: { style: 'thin', color: { argb: colors.border } }
+      };
+    });
+
+    // Get all unique items across all groups
+    const allItems = new Map();
+    data.groups.forEach(group => {
+      group.balances.forEach(balance => {
+        const itemKey = balance.itemId;
+        if (!allItems.has(itemKey)) {
+          allItems.set(itemKey, {
+            itemId: balance.itemId,
+            itemCode: balance.itemCode,
+            itemName: balance.itemName,
+            category: balance.category?.name || 'N/A',
+            uomCode: balance.uomCode || 'PCS',
+            balances: {},
+            status: 'Active',
+            balanceDiff: false
+          });
+        }
+        const item = allItems.get(itemKey);
+        item.balances[group.groupId] = balance.balance;
+        // Update status based on comparison
+        if (data.comparison && data.comparison.items) {
+          const compItem = data.comparison.items.find(ci => ci.itemId === balance.itemId);
+          if (compItem) {
+            item.status = compItem.status || 'Active';
+            // Check if there's a balance difference
+            if (compItem.status === 'Outlier' || compItem.status === 'Conflict') {
+              item.balanceDiff = true;
+            }
+          }
+        }
+      });
+    });
+
+    // Convert to array and sort by item code
+    const itemsArray = Array.from(allItems.values())
+      .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+    // Add data rows
+    let rowNumber = 1;
+    let rowIndex = 0;
+    
+    itemsArray.forEach((item) => {
+      // Calculate if there's a balance difference
+      const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
+      const uniqueBalances = [...new Set(balances)];
+      const hasBalanceDiff = uniqueBalances.length > 1;
+      
+      const rowData = [
+        rowNumber++,
+        item.itemCode || '',
         item.itemName || '',
         item.category || '',
         item.uomCode || '',
-        ...data.groups.map(g => item.groupBalances[g.groupId] !== undefined ? item.groupBalances[g.groupId] : '-'),
-        item.status || 'No Data'
+        ...data.groups.map(g => {
+          const balance = item.balances[g.groupId];
+          return balance !== undefined ? balance : '-';
+        }),
+        item.status || 'No Data',
+        hasBalanceDiff ? 'Yes' : 'No'
       ];
-      return row;
+      
+      const row = worksheet.addRow(rowData);
+      
+      // Style row
+      const bgColor = rowIndex % 2 === 0 ? colors.white : colors.lightGray;
+      row.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: bgColor }
+        };
+        cell.font = { name: 'Arial', size: 9 };
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle'
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+      
+      // Status column styling
+      const statusCell = row.getCell(headers.length - 1);
+      const status = item.status || 'No Data';
+      let statusColor = colors.black;
+      if (status === 'Matched') statusColor = colors.green;
+      else if (status === 'Outlier') statusColor = colors.orange;
+      else if (status === 'Conflict') statusColor = colors.red;
+      
+      statusCell.font = {
+        name: 'Arial',
+        size: 9,
+        bold: true,
+        color: { argb: statusColor }
+      };
+      
+      // Balance Diff column styling
+      const diffCell = row.getCell(headers.length);
+      if (hasBalanceDiff) {
+        diffCell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: true,
+          color: { argb: colors.red }
+        };
+        diffCell.value = '⚠ Yes';
+      } else {
+        diffCell.font = {
+          name: 'Arial',
+          size: 9,
+          color: { argb: colors.green }
+        };
+        diffCell.value = '✓ No';
+      }
+      
+      rowIndex++;
     });
 
-    // Generate CSV
-    let csvContent = headers.join(',') + '\n';
-    rows.forEach(row => {
-      csvContent += row.join(',') + '\n';
+    // ============================================
+    // SECTION 6: ITEMS WITH BALANCE DIFFERENCES
+    // ============================================
+    const diffItems = itemsArray.filter(item => {
+      const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
+      return new Set(balances).size > 1;
     });
 
-    const csvWithBOM = "\uFEFF" + csvContent;
+    if (diffItems.length > 0) {
+      worksheet.addRow([]);
+      worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
+      const diffTitle = worksheet.getCell(`A${worksheet.rowCount}`);
+      diffTitle.value = `ITEMS WITH BALANCE DIFFERENCES (${diffItems.length} items)`;
+      diffTitle.font = { name: 'Arial', size: 12, bold: true, color: { argb: colors.red }, underline: true };
+      diffTitle.alignment = { horizontal: 'left', vertical: 'middle' };
 
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=audit_${storeId}_${new Date().toISOString().split("T")[0]}.csv`);
-    res.send(csvWithBOM);
+      worksheet.addRow([]);
+      
+      // Add diff items table
+      const diffHeaders = ['#', 'Item Code', 'Item Name', ...data.groups.map(g => `${g.name} (Balance)`), 'Status'];
+      const diffHeaderRow = worksheet.addRow(diffHeaders);
+      
+      diffHeaderRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: colors.red }
+        };
+        cell.font = {
+          name: 'Arial',
+          size: 10,
+          bold: true,
+          color: { argb: colors.white }
+        };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+
+      let diffRowNum = 1;
+      diffItems.forEach((item) => {
+        const rowData = [
+          diffRowNum++,
+          item.itemCode || '',
+          item.itemName || '',
+          ...data.groups.map(g => {
+            const balance = item.balances[g.groupId];
+            return balance !== undefined ? balance : '-';
+          }),
+          item.status || 'No Data'
+        ];
+        
+        const row = worksheet.addRow(rowData);
+        const bgColor = (diffRowNum - 1) % 2 === 0 ? colors.white : colors.lightGray;
+        row.eachCell((cell) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: bgColor }
+          };
+          cell.font = { name: 'Arial', size: 9 };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          cell.border = {
+            top: { style: 'thin', color: { argb: colors.border } },
+            bottom: { style: 'thin', color: { argb: colors.border } },
+            left: { style: 'thin', color: { argb: colors.border } },
+            right: { style: 'thin', color: { argb: colors.border } }
+          };
+        });
+      });
+    }
+
+    // ============================================
+    // SECTION 7: FOOTER
+    // ============================================
+    worksheet.addRow([]);
+    const footerRow = worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
+    worksheet.addRow(['SUPER DOUBLE "T" GENERAL TRADING PLC - Stock Audit Report']);
+    worksheet.addRow(['WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!']);
+
+    // Style footer
+    const footerStartRow = worksheet.rowCount - 2;
+    for (let i = 0; i < 3; i++) {
+      const row = worksheet.getRow(footerStartRow + i);
+      row.eachCell((cell) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (i === 1) {
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        } else {
+          cell.font = { name: 'Arial', size: 9, color: { argb: 'FF666666' } };
+        }
+      });
+      if (i === 0) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      } else if (i === 1) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      } else if (i === 2) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      }
+    }
+
+    // ============================================
+    // AUTO-FIT COLUMNS
+    // ============================================
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? String(cell.value).length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = Math.min(Math.max(maxLength + 2, 10), 30);
+    });
+
+    // ============================================
+    // GENERATE EXCEL FILE
+    // ============================================
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    // Set headers and send
+    const fileName = `stock_audit_${data.store.code}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    
+    return res.send(buffer);
 
   } catch (error) {
     console.error("❌ Export audit data error:", error);
-    res.status(500).json({ success: false, error: error.message || 'Failed to export audit data' });
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to export audit data' 
+    });
   }
 };
 

@@ -57,28 +57,28 @@
       <div class="stat-card">
         <div class="stat-icon">📦</div>
         <div class="stat-content">
-          <div class="stat-number">{{ filteredItems.length }}</div>
+          <div class="stat-number">{{ totalItems || 0 }}</div>
           <div class="stat-label">Total Items</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">💰</div>
         <div class="stat-content">
-          <div class="stat-number">${{ formatCurrency(filteredTotalValue) }}</div>
+          <div class="stat-number">ETB {{ formatCurrency(allItemsTotalValue) }}</div>
           <div class="stat-label">Total Inventory Value</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">🏪</div>
         <div class="stat-content">
-          <div class="stat-number">{{ filteredStoresCount }}</div>
+          <div class="stat-number">{{ allStoresCount }}</div>
           <div class="stat-label">Stores</div>
         </div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">⚠️</div>
         <div class="stat-content">
-          <div class="stat-number">{{ filteredPartialItems }}</div>
+          <div class="stat-number">{{ allPartialItemsCount }}</div>
           <div class="stat-label">Items with Partial Cost</div>
         </div>
       </div>
@@ -105,7 +105,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="paginatedItems.length === 0">
+          <tr v-if="items.length === 0">
             <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
@@ -114,7 +114,7 @@
               </div>
             </td>
           </tr>
-          <template v-for="item in paginatedItems" :key="item.id">
+          <template v-for="item in items" :key="item.id">
             <tr
               :class="{
                 'expanded-row': expandedRow === item.id,
@@ -139,14 +139,14 @@
                 <span class="balance-value">{{ formatNumber(item.totalQty) }}</span>
               </td>
               <td class="cost-cell">
-                <span class="unit-cost">${{ formatCurrency(item.unitCost) }}</span>
+                <span class="unit-cost">ETB {{ formatCurrency(item.unitCost) }}</span>
               </td>
               <td class="total-cell">
                 <span class="total-value" :class="{ 
                   'high-value': item.totalCost > 10000,
                   'inactive-value': item.status === 'Inactive'
                 }">
-                  ${{ formatCurrency(item.totalCost) }}
+                  ETB {{ formatCurrency(item.totalCost) }}
                 </span>
                 <span v-if="item.status === 'Partial'" class="partial-tag">(Partial)</span>
                 <span v-if="item.status === 'Inactive'" class="inactive-tag">(Inactive)</span>
@@ -202,9 +202,9 @@
                       }">
                         <h4>💰 Cost Summary</h4>
                         <div class="detail-vertical">
-                          <div><span>Unit Cost</span><span class="value">${{ formatCurrency(item.unitCost) }} / {{ item.baseUOM }}</span></div>
+                          <div><span>Unit Cost</span><span class="value">ETB {{ formatCurrency(item.unitCost) }} / {{ item.baseUOM }}</span></div>
                           <div><span>Total Quantity</span><span class="value">{{ formatNumber(item.totalQty) }} {{ item.baseUOM }}</span></div>
-                          <div><span>Total Cost</span><span class="value highlight-total">${{ formatCurrency(item.totalCost) }}</span></div>
+                          <div><span>Total Cost</span><span class="value highlight-total">ETB {{ formatCurrency(item.totalCost) }}</span></div>
                           <div v-if="item.status === 'Partial'">
                             <span>Status</span>
                             <span class="value partial-text">⚠️ Partial - Some stores excluded</span>
@@ -316,7 +316,7 @@
                         </div>
                         <div class="total-summary-item">
                           <span class="total-label">Total Cost</span>
-                          <span class="total-value-highlight">${{ formatCurrency(item.totalCost) }}</span>
+                          <span class="total-value-highlight">ETB {{ formatCurrency(item.totalCost) }}</span>
                         </div>
                         <div v-if="item.status === 'Partial'" class="total-summary-sub partial-sub">
                           <span class="sub-label partial-label">⚠️ {{ item.excludedStores.length }} store(s) excluded due to conflicts</span>
@@ -350,8 +350,8 @@
                         <tbody>
                           <tr v-for="history in item.costHistory.slice(0, 5)" :key="history.id">
                             <td>{{ formatDate(history.createdAt) }}</td>
-                            <td>${{ formatCurrency(history.previousCost) }}</td>
-                            <td>${{ formatCurrency(history.newCost) }}</td>
+                            <td>ETB {{ formatCurrency(history.previousCost) }}</td>
+                            <td>ETB {{ formatCurrency(history.newCost) }}</td>
                             <td>{{ history.changedBy || 'System' }}</td>
                             <td>{{ history.reason || '-' }}</td>
                           </tr>
@@ -369,10 +369,10 @@
             </tr>
           </template>
         </tbody>
-        <tfoot v-if="paginatedItems.length > 0">
+        <tfoot v-if="items.length > 0">
           <tr class="footer-total">
             <td colspan="6" class="text-right"><strong>Page Total:</strong></td>
-            <td class="total-cell"><strong>${{ formatCurrency(pageTotal) }}</strong></td>
+            <td class="total-cell"><strong>ETB {{ formatCurrency(pageTotal) }}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -380,7 +380,7 @@
     </div>
 
     <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="filteredItems.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
         ← Previous
       </button>
@@ -420,11 +420,13 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const expandedRow = ref(null)
 const totalItems = ref(0)
+const totalPages = ref(0)
 
 // Data from API
 const allStores = ref([])
 const allGroups = ref([])
-const items = ref([])
+const items = ref([]) // Current page items
+const allItemsForStats = ref([]) // All items for stats
 
 // Toast
 const showToast = ref(false)
@@ -432,50 +434,24 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// COMPUTED
+// COMPUTED - STATS FROM ALL ITEMS
 // ================================================================
 
-const filteredItems = computed(() => {
-  let result = [...items.value]
+const allItemsTotalValue = computed(() => {
+  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
   
-  // Apply search filter
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    result = result.filter(item => 
-      item.itemName?.toLowerCase().includes(query) ||
-      item.itemCode?.toLowerCase().includes(query) ||
-      item.itemStandardName?.toLowerCase().includes(query)
-    )
-  }
-  
-  // Apply status filter
-  if (filterStatus.value) {
-    result = result.filter(item => item.status === filterStatus.value)
-  }
-  
-  return result
-})
-
-const paginatedItems = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredItems.value.slice(start, end)
-})
-
-const totalPages = computed(() => {
-  return Math.ceil(filteredItems.value.length / pageSize.value) || 1
-})
-
-// Filtered stats - exclude inactive items
-const filteredTotalValue = computed(() => {
-  return filteredItems.value
+  const total = allItemsForStats.value
     .filter(item => item.status === 'Active' || item.status === 'Partial')
     .reduce((sum, item) => sum + (item.totalCost || 0), 0)
+  
+  return total
 })
 
-const filteredStoresCount = computed(() => {
+const allStoresCount = computed(() => {
+  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
+  
   const stores = new Set()
-  filteredItems.value.forEach(item => {
+  allItemsForStats.value.forEach(item => {
     if (item.status !== 'Inactive') {
       item.storeBreakdown.forEach(s => stores.add(s.storeId))
     }
@@ -483,12 +459,19 @@ const filteredStoresCount = computed(() => {
   return stores.size
 })
 
-const filteredPartialItems = computed(() => {
-  return filteredItems.value.filter(item => item.status === 'Partial').length
+const allPartialItemsCount = computed(() => {
+  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
+  return allItemsForStats.value.filter(item => item.status === 'Partial').length
 })
 
+// ================================================================
+// COMPUTED - FILTERED & PAGINATED ITEMS
+// ================================================================
+
 const pageTotal = computed(() => {
-  return paginatedItems.value
+  if (!items.value || items.value.length === 0) return 0
+  
+  return items.value
     .filter(item => item.status === 'Active' || item.status === 'Partial')
     .reduce((sum, item) => sum + (item.totalCost || 0), 0)
 })
@@ -527,20 +510,61 @@ const loadStores = async () => {
   }
 }
 
+const loadAllItemsForStats = async () => {
+  try {
+    const params = {
+      page: 1,
+      limit: 10000, // Get all items
+    }
+    
+    if (selectedStoreId.value) {
+      params.storeId = Number(selectedStoreId.value)
+    }
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+    if (searchQuery.value) {
+      params.search = searchQuery.value
+    }
+    
+    const response = await itemCostService.getItemsWithCost(params)
+
+    if (response.success) {
+      allItemsForStats.value = response.data
+      console.log('✅ Stats loaded:', allItemsForStats.value.length, 'items')
+    } else {
+      allItemsForStats.value = []
+    }
+  } catch (error) {
+    console.error('Error loading all items for stats:', error)
+    allItemsForStats.value = []
+  }
+}
+
 const loadItems = async () => {
   loading.value = true
   try {
-    const response = await itemCostService.getItemsWithCost({
+    const params = {
       page: currentPage.value,
       limit: pageSize.value,
-      search: searchQuery.value || undefined,
-      storeId: selectedStoreId.value ? Number(selectedStoreId.value) : undefined,
-      status: filterStatus.value || undefined,
-    })
+    }
+    
+    if (searchQuery.value) {
+      params.search = searchQuery.value
+    }
+    if (selectedStoreId.value) {
+      params.storeId = Number(selectedStoreId.value)
+    }
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+    
+    const response = await itemCostService.getItemsWithCost(params)
 
     if (response.success) {
       items.value = response.data
       totalItems.value = response.pagination.total
+      totalPages.value = response.pagination.pages
     } else {
       showToastMessage(response.error || 'Failed to load items', 'error')
     }
@@ -552,16 +576,29 @@ const loadItems = async () => {
   }
 }
 
+// 🔥 Combined load function
+const loadAllData = async () => {
+  await Promise.all([
+    loadItems(),
+    loadAllItemsForStats()
+  ])
+}
+
 const toggleItemStatus = async (item) => {
   try {
     const newStatus = item.status === 'Inactive' ? 'Active' : 'Inactive'
     const response = await itemCostService.toggleItemStatus(item.id, newStatus)
     
     if (response.success) {
-      // Update the item in the list
+      // Update the item in current page
       const index = items.value.findIndex(i => i.id === item.id)
       if (index !== -1) {
         items.value[index] = response.data
+      }
+      // Update in stats list
+      const statsIndex = allItemsForStats.value.findIndex(i => i.id === item.id)
+      if (statsIndex !== -1) {
+        allItemsForStats.value[statsIndex] = response.data
       }
       showToastMessage(`Item "${item.itemName}" status changed to ${newStatus}`, 
         newStatus === 'Inactive' ? 'warning' : 'success')
@@ -622,12 +659,12 @@ const printReport = () => {
 
 const onSearchChange = () => {
   currentPage.value = 1
-  loadItems()
+  loadAllData()
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
-  loadItems()
+  loadAllData()
 }
 
 const clearFilters = () => {
@@ -636,7 +673,7 @@ const clearFilters = () => {
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
-  loadItems()
+  loadAllData()
 }
 
 const changePage = (page) => {
@@ -648,7 +685,7 @@ const changePage = (page) => {
 
 const changePageSize = () => {
   currentPage.value = 1
-  loadItems()
+  loadAllData()
 }
 
 const toggleExpand = (id) => {
@@ -660,12 +697,12 @@ const toggleExpand = (id) => {
 // ================================================================
 
 const formatCurrency = (value) => {
-  if (value === null || value === undefined) return '0.00'
+  if (value === null || value === undefined || isNaN(value)) return '0.00'
   return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 const formatNumber = (value) => {
-  if (value === null || value === undefined) return '0'
+  if (value === null || value === undefined || isNaN(value)) return '0'
   return Number(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
@@ -696,7 +733,7 @@ const showToastMessage = (msg, type = 'success') => {
 
 watch([selectedStoreId, filterStatus], () => {
   currentPage.value = 1
-  loadItems()
+  loadAllData()
 }, { deep: true })
 
 // ================================================================
@@ -705,7 +742,7 @@ watch([selectedStoreId, filterStatus], () => {
 
 onMounted(async () => {
   await loadStores()
-  await loadItems()
+  await loadAllData()
 })
 </script>
 

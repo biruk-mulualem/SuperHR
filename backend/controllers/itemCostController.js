@@ -63,7 +63,7 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       ],
     });
 
-    // 🔥 Get unit cost from the item's costPrice
+    // Get unit cost from the item's costPrice
     let unitCost = parseFloat(item.costPrice) || 0;
     
     // If no cost price on item, try to get from item_cost table
@@ -122,13 +122,13 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
 
       const storeData = storeMap.get(storeIdKey);
       
-      // 🔥 Get the balance quantity
+      // Get the balance quantity
       let quantity = parseFloat(balance.balance) || 0;
       let originalQuantity = quantity;
       let conversionRate = 1;
       let originalUOM = balance.item?.uom?.code || 'Units';
       
-      // 🔥 Check if conversion is needed
+      // Check if conversion is needed
       const baseUOM = item.uom?.code || 'Units';
       const balanceUOM = balance.item?.uom?.code || 'Units';
       
@@ -182,23 +182,69 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       });
     }
 
-    // Calculate totals
-    const includedStores = storeBreakdown.filter(s => !s.isExcluded);
-    const totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
-    const totalCost = totalQty * unitCost;
+    // Calculate totals based on filter
+    let includedStores = [];
+    let totalQty = 0;
+    let totalCost = 0;
+    let excludedStores = [];
 
-    const excludedStores = storeBreakdown
-      .filter(s => s.isExcluded)
-      .map(s => s.storeName);
+    if (storeId) {
+      // Store filter applied - only show the selected store
+      const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
+      
+      if (filteredStore) {
+        if (!filteredStore.isExcluded) {
+          includedStores = [filteredStore];
+          totalQty = filteredStore.agreedQuantity;
+          totalCost = totalQty * unitCost;
+        } else {
+          // Selected store is excluded due to conflict
+          includedStores = [];
+          totalQty = 0;
+          totalCost = 0;
+          excludedStores = [filteredStore.storeName];
+        }
+      } else {
+        // Store has no balance for this item
+        includedStores = [];
+        totalQty = 0;
+        totalCost = 0;
+      }
+    } else {
+      // No store filter - use all stores
+      includedStores = storeBreakdown.filter(s => !s.isExcluded);
+      totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
+      totalCost = totalQty * unitCost;
+      excludedStores = storeBreakdown
+        .filter(s => s.isExcluded)
+        .map(s => s.storeName);
+    }
 
     // Determine status
     let status = 'Active';
     if (userStatus === 'Inactive') {
       status = 'Inactive';
-    } else if (excludedStores.length > 0 && includedStores.length > 0) {
-      status = 'Partial';
-    } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
-      status = 'Conflict';
+    } else if (storeId) {
+      // When filtering by store, status reflects that store only
+      const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
+      if (filteredStore) {
+        if (filteredStore.hasConflict) {
+          status = 'Conflict';
+        } else {
+          status = 'Active';
+        }
+      } else {
+        status = 'Active';
+      }
+    } else {
+      // No store filter - overall status
+      if (excludedStores.length > 0 && includedStores.length > 0) {
+        status = 'Partial';
+      } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
+        status = 'Conflict';
+      } else {
+        status = 'Active';
+      }
     }
 
     return {
@@ -275,9 +321,40 @@ exports.getItemsWithCost = async (req, res) => {
       ];
     }
 
+    // 🔥 If store filter is applied, only get items that have balances in that store
+    if (storeId) {
+      // Get item IDs that have balances in the selected store
+      const balances = await StoreBalance.findAll({
+        where: {
+          storeId: storeId,
+          status: 'Active',
+        },
+        attributes: ['itemId'],
+        group: ['itemId'],
+      });
+      
+      const itemIdsWithBalance = balances.map(b => b.itemId);
+      
+      if (itemIdsWithBalance.length > 0) {
+        itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
+      } else {
+        // No items have balances in this store
+        return res.json({
+          success: true,
+          data: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: 0,
+          },
+        });
+      }
+    }
+
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get all active items with pagination
+    // Get items with pagination
     const { count, rows: items } = await Item.findAndCountAll({
       where: itemWhere,
       include: [
@@ -305,42 +382,92 @@ exports.getItemsWithCost = async (req, res) => {
           continue;
         }
 
+        // 🔥 Also filter out items with zero total quantity when store is selected
+        if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0) {
+          continue;
+        }
+
         results.push(costData);
       } catch (error) {
         console.error(`Error calculating cost for item ${item.itemId}:`, error);
-        // Return item with zero values on error
-        results.push({
-          id: item.itemId,
-          itemCode: item.code,
-          itemName: item.name,
-          itemStandardName: item.standardName || '',
-          categoryName: item.category?.name || '',
-          brand: item.brand || '',
-          model: item.model || '',
-          baseUOM: item.uom?.code || 'Units',
-          unitCost: parseFloat(item.costPrice) || 0,
-          totalQty: 0,
-          totalCost: 0,
-          status: 'Active',
-          userStatus: 'Active',
-          storeBreakdown: [],
-          excludedStores: [],
-          costHistory: [],
-          includedStoresCount: 0,
-          excludedStoresCount: 0,
-          isFiltered: !!storeId,
-        });
+        // Skip items that error out
+        continue;
       }
+    }
+
+    // 🔥 Calculate correct total count based on filters
+    let totalCount = count;
+    
+    // If status filter is applied, we need to count filtered items
+    if (status) {
+      // Get all items that match the base query (without pagination)
+      const allItems = await Item.findAll({
+        where: itemWhere,
+        include: [
+          { model: UOM, as: 'uom' },
+          { model: Category, as: 'category' },
+          { model: UOM, as: 'conversionUom' },
+        ],
+        order: [['name', 'ASC']],
+      });
+      
+      let filteredTotal = 0;
+      for (const item of allItems) {
+        try {
+          const costData = await calculateItemCost(
+            item.itemId,
+            storeId || null,
+            groupId || null
+          );
+          
+          if (costData.status === status) {
+            filteredTotal++;
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+      totalCount = filteredTotal;
+    } else if (storeId) {
+      // Store filter is applied, count is already filtered by itemIdsWithBalance
+      // But we need to also check that items actually have positive quantity in the store
+      const allItems = await Item.findAll({
+        where: itemWhere,
+        include: [
+          { model: UOM, as: 'uom' },
+          { model: Category, as: 'category' },
+          { model: UOM, as: 'conversionUom' },
+        ],
+        order: [['name', 'ASC']],
+      });
+      
+      let filteredTotal = 0;
+      for (const item of allItems) {
+        try {
+          const costData = await calculateItemCost(
+            item.itemId,
+            storeId || null,
+            groupId || null
+          );
+          
+          if (costData.totalQty > 0 || costData.storeBreakdown.length > 0) {
+            filteredTotal++;
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+      totalCount = filteredTotal;
     }
 
     res.json({
       success: true,
       data: results,
       pagination: {
-        total: count,
+        total: totalCount,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(count / parseInt(limit)),
+        pages: Math.ceil(totalCount / parseInt(limit)),
       },
     });
 
