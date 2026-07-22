@@ -92,6 +92,7 @@ const itemRequestRoutes = require('./routes/itemRequestRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const balanceRoutes = require('./routes/balanceRoutes');
+const itemCostRoutes = require('./routes/itemCostRoutes');
 
 
 // ============================================================================
@@ -145,6 +146,8 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/item-requests', itemRequestRoutes);
 app.use('/api/balances', balanceRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/item-costs', itemCostRoutes);
+
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

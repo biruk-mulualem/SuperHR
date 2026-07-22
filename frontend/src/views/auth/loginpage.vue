@@ -50,10 +50,7 @@
               <span class="feature-dot"></span>
               <span class="feature-text">📊 Reports &amp; Analytics</span>
             </div>
-            <div class="feature-item">
-              <span class="feature-dot"></span>
-              <span class="feature-text">🔒 Secure &amp; Reliable</span>
-            </div>
+            
           </div>
 
           <div class="brand-divider"></div>
@@ -64,7 +61,7 @@
 
           <!-- Version -->
           <div class="version-info">
-            <p>Version 1.0.0</p>
+            <p>Version 1.0.1</p>
           </div>
         </div>
       </div>

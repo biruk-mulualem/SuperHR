@@ -61,6 +61,46 @@ router.get('/export', itemRequestController.exportRequests);
 router.get('/', itemRequestController.getRequests);
 
 // ================================================================
+// 🔥 NOTIFICATION ROUTES
+// ================================================================
+
+/**
+ * 🔥 NEW: Get notifications for a group in a specific store
+ * GET /api/item-requests/notifications/:storeId/:groupId
+ */
+router.get('/notifications/:storeId/:groupId', itemRequestController.getGroupNotifications);
+
+/**
+ * Get request with notification status and responses
+ * GET /api/item-requests/:id/notifications
+ */
+router.get('/:id/notifications', itemRequestController.getRequestWithNotifications);
+
+/**
+ * Check if all groups have accepted/rejected the request
+ * GET /api/item-requests/:id/notifications/status
+ */
+router.get('/:id/notifications/status', itemRequestController.checkRequestNotificationStatus);
+
+/**
+ * Get rejection reasons for a request
+ * GET /api/item-requests/notifications/requests/:requestId/rejections
+ */
+router.get('/notifications/requests/:requestId/rejections', itemRequestController.getRejectionReasons);
+
+/**
+ * Accept a notification (group accepts the request)
+ * POST /api/item-requests/notifications/:notificationId/accept
+ */
+router.post('/notifications/:notificationId/accept', itemRequestController.acceptNotification);
+
+/**
+ * Reject a notification (group rejects the request with reason)
+ * POST /api/item-requests/notifications/:notificationId/reject
+ */
+router.post('/notifications/:notificationId/reject', itemRequestController.rejectNotification);
+
+// ================================================================
 // IMPORTANT: Wildcard routes MUST come AFTER specific routes
 // ================================================================
 

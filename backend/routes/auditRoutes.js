@@ -19,7 +19,9 @@ router.get('/store/:storeId', auditController.getStoreAudit);
 router.get('/store/:storeId/summary', auditController.getAuditSummary);
 router.get('/store/:storeId/dashboard', auditController.getAuditDashboard);
 router.get('/store/:storeId/export', auditController.exportAuditData);
-
+// Update item transaction dates
+// ✅ CORRECT - Matches the service call
+router.put('/items/:storeId/:itemId/dates', auditController.updateItemTransactionDates);
 // ============================================
 // STORES & CATEGORIES (for filters)
 // ============================================

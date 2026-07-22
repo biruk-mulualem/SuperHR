@@ -817,6 +817,107 @@ class AuditService {
         return map[type] || 'adjustment';
     }
 
+
+/**
+ * Update transaction dates for an item across groups
+ */
+// services/auditService.ts - Update the method
+
+/**
+ * Update transaction dates for an item across groups
+ * @param storeId - The store ID
+ * @param itemId - The item ID
+ * @param dateUpdates - Object with groupId as key and date string as value
+ * @returns API response with success status and data
+ */
+async updateItemTransactionDates(
+    storeId: number | string,
+    itemId: number | string,
+    dateUpdates: Record<string, string>
+): Promise<{ 
+    success: boolean; 
+    data?: any; 
+    message?: string; 
+    error?: string;
+    updatedGroups?: Array<{
+        groupId: number;
+        groupName: string;
+        oldDate: string;
+        newDate: string;
+    }>;
+}> {
+    try {
+        // Ensure IDs are numbers
+        const storeIdNum = typeof storeId === 'string' ? parseInt(storeId, 10) : storeId;
+        const itemIdNum = typeof itemId === 'string' ? parseInt(itemId, 10) : itemId;
+        
+        // Validate inputs
+        if (!storeIdNum || isNaN(storeIdNum)) {
+            return {
+                success: false,
+                error: 'Invalid store ID'
+            };
+        }
+        
+        if (!itemIdNum || isNaN(itemIdNum)) {
+            return {
+                success: false,
+                error: 'Invalid item ID'
+            };
+        }
+        
+        // Validate dateUpdates is an object
+        if (!dateUpdates || typeof dateUpdates !== 'object' || Array.isArray(dateUpdates)) {
+            return {
+                success: false,
+                error: 'Invalid date updates data - expected an object with groupId: date pairs'
+            };
+        }
+        
+        // Make sure dates are valid
+        const validUpdates: Record<string, string> = {};
+        for (const [groupId, date] of Object.entries(dateUpdates)) {
+            const groupIdNum = parseInt(groupId, 10);
+            if (isNaN(groupIdNum)) {
+                console.warn(`Skipping invalid group ID: ${groupId}`);
+                continue;
+            }
+            
+            if (!date) {
+                console.warn(`Skipping empty date for group ${groupId}`);
+                continue;
+            }
+            
+            const dateObj = new Date(date);
+            if (isNaN(dateObj.getTime())) {
+                console.warn(`Skipping invalid date for group ${groupId}: ${date}`);
+                continue;
+            }
+            
+            validUpdates[groupId] = date;
+        }
+        
+        if (Object.keys(validUpdates).length === 0) {
+            return {
+                success: false,
+                error: 'No valid dates to update. Please provide valid dates for at least one group.'
+            };
+        }
+        
+        // ✅ CORRECT URL - matches the route
+        const response = await api.put(`/audit/items/${storeIdNum}/${itemIdNum}/dates`, {
+            dates: validUpdates
+        });
+        
+        return response.data;
+    } catch (error: any) {
+        console.error('Error updating transaction dates:', error);
+        return {
+            success: false,
+            error: error.response?.data?.error || error.message || 'Failed to update dates'
+        };
+    }
+}
     /**
      * Get reference type label
      */

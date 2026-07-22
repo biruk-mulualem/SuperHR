@@ -104,6 +104,24 @@ const router = createRouter({
           component: () => import("@/views/payroll/payroll.vue"),
           meta: { title: "Payroll Management", roles: ["admin", "finance", "hr", "employee", "attendance"] },
         },
+
+
+{
+  path: "notifications",
+  name: "notifications",
+  component: () => import("@/views/storemanagement/notifications/Notifications.vue"),
+  meta: { 
+    title: "Notifications", 
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee"] 
+  },
+},
+
+  
+
+
+
+
+        
         {
           path: "approved-leaves-list",
           name: "approved-leaves-list",
@@ -137,7 +155,7 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/ItemCost/ItemCost.vue"),
           meta: { 
             title: "cost Management", 
-            roles: ["admin", "storekeeper","store_it","checker"] 
+            roles: ["admin", "storekeeper","store_it","checker","cost"] 
           },
         },
 

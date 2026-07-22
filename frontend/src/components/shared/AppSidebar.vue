@@ -81,7 +81,8 @@ const roleTitle = computed(() => {
     attendance: 'Attendance Manager',
     storekeeper: 'StoreKeeper',
     store_it:'Store IT',
-    checker: 'checker'
+    checker: 'checker',
+    cost:"Cost analyst"
   }
   return titles[userRole.value] || 'User'
 })
@@ -118,7 +119,7 @@ const roleMenus = {
     { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
   ],
   employee: [
-    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'My Attendance', path: '/my-attendance', icon: 'ClockIcon', badge: null },
     // { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
@@ -132,7 +133,7 @@ const roleMenus = {
      { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
   ],
   storekeeper: [
-    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
@@ -143,7 +144,7 @@ const roleMenus = {
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
     store_it: [
-    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
@@ -155,15 +156,17 @@ const roleMenus = {
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
   checker: [
-    // { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
      { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-
-
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+  ],
+  cost: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
   ]
 }
 

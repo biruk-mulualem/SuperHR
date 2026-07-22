@@ -104,6 +104,67 @@ const calculateGroupSummary = (balances) => {
   return summary;
 };
 
+// ============================================
+// HELPER: Get last transaction dates
+// ============================================
+
+/**
+ * Get last transaction dates for each item per group
+ */
+// ============================================
+// HELPER: Get last transaction dates
+// ============================================
+
+/**
+ * Get last transaction dates for each item per group
+ */
+const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
+  try {
+    if (!groupIds.length || !itemIds.length) {
+      return {};
+    }
+
+    console.log(`🔍 Getting last transaction dates for ${itemIds.length} items across ${groupIds.length} groups`);
+
+    const query = `
+      SELECT DISTINCT ON (sbh."item_id", sbh."group_id") 
+        sbh."item_id" as "itemId",
+        sbh."group_id" as "groupId",
+        sbh."created_at" as "lastTransactionDate"
+      FROM "store_balance_histories" sbh
+      WHERE sbh."store_id" = :storeId
+        AND sbh."group_id" IN (:groupIds)
+        AND sbh."item_id" IN (:itemIds)
+      ORDER BY sbh."item_id", sbh."group_id", sbh."created_at" DESC
+    `;
+
+    const results = await sequelize.query(query, {
+      replacements: {
+        storeId: parseInt(storeId),
+        groupIds: groupIds,
+        itemIds: itemIds
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    console.log(`✅ Found ${results.length} last transaction records`);
+
+    const lastTxMap = {};
+    results.forEach(row => {
+      const key = `${row.itemId}_${row.groupId}`;
+      lastTxMap[key] = row.lastTransactionDate;
+    });
+
+    return lastTxMap;
+
+  } catch (error) {
+    console.error('❌ Error getting last transaction dates:', error);
+    return {};
+  }
+};
+
+
+
 /**
  * Determine comparison status
  */
@@ -150,13 +211,6 @@ const getStatusClass = (status) => {
   return map[status] || 'unknown';
 };
 
-// ============================================
-// 1. GET STORE AUDIT - MAIN ENDPOINT
-// ============================================
-// auditController.js - Updated getStoreAudit with better empty handling
-
-// auditController.js - Complete getStoreAudit with storeId fix
-
 /**
  * 1. GET STORE AUDIT - MAIN ENDPOINT
  * GET /api/audit/store/:storeId
@@ -168,7 +222,7 @@ exports.getStoreAudit = async (req, res) => {
 
     console.log(`🔍 Getting audit data for store: ${storeId}`);
 
-    // Validate store exists - use storeId field
+    // Validate store exists
     const store = await Store.findByPk(parseInt(storeId), {
       attributes: ['storeId', 'name', 'code', 'location', 'status'],
     });
@@ -180,7 +234,7 @@ exports.getStoreAudit = async (req, res) => {
       });
     }
 
-    // Get all groups for this store via StoreGroupRelation
+    // Get all groups for this store
     const storeGroups = await StoreGroupRelation.findAll({
       where: { storeId: parseInt(storeId) },
       include: [
@@ -196,6 +250,8 @@ exports.getStoreAudit = async (req, res) => {
     const groups = storeGroups
       .map(sg => sg.group)
       .filter(g => g !== null);
+
+    console.log(`📋 Found ${groups.length} groups for store ${storeId}`);
 
     // Get all balances for this store
     const allBalances = await StoreBalance.findAll({
@@ -241,7 +297,7 @@ exports.getStoreAudit = async (req, res) => {
 
     console.log(`✅ Found ${allBalances.length} balances for store ${storeId}`);
 
-    // Get all unique categories from the balances
+    // Get all unique categories
     const categorySet = new Set();
     allBalances.forEach(balance => {
       if (balance.item?.category?.name) {
@@ -250,11 +306,15 @@ exports.getStoreAudit = async (req, res) => {
     });
     const categories = Array.from(categorySet);
 
-    // If no balances found, return empty data with store info
+    // ⭐ STEP 1: Get last transaction dates for each item per group
+    const groupIds = groups.map(g => g.groupId);
+    const itemIds = [...new Set(allBalances.map(b => b.itemId))];
+    const lastTxMap = await getLastTransactionDates(storeId, groupIds, itemIds);
+
+    // If no balances found, return empty data
     if (allBalances.length === 0) {
       console.log(`⚠️ No balances found for store ${storeId}`);
       
-      // Format groups for response
       const formattedGroups = groups.map(group => ({
         groupId: group.groupId,
         name: group.name,
@@ -282,7 +342,7 @@ exports.getStoreAudit = async (req, res) => {
         success: true,
         data: {
           store: {
-            id: store.storeId, // Use storeId
+            id: store.storeId,
             name: store.name,
             code: store.code,
             location: store.location,
@@ -300,6 +360,7 @@ exports.getStoreAudit = async (req, res) => {
             matchedItems: 0,
             outlierItems: 0,
             conflictItems: 0,
+            dateDiffItems: 0,
             totalProducts: 0,
             categories: categories,
           },
@@ -310,9 +371,11 @@ exports.getStoreAudit = async (req, res) => {
               matched: 0,
               outlier: 0,
               conflict: 0,
+              dateDiff: 0,
               matchedPercentage: "0",
               outlierPercentage: "0",
               conflictPercentage: "0",
+              dateDiffPercentage: "0",
             },
           },
         },
@@ -329,7 +392,7 @@ exports.getStoreAudit = async (req, res) => {
       groupSummaries[group.groupId] = calculateGroupSummary(groupBalances);
     });
 
-    // Build comparison data
+    // ⭐ STEP 2: Build comparison data with last transaction dates
     const itemMap = new Map();
     
     allBalances.forEach((balance) => {
@@ -346,36 +409,77 @@ exports.getStoreAudit = async (req, res) => {
           uomName: balance.item?.uom?.name || null,
           conversionValue: parseFloat(balance.item?.conversionValue) || 1,
           groupBalances: {},
+          groupLastTxDates: {},
         });
       }
       const item = itemMap.get(itemId);
       item.groupBalances[balance.groupId] = parseFloat(balance.balance);
+      
+      const key = `${itemId}_${balance.groupId}`;
+      if (lastTxMap[key]) {
+        item.groupLastTxDates[balance.groupId] = lastTxMap[key];
+      }
     });
 
-    // Determine status for each item
+    // ⭐ STEP 3: Determine status and detect date differences
     const comparisonItems = [];
     let matchedCount = 0;
     let outlierCount = 0;
     let conflictCount = 0;
+    let dateDiffCount = 0;
 
     itemMap.forEach((item) => {
       const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null);
       const totalGroups = groups.length;
       const status = determineStatus(values, totalGroups);
       
-      if (status === 'Matched') matchedCount++;
-      else if (status === 'Outlier') outlierCount++;
-      else if (status === 'Conflict') conflictCount++;
+      // Check for date differences
+      const dates = Object.values(item.groupLastTxDates || {}).filter(d => d !== undefined && d !== null);
+      const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))];
+      const hasDateDiff = uniqueDateStrings.length > 1;
+      
+      // Calculate date diff details
+      let dateDiffDetails = null;
+      if (hasDateDiff && dates.length > 1) {
+        const dateObjects = dates.map(d => new Date(d));
+        const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())));
+        const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())));
+        const diffMs = latestDate - earliestDate;
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        
+        dateDiffDetails = {
+          latestDate: latestDate.toISOString(),
+          earliestDate: earliestDate.toISOString(),
+          diffDays: diffDays,
+          diffHours: Math.round(diffMs / (1000 * 60 * 60)),
+          uniqueDates: uniqueDateStrings,
+        };
+      }
+      
+      // Count statuses
+      if (status === 'Matched') {
+        matchedCount++;
+        if (hasDateDiff) {
+          dateDiffCount++;
+        }
+      } else if (status === 'Outlier') {
+        outlierCount++;
+      } else if (status === 'Conflict') {
+        conflictCount++;
+      }
 
       comparisonItems.push({
         ...item,
         status,
         statusClass: getStatusClass(status),
         values,
+        groupLastTxDates: item.groupLastTxDates || {},
+        hasDateDiff: hasDateDiff,
+        dateDiffDetails: dateDiffDetails,
       });
     });
 
-    // Build group audit data with transactions
+    // ⭐ STEP 4: Build group audit data with transactions
     const groupAuditData = await Promise.all(groups.map(async (group) => {
       const balances = groupedBalances[group.groupId] || [];
       const formattedBalances = balances.map((b) => formatBalance(b));
@@ -476,7 +580,7 @@ exports.getStoreAudit = async (req, res) => {
       };
     }));
 
-    // Calculate overall summary
+    // ⭐ STEP 5: Calculate overall summary
     const overallSummary = {
       totalGroups: groups.length,
       totalItems: allBalances.length,
@@ -490,14 +594,15 @@ exports.getStoreAudit = async (req, res) => {
       matchedItems: matchedCount,
       outlierItems: outlierCount,
       conflictItems: conflictCount,
+      dateDiffItems: dateDiffCount,
       totalProducts: itemMap.size,
       categories: categories,
     };
 
-    // Build final response
+    // ⭐ STEP 6: Build final response
     const responseData = {
       store: {
-        id: store.storeId, // Use storeId
+        id: store.storeId,
         name: store.name,
         code: store.code,
         location: store.location,
@@ -513,14 +618,16 @@ exports.getStoreAudit = async (req, res) => {
           matched: matchedCount,
           outlier: outlierCount,
           conflict: conflictCount,
+          dateDiff: dateDiffCount,
           matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : 0,
           outlierPercentage: itemMap.size > 0 ? ((outlierCount / itemMap.size) * 100).toFixed(1) : 0,
           conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : 0,
+          dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : 0,
         },
       },
     };
 
-    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products across ${overallSummary.totalGroups} groups`);
+    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${dateDiffCount} with date differences`);
 
     res.status(200).json({
       success: true,
@@ -539,9 +646,116 @@ exports.getStoreAudit = async (req, res) => {
 // ============================================
 // 2. GET STORES WITH GROUPS
 // ============================================
-// auditController.js - Fix getStoresWithGroups
+// ============================================
+// 11. UPDATE ITEM TRANSACTION DATES
+// ============================================
+exports.updateItemTransactionDates = async (req, res) => {
+  const transaction = await sequelize.transaction()
+  
+  try {
+    const { storeId, itemId } = req.params
+    const { dates } = req.body
+    const userId = req.user?.userId || 1
+    
+    console.log(`📝 Updating transaction dates for item ${itemId} in store ${storeId}`)
+    console.log('📝 Updates:', dates)
+    
+    // Validate item exists
+    const item = await Item.findByPk(parseInt(itemId))
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found'
+      })
+    }
+    
+    // Validate store exists
+    const store = await Store.findByPk(parseInt(storeId))
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found'
+      })
+    }
+    
+    // Get all groups for this store
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code'],
+        }
+      ]
+    })
+    
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null)
+    
+    // Update each group's last transaction date
+    const updatedGroups = []
+    for (const group of groups) {
+      const groupId = group.groupId
+      const newDate = dates[groupId]
+      
+      if (!newDate) continue
+      
+      // Get the latest transaction for this item/group
+      const lastTx = await StoreBalanceHistory.findOne({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: groupId,
+          itemId: parseInt(itemId),
+        },
+        order: [['createdAt', 'DESC']],
+        transaction: transaction
+      })
+      
+      if (!lastTx) {
+        console.log(`⚠️ No transaction found for group ${groupId}`)
+        continue
+      }
+      
+      // Update the transaction date
+      const newDateObj = new Date(newDate)
+      await lastTx.update({
+        createdAt: newDateObj,
+        updatedAt: new Date()
+      }, { transaction })
+      
+      updatedGroups.push({
+        groupId: groupId,
+        groupName: group.name,
+        oldDate: lastTx.createdAt,
+        newDate: newDateObj
+      })
+      
+      console.log(`✅ Updated group ${groupId} date from ${lastTx.createdAt} to ${newDate}`)
+    }
+    
+    await transaction.commit()
+    
+    res.status(200).json({
+      success: true,
+      message: `Updated ${updatedGroups.length} group(s)`,
+      data: {
+        itemId: parseInt(itemId),
+        storeId: parseInt(storeId),
+        updatedGroups: updatedGroups
+      }
+    })
+    
+  } catch (error) {
+    await transaction.rollback()
+    console.error('❌ Error updating transaction dates:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update transaction dates'
+    })
+  }
+}
 
-// auditController.js - Fix getStoresWithGroups
+
 
 exports.getStoresWithGroups = async (req, res) => {
   try {

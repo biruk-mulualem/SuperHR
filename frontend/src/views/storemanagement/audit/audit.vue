@@ -35,7 +35,7 @@
       </div>
       <div class="summary-card" v-if="selectedStore">
         <span class="summary-label">Store</span>
-        <span class="summary-value">{{ selectedStoreName }}</span>
+        <span class="summary-value store-name">{{ selectedStoreName }}</span>
       </div>
       <div class="summary-card success">
         <span class="summary-label">✅ Matched</span>
@@ -48,6 +48,10 @@
       <div class="summary-card critical">
         <span class="summary-label">🚨 Conflict</span>
         <span class="summary-value">{{ conflictCount }}</span>
+      </div>
+      <div class="summary-card date-diff">
+        <span class="summary-label">📅 Date Diff</span>
+        <span class="summary-value">{{ dateDiffCount }}</span>
       </div>
     </div>
 
@@ -67,6 +71,7 @@
         <option value="Matched">✅ Matched</option>
         <option value="Outlier">⚠️ Outlier</option>
         <option value="Conflict">🚨 Conflict</option>
+        <option value="DateDiff">📅 Date Diff</option>
       </select>
       <button class="btn-clear-filters" @click="clearFilters" v-if="filterCategory || filterStatus">
         ✕ Clear Filters
@@ -75,12 +80,20 @@
 
     <!-- ==================== PRODUCT COMPARISON TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <!-- Loading State -->
-      <div v-if="loading" class="loading-state">
+      <!-- ⭐ LOADING STATE - Show this when loading -->
+      <div v-if="loading || refreshing" class="loading-state">
         <div class="spinner-large"></div>
-        <p>Loading audit data...</p>
+        <p class="loading-text">{{ loading ? 'Loading audit data...' : 'Refreshing data...' }}</p>
+        <p class="loading-subtext">Please wait while we fetch the data</p>
       </div>
+
+      <!-- ⭐ INITIAL LOADING STATE - When no store is selected yet -->
+      <div v-else-if="!selectedStoreId && !loading && !error" class="loading-state">
+        <div class="spinner-large"></div>
+        <p class="loading-text">Loading available stores...</p>
       
+      </div>
+
       <!-- Error State -->
       <div v-else-if="error" class="error-state">
         <div class="error-icon">❌</div>
@@ -88,7 +101,32 @@
         <p>{{ error }}</p>
         <button class="btn-retry" @click="retryLoad">Retry</button>
       </div>
-      
+
+      <!-- ⭐ No Data State - Only show when NOT loading and data is empty -->
+      <div v-else-if="storeStockData.length === 0 && !loading" class="empty-state">
+        <div class="empty-icon">📦</div>
+        <h3>No Products Found</h3>
+        <p v-if="selectedStore">
+          No products are currently tracked in <strong>{{ selectedStore.name }}</strong>
+        </p>
+        <p v-else>Please select a store to view audit data</p>
+        <div class="empty-actions">
+          <p class="empty-hint">💡 To add products, you need to:</p>
+          <ul class="empty-list">
+            <li>1. Create items in the Items module</li>
+            <li>2. Initialize balances for each store-group combination</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ⭐ No Results State (filtered out) -->
+      <div v-else-if="filteredAuditData.length === 0 && storeStockData.length > 0 && !loading" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h3>No Results Found</h3>
+        <p>No products match your current filters</p>
+        <button class="btn-clear-filters" @click="clearFilters">Clear Filters</button>
+      </div>
+
       <!-- Table -->
       <table v-else-if="filteredAuditData.length > 0" class="audit-table">
         <thead>
@@ -117,25 +155,34 @@
                 <div class="product-info">
                   <span class="common-name">{{ item.commonName || item.itemName }}</span>
                   <span class="standard-name">{{ item.standardName || '' }}</span>
+                 
                 </div>
               </td>
               <td>{{ item.category || '-' }}</td>
               <td>{{ item.uom || item.uomCode || '-' }}</td>
-              
+
               <!-- Group Balances -->
-              <td v-for="group in activeGroups" :key="group.id" 
+              <td v-for="group in activeGroups" :key="group.id"
                   :class="getCellClass(item, group.id)">
                 {{ getGroupValue(item, group.id) }}
               </td>
-              
+
+           <td>
+  <span :class="['status-badge', getStatusClass(item.status)]">
+    {{ item.status }}
+  </span>
+  <span 
+    v-if="item.hasDateDiff" 
+    class="date-diff-icon clickable" 
+    title="Different last transaction dates across groups - Click to update"
+    @click.stop="openDateUpdateModal(item)"
+  >
+    📅
+  </span>
+</td>
               <td>
-                <span :class="['status-badge', getStatusClass(item.status)]">
-                  {{ item.status }}
-                </span>
-              </td>
-              <td>
-                <button 
-                  @click="openTransactionModal(item)" 
+                <button
+                  @click="openTransactionModal(item)"
                   class="btn-transaction"
                   title="View Transactions"
                   :disabled="!item.itemId"
@@ -147,23 +194,6 @@
           </template>
         </tbody>
       </table>
-      
-      <!-- Empty State -->
-      <div v-else-if="!loading && !error" class="empty-state">
-        <div class="empty-icon">📦</div>
-        <h3>No Products Found</h3>
-        <p v-if="selectedStore">
-          No products are currently tracked in <strong>{{ selectedStore.name }}</strong>
-        </p>
-        <p v-else>Please select a store to view audit data</p>
-        <div class="empty-actions">
-          <p class="empty-hint">💡 To add products, you need to:</p>
-          <ul class="empty-list">
-            <li>1. Create items in the Items module</li>
-            <li>2. Initialize balances for each store-group combination</li>
-          </ul>
-        </div>
-      </div>
     </div>
 
     <!-- Pagination -->
@@ -197,9 +227,12 @@
               <span><strong>Code:</strong> {{ selectedItem?.code }}</span>
               <span><strong>Category:</strong> {{ selectedItem?.category || '-' }}</span>
               <span><strong>Store:</strong> {{ selectedStoreName }}</span>
-              <span><strong>Status:</strong> 
+              <span><strong>Status:</strong>
                 <span :class="['status-badge', getStatusClass(selectedItem?.status)]">
                   {{ selectedItem?.status }}
+                </span>
+                <span v-if="selectedItem?.hasDateDiff" class="date-diff-icon" title="Different last transaction dates across groups">
+                  📅
                 </span>
               </span>
             </div>
@@ -207,8 +240,8 @@
 
           <!-- Group Tabs -->
           <div class="group-tabs">
-            <button 
-              v-for="group in activeGroups" 
+            <button
+              v-for="group in activeGroups"
               :key="group.id"
               :class="['group-tab', { active: selectedGroupTab === group.id }]"
               @click="selectedGroupTab = group.id"
@@ -223,15 +256,15 @@
               <div class="spinner-small"></div>
               <span>Loading transactions...</span>
             </div>
-            
+
             <div v-else-if="getGroupTransactions(selectedGroupTab).length === 0" class="no-transactions">
               <div class="empty-icon-small">📭</div>
               <p>No transactions found for this group</p>
             </div>
-            
+
             <div v-else class="transaction-items">
-              <div 
-                v-for="(tx, idx) in getGroupTransactions(selectedGroupTab)" 
+              <div
+                v-for="(tx, idx) in getGroupTransactions(selectedGroupTab)"
                 :key="idx"
                 class="transaction-item"
                 :class="(tx.transactionType || tx.type || 'adjustment').toLowerCase()"
@@ -261,6 +294,106 @@
       </div>
     </div>
 
+
+<!-- ==================== DATE UPDATE MODAL ==================== -->
+<div v-if="showDateUpdateModal" class="modal-overlay" @click.self="closeDateUpdateModal">
+  <div class="modal-container date-update-modal">
+    <div class="modal-header">
+      <h3>📅 Update Last Transaction Dates</h3>
+      <button class="modal-close" @click="closeDateUpdateModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Product Info -->
+      <div class="transaction-product">
+        <h4>{{ selectedDateItem?.commonName || selectedDateItem?.itemName }}</h4>
+        <div class="product-meta">
+          <span><strong>Code:</strong> {{ selectedDateItem?.code }}</span>
+          <span><strong>Category:</strong> {{ selectedDateItem?.category || '-' }}</span>
+          <span><strong>Store:</strong> {{ selectedStoreName }}</span>
+          <span><strong>Status:</strong> 
+            <span :class="['status-badge', getStatusClass(selectedDateItem?.status)]">
+              {{ selectedDateItem?.status }}
+            </span>
+            <span v-if="selectedDateItem?.hasDateDiff" class="date-diff-icon">📅</span>
+          </span>
+        </div>
+        <div class="date-diff-summary" v-if="selectedDateItem?.dateDiffDetails">
+          <span class="diff-badge">
+            ⚠️ Different dates detected: 
+            {{ selectedDateItem.dateDiffDetails.diffDays }} day(s) apart
+          </span>
+        </div>
+      </div>
+
+      <!-- Group Date Cards -->
+      <div class="group-date-cards">
+        <div 
+          v-for="group in activeGroups" 
+          :key="group.id"
+          class="group-date-card"
+          :class="{ 'has-date': getGroupLastTxDate(selectedDateItem, group.id) }"
+        >
+          <div class="group-date-header">
+            <span class="group-name">{{ group.name }}</span>
+            <span class="group-balance">Balance: {{ getGroupValue(selectedDateItem, group.id) }}</span>
+          </div>
+          <div class="group-date-body">
+            <div class="date-display">
+              <span class="date-label">Last Transaction:</span>
+              <span class="date-value" v-if="getGroupLastTxDate(selectedDateItem, group.id)">
+                {{ formatDate(getGroupLastTxDate(selectedDateItem, group.id)) }}
+              </span>
+              <span class="date-value no-date" v-else>No transactions</span>
+            </div>
+            <div class="date-actions">
+              <button 
+                class="btn-update-date" 
+                @click="openDatePicker(selectedDateItem, group.id)"
+                :disabled="!getGroupLastTxDate(selectedDateItem, group.id)"
+              >
+                ✏️ Update
+              </button>
+              <button 
+                class="btn-reset-date" 
+                @click="resetToLatestDate(selectedDateItem, group.id)"
+                v-if="getGroupLastTxDate(selectedDateItem, group.id)"
+                title="Set to latest date across all groups"
+              >
+                📋 Sync
+              </button>
+            </div>
+          </div>
+          <div class="group-date-footer" v-if="selectedDateItem?._tempDate && selectedDateItem._tempDate[group.id]">
+            <span class="temp-date-label">New date:</span>
+            <span class="temp-date-value">{{ formatDate(selectedDateItem._tempDate[group.id]) }}</span>
+            <button class="btn-apply-date" @click="applyDateUpdate(selectedDateItem, group.id)">
+              ✅ Apply
+            </button>
+            <button class="btn-cancel-date" @click="cancelDateUpdate(selectedDateItem, group.id)">
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Date Picker (hidden input) -->
+      <input 
+        type="datetime-local" 
+        ref="datePickerInput"
+        style="display: none;"
+        @change="onDatePickerChange"
+      />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" @click="closeDateUpdateModal">Close</button>
+      <button class="btn-primary" @click="saveAllDateUpdates" :disabled="savingDates">
+        {{ savingDates ? 'Saving...' : '💾 Save All Changes' }}
+      </button>
+    </div>
+  </div>
+</div>
+    
+
     <!-- ==================== EXPORT MODAL ==================== -->
     <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
       <div class="modal-container export-modal">
@@ -278,6 +411,9 @@
             </div>
             <div class="export-option" @click="exportType = 'conflict'">
               <input type="radio" v-model="exportType" value="conflict" /> Conflicts Only
+            </div>
+            <div class="export-option" @click="exportType = 'dateDiff'">
+              <input type="radio" v-model="exportType" value="dateDiff" /> 📅 Date Diff Only
             </div>
             <div class="export-option" @click="exportType = 'summary'">
               <input type="radio" v-model="exportType" value="summary" /> Summary Report
@@ -345,6 +481,16 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
+// NEW STATE FOR DATE UPDATE
+// ================================================================
+const showDateUpdateModal = ref(false)
+const selectedDateItem = ref(null)
+const savingDates = ref(false)
+const datePickerInput = ref(null)
+let currentDatePickerGroup = null
+
+
+// ================================================================
 // COMPUTED
 // ================================================================
 const selectedStore = computed(() => {
@@ -356,10 +502,9 @@ const selectedStoreName = computed(() => {
 })
 
 const activeGroups = computed(() => {
-  // Get groups from the audit data
   if (auditData.value?.groups) {
     return auditData.value.groups.map(g => ({
-      id: g.groupId,      // Use groupId as the id for the frontend
+      id: g.groupId,
       groupId: g.groupId,
       name: g.name,
       code: g.code || ''
@@ -381,24 +526,28 @@ const categories = computed(() => {
 
 const filteredAuditData = computed(() => {
   let result = storeStockData.value
-  
+
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
-    result = result.filter(item => 
+    result = result.filter(item =>
       (item.code || '').toLowerCase().includes(s) ||
       (item.commonName || item.itemName || '').toLowerCase().includes(s) ||
       (item.standardName || '').toLowerCase().includes(s)
     )
   }
-  
+
   if (filterCategory.value) {
     result = result.filter(item => item.category === filterCategory.value)
   }
-  
+
   if (filterStatus.value) {
-    result = result.filter(item => item.status === filterStatus.value)
+    if (filterStatus.value === 'DateDiff') {
+      result = result.filter(item => item.hasDateDiff === true)
+    } else {
+      result = result.filter(item => item.status === filterStatus.value)
+    }
   }
-  
+
   return result
 })
 
@@ -423,13 +572,228 @@ const conflictCount = computed(() => {
   return filteredAuditData.value.filter(item => item.status === 'Conflict').length
 })
 
+const dateDiffCount = computed(() => {
+  return filteredAuditData.value.filter(item => item.hasDateDiff === true).length
+})
+
+
+
+
+
+// ================================================================
+// NEW METHODS FOR DATE UPDATE
+// ================================================================
+
+/**
+ * Open the date update modal
+ */
+const openDateUpdateModal = (item) => {
+  if (!item.hasDateDiff) {
+    showToastMessage('No date differences to update', 'info')
+    return
+  }
+  
+  // Create a deep copy to avoid mutating the original
+  selectedDateItem.value = JSON.parse(JSON.stringify(item))
+  selectedDateItem.value._tempDate = {}
+  showDateUpdateModal.value = true
+}
+
+/**
+ * Close the date update modal
+ */
+const closeDateUpdateModal = () => {
+  showDateUpdateModal.value = false
+  selectedDateItem.value = null
+  currentDatePickerGroup = null
+}
+
+/**
+ * Get the last transaction date for a specific group
+ */
+const getGroupLastTxDate = (item, groupId) => {
+  if (!item || !item.groupLastTxDates) return null
+  return item.groupLastTxDates[groupId] || null
+}
+
+/**
+ * Open the date picker for a specific group
+ */
+const openDatePicker = (item, groupId) => {
+  const currentDate = getGroupLastTxDate(item, groupId)
+  if (!currentDate) {
+    showToastMessage('No transaction date to update', 'error')
+    return
+  }
+  
+  currentDatePickerGroup = groupId
+  
+  // Format the date for the datetime-local input
+  const date = new Date(currentDate)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  
+  // Set the value and trigger the picker
+  if (datePickerInput.value) {
+    datePickerInput.value.value = `${year}-${month}-${day}T${hours}:${minutes}`
+    datePickerInput.value.showPicker()
+  }
+}
+
+/**
+ * Handle date picker change
+ */
+const onDatePickerChange = (event) => {
+  if (!selectedDateItem.value || !currentDatePickerGroup) return
+  
+  const newDate = event.target.value
+  if (newDate) {
+    if (!selectedDateItem.value._tempDate) {
+      selectedDateItem.value._tempDate = {}
+    }
+    selectedDateItem.value._tempDate[currentDatePickerGroup] = newDate
+    showToastMessage('Date updated temporarily. Click "Apply" to save.', 'info')
+  }
+  currentDatePickerGroup = null
+}
+
+/**
+ * Apply a single date update
+ */
+const applyDateUpdate = (item, groupId) => {
+  if (!item._tempDate || !item._tempDate[groupId]) {
+    showToastMessage('No date change to apply', 'error')
+    return
+  }
+  
+  // Update the actual date
+  item.groupLastTxDates[groupId] = item._tempDate[groupId]
+  delete item._tempDate[groupId]
+  
+  // Recalculate date diff
+  recalculateDateDiff(item)
+  
+  showToastMessage('Date updated successfully', 'success')
+}
+
+/**
+ * Cancel a date update
+ */
+const cancelDateUpdate = (item, groupId) => {
+  if (item._tempDate) {
+    delete item._tempDate[groupId]
+  }
+  showToastMessage('Date update cancelled', 'info')
+}
+
+/**
+ * Reset to the latest date across all groups
+ */
+const resetToLatestDate = (item, groupId) => {
+  const allDates = Object.values(item.groupLastTxDates || {}).filter(d => d)
+  if (allDates.length === 0) return
+  
+  const latestDate = new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
+  
+  if (!item._tempDate) {
+    item._tempDate = {}
+  }
+  item._tempDate[groupId] = latestDate.toISOString()
+  
+  showToastMessage(`Set to latest date: ${formatDate(latestDate.toISOString())}`, 'info')
+}
+
+/**
+ * Recalculate date diff after updates
+ */
+const recalculateDateDiff = (item) => {
+  const dates = Object.values(item.groupLastTxDates || {}).filter(d => d)
+  const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))]
+  const hasDateDiff = uniqueDateStrings.length > 1
+  
+  item.hasDateDiff = hasDateDiff
+  
+  if (hasDateDiff && dates.length > 1) {
+    const dateObjects = dates.map(d => new Date(d))
+    const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())))
+    const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())))
+    const diffMs = latestDate - earliestDate
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+    
+    item.dateDiffDetails = {
+      latestDate: latestDate.toISOString(),
+      earliestDate: earliestDate.toISOString(),
+      diffDays: diffDays,
+      diffHours: Math.round(diffMs / (1000 * 60 * 60)),
+      uniqueDates: uniqueDateStrings,
+    }
+  } else {
+    item.dateDiffDetails = null
+  }
+}
+
+/**
+ * Save all date updates to the backend
+ */
+const saveAllDateUpdates = async () => {
+  if (!selectedDateItem.value) return
+  
+  savingDates.value = true
+  
+  try {
+    // Build the update payload
+    const updates = {}
+    const groups = activeGroups.value
+    
+    for (const group of groups) {
+      const date = getGroupLastTxDate(selectedDateItem.value, group.id)
+      if (date) {
+        updates[group.id] = date
+      }
+    }
+    
+    // Call API to update dates
+    const result = await auditService.updateItemTransactionDates(
+      selectedStoreId.value,
+      selectedDateItem.value.itemId,
+      updates
+    )
+    
+    if (result.success) {
+      showToastMessage('All dates updated successfully!', 'success')
+      
+      // Update local data
+      const originalItem = storeStockData.value.find(
+        item => item.itemId === selectedDateItem.value.itemId
+      )
+      if (originalItem) {
+        originalItem.groupLastTxDates = { ...selectedDateItem.value.groupLastTxDates }
+        originalItem.hasDateDiff = selectedDateItem.value.hasDateDiff
+        originalItem.dateDiffDetails = selectedDateItem.value.dateDiffDetails
+      }
+      
+      closeDateUpdateModal()
+      
+      // Refresh data to reflect changes
+      await refreshData()
+    } else {
+      showToastMessage(result.error || 'Failed to update dates', 'error')
+    }
+  } catch (error) {
+    console.error('Error saving date updates:', error)
+    showToastMessage('Failed to save date updates', 'error')
+  } finally {
+    savingDates.value = false
+  }
+}
+
 // ================================================================
 // METHODS
 // ================================================================
 
-/**
- * Get status class for badge
- */
 const getStatusClass = (status) => {
   if (!status) return 'unknown'
   const map = {
@@ -460,22 +824,13 @@ const loadStores = async () => {
     console.log('🏪 Loading stores...')
     const result = await auditService.getStoresWithGroups()
     console.log('📥 Stores response:', result)
-    
+
     if (result.success && result.data.length > 0) {
-      // Log the first store to see its structure
-      console.log('🔍 First store raw data:', JSON.stringify(result.data[0], null, 2))
-      console.log('🔍 Store IDs from API:', result.data.map(s => ({ id: s.id, name: s.name })))
-      
-      // Use the actual IDs from the backend - DO NOT override them
       stores.value = result.data.map((store) => {
-        // Use the actual ID from the backend
         const storeId = store.id;
-        
-        console.log(`📋 Store: ${store.name}, ID: ${storeId}`);
-        
         return {
           ...store,
-          id: storeId, // Use the actual ID from backend
+          id: storeId,
           groups: (store.groups || []).map(group => ({
             ...group,
             id: group.id || group.groupId,
@@ -483,10 +838,7 @@ const loadStores = async () => {
           }))
         }
       })
-      
-      console.log('📋 Stores loaded with IDs:', stores.value.map(s => ({ id: s.id, name: s.name })))
-      
-      // Auto-select a store with balances
+
       await autoSelectStore()
     } else {
       console.warn('No stores found')
@@ -498,43 +850,25 @@ const loadStores = async () => {
     showToastMessage('Failed to load stores', 'error')
   }
 }
-/**
- * Auto-select a store with balances
- */
-// In your Vue component, update the autoSelectStore function
-/**
- * Auto-select a store with balances
- */
+
 const autoSelectStore = async () => {
   console.log('🔄 Auto-selecting store...');
-  console.log('📋 Available stores:', stores.value);
-  
-  // Check if we have stores
+
   if (!stores.value || stores.value.length === 0) {
     console.warn('No stores available to auto-select');
     return;
   }
-  
-  // Filter stores with valid IDs
-  const storesToCheck = stores.value.filter(store => {
-    if (!store.id) {
-      console.warn(`⚠️ Store "${store.name}" has no ID, skipping`);
-      return false;
-    }
-    return true;
-  });
-  
+
+  const storesToCheck = stores.value.filter(store => store.id);
+
   if (storesToCheck.length === 0) {
     console.warn('No valid stores to check');
     return;
   }
-  
-  console.log(`📋 Checking ${storesToCheck.length} stores:`, storesToCheck.map(s => ({ id: s.id, name: s.name })));
-  
-  // First, load balance counts for all stores
+
+  // Check stores with balances
   for (const store of storesToCheck) {
     try {
-      console.log(`🔍 Checking store ${store.id}: ${store.name}`);
       const result = await auditService.getStoreAudit(store.id, {
         includeTransactions: false,
         transactionLimit: 1
@@ -542,40 +876,24 @@ const autoSelectStore = async () => {
       if (result.success) {
         const count = result.data.summary?.totalItems || 0;
         storeBalanceCounts.value[store.id] = count;
-        console.log(`📊 Store ${store.name} (${store.id}): ${count} products`);
       }
     } catch (err) {
-      console.warn(`Could not get balance count for store ${store.id}:`, err);
       storeBalanceCounts.value[store.id] = 0;
     }
   }
-  
+
   // Find a store with balances
-  let storeWithBalances = null;
-  for (const store of storesToCheck) {
-    const count = storeBalanceCounts.value[store.id] || 0;
-    if (count > 0) {
-      storeWithBalances = store;
-      break;
-    }
-  }
-  
-  // Select the store
+  let storeWithBalances = storesToCheck.find(store => (storeBalanceCounts.value[store.id] || 0) > 0);
+
   if (storeWithBalances) {
-    console.log(`✅ Auto-selecting store with balances: ${storeWithBalances.name} (ID: ${storeWithBalances.id})`);
     selectedStoreId.value = storeWithBalances.id;
   } else if (storesToCheck.length > 0) {
-    const firstStore = storesToCheck[0];
-    console.log(`ℹ️ No stores with balances, selecting first store: ${firstStore.name} (ID: ${firstStore.id})`);
-    selectedStoreId.value = firstStore.id;
+    selectedStoreId.value = storesToCheck[0].id;
   } else {
-    console.warn('No stores available');
     return;
   }
-  
-  // Load the selected store
+
   if (selectedStoreId.value) {
-    console.log(`📥 Loading store data for ID: ${selectedStoreId.value}`);
     await loadStoreData(selectedStoreId.value);
   }
 }
@@ -586,36 +904,29 @@ const loadStoreData = async (storeId) => {
     storeStockData.value = []
     return
   }
-  
+
   loading.value = true
   error.value = null
-  
+
   try {
     console.log(`🔍 Loading audit data for store: ${storeId}`)
     const result = await auditService.getStoreAudit(storeId, {
       includeTransactions: true,
       transactionLimit: 10
     })
-    
-    console.log('📥 Audit response received')
-    
+
     if (result.success) {
       auditData.value = result.data
-      
-      // Store categories from response
+
       if (result.data.categories) {
         categoriesList.value = result.data.categories
       }
-      
-      // Transform the data for the table
+
       const transformedData = transformAuditData(result.data)
-      console.log(`🔄 Transformed ${transformedData.length} items`)
       storeStockData.value = transformedData
-      
-      // Update store balance count
+
       storeBalanceCounts.value[storeId] = transformedData.length
-      
-      // Update store groups from audit data
+
       if (result.data.store) {
         const existingStore = stores.value.find(s => s.id === result.data.store.id)
         if (existingStore && result.data.groups) {
@@ -627,7 +938,7 @@ const loadStoreData = async (storeId) => {
           }))
         }
       }
-      
+
       if (transformedData.length === 0) {
         console.log(`ℹ️ No products found for this store`)
       } else {
@@ -647,50 +958,39 @@ const loadStoreData = async (storeId) => {
   }
 }
 
-/**
- * Transform backend audit data into the format expected by the table
- */
-/**
- * Transform backend audit data into the format expected by the table
- */
+// -- Transform Audit Data --
 const transformAuditData = (data) => {
   console.log('🔄 Transform audit data:', data)
-  
+
   if (!data) {
-    console.warn('No data provided')
     return []
   }
-  
-  // If we have comparison items directly from the backend
+
   if (data.comparison && data.comparison.items) {
-    console.log('✅ Using comparison items from backend:', data.comparison.items.length)
-    
-    // Get the total number of groups
     const totalGroups = data.groups ? data.groups.length : 0
-    console.log(`📋 Total groups: ${totalGroups}`)
-    
-    const transformed = data.comparison.items.map(item => {
+
+    return data.comparison.items.map(item => {
       const groupBalances = item.groupBalances || {}
-      
-      // Get all values
+      const groupLastTxDates = item.groupLastTxDates || {}
+
       const values = Object.values(groupBalances).filter(v => v !== undefined && v !== null)
       const missingCount = totalGroups - values.length
-      
-      console.log(`📊 Item ${item.code} - Values: ${JSON.stringify(values)}, Missing: ${missingCount}/${totalGroups}`)
-      
-      // Determine status with new logic
+
+      // Check for date differences
+      const dates = Object.values(groupLastTxDates).filter(d => d !== undefined && d !== null)
+      const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
+      const hasDateDiff = uniqueDates.length > 1
+
       let status = 'No Data'
       let statusClass = 'unknown'
-      
+
       if (values.length === 0) {
         status = 'No Data'
         statusClass = 'no-data'
       } else if (missingCount > 0) {
-        // Some groups are missing data - this is a conflict!
         status = 'Conflict'
         statusClass = 'conflict'
       } else {
-        // All groups have data, check if they match
         const uniqueValues = [...new Set(values)]
         if (uniqueValues.length === 1) {
           status = 'Matched'
@@ -703,7 +1003,7 @@ const transformAuditData = (data) => {
           statusClass = 'conflict'
         }
       }
-      
+
       return {
         productId: item.itemId,
         itemId: item.itemId,
@@ -715,33 +1015,29 @@ const transformAuditData = (data) => {
         uom: item.uomCode || '',
         uomCode: item.uomCode || '',
         groupBalances: groupBalances,
+        groupLastTxDates: groupLastTxDates,
+        hasDateDiff: hasDateDiff,
+        dateDiffDetails: hasDateDiff ? {
+          uniqueDates: uniqueDates,
+          dateCount: dates.length,
+          latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
+          earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
+        } : null,
         status: status,
-        statusClass: statusClass,
-        // Add metadata for debugging
-        _debug: {
-          totalGroups: totalGroups,
-          missingCount: missingCount,
-          values: values
-        }
+        statusClass: statusClass
       }
     })
-    
-    console.log('✅ Transformed items:', transformed)
-    return transformed
   }
-  
+
   // Fallback: Build from groups data
   if (!data.groups) {
-    console.warn('No groups found')
     return []
   }
-  
-  console.log('🔄 Building from groups data (legacy format)')
+
   const groups = data.groups || []
   const totalGroups = groups.length
   const itemMap = new Map()
-  
-  // Collect all item IDs from all groups
+
   groups.forEach(group => {
     const balances = group.balances || []
     balances.forEach(balance => {
@@ -757,35 +1053,42 @@ const transformAuditData = (data) => {
           uom: balance.uomCode || '',
           uomCode: balance.uomCode || '',
           groupBalances: {},
+          groupLastTxDates: {},
+          hasDateDiff: false,
+          dateDiffDetails: null,
           status: 'Matched'
         })
       }
     })
   })
-  
-  // Now populate balances from each group
+
   groups.forEach(group => {
     const groupId = group.groupId
     const balances = group.balances || []
-    
+
     balances.forEach(balance => {
       const item = itemMap.get(balance.itemId)
       if (item) {
         item.groupBalances[groupId] = balance.balance
+        if (balance.lastTransactionDate) {
+          item.groupLastTxDates[groupId] = balance.lastTransactionDate
+        }
       }
     })
   })
-  
-  // Determine status for each item with the new logic
+
   itemMap.forEach((item) => {
     const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null)
     const missingCount = totalGroups - values.length
-    
+
+    const dates = Object.values(item.groupLastTxDates).filter(d => d !== undefined && d !== null)
+    const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
+    const hasDateDiff = uniqueDates.length > 1
+
     if (values.length === 0) {
       item.status = 'No Data'
       item.statusClass = 'no-data'
     } else if (missingCount > 0) {
-      // Missing data = Conflict!
       item.status = 'Conflict'
       item.statusClass = 'conflict'
     } else {
@@ -801,11 +1104,17 @@ const transformAuditData = (data) => {
         item.statusClass = 'conflict'
       }
     }
+
+    item.hasDateDiff = hasDateDiff
+    item.dateDiffDetails = hasDateDiff ? {
+      uniqueDates: uniqueDates,
+      dateCount: dates.length,
+      latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
+      earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
+    } : null
   })
-  
-  const result = Array.from(itemMap.values())
-  console.log(`✅ Transformed ${result.length} items from groups`)
-  return result
+
+  return Array.from(itemMap.values())
 }
 
 // -- Store Change --
@@ -821,34 +1130,32 @@ const onStoreChange = async () => {
   }
 }
 
-// -- Get Group Value --
 const getGroupValue = (item, groupId) => {
   const value = item.groupBalances?.[groupId]
   return value !== undefined && value !== null ? value : '-'
 }
 
-// -- Row Class --
 const getRowClass = (item) => {
   if (item.status === 'Conflict') return 'conflict-row'
   if (item.status === 'Outlier') return 'outlier-row'
+  if (item.status === 'Matched' && item.hasDateDiff) return 'date-diff-row'
   if (item.status === 'Matched') return 'matched-row'
   return ''
 }
 
-// -- Cell Class --
 const getCellClass = (item, groupId) => {
   const value = getGroupValue(item, groupId)
   const values = Object.values(item.groupBalances || {})
-  
+
   if (values.length === 0) return 'normal-cell'
-  
+
   const uniqueValues = [...new Set(values)]
-  
+
   if (uniqueValues.length === 1) {
     return 'normal-cell'
   } else if (uniqueValues.length === 2) {
     const majorityValue = values.find(v => values.filter(x => x === v).length > 1)
-    
+
     if (value === majorityValue) {
       return 'normal-cell'
     } else {
@@ -860,39 +1167,31 @@ const getCellClass = (item, groupId) => {
 }
 
 // -- Transaction Modal --
-// -- Transaction Modal --
 const openTransactionModal = async (item) => {
   if (!item.itemId) {
     showToastMessage('No item ID found for this product', 'error')
     return
   }
-  
+
   selectedItem.value = item
   const groups = activeGroups.value
   selectedGroupTab.value = groups.length > 0 ? groups[0].id : ''
   groupTransactions.value = {}
-  
+
   loadingTransactions.value = true
-  
+
   try {
-    console.log(`🔍 Fetching transactions for item ${item.itemId} in store ${selectedStoreId.value}`)
-    
     const result = await auditService.getItemTransactions(
       selectedStoreId.value,
       item.itemId,
       20
     )
-    
-    console.log('📥 Transactions response:', result)
-    
+
     if (result.success && result.data) {
       const data = result.data
-      console.log('📊 Group transactions:', data.groupTransactions)
-      
-      // Populate transactions for each group
+
       if (data.groupTransactions) {
         Object.entries(data.groupTransactions).forEach(([groupId, groupData]) => {
-          console.log(`📋 Group ${groupId}: ${groupData.transactions.length} transactions`)
           groupTransactions.value[groupId] = groupData.transactions.map(tx => ({
             ...tx,
             date: tx.createdAt,
@@ -905,14 +1204,12 @@ const openTransactionModal = async (item) => {
           }))
         })
       }
-      
-      // If no transactions found, show a message
+
       if (Object.keys(groupTransactions.value).length === 0) {
         showToastMessage('No transactions found for this item', 'info')
       }
     } else {
-      console.warn('No transactions found or API error:', result)
-      // Try fallback: load transactions for each group individually
+      // Fallback: try loading transactions per group
       for (const group of groups) {
         try {
           const groupResult = await auditService.getGroupTransactions(
@@ -946,7 +1243,7 @@ const openTransactionModal = async (item) => {
   } finally {
     loadingTransactions.value = false
   }
-  
+
   showTransactionModal.value = true
 }
 
@@ -1025,12 +1322,13 @@ const exportSelectedReport = async () => {
   exporting.value = true
   try {
     const blob = await auditService.exportAuditData(selectedStoreId.value, {
-      includeTransactions: exportType.value === 'full'
+      includeTransactions: exportType.value === 'full' || exportType.value === 'summary',
+      filterBy: exportType.value
     })
-    
+
     const filename = `audit_report_${selectedStoreName.value || 'store'}_${new Date().toISOString().split('T')[0]}.csv`
     auditService.downloadFile(blob, filename)
-    
+
     showToastMessage('Export completed successfully!', 'success')
   } catch (error) {
     console.error('Export failed:', error)
@@ -1071,8 +1369,172 @@ onMounted(() => {
 
 <style scoped>
 /* ================================================================
-   SECTION CARD
+   EXISTING STYLES (keep all your existing styles)
    ================================================================ */
+
+/* ⭐ NEW: Enhanced Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.loading-state .loading-text {
+  font-size: 18px;
+  font-weight: 500;
+  color: #1e293b;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.loading-state .loading-subtext {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.spinner-large {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ⭐ NEW: Date Diff styles */
+.summary-card.date-diff .summary-value {
+  color: #8b5cf6;
+}
+
+.date-diff-row {
+  background: #f5f3ff;
+}
+
+.date-diff-row:hover {
+  background: #ede9fe;
+}
+
+.date-diff-indicator {
+  font-size: 10px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+.date-diff-icon {
+  font-size: 10px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+/* ⭐ Store name fix */
+.summary-card .store-name {
+  font-size: 14px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ⭐ No results state */
+.empty-state .btn-clear-filters {
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.empty-state .btn-clear-filters:hover {
+  background: #2563eb;
+}
+
+/* ⭐ NEW: Date Diff styles */
+.summary-card.date-diff .summary-value {
+  color: #8b5cf6;
+}
+
+.date-diff-row {
+  background: #f5f3ff;
+}
+
+.date-diff-row:hover {
+  background: #ede9fe;
+}
+
+.date-diff-indicator {
+  font-size: 10px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+.date-diff-icon {
+  font-size: 10px;
+  margin-left: 4px;
+  cursor: help;
+}
+
+/* ⭐ Store name fix */
+.summary-card .store-name {
+  font-size: 14px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ⭐ No results state */
+.empty-state .btn-clear-filters {
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.empty-state .btn-clear-filters:hover {
+  background: #2563eb;
+}
+
+
+/* ⭐ NEW: Date Diff styles */
+.summary-card.date-diff .summary-value {
+  color: #8b5cf6;
+}
+
+.date-diff-row {
+  background: #f5f3ff;
+}
+
+.date-diff-row:hover {
+  background: #ede9fe;
+}
+
+/* ⭐ NEW: Store name fix */
+.summary-card .store-name {
+  font-size: 14px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 .section-card {
   background: white;
   border-radius: 16px;
@@ -1517,6 +1979,217 @@ onMounted(() => {
 .empty-state p strong {
   color: #1e293b;
 }
+
+
+
+
+
+
+
+
+/* ================================================================
+   DATE UPDATE MODAL STYLES
+   ================================================================ */
+.date-update-modal .modal-container {
+  max-width: 650px;
+}
+
+.date-diff-summary {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fef3c7;
+  border-radius: 8px;
+  border-left: 4px solid #f59e0b;
+}
+
+.diff-badge {
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.group-date-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.group-date-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: all 0.2s;
+}
+
+.group-date-card.has-date {
+  border-left: 3px solid #3b82f6;
+}
+
+.group-date-card:hover {
+  border-color: #cbd5e1;
+}
+
+.group-date-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.group-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.group-balance {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.group-date-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.date-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.date-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.date-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.date-value.no-date {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.date-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-update-date,
+.btn-reset-date,
+.btn-apply-date,
+.btn-cancel-date {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-update-date {
+  background: #e0e7ff;
+  color: #1e40af;
+}
+
+.btn-update-date:hover:not(:disabled) {
+  background: #c7d2fe;
+}
+
+.btn-update-date:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-reset-date {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.btn-reset-date:hover {
+  background: #fde68a;
+}
+
+.btn-apply-date {
+  background: #10b981;
+  color: white;
+}
+
+.btn-apply-date:hover {
+  background: #059669;
+}
+
+.btn-cancel-date {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.btn-cancel-date:hover {
+  background: #fecaca;
+}
+
+.group-date-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.temp-date-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.temp-date-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  transform: scale(1.2);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .empty-actions {
   background: #f8fafc;

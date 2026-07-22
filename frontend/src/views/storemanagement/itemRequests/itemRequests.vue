@@ -1,4 +1,5 @@
-<!-- views/storemanagement/itemrequests/itemrequests.vue - WITH HIDDEN STORE FOR NON-ADMIN -->
+<!-- views/storemanagement/itemrequests/itemrequests.vue -->
+
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -17,7 +18,13 @@
             @input="onSearchChange"
           />
         </div>
-        <button class="btn-add" @click="openCreateModal">➕ New Request</button>
+        <button 
+          v-if="userIsAskingStore" 
+          class="btn-add" 
+          @click="openCreateModal"
+        >
+          ➕ New Request
+        </button>
       </div>
     </div>
 
@@ -35,7 +42,6 @@
         <option value="finalized">Finalized</option>
       </select>
       
-      <!-- 🔥 STORE FILTER - HIDDEN FOR NON-ADMIN -->
       <select
         v-if="userIsAdmin"
         v-model="filterStore"
@@ -104,8 +110,8 @@
             v-for="req in paginatedRequests"
             :key="req.requestId || req.id"
           >
-            <!-- Main Row -->
             <tr
+              v-if="shouldShowRequest(req)"
               :class="{
                 'expanded-row': expandedRow === (req.requestId || req.id),
               }"
@@ -136,49 +142,55 @@
                 <span :class="['status-badge', req.status]">
                   {{ req.status }}
                 </span>
+                <div v-if="req.status === 'pending'" class="notification-status">
+                  <span 
+                    v-for="notification in (req.notifications || [])" 
+                    :key="notification.id"
+                    :class="['notification-dot', notification.status]"
+                    :title="'Group: ' + (notification.group?.name || notification.group_id) + ' - ' + notification.status"
+                  ></span>
+                  <span class="notification-text">{{ getAcceptanceSummary(req) }}</span>
+                </div>
               </td>
               <td>
-          
-<div class="action-buttons">
-  <button
-    class="icon-btn print-btn"
-    @click="printRequest(req)"
-    title="Print Request"
-  >
-    🖨️
-  </button>
-  <button
-    v-if="req.status !== 'finalized'"
-    class="icon-btn"
-    @click="editRequest(req)"
-    title="Edit"
-  >
-    ✏️
-  </button>
-  <button
-    v-if="req.status === 'pending'"
-    class="icon-btn"
-    @click="openStatusConfirmation(req, 'approved')"
-    title="Approve"
-  >
-    ✅
-  </button>
-  <!-- 🔥 REJECT BUTTON - Show for pending OR approved -->
-  <button
-    v-if="req.status === 'pending' || req.status === 'approved'"
-    class="icon-btn"
-    @click="openStatusConfirmation(req, 'rejected')"
-    title="Reject"
-  >
-    🚫
-  </button>
-</div>
+                <div class="action-buttons">
+                  <!-- 🔥 PRINT: Only asking store can print -->
+                  <button
+                    v-if="canPrintRequest(req) && userIsAskingStore"
+                    class="icon-btn print-btn"
+                    @click="printRequest(req)"
+                    :disabled="!canPrintRequest(req)"
+                    :title="getApproveTooltip(req)"
+                  >
+                    🖨️
+                  </button>
+                  
+                  <!-- 🔥 EDIT: Only asking store can edit -->
+                  <button
+                    v-if="canEditRequest(req) && userIsAskingStore"
+                    class="icon-btn"
+                    @click="editRequest(req)"
+                    :title="canEditRequest(req) ? 'Edit' : 'Cannot edit this request'"
+                  >
+                    ✏️
+                  </button>
+                  
+                  <!-- 🔥 APPROVE: Only asking store can approve -->
+                  <button
+                    v-if="canApproveRequest(req) && userIsAskingStore"
+                    class="icon-btn"
+                    @click="openStatusConfirmation(req, 'approved')"
+                    :disabled="!canApproveRequest(req)"
+                    :title="getApproveTooltip(req)"
+                  >
+                    ✅
+                  </button>
+                </div>
               </td>
             </tr>
 
-            <!-- Expanded Detail Row -->
             <tr
-              v-if="expandedRow === (req.requestId || req.id)"
+              v-if="expandedRow === (req.requestId || req.id) && shouldShowRequest(req)"
               class="detail-expand-row"
             >
               <td colspan="8">
@@ -311,44 +323,66 @@
                       <div v-else class="no-remark">No remarks provided</div>
                     </div>
 
-                   <!-- In the detail-actions section -->
-<div class="detail-actions">
-  <button
-    class="btn-print-detail"
-    @click="printRequest(req)"
-  >
-    🖨️ Print Request
-  </button>
-  <button
-    v-if="req.status !== 'finalized'"
-    class="btn-edit-detail"
-    @click="editRequest(req)"
-  >
-    ✏️ Edit
-  </button>
-  <button
-    v-if="req.status === 'pending'"
-    class="btn-approve-detail"
-    @click="openStatusConfirmation(req, 'approved')"
-  >
-    ✅ Approve
-  </button>
-  <!-- 🔥 REJECT BUTTON - Show for pending OR approved -->
-  <button
-    v-if="req.status === 'pending' || req.status === 'approved'"
-    class="btn-reject-detail"
-    @click="openStatusConfirmation(req, 'rejected')"
-  >
-    🚫 Reject
-  </button>
-  <button
-    v-if="req.status === 'approved'"
-    class="btn-finalize-detail"
-    @click="openStatusConfirmation(req, 'finalized')"
-  >
-    📋 Finalize
-  </button>
-</div>
+                    <div v-if="getRejectionReasons(req).length > 0" class="detail-card full-width rejection-card">
+                      <h4>🚫 Rejection Reasons</h4>
+                      <div 
+                        v-for="(reason, idx) in getRejectionReasons(req)" 
+                        :key="idx"
+                        class="rejection-item"
+                      >
+                        <div class="rejection-header">
+                          <span class="rejection-group">
+                            <span class="rejection-icon">❌</span>
+                            {{ reason.groupName }}
+                          </span>
+                          <span class="rejection-date">{{ formatDateTime(reason.respondedAt) }}</span>
+                        </div>
+                        <div class="rejection-reason-textarea">
+                          <textarea
+                            :value="reason.reason"
+                            readonly
+                            rows="3"
+                            class="rejection-textarea-readonly"
+                            placeholder="No reason provided"
+                          ></textarea>
+                        </div>
+                        <div class="rejection-by">
+                          <span class="rejection-by-icon">👤</span>
+                          Rejected by: {{ reason.respondedBy }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-if="userIsAskingStore" class="detail-actions">
+                      <button
+                        v-if="canPrintRequest(req)"
+                        class="btn-print-detail"
+                        @click="printRequest(req)"
+                        :disabled="!canPrintRequest(req)"
+                      >
+                        🖨️ Print Request
+                      </button>
+                      <button
+                        v-if="canEditRequest(req)"
+                        class="btn-edit-detail"
+                        @click="editRequest(req)"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        v-if="canApproveRequest(req)"
+                        class="btn-approve-detail"
+                        @click="openStatusConfirmation(req, 'approved')"
+                        :disabled="!canApproveRequest(req)"
+                        :title="getApproveTooltip(req)"
+                      >
+                        ✅ Approve
+                      </button>
+                    </div>
+                    
+                    <div v-else class="detail-actions readonly-actions">
+                      <span class="readonly-badge">📄 Read Only View</span>
+                    </div>
                   </div>
                 </div>
               </td>
@@ -393,9 +427,6 @@
           <button class="modal-close" @click="closeModal">✕</button>
         </div>
         <div class="modal-body">
-          <!-- ================================================================ -->
-          <!-- 🔥 VALIDATION ERRORS DISPLAY -->
-          <!-- ================================================================ -->
           <div
             v-if="showValidationErrors && validationErrors.length > 0"
             class="validation-error-box"
@@ -404,9 +435,7 @@
               <span class="error-icon">❌</span>
               <span class="error-title">Request Validation Failed</span>
             </div>
-
             <div class="validation-error-message">{{ validationMessage }}</div>
-
             <div class="validation-error-list">
               <div
                 v-for="(error, index) in validationErrors"
@@ -425,9 +454,7 @@
                     </span>
                   </span>
                 </div>
-
                 <div class="error-item-message">{{ error.message }}</div>
-
                 <div
                   v-if="
                     error.groupsWithoutBalance &&
@@ -444,7 +471,6 @@
                     {{ group.groupName }}
                   </span>
                 </div>
-
                 <div
                   v-if="error.balanceDetails && error.balanceDetails.length > 0"
                   class="error-balance-details"
@@ -462,7 +488,6 @@
                 </div>
               </div>
             </div>
-
             <div class="validation-actions">
               <button class="btn-secondary" @click="closeValidationErrors">
                 ✕ Dismiss
@@ -470,59 +495,48 @@
             </div>
           </div>
 
-          <!-- ================================================================ -->
-          <!-- REQUEST FORM -->
-          <!-- ================================================================ -->
           <form
             @submit.prevent="saveRequest"
             class="request-form"
             v-show="!showValidationErrors"
           >
-        
-<div class="form-row">
-  <!-- 🔥 ASKING STORE - ONLY VISIBLE FOR ADMIN -->
-  <div class="form-group" v-if="userIsAdmin">
-    <label>Asking Store (Source) *</label>
-    <select
-      v-model="form.askingStoreId"
-      required
-      :disabled="!!userAssignedStoreId || !!editingRequest"
-    >
-      <option value="">Select Store</option>
-      <option
-        v-for="store in activeStores"
-        :key="store.storeId || store.id"
-        :value="store.storeId || store.id"
-      >
-        {{ store.name }}
-      </option>
-    </select>
-    <span v-if="userAssignedStoreId" class="hint">
-      📌 Using your assigned store: {{ getUserAssignedStoreName() }}
-    </span>
-  </div>
-  
-  <!-- 🔥 ASKING STORE - COMPLETELY HIDDEN FOR NON-ADMIN -->
-  
-  <div class="form-group">
-    <label>Supplying Store (Target) *</label>
-    <select v-model="form.supplyingStoreId" required>
-      <option value="">Select Store</option>
-      <option
-        v-for="store in filteredSupplyingStores"
-        :key="store.storeId || store.id"
-        :value="store.storeId || store.id"
-      >
-        {{ store.name }}
-      </option>
-    </select>
-    <span class="hint"
-      >Select the store that will supply the items</span
-    >
-  </div>
-</div>
+            <div class="form-row">
+              <div class="form-group" v-if="userIsAdmin">
+                <label>Asking Store (Source) *</label>
+                <select
+                  v-model="form.askingStoreId"
+                  required
+                  :disabled="!!userAssignedStoreId || !!editingRequest"
+                >
+                  <option value="">Select Store</option>
+                  <option
+                    v-for="store in activeStores"
+                    :key="store.storeId || store.id"
+                    :value="store.storeId || store.id"
+                  >
+                    {{ store.name }}
+                  </option>
+                </select>
+                <span v-if="userAssignedStoreId" class="hint">
+                  📌 Using your assigned store: {{ getUserAssignedStoreName() }}
+                </span>
+              </div>
+              <div class="form-group">
+                <label>Supplying Store (Target) *</label>
+                <select v-model="form.supplyingStoreId" required>
+                  <option value="">Select Store</option>
+                  <option
+                    v-for="store in filteredSupplyingStores"
+                    :key="store.storeId || store.id"
+                    :value="store.storeId || store.id"
+                  >
+                    {{ store.name }}
+                  </option>
+                </select>
+                <span class="hint">Select the store that will supply the items</span>
+              </div>
+            </div>
 
-            <!-- Items Section -->
             <div class="form-section-title">
               <span>📦 Items</span>
               <button type="button" class="btn-add-item" @click="addItemRow">
@@ -531,15 +545,9 @@
             </div>
 
             <div v-if="form.items.length === 0" class="no-items-message">
-              <p>
-                No items added yet. Click "Add Item" to add items to this
-                request.
-              </p>
+              <p>No items added yet. Click "Add Item" to add items to this request.</p>
             </div>
 
-            <!-- ============================================================ -->
-            <!-- ENHANCED ITEM ROW WITH STACKED DISPLAY - FULL WIDTH -->
-            <!-- ============================================================ -->
             <div
               v-for="(item, index) in form.items"
               :key="index"
@@ -557,19 +565,13 @@
                 </button>
               </div>
 
-              <!-- Item Selection with Stacked Layout - FULL WIDTH -->
               <div class="form-row full-width">
                 <div class="form-group full-width">
                   <label>Select Item *</label>
-
-                  <!-- 🔥 DUPLICATE WARNING -->
                   <div v-if="item.itemId && isItemAlreadyAdded(item.itemId, index)" class="duplicate-error">
                     ⚠️ This item is already in the request. Please remove this row or select a different item.
                   </div>
-
-                  <!-- Search -->
                   <div class="item-search-wrapper">
-                   
                     <input
                       type="text"
                       :ref="(el) => setSearchInputRef(el, index)"
@@ -579,8 +581,6 @@
                       class="item-search-input"
                     />
                   </div>
-
-                  <!-- Item Select with Infinite Scroll - STACKED LAYOUT -->
                   <div
                     class="item-select-container"
                     :ref="(el) => setItemContainer(el, index)"
@@ -605,16 +605,12 @@
                         @click="selectItemForRow(index, itemOption)"
                       >
                         <div class="item-option-content">
-                          <!-- Left: Code -->
                           <div class="item-option-left">
                             <span class="item-option-code">{{
                               itemOption.code
                             }}</span>
                           </div>
-
-                          <!-- Middle: Standard Name & Common Name (stacked) -->
                           <div class="item-option-middle">
-                            <!-- ✅ COMMON NAME - Primary (always shown) -->
                             <div class="item-option-common-name">
                               {{
                                 (itemOption as any).commonName ||
@@ -622,7 +618,6 @@
                                 "Unnamed"
                               }}
                             </div>
-                            <!-- ✅ STANDARD NAME - Secondary (only shown if exists and different) -->
                             <div
                               class="item-option-standard-name"
                               v-if="
@@ -634,8 +629,6 @@
                               {{ itemOption.standardName }}
                             </div>
                           </div>
-
-                          <!-- Right: Brand & Model (stacked) -->
                           <div class="item-option-right">
                             <div
                               class="item-option-brand"
@@ -650,13 +643,9 @@
                               {{ itemOption.model }}
                             </div>
                           </div>
-
-                          <!-- Far Right: UOM -->
                           <div class="item-option-uom">
                             {{ itemOption.uom?.code || "N/A" }}
                           </div>
-
-                          <!-- 🔥 Already Added Badge -->
                           <div
                             v-if="isItemAlreadyAdded(
                               itemOption.itemId || itemOption.id,
@@ -694,8 +683,6 @@
                       </div>
                     </div>
                   </div>
-
-                  <!-- Selected Item Display -->
                   <div
                     v-if="selectedItemDisplays[index]"
                     class="selected-item-display"
@@ -745,7 +732,6 @@
                 </div>
               </div>
 
-              <!-- Quantity and UOM - 3 columns -->
               <div class="form-row">
                 <div class="form-group">
                   <label>UOM</label>
@@ -778,7 +764,6 @@
                 </div>
               </div>
 
-              <!-- Item Remark - Full Width -->
               <div class="form-row full-width">
                 <div class="form-group">
                   <label>Item Remark</label>
@@ -792,7 +777,6 @@
               </div>
             </div>
 
-            <!-- Request Details -->
             <div class="form-section-title">📋 Request Details</div>
             <div class="form-row">
               <div class="form-group">
@@ -811,7 +795,6 @@
               </div>
             </div>
 
-            <!-- Status - Hidden when editing, visible when creating -->
             <div class="form-row" v-if="!editingRequest">
               <div class="form-group">
                 <label>Status</label>
@@ -822,11 +805,9 @@
                 </select>
               </div>
               <div class="form-group">
-                <!-- Empty for alignment -->
               </div>
             </div>
 
-            <!-- Show status info when editing -->
             <div class="form-row" v-if="editingRequest">
               <div class="form-group">
                 <label>Status</label>
@@ -836,12 +817,9 @@
                   readonly
                   class="status-info-field"
                 />
-                <span class="hint"
-                  >Status is always reset to Pending when editing</span
-                >
+                <span class="hint">Status is always reset to Pending when editing</span>
               </div>
               <div class="form-group">
-                <!-- Empty for alignment -->
               </div>
             </div>
 
@@ -854,13 +832,9 @@
                   placeholder="General notes or remarks..."
                   class="textarea-field"
                 ></textarea>
-                <span class="hint"
-                  >This remark applies to the entire request</span
-                >
+                <span class="hint">This remark applies to the entire request</span>
               </div>
             </div>
-
-           
 
             <div v-if="formErrors.length > 0" class="form-errors">
               <div v-for="error in formErrors" :key="error" class="form-error">
@@ -896,9 +870,7 @@
         </div>
         <div class="modal-body">
           <div class="confirmation-icon">🔄</div>
-          <p class="confirmation-title">
-            Are you sure you want to change the status?
-          </p>
+          <p class="confirmation-title">Are you sure you want to change the status?</p>
           <div class="confirmation-details">
             <div class="detail-row">
               <span class="detail-label">Request:</span>
@@ -929,14 +901,11 @@
           </div>
           <p class="warning-text">
             ⚠️ This action will change the request status to
-            <strong>{{ statusAction }}</strong
-            >.
+            <strong>{{ statusAction }}</strong>.
           </p>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeStatusModal">
-            Cancel
-          </button>
+          <button class="btn-secondary" @click="closeStatusModal">Cancel</button>
           <button class="btn-primary" @click="confirmStatusChange">
             Confirm {{ statusAction }}
           </button>
@@ -968,9 +937,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeExportModal">
-            Cancel
-          </button>
+          <button class="btn-secondary" @click="closeExportModal">Cancel</button>
           <button
             class="btn-primary"
             @click="exportSelectedReport"
@@ -989,8 +956,10 @@
   </div>
 </template>
 
+
+
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import itemRequestService from "@/stores/itemRequestService";
@@ -1020,6 +989,7 @@ const loadingItems = ref(false);
 const userAssignedStoreId = ref<number | null>(null);
 const userAssignedStoreName = ref<string | null>(null);
 const userIsAdmin = ref(false);
+const userIsAskingStore = ref(false);
 
 // Filters & Search
 const searchQuery = ref("");
@@ -1029,7 +999,7 @@ const currentPage = ref(1);
 const pageSize = ref(10);
 const totalItems = ref(0);
 
-// 🔥 Validation Errors
+// Validation Errors
 const validationErrors = ref<any[]>([]);
 const validationMessage = ref<string>("");
 const showValidationErrors = ref(false);
@@ -1048,11 +1018,9 @@ const exportType = ref<"full" | "summary">("full");
 // Status Confirmation Modal
 const showStatusModal = ref(false);
 const statusTarget = ref<ItemRequest | null>(null);
-const statusAction = ref<"approved" | "rejected" | "finalized">("approved");
+const statusAction = ref<"approved" | "finalized">("approved");
 
-// ================================================================
-// ITEM SELECTION STATE (per row)
-// ================================================================
+// Item Selection State
 const itemSearchQueries = ref<Record<number, string>>({});
 const itemDisplayLimits = ref<Record<number, number>>({});
 const isLoadingItemsForRow = ref<Record<number, boolean>>({});
@@ -1124,33 +1092,192 @@ const totalPages = computed(() => {
   return Math.ceil(totalItems.value / pageSize.value) || 1;
 });
 
-// -- User Permissions --
 const canCreateRequests = computed(() => {
   if (userIsAdmin.value) return true;
   return !!userAssignedStoreId.value;
 });
 
 // ================================================================
-// 🔥 DUPLICATE ITEM CHECK
+// 🔥 HELPER: Check if store is foreign/local purchase (skip notifications)
 // ================================================================
+const SKIP_NOTIFICATION_STORES = ['STORE-006', 'STORE-007'];
 
-const isItemAlreadyAdded = (
-  itemId: number | undefined,
-  currentIndex: number,
-): boolean => {
-  if (!itemId || itemId === 0) return false;
-  
-  // Check if this item already exists in other rows
-  const exists = form.value.items.some(
-    (item, index) => item.itemId === itemId && index !== currentIndex,
-  );
-  
-  return exists;
+const shouldSkipNotifications = (storeCode: string): boolean => {
+  return SKIP_NOTIFICATION_STORES.includes(storeCode);
+};
+
+const isSkipStore = (req: ItemRequest): boolean => {
+  const supplyingStore = stores.value.find(s => (s.storeId || s.id) === req.supplyingStoreId);
+  return supplyingStore ? shouldSkipNotifications(supplyingStore.code) : false;
 };
 
 // ================================================================
-// METHODS - ITEM SELECTION PER ROW
+// PERMISSION METHODS - UPDATED for skip stores
 // ================================================================
+
+const isUserAskingStore = (req: ItemRequest): boolean => {
+  if (!userAssignedStoreId.value) return false;
+  return Number(req.askingStoreId) === userAssignedStoreId.value;
+};
+
+const isUserSupplyingStore = (req: ItemRequest): boolean => {
+  if (!userAssignedStoreId.value) return false;
+  return Number(req.supplyingStoreId) === userAssignedStoreId.value;
+};
+
+const shouldShowRequest = (req: ItemRequest): boolean => {
+  if (userIsAdmin.value) return true;
+  if (isUserAskingStore(req)) return true;
+  if (isUserSupplyingStore(req)) {
+    // Supplying store sees only approved requests (or skip stores)
+    return req.status === 'approved';
+  }
+  return false;
+};
+
+/**
+ * Check if user can edit a request
+ * - Only asking store can edit
+ * - For skip stores (foreign/local purchase): can edit anytime when pending
+ * - For normal stores: can edit if status is 'pending' and NOT fully accepted
+ * - Can edit if status is 'rejected' (to fix and resubmit)
+ */
+const canEditRequest = (req: ItemRequest): boolean => {
+  if (!isUserAskingStore(req)) return false;
+  
+  // ✅ Can edit rejected requests to fix issues
+  if (req.status === 'rejected') {
+    return true;
+  }
+  
+  // 🔥 Check if this is a skip store (foreign/local purchase)
+  if (isSkipStore(req)) {
+    // For foreign/local purchase stores, can edit anytime when pending
+    return req.status === 'pending';
+  }
+  
+  // ✅ Can edit pending requests if not fully accepted
+  if (req.status === 'pending') {
+    if (req.notifications && req.notifications.length > 0) {
+      const allAccepted = req.notifications.every(n => n.status === 'accepted');
+      // Can edit if NOT all accepted (there are still pending or rejected)
+      return !allAccepted;
+    }
+    // If no notifications yet, can edit
+    return true;
+  }
+  
+  // ❌ Cannot edit approved or finalized requests
+  return false;
+};
+
+/**
+ * Check if user can approve a request
+ * - Only asking store can approve
+ * - For skip stores (foreign/local purchase): can approve anytime when pending
+ * - For normal stores: only if all groups have accepted and no rejections
+ */
+const canApproveRequest = (req: ItemRequest): boolean => {
+  if (!isUserAskingStore(req)) return false;
+  if (req.status !== 'pending') return false;
+  
+  // 🔥 Check if this is a skip store (foreign/local purchase)
+  if (isSkipStore(req)) {
+    // For foreign/local purchase stores, can approve anytime
+    return true;
+  }
+  
+  // Normal store: need all groups to accept
+  if (!req.notifications || req.notifications.length === 0) return false;
+  const allAccepted = req.notifications.every(n => n.status === 'accepted');
+  const hasRejection = req.notifications.some(n => n.status === 'rejected');
+  return allAccepted && !hasRejection;
+};
+
+/**
+ * Check if user can print a request
+ * - Only asking store can print
+ * - For skip stores (foreign/local purchase): can print anytime when pending
+ * - For normal stores: only if all groups have accepted and no rejections
+ */
+const canPrintRequest = (req: ItemRequest): boolean => {
+  if (!isUserAskingStore(req)) return false;
+  if (req.status !== 'pending') return false;
+  
+  // 🔥 Check if this is a skip store (foreign/local purchase)
+  if (isSkipStore(req)) {
+    // For foreign/local purchase stores, can print anytime
+    return true;
+  }
+  
+  // Normal store: need all groups to accept
+  if (!req.notifications || req.notifications.length === 0) return false;
+  const allAccepted = req.notifications.every(n => n.status === 'accepted');
+  const hasRejection = req.notifications.some(n => n.status === 'rejected');
+  return allAccepted && !hasRejection;
+};
+
+const getApproveTooltip = (req: ItemRequest): string => {
+  if (req.status !== 'pending') return 'Request is not pending';
+  
+  // 🔥 Check if this is a skip store (foreign/local purchase)
+  if (isSkipStore(req)) {
+    return '📦 No approval required - Click to approve (Foreign/Local Purchase)';
+  }
+  
+  const hasRejection = req.notifications?.some(n => n.status === 'rejected') || false;
+  if (hasRejection) return 'Some groups have rejected - Edit and resubmit';
+  
+  const allAccepted = req.notifications?.every(n => n.status === 'accepted') || false;
+  if (!allAccepted) return 'Waiting for all groups to accept';
+  
+  return 'All groups accepted - Ready to proceed';
+};
+
+const getAcceptanceSummary = (req: ItemRequest): string => {
+  // 🔥 Check if this is a skip store (foreign/local purchase)
+  if (isSkipStore(req)) {
+    return '📦 you can directly print the request';
+  }
+  
+  if (!req.notifications || req.notifications.length === 0) return 'No responses';
+  
+  const total = req.notifications.length;
+  const accepted = req.notifications.filter(n => n.status === 'accepted').length;
+  const rejected = req.notifications.filter(n => n.status === 'rejected').length;
+  if (rejected > 0) return `❌ ${rejected} rejected`;
+  if (accepted === total) return `✅ All ${total} accepted`;
+  return `⏳ ${accepted}/${total} accepted`;
+};
+
+const getRejectionReasons = (req: ItemRequest): Array<{
+  groupName: string;
+  reason: string;
+  respondedBy: string;
+  respondedAt: string;
+}> => {
+  if (!req.notifications) return [];
+  return req.notifications
+    .filter(n => n.status === 'rejected')
+    .map(n => ({
+      groupName: n.group?.name || `Group ${n.group_id}`,
+      reason: n.rejected_reason || 'No reason provided',
+      respondedBy: n.respondedByUser?.fullName || n.respondedByUser?.username || 'Unknown',
+      respondedAt: n.responded_at,
+    }));
+};
+
+// ================================================================
+// ITEM SELECTION METHODS - ALL FUNCTIONS DEFINED HERE
+// ================================================================
+
+const isItemAlreadyAdded = (itemId: number | undefined, currentIndex: number): boolean => {
+  if (!itemId || itemId === 0) return false;
+  const exists = form.value.items.some(
+    (item, index) => item.itemId === itemId && index !== currentIndex
+  );
+  return exists;
+};
 
 const setItemContainer = (el: any, index: number) => {
   itemContainers.value[index] = el;
@@ -1167,15 +1294,12 @@ const resetItemList = (index: number) => {
 const onItemScroll = (index: number) => {
   const element = itemContainers.value[index];
   if (!element) return;
-
   const scrollTop = element.scrollTop;
   const scrollHeight = element.scrollHeight;
   const clientHeight = element.clientHeight;
-
   if (scrollTop + clientHeight >= scrollHeight - 50) {
     const filtered = getFilteredItems(index);
     const currentLimit = itemDisplayLimits.value[index] || 10;
-
     if (filtered.length > currentLimit && !isLoadingItemsForRow.value[index]) {
       isLoadingItemsForRow.value[index] = true;
       setTimeout(() => {
@@ -1191,7 +1315,6 @@ const onItemScroll = (index: number) => {
 
 const getFilteredItems = (rowIndex: number) => {
   let itemsList = [...items.value];
-
   const query = itemSearchQueries.value[rowIndex] || "";
   if (query) {
     const q = query.toLowerCase();
@@ -1204,7 +1327,6 @@ const getFilteredItems = (rowIndex: number) => {
         item.model?.toLowerCase().includes(q),
     );
   }
-
   return itemsList;
 };
 
@@ -1221,24 +1343,17 @@ const hasMoreItems = (rowIndex: number) => {
 const selectItemForRow = (rowIndex: number, itemOption: any) => {
   const itemRow = form.value.items[rowIndex];
   if (!itemRow) return;
-
   const itemId = itemOption.itemId || itemOption.id;
-  
-  // 🔥 CHECK FOR DUPLICATES
   if (isItemAlreadyAdded(itemId, rowIndex)) {
     showToastMessage(
       `"${itemOption.name || itemOption.standardName || 'Item'}" is already added to this request. Please remove the existing one or use a different item.`,
       "warning"
     );
-    return; // Don't select the item
+    return;
   }
-  
   itemRow.itemId = itemId;
   selectedItemDisplays.value[rowIndex] = itemOption;
-  // Update UOM and standard name
   updateItemDetails(rowIndex);
-
-  // Close the dropdown by blurring the search input
   const searchInput = searchInputRefs.value[rowIndex];
   if (searchInput) {
     searchInput.blur();
@@ -1248,7 +1363,6 @@ const selectItemForRow = (rowIndex: number, itemOption: any) => {
 const clearItemSelection = (rowIndex: number) => {
   const itemRow = form.value.items[rowIndex];
   if (!itemRow) return;
-
   itemRow.itemId = 0;
   selectedItemDisplays.value[rowIndex] = null;
   itemSearchQueries.value[rowIndex] = "";
@@ -1259,14 +1373,12 @@ const clearItemSelection = (rowIndex: number) => {
 // METHODS
 // ================================================================
 
-// -- User Data --
 const loadUserData = () => {
   const user = authStore.user;
   if (user) {
     const userData = user as any;
     userIsAdmin.value =
       userData.isAdmin || user.role === "admin" || user.role === "Admin";
-
     if (user && "assignedStore" in user && user.assignedStore) {
       const assignedStore = user.assignedStore as any;
       userAssignedStoreId.value = assignedStore.id || null;
@@ -1275,6 +1387,7 @@ const loadUserData = () => {
       userAssignedStoreId.value = null;
       userAssignedStoreName.value = null;
     }
+    userIsAskingStore.value = !!userAssignedStoreId.value;
   }
 };
 
@@ -1282,7 +1395,6 @@ const getUserAssignedStoreName = (): string => {
   return userAssignedStoreName.value || "No store assigned";
 };
 
-// -- Load Data --
 const loadStores = async () => {
   loadingStores.value = true;
   try {
@@ -1325,20 +1437,16 @@ const loadRequests = async () => {
       limit: pageSize.value,
       search: searchQuery.value || undefined,
     };
-
     if (!userIsAdmin.value && userAssignedStoreId.value) {
       filters.storeId = userAssignedStoreId.value;
     }
-
     if (filterStatus.value !== "all") {
       filters.status = filterStatus.value;
     }
     if (filterStore.value !== "all") {
       filters.storeId = Number(filterStore.value);
     }
-
     const response = await itemRequestService.getRequests(filters);
-
     if (response.success) {
       requests.value = response.data.requests;
       totalItems.value = response.data.pagination.total;
@@ -1353,7 +1461,6 @@ const loadRequests = async () => {
   }
 };
 
-// -- Helper Methods --
 const getStoreName = (storeId: number): string => {
   const store = stores.value.find((s) => (s.storeId || s.id) === storeId);
   return store ? store.name : "Unknown Store";
@@ -1456,11 +1563,6 @@ const getCurrentUserId = (): number | undefined => {
   return authStore.user?.userId;
 };
 
-const getTotalQuantity = (): number => {
-  return form.value.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-};
-
-// -- Item Row Management --
 const addItemRow = (): void => {
   const newIndex = form.value.items.length;
   form.value.items.push({
@@ -1468,7 +1570,6 @@ const addItemRow = (): void => {
     quantity: 1,
     remark: "",
   });
-  // Initialize search state for new row
   itemSearchQueries.value[newIndex] = "";
   itemDisplayLimits.value[newIndex] = 10;
   isLoadingItemsForRow.value[newIndex] = false;
@@ -1479,7 +1580,6 @@ const addItemRow = (): void => {
 
 const removeItemRow = (index: number): void => {
   form.value.items.splice(index, 1);
-  // Clean up associated state
   delete itemSearchQueries.value[index];
   delete itemDisplayLimits.value[index];
   delete isLoadingItemsForRow.value[index];
@@ -1488,11 +1588,8 @@ const removeItemRow = (index: number): void => {
   delete searchInputRefs.value[index];
 };
 
-const updateItemDetails = (_index: number): void => {
-  // Auto-update UOM and standard name when item is selected
-};
+const updateItemDetails = (_index: number): void => {};
 
-// -- Expand --
 const toggleExpand = (id?: number): void => {
   if (id === undefined || id === null) {
     expandedRow.value = null;
@@ -1501,7 +1598,6 @@ const toggleExpand = (id?: number): void => {
   expandedRow.value = expandedRow.value === id ? null : id;
 };
 
-// -- Validation Error Display --
 const closeValidationErrors = (): void => {
   showValidationErrors.value = false;
   validationErrors.value = [];
@@ -1511,17 +1607,12 @@ const closeValidationErrors = (): void => {
 const openCreateModal = (): void => {
   editingRequest.value = null;
   const today: string = new Date().toISOString().split("T")[0] || "";
-
-  // Clear validation errors
   closeValidationErrors();
-
-  // 🔥 For non-admin, use their assigned store ID
   const askingStoreId = userIsAdmin.value
     ? ""
     : String(userAssignedStoreId.value || "");
-
   form.value = {
-    askingStoreId: askingStoreId,  // Auto-filled for non-admin
+    askingStoreId: askingStoreId,
     supplyingStoreId: "",
     items: [{ itemId: 0, quantity: 1, remark: "" }],
     requestedBy: getCurrentUser(),
@@ -1529,28 +1620,39 @@ const openCreateModal = (): void => {
     status: "pending",
     remark: "",
   };
-
-  // Initialize item selection state for first row
   itemSearchQueries.value[0] = "";
   itemDisplayLimits.value[0] = 10;
   isLoadingItemsForRow.value[0] = false;
   selectedItemDisplays.value[0] = null;
   itemContainers.value[0] = null;
   searchInputRefs.value[0] = null;
-
   formErrors.value = [];
   showModal.value = true;
 };
+
 const editRequest = (req: ItemRequest): void => {
+  // Only asking store can edit
+  if (!isUserAskingStore(req)) {
+    showToastMessage("You don't have permission to edit this request", "error");
+    return;
+  }
+  
+  // 🔥 Store the original request for reference
+  const originalRequest = req;
+  
+  if (req.status === 'rejected') {
+    showToastMessage("📝 This request was rejected. Please fix the issues and resubmit.", "info");
+  }
+  
+  // 🔥 Set editingRequest BEFORE populating the form
   editingRequest.value = req;
+  
   const today: string = new Date().toISOString().split("T")[0] || "";
   const requestedDate: string = String(req.requestedDate || today);
-
-  // Clear validation errors
   closeValidationErrors();
-
+  
   const askingStoreId = String(req.askingStoreId);
-
+  
   form.value = {
     askingStoreId: askingStoreId,
     supplyingStoreId: String(req.supplyingStoreId),
@@ -1565,8 +1667,7 @@ const editRequest = (req: ItemRequest): void => {
     status: "pending",
     remark: req.remark || "",
   };
-
-  // Initialize item selection state for each row
+  
   form.value.items.forEach((_, index) => {
     itemSearchQueries.value[index] = "";
     itemDisplayLimits.value[index] = 10;
@@ -1575,16 +1676,22 @@ const editRequest = (req: ItemRequest): void => {
     itemContainers.value[index] = null;
     searchInputRefs.value[index] = null;
   });
-
+  
   formErrors.value = [];
   showModal.value = true;
+  
+  console.log('✏️ Editing request:', {
+    originalRequest: originalRequest,
+    editingRequestId: editingRequest.value?.requestId || editingRequest.value?.id,
+    formData: form.value
+  });
 };
 
 const closeModal = (): void => {
   showModal.value = false;
-  editingRequest.value = null;
+  editingRequest.value = null; // 🔥 Reset editingRequest
+  saving.value = false; // 🔥 Reset saving state
   closeValidationErrors();
-  // Clean up item selection state
   Object.keys(itemSearchQueries.value).forEach((key) => {
     delete itemSearchQueries.value[Number(key)];
     delete itemDisplayLimits.value[Number(key)];
@@ -1597,10 +1704,10 @@ const closeModal = (): void => {
 
 // -- Save Request --
 const saveRequest = async (): Promise<void> => {
-  // Clear previous validation errors
   closeValidationErrors();
   formErrors.value = [];
 
+  // Validation checks
   if (!form.value.askingStoreId) {
     formErrors.value.push("Please select the asking store");
   }
@@ -1608,15 +1715,13 @@ const saveRequest = async (): Promise<void> => {
     formErrors.value.push("Please select the supplying store");
   }
   if (form.value.askingStoreId === form.value.supplyingStoreId) {
-    formErrors.value.push(
-      "Asking store and supplying store cannot be the same",
-    );
+    formErrors.value.push("Asking store and supplying store cannot be the same");
   }
   if (form.value.items.length === 0) {
     formErrors.value.push("Please add at least one item");
   }
 
-  // 🔥 CHECK FOR DUPLICATE ITEMS
+  // Check for duplicates
   const itemIds = form.value.items.map(item => item.itemId).filter(id => id && id !== 0);
   const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index);
   
@@ -1625,7 +1730,6 @@ const saveRequest = async (): Promise<void> => {
       duplicateIds.includes(item.itemId)
     );
     
-    // Show validation error
     duplicateItems.forEach(item => {
       const itemName = getItemName(Number(item.itemId)) || 'Unknown Item';
       formErrors.value.push(
@@ -1633,7 +1737,6 @@ const saveRequest = async (): Promise<void> => {
       );
     });
     
-    // Also show in validation errors box
     validationErrors.value = duplicateItems.map(item => ({
       itemId: item.itemId,
       itemName: getItemName(Number(item.itemId)) || 'Unknown Item',
@@ -1644,6 +1747,7 @@ const saveRequest = async (): Promise<void> => {
     
     validationMessage.value = 'Duplicate items found in the request. Please fix the following issues:';
     showValidationErrors.value = true;
+    saving.value = false;
     return;
   }
 
@@ -1652,9 +1756,7 @@ const saveRequest = async (): Promise<void> => {
       formErrors.value.push(`Item #${index + 1}: Please select an item`);
     }
     if (!item.quantity || item.quantity <= 0) {
-      formErrors.value.push(
-        `Item #${index + 1}: Please enter a valid quantity`,
-      );
+      formErrors.value.push(`Item #${index + 1}: Please enter a valid quantity`);
     }
   });
 
@@ -1663,12 +1765,21 @@ const saveRequest = async (): Promise<void> => {
   }
 
   if (formErrors.value.length > 0) {
+    saving.value = false;
     return;
   }
 
   saving.value = true;
+  
   try {
     const userId = getCurrentUserId();
+    
+    console.log('📤 Saving request data:', {
+      isEditing: !!editingRequest.value,
+      editingRequestId: editingRequest.value?.requestId || editingRequest.value?.id,
+      formData: form.value
+    });
+    
     const requestData = {
       askingStoreId: Number(form.value.askingStoreId),
       supplyingStoreId: Number(form.value.supplyingStoreId),
@@ -1684,98 +1795,122 @@ const saveRequest = async (): Promise<void> => {
     };
 
     let response;
+    
     if (editingRequest.value) {
-      const requestId =
-        editingRequest.value.requestId || editingRequest.value.id;
-      response = await itemRequestService.updateRequest(
-        requestId!,
-        requestData,
-      );
-      if (response.success) {
+      const requestId = editingRequest.value.requestId || editingRequest.value.id;
+      
+      console.log(`🔄 Updating request ${requestId} with data:`, requestData);
+      
+      try {
+        response = await itemRequestService.updateRequest(
+          requestId!,
+          requestData
+        );
+      } catch (apiError: any) {
+        console.error('❌ API call failed:', apiError);
+        showToastMessage(apiError.message || 'Failed to update request', 'error');
+        saving.value = false;
+        return;
+      }
+      
+      console.log('📥 Update response:', response);
+      
+      // 🔥 Check if response is valid
+      if (!response) {
+        console.error('❌ No response received from server');
+        showToastMessage('No response from server', 'error');
+        saving.value = false;
+        return;
+      }
+      
+      // 🔥 Check if response has success property
+      if (response.success === true) {
         showToastMessage(
-          "Request updated successfully! Status reset to Pending",
-          "success",
+          "✅ Request updated and resubmitted successfully!",
+          "success"
         );
         await loadRequests();
         closeModal();
         saving.value = false;
         return;
       } else {
-        showToastMessage(response.error || "Failed to update request", "error");
+        // 🔥 Check for validation errors
+        if (response.errors && response.errors.length > 0) {
+          validationErrors.value = response.errors;
+          validationMessage.value = response.message || "Validation failed. Please fix the issues below.";
+          showValidationErrors.value = true;
+          showToastMessage("Validation failed - please fix the issues below", "error");
+        } else {
+          // 🔥 Check if there's an error message
+          const errorMsg = response.error || response.message || 'Failed to update request';
+          showToastMessage(errorMsg, "error");
+          console.error('❌ Update failed:', errorMsg);
+        }
         saving.value = false;
         return;
       }
     } else {
-      response = await itemRequestService.createRequest(requestData);
-
-      console.log("📦 API Response:", response);
-
-      if (!response.success) {
-        if (response.errors && response.errors.length > 0) {
-          console.log(
-            "🔍 Validation Errors:",
-            JSON.stringify(response.errors, null, 2),
-          );
-          validationErrors.value = response.errors;
-          validationMessage.value =
-            response.message ||
-            "The request cannot be created due to the following issues:";
-          showValidationErrors.value = true;
-          showToastMessage(
-            "Validation failed - please fix the issues below",
-            "error",
-          );
-          saving.value = false;
-          return;
-        } else {
-          showToastMessage(
-            response.error || "Failed to create request",
-            "error",
-          );
-          saving.value = false;
-          return;
-        }
+      // Creating new request
+      console.log('📤 Creating new request with data:', requestData);
+      
+      try {
+        response = await itemRequestService.createRequest(requestData);
+      } catch (apiError: any) {
+        console.error('❌ API call failed:', apiError);
+        showToastMessage(apiError.message || 'Failed to create request', 'error');
+        saving.value = false;
+        return;
       }
-
-      if (response.success) {
-        showToastMessage("Request created successfully!", "success");
+      
+      console.log('📥 Create response:', response);
+      
+      if (!response) {
+        console.error('❌ No response received from server');
+        showToastMessage('No response from server', 'error');
+        saving.value = false;
+        return;
+      }
+      
+      if (response.success === true) {
+        showToastMessage("✅ Request created successfully!", "success");
         await loadRequests();
         closeModal();
+        saving.value = false;
+        return;
+      } else {
+        if (response.errors && response.errors.length > 0) {
+          validationErrors.value = response.errors;
+          validationMessage.value = response.message || "The request cannot be created due to the following issues:";
+          showValidationErrors.value = true;
+          showToastMessage("Validation failed - please fix the issues below", "error");
+        } else {
+          const errorMsg = response.error || response.message || 'Failed to create request';
+          showToastMessage(errorMsg, "error");
+          console.error('❌ Create failed:', errorMsg);
+        }
         saving.value = false;
         return;
       }
     }
   } catch (error: any) {
-    console.error("Save request error:", error);
+    console.error("❌ Save request error:", error);
     const errorData = error.response?.data;
-
+    
     if (errorData && errorData.errors && errorData.errors.length > 0) {
-      console.log(
-        "🔍 Error Response Errors:",
-        JSON.stringify(errorData.errors, null, 2),
-      );
       validationErrors.value = errorData.errors;
-      validationMessage.value =
-        errorData.message ||
-        "The request cannot be created due to the following issues:";
+      validationMessage.value = errorData.message || "The request cannot be created due to the following issues:";
       showValidationErrors.value = true;
-      showToastMessage(
-        "Validation failed - please fix the issues below",
-        "error",
-      );
+      showToastMessage("Validation failed - please fix the issues below", "error");
     } else {
       showToastMessage(error.message || "Failed to save request", "error");
     }
   } finally {
     saving.value = false;
+    console.log('✅ Saving completed, saving state reset to false');
   }
 };
 
-// -- Status Confirmation --
-const openStatusConfirmation = (
-  req: ItemRequest,
-  action: "approved" | "rejected" | "finalized",
-): void => {
+const openStatusConfirmation = (req: ItemRequest, action: "approved" | "finalized"): void => {
   statusTarget.value = req;
   statusAction.value = action;
   showStatusModal.value = true;
@@ -1789,21 +1924,16 @@ const closeStatusModal = (): void => {
 
 const confirmStatusChange = async (): Promise<void> => {
   if (!statusTarget.value) return;
-
   const req = statusTarget.value;
   const action = statusAction.value;
   const requestId = req.requestId || req.id;
-
   try {
     const response = await itemRequestService.updateStatus(requestId!, action);
     if (response.success) {
       showToastMessage(`Request ${action} successfully!`, "success");
       await loadRequests();
     } else {
-      showToastMessage(
-        response.error || `Failed to ${action} request`,
-        "error",
-      );
+      showToastMessage(response.error || `Failed to ${action} request`, "error");
     }
     closeStatusModal();
   } catch (error: any) {
@@ -1811,7 +1941,6 @@ const confirmStatusChange = async (): Promise<void> => {
   }
 };
 
-// -- Print Request --
 const printRequest = (req: ItemRequest): void => {
   const requestId = req.requestId || req.id;
   router.push({
@@ -1820,7 +1949,6 @@ const printRequest = (req: ItemRequest): void => {
   });
 };
 
-// -- Filters --
 const onSearchChange = (): void => {
   currentPage.value = 1;
   loadRequests();
@@ -1840,7 +1968,6 @@ const clearFilters = (): void => {
   loadRequests();
 };
 
-// -- Pagination --
 const changePage = (page: number): void => {
   if (page < 1 || page > totalPages.value) return;
   currentPage.value = page;
@@ -1850,7 +1977,6 @@ const changePageSize = (): void => {
   currentPage.value = 1;
 };
 
-// -- Export --
 const openExportModal = (): void => {
   exportType.value = "full";
   showExportModal.value = true;
@@ -1864,12 +1990,9 @@ const exportSelectedReport = async (): Promise<void> => {
   exporting.value = true;
   try {
     const response = await itemRequestService.exportRequests({
-      status:
-        filterStatus.value === "all" ? undefined : (filterStatus.value as any),
-      storeId:
-        filterStore.value === "all" ? undefined : Number(filterStore.value),
+      status: filterStatus.value === "all" ? undefined : (filterStatus.value as any),
+      storeId: filterStore.value === "all" ? undefined : Number(filterStore.value),
     });
-
     if (response.success && response.data.length > 0) {
       const firstRow = response.data[0] as Record<string, any>;
       const headers = Object.keys(firstRow);
@@ -1880,7 +2003,6 @@ const exportSelectedReport = async (): Promise<void> => {
         headers.join(","),
         ...rows.map((row: any[]) => row.join(",")),
       ].join("\n");
-
       const blob = new Blob(["\uFEFF" + csv], {
         type: "text/csv;charset=utf-8;",
       });
@@ -1892,7 +2014,6 @@ const exportSelectedReport = async (): Promise<void> => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
       showToastMessage("Export completed successfully!", "success");
     } else {
       showToastMessage(response.error || "No data to export", "error");
@@ -1906,7 +2027,6 @@ const exportSelectedReport = async (): Promise<void> => {
   }
 };
 
-// -- Toast --
 const showToastMessage = (
   msg: string,
   type: "success" | "error" | "info" | "warning" = "success",
@@ -1945,15 +2065,15 @@ watch(pageSize, () => {
 
 onMounted(async () => {
   loadUserData();
-
   await Promise.all([loadStores(), loadItems(), loadRequests()]);
-
-  if (!userIsAdmin.value && userAssignedStoreId.value) {
-    filterStore.value = String(userAssignedStoreId.value);
-  }
+  // 🔥 REMOVE this line - let the backend handle filtering based on user role
+  // if (!userIsAdmin.value && userAssignedStoreId.value) {
+  //   filterStore.value = String(userAssignedStoreId.value);
+  // }
 });
 </script>
 
+<!-- Rest of the template and styles remain the same -->
 <style scoped>
 /* ================================================================
    VALIDATION ERROR BOX
@@ -2098,16 +2218,6 @@ onMounted(async () => {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-}
-
-.error-shortage {
-  padding-left: 28px;
-  margin-top: 6px;
-  padding: 4px 12px;
-  background: #fee2e2;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #991b1b;
 }
 
 .validation-actions {
@@ -2276,6 +2386,32 @@ onMounted(async () => {
 }
 
 /* ================================================================
+   READONLY INDICATORS
+   ================================================================ */
+.readonly-indicator {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.readonly-actions {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.readonly-badge {
+  font-size: 13px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ================================================================
    LOADING STATE
    ================================================================ */
 .loading-state {
@@ -2339,7 +2475,6 @@ onMounted(async () => {
   z-index: 10;
 }
 
-/* Column widths */
 .col-expand {
   width: 30px;
 }
@@ -2441,6 +2576,155 @@ onMounted(async () => {
 .status-badge.finalized {
   background: #dcfce7;
   color: #166534;
+}
+
+/* ================================================================
+   NOTIFICATION STATUS STYLES
+   ================================================================ */
+.notification-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.notification-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.notification-dot.pending {
+  background: #f59e0b;
+}
+
+.notification-dot.accepted {
+  background: #10b981;
+}
+
+.notification-dot.rejected {
+  background: #ef4444;
+}
+
+.notification-text {
+  font-size: 9px;
+  color: #64748b;
+  margin-left: 4px;
+}
+
+/* ================================================================
+   REJECTION REASONS - TEXT AREA STYLES
+   ================================================================ */
+.rejection-card {
+  border-left: 4px solid #ef4444;
+  background: #fafafa;
+}
+
+.rejection-item {
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.05);
+  transition: all 0.2s;
+}
+
+.rejection-item:last-child {
+  margin-bottom: 0;
+}
+
+.rejection-item:hover {
+  border-color: #f87171;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);
+}
+
+.rejection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rejection-group {
+  font-weight: 600;
+  color: #dc2626;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rejection-icon {
+  font-size: 16px;
+}
+
+.rejection-date {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.rejection-reason-textarea {
+  margin: 4px 0 6px 0;
+}
+
+.rejection-textarea-readonly {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  cursor: default;
+  line-height: 1.6;
+  transition: all 0.2s;
+}
+
+.rejection-textarea-readonly:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.rejection-textarea-readonly::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rejection-textarea-readonly::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 2px;
+}
+
+.rejection-textarea-readonly::-webkit-scrollbar-thumb {
+  background: #f87171;
+  border-radius: 2px;
+}
+
+.rejection-by {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #fecaca;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rejection-by-icon {
+  font-size: 14px;
 }
 
 /* ================================================================
@@ -2686,24 +2970,6 @@ onMounted(async () => {
 
 .btn-approve-detail:hover {
   background: #16a34a;
-}
-
-.btn-reject-detail {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s;
-}
-
-.btn-reject-detail:hover {
-  background: #dc2626;
 }
 
 .btn-finalize-detail {
@@ -2971,7 +3237,6 @@ onMounted(async () => {
   width: 100%;
 }
 
-/* Make sure the item selection takes full width */
 .form-group.full-width .item-search-wrapper {
   width: 100%;
 }
@@ -3026,7 +3291,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   DUPLICATE ITEM STYLES - NEW
+   DUPLICATE ITEM STYLES
    ================================================================ */
 .duplicate-error {
   color: #dc2626;
@@ -3151,29 +3416,6 @@ onMounted(async () => {
   min-height: 60px;
 }
 
-.form-summary {
-  display: flex;
-  gap: 30px;
-  padding: 12px 16px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-}
-
-.summary-item {
-  display: flex;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.summary-item span {
-  color: #475569;
-}
-
-.summary-item strong {
-  color: #1e293b;
-}
-
 .form-errors {
   display: flex;
   flex-direction: column;
@@ -3205,15 +3447,6 @@ onMounted(async () => {
   position: relative;
   flex: 1;
   min-width: 150px;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
 }
 
 .item-search-input {
@@ -3305,7 +3538,6 @@ onMounted(async () => {
   width: 100%;
 }
 
-/* Left: Code */
 .item-option-left {
   min-width: 100px;
   flex-shrink: 0;
@@ -3317,7 +3549,6 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-/* Middle: Standard Name & Common Name (stacked) */
 .item-option-middle {
   flex: 1;
   min-width: 150px;
@@ -3326,20 +3557,19 @@ onMounted(async () => {
   gap: 1px;
 }
 
-.item-option-name {
+.item-option-common-name {
   font-size: 13px;
   color: #1e293b;
   font-weight: 500;
   line-height: 1.3;
 }
 
-.item-option-common {
+.item-option-standard-name {
   font-size: 11px;
   color: #94a3b8;
   line-height: 1.2;
 }
 
-/* Right: Brand & Model (stacked) */
 .item-option-right {
   min-width: 80px;
   flex-shrink: 0;
@@ -3368,7 +3598,6 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-/* Far Right: UOM */
 .item-option-uom {
   font-size: 11px;
   color: #166534;
@@ -3382,7 +3611,6 @@ onMounted(async () => {
   margin-left: auto;
 }
 
-/* Selected Item Display */
 .selected-item-display {
   display: flex;
   align-items: center;
@@ -3768,16 +3996,10 @@ onMounted(async () => {
     padding: 10px;
   }
 
-  .form-summary {
-    flex-direction: column;
-    gap: 8px;
-  }
-
   .col-actions {
     min-width: 180px;
   }
 
-  /* Item option responsive */
   .item-option-content {
     flex-wrap: wrap;
     gap: 4px;
@@ -3805,6 +4027,25 @@ onMounted(async () => {
   .selected-item-display {
     font-size: 12px;
     gap: 4px;
+  }
+  
+  .rejection-item {
+    padding: 12px 14px;
+  }
+  
+  .rejection-textarea-readonly {
+    font-size: 12px;
+    padding: 8px 12px;
+    min-height: 50px;
+  }
+  
+  .rejection-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .rejection-date {
+    font-size: 10px;
   }
 }
 
@@ -3846,7 +4087,6 @@ onMounted(async () => {
     min-width: 160px;
   }
 
-  /* Item option responsive - mobile */
   .item-option-content {
     flex-direction: column;
     align-items: flex-start;

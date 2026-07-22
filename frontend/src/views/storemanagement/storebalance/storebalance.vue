@@ -96,37 +96,7 @@
       </div>
     </div>
 
-    <!-- ==================== STATS ==================== -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon">🏪</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ totalStores }}</div>
-          <div class="stat-label">Total Stores</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">📦</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ totalItems }}</div>
-          <div class="stat-label">Total Items</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">⚠️</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ lowStockItems }}</div>
-          <div class="stat-label">Low Stock Items</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">📋</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ pendingRequestsCount }}</div>
-          <div class="stat-label">Pending Approved Requests</div>
-        </div>
-      </div>
-    </div>
+   
 
     <!-- ==================== STORE BALANCE TABLE ==================== -->
     <div class="table-container" id="printable-area">
@@ -359,7 +329,7 @@
                     v-if="!isAdmin && userData?.assignedStore"
                     class="hint pre-filled"
                   >
-                    📌 Pre-filled with your assigned store:
+                     Pre-filled with your assigned store:
                     <strong>{{ userData.assignedStore.name }}</strong>
                   </span>
                   <span
@@ -389,7 +359,7 @@
                     v-if="!isAdmin && userData?.assignedGroup"
                     class="hint pre-filled"
                   >
-                    📌 Pre-filled with your assigned group:
+                     Pre-filled with your assigned group:
                     <strong>{{ userData.assignedGroup.name }}</strong>
                   </span>
                   <span
@@ -880,7 +850,7 @@
           <button class="modal-close" @click="closeProcessModal">✕</button>
         </div>
         <div class="modal-body">
-          <div class="process-info">
+          <!-- <div class="process-info">
             <div class="process-info-header">
               <span class="info-icon">ℹ️</span>
               <span class="info-title">How it works</span>
@@ -909,7 +879,7 @@
                 group's balance
               </li>
             </ul>
-          </div>
+          </div> -->
 
           <div class="form-group">
             <label>1. Select Store *</label>
@@ -933,7 +903,7 @@
               class="hint"
               style="color: #2563eb"
             >
-              📌 Using your assigned store: {{ userData?.assignedStore?.name }}
+               Using your assigned store: {{ userData?.assignedStore?.name }}
             </span>
           </div>
 
@@ -1008,7 +978,7 @@
               class="hint"
               style="color: #2563eb"
             >
-              📌 Using your assigned group: {{ userData?.assignedGroup?.name }}
+               Using your assigned group: {{ userData?.assignedGroup?.name }}
             </span>
           </div>
 
@@ -1993,17 +1963,17 @@ const openAddBalanceModal = () => {
 
     if (form.value.storeId && form.value.groupId) {
       showToastMessage(
-        `📌 Pre-filled with your assigned store: ${assignedStoreName} and group: ${assignedGroupName}`,
+        ` Pre-filled with your assigned store: ${assignedStoreName} and group: ${assignedGroupName}`,
         "info",
       );
     } else if (form.value.storeId) {
       showToastMessage(
-        `📌 Pre-filled with your assigned store: ${assignedStoreName}`,
+        ` Pre-filled with your assigned store: ${assignedStoreName}`,
         "info",
       );
     } else if (form.value.groupId) {
       showToastMessage(
-        `📌 Pre-filled with your assigned group: ${assignedGroupName}`,
+        ` Pre-filled with your assigned group: ${assignedGroupName}`,
         "info",
       );
     }

@@ -24,6 +24,12 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
       });
 
+     
+ItemRequest.hasMany(models.RequestNotification, {
+  foreignKey: 'request_id',
+  as: 'notifications',
+});
+
       
     }
 

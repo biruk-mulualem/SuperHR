@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>💰 Inventory Cost Calculation</h2>
-        <span class="total-badge">{{ filteredItems.length }} Items</span>
+        <span class="total-badge">{{ totalItems }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -86,7 +86,12 @@
 
     <!-- ==================== COST TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <table class="cost-table">
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading cost data...</p>
+      </div>
+
+      <table v-else class="cost-table">
         <thead>
           <tr>
             <th style="width:35px"></th>
@@ -399,269 +404,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-
-// ================================================================
-// STORE LIST
-// ================================================================
-
-const allStores = ref([
-  { id: 1, name: 'Fiber Main Store' },
-  { id: 2, name: 'Fiber Mini Store' },
-  { id: 3, name: 'Paint Main Store' },
-  { id: 4, name: 'Fiber Warehouse' }
-])
-
-// ================================================================
-// DEMO DATA - WITH CORRECT STORE NAMES
-// ================================================================
-
-const getStoreName = (storeId) => {
-  const store = allStores.value.find(s => s.id === storeId)
-  return store ? store.name : 'Unknown Store'
-}
-
-// Helper to process store breakdown
-const processStoreBreakdown = (store) => {
-  const quantities = store.groups.map(g => g.baseQuantity || g.quantity)
-  const firstQty = quantities[0]
-  const allSame = quantities.every(q => q === firstQty)
-  
-  return {
-    ...store,
-    hasConflict: !allSame,
-    isExcluded: !allSame,
-    agreedQuantity: allSame ? firstQty : 0,
-    groups: store.groups.map(g => ({
-      ...g,
-      baseQuantity: g.baseQuantity || g.quantity
-    }))
-  }
-}
-
-// Process all items
-const processItem = (item) => {
-  const processedStores = item.storeBreakdown.map(processStoreBreakdown)
-  
-  const excludedStores = processedStores
-    .filter(s => s.isExcluded)
-    .map(s => s.storeName)
-  
-  const includedStores = processedStores.filter(s => !s.isExcluded)
-  const totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0)
-  const totalCost = totalQty * item.unitCost
-  
-  let status = item.userStatus || 'Active' // Use user-set status if exists
-  if (status !== 'Inactive') {
-    if (excludedStores.length > 0 && includedStores.length > 0) {
-      status = 'Partial'
-    } else if (excludedStores.length === processedStores.length) {
-      status = 'Conflict'
-    } else {
-      status = 'Active'
-    }
-  }
-  
-  return {
-    ...item,
-    storeBreakdown: processedStores,
-    status: status,
-    totalQty: status === 'Inactive' ? 0 : totalQty,
-    totalCost: status === 'Inactive' ? 0 : totalCost,
-    excludedStores: excludedStores,
-    includedStoresCount: includedStores.length,
-    excludedStoresCount: excludedStores.length
-  }
-}
-
-// Raw demo data
-const rawItems = [
-  {
-    id: 1,
-    itemCode: 'SDT000001',
-    itemName: 'Dell Laptop',
-    itemStandardName: 'Dell Latitude 3420',
-    categoryName: 'Electronics',
-    brand: 'Dell',
-    model: 'Latitude 3420',
-    baseUOM: 'PCS',
-    unitCost: 850.00,
-    userStatus: 'Active',
-    storeBreakdown: [
-      {
-        storeId: 1,
-        storeName: 'Fiber Main Store',
-        groups: [
-          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 15, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 15, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      },
-      {
-        storeId: 2,
-        storeName: 'Fiber Mini Store',
-        groups: [
-          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 12, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 12, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      }
-    ],
-    costHistory: [
-      { id: 1, previousCost: 800.00, newCost: 850.00, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' }
-    ]
-  },
-  {
-    id: 2,
-    itemCode: 'SDT000002',
-    itemName: 'HP Monitor',
-    itemStandardName: 'HP 24" LED Monitor',
-    categoryName: 'Electronics',
-    brand: 'HP',
-    model: 'E243',
-    baseUOM: 'PCS',
-    unitCost: 320.00,
-    userStatus: 'Active',
-    storeBreakdown: [
-      {
-        storeId: 1,
-        storeName: 'Fiber Main Store',
-        groups: [
-          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 30, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 15, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      },
-      {
-        storeId: 2,
-        storeName: 'Fiber Mini Store',
-        groups: [
-          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 10, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 10, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      }
-    ],
-    costHistory: []
-  },
-  {
-    id: 3,
-    itemCode: 'SDT000003',
-    itemName: 'Dulenti Chemical',
-    itemStandardName: 'Dulenti Chemical Base',
-    categoryName: 'Chemicals',
-    brand: 'Dulenti',
-    model: 'DC-100',
-    baseUOM: 'KG',
-    unitCost: 45.50,
-    userStatus: 'Active',
-    storeBreakdown: [
-      {
-        storeId: 1,
-        storeName: 'Fiber Main Store',
-        groups: [
-          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 3, originalUOM: 'Drum', conversionRate: 165, baseQuantity: 495 },
-          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 3, originalUOM: 'Drum', conversionRate: 165, baseQuantity: 495 }
-        ]
-      },
-      {
-        storeId: 2,
-        storeName: 'Fiber Mini Store',
-        groups: [
-          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 300, originalUOM: 'KG', conversionRate: 1, baseQuantity: 300 }
-        ]
-      },
-      {
-        storeId: 3,
-        storeName: 'Paint Main Store',
-        groups: [
-          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 5, originalUOM: 'Bag', conversionRate: 25, baseQuantity: 125 }
-        ]
-      }
-    ],
-    costHistory: [
-      { id: 1, previousCost: 42.00, newCost: 45.50, changedBy: 'Admin', reason: 'Price increase', createdAt: '2024-06-15T10:30:00' }
-    ]
-  },
-  {
-    id: 4,
-    itemCode: 'SDT000004',
-    itemName: 'Industrial Paint',
-    itemStandardName: 'Industrial Paint Base',
-    categoryName: 'Chemicals',
-    brand: 'PaintCo',
-    model: 'PC-200',
-    baseUOM: 'L',
-    unitCost: 12.75,
-    userStatus: 'Active',
-    storeBreakdown: [
-      {
-        storeId: 1,
-        storeName: 'Fiber Main Store',
-        groups: [
-          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 1, originalUOM: 'Drum', conversionRate: 200, baseQuantity: 200 },
-          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 2, originalUOM: 'Drum', conversionRate: 200, baseQuantity: 400 }
-        ]
-      },
-      {
-        storeId: 3,
-        storeName: 'Paint Main Store',
-        groups: [
-          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 400, originalUOM: 'L', conversionRate: 1, baseQuantity: 400 }
-        ]
-      }
-    ],
-    costHistory: []
-  },
-  {
-    id: 5,
-    itemCode: 'SDT000005',
-    itemName: 'USB Flash Drive',
-    itemStandardName: 'SanDisk 64GB USB',
-    categoryName: 'Accessories',
-    brand: 'SanDisk',
-    model: 'Ultra 64GB',
-    baseUOM: 'PCS',
-    unitCost: 12.50,
-    userStatus: 'Active',
-    storeBreakdown: [
-      {
-        storeId: 1,
-        storeName: 'Fiber Main Store',
-        groups: [
-          { groupId: 1, groupName: 'Fiber Mainstore IT', quantity: 100, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 2, groupName: 'Fiber Mainstore Storekeeper', quantity: 100, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      },
-      {
-        storeId: 2,
-        storeName: 'Fiber Mini Store',
-        groups: [
-          { groupId: 3, groupName: 'Fiber Ministore IT', quantity: 50, originalUOM: 'PCS', conversionRate: 1 },
-          { groupId: 4, groupName: 'Fiber Ministore Storekeeper', quantity: 50, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      },
-      {
-        storeId: 3,
-        storeName: 'Paint Main Store',
-        groups: [
-          { groupId: 5, groupName: 'Paint Mainstore IT', quantity: 50, originalUOM: 'PCS', conversionRate: 1 }
-        ]
-      }
-    ],
-    costHistory: []
-  }
-]
-
-// Process the data
-const aggregatedItems = ref(rawItems.map(processItem))
+import { ref, computed, onMounted, watch } from 'vue'
+import itemCostService from '@/stores/itemCostService'
 
 // ================================================================
 // STATE
 // ================================================================
+
+const loading = ref(false)
+const exporting = ref(false)
 const searchQuery = ref('')
 const selectedStoreId = ref('')
 const filterStatus = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const expandedRow = ref(null)
-const exporting = ref(false)
+const totalItems = ref(0)
+
+// Data from API
+const allStores = ref([])
+const allGroups = ref([])
+const items = ref([])
 
 // Toast
 const showToast = ref(false)
@@ -669,87 +432,11 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// STATUS TOGGLE
-// ================================================================
-
-const toggleItemStatus = (item) => {
-  const newStatus = item.status === 'Inactive' ? 'Active' : 'Inactive'
-  const itemIndex = aggregatedItems.value.findIndex(i => i.id === item.id)
-  
-  if (itemIndex !== -1) {
-    // Update userStatus
-    aggregatedItems.value[itemIndex].userStatus = newStatus
-    
-    // Reprocess the item
-    const processed = processItem(aggregatedItems.value[itemIndex])
-    aggregatedItems.value[itemIndex] = processed
-    
-    showToastMessage(`Item "${item.itemName}" status changed to ${newStatus}`, 
-      newStatus === 'Inactive' ? 'warning' : 'success')
-  }
-}
-
-// ================================================================
-// FILTER LOGIC
-// ================================================================
-
-const isStoreVisible = (storeId) => {
-  if (!selectedStoreId.value) return true
-  return storeId === Number(selectedStoreId.value)
-}
-
-const filterItemsByStore = (items) => {
-  if (!selectedStoreId.value) return items
-  
-  return items.map(item => {
-    const filteredBreakdown = item.storeBreakdown.filter(
-      s => s.storeId === Number(selectedStoreId.value)
-    )
-    
-    const includedStores = filteredBreakdown.filter(s => !s.isExcluded)
-    const totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0)
-    const totalCost = totalQty * item.unitCost
-    
-    const excludedStores = filteredBreakdown
-      .filter(s => s.isExcluded)
-      .map(s => s.storeName)
-    
-    let status = item.userStatus === 'Inactive' ? 'Inactive' : 'Active'
-    if (status !== 'Inactive') {
-      if (filteredBreakdown.length === 0) {
-        status = 'Inactive'
-      } else if (excludedStores.length > 0 && includedStores.length > 0) {
-        status = 'Partial'
-      } else if (excludedStores.length === filteredBreakdown.length) {
-        status = 'Conflict'
-      }
-    }
-    
-    return {
-      ...item,
-      storeBreakdown: filteredBreakdown,
-      status: status,
-      totalQty: status === 'Inactive' ? 0 : totalQty,
-      totalCost: status === 'Inactive' ? 0 : totalCost,
-      excludedStores: excludedStores,
-      includedStoresCount: includedStores.length,
-      excludedStoresCount: excludedStores.length,
-      isFiltered: true
-    }
-  }).filter(item => item.storeBreakdown.length > 0 || item.status === 'Inactive')
-}
-
-// ================================================================
 // COMPUTED
 // ================================================================
 
 const filteredItems = computed(() => {
-  let result = [...aggregatedItems.value]
-  
-  // Apply store filter first
-  if (selectedStoreId.value) {
-    result = filterItemsByStore(result)
-  }
+  let result = [...items.value]
   
   // Apply search filter
   if (searchQuery.value) {
@@ -814,12 +501,133 @@ const hasActiveFilters = computed(() => {
 // METHODS
 // ================================================================
 
+const getStoreName = (storeId) => {
+  const store = allStores.value.find(s => s.id === storeId)
+  return store ? store.name : 'Unknown Store'
+}
+
+const isStoreVisible = (storeId) => {
+  if (!selectedStoreId.value) return true
+  return storeId === Number(selectedStoreId.value)
+}
+
+// ================================================================
+// API METHODS
+// ================================================================
+
+const loadStores = async () => {
+  try {
+    const response = await itemCostService.getStores()
+    if (response.success) {
+      allStores.value = response.data
+    }
+  } catch (error) {
+    console.error('Error loading stores:', error)
+    showToastMessage('Failed to load stores', 'error')
+  }
+}
+
+const loadItems = async () => {
+  loading.value = true
+  try {
+    const response = await itemCostService.getItemsWithCost({
+      page: currentPage.value,
+      limit: pageSize.value,
+      search: searchQuery.value || undefined,
+      storeId: selectedStoreId.value ? Number(selectedStoreId.value) : undefined,
+      status: filterStatus.value || undefined,
+    })
+
+    if (response.success) {
+      items.value = response.data
+      totalItems.value = response.pagination.total
+    } else {
+      showToastMessage(response.error || 'Failed to load items', 'error')
+    }
+  } catch (error) {
+    console.error('Error loading items:', error)
+    showToastMessage('Failed to load items', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+const toggleItemStatus = async (item) => {
+  try {
+    const newStatus = item.status === 'Inactive' ? 'Active' : 'Inactive'
+    const response = await itemCostService.toggleItemStatus(item.id, newStatus)
+    
+    if (response.success) {
+      // Update the item in the list
+      const index = items.value.findIndex(i => i.id === item.id)
+      if (index !== -1) {
+        items.value[index] = response.data
+      }
+      showToastMessage(`Item "${item.itemName}" status changed to ${newStatus}`, 
+        newStatus === 'Inactive' ? 'warning' : 'success')
+    } else {
+      showToastMessage(response.error || 'Failed to update status', 'error')
+    }
+  } catch (error) {
+    console.error('Error toggling status:', error)
+    showToastMessage('Failed to update status', 'error')
+  }
+}
+
+const exportReport = async () => {
+  exporting.value = true
+  try {
+    const response = await itemCostService.exportCostReport({
+      storeId: selectedStoreId.value ? Number(selectedStoreId.value) : undefined,
+    })
+
+    if (response.success && response.data.length > 0) {
+      const headers = Object.keys(response.data[0])
+      const csv = [
+        headers.join(','),
+        ...response.data.map(row => 
+          headers.map(key => `"${(row[key] ?? '').replace(/"/g, '""')}"`).join(',')
+        )
+      ].join('\n')
+
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `cost_report_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      showToastMessage(`Export completed! ${response.total} items exported`, 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'error')
+    }
+  } catch (error) {
+    console.error('Error exporting:', error)
+    showToastMessage('Failed to export report', 'error')
+  } finally {
+    exporting.value = false
+  }
+}
+
+const printReport = () => {
+  window.print()
+}
+
+// ================================================================
+// UI METHODS
+// ================================================================
+
 const onSearchChange = () => {
   currentPage.value = 1
+  loadItems()
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
+  loadItems()
 }
 
 const clearFilters = () => {
@@ -828,36 +636,23 @@ const clearFilters = () => {
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
+  loadItems()
 }
 
 const changePage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
     currentPage.value = page
+    loadItems()
   }
 }
 
 const changePageSize = () => {
   currentPage.value = 1
+  loadItems()
 }
 
 const toggleExpand = (id) => {
   expandedRow.value = expandedRow.value === id ? null : id
-}
-
-// ================================================================
-// EXPORT & PRINT
-// ================================================================
-
-const exportReport = () => {
-  exporting.value = true
-  setTimeout(() => {
-    showToastMessage('Export completed!', 'success')
-    exporting.value = false
-  }, 1000)
-}
-
-const printReport = () => {
-  window.print()
 }
 
 // ================================================================
@@ -894,9 +689,61 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
+
+// ================================================================
+// WATCHERS
+// ================================================================
+
+watch([selectedStoreId, filterStatus], () => {
+  currentPage.value = 1
+  loadItems()
+}, { deep: true })
+
+// ================================================================
+// LIFECYCLE
+// ================================================================
+
+onMounted(async () => {
+  await loadStores()
+  await loadItems()
+})
 </script>
 
 <style scoped>
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.spinner {
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e2e8f0;
+  border-top: 2px solid #10b981;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -1955,6 +1802,68 @@ const showToastMessage = (msg, type = 'success') => {
   
   .group-quantity {
     flex-wrap: wrap;
+  }
+}
+
+/* ================================================================
+   PRINT STYLES
+   ================================================================ */
+@media print {
+  .btn-export,
+  .btn-print,
+  .btn-clear-filters,
+  .search-box,
+  .pagination,
+  .filter-bar {
+    display: none !important;
+  }
+
+  .section-card {
+    box-shadow: none !important;
+    padding: 10px !important;
+  }
+
+  .expand-btn {
+    display: none !important;
+  }
+
+  .expand-details {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .detail-expand-row td {
+    padding: 0 !important;
+  }
+
+  .cost-table {
+    font-size: 10px !important;
+    min-width: auto !important;
+  }
+
+  .cost-table th {
+    background: #e2e8f0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .status-badge {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .status-badge.active {
+    background: #dcfce7 !important;
+  }
+  .status-badge.partial {
+    background: #fef3c7 !important;
+  }
+  .status-badge.inactive {
+    background: #fee2e2 !important;
+  }
+  .status-badge.conflict {
+    background: #fef3c7 !important;
   }
 }
 </style>

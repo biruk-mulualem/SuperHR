@@ -50,7 +50,53 @@ export interface Item {
   specText?: string;
 }
 
+
+// ================================================================
+// NOTIFICATION TYPES - NEW
+// ================================================================
+
+export interface RequestNotification {
+  id: number;
+  request_id: number;
+  group_id: number;
+  store_id: number;
+  status: 'pending' | 'accepted' | 'rejected';
+  rejected_reason: string | null;
+  responded_by: number | null;
+  responded_at: string | null;
+  viewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  group?: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  respondedByUser?: {
+    userId: number;
+    username: string;
+    fullName: string;
+  };
+}
+
+export interface RequestNotificationSummary {
+  total: number;
+  accepted: number;
+  rejected: number;
+  pending: number;
+  allAccepted: boolean;
+  hasRejection: boolean;
+  rejectionReasons: Array<{
+    groupId: number;
+    groupName: string;
+    reason: string;
+    respondedBy: string;
+    respondedAt: string;
+  }>;
+}
+
 export interface ItemRequest {
+  notifications: any;
   requestId: number;
   id?: number;
   requestCode: string;
@@ -629,6 +675,266 @@ class ItemRequestService {
         error: error.response?.data?.error || 'Failed to export requests'
       };
     }
+  }
+
+    // ================================================================
+  // NOTIFICATION METHODS - NEW
+  // ================================================================
+
+// stores/itemRequestService.ts
+
+/**
+ * Get notifications for a specific group in a specific store
+ * GET /api/item-requests/notifications/:storeId/:groupId
+ */
+async getGroupNotifications(
+  storeId: number, 
+  groupId: number,
+  params?: {
+    page?: number;
+    limit?: number;
+    status?: 'pending' | 'accepted' | 'rejected' | 'all';
+  }
+): Promise<{
+  success: boolean;
+  data?: {
+    notifications: any[];
+    summary: {
+      total: number;
+      pending: number;
+      accepted: number;
+      rejected: number;
+    };
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+    store: {
+      id: number;
+      group: { id: number };
+    };
+  };
+  error?: string;
+}> {
+  try {
+    // Build query string
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    
+    const url = queryParams.toString() 
+      ? `/item-requests/notifications/${storeId}/${groupId}?${queryParams.toString()}`
+      : `/item-requests/notifications/${storeId}/${groupId}`;
+    
+    const response = await api.get(url);
+    return response.data;
+  } catch (error: any) {
+    console.error('Get group notifications error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to get group notifications'
+    };
+  }
+}
+  /**
+   * Get request with notification status and group responses
+   * GET /api/item-requests/:id/notifications
+   */
+  async getRequestWithNotifications(id: number | string): Promise<{
+    success: boolean;
+    data?: {
+      request: ItemRequest;
+      notificationSummary: {
+        total: number;
+        accepted: number;
+        rejected: number;
+        pending: number;
+        allAccepted: boolean;
+        hasRejection: boolean;
+        rejectionReasons: Array<{
+          groupId: number;
+          groupName: string;
+          reason: string;
+          respondedBy: string;
+          respondedAt: string;
+        }>;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/item-requests/${id}/notifications`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get request with notifications error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to fetch request notifications'
+      };
+    }
+  }
+
+  /**
+   * Check if all groups have accepted/rejected the request
+   * GET /api/item-requests/:id/notifications/status
+   */
+  async checkRequestNotificationStatus(requestId: number): Promise<{
+    success: boolean;
+    data?: {
+      allAccepted: boolean;
+      hasRejection: boolean;
+      total: number;
+      acceptedCount: number;
+      rejectedCount: number;
+      pendingCount: number;
+    };
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/item-requests/${requestId}/notifications/status`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Check notification status error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to check notification status'
+      };
+    }
+  }
+
+  /**
+   * Get all rejection reasons for a request
+   * GET /api/item-requests/notifications/requests/:requestId/rejections
+   */
+  async getRejectionReasons(requestId: number): Promise<{
+    success: boolean;
+    data?: Array<{
+      groupId: number;
+      groupName: string;
+      reason: string;
+      respondedBy: string;
+      respondedAt: string;
+    }>;
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/item-requests/notifications/requests/${requestId}/rejections`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get rejection reasons error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to get rejection reasons'
+      };
+    }
+  }
+
+  /**
+   * Accept a notification (group accepts the request)
+   * POST /api/item-requests/notifications/:notificationId/accept
+   */
+  async acceptNotification(notificationId: number): Promise<{
+    success: boolean;
+    message?: string;
+    data?: any;
+    error?: string;
+  }> {
+    try {
+      const response = await api.post(`/item-requests/notifications/${notificationId}/accept`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Accept notification error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to accept notification'
+      };
+    }
+  }
+
+  /**
+   * Reject a notification with reason
+   * POST /api/item-requests/notifications/:notificationId/reject
+   */
+  async rejectNotification(notificationId: number, reason: string): Promise<{
+    success: boolean;
+    message?: string;
+    data?: any;
+    error?: string;
+  }> {
+    try {
+      const response = await api.post(`/item-requests/notifications/${notificationId}/reject`, { reason });
+      return response.data;
+    } catch (error: any) {
+      console.error('Reject notification error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to reject notification'
+      };
+    }
+  }
+
+  // ================================================================
+  // NOTIFICATION HELPER METHODS
+  // ================================================================
+
+  /**
+   * Check if a request can be approved (all groups accepted)
+   */
+  canApproveRequest(request: ItemRequest): boolean {
+    if (!request || request.status !== 'pending') return false;
+    
+    // Check if request has notifications
+    const notifications = (request as any).notifications || [];
+    if (notifications.length === 0) return false;
+    
+    // Check if all groups accepted and none rejected
+    const allAccepted = notifications.every((n: any) => n.status === 'accepted');
+    const hasRejection = notifications.some((n: any) => n.status === 'rejected');
+    
+    return allAccepted && !hasRejection;
+  }
+
+  /**
+   * Check if a request can be printed (all groups accepted)
+   */
+  canPrintRequest(request: ItemRequest): boolean {
+    return this.canApproveRequest(request);
+  }
+
+  /**
+   * Get acceptance summary for display
+   */
+  getAcceptanceSummary(request: ItemRequest): string {
+    const notifications = (request as any).notifications || [];
+    if (notifications.length === 0) return 'No groups';
+    
+    const total = notifications.length;
+    const accepted = notifications.filter((n: any) => n.status === 'accepted').length;
+    const rejected = notifications.filter((n: any) => n.status === 'rejected').length;
+    const pending = notifications.filter((n: any) => n.status === 'pending').length;
+    
+    if (rejected > 0) return `❌ ${rejected} group(s) rejected`;
+    if (accepted === total) return `✅ All ${total} groups accepted`;
+    return `⏳ ${accepted}/${total} groups accepted`;
+  }
+
+  /**
+   * Get tooltip for approve button
+   */
+  getApproveTooltip(request: ItemRequest): string {
+    if (!request || request.status !== 'pending') return 'Request is not pending';
+    
+    const notifications = (request as any).notifications || [];
+    const hasRejection = notifications.some((n: any) => n.status === 'rejected');
+    if (hasRejection) return 'Some groups have rejected this request. Edit and resubmit.';
+    
+    const allAccepted = notifications.every((n: any) => n.status === 'accepted');
+    if (!allAccepted) return 'Waiting for all groups to accept the request';
+    
+    return 'All groups accepted - Click to approve';
   }
 
   // ================================================================
