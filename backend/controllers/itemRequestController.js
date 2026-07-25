@@ -307,6 +307,8 @@ exports.checkStockAvailability = async (req, res) => {
 
 // controllers/itemRequestController.js - COMPLETE FIXED getRequests
 
+// controllers/itemRequestController.js - COMPLETE FIXED getRequests
+
 exports.getRequests = async (req, res) => {
   try {
     const {
@@ -322,7 +324,7 @@ exports.getRequests = async (req, res) => {
 
     const offset = (page - 1) * limit;
     const where = {};
-    const userRelevantWhere = {}; // For counting user-relevant requests
+    const userRelevantWhere = {};
     
     // 🔥 Get the logged-in user
     const currentUser = req.user;
@@ -350,13 +352,14 @@ exports.getRequests = async (req, res) => {
     let userRelevantCondition = {};
     
     if (storeId !== 'all') {
+      // When a specific store is selected in filter
       where[Op.or] = [
-        { askingStoreId: storeId },
-        { supplyingStoreId: storeId }
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) }
       ];
       userRelevantWhere[Op.or] = [
-        { askingStoreId: storeId },
-        { supplyingStoreId: storeId }
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) }
       ];
     } else {
       // Auto-filter based on user role
@@ -366,33 +369,29 @@ exports.getRequests = async (req, res) => {
         // No additional filters needed
       } else if (currentUserRole === 'storekeeper' || currentUserRole === 'store_it') {
         if (userStoreId) {
-          // 🔥 Show ALL requests where the user's store is involved
-          // 1. As asking store (all statuses)
-          // 2. As supplying store (only approved status for read-only)
+          // 🔥 FIX: Show ALL requests where the user's store is involved
+          // This includes BOTH asking AND supplying stores, for ALL statuses
           where[Op.or] = [
             { askingStoreId: userStoreId },
-            { 
-              [Op.and]: [
-                { supplyingStoreId: userStoreId },
-                { status: 'approved' }
-              ]
-            }
+            { supplyingStoreId: userStoreId }  // ✅ REMOVED the status restriction
           ];
           
-          // 🔥 For user-relevant counting (asking store OR requested by user)
+          // 🔥 For user-relevant counting
           userRelevantCondition = {
             [Op.or]: [
               { requestedById: currentUserId },
-              { askingStoreId: userStoreId }
+              { askingStoreId: userStoreId },
+              { supplyingStoreId: userStoreId }
             ]
           };
           
           userRelevantWhere[Op.or] = [
             { requestedById: currentUserId },
-            { askingStoreId: userStoreId }
+            { askingStoreId: userStoreId },
+            { supplyingStoreId: userStoreId }
           ];
           
-          console.log(`📦 Store user (${currentUserRole}) - showing requests for store ${userStoreId}`);
+          console.log(`📦 Store user (${currentUserRole}) - showing ALL requests for store ${userStoreId}`);
         } else {
           if (currentUserId) {
             where.requestedById = currentUserId;
@@ -401,8 +400,11 @@ exports.getRequests = async (req, res) => {
           }
         }
       } else if (currentUserRole === 'checker' || currentUserRole === 'finance') {
-        where.status = 'approved';
-        userRelevantWhere.status = 'approved';
+        // Checker/Finance can see approved and finalized requests
+        if (status === 'all') {
+          where.status = { [Op.in]: ['approved', 'finalized'] };
+          userRelevantWhere.status = { [Op.in]: ['approved', 'finalized'] };
+        }
         if (userStoreId) {
           where[Op.or] = [
             { askingStoreId: userStoreId },
@@ -413,8 +415,9 @@ exports.getRequests = async (req, res) => {
             { supplyingStoreId: userStoreId }
           ];
         }
-        console.log(`📊 Checker/Finance user - showing approved requests`);
+        console.log(`📊 Checker/Finance user - showing approved/finalized requests`);
       } else {
+        // Other users see requests they created or are involved in
         if (currentUserId) {
           where[Op.or] = [
             { requestedById: currentUserId }
@@ -459,18 +462,18 @@ exports.getRequests = async (req, res) => {
     console.log('📋 Final WHERE clause:', JSON.stringify(where, null, 2));
 
     // ================================================================
-    // 🔥 GET CORRECT TOTAL COUNT - Only count requests the user can see
+    // 🔥 GET CORRECT TOTAL COUNT
     // ================================================================
     const totalCount = await ItemRequest.count({ where });
     console.log(`📊 Total count of visible requests: ${totalCount}`);
 
     // ================================================================
-    // 🔥 QUERY DATABASE - WITH CUSTOM SORTING
+    // 🔥 QUERY DATABASE
     // ================================================================
     let rows = [];
     
     if (currentUserId && userStoreId && currentUserRole !== 'admin') {
-      // 🔥 Get user's relevant requests first (limited to page size)
+      // 🔥 Get user's relevant requests first
       const userRequests = await ItemRequest.findAll({
         where: {
           ...where,
@@ -521,7 +524,6 @@ exports.getRequests = async (req, res) => {
       
       let otherRequests = [];
       if (remainingLimit > 0) {
-        // Count user-relevant requests
         const userRelevantCount = await ItemRequest.count({
           where: {
             ...where,
@@ -529,7 +531,6 @@ exports.getRequests = async (req, res) => {
           }
         });
         
-        // Calculate offset for other requests
         let otherOffset = parseInt(offset);
         if (page == 1) {
           otherOffset = 0;
@@ -543,7 +544,8 @@ exports.getRequests = async (req, res) => {
           ...where,
           [Op.and]: [
             { requestedById: { [Op.ne]: currentUserId } },
-            { askingStoreId: { [Op.ne]: userStoreId } }
+            { askingStoreId: { [Op.ne]: userStoreId } },
+            { supplyingStoreId: { [Op.ne]: userStoreId } }
           ]
         };
         
@@ -591,12 +593,11 @@ exports.getRequests = async (req, res) => {
         });
       }
 
-      // Combine the results - user's requests first, then others
       rows = [...userRequests, ...otherRequests];
       
       console.log(`✅ Found ${userRequests.length} user-relevant requests and ${otherRequests.length} other requests (total: ${rows.length})`);
     } else {
-      // No current user, admin, or no store assigned - do normal query
+      // Admin or no user store - normal query
       rows = await ItemRequest.findAll({
         where,
         offset: parseInt(offset),
@@ -646,10 +647,10 @@ exports.getRequests = async (req, res) => {
       data: {
         requests: rows,
         pagination: {
-          total: totalCount, // 🔥 Use the correct count
+          total: totalCount,
           page: parseInt(page),
           limit: parseInt(limit),
-          pages: Math.ceil(totalCount / limit) // 🔥 Calculate pages based on correct total
+          pages: Math.ceil(totalCount / limit)
         }
       }
     });

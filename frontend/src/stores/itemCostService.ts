@@ -14,10 +14,13 @@ export interface ItemCostData {
   brand: string;
   model: string;
   baseUOM: string;
+  conversionUOM: string | null; // ← ADD THIS
+  conversionValue: number; // ← ADD THIS
   unitCost: number;
   totalQty: number;
   totalCost: number;
-  status: 'Active' | 'Partial' | 'Inactive' | 'Conflict' | 'Error';
+  status: 'Active' | 'Partial' | 'Inactive' | 'Conflict' | 'Error' | 'Incomplete';
+  statusMessage: string;
   userStatus: 'Active' | 'Inactive';
   storeBreakdown: StoreBreakdown[];
   excludedStores: string[];
@@ -25,8 +28,12 @@ export interface ItemCostData {
   includedStoresCount: number;
   excludedStoresCount: number;
   isFiltered: boolean;
+  hasMissingData: boolean;
+  missingData: string[];
+  requiresSetup: boolean;
+  isExcluded: boolean;
+  exclusionReason: string | null;
 }
-
 export interface StoreBreakdown {
   storeId: number;
   storeName: string;
@@ -74,6 +81,9 @@ export interface CostSummary {
   partialItems: number;
   storeCount: number;
   activeItems: number;
+  incompleteItems: number;
+  errorItems: number;
+  excludedItems: number;
 }
 
 export interface ExportItem {
@@ -88,7 +98,22 @@ export interface ExportItem {
   'Total Quantity': number;
   'Total Cost': string;
   'Status': string;
+  'Status Message': string;
   'Excluded Stores': string;
+  'Is Excluded'?: string;
+  'Exclusion Reason'?: string;
+}
+
+export interface ExcludedItem {
+  id: number;
+  itemId: number;
+  itemCode: string;
+  itemName: string;
+  reason: string;
+  excludedBy: string;
+  excludedAt: string;
+  createdAt: string;
+  itemStatus: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -112,9 +137,40 @@ export interface SingleResponse<T> {
 export interface UpdateCostResponse {
   success: boolean;
   message?: string;
-  data?: {
-    costHistory: CostHistory;
-    updatedItem: ItemCostData;
+  data?: ItemCostData;
+  error?: string;
+}
+
+export interface ToggleStatusResponse {
+  success: boolean;
+  message: string;
+  data: {
+    item: ItemCostData;
+    isExcluded: boolean;
+    exclusionReason: string | null;
+    exclusionRecord?: {
+      id: number;
+      itemId: number;
+      reason: string;
+      excludedAt: string;
+      excludedBy: number;
+    } | null;
+  };
+  error?: string;
+}
+
+export interface BulkExclusionResponse {
+  success: boolean;
+  message: string;
+  data: {
+    total: number;
+    success: number;
+    failed: number;
+    results: Array<{
+      itemId: number;
+      success: boolean;
+      error?: string;
+    }>;
   };
   error?: string;
 }
@@ -173,7 +229,7 @@ class ItemCostService {
   }
 
   // ================================================================
-  // 📈 SUMMARY & EXPORT
+  // 📈 COST SUMMARY
   // ================================================================
 
   /**
@@ -244,6 +300,134 @@ class ItemCostService {
   }
 
   // ================================================================
+  // 🔥 COST EXCLUSION
+  // ================================================================
+
+  /**
+   * Toggle item cost exclusion
+   * PATCH /api/item-costs/:itemId/status
+   * Inactive → Excludes from cost calculations
+   * Active → Includes in cost calculations
+   */
+  async toggleItemStatus(
+    itemId: number,
+    status: 'Active' | 'Inactive'
+  ): Promise<ToggleStatusResponse> {
+    try {
+      const response = await api.patch(`/item-costs/${itemId}/status`, { status });
+      return response.data;
+    } catch (error: any) {
+      console.error('Toggle item status error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.error || 'Failed to toggle status',
+        data: {
+          item: {} as ItemCostData,
+          isExcluded: false,
+          exclusionReason: null,
+        },
+        error: error.response?.data?.error || 'Failed to toggle status',
+      };
+    }
+  }
+
+  /**
+   * Get all excluded items
+   * GET /api/item-costs/excluded
+   */
+  async getExcludedItems(): Promise<{
+    success: boolean;
+    data: ExcludedItem[];
+    total: number;
+    error?: string;
+  }> {
+    try {
+      const response = await api.get('/item-costs/excluded');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get excluded items error:', error);
+      return {
+        success: false,
+        data: [],
+        total: 0,
+        error: error.response?.data?.error || 'Failed to get excluded items',
+      };
+    }
+  }
+
+  /**
+   * Bulk exclude items from cost calculations
+   * POST /api/item-costs/bulk-exclude
+   */
+  async bulkExcludeItems(
+    itemIds: number[],
+    reason: string = 'Bulk exclusion'
+  ): Promise<BulkExclusionResponse> {
+    try {
+      const response = await api.post('/item-costs/bulk-exclude', {
+        itemIds,
+        reason,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Bulk exclude error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.error || 'Failed to bulk exclude items',
+        data: {
+          total: itemIds.length,
+          success: 0,
+          failed: itemIds.length,
+          results: [],
+        },
+        error: error.response?.data?.error || 'Failed to bulk exclude items',
+      };
+    }
+  }
+
+  /**
+   * Bulk include items (remove from exclusion)
+   * POST /api/item-costs/bulk-include
+   */
+  async bulkIncludeItems(itemIds: number[]): Promise<BulkExclusionResponse> {
+    try {
+      const response = await api.post('/item-costs/bulk-include', {
+        itemIds,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Bulk include error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.error || 'Failed to bulk include items',
+        data: {
+          total: itemIds.length,
+          success: 0,
+          failed: itemIds.length,
+          results: [],
+        },
+        error: error.response?.data?.error || 'Failed to bulk include items',
+      };
+    }
+  }
+
+  /**
+   * Check if an item is excluded from cost calculations
+   */
+  async isItemExcluded(itemId: number): Promise<boolean> {
+    try {
+      const response = await this.getExcludedItems();
+      if (response.success) {
+        return response.data.some(item => item.itemId === itemId);
+      }
+      return false;
+    } catch (error) {
+      console.error('Check item exclusion error:', error);
+      return false;
+    }
+  }
+
+  // ================================================================
   // 📦 MAIN CRUD
   // ================================================================
 
@@ -260,13 +444,16 @@ class ItemCostService {
     limit?: number;
   }): Promise<PaginatedResponse<ItemCostData>> {
     try {
+      // 🔥 Limit to 100 for performance
+      const safeLimit = params?.limit ? Math.min(params.limit, 100) : 10;
+      
       const queryParams = new URLSearchParams();
       if (params?.storeId) queryParams.append('storeId', params.storeId.toString());
       if (params?.groupId) queryParams.append('groupId', params.groupId.toString());
       if (params?.status) queryParams.append('status', params.status);
       if (params?.search) queryParams.append('search', params.search);
       if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      queryParams.append('limit', safeLimit.toString());
 
       const url = queryParams.toString() 
         ? `/item-costs?${queryParams.toString()}`
@@ -322,6 +509,33 @@ class ItemCostService {
   }
 
   /**
+   * Get item cost history
+   * GET /api/item-costs/:itemId/history
+   */
+  async getItemCostHistory(
+    itemId: number,
+    limit: number = 10
+  ): Promise<{
+    success: boolean;
+    data: CostHistory[];
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/item-costs/${itemId}/history`, {
+        params: { limit },
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Get item cost history error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to get item cost history',
+      };
+    }
+  }
+
+  /**
    * Update item cost
    * POST /api/item-costs/:itemId
    */
@@ -344,31 +558,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Toggle item status (Active/Inactive)
-   * PATCH /api/item-costs/:itemId/status
-   */
-  async toggleItemStatus(
-    itemId: number,
-    status: 'Active' | 'Inactive'
-  ): Promise<{
-    success: boolean;
-    message?: string;
-    data?: ItemCostData;
-    error?: string;
-  }> {
-    try {
-      const response = await api.patch(`/item-costs/${itemId}/status`, { status });
-      return response.data;
-    } catch (error: any) {
-      console.error('Toggle item status error:', error);
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to toggle item status',
-      };
-    }
-  }
-
   // ================================================================
   // 🛠️ HELPER METHODS
   // ================================================================
@@ -380,9 +569,10 @@ class ItemCostService {
     const badgeMap: Record<string, string> = {
       Active: 'success',
       Partial: 'warning',
-      Inactive: 'danger',
+      Inactive: 'secondary',
       Conflict: 'warning',
       Error: 'danger',
+      Incomplete: 'warning',
     };
     return badgeMap[status] || 'secondary';
   }
@@ -395,25 +585,41 @@ class ItemCostService {
       Active: '✅',
       Partial: '⚠️',
       Inactive: '⛔',
-      Conflict: '⚠️',
+      Conflict: '⚡',
       Error: '❌',
+      Incomplete: '🔴',
     };
     return iconMap[status] || '📦';
+  }
+
+  /**
+   * Get status description
+   */
+  getStatusDescription(status: string): string {
+    const descMap: Record<string, string> = {
+      Active: 'All data complete - included in total cost',
+      Partial: 'Some stores excluded due to conflicts',
+      Inactive: 'Excluded from cost calculations',
+      Conflict: 'All stores have conflicts',
+      Error: 'Error calculating cost',
+      Incomplete: 'Missing required data (UOM, conversion, or cost)',
+    };
+    return descMap[status] || 'Unknown status';
   }
 
   /**
    * Format currency
    */
   formatCurrency(value: number): string {
-    if (value === null || value === undefined) return '$0.00';
-    return `$${Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+    if (value === null || value === undefined || isNaN(value)) return 'ETB 0.00';
+    return `ETB ${Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   }
 
   /**
    * Format number
    */
   formatNumber(value: number): string {
-    if (value === null || value === undefined) return '0';
+    if (value === null || value === undefined || isNaN(value)) return '0';
     return Number(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
@@ -469,7 +675,9 @@ class ItemCostService {
     return items.filter(item =>
       item.itemCode?.toLowerCase().includes(q) ||
       item.itemName?.toLowerCase().includes(q) ||
-      item.itemStandardName?.toLowerCase().includes(q)
+      item.itemStandardName?.toLowerCase().includes(q) ||
+      item.brand?.toLowerCase().includes(q) ||
+      item.model?.toLowerCase().includes(q)
     );
   }
 
@@ -483,6 +691,48 @@ class ItemCostService {
       storeBreakdown: item.storeBreakdown.filter(s => s.storeId === storeId),
       isFiltered: true,
     }));
+  }
+
+  /**
+   * Get excluded items count from a list
+   */
+  getExcludedCount(items: ItemCostData[]): number {
+    return items.filter(item => item.isExcluded).length;
+  }
+
+  /**
+   * Get included items count from a list
+   */
+  getIncludedCount(items: ItemCostData[]): number {
+    return items.filter(item => !item.isExcluded).length;
+  }
+
+  /**
+   * Calculate total value of included items
+   */
+  getTotalInventoryValue(items: ItemCostData[]): number {
+    return items
+      .filter(item => !item.isExcluded && (item.status === 'Active' || item.status === 'Partial'))
+      .reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  }
+
+  /**
+   * Get stores from item breakdown
+   */
+  getStoresFromItems(items: ItemCostData[]): Store[] {
+    const storeMap = new Map<number, Store>();
+    items.forEach(item => {
+      item.storeBreakdown.forEach(store => {
+        if (!storeMap.has(store.storeId)) {
+          storeMap.set(store.storeId, {
+            id: store.storeId,
+            name: store.storeName,
+            code: store.storeName,
+          });
+        }
+      });
+    });
+    return Array.from(storeMap.values());
   }
 }
 

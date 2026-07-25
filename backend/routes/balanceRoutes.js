@@ -226,4 +226,7 @@ router.delete(
     balanceController.deleteBalance
 );
 
+// In routes/balanceRoutes.js
+router.get('/requests/debug/:requestId', balanceController.debugRequestProcessing);
+
 module.exports = router;

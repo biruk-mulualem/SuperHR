@@ -332,9 +332,13 @@ class GroupService {
  * Get all users (for dropdown)
  * GET /api/groups/users/all
  */
+// In groupService.js
+// In groupService.js - update the getAllUsers method
 async getAllUsers(): Promise<UsersResponse> {
   try {
-     const response = await api.get('/groups/users');
+    // Change from /groups/users/all to /groups/users
+    const response = await api.get('/groups/users');
+    
     // Ensure role is included
     if (response.data.success && response.data.data) {
       response.data.data = response.data.data.map((user: any) => ({
@@ -354,8 +358,6 @@ async getAllUsers(): Promise<UsersResponse> {
     };
   }
 }
-
-
 
 
 

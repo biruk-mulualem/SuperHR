@@ -1,87 +1,37 @@
-// controllers/itemCostController.js
 'use strict';
 
 const db = require('../models');
-const { Item, StoreBalance, Store, Group, UOM, User, Category } = db;
+const { Item, StoreBalance, Store, Group, UOM, User, Category, ExcludeItemFromCost } = db;
 const { Op } = require('sequelize');
+const NodeCache = require('node-cache');
 
 // ================================================================
-// HELPER: Calculate item cost from store balances
+// CACHE CONFIGURATION
 // ================================================================
 
-async function calculateItemCost(itemId, storeId = null, groupId = null, userStatus = 'Active') {
+const costCache = new NodeCache({ 
+  stdTTL: 300,
+  checkperiod: 60,
+  maxKeys: 500
+});
+
+// ================================================================
+// 🔥 CALCULATE ITEM COST
+// Formula: Balance × Conversion Value × Unit Cost
+// ================================================================
+
+function calculateItemCostOptimized(
+  item, 
+  balances, 
+  unitCost, 
+  storeId = null, 
+  groupId = null,
+  isExcluded = false,
+  exclusionReason = null
+) {
   try {
-    // Get the item with all associations
-    const item = await Item.findByPk(itemId, {
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
-      ],
-    });
-
-    if (!item) {
-      throw new Error('Item not found');
-    }
-
-    // Build where clause for store balances
-    const whereClause = {
-      itemId: itemId,
-      status: 'Active',
-    };
-
-    if (storeId) {
-      whereClause.storeId = storeId;
-    }
-
-    if (groupId) {
-      whereClause.groupId = groupId;
-    }
-
-    // Get all store balances for this item
-    const balances = await StoreBalance.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: Store,
-          as: 'store',
-          attributes: ['storeId', 'name', 'code'],
-        },
-        {
-          model: Group,
-          as: 'group',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: Item,
-          as: 'item',
-          include: [
-            { model: UOM, as: 'uom' },
-            { model: UOM, as: 'conversionUom' },
-          ],
-        },
-      ],
-    });
-
-    // Get unit cost from the item's costPrice
-    let unitCost = parseFloat(item.costPrice) || 0;
-    
-    // If no cost price on item, try to get from item_cost table
-    if (unitCost === 0) {
-      const ItemCost = db.ItemCost;
-      if (ItemCost) {
-        const latestCost = await ItemCost.findOne({
-          where: { itemId: itemId },
-          order: [['created_at', 'DESC']],
-        });
-        if (latestCost) {
-          unitCost = parseFloat(latestCost.newCost);
-        }
-      }
-    }
-
-    // If no balances, return item with zero values
-    if (balances.length === 0) {
+    // 1. If excluded
+    if (isExcluded) {
       return {
         id: item.itemId,
         itemCode: item.code,
@@ -91,28 +41,155 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
         brand: item.brand || '',
         model: item.model || '',
         baseUOM: item.uom?.code || 'Units',
-        unitCost: unitCost,
+        conversionUOM: item.conversionUom?.code || null,
+        conversionValue: parseFloat(item.conversionValue) || 0,
+        unitCost: unitCost || 0,
         totalQty: 0,
         totalCost: 0,
-        status: 'Active',
-        userStatus: userStatus,
+        status: 'Inactive',
+        statusMessage: exclusionReason || 'Excluded from cost calculations',
+        userStatus: 'Active',
         storeBreakdown: [],
         excludedStores: [],
         costHistory: [],
         includedStoresCount: 0,
         excludedStoresCount: 0,
         isFiltered: !!storeId,
+        hasMissingData: false,
+        missingData: [],
+        requiresSetup: false,
+        isExcluded: true,
+        exclusionReason: exclusionReason,
       };
     }
 
-    // Group balances by store
+    // 2. Check required data
+    const hasUnitCost = unitCost !== undefined && unitCost !== null && unitCost >= 0;
+    const hasConversionUom = item.conversionUomId !== undefined && item.conversionUomId !== null;
+    const hasConversionValue = item.conversionValue !== undefined && item.conversionValue !== null && parseFloat(item.conversionValue) > 0;
+    
+    const missingData = [];
+    if (!hasUnitCost && unitCost !== 0) {
+      missingData.push('Unit Cost');
+    }
+    if (!hasConversionUom) {
+      missingData.push('Conversion UOM');
+    }
+    if (!hasConversionValue) {
+      missingData.push('Conversion Value');
+    }
+
+    // 3. No balances
+    if (!balances || balances.length === 0) {
+      let status = 'Active';
+      let statusMessage = 'No balances found';
+      
+      if (missingData.length > 0) {
+        status = 'Incomplete';
+        statusMessage = `Missing: ${missingData.join(', ')}`;
+      }
+
+      return {
+        id: item.itemId,
+        itemCode: item.code,
+        itemName: item.name,
+        itemStandardName: item.standardName || '',
+        categoryName: item.category?.name || '',
+        brand: item.brand || '',
+        model: item.model || '',
+        baseUOM: item.uom?.code || 'Units',
+        conversionUOM: item.conversionUom?.code || null,
+        conversionValue: parseFloat(item.conversionValue) || 0,
+        unitCost: unitCost || 0,
+        totalQty: 0,
+        totalCost: 0,
+        status: status,
+        statusMessage: statusMessage,
+        userStatus: item.status || 'Active',
+        storeBreakdown: [],
+        excludedStores: [],
+        costHistory: [],
+        includedStoresCount: 0,
+        excludedStoresCount: 0,
+        isFiltered: !!storeId,
+        hasMissingData: missingData.length > 0,
+        missingData: missingData,
+        requiresSetup: missingData.length > 0,
+        isExcluded: false,
+        exclusionReason: null,
+      };
+    }
+
+    // 4. Missing conversion data
+    if (!hasConversionUom || !hasConversionValue) {
+      const storeBreakdown = balances.map(balance => ({
+        storeId: balance.storeId || balance.store_id,
+        storeName: balance.store?.name || 'Unknown Store',
+        hasConflict: false,
+        isExcluded: true,
+        agreedQuantity: parseFloat(balance.balance) || 0,
+        groups: [{
+          groupId: balance.groupId || balance.group_id,
+          groupName: balance.group?.name || 'Unknown Group',
+          quantity: parseFloat(balance.balance) || 0,
+          originalQuantity: parseFloat(balance.balance) || 0,
+          originalUOM: item.uom?.code || 'Units',
+          conversionRate: 1,
+          baseQuantity: parseFloat(balance.balance) || 0,
+          balanceId: balance.id,
+        }],
+      }));
+
+      return {
+        id: item.itemId,
+        itemCode: item.code,
+        itemName: item.name,
+        itemStandardName: item.standardName || '',
+        categoryName: item.category?.name || '',
+        brand: item.brand || '',
+        model: item.model || '',
+        baseUOM: item.uom?.code || 'Units',
+        conversionUOM: item.conversionUom?.code || null,
+        conversionValue: parseFloat(item.conversionValue) || 0,
+        unitCost: unitCost || 0,
+        totalQty: 0,
+        totalCost: 0,
+        status: 'Incomplete',
+        statusMessage: `Missing: ${missingData.join(', ')}`,
+        userStatus: item.status || 'Active',
+        storeBreakdown: storeBreakdown,
+        excludedStores: storeBreakdown.map(s => s.storeName),
+        costHistory: [],
+        includedStoresCount: 0,
+        excludedStoresCount: storeBreakdown.length,
+        isFiltered: !!storeId,
+        hasMissingData: true,
+        missingData: missingData,
+        requiresSetup: true,
+        isExcluded: false,
+        exclusionReason: null,
+      };
+    }
+
+    // 5. ✅ GROUP BALANCES BY STORE (FIXED)
     const storeMap = new Map();
+    const baseUOM = item.uom?.code || 'Units';
+    const conversionValue = parseFloat(item.conversionValue) || 1;
 
     for (const balance of balances) {
-      const storeIdKey = balance.storeId;
+      // 🔥 FIX: Get store ID correctly
+      const storeIdKey = balance.storeId || balance.store_id;
+      const groupIdKey = balance.groupId || balance.group_id;
+      
+      if (!storeIdKey) {
+        console.warn('⚠️ Balance missing storeId:', balance);
+        continue;
+      }
+
+      // Initialize store if not exists
       if (!storeMap.has(storeIdKey)) {
         storeMap.set(storeIdKey, {
-          storeId: balance.storeId,
+          storeId: storeIdKey,
           storeName: balance.store?.name || 'Unknown Store',
           storeCode: balance.store?.code || '',
           groups: [],
@@ -121,46 +198,31 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       }
 
       const storeData = storeMap.get(storeIdKey);
-      
-      // Get the balance quantity
-      let quantity = parseFloat(balance.balance) || 0;
-      let originalQuantity = quantity;
-      let conversionRate = 1;
-      let originalUOM = balance.item?.uom?.code || 'Units';
-      
-      // Check if conversion is needed
-      const baseUOM = item.uom?.code || 'Units';
-      const balanceUOM = balance.item?.uom?.code || 'Units';
-      
-      // If the balance UOM is different from the item's base UOM
-      if (balanceUOM !== baseUOM && item.conversionValue > 0) {
-        // If the balance UOM matches the conversion UOM
-        if (balance.item?.uomId === item.conversionUomId) {
-          conversionRate = parseFloat(item.conversionValue) || 1;
-          quantity = originalQuantity * conversionRate;
-        }
-      }
+      const originalQuantity = parseFloat(balance.balance) || 0;
+      const convertedQuantity = originalQuantity * conversionValue;
 
+      // Add group to this store
       storeData.groups.push({
-        groupId: balance.groupId,
+        groupId: groupIdKey,
         groupName: balance.group?.name || 'Unknown Group',
-        quantity: quantity,
+        quantity: convertedQuantity,
         originalQuantity: originalQuantity,
-        originalUOM: originalUOM,
-        conversionRate: conversionRate,
-        baseQuantity: quantity,
+        originalUOM: baseUOM,
+        conversionRate: conversionValue,
+        baseQuantity: convertedQuantity,
         balanceId: balance.id,
       });
-      storeData.totalQty += quantity;
+      storeData.totalQty += convertedQuantity;
     }
 
-    // Process store breakdown
+    // 6. 🔥 CHECK CONFLICTS PER STORE
     const storeBreakdown = [];
-
     for (const [storeIdKey, storeData] of storeMap) {
-      // Check if all groups in this store have the same quantity
+      // Get all quantities from groups in THIS store
       const quantities = storeData.groups.map(g => g.quantity);
       const firstQty = quantities[0];
+      
+      // Check if all groups in THIS store have the same quantity
       const allSame = quantities.every(q => Math.abs(q - firstQty) < 0.0001);
 
       storeBreakdown.push({
@@ -182,69 +244,51 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       });
     }
 
-    // Calculate totals based on filter
+    // 7. Calculate totals from included stores only
     let includedStores = [];
     let totalQty = 0;
-    let totalCost = 0;
     let excludedStores = [];
 
     if (storeId) {
-      // Store filter applied - only show the selected store
       const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
-      
       if (filteredStore) {
         if (!filteredStore.isExcluded) {
           includedStores = [filteredStore];
           totalQty = filteredStore.agreedQuantity;
-          totalCost = totalQty * unitCost;
         } else {
-          // Selected store is excluded due to conflict
-          includedStores = [];
-          totalQty = 0;
-          totalCost = 0;
           excludedStores = [filteredStore.storeName];
         }
-      } else {
-        // Store has no balance for this item
-        includedStores = [];
-        totalQty = 0;
-        totalCost = 0;
       }
     } else {
-      // No store filter - use all stores
+      // Only include stores where groups agree
       includedStores = storeBreakdown.filter(s => !s.isExcluded);
       totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
-      totalCost = totalQty * unitCost;
-      excludedStores = storeBreakdown
-        .filter(s => s.isExcluded)
-        .map(s => s.storeName);
+      excludedStores = storeBreakdown.filter(s => s.isExcluded).map(s => s.storeName);
     }
 
-    // Determine status
+    // 8. Calculate total cost
+    const totalCost = hasUnitCost ? totalQty * unitCost : 0;
+    const userStatus = item.status || 'Active';
+
+    // 9. Determine status
     let status = 'Active';
+    let statusMessage = 'Complete data';
+    
     if (userStatus === 'Inactive') {
       status = 'Inactive';
-    } else if (storeId) {
-      // When filtering by store, status reflects that store only
-      const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
-      if (filteredStore) {
-        if (filteredStore.hasConflict) {
-          status = 'Conflict';
-        } else {
-          status = 'Active';
-        }
-      } else {
-        status = 'Active';
-      }
+      statusMessage = 'Item is inactive';
+    } else if (missingData.length > 0 || !hasUnitCost || !hasConversionValue) {
+      status = 'Incomplete';
+      statusMessage = `Missing: ${missingData.join(', ')}`;
+    } else if (excludedStores.length > 0 && includedStores.length > 0) {
+      status = 'Partial';
+      statusMessage = `${excludedStores.length} store(s) excluded due to conflicts`;
+    } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
+      status = 'Conflict';
+      statusMessage = 'All stores have conflicts';
     } else {
-      // No store filter - overall status
-      if (excludedStores.length > 0 && includedStores.length > 0) {
-        status = 'Partial';
-      } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
-        status = 'Conflict';
-      } else {
-        status = 'Active';
-      }
+      status = 'Active';
+      statusMessage = 'Complete data';
     }
 
     return {
@@ -255,11 +299,14 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       categoryName: item.category?.name || '',
       brand: item.brand || '',
       model: item.model || '',
-      baseUOM: item.uom?.code || 'Units',
-      unitCost: unitCost,
+      baseUOM: baseUOM,
+      conversionUOM: item.conversionUom?.code || null,
+      conversionValue: parseFloat(item.conversionValue) || 0,
+      unitCost: unitCost || 0,
       totalQty: totalQty,
       totalCost: totalCost,
       status: status,
+      statusMessage: statusMessage,
       userStatus: userStatus,
       storeBreakdown: storeBreakdown,
       excludedStores: excludedStores,
@@ -267,23 +314,31 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       includedStoresCount: includedStores.length,
       excludedStoresCount: excludedStores.length,
       isFiltered: !!storeId,
+      hasMissingData: missingData.length > 0 || !hasUnitCost || !hasConversionValue,
+      missingData: missingData,
+      requiresSetup: missingData.length > 0 || !hasUnitCost || !hasConversionValue,
+      isExcluded: false,
+      exclusionReason: null,
     };
-
+    
   } catch (error) {
-    console.error('Error calculating item cost:', error);
+    console.error('Error in calculateItemCostOptimized:', error);
     return {
-      id: itemId,
-      itemCode: 'Unknown',
-      itemName: 'Unknown Item',
+      id: item?.itemId || 0,
+      itemCode: item?.code || 'Unknown',
+      itemName: item?.name || 'Unknown Item',
       itemStandardName: '',
       categoryName: '',
       brand: '',
       model: '',
       baseUOM: 'Units',
+      conversionUOM: null,
+      conversionValue: 0,
       unitCost: 0,
       totalQty: 0,
       totalCost: 0,
-      status: 'Active',
+      status: 'Error',
+      statusMessage: error.message || 'Error calculating cost',
       userStatus: 'Active',
       storeBreakdown: [],
       excludedStores: [],
@@ -291,188 +346,298 @@ async function calculateItemCost(itemId, storeId = null, groupId = null, userSta
       includedStoresCount: 0,
       excludedStoresCount: 0,
       isFiltered: !!storeId,
+      hasMissingData: true,
+      missingData: ['Data Error'],
+      requiresSetup: true,
+      isExcluded: false,
+      exclusionReason: null,
     };
   }
 }
 
 // ================================================================
-// CONTROLLER METHODS
+// HELPER: Get item cost history
 // ================================================================
 
+async function getItemCostHistory(itemId, limit = 10) {
+  try {
+    const ItemCost = db.ItemCost;
+    if (!ItemCost) return [];
+
+    const history = await ItemCost.findAll({
+      where: { itemId: itemId },
+      order: [['created_at', 'DESC']],
+      limit: limit,
+      attributes: ['id', 'previousCost', 'newCost', 'reason', 'changedBy', 'created_at'],
+    });
+
+    return history.map(h => ({
+      id: h.id,
+      previousCost: parseFloat(h.previousCost) || 0,
+      newCost: parseFloat(h.newCost) || 0,
+      reason: h.reason || '',
+      changedBy: h.changedBy || 'System',
+      createdAt: h.created_at,
+    }));
+  } catch (error) {
+    console.error('Error getting item cost history:', error);
+    return [];
+  }
+}
+
 /**
- * Get all items with cost calculations
- * GET /api/item-costs
+ * 🔥 GET ITEMS WITH COST - WITH FILTER PRIORITY
  */
 exports.getItemsWithCost = async (req, res) => {
   try {
+    console.log('🚀 START: getItemsWithCost');
     const { storeId, groupId, status, search, page = 1, limit = 10 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit) || 10, 100);
+    const parsedPage = parseInt(page) || 1;
 
-    // Build query for items
+    const cacheKey = `items_${storeId || 'all'}_${groupId || 'all'}_${status || 'all'}_${search || 'all'}_${parsedPage}_${parsedLimit}`;
+
+    // Check cache
+    const cachedData = costCache.get(cacheKey);
+    if (cachedData) {
+      console.log('✅ Cache hit');
+      return res.json(cachedData);
+    }
+
+    console.log('⏳ Cache miss, fetching items...');
+
+    // 🔥 Build query for items
     const itemWhere = {};
     
-    if (search) {
-      const searchTerm = search.toLowerCase();
+    // Search filter
+    if (search && search.trim()) {
+      const term = search.trim().toLowerCase();
       itemWhere[Op.or] = [
-        { code: { [Op.like]: `%${searchTerm}%` } },
-        { name: { [Op.like]: `%${searchTerm}%` } },
-        { standardName: { [Op.like]: `%${searchTerm}%` } },
-        { brand: { [Op.like]: `%${searchTerm}%` } },
-        { model: { [Op.like]: `%${searchTerm}%` } },
+        { code: { [Op.iLike]: `%${term}%` } },
+        { name: { [Op.iLike]: `%${term}%` } },
+        { standardName: { [Op.iLike]: `%${term}%` } },
+        { brand: { [Op.iLike]: `%${term}%` } },
+        { model: { [Op.iLike]: `%${term}%` } }
       ];
     }
 
-    // 🔥 If store filter is applied, only get items that have balances in that store
+    // Store filter - get item IDs with balances in that store
+    let itemIdsWithBalance = null;
     if (storeId) {
-      // Get item IDs that have balances in the selected store
       const balances = await StoreBalance.findAll({
-        where: {
+        where: { 
           storeId: storeId,
-          status: 'Active',
+          status: 'Active' 
         },
         attributes: ['itemId'],
         group: ['itemId'],
+        raw: true,
       });
-      
-      const itemIdsWithBalance = balances.map(b => b.itemId);
-      
-      if (itemIdsWithBalance.length > 0) {
-        itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
-      } else {
-        // No items have balances in this store
+      itemIdsWithBalance = balances.map(b => b.itemId);
+      if (itemIdsWithBalance.length === 0) {
         return res.json({
           success: true,
           data: [],
-          pagination: {
-            total: 0,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            pages: 0,
-          },
+          pagination: { total: 0, page: parsedPage, limit: parsedLimit, pages: 0 },
         });
       }
     }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // Combine search and store filters
+    if (itemIdsWithBalance) {
+      if (itemWhere[Op.or]) {
+        itemWhere[Op.and] = [
+          { [Op.or]: itemWhere[Op.or] },
+          { itemId: { [Op.in]: itemIdsWithBalance } }
+        ];
+        delete itemWhere[Op.or];
+      } else {
+        itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
+      }
+    }
 
-    // Get items with pagination
-    const { count, rows: items } = await Item.findAndCountAll({
+    // 🔥 Get ALL items matching filters (without pagination for priority sorting)
+    console.log('📦 Fetching all matching items for priority sorting...');
+    const allMatchingItems = await Item.findAll({
       where: itemWhere,
+      attributes: ['itemId', 'code', 'name', 'standardName', 'brand', 'model', 'costPrice', 'status', 'uomId', 'conversionUomId', 'conversionValue'],
       include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
+        { 
+          model: UOM, 
+          as: 'uom', 
+          attributes: ['code', 'name'] 
+        },
+        { 
+          model: Category, 
+          as: 'category', 
+          attributes: ['name'] 
+        },
+        { 
+          model: UOM, 
+          as: 'conversionUom', 
+          attributes: ['code', 'name'] 
+        },
       ],
       order: [['name', 'ASC']],
-      limit: parseInt(limit),
-      offset: offset,
     });
 
-    // Calculate cost for each item
-    const results = [];
-    for (const item of items) {
-      try {
-        const costData = await calculateItemCost(
-          item.itemId,
-          storeId || null,
-          groupId || null
-        );
+    const totalCount = allMatchingItems.length;
+    console.log(`📊 Total items matching filters: ${totalCount}`);
 
-        // Apply status filter
-        if (status && costData.status !== status) {
-          continue;
-        }
-
-        // 🔥 Also filter out items with zero total quantity when store is selected
-        if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0) {
-          continue;
-        }
-
-        results.push(costData);
-      } catch (error) {
-        console.error(`Error calculating cost for item ${item.itemId}:`, error);
-        // Skip items that error out
-        continue;
-      }
+    if (allMatchingItems.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: { total: 0, page: parsedPage, limit: parsedLimit, pages: 0 },
+      });
     }
 
-    // 🔥 Calculate correct total count based on filters
-    let totalCount = count;
-    
-    // If status filter is applied, we need to count filtered items
-    if (status) {
-      // Get all items that match the base query (without pagination)
-      const allItems = await Item.findAll({
-        where: itemWhere,
-        include: [
-          { model: UOM, as: 'uom' },
-          { model: Category, as: 'category' },
-          { model: UOM, as: 'conversionUom' },
-        ],
-        order: [['name', 'ASC']],
-      });
-      
-      let filteredTotal = 0;
-      for (const item of allItems) {
-        try {
-          const costData = await calculateItemCost(
-            item.itemId,
-            storeId || null,
-            groupId || null
-          );
-          
-          if (costData.status === status) {
-            filteredTotal++;
-          }
-        } catch (error) {
-          continue;
-        }
+    const itemIds = allMatchingItems.map(i => i.itemId);
+
+    // 🔥 FIX: Get balances with correct field names (camelCase)
+    console.log('📦 Fetching balances...');
+    const balanceWhere = { 
+      itemId: { [Op.in]: itemIds },
+      status: 'Active' 
+    };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
+      attributes: ['id', 'itemId', 'storeId', 'groupId', 'balance'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+      ],
+    });
+    console.log(`📦 Found ${allBalances.length} balances`);
+
+    // Group balances by item
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.itemId]) {
+        balancesByItem[balance.itemId] = [];
       }
-      totalCount = filteredTotal;
-    } else if (storeId) {
-      // Store filter is applied, count is already filtered by itemIdsWithBalance
-      // But we need to also check that items actually have positive quantity in the store
-      const allItems = await Item.findAll({
-        where: itemWhere,
-        include: [
-          { model: UOM, as: 'uom' },
-          { model: Category, as: 'category' },
-          { model: UOM, as: 'conversionUom' },
-        ],
-        order: [['name', 'ASC']],
-      });
-      
-      let filteredTotal = 0;
-      for (const item of allItems) {
-        try {
-          const costData = await calculateItemCost(
-            item.itemId,
-            storeId || null,
-            groupId || null
-          );
-          
-          if (costData.totalQty > 0 || costData.storeBreakdown.length > 0) {
-            filteredTotal++;
-          }
-        } catch (error) {
-          continue;
-        }
-      }
-      totalCount = filteredTotal;
+      balancesByItem[balance.itemId].push(balance);
     }
 
-    res.json({
+    // Get excluded items
+    console.log('📦 Fetching excluded items...');
+    const excludedItems = await ExcludeItemFromCost.findAll({
+      where: { is_active: true },
+      attributes: ['item_id', 'reason'],
+      raw: true,
+    });
+    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
+    const exclusionReasons = {};
+    excludedItems.forEach(e => { exclusionReasons[e.item_id] = e.reason || 'Manually excluded'; });
+
+    // 🔥 Process ALL items and calculate their data
+    console.log('🔄 Processing all items...');
+    const allProcessedItems = [];
+    for (const item of allMatchingItems) {
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = parseFloat(item.costPrice) || 0;
+      const isExcluded = excludedItemIds.has(item.itemId);
+      const exclusionReason = exclusionReasons[item.itemId] || null;
+
+      console.log(`📦 Processing item: ${item.code}, Balances: ${itemBalances.length}`);
+
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
+        storeId || null,
+        groupId || null,
+        isExcluded,
+        exclusionReason
+      );
+
+      // Apply status filter
+      if (status && costData.status !== status) continue;
+
+      allProcessedItems.push(costData);
+    }
+
+    // 🔥 SORT: Items matching the filter should come first
+    const sortPriority = {
+      'Active': 0,
+      'Partial': 1,
+      'Setup Required': 2,
+      'Incomplete': 3,
+      'Inactive': 4,
+      'Conflict': 5,
+      'Error': 6
+    };
+
+    // Sort items
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toLowerCase();
+      
+      allProcessedItems.sort((a, b) => {
+        // Priority 1: Exact match in code
+        const aExactCode = a.itemCode.toLowerCase() === searchTerm;
+        const bExactCode = b.itemCode.toLowerCase() === searchTerm;
+        if (aExactCode && !bExactCode) return -1;
+        if (!aExactCode && bExactCode) return 1;
+
+        // Priority 2: Code starts with search term
+        const aStartsWith = a.itemCode.toLowerCase().startsWith(searchTerm);
+        const bStartsWith = b.itemCode.toLowerCase().startsWith(searchTerm);
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+
+        // Priority 3: Name contains search term
+        const aNameMatch = a.itemName.toLowerCase().includes(searchTerm);
+        const bNameMatch = b.itemName.toLowerCase().includes(searchTerm);
+        if (aNameMatch && !bNameMatch) return -1;
+        if (!aNameMatch && bNameMatch) return 1;
+
+        // Priority 4: Status priority
+        const aStatus = sortPriority[a.status] ?? 999;
+        const bStatus = sortPriority[b.status] ?? 999;
+        if (aStatus !== bStatus) return aStatus - bStatus;
+
+        // Priority 5: Alphabetical
+        return a.itemName.localeCompare(b.itemName);
+      });
+    } else {
+      // No search: sort by status priority
+      allProcessedItems.sort((a, b) => {
+        const aStatus = sortPriority[a.status] ?? 999;
+        const bStatus = sortPriority[b.status] ?? 999;
+        if (aStatus !== bStatus) return aStatus - bStatus;
+        return a.itemName.localeCompare(b.itemName);
+      });
+    }
+
+    // 🔥 Apply pagination after sorting
+    const startIndex = (parsedPage - 1) * parsedLimit;
+    const endIndex = startIndex + parsedLimit;
+    const paginatedItems = allProcessedItems.slice(startIndex, endIndex);
+
+    const totalPages = Math.ceil(allProcessedItems.length / parsedLimit);
+
+    const response = {
       success: true,
-      data: results,
+      data: paginatedItems,
       pagination: {
-        total: totalCount,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(totalCount / parseInt(limit)),
+        total: allProcessedItems.length,
+        page: parsedPage,
+        limit: parsedLimit,
+        pages: totalPages,
       },
-    });
+    };
+
+    costCache.set(cacheKey, response);
+    console.log(`✅ Done! Total: ${allProcessedItems.length}, Page: ${parsedPage}/${totalPages}`);
+    
+    res.json(response);
 
   } catch (error) {
-    console.error('Get items with cost error:', error);
+    console.error('❌ ERROR:', error);
+    console.error('❌ Stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get items with cost',
@@ -480,20 +645,115 @@ exports.getItemsWithCost = async (req, res) => {
   }
 };
 
-/**
- * Get single item with cost calculation
- * GET /api/item-costs/:itemId
- */
+// ================================================================
+// 🔥 GET SINGLE ITEM COST
+// ================================================================
+
+// ================================================================
+// 🔥 GET SINGLE ITEM COST WITH BALANCES
+// ================================================================
+
 exports.getItemCost = async (req, res) => {
   try {
     const { itemId } = req.params;
     const { storeId, groupId } = req.query;
 
-    const costData = await calculateItemCost(
-      parseInt(itemId),
+    // 1. Get item with all associations
+    const item = await Item.findByPk(itemId, {
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+    });
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found',
+      });
+    }
+
+    // 2. Check if item is excluded
+    const excludedItem = await ExcludeItemFromCost.findOne({
+      where: {
+        item_id: itemId,
+        is_active: true,
+      },
+    });
+    const isExcluded = !!excludedItem;
+    const exclusionReason = excludedItem?.reason || null;
+
+    // 3. Fetch balances for this item
+    const balanceWhere = {
+      item_id: itemId,
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.store_id = storeId;
+    if (groupId) balanceWhere.group_id = groupId;
+
+    const balances = await StoreBalance.findAll({
+      where: balanceWhere,
+      attributes: ['id', 'store_id', 'group_id', 'balance'],
+      include: [
+        { 
+          model: Store, 
+          as: 'store', 
+          attributes: ['storeId', 'name', 'code'] 
+        },
+        { 
+          model: Group, 
+          as: 'group', 
+          attributes: ['id', 'name', 'code'] 
+        },
+      ],
+      order: [
+        ['store_id', 'ASC'],
+        ['group_id', 'ASC']
+      ],
+    });
+
+    console.log(`📦 Found ${balances.length} balances for item ${item.code}`);
+
+    // 4. Get unit cost
+    const ItemCost = db.ItemCost;
+    let unitCost = parseFloat(item.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
+      });
+      if (latestCost) {
+        unitCost = parseFloat(latestCost.newCost);
+      }
+    }
+
+    // 5. Calculate cost using the optimized function
+    const costData = calculateItemCostOptimized(
+      item,
+      balances,
+      unitCost,
       storeId || null,
-      groupId || null
+      groupId || null,
+      isExcluded,
+      exclusionReason
     );
+
+    // 6. Get cost history
+    const history = await getItemCostHistory(parseInt(itemId), 10);
+    costData.costHistory = history;
+
+    // 7. Log the calculation details for debugging
+    console.log(`✅ Item ${item.code}:`);
+    console.log(`   - Base UOM: ${costData.baseUOM}`);
+    console.log(`   - Conversion UOM: ${costData.conversionUOM}`);
+    console.log(`   - Conversion Value: ${costData.conversionValue}`);
+    console.log(`   - Unit Cost: ${costData.unitCost}`);
+    console.log(`   - Total Quantity: ${costData.totalQty}`);
+    console.log(`   - Total Cost: ${costData.totalCost}`);
+    console.log(`   - Status: ${costData.status}`);
+    console.log(`   - Included Stores: ${costData.includedStoresCount}`);
+    console.log(`   - Excluded Stores: ${costData.excludedStoresCount}`);
 
     res.json({
       success: true,
@@ -509,10 +769,35 @@ exports.getItemCost = async (req, res) => {
   }
 };
 
-/**
- * Update item cost
- * POST /api/item-costs/:itemId
- */
+// ================================================================
+// 🔥 GET ITEM COST HISTORY
+// ================================================================
+
+exports.getItemCostHistory = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { limit = 20 } = req.query;
+
+    const history = await getItemCostHistory(parseInt(itemId), parseInt(limit));
+
+    res.json({
+      success: true,
+      data: history,
+    });
+
+  } catch (error) {
+    console.error('Get item cost history error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get item cost history',
+    });
+  }
+};
+
+// ================================================================
+// 🔥 UPDATE ITEM COST
+// ================================================================
+
 exports.updateItemCost = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -538,47 +823,121 @@ exports.updateItemCost = async (req, res) => {
       });
     }
 
-    // Update the item's cost price
+    const previousCost = parseFloat(item.costPrice) || 0;
+
     await item.update({
       costPrice: unitCost,
     }, { transaction: t });
 
+    const ItemCost = db.ItemCost;
+    if (ItemCost) {
+      await ItemCost.create({
+        itemId: itemId,
+        previousCost: previousCost,
+        newCost: unitCost,
+        reason: reason || 'Manual update',
+        changedBy: userId || 'System',
+        created_at: new Date(),
+      }, { transaction: t });
+    }
+
     await t.commit();
 
-    // Get updated cost data
-    const updatedData = await calculateItemCost(parseInt(itemId));
+    costCache.flushAll();
+
+    const updatedItem = await Item.findByPk(itemId, {
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+    });
+
+    const balances = await StoreBalance.findAll({
+      where: {
+        item_id: itemId,
+        status: 'Active',
+      },
+      attributes: ['store_id', 'group_id', 'balance', 'id'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+      ],
+    });
+
+    let unitCostValue = parseFloat(item.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
+      });
+      if (latestCost) {
+        unitCostValue = parseFloat(latestCost.newCost);
+      }
+    }
+
+    const excludedItem = await ExcludeItemFromCost.findOne({
+      where: {
+        item_id: itemId,
+        is_active: true,
+      },
+    });
+    const isExcluded = !!excludedItem;
+    const exclusionReason = excludedItem?.reason || null;
+
+    const costData = calculateItemCostOptimized(
+      updatedItem,
+      balances,
+      unitCostValue,
+      null,
+      null,
+      isExcluded,
+      exclusionReason
+    );
+
+    const history = await getItemCostHistory(parseInt(itemId), 5);
+    costData.costHistory = history;
 
     res.json({
       success: true,
       message: 'Item cost updated successfully',
-      data: updatedData,
+      data: costData,
     });
 
   } catch (error) {
     await t.rollback();
     console.error('Update item cost error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to update item cost',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update item cost',
+      });
+    }
   }
 };
 
-/**
- * Toggle item status (Active/Inactive)
- * PATCH /api/item-costs/:itemId/status
- */
+// ================================================================
+// 🔥 TOGGLE ITEM EXCLUSION
+// ================================================================
+
 exports.toggleItemStatus = async (req, res) => {
   try {
     const { itemId } = req.params;
     const { status } = req.body;
-
-    if (!['Active', 'Inactive'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid status. Must be Active or Inactive',
-      });
+    
+    let userId = null;
+    if (req.user?.userId) {
+      try {
+        const user = await User.findByPk(req.user.userId);
+        if (user) {
+          userId = req.user.userId;
+        }
+      } catch (error) {
+        console.warn('Could not verify user:', error.message);
+      }
     }
+
+    console.log(`🔄 Toggling cost exclusion for item ${itemId}, status: ${status}, userId: ${userId}`);
 
     const item = await Item.findByPk(itemId);
     if (!item) {
@@ -588,37 +947,154 @@ exports.toggleItemStatus = async (req, res) => {
       });
     }
 
-    await item.update({ status: status });
+    if (!['Active', 'Inactive'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be Active or Inactive',
+      });
+    }
 
-    // Recalculate with new status
-    const updatedData = await calculateItemCost(parseInt(itemId), null, null, status);
+    const shouldExclude = status === 'Inactive';
+    let isExcluded = false;
+    let message = '';
+    let exclusionRecord = null;
 
-    res.json({
+    const existingExclusion = await ExcludeItemFromCost.findOne({
+      where: {
+        item_id: itemId,
+      },
+    });
+
+    if (shouldExclude) {
+      if (existingExclusion) {
+        await existingExclusion.update({
+          is_active: true,
+          reason: `Status changed to Inactive - excluded from cost calculations`,
+          excluded_by: userId,
+          excluded_at: new Date(),
+          updated_at: new Date(),
+        });
+        exclusionRecord = existingExclusion;
+        isExcluded = true;
+        message = `Item "${item.code}" has been EXCLUDED from cost calculations`;
+        console.log(`✅ Item ${item.code} reactivated in exclusion table`);
+      } else {
+        exclusionRecord = await ExcludeItemFromCost.create({
+          item_id: itemId,
+          reason: `Status changed to Inactive - excluded from cost calculations`,
+          excluded_by: userId,
+          excluded_at: new Date(),
+          is_active: true,
+        });
+        isExcluded = true;
+        message = `Item "${item.code}" has been EXCLUDED from cost calculations`;
+        console.log(`✅ Item ${item.code} newly added to exclusion table`);
+      }
+
+    } else {
+      if (existingExclusion && existingExclusion.is_active === true) {
+        await existingExclusion.update({
+          is_active: false,
+          updated_at: new Date(),
+        });
+        message = `Item "${item.code}" has been INCLUDED in cost calculations`;
+        console.log(`✅ Item ${item.code} soft deleted from exclusion table`);
+      } else {
+        message = `Item "${item.code}" is already included in cost calculations`;
+        console.log(`ℹ️ Item ${item.code} already included`);
+      }
+      isExcluded = false;
+    }
+
+    costCache.flushAll();
+
+    const updatedItem = await Item.findByPk(itemId, {
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+    });
+
+    const balances = await StoreBalance.findAll({
+      where: {
+        item_id: itemId,
+        status: 'Active',
+      },
+      attributes: ['store_id', 'group_id', 'balance', 'id'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+      ],
+    });
+
+    const ItemCost = db.ItemCost;
+    let unitCost = parseFloat(updatedItem.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
+      });
+      if (latestCost) {
+        unitCost = parseFloat(latestCost.newCost);
+      }
+    }
+
+    const costData = calculateItemCostOptimized(
+      updatedItem,
+      balances,
+      unitCost,
+      null,
+      null,
+      isExcluded,
+      isExcluded ? `Status changed to Inactive` : null
+    );
+
+    return res.json({
       success: true,
-      message: `Item status updated to ${status}`,
-      data: updatedData,
+      message: message,
+      data: {
+        item: costData,
+        isExcluded: isExcluded,
+        exclusionReason: isExcluded ? `Status changed to Inactive` : null,
+        exclusionRecord: exclusionRecord ? {
+          id: exclusionRecord.id,
+          itemId: exclusionRecord.item_id,
+          reason: exclusionRecord.reason,
+          excludedAt: exclusionRecord.excluded_at,
+          excludedBy: exclusionRecord.excluded_by,
+        } : null,
+      },
     });
 
   } catch (error) {
     console.error('Toggle item status error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to update item status',
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to toggle item status',
+      });
+    }
   }
 };
 
-/**
- * Get stores for dropdown
- * GET /api/item-costs/stores
- */
+// ================================================================
+// 🔥 GET STORES
+// ================================================================
+
 exports.getStores = async (req, res) => {
   try {
-    const stores = await Store.findAll({
-      where: { status: 'Active' },
-      attributes: ['storeId', 'name', 'code'],
-      order: [['name', 'ASC']],
-    });
+    const storeCacheKey = 'stores_list';
+    let stores = costCache.get(storeCacheKey);
+
+    if (!stores) {
+      stores = await Store.findAll({
+        where: { status: 'Active' },
+        attributes: ['storeId', 'name', 'code'],
+        order: [['name', 'ASC']],
+      });
+      costCache.set(storeCacheKey, stores, 3600);
+    }
 
     res.json({
       success: true,
@@ -638,17 +1114,23 @@ exports.getStores = async (req, res) => {
   }
 };
 
-/**
- * Get groups for dropdown
- * GET /api/item-costs/groups
- */
+// ================================================================
+// 🔥 GET GROUPS
+// ================================================================
+
 exports.getGroups = async (req, res) => {
   try {
-    const groups = await Group.findAll({
-      where: { status: 'Active' },
-      attributes: ['id', 'name', 'code'],
-      order: [['name', 'ASC']],
-    });
+    const groupCacheKey = 'groups_list';
+    let groups = costCache.get(groupCacheKey);
+
+    if (!groups) {
+      groups = await Group.findAll({
+        where: { status: 'Active' },
+        attributes: ['id', 'name', 'code'],
+        order: [['name', 'ASC']],
+      });
+      costCache.set(groupCacheKey, groups, 3600);
+    }
 
     res.json({
       success: true,
@@ -664,10 +1146,10 @@ exports.getGroups = async (req, res) => {
   }
 };
 
-/**
- * Export cost report
- * GET /api/item-costs/export
- */
+// ================================================================
+// 🔥 EXPORT COST REPORT
+// ================================================================
+
 exports.exportCostReport = async (req, res) => {
   try {
     const { storeId, groupId } = req.query;
@@ -676,19 +1158,90 @@ exports.exportCostReport = async (req, res) => {
       include: [
         { model: UOM, as: 'uom' },
         { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
       ],
       order: [['name', 'ASC']],
+      limit: 5000,
     });
+
+    if (items.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        total: 0,
+      });
+    }
+
+    const itemIds = items.map(i => i.itemId);
+    const balanceWhere = {
+      item_id: { [Op.in]: itemIds },
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.store_id = storeId;
+    if (groupId) balanceWhere.group_id = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
+      attributes: ['item_id', 'store_id', 'group_id', 'balance', 'id'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name'] },
+        { model: Group, as: 'group', attributes: ['id', 'name'] },
+      ],
+    });
+
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.item_id]) {
+        balancesByItem[balance.item_id] = [];
+      }
+      balancesByItem[balance.item_id].push({
+        storeId: balance.store_id,
+        storeName: balance.store?.name || 'Unknown Store',
+        groupId: balance.group_id,
+        groupName: balance.group?.name || 'Unknown Group',
+        totalBalance: parseFloat(balance.balance) || 0,
+        balanceId: balance.id,
+      });
+    }
+
+    const ItemCost = db.ItemCost;
+    let latestCosts = {};
+    if (ItemCost) {
+      const costRecords = await ItemCost.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        order: [['created_at', 'DESC']],
+        attributes: ['itemId', 'newCost'],
+      });
+      for (const cost of costRecords) {
+        if (!latestCosts[cost.itemId]) {
+          latestCosts[cost.itemId] = parseFloat(cost.newCost);
+        }
+      }
+    }
+
+    const excludedItems = await ExcludeItemFromCost.findAll({
+      where: { is_active: true },
+      attributes: ['item_id', 'reason']
+    });
+    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
 
     const reportData = [];
     for (const item of items) {
-      const costData = await calculateItemCost(
-        item.itemId,
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
+      const isExcluded = excludedItemIds.has(item.itemId);
+
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
         storeId || null,
-        groupId || null
+        groupId || null,
+        isExcluded,
+        null
       );
 
-      if (costData.status !== 'Inactive') {
+      if (costData.status !== 'Inactive' && costData.status !== 'Incomplete' && costData.status !== 'Error') {
         reportData.push({
           'Item Code': costData.itemCode,
           'Item Name': costData.itemName,
@@ -701,7 +1254,9 @@ exports.exportCostReport = async (req, res) => {
           'Total Quantity': costData.totalQty,
           'Total Cost': costData.totalCost.toFixed(2),
           'Status': costData.status,
+          'Status Message': costData.statusMessage || '',
           'Excluded Stores': costData.excludedStores.join(', '),
+          'Is Excluded': isExcluded ? 'Yes' : 'No',
         });
       }
     }
@@ -721,27 +1276,127 @@ exports.exportCostReport = async (req, res) => {
   }
 };
 
-/**
- * Get cost summary
- * GET /api/item-costs/summary
- */
+// ================================================================
+// 🔥 GET COST SUMMARY
+// ================================================================
+
 exports.getCostSummary = async (req, res) => {
   try {
     const { storeId, groupId } = req.query;
 
+    const cacheKey = `summary_${storeId || 'all'}_${groupId || 'all'}`;
+    let summary = costCache.get(cacheKey);
+
+    if (summary) {
+      return res.json({
+        success: true,
+        data: summary,
+      });
+    }
+
     const items = await Item.findAll();
+
+    if (items.length === 0) {
+      summary = {
+        totalItems: 0,
+        totalValue: 0,
+        partialItems: 0,
+        storeCount: 0,
+        activeItems: 0,
+        incompleteItems: 0,
+        errorItems: 0,
+        excludedItems: 0,
+      };
+      costCache.set(cacheKey, summary, 300);
+      return res.json({
+        success: true,
+        data: summary,
+      });
+    }
+
+    const excludedItems = await ExcludeItemFromCost.findAll({
+      where: { is_active: true },
+      attributes: ['item_id']
+    });
+    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
+
+    const itemIds = items.map(i => i.itemId);
+    const balanceWhere = {
+      item_id: { [Op.in]: itemIds },
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.store_id = storeId;
+    if (groupId) balanceWhere.group_id = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
+      attributes: ['item_id', 'store_id', 'group_id', 'balance', 'id'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId'] },
+        { model: Group, as: 'group', attributes: ['id'] },
+      ],
+    });
+
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.item_id]) {
+        balancesByItem[balance.item_id] = [];
+      }
+      balancesByItem[balance.item_id].push(balance);
+    }
+
+    const ItemCost = db.ItemCost;
+    let latestCosts = {};
+    if (ItemCost) {
+      const costRecords = await ItemCost.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        order: [['created_at', 'DESC']],
+        attributes: ['itemId', 'newCost'],
+      });
+      for (const cost of costRecords) {
+        if (!latestCosts[cost.itemId]) {
+          latestCosts[cost.itemId] = parseFloat(cost.newCost);
+        }
+      }
+    }
 
     let totalItems = 0;
     let totalValue = 0;
     let partialItems = 0;
+    let incompleteItems = 0;
+    let errorItems = 0;
+    let excludedItemsCount = excludedItemIds.size;
     const stores = new Set();
 
     for (const item of items) {
-      const costData = await calculateItemCost(
-        item.itemId,
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
+      
+      const isExcluded = excludedItemIds.has(item.itemId);
+      
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
         storeId || null,
-        groupId || null
+        groupId || null,
+        isExcluded,
+        null
       );
+
+      if (isExcluded) {
+        continue;
+      }
+
+      if (costData.status === 'Incomplete') {
+        incompleteItems++;
+        continue;
+      }
+      
+      if (costData.status === 'Error') {
+        errorItems++;
+        continue;
+      }
 
       if (costData.status !== 'Inactive') {
         totalItems++;
@@ -753,15 +1408,22 @@ exports.getCostSummary = async (req, res) => {
       }
     }
 
+    summary = {
+      totalItems,
+      totalValue,
+      partialItems,
+      storeCount: stores.size,
+      activeItems: totalItems - partialItems,
+      incompleteItems,
+      errorItems,
+      excludedItems: excludedItemsCount,
+    };
+
+    costCache.set(cacheKey, summary, 300);
+
     res.json({
       success: true,
-      data: {
-        totalItems,
-        totalValue,
-        partialItems,
-        storeCount: stores.size,
-        activeItems: totalItems - partialItems,
-      },
+      data: summary,
     });
 
   } catch (error) {
@@ -769,6 +1431,26 @@ exports.getCostSummary = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get cost summary',
+    });
+  }
+};
+
+// ================================================================
+// 🔥 CLEAR CACHE
+// ================================================================
+
+exports.clearCache = async (req, res) => {
+  try {
+    costCache.flushAll();
+    res.json({
+      success: true,
+      message: 'Cache cleared successfully',
+    });
+  } catch (error) {
+    console.error('Clear cache error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to clear cache',
     });
   }
 };

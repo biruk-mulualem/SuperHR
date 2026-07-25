@@ -11,21 +11,34 @@ const { Op } = require('sequelize');
 /**
  * Generate next store code
  */
+/**
+ * Generate next store code
+ */
+/**
+ * Generate next store code
+ */
 const generateStoreCode = async () => {
-  const lastStore = await Store.findOne({
-    order: [['storeId', 'DESC']],
-  });
+  try {
+    const lastStore = await Store.findOne({
+      order: [['storeId', 'DESC']],
+    });
 
-  let nextNumber = 1;
-  if (lastStore) {
-    const lastCode = lastStore.code;
-    const match = lastCode.match(/STORE-(\d+)/);
-    if (match) {
-      nextNumber = parseInt(match[1]) + 1;
+    let nextNumber = 1;
+    if (lastStore) {
+      const lastCode = lastStore.code;
+      const match = lastCode.match(/STORE-(\d+)/);
+      if (match) {
+        nextNumber = parseInt(match[1]) + 1;
+      }
     }
-  }
 
-  return `STORE-${String(nextNumber).padStart(3, '0')}`;
+    return `STORE-${String(nextNumber).padStart(3, '0')}`;
+  } catch (error) {
+    console.error('Error generating store code:', error);
+    // Fallback to timestamp-based code
+    const timestamp = Date.now().toString().slice(-6);
+    return `STORE-${timestamp}`;
+  }
 };
 
 /**

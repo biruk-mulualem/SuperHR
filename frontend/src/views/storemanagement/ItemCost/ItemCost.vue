@@ -5,6 +5,9 @@
       <div class="header-title">
         <h2>💰 Inventory Cost Calculation</h2>
         <span class="total-badge">{{ totalItems }} Items</span>
+        <span v-if="searchQuery" class="search-badge">
+          🔍 "{{ searchQuery }}"
+        </span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -12,9 +15,18 @@
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="Search items..."
+            placeholder="Search by code, name, brand..."
             @input="onSearchChange"
+            @keyup.esc="clearSearch"
           />
+          <span 
+            v-if="searchQuery" 
+            class="search-clear" 
+            @click="clearSearch"
+            title="Clear search"
+          >
+            ✕
+          </span>
         </div>
         <button class="btn-export" @click="exportReport" :disabled="exporting">
           <span v-if="exporting" class="spinner-small"></span>
@@ -41,47 +53,20 @@
         <label class="filter-label">Status</label>
         <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
           <option value="">All Status</option>
-          <option value="Active">Active</option>
-          <option value="Partial">Partial</option>
-          <option value="Inactive">Inactive</option>
+          <option value="Active">🟢 Active</option>
+          <option value="Partial">🟡 Partial</option>
+          <option value="Incomplete">🔴 Incomplete</option>
+          <option value="Inactive">⛔ Inactive</option>
         </select>
       </div>
       
       <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters">
         ✕ Clear Filters
       </button>
-    </div>
-
-    <!-- ==================== STATS - Dynamic based on filter ==================== -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon">📦</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ totalItems || 0 }}</div>
-          <div class="stat-label">Total Items</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">💰</div>
-        <div class="stat-content">
-          <div class="stat-number">ETB {{ formatCurrency(allItemsTotalValue) }}</div>
-          <div class="stat-label">Total Inventory Value</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">🏪</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ allStoresCount }}</div>
-          <div class="stat-label">Stores</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">⚠️</div>
-        <div class="stat-content">
-          <div class="stat-number">{{ allPartialItemsCount }}</div>
-          <div class="stat-label">Items with Partial Cost</div>
-        </div>
-      </div>
+      
+      <span v-if="searchQuery" class="search-results-badge">
+        Showing {{ totalItems }} result(s) for "{{ searchQuery }}"
+      </span>
     </div>
 
     <!-- ==================== COST TABLE ==================== -->
@@ -109,8 +94,10 @@
             <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
-                <p>No cost data found</p>
+                <p v-if="searchQuery">No items found matching "{{ searchQuery }}"</p>
+                <p v-else>No cost data found</p>
                 <p class="empty-sub" v-if="selectedStoreId">Try selecting a different store or clear the filter</p>
+                <p class="empty-sub" v-if="searchQuery && !selectedStoreId">Try adjusting your search terms</p>
               </div>
             </td>
           </tr>
@@ -118,8 +105,10 @@
             <tr
               :class="{
                 'expanded-row': expandedRow === item.id,
-                'partial-row': item.status === 'Partial',
-                'inactive-row': item.status === 'Inactive'
+                'status-row-active': item.status === 'Active' || item.status === 'Completed',
+                'status-row-partial': item.status === 'Partial',
+                'status-row-incomplete': item.status === 'Incomplete',
+                'status-row-inactive': item.status === 'Inactive' || item.isExcluded
               }"
             >
               <td class="text-center">
@@ -138,30 +127,37 @@
               <td class="balance-cell">
                 <span class="balance-value">{{ formatNumber(item.totalQty) }}</span>
               </td>
-              <td class="cost-cell">
-                <span class="unit-cost">ETB {{ formatCurrency(item.unitCost) }}</span>
-              </td>
+            <td class="cost-cell">
+  <div class="cost-details">
+    <span class="unit-cost">ETB {{ formatCurrency(item.unitCost) }}</span>
+    
+  
+  </div>
+</td>
               <td class="total-cell">
-                <span class="total-value" :class="{ 
-                  'high-value': item.totalCost > 10000,
-                  'inactive-value': item.status === 'Inactive'
+                <span class="total-value" :class="{
+                  'active-value': item.status === 'Active' || item.status === 'Completed',
+                  'partial-value': item.status === 'Partial',
+                  'incomplete-value': item.status === 'Incomplete',
+                  'inactive-value': item.status === 'Inactive' || item.isExcluded
                 }">
                   ETB {{ formatCurrency(item.totalCost) }}
                 </span>
-                <span v-if="item.status === 'Partial'" class="partial-tag">(Partial)</span>
-                <span v-if="item.status === 'Inactive'" class="inactive-tag">(Inactive)</span>
               </td>
               <td>
                 <span 
-                  :class="['status-badge', item.status.toLowerCase()]"
+                  :class="['status-badge', 
+                    item.status === 'Active' || item.status === 'Completed' ? 'status-active' : 
+                    item.status === 'Partial' ? 'status-partial' : 
+                    item.status === 'Incomplete' ? 'status-incomplete' : 
+                    'status-inactive'
+                  ]"
                   @click="toggleItemStatus(item)"
                   style="cursor: pointer;"
-                  title="Click to toggle status"
+                  :title="item.isExcluded ? 'Click to include in cost calculations' : 'Click to exclude from cost calculations'"
                 >
                   {{ item.status }}
-                </span>
-                <span v-if="item.status === 'Partial'" class="partial-hint" title="Some stores excluded due to conflicts">
-                  ⚠️
+                  <span v-if="item.isExcluded" class="exclusion-icon">⛔</span>
                 </span>
               </td>
             </tr>
@@ -184,34 +180,61 @@
                           <div><span>Model</span><span class="value">{{ item.model || '-' }}</span></div>
                           <div><span>Base UOM</span><span class="value"><strong>{{ item.baseUOM }}</strong></span></div>
                           <div>
-                            <span>Status</span>
+                            <span>Cost Status</span>
                             <span 
-                              :class="['status-badge', item.status.toLowerCase(), 'clickable-status']"
+                              :class="['status-badge', 
+                                item.status === 'Active' || item.status === 'Completed' ? 'status-active' : 
+                                item.status === 'Partial' ? 'status-partial' : 
+                                item.status === 'Incomplete' ? 'status-incomplete' : 
+                                'status-inactive'
+                              ]"
                               @click="toggleItemStatus(item)"
                               style="cursor: pointer;"
                             >
                               {{ item.status }}
                             </span>
                           </div>
+                          <div v-if="item.isExcluded && item.exclusionReason">
+                            <span>Exclusion Reason</span>
+                            <span class="value inactive-text">{{ item.exclusionReason }}</span>
+                          </div>
+                          <div v-if="item.statusMessage">
+                            <span>Message</span>
+                            <span class="value">{{ item.statusMessage }}</span>
+                          </div>
+                          <div v-if="item.hasMissingData && item.missingData && item.missingData.length > 0">
+                            <span>Missing Data</span>
+                            <span class="value missing-data">{{ item.missingData.join(', ') }}</span>
+                          </div>
                         </div>
                       </div>
 
-                      <div class="detail-card cost-summary-card" :class="{ 
-                        'partial-card': item.status === 'Partial',
-                        'inactive-card': item.status === 'Inactive'
+                      <div class="detail-card cost-summary-card" :class="{
+                        'card-active': item.status === 'Active' || item.status === 'Completed',
+                        'card-partial': item.status === 'Partial',
+                        'card-incomplete': item.status === 'Incomplete',
+                        'card-inactive': item.status === 'Inactive' || item.isExcluded
                       }">
                         <h4>💰 Cost Summary</h4>
                         <div class="detail-vertical">
-                          <div><span>Unit Cost</span><span class="value">ETB {{ formatCurrency(item.unitCost) }} / {{ item.baseUOM }}</span></div>
-                          <div><span>Total Quantity</span><span class="value">{{ formatNumber(item.totalQty) }} {{ item.baseUOM }}</span></div>
+                          <div><span>Unit Cost</span><span class="value">ETB {{ formatCurrency(item.unitCost) }} / {{ item.conversionUOM }}</span></div>
+                          <div><span>Total Quantity</span><span class="value">{{ formatNumber(item.totalQty) }} {{ item.conversionUOM }}</span></div>
                           <div><span>Total Cost</span><span class="value highlight-total">ETB {{ formatCurrency(item.totalCost) }}</span></div>
+                          <div v-if="item.isExcluded">
+                            <span>Cost Status</span>
+                            <span class="value inactive-text">⛔ Excluded from cost calculations</span>
+                          </div>
                           <div v-if="item.status === 'Partial'">
                             <span>Status</span>
                             <span class="value partial-text">⚠️ Partial - Some stores excluded</span>
                           </div>
-                          <div v-if="item.status === 'Inactive'">
+                          <div v-if="item.status === 'Incomplete'">
                             <span>Status</span>
-                            <span class="value inactive-text">⛔ Inactive - Excluded from total cost</span>
+                            <span class="value incomplete-text">❌ Incomplete - Missing required data</span>
+                          </div>
+                          <div v-if="item.status === 'Active' || item.status === 'Completed'">
+                            <span>Status</span>
+                            <span class="value active-text">✅ Complete - All data available</span>
                           </div>
                           <div v-if="item.status === 'Partial' && item.excludedStores.length > 0">
                             <span>Excluded Stores</span>
@@ -221,14 +244,6 @@
                             <span>Filtered Store</span>
                             <span class="value highlight-total">{{ getStoreName(Number(selectedStoreId)) }}</span>
                           </div>
-                        </div>
-                        <div v-if="item.status === 'Partial'" class="partial-note">
-                          <span class="partial-icon">⚠️</span>
-                          <span class="partial-text">Some stores have conflicting quantities and are excluded from total cost.</span>
-                        </div>
-                        <div v-if="item.status === 'Inactive'" class="inactive-note">
-                          <span class="inactive-icon">⛔</span>
-                          <span class="inactive-text">This item is inactive and excluded from total inventory value.</span>
                         </div>
                       </div>
                     </div>
@@ -264,7 +279,7 @@
                                 {{ store.hasConflict ? '⚠️ Conflict' : '✅ Included' }}
                               </span>
                               <span class="store-total-qty">
-                                Qty: {{ formatNumber(store.agreedQuantity) }} {{ item.baseUOM }}
+                                Qty: {{ formatNumber(store.agreedQuantity) }} {{ item.conversionUOM }}
                                 <span v-if="store.hasConflict" class="conflict-note-small">(Groups disagree - excluded)</span>
                               </span>
                             </div>
@@ -283,15 +298,14 @@
                               </div>
                               <div class="group-quantity">
                                 <span class="qty-value">{{ formatNumber(group.quantity) }}</span>
-                                <span class="qty-uom">{{ item.baseUOM }}</span>
+                                <span class="qty-uom">{{ item.conversionUOM }}</span>
                                 <span 
                                   v-if="group.conversionRate && group.conversionRate > 1" 
                                   class="conversion-badge"
                                 >
-                                  {{ group.originalUOM }} → {{ item.baseUOM }}
+                                  {{ group.originalUOM }} → {{ item.conversionUOM }}
                                   <span class="conversion-rate">(×{{ group.conversionRate }})</span>
                                 </span>
-                                <span v-if="store.hasConflict" class="conflict-indicator">⚠️</span>
                               </div>
                             </div>
                           </div>
@@ -306,26 +320,37 @@
                       </div>
 
                       <!-- Total Summary -->
-                      <div class="total-summary-bar" :class="{ 
-                        'partial-summary': item.status === 'Partial',
-                        'inactive-summary': item.status === 'Inactive'
+                      <div class="total-summary-bar" :class="{
+                        'summary-active': item.status === 'Active' || item.status === 'Completed',
+                        'summary-partial': item.status === 'Partial',
+                        'summary-incomplete': item.status === 'Incomplete',
+                        'summary-inactive': item.status === 'Inactive' || item.isExcluded
                       }">
                         <div class="total-summary-item">
                           <span class="total-label">Total Quantity (Included Stores)</span>
-                          <span class="total-value-highlight">{{ formatNumber(item.totalQty) }} {{ item.baseUOM }}</span>
-                        </div>
+                       <span class="total-value-highlight">
+  {{ formatNumber(item.totalQty) }} {{ item.conversionUOM }}
+  <span class="total-value-sub">
+    ({{ formatNumber(item.totalQty / item.conversionValue) }} {{ item.baseUOM }})
+  </span>
+</span> </div>
                         <div class="total-summary-item">
                           <span class="total-label">Total Cost</span>
                           <span class="total-value-highlight">ETB {{ formatCurrency(item.totalCost) }}</span>
+                        </div>
+                        <div v-if="item.isExcluded" class="total-summary-sub inactive-sub">
+                          <span class="sub-label inactive-label">⛔ Item is excluded from cost calculations</span>
+                          <span class="sub-detail" v-if="item.exclusionReason">Reason: {{ item.exclusionReason }}</span>
                         </div>
                         <div v-if="item.status === 'Partial'" class="total-summary-sub partial-sub">
                           <span class="sub-label partial-label">⚠️ {{ item.excludedStores.length }} store(s) excluded due to conflicts</span>
                           <span class="sub-detail">Excluded: {{ item.excludedStores.join(', ') }}</span>
                         </div>
-                        <div v-if="item.status === 'Inactive'" class="total-summary-sub inactive-sub">
-                          <span class="sub-label inactive-label">⛔ Item is inactive — excluded from total inventory value</span>
+                        <div v-if="item.status === 'Incomplete'" class="total-summary-sub incomplete-sub">
+                          <span class="sub-label incomplete-label">❌ Incomplete — missing required data</span>
+                          <span class="sub-detail">Missing: {{ item.missingData?.join(', ') || 'Unknown' }}</span>
                         </div>
-                        <div v-else-if="item.status !== 'Partial'" class="total-summary-sub">
+                        <div v-else-if="(item.status === 'Active' || item.status === 'Completed') && !item.isExcluded" class="total-summary-sub">
                           <span class="sub-label">✅ All stores included — complete cost</span>
                         </div>
                         <div v-if="selectedStoreId" class="total-summary-sub filter-info">
@@ -404,8 +429,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import itemCostService from '@/stores/itemCostService'
+import { debounce } from 'lodash-es'
 
 // ================================================================
 // STATE
@@ -425,8 +451,7 @@ const totalPages = ref(0)
 // Data from API
 const allStores = ref([])
 const allGroups = ref([])
-const items = ref([]) // Current page items
-const allItemsForStats = ref([]) // All items for stats
+const items = ref([])
 
 // Toast
 const showToast = ref(false)
@@ -434,35 +459,28 @@ const toastMessage = ref('')
 const toastType = ref('success')
 
 // ================================================================
-// COMPUTED - STATS FROM ALL ITEMS
+// PERFORMANCE: Debounced search
 // ================================================================
 
-const allItemsTotalValue = computed(() => {
-  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
-  
-  const total = allItemsForStats.value
-    .filter(item => item.status === 'Active' || item.status === 'Partial')
-    .reduce((sum, item) => sum + (item.totalCost || 0), 0)
-  
-  return total
-})
+const debouncedLoad = debounce(async () => {
+  currentPage.value = 1
+  await loadAllData()
+}, 300)
 
-const allStoresCount = computed(() => {
-  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
-  
-  const stores = new Set()
-  allItemsForStats.value.forEach(item => {
-    if (item.status !== 'Inactive') {
-      item.storeBreakdown.forEach(s => stores.add(s.storeId))
-    }
-  })
-  return stores.size
-})
+const onSearchChange = () => {
+  if (!searchQuery.value) {
+    currentPage.value = 1
+    loadAllData()
+    return
+  }
+  debouncedLoad()
+}
 
-const allPartialItemsCount = computed(() => {
-  if (!allItemsForStats.value || allItemsForStats.value.length === 0) return 0
-  return allItemsForStats.value.filter(item => item.status === 'Partial').length
-})
+const clearSearch = () => {
+  searchQuery.value = ''
+  currentPage.value = 1
+  loadAllData()
+}
 
 // ================================================================
 // COMPUTED - FILTERED & PAGINATED ITEMS
@@ -472,7 +490,7 @@ const pageTotal = computed(() => {
   if (!items.value || items.value.length === 0) return 0
   
   return items.value
-    .filter(item => item.status === 'Active' || item.status === 'Partial')
+    .filter(item => (item.status === 'Active' || item.status === 'Completed') && !item.isExcluded)
     .reduce((sum, item) => sum + (item.totalCost || 0), 0)
 })
 
@@ -495,6 +513,38 @@ const isStoreVisible = (storeId) => {
 }
 
 // ================================================================
+// 🔥 TOGGLE COST EXCLUSION
+// ================================================================
+
+const toggleItemStatus = async (item) => {
+  try {
+    const isCurrentlyExcluded = item.isExcluded || item.status === 'Inactive'
+    const newStatus = isCurrentlyExcluded ? 'Active' : 'Inactive'
+    
+    const response = await itemCostService.toggleItemStatus(item.id, newStatus)
+    
+    if (response.success) {
+      const updatedItem = response.data.item
+      
+      const index = items.value.findIndex(i => i.id === item.id)
+      if (index !== -1) {
+        items.value[index] = updatedItem
+      }
+
+      showToastMessage(
+        response.message || `Item "${item.itemName}" ${updatedItem.isExcluded ? 'excluded from' : 'included in'} cost calculations`,
+        updatedItem.isExcluded ? 'warning' : 'success'
+      )
+    } else {
+      showToastMessage(response.error || 'Failed to update status', 'error')
+    }
+  } catch (error) {
+    console.error('Error toggling status:', error)
+    showToastMessage('Failed to update status', 'error')
+  }
+}
+
+// ================================================================
 // API METHODS
 // ================================================================
 
@@ -507,37 +557,6 @@ const loadStores = async () => {
   } catch (error) {
     console.error('Error loading stores:', error)
     showToastMessage('Failed to load stores', 'error')
-  }
-}
-
-const loadAllItemsForStats = async () => {
-  try {
-    const params = {
-      page: 1,
-      limit: 10000, // Get all items
-    }
-    
-    if (selectedStoreId.value) {
-      params.storeId = Number(selectedStoreId.value)
-    }
-    if (filterStatus.value) {
-      params.status = filterStatus.value
-    }
-    if (searchQuery.value) {
-      params.search = searchQuery.value
-    }
-    
-    const response = await itemCostService.getItemsWithCost(params)
-
-    if (response.success) {
-      allItemsForStats.value = response.data
-      console.log('✅ Stats loaded:', allItemsForStats.value.length, 'items')
-    } else {
-      allItemsForStats.value = []
-    }
-  } catch (error) {
-    console.error('Error loading all items for stats:', error)
-    allItemsForStats.value = []
   }
 }
 
@@ -559,12 +578,15 @@ const loadItems = async () => {
       params.status = filterStatus.value
     }
     
+    console.log('📄 Loading page:', currentPage.value, 'with params:', params)
+    
     const response = await itemCostService.getItemsWithCost(params)
 
     if (response.success) {
       items.value = response.data
       totalItems.value = response.pagination.total
       totalPages.value = response.pagination.pages
+      console.log('✅ Loaded page', currentPage.value, 'of', totalPages.value)
     } else {
       showToastMessage(response.error || 'Failed to load items', 'error')
     }
@@ -576,39 +598,8 @@ const loadItems = async () => {
   }
 }
 
-// 🔥 Combined load function
 const loadAllData = async () => {
-  await Promise.all([
-    loadItems(),
-    loadAllItemsForStats()
-  ])
-}
-
-const toggleItemStatus = async (item) => {
-  try {
-    const newStatus = item.status === 'Inactive' ? 'Active' : 'Inactive'
-    const response = await itemCostService.toggleItemStatus(item.id, newStatus)
-    
-    if (response.success) {
-      // Update the item in current page
-      const index = items.value.findIndex(i => i.id === item.id)
-      if (index !== -1) {
-        items.value[index] = response.data
-      }
-      // Update in stats list
-      const statsIndex = allItemsForStats.value.findIndex(i => i.id === item.id)
-      if (statsIndex !== -1) {
-        allItemsForStats.value[statsIndex] = response.data
-      }
-      showToastMessage(`Item "${item.itemName}" status changed to ${newStatus}`, 
-        newStatus === 'Inactive' ? 'warning' : 'success')
-    } else {
-      showToastMessage(response.error || 'Failed to update status', 'error')
-    }
-  } catch (error) {
-    console.error('Error toggling status:', error)
-    showToastMessage('Failed to update status', 'error')
-  }
+  await loadItems()
 }
 
 const exportReport = async () => {
@@ -656,11 +647,6 @@ const printReport = () => {
 // ================================================================
 // UI METHODS
 // ================================================================
-
-const onSearchChange = () => {
-  currentPage.value = 1
-  loadAllData()
-}
 
 const onFilterChange = () => {
   currentPage.value = 1
@@ -744,9 +730,180 @@ onMounted(async () => {
   await loadStores()
   await loadAllData()
 })
+
+onUnmounted(() => {
+  debouncedLoad.cancel()
+})
 </script>
 
 <style scoped>
+/* ================================================================
+   SEARCH BOX WITH CLEAR BUTTON
+   ================================================================ */
+.search-box {
+  position: relative;
+  display: inline-block;
+}
+
+.search-box input {
+  padding: 8px 32px 8px 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+  width: 250px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.search-clear:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.search-badge {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.search-results-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+/* ================================================================
+   STATUS BADGE - 4 Statuses Only
+   ================================================================ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.status-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-badge.status-active,
+.status-badge.status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.status-partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.status-incomplete {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.status-inactive {
+  background: #f1f5f9;
+  color: #94a3b8;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.exclusion-icon {
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+/* ================================================================
+   ROW STYLES
+   ================================================================ */
+.status-row-active {
+  background: #ffffff;
+  border-left: 4px solid #22c55e;
+}
+
+.status-row-partial {
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+}
+
+.status-row-incomplete {
+  background: #fef2f2;
+  border-left: 4px solid #ef4444;
+}
+
+.status-row-inactive {
+  background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+  opacity: 0.7;
+}
+
+/* ================================================================
+   TABLE CELL STYLES
+   ================================================================ */
+.total-value.active-value {
+  color: #16a34a;
+}
+
+.total-value.partial-value {
+  color: #d97706;
+}
+
+.total-value.incomplete-value {
+  color: #dc2626;
+}
+
+.total-value.inactive-value {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
 /* ================================================================
    LOADING STATE
    ================================================================ */
@@ -831,35 +988,6 @@ onMounted(async () => {
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-box input {
-  padding: 8px 12px 8px 32px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 13px;
-  width: 200px;
-  background: #f8fafc;
-  transition: all 0.2s;
-}
-
-.search-box input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: white;
-}
-
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
 }
 
 /* ================================================================
@@ -953,54 +1081,6 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   STATS
-   ================================================================ */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.stat-card {
-  background: #f8fafc;
-  padding: 14px 16px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.2s;
-}
-
-.stat-card:hover {
-  background: #f1f5f9;
-}
-
-.stat-icon {
-  font-size: 24px;
-  background: white;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  flex-shrink: 0;
-}
-
-.stat-number {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: #64748b;
-}
-
-/* ================================================================
    TABLE
    ================================================================ */
 .table-container {
@@ -1042,55 +1122,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   STATUS BADGE - FIXED COLORS
-   ================================================================ */
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.status-badge:hover {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.status-badge.active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-badge.partial {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-badge.inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-badge.conflict {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.clickable-status {
-  cursor: pointer;
-}
-
-.clickable-status:hover {
-  opacity: 0.8;
-}
-
-/* ================================================================
-   TABLE STYLES
+   TABLE CELL STYLES
    ================================================================ */
 .item-code {
   font-weight: 600;
@@ -1151,44 +1183,6 @@ onMounted(async () => {
   color: #1e293b;
 }
 
-.total-value.high-value {
-  color: #dc2626;
-}
-
-.total-value.inactive-value {
-  color: #94a3b8;
-  text-decoration: line-through;
-}
-
-.partial-tag {
-  font-size: 10px;
-  color: #f59e0b;
-  font-weight: 500;
-  margin-left: 4px;
-}
-
-.inactive-tag {
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: 500;
-  margin-left: 4px;
-}
-
-.partial-row {
-  background: #fffbeb;
-}
-
-.inactive-row {
-  background: #f8fafc;
-  opacity: 0.7;
-}
-
-.partial-hint {
-  color: #f59e0b;
-  font-size: 14px;
-  margin-left: 4px;
-}
-
 /* ================================================================
    EXPAND ROW
    ================================================================ */
@@ -1220,7 +1214,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   DETAIL TOP SECTION
+   DETAIL SECTIONS
    ================================================================ */
 .detail-top-section {
   display: grid;
@@ -1245,6 +1239,26 @@ onMounted(async () => {
   font-weight: 600;
   border-left: 3px solid #3b82f6;
   padding-left: 10px;
+}
+
+.detail-card.card-active {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.detail-card.card-partial {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.detail-card.card-incomplete {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.detail-card.card-inactive {
+  border-color: #e2e8f0;
+  background: #f8fafc;
 }
 
 .detail-vertical {
@@ -1274,6 +1288,31 @@ onMounted(async () => {
   color: #2563eb; 
   font-weight: 700; 
   font-size: 14px; 
+}
+
+.missing-data {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.partial-text {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.incomplete-text {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.inactive-text {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.active-text {
+  color: #16a34a;
+  font-weight: 600;
 }
 
 /* ================================================================
@@ -1475,11 +1514,6 @@ onMounted(async () => {
   color: #6b8cbf;
 }
 
-.conflict-indicator {
-  color: #f59e0b;
-  font-size: 14px;
-}
-
 .conflict-warning-bar {
   display: flex;
   align-items: center;
@@ -1508,17 +1542,26 @@ onMounted(async () => {
 .total-summary-bar {
   margin-top: 12px;
   padding: 10px 16px;
-  background: #eff6ff;
   border-radius: 8px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid #e2e8f0;
 }
 
-.total-summary-bar.partial-summary {
+.total-summary-bar.summary-active {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.total-summary-bar.summary-partial {
   background: #fffbeb;
   border-color: #fde68a;
 }
 
-.total-summary-bar.inactive-summary {
+.total-summary-bar.summary-incomplete {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.total-summary-bar.summary-inactive {
   background: #f1f5f9;
   border-color: #e2e8f0;
   opacity: 0.7;
@@ -1553,6 +1596,10 @@ onMounted(async () => {
   border-top-color: #fde68a;
 }
 
+.total-summary-sub.incomplete-sub {
+  border-top-color: #fecaca;
+}
+
 .total-summary-sub.inactive-sub {
   border-top-color: #e2e8f0;
 }
@@ -1567,7 +1614,11 @@ onMounted(async () => {
 }
 
 .sub-label.partial-label {
-  color: #f59e0b;
+  color: #d97706;
+}
+
+.sub-label.incomplete-label {
+  color: #dc2626;
 }
 
 .sub-label.inactive-label {
@@ -1583,62 +1634,6 @@ onMounted(async () => {
   font-size: 11px;
   color: #92400e;
   margin-top: 2px;
-}
-
-/* ================================================================
-   COST SUMMARY CARD
-   ================================================================ */
-.cost-summary-card.partial-card {
-  border-color: #f59e0b;
-  background: #fffbeb;
-}
-
-.cost-summary-card.inactive-card {
-  border-color: #e2e8f0;
-  background: #f8fafc;
-  opacity: 0.7;
-}
-
-.partial-text {
-  color: #92400e;
-  font-weight: 600;
-}
-
-.inactive-text {
-  color: #94a3b8;
-  font-weight: 600;
-}
-
-.partial-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: #fef3c7;
-  border-radius: 6px;
-  border: 1px solid #fde68a;
-  font-size: 12px;
-}
-
-.inactive-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: #f1f5f9;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  font-size: 12px;
-}
-
-.partial-icon {
-  font-size: 16px;
-}
-
-.inactive-icon {
-  font-size: 16px;
 }
 
 /* ================================================================
@@ -1775,10 +1770,6 @@ onMounted(async () => {
     gap: 2px;
   }
   
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  
   .card-header {
     flex-direction: column;
     align-items: stretch;
@@ -1820,10 +1811,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
   .section-card {
     padding: 12px;
   }
@@ -1890,17 +1877,17 @@ onMounted(async () => {
     print-color-adjust: exact !important;
   }
 
-  .status-badge.active {
+  .status-badge.status-active {
     background: #dcfce7 !important;
   }
-  .status-badge.partial {
+  .status-badge.status-partial {
     background: #fef3c7 !important;
   }
-  .status-badge.inactive {
+  .status-badge.status-incomplete {
     background: #fee2e2 !important;
   }
-  .status-badge.conflict {
-    background: #fef3c7 !important;
+  .status-badge.status-inactive {
+    background: #f1f5f9 !important;
   }
 }
 </style>

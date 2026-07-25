@@ -1,4455 +1,1296 @@
-// balanceController.js - COMPLETE FIXED VERSION
+'use strict';
 
-const fs = require("fs");
-const path = require("path");
-const csv = require("csv-parser");
-const { Parser } = require("json2csv");
-const { Op } = require("sequelize");
-const ExcelJS = require("exceljs");
-// ✅ ADD THIS IMPORT - Right after the other imports
-const { getUserStoreAndGroup } = require("../utils/userAccess");
+const db = require('../models');
+const { Item, StoreBalance, Store, Group, UOM, User, Category } = db;
+const { Op } = require('sequelize');
+const NodeCache = require('node-cache');
 
-// Import models using destructuring
-const {
-  StoreBalance,
-  StoreBalanceHistory,
-  ItemRequest,
-  ItemRequestDetail,
-  Store,
-  Group,
-  Category,
-  Item,
-  UOM,
-  StoreGroupRelation,
-  User,
-  sequelize,
-} = require("../models");
+// ================================================================
+// CACHE CONFIGURATION
+// ================================================================
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
+const costCache = new NodeCache({ 
+  stdTTL: 300, // 5 minutes default
+  checkperiod: 60,
+  maxKeys: 100
+});
 
-const safeDelete = (filePath) => {
-  if (filePath && fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
-};
+// ================================================================
+// 🔥 FIXED: Calculate item cost with proper conversion handling
+// ================================================================
 
-const getBalanceClass = (balance, minStockAlert) => {
-  if (balance === 0) return "zero";
-  if (balance <= minStockAlert) return "low";
-  return "normal";
-};
-
-const getBaseBalance = (balance, conversionValue) => {
-  return balance * conversionValue;
-};
-
-// ============================================
-// 1. GET ALL BALANCES WITH FILTERS - FIXED
-// ============================================
-
-exports.getBalances = async (req, res) => {
+function calculateItemCostOptimized(item, balances, unitCost, storeId = null, groupId = null) {
   try {
-    const {
-      storeId,
-      groupId,
-      categoryId,
-      status,
-      search,
-      page = 1,
-      limit = 10,
-    } = req.query;
-
-    const whereClause = {};
-
-    if (storeId) {
-      whereClause.storeId = parseInt(storeId);
+    // 🔥 Check if item has required data for cost calculation
+    const hasUnitCost = unitCost !== undefined && unitCost !== null && unitCost >= 0;
+    const hasConversionUom = item.conversionUomId !== undefined && item.conversionUomId !== null;
+    const hasConversionValue = item.conversionValue !== undefined && item.conversionValue !== null && parseFloat(item.conversionValue) > 0;
+    
+    // 🔥 Track missing data for error reporting
+    const missingData = [];
+    if (!hasUnitCost && unitCost !== 0) {
+      missingData.push('Unit Cost');
     }
-    if (groupId) {
-      whereClause.groupId = parseInt(groupId);
+    if (!hasConversionUom) {
+      missingData.push('Conversion UOM');
     }
-    if (status) {
-      whereClause.status = status;
+    if (!hasConversionValue) {
+      missingData.push('Conversion Value');
     }
 
-    const include = [
-      {
-        model: Store,
-        as: "store",
-        attributes: ["id", "name", "code"],
-      },
-      {
-        model: Group,
-        as: "group",
-        attributes: ["id", "name", "code"],
-      },
-      {
-        model: Item,
-        as: "item",
-        attributes: [
-          "itemId",
-          "code",
-          "name",
-          "standardName",
-          "conversionValue",
-          "uomId",
-          "conversionUomId",
-          "categoryId",
-        ],
-        include: [
-          {
-            model: UOM,
-            as: "uom",
-            attributes: ["uomId", "code", "name"],
-          },
-          {
-            model: UOM,
-            as: "conversionUom",
-            attributes: ["uomId", "code", "name"],
-          },
-          {
-            model: Category,
-            as: "category",
-            attributes: ["categoryId", "name", "status"],
-          },
-        ],
-      },
-    ];
-
-    // ✅ ADD CATEGORY FILTER
-    if (categoryId) {
-      include[2].where = { categoryId: parseInt(categoryId) };
-    }
-
-    // ✅ FIXED SEARCH - Use correct database column names
-    if (search && search.trim()) {
-      const searchTerm = `%${search.trim()}%`;
-
-      whereClause[Op.or] = [
-        { "$item.name$": { [Op.iLike]: searchTerm } },
-        { "$item.code$": { [Op.iLike]: searchTerm } },
-        { "$item.standard_name$": { [Op.iLike]: searchTerm } },
-        { "$store.name$": { [Op.iLike]: searchTerm } },
-        { "$item->category.name$": { [Op.iLike]: searchTerm } },
-      ];
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await StoreBalance.findAndCountAll({
-      where: whereClause,
-      include: include,
-      distinct: true,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["createdAt", "DESC"]],
-    });
-
-    // ✅ FORMAT RESPONSE - Only return itemStandardName and itemCommonName
-    const formattedRows = rows.map((record) => {
-      const item = record.item;
-      const uom = item?.uom;
-      const conversionUom = item?.conversionUom;
-      const category = item?.category;
-
-      const conversionValue =
-        item?.conversionValue !== undefined && item?.conversionValue !== null
-          ? parseFloat(item.conversionValue)
-          : 1;
-
-      // Get the actual name and standardName separately
-      const itemName = item?.name || null;
-      const standardName = item?.standardName || null;
+    // 🔥 If no balances, return item with status indicating missing data
+    if (!balances || balances.length === 0) {
+      let status = 'Active';
+      let statusMessage = 'No balances found';
+      
+      if (missingData.length > 0) {
+        status = 'Incomplete';
+        statusMessage = `Missing: ${missingData.join(', ')}`;
+      }
 
       return {
-        id: record.id,
-        storeId: record.storeId,
-        storeName: record.store?.name || null,
-        groupId: record.groupId,
-        groupName: record.group?.name || null,
-        itemId: record.itemId,
-        itemCode: item?.code || null,
-        // ✅ STANDARD NAME - the standard name (can be null/blank)
-        itemStandardName: standardName,
-        // ✅ COMMON NAME - use name as primary (if name is null, use standardName)
-        itemCommonName: itemName || standardName || null,
-        categoryId: category?.categoryId || null,
-        categoryName: category?.name || null,
-        uomCode: uom?.code || null,
-        uomName: uom?.name || null,
-        conversionUomCode: conversionUom?.code || null,
-        conversionValue: conversionValue,
-        balance: parseFloat(record.balance),
-        minStock: parseFloat(record.minStockAlert) || 0,
-        baseBalance: getBaseBalance(
-          parseFloat(record.balance),
-          conversionValue,
-        ),
-        status: record.status,
-        statusClass: getBalanceClass(
-          parseFloat(record.balance),
-          parseFloat(record.minStockAlert) || 0,
-        ),
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
+        id: item.itemId,
+        itemCode: item.code,
+        itemName: item.name,
+        itemStandardName: item.standardName || '',
+        categoryName: item.category?.name || '',
+        brand: item.brand || '',
+        model: item.model || '',
+        baseUOM: item.uom?.code || 'Units',
+        unitCost: unitCost || 0,
+        totalQty: 0,
+        totalCost: 0,
+        status: status,
+        statusMessage: statusMessage,
+        userStatus: item.status || 'Active',
+        storeBreakdown: [],
+        excludedStores: [],
+        costHistory: [],
+        includedStoresCount: 0,
+        excludedStoresCount: 0,
+        isFiltered: !!storeId,
+        hasMissingData: missingData.length > 0,
+        missingData: missingData,
+        requiresSetup: missingData.length > 0,
       };
-    });
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get balances error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-// ============================================
-// GET ALL CATEGORIES
-// ============================================
-exports.getCategories = async (req, res) => {
-  try {
-    const { page = 1, limit = 100, search, status } = req.query;
-
-    const whereClause = {};
-
-    if (search && search.trim()) {
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: `%${search.trim()}%` } },
-        { description: { [Op.iLike]: `%${search.trim()}%` } },
-      ];
     }
 
-    if (status) {
-      whereClause.status = status;
+    // 🔥 Check if item is missing conversion data (but has balances)
+    if (!hasConversionUom || !hasConversionValue) {
+      let status = 'Incomplete';
+      let statusMessage = `Cannot calculate cost - Missing: ${missingData.join(', ')}`;
+      
+      // Still show the balances but with error status
+      const storeBreakdown = balances.map(balance => ({
+        storeId: balance.storeId,
+        storeName: balance.store?.name || 'Unknown Store',
+        hasConflict: false,
+        isExcluded: true,
+        agreedQuantity: parseFloat(balance.balance) || 0,
+        groups: [{
+          groupId: balance.groupId,
+          groupName: balance.group?.name || 'Unknown Group',
+          quantity: parseFloat(balance.balance) || 0,
+          originalQuantity: parseFloat(balance.balance) || 0,
+          originalUOM: balance.item?.uom?.code || 'Units',
+          conversionRate: 1,
+          baseQuantity: parseFloat(balance.balance) || 0,
+          balanceId: balance.id,
+        }],
+      }));
+
+      return {
+        id: item.itemId,
+        itemCode: item.code,
+        itemName: item.name,
+        itemStandardName: item.standardName || '',
+        categoryName: item.category?.name || '',
+        brand: item.brand || '',
+        model: item.model || '',
+        baseUOM: item.uom?.code || 'Units',
+        unitCost: unitCost || 0,
+        totalQty: 0,
+        totalCost: 0,
+        status: status,
+        statusMessage: statusMessage,
+        userStatus: item.status || 'Active',
+        storeBreakdown: storeBreakdown,
+        excludedStores: storeBreakdown.map(s => s.storeName),
+        costHistory: [],
+        includedStoresCount: 0,
+        excludedStoresCount: storeBreakdown.length,
+        isFiltered: !!storeId,
+        hasMissingData: true,
+        missingData: missingData,
+        requiresSetup: true,
+      };
     }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // 🔥 Group balances by store with conversion
+    const storeMap = new Map();
+    const baseUOM = item.uom?.code || 'Units';
+    const conversionUomId = item.conversionUomId;
+    const conversionValue = parseFloat(item.conversionValue) || 1;
 
-    const { count, rows } = await Category.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["name", "ASC"]],
-      attributes: [
-        "categoryId",
-        "name",
-        "description",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    // Format response to include id for frontend
-    const formattedRows = rows.map((category) => ({
-      id: category.categoryId,
-      categoryId: category.categoryId,
-      name: category.name,
-      description: category.description,
-      status: category.status,
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get categories error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 2. GET BALANCE STATISTICS
-// ============================================
-exports.getStats = async (req, res) => {
-  try {
-    const totalStoresResult = await StoreBalance.findAll({
-      attributes: [
-        [sequelize.fn("DISTINCT", sequelize.col("storeId")), "storeId"],
-      ],
-    });
-    const totalStores = totalStoresResult.length;
-
-    const totalItems = await StoreBalance.count();
-
-    const lowStockItems = await StoreBalance.count({
-      where: {
-        status: "Active",
-        [Op.and]: [
-          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
-          { balance: { [Op.gt]: 0 } },
-        ],
-      },
-    });
-
-    const pendingRequestsCount = await ItemRequest.count({
-      where: { status: "approved" },
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        totalStores,
-        totalItems,
-        lowStockItems,
-        pendingRequestsCount,
-      },
-    });
-  } catch (error) {
-    console.error("Get stats error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 3. GET LOW STOCK ITEMS
-// ============================================
-exports.getLowStockItems = async (req, res) => {
-  try {
-    const records = await StoreBalance.findAll({
-      where: {
-        status: "Active",
-        [Op.and]: [
-          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
-          { balance: { [Op.gt]: 0 } },
-        ],
-      },
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    const formattedRows = records.map((record) => ({
-      id: record.id,
-      storeName: record.store?.name || null,
-      groupName: record.group?.name || null,
-      itemName: record.item?.standardName || record.item?.name || null,
-      itemCode: record.item?.code || null,
-      uomCode: record.item?.uom?.code || null,
-      balance: parseFloat(record.balance),
-      minStockAlert: parseFloat(record.minStockAlert),
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-    });
-  } catch (error) {
-    console.error("Get low stock error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// balanceController.js - Add these methods after getCategories
-
-// ============================================
-// GET ACTIVE CATEGORIES
-// ============================================
-exports.getActiveCategories = async (req, res) => {
-  try {
-    const categories = await Category.findAll({
-      where: { status: "Active" },
-      order: [["name", "ASC"]],
-      attributes: ["categoryId", "name", "description", "status"],
-    });
-
-    const formattedRows = categories.map((category) => ({
-      id: category.categoryId,
-      categoryId: category.categoryId,
-      name: category.name,
-      description: category.description,
-      status: category.status,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-    });
-  } catch (error) {
-    console.error("Get active categories error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// GET CATEGORY BY ID
-// ============================================
-exports.getCategoryById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const category = await Category.findByPk(id, {
-      attributes: [
-        "categoryId",
-        "name",
-        "description",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        error: "Category not found",
-      });
-    }
-
-    const formattedData = {
-      id: category.categoryId,
-      categoryId: category.categoryId,
-      name: category.name,
-      description: category.description,
-      status: category.status,
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt,
-    };
-
-    res.status(200).json({
-      success: true,
-      data: formattedData,
-    });
-  } catch (error) {
-    console.error("Get category by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// GET ITEMS BY CATEGORY
-// ============================================
-exports.getItemsByCategory = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const category = await Category.findByPk(id);
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        error: "Category not found",
-      });
-    }
-
-    const items = await Item.findAll({
-      where: {
-        categoryId: parseInt(id),
-        status: "Active",
-      },
-      include: [
-        {
-          model: UOM,
-          as: "uom",
-          attributes: ["id", "code", "name"],
-        },
-        {
-          model: UOM,
-          as: "conversionUom",
-          attributes: ["id", "code", "name"],
-        },
-      ],
-      order: [["name", "ASC"]],
-      attributes: [
-        "itemId",
-        "code",
-        "name",
-        "standardName",
-        "description",
-        "brand",
-        "model",
-        "barcode",
-        "conversionValue",
-        "status",
-      ],
-    });
-
-    const formattedItems = items.map((item) => ({
-      id: item.itemId,
-      itemId: item.itemId,
-      code: item.code,
-      name: item.name,
-      standardName: item.standardName,
-      description: item.description || "",
-      brand: item.brand || "",
-      model: item.model || "",
-      barcode: item.barcode || "",
-      conversionValue: parseFloat(item.conversionValue) || 1,
-      status: item.status,
-      uomCode: item.uom?.code || null,
-      uomName: item.uom?.name || null,
-      conversionUomCode: item.conversionUom?.code || null,
-      conversionUomName: item.conversionUom?.name || null,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        category: {
-          id: category.categoryId,
-          name: category.name,
-          description: category.description,
-          status: category.status,
-        },
-        items: formattedItems,
-        total: formattedItems.length,
-      },
-    });
-  } catch (error) {
-    console.error("Get items by category error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 4. GET BALANCE BY ID
-// ============================================
-exports.getBalanceById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const record = await StoreBalance.findByPk(id, {
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-            {
-              model: UOM,
-              as: "conversionUom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    if (!record) {
-      return res.status(404).json({
-        success: false,
-        error: "Balance not found",
-      });
-    }
-
-    const item = record.item;
-    const conversionValue = parseFloat(item?.conversionValue) || 1;
-
-    const formattedData = {
-      id: record.id,
-      storeId: record.storeId,
-      storeName: record.store?.name || null,
-      groupId: record.groupId,
-      groupName: record.group?.name || null,
-      itemId: record.itemId,
-      itemCode: item?.code || null,
-      itemName: item?.standardName || item?.name || null,
-      itemCommonName: item?.standardName || item?.name || null,
-      uomCode: item?.uom?.code || null,
-      conversionUomCode: item?.conversionUom?.code || null,
-      conversionValue: conversionValue,
-      balance: parseFloat(record.balance),
-      minStock: parseFloat(record.minStockAlert) || 0,
-      baseBalance: getBaseBalance(parseFloat(record.balance), conversionValue),
-      status: record.status,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    };
-
-    res.status(200).json({
-      success: true,
-      data: formattedData,
-    });
-  } catch (error) {
-    console.error("Get balance by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 5. CREATE BALANCE (INITIALIZE) - FIXED
-// ============================================
-
-exports.createBalance = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { storeId, groupId, itemId, balance, minStock, status } = req.body;
-
-    // Get the user ID from the request or use null
-    let userId = req.user?.userId || null;
-
-    // If no user ID, try to find a default user or skip the history
-    if (!userId) {
-      // Find the first active user to use as fallback
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
-      });
-      userId = defaultUser ? defaultUser.userId : null;
-    }
-
-    console.log("📦 Create balance request body:", req.body);
-    console.log("👤 Using userId:", userId);
-
-    // Validate required fields
-    if (!storeId || !groupId || !itemId) {
-      return res.status(400).json({
-        success: false,
-        error: "Store, Group, and Item are required",
-      });
-    }
-
-    // Convert to proper types
-    const storeIdInt = parseInt(storeId);
-    const groupIdInt = parseInt(groupId);
-    const itemIdInt = parseInt(itemId);
-    const balanceFloat = parseFloat(balance) || 0;
-    const minStockFloat = parseFloat(minStock) || 0;
-    const statusStr = status || "Active";
-
-    // Check if balance already exists
-    const existing = await StoreBalance.findOne({
-      where: {
-        storeId: storeIdInt,
-        groupId: groupIdInt,
-        itemId: itemIdInt,
-      },
-    });
-
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        error: "This item already has a balance in this store and group",
-      });
-    }
-
-    // Create the balance record
-    const balanceRecord = await StoreBalance.create(
-      {
-        storeId: storeIdInt,
-        groupId: groupIdInt,
-        itemId: itemIdInt,
-        balance: balanceFloat,
-        minStockAlert: minStockFloat,
-        status: statusStr,
-      },
-      { transaction },
-    );
-
-    // Create history record - only if we have a valid userId
-    if (userId) {
-      await StoreBalanceHistory.create(
-        {
-          balanceId: balanceRecord.id,
-          storeId: storeIdInt,
-          groupId: groupIdInt,
-          itemId: itemIdInt,
-          previousBalance: 0,
-          newBalance: balanceFloat,
-          changeAmount: balanceFloat,
-          transactionType: "Stock In",
-          referenceType: "initialization",
-          changedBy: userId,
-          remark: "Initial balance setup",
-        },
-        { transaction },
-      );
-    } else {
-      console.warn(
-        "⚠️ No valid userId found, skipping history record creation",
-      );
-    }
-
-    await transaction.commit();
-
-    // Fetch the created record
-    const createdRecord = await StoreBalance.findByPk(balanceRecord.id, {
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-            {
-              model: UOM,
-              as: "conversionUom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    // Format response
-    const item = createdRecord.item;
-    const conversionValue = parseFloat(item?.conversionValue) || 1;
-
-    const formattedData = {
-      id: createdRecord.id,
-      storeId: createdRecord.storeId,
-      storeName: createdRecord.store?.name || null,
-      groupId: createdRecord.groupId,
-      groupName: createdRecord.group?.name || null,
-      itemId: createdRecord.itemId,
-      itemCode: item?.code || null,
-      itemName: item?.standardName || item?.name || null,
-      itemCommonName: item?.standardName || item?.name || null,
-      uomCode: item?.uom?.code || null,
-      uomName: item?.uom?.name || null,
-      conversionUomCode: item?.conversionUom?.code || null,
-      conversionValue: conversionValue,
-      balance: parseFloat(createdRecord.balance),
-      minStock: parseFloat(createdRecord.minStockAlert) || 0,
-      baseBalance: parseFloat(createdRecord.balance) * conversionValue,
-      status: createdRecord.status,
-      statusClass: getBalanceClass(
-        parseFloat(createdRecord.balance),
-        parseFloat(createdRecord.minStockAlert) || 0,
-      ),
-      createdAt: createdRecord.createdAt,
-      updatedAt: createdRecord.updatedAt,
-    };
-
-    res.status(201).json({
-      success: true,
-      message: "Balance initialized successfully",
-      data: formattedData,
-    });
-  } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Create balance error:", error);
-
-    if (error.name === "SequelizeValidationError") {
-      const messages = error.errors.map((e) => e.message);
-      return res.status(400).json({
-        success: false,
-        error: messages.join(", "),
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to create balance",
-    });
-  }
-};
-
-// ============================================
-// 6. UPDATE BALANCE - FIXED
-// ============================================
-exports.updateBalance = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { id } = req.params;
-    const { storeId, groupId, itemId, minStock, status } = req.body;
-
-    console.log("📝 Update balance payload:", {
-      id,
-      storeId,
-      groupId,
-      itemId,
-      minStock,
-      status,
-    });
-
-    const balance = await StoreBalance.findByPk(id);
-
-    if (!balance) {
-      return res.status(404).json({
-        success: false,
-        error: "Balance not found",
-      });
-    }
-
-    // Convert values - USE CAMELCASE
-    const storeIdInt = storeId ? parseInt(storeId) : balance.storeId;
-    const groupIdInt = groupId ? parseInt(groupId) : balance.groupId;
-    const itemIdInt = itemId ? parseInt(itemId) : balance.itemId;
-
-    // Check for duplicates
-    if (storeId || groupId || itemId) {
-      const duplicate = await StoreBalance.findOne({
-        where: {
-          storeId: storeIdInt,
-          groupId: groupIdInt,
-          itemId: itemIdInt,
-          id: { [Op.ne]: parseInt(id) },
-        },
-      });
-
-      if (duplicate) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Another balance already exists for this store, group, and item",
+    for (const balance of balances) {
+      const storeIdKey = balance.storeId;
+      if (!storeMap.has(storeIdKey)) {
+        storeMap.set(storeIdKey, {
+          storeId: balance.storeId,
+          storeName: balance.store?.name || 'Unknown Store',
+          storeCode: balance.store?.code || '',
+          groups: [],
+          totalQty: 0,
         });
       }
-    }
 
-    // Update the balance - USE CAMELCASE
-    await balance.update(
-      {
-        storeId: storeIdInt,
-        groupId: groupIdInt,
-        itemId: itemIdInt,
-        minStockAlert:
-          minStock !== undefined ? parseFloat(minStock) : balance.minStockAlert,
-        status: status || balance.status,
-      },
-      { transaction },
-    );
+      const storeData = storeMap.get(storeIdKey);
+      let quantity = parseFloat(balance.balance) || 0;
+      let originalQuantity = quantity;
+      const originalUOM = balance.item?.uom?.code || 'Units';
+      let conversionRate = 1;
 
-    await transaction.commit();
-
-    // Fetch updated record
-    const updatedRecord = await StoreBalance.findByPk(id, {
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-            {
-              model: UOM,
-              as: "conversionUom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-      ],
-    });
-
-    // Format response
-    const item = updatedRecord.item;
-    const conversionValue = parseFloat(item?.conversionValue) || 1;
-
-    const formattedData = {
-      id: updatedRecord.id,
-      storeId: updatedRecord.storeId,
-      storeName: updatedRecord.store?.name || null,
-      groupId: updatedRecord.groupId,
-      groupName: updatedRecord.group?.name || null,
-      itemId: updatedRecord.itemId,
-      itemCode: item?.code || null,
-      itemName: item?.standardName || item?.name || null,
-      itemCommonName: item?.standardName || item?.name || null,
-      uomCode: item?.uom?.code || null,
-      uomName: item?.uom?.name || null,
-      conversionUomCode: item?.conversionUom?.code || null,
-      conversionValue: conversionValue,
-      balance: parseFloat(updatedRecord.balance),
-      minStock: parseFloat(updatedRecord.minStockAlert) || 0,
-      baseBalance: parseFloat(updatedRecord.balance) * conversionValue,
-      status: updatedRecord.status,
-      statusClass: getBalanceClass(
-        parseFloat(updatedRecord.balance),
-        parseFloat(updatedRecord.minStockAlert) || 0,
-      ),
-      createdAt: updatedRecord.createdAt,
-      updatedAt: updatedRecord.updatedAt,
-    };
-
-    res.status(200).json({
-      success: true,
-      message: "Balance updated successfully",
-      data: formattedData,
-    });
-  } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Update balance error:", error);
-
-    if (error.name === "SequelizeValidationError") {
-      const messages = error.errors.map((e) => e.message);
-      return res.status(400).json({
-        success: false,
-        error: messages.join(", "),
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to update balance",
-    });
-  }
-};
-
-// ============================================
-// 7. TOGGLE STATUS
-// ============================================
-exports.toggleStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const balance = await StoreBalance.findByPk(id);
-
-    if (!balance) {
-      return res.status(404).json({
-        success: false,
-        error: "Balance not found",
-      });
-    }
-
-    const newStatus = balance.status === "Active" ? "Inactive" : "Active";
-    await balance.update({ status: newStatus });
-
-    res.status(200).json({
-      success: true,
-      message: `Status changed to ${newStatus}`,
-      data: {
-        id: balance.id,
-        status: balance.status,
-      },
-    });
-  } catch (error) {
-    console.error("Toggle status error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 8. DELETE BALANCE
-// ============================================
-exports.deleteBalance = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const balance = await StoreBalance.findByPk(id);
-
-    if (!balance) {
-      return res.status(404).json({
-        success: false,
-        error: "Balance not found",
-      });
-    }
-
-    if (balance.status === "Active") {
-      return res.status(400).json({
-        success: false,
-        error: "Cannot delete active balance. Please deactivate it first.",
-      });
-    }
-
-    await balance.destroy();
-
-    res.status(200).json({
-      success: true,
-      message: "Balance deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete balance error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// GET APPROVED REQUESTS - WITH GROUP PROCESSING FILTER
-// ============================================
-exports.getApprovedRequests = async (req, res) => {
-  try {
-    const { storeId } = req.params;
-    const groupId = req.query.groupId; // Get groupId from query params
-
-    console.log(
-      "🔍 Fetching approved requests for storeId:",
-      storeId,
-      "groupId:",
-      groupId,
-    );
-
-    // Build the where clause
-    const whereClause = {
-      status: "approved",
-      [Op.or]: [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) },
-      ],
-    };
-
-    // Get the requests WITHOUT the groupProcessing include
-    const requests = await ItemRequest.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: Store,
-          as: "askingStore",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: User,
-          as: "requestedByUser",
-          attributes: ["userId", "username", "fullName"],
-        },
-        {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              attributes: ["id", "code", "name", "standardName"],
-              include: [
-                {
-                  model: UOM,
-                  as: "uom",
-                  attributes: ["id", "code", "name"],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      order: [["createdAt", "DESC"]],
-    });
-
-    console.log(`✅ Found ${requests.length} total approved requests`);
-
-    // 🔥 Get processing records separately
-    let filteredRequests = requests;
-    if (groupId) {
-      const requestIds = requests.map((r) => r.requestId);
-
-      // Get RequestGroupProcessing model from sequelize
-      const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-
-      if (RequestGroupProcessing) {
-        const processingRecords = await RequestGroupProcessing.findAll({
-          where: {
-            requestId: { [Op.in]: requestIds },
-            groupId: parseInt(groupId),
-          },
-          attributes: ["requestId", "status"],
-        });
-
-        // Create a set of processed request IDs
-        const processedRequestIds = new Set(
-          processingRecords
-            .filter((r) => r.status === "processed")
-            .map((r) => r.requestId),
-        );
-
-        // Filter out requests that have been processed by this group
-        filteredRequests = requests.filter(
-          (r) => !processedRequestIds.has(r.requestId),
-        );
-        console.log(
-          `✅ ${filteredRequests.length} requests remaining after filtering out processed ones`,
-        );
-      }
-    }
-
-    // Format the response
-    const formattedRequests = filteredRequests.map((request) => ({
-      id: request.requestId,
-      requestCode: request.requestCode,
-      askingStoreId: request.askingStoreId,
-      askingStoreName: request.askingStore?.name || null,
-      supplyingStoreId: request.supplyingStoreId,
-      supplyingStoreName: request.supplyingStore?.name || null,
-      requestedDate: request.requestedDate,
-      status: request.status,
-      remark: request.remark,
-      items:
-        request.items?.map((item) => ({
-          id: item.id,
-          itemId: item.itemId,
-          itemName: item.item?.standardName || item.item?.name || null,
-          itemCode: item.item?.code || null,
-          quantity: parseFloat(item.quantity),
-          uomCode: item.item?.uom?.code || null,
-        })) || [],
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRequests,
-      meta: {
-        total: requests.length,
-        remaining: filteredRequests.length,
-        groupId: groupId || null,
-        storeId: parseInt(storeId),
-      },
-    });
-  } catch (error) {
-    console.error("❌ Get approved requests error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// PROCESS REQUESTS - COMPLETE PRODUCTION VERSION
-// ============================================
-
-exports.processRequests = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { storeId, groupId, requestIds } = req.body;
-
-    console.log("📤 Processing requests payload:", {
-      storeId,
-      groupId,
-      requestIds,
-    });
-
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
-    if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Store ID, Group ID, and Request IDs are required",
-      });
-    }
-
-    const validRequestIds = requestIds.filter((id) => id != null && id !== "");
-    if (validRequestIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "No valid request IDs provided",
-      });
-    }
-
-    console.log("✅ Valid request IDs:", validRequestIds);
-
-    // ================================================================
-    // 2. GET VALID USER ID (NO HARDCODING)
-    // ================================================================
-    let userId = req.user?.userId || null;
-
-    // If no user from request, find a valid active user
-    if (!userId) {
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
-      });
-      userId = defaultUser ? defaultUser.userId : null;
-    }
-
-    // If still no user, get any user (fallback)
-    if (!userId) {
-      const anyUser = await User.findOne({
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
-      });
-      userId = anyUser ? anyUser.userId : null;
-    }
-
-    // If still no user, throw error
-    if (!userId) {
-      throw new Error("No valid user found to process request");
-    }
-
-    console.log("👤 Using userId:", userId);
-
-    // ================================================================
-    // 3. GET RequestGroupProcessing MODEL FROM SEQUELIZE
-    // ================================================================
-    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-    if (!RequestGroupProcessing) {
-      throw new Error("RequestGroupProcessing model not found");
-    }
-
-    // ================================================================
-    // 4. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
-    const group = await Group.findByPk(parseInt(groupId));
-    if (!group) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Group not found",
-      });
-    }
-
-    if (group.status !== "Active") {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
-      });
-    }
-
-    // ================================================================
-    // 5. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
-    const store = await Store.findByPk(parseInt(storeId));
-    if (!store) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Store not found",
-      });
-    }
-
-    if (store.status !== "Active") {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
-      });
-    }
-
-    // ================================================================
-    // 6. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
-    const storeGroupRelation = await StoreGroupRelation.findOne({
-      where: {
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId),
-      },
-    });
-
-    if (!storeGroupRelation) {
-      await transaction.rollback();
-      return res.status(403).json({
-        success: false,
-        error: `Group "${group.name}" does not have access to store "${store.name}"`,
-      });
-    }
-
-    // ================================================================
-    // 7. GET REQUESTS WITH THEIR ITEMS
-    // ================================================================
-    const requests = await ItemRequest.findAll({
-      where: {
-        requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
-        status: "approved",
-      },
-      include: [
-        {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              attributes: [
-                "id",
-                "code",
-                "name",
-                "standardName",
-                "conversionValue",
-                "status",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    console.log(`✅ Found ${requests.length} requests to process`);
-
-    if (requests.length === 0) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "No approved requests found with the provided IDs",
-      });
-    }
-
-    // ================================================================
-    // 8. PROCESS EACH REQUEST
-    // ================================================================
-    let processedCount = 0;
-    let failedCount = 0;
-    const logs = [];
-    const missingItems = [];
-    const processedItems = [];
-    const allAutoInitializedItems = [];
-    const allSkippedGroups = [];
-    const processedRequestIds = [];
-    const partialRequests = [];
-
-    for (const request of requests) {
-      console.log(`📋 Processing request: ${request.requestCode}`);
-
-      // ================================================================
-      // 8a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-      // ================================================================
-      const existingRecord = await RequestGroupProcessing.findOne({
-        where: {
-          requestId: request.requestId,
-          groupId: parseInt(groupId),
-        },
-      });
-
-      if (existingRecord && existingRecord.status === "processed") {
-        logs.push(
-          `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
-        );
-        processedRequestIds.push(request.requestId);
-        continue;
+      // 🔥 Handle UOM conversion - ONLY if conversion data exists
+      if (balance.uomId === conversionUomId && conversionUomId && conversionValue > 0) {
+        conversionRate = conversionValue;
+        quantity = originalQuantity * conversionRate;
       }
 
-      if (existingRecord && existingRecord.status === "skipped") {
-        logs.push(
-          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`,
-        );
-        allSkippedGroups.push({
-          requestCode: request.requestCode,
-          groupName: group.name,
-          reason: existingRecord.remark || "Skipped by admin",
-        });
-        processedRequestIds.push(request.requestId);
-        continue;
-      }
+      storeData.groups.push({
+        groupId: balance.groupId,
+        groupName: balance.group?.name || 'Unknown Group',
+        quantity: quantity,
+        originalQuantity: originalQuantity,
+        originalUOM: originalUOM,
+        conversionRate: conversionRate,
+        baseQuantity: quantity,
+        balanceId: balance.id,
+      });
+      storeData.totalQty += quantity;
+    }
 
-      // ================================================================
-      // 8b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-      // ================================================================
-      if (
-        request.askingStoreId !== parseInt(storeId) &&
-        request.supplyingStoreId !== parseInt(storeId)
-      ) {
-        logs.push(
-          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`,
-        );
-        failedCount++;
-        continue;
-      }
+    // Process store breakdown
+    const storeBreakdown = [];
+    for (const [storeIdKey, storeData] of storeMap) {
+      const quantities = storeData.groups.map(g => g.quantity);
+      const firstQty = quantities[0];
+      const allSame = quantities.every(q => Math.abs(q - firstQty) < 0.0001);
 
-      // ================================================================
-      // 8c. DETERMINE ACTION (Stock In or Stock Out)
-      // ================================================================
-      let action, transactionType, changeMultiplier, actionLabel;
-      if (request.askingStoreId === parseInt(storeId)) {
-        action = "STOCK_IN";
-        transactionType = "Stock In";
-        changeMultiplier = 1;
-        actionLabel = "RECEIVED";
-      } else if (request.supplyingStoreId === parseInt(storeId)) {
-        action = "STOCK_OUT";
-        transactionType = "Stock Out";
-        changeMultiplier = -1;
-        actionLabel = "SENT";
-      } else {
-        logs.push(
-          `❌ Request ${request.requestCode}: Store is neither asking nor supplying`,
-        );
-        failedCount++;
-        continue;
-      }
+      storeBreakdown.push({
+        storeId: storeData.storeId,
+        storeName: storeData.storeName,
+        hasConflict: !allSame,
+        isExcluded: !allSame,
+        agreedQuantity: allSame ? firstQty : 0,
+        groups: storeData.groups.map(g => ({
+          groupId: g.groupId,
+          groupName: g.groupName,
+          quantity: g.quantity,
+          originalQuantity: g.originalQuantity,
+          originalUOM: g.originalUOM,
+          conversionRate: g.conversionRate,
+          baseQuantity: g.baseQuantity,
+          balanceId: g.balanceId,
+        })),
+      });
+    }
 
-      console.log(`📋 Action: ${action} for request ${request.requestCode}`);
+    // Calculate totals
+    let includedStores = [];
+    let totalQty = 0;
+    let excludedStores = [];
 
-      // ================================================================
-      // 8d. CHECK ITEMS, AUTO-INITIALIZE IF NEEDED, AND PROCESS
-      // ================================================================
-      const requestResults = [];
-      const requestErrors = [];
-      const requestAutoInitialized = [];
-
-      for (const item of request.items) {
-        try {
-          // Validate item exists
-          if (!item.item) {
-            requestErrors.push(`Item ID ${item.itemId} not found in database`);
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: "N/A",
-              itemName: "Unknown Item (deleted)",
-              reason: "Item not found in database",
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-            });
-            continue;
-          }
-
-          // Validate item is active
-          if (item.item.status !== "Active") {
-            requestErrors.push(
-              `Item "${item.item.code}" is ${item.item.status}`,
-            );
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-              reason: `Item status is ${item.item.status}`,
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-            });
-            continue;
-          }
-
-          // Check if balance exists for this store, group, and item
-          let balance = await StoreBalance.findOne({
-            where: {
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-            },
-          });
-
-          // If balance doesn't exist, auto-initialize it with 0
-          if (!balance) {
-            console.log(
-              `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
-            );
-
-            balance = await StoreBalance.create(
-              {
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                balance: 0,
-                minStockAlert: 0,
-                status: "Active",
-              },
-              { transaction },
-            );
-
-            // Create history record for auto-initialization
-            await StoreBalanceHistory.create(
-              {
-                balanceId: balance.id,
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                previousBalance: 0,
-                newBalance: 0,
-                changeAmount: 0,
-                transactionType: "Stock In",
-                referenceType: "auto_initialization",
-                referenceId: request.requestId,
-                changedBy: userId,
-                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`,
-              },
-              { transaction },
-            );
-
-            requestAutoInitialized.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
-
-            allAutoInitializedItems.push({
-              requestCode: request.requestCode,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
-          }
-
-          // Check if balance is active
-          if (balance.status !== "Active") {
-            requestErrors.push(
-              `Balance for item "${item.item.code}" is ${balance.status}`,
-            );
-            continue;
-          }
-
-          // Now process the stock movement
-          const previousBalance = parseFloat(balance.balance);
-          const quantity = parseFloat(item.quantity);
-          const changeAmount = quantity * changeMultiplier;
-          const newBalance = previousBalance + changeAmount;
-
-          // For STOCK_OUT, check if we have enough balance
-          if (action === "STOCK_OUT" && newBalance < 0) {
-            requestErrors.push(
-              `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
-            );
-            continue;
-          }
-
-          // Update the balance
-          balance.balance = newBalance;
-          await balance.save({ transaction });
-
-          // Create history record for the stock movement
-          await StoreBalanceHistory.create(
-            {
-              balanceId: balance.id,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              previousBalance: previousBalance,
-              newBalance: newBalance,
-              changeAmount: Math.abs(changeAmount),
-              transactionType: transactionType,
-              sourceStoreId:
-                action === "STOCK_IN" ? request.supplyingStoreId : null,
-              destinationStoreId:
-                action === "STOCK_OUT" ? request.askingStoreId : null,
-              referenceType: "request",
-              referenceId: request.requestId,
-              changedBy: userId,
-              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
-            },
-            { transaction },
-          );
-
-          requestResults.push({
-            itemId: item.itemId,
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            itemCode: item.item?.code || "N/A",
-            previousBalance,
-            newBalance,
-            changeAmount: Math.abs(changeAmount),
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            wasAutoInitialized: requestAutoInitialized.some(
-              (ai) => ai.itemId === item.itemId,
-            ),
-          });
-
-          processedCount++;
-          processedItems.push({
-            requestCode: request.requestCode,
-            itemId: item.itemId,
-            itemCode: item.item?.code || "N/A",
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            quantity: Math.abs(changeAmount),
-            previousBalance,
-            newBalance,
-          });
-
-          console.log(
-            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`,
-          );
-        } catch (itemError) {
-          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
-          requestErrors.push(
-            `Error processing item ${item.itemId}: ${itemError.message}`,
-          );
-        }
-      }
-
-      // ================================================================
-      // 8e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-      // ================================================================
-      if (requestResults.length > 0 || requestErrors.length > 0) {
-        const remark =
-          requestResults.length > 0
-            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`
-            : "No items processed - errors occurred";
-
-        if (existingRecord) {
-          existingRecord.status = "processed";
-          existingRecord.processedAt = new Date();
-          existingRecord.processedBy = userId;
-          existingRecord.remark = remark;
-          await existingRecord.save({ transaction });
+    if (storeId) {
+      const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
+      if (filteredStore) {
+        if (!filteredStore.isExcluded) {
+          includedStores = [filteredStore];
+          totalQty = filteredStore.agreedQuantity;
         } else {
-          await RequestGroupProcessing.create(
-            {
-              requestId: request.requestId,
-              groupId: parseInt(groupId),
-              storeId: parseInt(storeId),
-              processedAt: new Date(),
-              status: "processed",
-              processedBy: userId,
-              remark: remark,
-            },
-            { transaction },
-          );
-        }
-
-        // Log results
-        if (requestResults.length > 0) {
-          logs.push(
-            `✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`,
-          );
+          excludedStores = [filteredStore.storeName];
         }
       }
+    } else {
+      includedStores = storeBreakdown.filter(s => !s.isExcluded);
+      totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
+      excludedStores = storeBreakdown.filter(s => s.isExcluded).map(s => s.storeName);
+    }
 
-      // Log any errors
-      if (requestErrors.length > 0) {
-        logs.push(
-          `⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`,
-        );
-        requestErrors.forEach((err) => logs.push(`   - ${err}`));
-        failedCount += requestErrors.length;
-      }
+    // 🔥 Calculate total cost ONLY if we have unit cost
+    const totalCost = hasUnitCost ? totalQty * unitCost : 0;
+    const userStatus = item.status || 'Active';
 
-      processedRequestIds.push(request.requestId);
+    // Determine status
+    let status = 'Active';
+    let statusMessage = 'Complete data';
+    
+    if (userStatus === 'Inactive') {
+      status = 'Inactive';
+      statusMessage = 'Item is inactive';
+    } else if (!hasUnitCost && unitCost === 0) {
+      status = 'Incomplete';
+      statusMessage = 'Missing Unit Cost';
+    } else if (excludedStores.length > 0 && includedStores.length > 0) {
+      status = 'Partial';
+      statusMessage = `${excludedStores.length} store(s) excluded due to conflicts`;
+    } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
+      status = 'Conflict';
+      statusMessage = 'All stores have conflicts';
+    } else {
+      status = 'Active';
+      statusMessage = 'Complete data';
+    }
 
-      // ================================================================
-      // 8f. CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-      // ================================================================
-      const storeWithGroups = await Store.findByPk(parseInt(storeId), {
-        include: [
-          {
-            model: Group,
-            as: "groups",
-            through: { attributes: [] },
-            attributes: ["groupId", "name", "status"],
-            where: { status: "Active" },
-          },
-        ],
-      });
+    return {
+      id: item.itemId,
+      itemCode: item.code,
+      itemName: item.name,
+      itemStandardName: item.standardName || '',
+      categoryName: item.category?.name || '',
+      brand: item.brand || '',
+      model: item.model || '',
+      baseUOM: baseUOM,
+      unitCost: unitCost || 0,
+      totalQty: totalQty,
+      totalCost: totalCost,
+      status: status,
+      statusMessage: statusMessage,
+      userStatus: userStatus,
+      storeBreakdown: storeBreakdown,
+      excludedStores: excludedStores,
+      costHistory: [],
+      includedStoresCount: includedStores.length,
+      excludedStoresCount: excludedStores.length,
+      isFiltered: !!storeId,
+      hasMissingData: missingData.length > 0 || !hasUnitCost,
+      missingData: missingData,
+      requiresSetup: missingData.length > 0 || !hasUnitCost,
+    };
+  } catch (error) {
+    console.error('Error in calculateItemCostOptimized:', error);
+    return {
+      id: item.itemId,
+      itemCode: item.code || 'Unknown',
+      itemName: item.name || 'Unknown Item',
+      itemStandardName: '',
+      categoryName: '',
+      brand: '',
+      model: '',
+      baseUOM: 'Units',
+      unitCost: 0,
+      totalQty: 0,
+      totalCost: 0,
+      status: 'Error',
+      statusMessage: error.message || 'Error calculating cost',
+      userStatus: 'Active',
+      storeBreakdown: [],
+      excludedStores: [],
+      costHistory: [],
+      includedStoresCount: 0,
+      excludedStoresCount: 0,
+      isFiltered: !!storeId,
+      hasMissingData: true,
+      missingData: ['Data Error'],
+      requiresSetup: true,
+    };
+  }
+}
 
-      const allGroupIds = storeWithGroups?.groups?.map((g) => g.groupId) || [];
-      const processedRecords = await RequestGroupProcessing.findAll({
+// ================================================================
+// HELPER: Get item cost history
+// ================================================================
+
+async function getItemCostHistory(itemId, limit = 10) {
+  try {
+    const ItemCost = db.ItemCost;
+    if (!ItemCost) return [];
+
+    const history = await ItemCost.findAll({
+      where: { itemId: itemId },
+      order: [['created_at', 'DESC']],
+      limit: limit,
+      attributes: ['id', 'previousCost', 'newCost', 'reason', 'changedBy', 'created_at'],
+    });
+
+    return history.map(h => ({
+      id: h.id,
+      previousCost: parseFloat(h.previousCost) || 0,
+      newCost: parseFloat(h.newCost) || 0,
+      reason: h.reason || '',
+      changedBy: h.changedBy || 'System',
+      createdAt: h.created_at,
+    }));
+  } catch (error) {
+    console.error('Error getting item cost history:', error);
+    return [];
+  }
+}
+
+// ================================================================
+// OPTIMIZED CONTROLLER METHODS
+// ================================================================
+
+/**
+ * Get all items with cost calculations - OPTIMIZED
+ * GET /api/item-costs
+ */
+exports.getItemsWithCost = async (req, res) => {
+  try {
+    const { storeId, groupId, status, search, page = 1, limit = 10 } = req.query;
+
+    // Create cache key from all params
+    const cacheKey = `items_${storeId || 'all'}_${groupId || 'all'}_${status || 'all'}_${search || 'all'}_${page}_${limit}`;
+    
+    // Check cache
+    const cachedData = costCache.get(cacheKey);
+    if (cachedData) {
+      console.log('✅ Cache hit for:', cacheKey);
+      return res.json(cachedData);
+    }
+
+    console.log('⏳ Cache miss for:', cacheKey);
+
+    // Build query for items
+    const itemWhere = {};
+    
+    if (search) {
+      const searchTerm = search.toLowerCase();
+      itemWhere[Op.or] = [
+        { code: { [Op.like]: `%${searchTerm}%` } },
+        { name: { [Op.like]: `%${searchTerm}%` } },
+        { standardName: { [Op.like]: `%${searchTerm}%` } },
+        { brand: { [Op.like]: `%${searchTerm}%` } },
+        { model: { [Op.like]: `%${searchTerm}%` } },
+      ];
+    }
+
+    // If store filter is applied, only get items that have balances in that store
+    let itemIdsWithBalance = null;
+    if (storeId) {
+      const balances = await StoreBalance.findAll({
         where: {
-          requestId: request.requestId,
-          status: "processed",
+          storeId: storeId,
+          status: 'Active',
+        },
+        attributes: ['itemId'],
+        group: ['itemId'],
+      });
+      
+      itemIdsWithBalance = balances.map(b => b.itemId);
+      
+      if (itemIdsWithBalance.length === 0) {
+        const emptyResponse = {
+          success: true,
+          data: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: 0,
+          },
+        };
+        costCache.set(cacheKey, emptyResponse);
+        return res.json(emptyResponse);
+      }
+      
+      itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get items with pagination
+    const { count, rows: items } = await Item.findAndCountAll({
+      where: itemWhere,
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+      order: [['name', 'ASC']],
+      limit: parseInt(limit),
+      offset: offset,
+    });
+
+    if (items.length === 0) {
+      const emptyResponse = {
+        success: true,
+        data: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: 0,
+        },
+      };
+      costCache.set(cacheKey, emptyResponse);
+      return res.json(emptyResponse);
+    }
+
+    // Get ALL balances in ONE query
+    const itemIds = items.map(i => i.itemId);
+    const balanceWhere = {
+      itemId: { [Op.in]: itemIds },
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+      ],
+    });
+
+    // Group balances by item
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.itemId]) {
+        balancesByItem[balance.itemId] = [];
+      }
+      balancesByItem[balance.itemId].push(balance);
+    }
+
+    // Get latest costs in ONE query
+    const ItemCost = db.ItemCost;
+    let latestCosts = {};
+    if (ItemCost) {
+      const costRecords = await ItemCost.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        order: [['created_at', 'DESC']],
+        attributes: ['itemId', 'newCost', 'created_at'],
+      });
+      
+      // Group by itemId and take first (latest)
+      for (const cost of costRecords) {
+        if (!latestCosts[cost.itemId]) {
+          latestCosts[cost.itemId] = parseFloat(cost.newCost);
+        }
+      }
+    }
+
+    // Process each item using pre-fetched data
+    const results = [];
+    for (const item of items) {
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
+      
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
+        storeId || null,
+        groupId || null
+      );
+
+      // Apply status filter - include 'Incomplete' and 'Error' statuses
+      if (status) {
+        if (status === 'Active' && costData.status !== 'Active') continue;
+        if (status === 'Partial' && costData.status !== 'Partial') continue;
+        if (status === 'Inactive' && costData.status !== 'Inactive') continue;
+        if (status === 'Incomplete' && costData.status !== 'Incomplete') continue;
+        if (status === 'Error' && costData.status !== 'Error') continue;
+        if (status === 'Conflict' && costData.status !== 'Conflict') continue;
+      }
+      
+      // Filter out items with zero quantity when store is selected (except incomplete/error items)
+      if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0 && 
+          costData.status !== 'Incomplete' && costData.status !== 'Error') {
+        continue;
+      }
+
+      results.push(costData);
+    }
+
+    // Calculate correct total count based on filters
+    let totalCount = count;
+    
+    // If status filter is applied, we need to count filtered items
+    if (status || storeId) {
+      // Get all items that match the base query (without pagination)
+      const allItemsWhere = { ...itemWhere };
+      if (storeId && itemIdsWithBalance) {
+        allItemsWhere.itemId = { [Op.in]: itemIdsWithBalance };
+      }
+      
+      const allItems = await Item.findAll({
+        where: allItemsWhere,
+        include: [
+          { model: UOM, as: 'uom' },
+          { model: Category, as: 'category' },
+        ],
+        order: [['name', 'ASC']],
+      });
+      
+      // Get all balances for counting
+      const allItemIds = allItems.map(i => i.itemId);
+      const allBalancesForCount = await StoreBalance.findAll({
+        where: {
+          itemId: { [Op.in]: allItemIds },
+          status: 'Active',
+          ...(storeId && { storeId }),
+          ...(groupId && { groupId }),
         },
       });
-      const processedGroupIds = processedRecords.map((r) => r.groupId);
-
-      const allProcessed = allGroupIds.every((g) =>
-        processedGroupIds.includes(g),
-      );
-      const remainingGroups = allGroupIds.filter(
-        (g) => !processedGroupIds.includes(g),
-      );
-
-      if (allProcessed && allGroupIds.length > 0) {
-        request.status = "finalized";
-        request.finalizedAt = new Date();
-        await request.save({ transaction });
-        console.log(
-          `✅ Request ${request.requestCode} fully processed and finalized by all ${allGroupIds.length} groups`,
-        );
-        logs.push(
-          `✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`,
-        );
-      } else if (remainingGroups.length > 0) {
-        const remainingNames = remainingGroups.map((g) => {
-          const grp = storeWithGroups?.groups?.find((g2) => g2.groupId === g);
-          return grp ? grp.name : g;
-        });
-        const msg = `⏳ Request ${request.requestCode} PARTIALLY PROCESSED - ${remainingGroups.length} group(s) remaining: ${remainingNames.join(", ")}`;
-        logs.push(msg);
-        partialRequests.push({
-          requestCode: request.requestCode,
-          remainingGroups: remainingNames,
-          remainingCount: remainingGroups.length,
-        });
-      } else if (allGroupIds.length === 0) {
-        // No groups in store, automatically finalize
-        request.status = "finalized";
-        request.finalizedAt = new Date();
-        await request.save({ transaction });
-        logs.push(
-          `✅ Request ${request.requestCode} FINALIZED - No groups in store, auto-finalized`,
-        );
+      
+      const balancesByItemForCount = {};
+      for (const b of allBalancesForCount) {
+        if (!balancesByItemForCount[b.itemId]) balancesByItemForCount[b.itemId] = [];
+        balancesByItemForCount[b.itemId].push(b);
       }
-    }
-
-    await transaction.commit();
-
-    // ================================================================
-    // 9. PREPARE RESPONSE
-    // ================================================================
-    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
-
-    // Build detailed logs
-    const detailedLogs = [...logs];
-
-    if (allAutoInitializedItems.length > 0) {
-      detailedLogs.unshift(
-        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}":`,
-      );
-      allAutoInitializedItems.forEach((item) => {
-        detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (from request ${item.requestCode})`,
+      
+      // Get costs for counting
+      let costsForCount = {};
+      if (ItemCost) {
+        const costRecords = await ItemCost.findAll({
+          where: { itemId: { [Op.in]: allItemIds } },
+          order: [['created_at', 'DESC']],
+        });
+        for (const cost of costRecords) {
+          if (!costsForCount[cost.itemId]) {
+            costsForCount[cost.itemId] = parseFloat(cost.newCost);
+          }
+        }
+      }
+      
+      let filteredCount = 0;
+      for (const item of allItems) {
+        const itemBalances = balancesByItemForCount[item.itemId] || [];
+        const unitCost = costsForCount[item.itemId] || parseFloat(item.costPrice) || 0;
+        
+        const costData = calculateItemCostOptimized(
+          item,
+          itemBalances,
+          unitCost,
+          storeId || null,
+          groupId || null
         );
-      });
-      detailedLogs.push(
-        `\n💡 Items were initialized with 0 balance and activated automatically.`,
-      );
+        
+        if (status) {
+          if (status === 'Active' && costData.status !== 'Active') continue;
+          if (status === 'Partial' && costData.status !== 'Partial') continue;
+          if (status === 'Inactive' && costData.status !== 'Inactive') continue;
+          if (status === 'Incomplete' && costData.status !== 'Incomplete') continue;
+          if (status === 'Error' && costData.status !== 'Error') continue;
+          if (status === 'Conflict' && costData.status !== 'Conflict') continue;
+        }
+        if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0 && 
+            costData.status !== 'Incomplete' && costData.status !== 'Error') continue;
+        filteredCount++;
+      }
+      totalCount = filteredCount;
     }
 
-    if (allSkippedGroups.length > 0) {
-      detailedLogs.push(`\n⏭️ Skipped groups:`);
-      allSkippedGroups.forEach((item) => {
-        detailedLogs.push(`   - ${item.groupName}: ${item.reason}`);
-      });
-    }
-
-    if (missingItems.length > 0) {
-      detailedLogs.push(`\n📋 Missing or inactive items:`);
-      missingItems.forEach((item) => {
-        detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`,
-        );
-      });
-      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
-    }
-
-    if (partialRequests.length > 0) {
-      detailedLogs.push(`\n⏳ Partially processed requests:`);
-      partialRequests.forEach((req) => {
-        detailedLogs.push(
-          `   - ${req.requestCode}: ${req.remainingCount} group(s) remaining (${req.remainingGroups.join(", ")})`,
-        );
-      });
-    }
-
-    res.status(200).json({
+    const response = {
       success: true,
-      message: responseMessage,
-      data: {
-        processed: processedCount,
-        failed: failedCount,
-        logs: detailedLogs,
-        missingItems: missingItems,
-        processedItems: processedItems,
-        autoInitializedItems: allAutoInitializedItems,
-        skippedGroups: allSkippedGroups,
-        partialRequests: partialRequests,
-        requestIds: validRequestIds,
-        processedRequestIds: processedRequestIds,
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId),
-        storeName: store.name,
-        groupName: group.name,
-        userId: userId,
-        totalRequests: requests.length,
+      data: results,
+      pagination: {
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(totalCount / parseInt(limit)),
       },
-    });
+    };
+
+    // Store in cache
+    costCache.set(cacheKey, response);
+    console.log('✅ Data cached for:', cacheKey);
+
+    res.json(response);
+
   } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Process requests error:", error);
+    console.error('Get items with cost error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to process requests",
+      error: error.message || 'Failed to get items with cost',
     });
   }
 };
-// ============================================
-// 11. GET ALL STORES
-// ============================================
-exports.getStores = async (req, res) => {
+
+/**
+ * Get single item with cost calculation - OPTIMIZED
+ * GET /api/item-costs/:itemId
+ */
+exports.getItemCost = async (req, res) => {
   try {
-    const { page = 1, limit = 1000, search } = req.query;
+    const { itemId } = req.params;
+    const { storeId, groupId } = req.query;
 
-    const whereClause = {};
-
-    if (search && search.trim()) {
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: `%${search.trim()}%` } },
-        { code: { [Op.iLike]: `%${search.trim()}%` } },
-        { location: { [Op.iLike]: `%${search.trim()}%` } },
-      ];
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await Store.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["name", "ASC"]],
-      attributes: [
-        "id",
-        "name",
-        "code",
-        "location",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    res.status(200).json({
-      success: true,
-      data: rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get stores error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 12. GET ALL GROUPS
-// ============================================
-exports.getGroups = async (req, res) => {
-  try {
-    const { page = 1, limit = 100, search } = req.query;
-
-    const whereClause = {};
-
-    if (search && search.trim()) {
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: `%${search.trim()}%` } },
-        { code: { [Op.iLike]: `%${search.trim()}%` } },
-        { description: { [Op.iLike]: `%${search.trim()}%` } },
-      ];
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await Group.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["name", "ASC"]],
-      attributes: [
-        "id",
-        "name",
-        "code",
-        "description",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    res.status(200).json({
-      success: true,
-      data: rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get groups error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 13. GET ACTIVE ITEMS
-// ============================================
-
-// ============================================
-// 13. GET ACTIVE ITEMS - UPDATED WITH MORE FIELDS
-// ============================================
-
-exports.getActiveItems = async (req, res) => {
-  try {
-    const items = await Item.findAll({
-      where: { status: "Active" },
+    // Get the item
+    const item = await Item.findByPk(itemId, {
       include: [
-        {
-          model: UOM,
-          as: "uom",
-          attributes: ["id", "code", "name"],
-        },
-        {
-          model: UOM,
-          as: "conversionUom",
-          attributes: ["id", "code", "name"],
-        },
-      ],
-      order: [["name", "ASC"]],
-      attributes: [
-        "itemId",
-        "code",
-        "name",
-        "standardName",
-        "description", // ✅ ADD THIS
-        "brand", // ✅ ADD THIS
-        "model", // ✅ ADD THIS
-        "barcode", // ✅ ADD THIS
-        "conversionValue",
-        "status",
-      ],
-    });
-
-    // Format the response
-    const formattedItems = items.map((item) => ({
-      id: item.itemId,
-      itemId: item.itemId,
-      code: item.code,
-      name: item.name,
-      standardName: item.standardName,
-      description: item.description || "",
-      brand: item.brand || "", // ✅ NOW INCLUDED
-      model: item.model || "", // ✅ NOW INCLUDED
-      barcode: item.barcode || "",
-      commonName: item.standardName || item.name || "", // Use standardName as commonName if not available
-      conversionValue: parseFloat(item.conversionValue) || 1,
-      status: item.status,
-      uomCode: item.uom?.code || null,
-      uomName: item.uom?.name || null,
-      conversionUomCode: item.conversionUom?.code || null,
-      conversionUomName: item.conversionUom?.name || null,
-      uom: item.uom,
-      conversionUom: item.conversionUom,
-    }));
-
-    console.log(`✅ Found ${formattedItems.length} active items`);
-
-    res.status(200).json({
-      success: true,
-      data: formattedItems,
-    });
-  } catch (error) {
-    console.error("Get active items error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 14. GET STORE BY ID
-// ============================================
-exports.getStoreById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const store = await Store.findByPk(id, {
-      attributes: [
-        "id",
-        "name",
-        "code",
-        "location",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: "Store not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: store,
-    });
-  } catch (error) {
-    console.error("Get store by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 15. GET GROUP BY ID
-// ============================================
-exports.getGroupById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const group = await Group.findByPk(id, {
-      attributes: [
-        "id",
-        "name",
-        "code",
-        "description",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    if (!group) {
-      return res.status(404).json({
-        success: false,
-        error: "Group not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: group,
-    });
-  } catch (error) {
-    console.error("Get group by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 16. GET ITEM BY ID
-// ============================================
-
-exports.getItemById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const item = await Item.findByPk(id, {
-      include: [
-        {
-          model: UOM,
-          as: "uom",
-          attributes: ["id", "code", "name"],
-        },
-        {
-          model: UOM,
-          as: "conversionUom",
-          attributes: ["id", "code", "name"],
-        },
-      ],
-      attributes: [
-        "itemId", // Use itemId here
-        "code",
-        "name",
-        "standardName",
-        "description",
-        "brand",
-        "model",
-        "barcode",
-        "categoryId",
-        "uomId",
-        "conversionUomId",
-        "conversionValue",
-        "costPrice",
-        "status",
-        "createdAt",
-        "updatedAt",
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
       ],
     });
 
     if (!item) {
       return res.status(404).json({
         success: false,
-        error: "Item not found",
+        error: 'Item not found',
       });
     }
 
-    // Format response to include id
-    const formattedItem = {
-      id: item.itemId,
-      itemId: item.itemId,
-      code: item.code,
-      name: item.name,
-      standardName: item.standardName,
-      description: item.description,
-      brand: item.brand,
-      model: item.model,
-      barcode: item.barcode,
-      categoryId: item.categoryId,
-      uomId: item.uomId,
-      conversionUomId: item.conversionUomId,
-      conversionValue: parseFloat(item.conversionValue) || 1,
-      costPrice: parseFloat(item.costPrice) || 0,
-      status: item.status,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      uom: item.uom,
-      conversionUom: item.conversionUom,
+    // Get balances for this item
+    const balanceWhere = {
+      itemId: itemId,
+      status: 'Active',
     };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
 
-    res.status(200).json({
-      success: true,
-      data: formattedItem,
+    const balances = await StoreBalance.findAll({
+      where: balanceWhere,
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+      ],
     });
-  } catch (error) {
-    console.error("Get item by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
 
-// ============================================
-// 17. DOWNLOAD CSV TEMPLATE
-// ============================================
-// balanceController.js - Updated downloadTemplate with user context
-
-exports.downloadTemplate = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-    let userAssignedStoreId = null;
-    let userAssignedGroupId = null;
-    let userAssignedStoreName = null;
-    let userAssignedGroupName = null;
-
-    // Get user's assigned store and group if logged in
-    if (userId) {
-      try {
-        const accessResult = await getUserStoreAndGroup(userId);
-        if (accessResult.success) {
-          userAssignedStoreId = accessResult.data.assignedStoreId;
-          userAssignedGroupId = accessResult.data.assignedGroupId;
-          userAssignedStoreName = accessResult.data.assignedStore?.name;
-          userAssignedGroupName = accessResult.data.assignedGroup?.name;
-
-          console.log(
-            "👤 User assigned store:",
-            userAssignedStoreId,
-            userAssignedStoreName,
-          );
-          console.log(
-            "👤 User assigned group:",
-            userAssignedGroupId,
-            userAssignedGroupName,
-          );
-        }
-      } catch (err) {
-        console.warn("Could not get user access:", err);
+    // Get latest cost
+    const ItemCost = db.ItemCost;
+    let unitCost = parseFloat(item.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
+      });
+      if (latestCost) {
+        unitCost = parseFloat(latestCost.newCost);
       }
     }
 
-    // Get all active stores
-    const sampleStores = await Store.findAll({
-      attributes: ["id", "name", "code"],
-      where: { status: "Active" },
-      order: [["name", "ASC"]],
-      raw: true,
-    });
-
-    // Get all active groups
-    const sampleGroups = await Group.findAll({
-      attributes: ["id", "name", "code"],
-      where: { status: "Active" },
-      order: [["name", "ASC"]],
-      raw: true,
-    });
-
-    // Get sample items
-    const sampleItems = await Item.findAll({
-      attributes: ["code", "standardName", "name"],
-      where: { status: "Active" },
-      order: [["code", "ASC"]],
-      limit: 10,
-      raw: true,
-    });
-
-    // Determine which store and group to use as default
-    let defaultStoreId =
-      userAssignedStoreId ||
-      (sampleStores.length > 0 ? sampleStores[0].id : 14);
-    let defaultGroupId =
-      userAssignedGroupId ||
-      (sampleGroups.length > 0 ? sampleGroups[0].id : 25);
-
-    // If user has assigned store but no assigned group, use the first group
-    if (
-      userAssignedStoreId &&
-      !userAssignedGroupId &&
-      sampleGroups.length > 0
-    ) {
-      defaultGroupId = sampleGroups[0].id;
-    }
-
-    // If user has assigned group but no assigned store, use the first store
-    if (
-      userAssignedGroupId &&
-      !userAssignedStoreId &&
-      sampleStores.length > 0
-    ) {
-      defaultStoreId = sampleStores[0].id;
-    }
-
-    console.log("📋 Default Store ID:", defaultStoreId);
-    console.log("📋 Default Group ID:", defaultGroupId);
-
-    // Build the template content
-    let csvContent = "";
-
-    // Add header comments
-    csvContent += "# ============================================\n";
-    csvContent += "# STORE BALANCE IMPORT TEMPLATE\n";
-    csvContent += "# ============================================\n";
-    csvContent += "#\n";
-    csvContent += "# INSTRUCTIONS:\n";
-    csvContent +=
-      "# 1. Use the itemCode (e.g., SDT000001) instead of numeric itemId\n";
-    csvContent += "# 2. You can find item codes in the Items list\n";
-    csvContent +=
-      "# 3. Required columns: storeId, groupId, itemCode, balance\n";
-    csvContent += '# 4. Optional: minStock, status (defaults to "Active")\n';
-    csvContent += "# 5. All columns must be in the order shown above\n";
-    csvContent += "#\n";
-
-    // Show user's assigned store and group if available
-    if (userAssignedStoreId && userAssignedGroupId) {
-      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
-      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
-      csvContent += "#\n";
-      csvContent +=
-        "# ✅ The template below uses your assigned store and group\n";
-      csvContent += "#\n";
-    } else if (userAssignedStoreId) {
-      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
-      csvContent +=
-        "# ⚠️ No group assigned. Using the first available group.\n";
-      csvContent += "#\n";
-    } else if (userAssignedGroupId) {
-      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
-      csvContent +=
-        "# ⚠️ No store assigned. Using the first available store.\n";
-      csvContent += "#\n";
-    }
-
-    // Add store info
-    if (sampleStores && sampleStores.length > 0) {
-      csvContent += "# Available Stores:\n";
-      sampleStores.forEach((store) => {
-        const isDefault = store.id === defaultStoreId;
-        csvContent += `#   ${store.id} = ${store.name} (${store.code || "N/A"})${isDefault ? " ✅ DEFAULT" : ""}\n`;
-      });
-    }
-    csvContent += "#\n";
-
-    // Add group info
-    if (sampleGroups && sampleGroups.length > 0) {
-      csvContent += "# Available Groups:\n";
-      sampleGroups.forEach((group) => {
-        const isDefault = group.id === defaultGroupId;
-        csvContent += `#   ${group.id} = ${group.name} (${group.code || "N/A"})${isDefault ? " ✅ DEFAULT" : ""}\n`;
-      });
-    }
-    csvContent += "#\n";
-
-    // Add sample item codes
-    if (sampleItems && sampleItems.length > 0) {
-      csvContent += "# Sample Item Codes:\n";
-      sampleItems.forEach((item) => {
-        const itemName = item.standardName || item.name || "Unknown";
-        csvContent += `#   ${item.code}: ${itemName}\n`;
-      });
-    }
-    csvContent += "# ============================================\n";
-
-    // Add headers (use comma separator)
-    csvContent += "storeId,groupId,itemCode,balance,minStock,status\n";
-
-    // Add sample data rows with user's default store/group
-    if (sampleItems && sampleItems.length > 0) {
-      // Use the first 6 items
-      const itemsToUse = sampleItems.slice(0, 6);
-
-      itemsToUse.forEach((item, index) => {
-        const balance = (index + 1) * 50;
-        const minStock = (index + 1) * 5;
-
-        // Use the user's default store and group for ALL rows
-        // This makes it easier for the user - they just need to change quantities
-        csvContent += `${defaultStoreId},${defaultGroupId},${item.code},${balance},${minStock},Active\n`;
-      });
-    } else {
-      // Fallback with user's default IDs
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002001,50,5,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002002,100,10,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002003,150,15,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002004,200,20,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002005,250,25,Active\n`;
-      csvContent += `${defaultStoreId},${defaultGroupId},SDT002006,300,30,Active\n`;
-    }
-
-    // Add BOM for Excel compatibility
-    const csvWithBOM = "\uFEFF" + csvContent;
-
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=balance_import_template_${new Date().toISOString().split("T")[0]}.csv`,
+    // Calculate cost
+    const costData = calculateItemCostOptimized(
+      item,
+      balances,
+      unitCost,
+      storeId || null,
+      groupId || null
     );
-    res.send(csvWithBOM);
+
+    // Get cost history
+    const history = await getItemCostHistory(parseInt(itemId), 10);
+    costData.costHistory = history;
+
+    res.json({
+      success: true,
+      data: costData,
+    });
+
   } catch (error) {
-    console.error("❌ Download template error:", error);
+    console.error('Get item cost error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to download template",
+      error: error.message || 'Failed to get item cost',
     });
   }
 };
-// ============================================
-// 18. IMPORT BALANCES FROM CSV
-// ============================================
-// balanceController.js - FIXED importBalances with valid user ID
 
-exports.importBalances = async (req, res) => {
-  const transaction = await sequelize.transaction();
+/**
+ * Get cost history for an item
+ * GET /api/item-costs/:itemId/history
+ */
+exports.getItemCostHistory = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { limit = 20 } = req.query;
+
+    const history = await getItemCostHistory(parseInt(itemId), parseInt(limit));
+
+    res.json({
+      success: true,
+      data: history,
+    });
+
+  } catch (error) {
+    console.error('Get item cost history error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get item cost history',
+    });
+  }
+};
+
+/**
+ * Update item cost
+ * POST /api/item-costs/:itemId
+ */
+/**
+ * Update item cost
+ * POST /api/item-costs/:itemId
+ */
+exports.updateItemCost = async (req, res) => {
+  const t = await db.sequelize.transaction();
 
   try {
-    if (!req.file) {
+    const { itemId } = req.params;
+    const { unitCost, reason } = req.body;
+    const userId = req.user?.userId;
+
+    if (!unitCost || unitCost <= 0) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
-        error: "No file uploaded",
+        error: 'Valid unit cost is required',
       });
     }
 
-    // ✅ FIX: Get a valid user ID from the database
-    let userId = req.user?.userId || null;
-
-    // If no user from request, find a valid active user
-    if (!userId) {
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
+    const item = await Item.findByPk(itemId);
+    if (!item) {
+      await t.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found',
       });
-      userId = defaultUser ? defaultUser.userId : null;
     }
 
-    // If still no user, get any user (fallback)
-    if (!userId) {
-      const anyUser = await User.findOne({
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
+    const previousCost = parseFloat(item.costPrice) || 0;
+
+    // Update the item's cost price
+    await item.update({
+      costPrice: unitCost,
+    }, { transaction: t });
+
+    // Log the cost change in item_cost table
+    const ItemCost = db.ItemCost;
+    if (ItemCost) {
+      await ItemCost.create({
+        itemId: itemId,
+        previousCost: previousCost,
+        newCost: unitCost,
+        reason: reason || 'Manual update',
+        changedBy: userId || 'System',
+        created_at: new Date(),
+      }, { transaction: t });
+    }
+
+    await t.commit();
+
+    // Clear cache
+    costCache.flushAll();
+
+    // 🔥 FIX: Get the updated item data directly
+    const updatedItem = await Item.findByPk(itemId, {
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+    });
+
+    // Get balances for this item
+    const balances = await StoreBalance.findAll({
+      where: {
+        itemId: itemId,
+        status: 'Active',
+      },
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+      ],
+    });
+
+    // Get latest cost
+    let unitCostValue = parseFloat(item.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
       });
-      userId = anyUser ? anyUser.userId : null;
-    }
-
-    // If still no user, use null (history will be skipped)
-    if (!userId) {
-      console.warn("⚠️ No valid user found, skipping history records");
-    }
-
-    console.log("👤 Using userId for import:", userId);
-
-    const results = [];
-    const errors = [];
-    let successCount = 0;
-    let failedCount = 0;
-
-    // Read the file content first to detect separator
-    const fileContent = fs.readFileSync(req.file.path, "utf8");
-    const lines = fileContent
-      .split("\n")
-      .filter((line) => line.trim() && !line.trim().startsWith("#"));
-
-    if (lines.length < 2) {
-      throw new Error(
-        "CSV file must contain headers and at least one data row",
-      );
-    }
-
-    // Detect separator - check if first line has tabs or commas
-    const firstLine = lines[0];
-    const hasTabs = firstLine.includes("\t");
-    const hasCommas = firstLine.includes(",");
-
-    let separator = ",";
-    if (hasTabs && !hasCommas) {
-      separator = "\t";
-      console.log("📋 Detected tab-separated values (TSV)");
-    } else if (hasCommas) {
-      separator = ",";
-      console.log("📋 Detected comma-separated values (CSV)");
-    } else {
-      console.log("📋 Could not detect separator, using comma");
-    }
-
-    // Parse headers
-    const headers = lines[0]
-      .split(separator)
-      .map((h) => h.trim().toLowerCase());
-    console.log("📋 Headers:", headers);
-
-    // Required columns
-    const requiredHeaders = ["storeid", "groupid", "balance"];
-    const hasItemId = headers.includes("itemid");
-    const hasItemCode = headers.includes("itemcode");
-
-    if (!hasItemId && !hasItemCode) {
-      throw new Error('CSV must contain either "itemId" or "itemCode" column');
-    }
-
-    const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
-    if (missingHeaders.length > 0) {
-      throw new Error(`Missing required headers: ${missingHeaders.join(", ")}`);
-    }
-
-    // Parse data rows
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      const values = line.split(separator).map((v) => v.trim());
-      const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx] || "";
-      });
-
-      results.push(row);
-    }
-
-    console.log(`📄 Parsed ${results.length} rows from CSV`);
-
-    for (let i = 0; i < results.length; i++) {
-      const row = results[i];
-      const rowNumber = i + 2;
-
-      try {
-        // Get values from CSV
-        const storeId = parseInt(row.storeid);
-        const groupId = parseInt(row.groupid);
-        const itemCode = (row.itemcode || row.itemid || "").trim();
-        const balance = parseFloat(row.balance);
-        const minStock = parseInt(row.minstock) || 0;
-        const status = row.status || "Active";
-
-        console.log(
-          `📊 Row ${rowNumber}: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
-        );
-
-        // Validate required fields
-        if (isNaN(storeId) || isNaN(groupId) || !itemCode || isNaN(balance)) {
-          throw new Error(
-            `storeId, groupId, itemCode, and balance are required. Got: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
-          );
-        }
-
-        // Find the item by code
-        const item = await Item.findOne({
-          where: { code: itemCode },
-          attributes: ["itemId", "code", "name", "standardName"],
-        });
-
-        if (!item) {
-          failedCount++;
-          errors.push(
-            `Row ${rowNumber}: Item with code "${itemCode}" not found`,
-          );
-          console.log(`❌ Row ${rowNumber}: Item not found: ${itemCode}`);
-          continue;
-        }
-
-        const itemId = item.itemId;
-        console.log(
-          `✅ Row ${rowNumber}: Found item: ${itemCode} (ID: ${itemId})`,
-        );
-
-        // Check if balance already exists
-        const existing = await StoreBalance.findOne({
-          where: {
-            storeId: storeId,
-            groupId: groupId,
-            itemId: itemId,
-          },
-        });
-
-        if (existing) {
-          failedCount++;
-          errors.push(
-            `Row ${rowNumber}: Balance already exists for item "${itemCode}" (${item.standardName || item.name})`,
-          );
-          console.log(
-            `⏭️ Row ${rowNumber}: Balance already exists for ${itemCode}`,
-          );
-          continue;
-        }
-
-        // Create the balance record
-        const balanceRecord = await StoreBalance.create(
-          {
-            storeId: storeId,
-            groupId: groupId,
-            itemId: itemId,
-            balance: balance,
-            minStockAlert: minStock,
-            status: status,
-          },
-          { transaction },
-        );
-
-        // ✅ Create history record only if we have a valid userId
-        if (userId) {
-          await StoreBalanceHistory.create(
-            {
-              balanceId: balanceRecord.id,
-              storeId: storeId,
-              groupId: groupId,
-              itemId: itemId,
-              previousBalance: 0,
-              newBalance: balance,
-              changeAmount: balance,
-              transactionType: "Stock In",
-              referenceType: "initialization",
-              changedBy: userId,
-              remark: `CSV import - Initial balance setup for ${itemCode}`,
-            },
-            { transaction },
-          );
-        } else {
-          console.warn(
-            `⚠️ No valid userId, skipping history for row ${rowNumber}`,
-          );
-        }
-
-        successCount++;
-        console.log(
-          `✅ Row ${rowNumber}: Imported ${itemCode} - Balance: ${balance}`,
-        );
-      } catch (rowError) {
-        failedCount++;
-        errors.push(`Row ${rowNumber}: ${rowError.message}`);
-        console.error(`❌ Row ${rowNumber} error:`, rowError.message);
+      if (latestCost) {
+        unitCostValue = parseFloat(latestCost.newCost);
       }
     }
 
-    await transaction.commit();
-    safeDelete(req.file.path);
-
-    const responseData = {
-      total: results.length,
-      success: successCount,
-      failed: failedCount,
-      errors: errors.slice(0, 20),
-    };
-
-    console.log(
-      `📊 Import completed: ${successCount} success, ${failedCount} failed`,
+    // Calculate cost
+    const costData = calculateItemCostOptimized(
+      updatedItem,
+      balances,
+      unitCostValue,
+      null,
+      null
     );
 
-    res.status(200).json({
+    // Get cost history
+    const history = await getItemCostHistory(parseInt(itemId), 5);
+    costData.costHistory = history;
+
+    res.json({
       success: true,
-      message: `Import completed: ${successCount} imported, ${failedCount} failed`,
-      data: responseData,
+      message: 'Item cost updated successfully',
+      data: costData,
     });
+
   } catch (error) {
-    await transaction.rollback();
-    safeDelete(req.file.path);
-    console.error("❌ Import error:", error);
+    await t.rollback();
+    console.error('Update item cost error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update item cost',
+      });
+    }
+  }
+};
+
+/**
+ * Toggle item status (Active/Inactive)
+ * PATCH /api/item-costs/:itemId/status
+ */
+exports.toggleItemStatus = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { status } = req.body;
+
+    if (!['Active', 'Inactive'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be Active or Inactive',
+      });
+    }
+
+    const item = await Item.findByPk(itemId);
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found',
+      });
+    }
+
+    await item.update({ status: status });
+
+    // Clear cache
+    costCache.flushAll();
+
+    // Get the updated item data directly
+    const updatedItem = await Item.findByPk(itemId, {
+      include: [
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
+        { model: UOM, as: 'conversionUom' },
+      ],
+    });
+
+    // Get balances for this item
+    const balances = await StoreBalance.findAll({
+      where: {
+        itemId: itemId,
+        status: 'Active',
+      },
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+      ],
+    });
+
+    // Get latest cost
+    const ItemCost = db.ItemCost;
+    let unitCost = parseFloat(item.costPrice) || 0;
+    if (ItemCost) {
+      const latestCost = await ItemCost.findOne({
+        where: { itemId: itemId },
+        order: [['created_at', 'DESC']],
+      });
+      if (latestCost) {
+        unitCost = parseFloat(latestCost.newCost);
+      }
+    }
+
+    // Calculate cost
+    const costData = calculateItemCostOptimized(
+      updatedItem,
+      balances,
+      unitCost,
+      null,
+      null
+    );
+
+    // Get cost history
+    const history = await getItemCostHistory(parseInt(itemId), 5);
+    costData.costHistory = history;
+
+    return res.json({
+      success: true,
+      message: `Item status updated to ${status}`,
+      data: costData,
+    });
+
+  } catch (error) {
+    console.error('Toggle item status error:', error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update item status',
+      });
+    }
+  }
+};
+
+/**
+ * Get stores for dropdown
+ * GET /api/item-costs/stores
+ */
+exports.getStores = async (req, res) => {
+  try {
+    const storeCacheKey = 'stores_list';
+    let stores = costCache.get(storeCacheKey);
+
+    if (!stores) {
+      stores = await Store.findAll({
+        where: { status: 'Active' },
+        attributes: ['storeId', 'name', 'code'],
+        order: [['name', 'ASC']],
+      });
+      costCache.set(storeCacheKey, stores, 3600);
+    }
+
+    res.json({
+      success: true,
+      data: stores.map(s => ({
+        id: s.storeId,
+        name: s.name,
+        code: s.code,
+      })),
+    });
+
+  } catch (error) {
+    console.error('Get stores error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to import balances",
+      error: error.message || 'Failed to get stores',
     });
   }
 };
 
-
-exports.exportBalances = async (req, res) => {
+/**
+ * Get groups for dropdown
+ * GET /api/item-costs/groups
+ */
+exports.getGroups = async (req, res) => {
   try {
-    const { storeId, groupId, categoryId, status } = req.query;
-    
-    console.log('📊 Exporting Excel - storeId:', storeId, 'groupId:', groupId, 'categoryId:', categoryId, 'status:', status);
-    
-    const targetStoreId = storeId ? parseInt(storeId) : null;
-    const targetGroupId = groupId ? parseInt(groupId) : null;
-    const targetCategoryId = categoryId ? parseInt(categoryId) : null;
-    const targetStatus = status || null;
-    
-    // Build where clause for store_balances
-    const whereClause = {};
-    if (targetStoreId) whereClause.store_id = targetStoreId;
-    if (targetGroupId) whereClause.group_id = targetGroupId;
-    if (targetStatus) whereClause.status = targetStatus;
-    
-    // Get balances with related data
-    const balances = await StoreBalance.findAll({
-      where: whereClause,
-      include: [
-        { 
-          model: Store, 
-          as: "store", 
-          attributes: ["name", "code"] 
-        },
-        { 
-          model: Group, 
-          as: "group", 
-          attributes: ["name", "code"] 
-        },
-        {
-          model: Item,
-          as: "item",
-          where: targetCategoryId ? { category_id: targetCategoryId } : {},
-          include: [
-            { 
-              model: UOM, 
-              as: "uom", 
-              attributes: ["code", "name"] 
-            },
-            { 
-              model: Category, 
-              as: "category", 
-              attributes: ["name"] 
-            }
-          ]
-        }
-      ],
-      order: [["store_id", "ASC"], ["group_id", "ASC"]]
-    });
-    
-    console.log(`✅ Found ${balances.length} balance records`);
-    
-    // Get store and group info
-    const storeName = balances.length > 0 ? balances[0].store?.name || 'Unknown Store' : 'Unknown Store';
-    const groupName = balances.length > 0 ? balances[0].group?.name || 'Unknown Group' : 'Unknown Group';
-    const storeCode = balances.length > 0 ? balances[0].store?.code || '' : '';
-    const groupCode = balances.length > 0 ? balances[0].group?.code || '' : '';
-    const categoryName = balances.length > 0 && balances[0].item?.category ? balances[0].item.category.name : 'All Categories';
-    
-    // Get user info
-    const userName = req.user?.fullName || req.user?.username || 'Admin';
-    
-    // Calculate totals
-    let totalItems = balances.length;
-    let activeItems = 0;
-    let zeroBalanceItems = 0;
-    let lowStockItems = 0;
-    
-    balances.forEach(record => {
-      const balance = parseFloat(record.balance) || 0;
-      
-      if (record.status === 'Active') {
-        activeItems++;
-      }
-      
-      if (balance === 0) {
-        zeroBalanceItems++;
-      } else if (balance <= parseFloat(record.minStockAlert)) {
-        lowStockItems++;
-      }
-    });
-    
-    // Create Excel workbook
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Super Double "T" General Trading PLC';
-    workbook.created = new Date();
-    
-    // ============================================================
-    // SHEET 1: STORE BALANCE REPORT
-    // ============================================================
-    const sheet = workbook.addWorksheet('Store Balance Report');
-    
-    let currentRow = 1;
-    
-    // ============================================================
-    // HEADER SECTION
-    // ============================================================
-    
-    // Row 1: Company Name
-    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
-    const companyCell = sheet.getCell(`A${currentRow}`);
-    companyCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
-    companyCell.font = { bold: true, size: 18, color: { argb: 'FF1A56DB' } };
-    companyCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    sheet.getRow(currentRow).height = 35;
-    currentRow++;
-    
-    // Row 2: Slogan
-    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
-    const sloganCell = sheet.getCell(`A${currentRow}`);
-    sloganCell.value = 'WE TRUST IN GOD!!!  እግዚአብሔር ይባረክ!!!';
-    sloganCell.font = { bold: true, size: 12, color: { argb: 'FF4B5563' } };
-    sloganCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    sheet.getRow(currentRow).height = 25;
-    currentRow++;
-    
-    // Row 3: Empty row
-    currentRow++;
-    
-    // Row 4: Report Title
-    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
-    const titleCell = sheet.getCell(`A${currentRow}`);
-    titleCell.value = 'STORE BALANCE REPORT';
-    titleCell.font = { bold: true, size: 16, color: { argb: 'FF1A56DB' } };
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    sheet.getRow(currentRow).height = 30;
-    currentRow++;
-    
-    // Row 5: Empty row
-    currentRow++;
-    
-    // Row 6-9: Store and Group Info
-    // Store Info
-    const storeRow = sheet.getRow(currentRow);
-    storeRow.getCell(1).value = 'Store:';
-    storeRow.getCell(1).font = { bold: true };
-    storeRow.getCell(2).value = storeName;
-    storeRow.getCell(4).value = 'Group:';
-    storeRow.getCell(4).font = { bold: true };
-    storeRow.getCell(5).value = groupName;
-    currentRow++;
-    
-    // Store Code
-    const storeCodeRow = sheet.getRow(currentRow);
-    storeCodeRow.getCell(1).value = 'Store Code:';
-    storeCodeRow.getCell(1).font = { bold: true };
-    storeCodeRow.getCell(2).value = storeCode;
-    storeCodeRow.getCell(4).value = 'Group Code:';
-    storeCodeRow.getCell(4).font = { bold: true };
-    storeCodeRow.getCell(5).value = groupCode;
-    currentRow++;
-    
-    // Category Filter Info
-    const categoryRow = sheet.getRow(currentRow);
-    categoryRow.getCell(1).value = 'Category:';
-    categoryRow.getCell(1).font = { bold: true };
-    categoryRow.getCell(2).value = categoryName;
-    categoryRow.getCell(4).value = 'Status:';
-    categoryRow.getCell(4).font = { bold: true };
-    categoryRow.getCell(5).value = targetStatus || 'All';
-    currentRow++;
-    
-    // Report Generated Info
-    const now = new Date();
-    const dateTimeStr = now.toLocaleString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-    
-    const generatedRow = sheet.getRow(currentRow);
-    generatedRow.getCell(1).value = 'Generated By:';
-    generatedRow.getCell(1).font = { bold: true };
-    generatedRow.getCell(2).value = userName;
-    generatedRow.getCell(4).value = 'Date/Time:';
-    generatedRow.getCell(4).font = { bold: true };
-    generatedRow.getCell(5).value = dateTimeStr;
-    currentRow++;
-    
-    // Empty row
-    currentRow++;
-    
-    // ============================================================
-    // SUMMARY SECTION (Total Balance REMOVED)
-    // ============================================================
-    
-    // Summary Title
-    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
-    const summaryTitleCell = sheet.getCell(`A${currentRow}`);
-    summaryTitleCell.value = 'SUMMARY';
-    summaryTitleCell.font = { bold: true, size: 14, color: { argb: 'FF1A56DB' } };
-    sheet.getRow(currentRow).height = 25;
-    currentRow++;
-    
-    // Summary Data - NO Total Balance
-    const summaryData = [
-      ['Total Items:', totalItems, 'Active Items:', activeItems],
-      ['Zero Balance Items:', zeroBalanceItems, 'Low Stock Items:', lowStockItems]
-    ];
-    
-    summaryData.forEach((rowData) => {
-      const row = sheet.getRow(currentRow);
-      rowData.forEach((value, index) => {
-        const col = index + 1;
-        row.getCell(col).value = value;
-        if (index % 2 === 0 && value) {
-          row.getCell(col).font = { bold: true };
-        }
-        if (index % 2 === 1 && value) {
-          row.getCell(col).font = { bold: true, color: { argb: 'FF1A56DB' } };
-        }
+    const groupCacheKey = 'groups_list';
+    let groups = costCache.get(groupCacheKey);
+
+    if (!groups) {
+      groups = await Group.findAll({
+        where: { status: 'Active' },
+        attributes: ['id', 'name', 'code'],
+        order: [['name', 'ASC']],
       });
-      currentRow++;
+      costCache.set(groupCacheKey, groups, 3600);
+    }
+
+    res.json({
+      success: true,
+      data: groups,
     });
-    
-    // Empty rows before table
-    currentRow++;
-    currentRow++;
-    
-    // ============================================================
-    // DATA TABLE SECTION
-    // ============================================================
-    
-    // Table Header
-    const headerRow2 = sheet.getRow(currentRow);
-    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM', 'Balance', 'Status'];
-    headers.forEach((header, index) => {
-      const col = index + 1;
-      headerRow2.getCell(col).value = header;
-      headerRow2.getCell(col).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-      headerRow2.getCell(col).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1A56DB' }
-      };
-      headerRow2.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
-      headerRow2.getCell(col).border = {
-        top: { style: 'thin', color: { argb: 'FF1A56DB' } },
-        bottom: { style: 'thin', color: { argb: 'FF1A56DB' } },
-        left: { style: 'thin', color: { argb: 'FF1A56DB' } },
-        right: { style: 'thin', color: { argb: 'FF1A56DB' } }
-      };
-    });
-    sheet.getRow(currentRow).height = 25;
-    currentRow++;
-    
-    // Set column widths
-    sheet.getColumn(1).width = 8;   // #
-    sheet.getColumn(2).width = 18;  // Item Code
-    sheet.getColumn(3).width = 45;  // Item Name
-    sheet.getColumn(4).width = 25;  // Category
-    sheet.getColumn(5).width = 12;  // UOM
-    sheet.getColumn(6).width = 14;  // Balance
-    sheet.getColumn(7).width = 12;  // Status
-    
-    // ✅ ADD DATA ROWS
-    let rowCounter = 1;
-    balances.forEach((record) => {
-      const item = record.item;
-      const balance = parseFloat(record.balance) || 0;
-      
-      // Get the item name
-      const itemName = item?.standardName || item?.name || 'Unnamed';
-      
-      const row = sheet.getRow(currentRow);
-      row.getCell(1).value = rowCounter;
-      row.getCell(2).value = item?.code || 'N/A';
-      row.getCell(3).value = itemName;
-      row.getCell(4).value = item?.category?.name || 'Uncategorized';
-      row.getCell(5).value = item?.uom?.code || 'PCS';
-      row.getCell(6).value = balance;
-      row.getCell(7).value = record.status || 'Active';
-      
-      // Color balance cell based on value
-      const balanceCell = row.getCell(6);
-      const minStock = parseFloat(record.minStockAlert) || 0;
-      
-      if (balance === 0) {
-        balanceCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFEE2E2' }
-        };
-        balanceCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-      } else if (balance <= minStock) {
-        balanceCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFEF3C7' }
-        };
-        balanceCell.font = { color: { argb: 'FFD97706' }, bold: true };
-      } else {
-        balanceCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFDCFCE7' }
-        };
-        balanceCell.font = { color: { argb: 'FF166534' }, bold: true };
-      }
-      
-      // Color status cell
-      const statusCell = row.getCell(7);
-      if (record.status === 'Active') {
-        statusCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFDCFCE7' }
-        };
-        statusCell.font = { color: { argb: 'FF166534' }, bold: true };
-      } else {
-        statusCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFEE2E2' }
-        };
-        statusCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-      }
-      
-      // Add borders to all cells
-      for (let col = 1; col <= 7; col++) {
-        row.getCell(col).border = {
-          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-          right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
-        };
-      }
-      
-      currentRow++;
-      rowCounter++;
-    });
-    
-    console.log(`✅ Added ${rowCounter - 1} data rows to Excel`);
-    
-    // Add auto-filter
-    const headerRowNumber = headerRow2.number;
-    sheet.autoFilter = {
-      from: `A${headerRowNumber}`,
-      to: `G${headerRowNumber}`
-    };
-    
-    // ============================================================
-    // GENERATE EXCEL FILE
-    // ============================================================
-    const buffer = await workbook.xlsx.writeBuffer();
-    
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=Store_Balance_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
-    res.send(buffer);
-    
+
   } catch (error) {
-    console.error("❌ Export error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || "Failed to export data" 
+    console.error('Get groups error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get groups',
     });
   }
 };
-// ============================================
-// 20. GET BALANCE HISTORY
-// ============================================
-exports.getBalanceHistory = async (req, res) => {
+
+/**
+ * Export cost report - OPTIMIZED
+ * GET /api/item-costs/export
+ */
+exports.exportCostReport = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { page = 1, limit = 20 } = req.query;
+    const { storeId, groupId } = req.query;
 
-    const balance = await StoreBalance.findByPk(id);
-    if (!balance) {
-      return res.status(404).json({
-        success: false,
-        error: "Balance not found",
-      });
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await StoreBalanceHistory.findAndCountAll({
-      where: { balanceId: parseInt(id) },
+    // Get all items
+    const items = await Item.findAll({
       include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-        {
-          model: Store,
-          as: "sourceStore",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Store,
-          as: "destinationStore",
-          attributes: ["id", "name"],
-        },
-        {
-          model: User,
-          as: "changedByUser",
-          attributes: ["userId", "username", "fullName"],
-        },
+        { model: UOM, as: 'uom' },
+        { model: Category, as: 'category' },
       ],
-      order: [["createdAt", "DESC"]],
-      limit: parseInt(limit),
-      offset: offset,
+      order: [['name', 'ASC']],
     });
 
-    const formattedHistory = rows.map((record) => ({
-      id: record.id,
-      balanceId: record.balanceId,
-      storeName: record.store?.name || null,
-      groupName: record.group?.name || null,
-      itemName: record.item?.standardName || record.item?.name || null,
-      itemCode: record.item?.code || null,
-      uomCode: record.item?.uom?.code || null,
-      previousBalance: parseFloat(record.previousBalance),
-      newBalance: parseFloat(record.newBalance),
-      changeAmount: parseFloat(record.changeAmount),
-      transactionType: record.transactionType,
-      sourceStore: record.sourceStore?.name || null,
-      destinationStore: record.destinationStore?.name || null,
-      referenceType: record.referenceType,
-      referenceId: record.referenceId,
-      changedBy:
-        record.changedByUser?.fullName ||
-        record.changedByUser?.username ||
-        null,
-      remark: record.remark,
-      createdAt: record.createdAt,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedHistory,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get balance history error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 21. GET SUMMARY BY STORE
-// ============================================
-exports.getSummaryByStore = async (req, res) => {
-  try {
-    const balances = await StoreBalance.findAll({
-      include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "conversionValue"],
-        },
-      ],
-    });
-
-    const summary = {};
-    balances.forEach((record) => {
-      const storeId = record.storeId;
-      if (!summary[storeId]) {
-        summary[storeId] = {
-          storeId: storeId,
-          storeName: record.store?.name || "Unknown",
-          storeCode: record.store?.code || null,
-          totalItems: 0,
-          totalBalance: 0,
-          totalBaseBalance: 0,
-          activeItems: 0,
-          inactiveItems: 0,
-          lowStockItems: 0,
-          zeroStockItems: 0,
-        };
-      }
-
-      const balance = parseFloat(record.balance);
-      summary[storeId].totalItems++;
-      summary[storeId].totalBalance += balance;
-
-      const conversionValue = parseFloat(record.item?.conversionValue) || 1;
-      summary[storeId].totalBaseBalance += balance * conversionValue;
-
-      if (record.status === "Active") {
-        summary[storeId].activeItems++;
-        if (balance === 0) {
-          summary[storeId].zeroStockItems++;
-        } else if (balance <= parseFloat(record.minStockAlert)) {
-          summary[storeId].lowStockItems++;
-        }
-      } else {
-        summary[storeId].inactiveItems++;
-      }
-    });
-
-    const formattedSummary = Object.values(summary).map((s) => ({
-      ...s,
-      totalBalance: s.totalBalance.toFixed(2),
-      totalBaseBalance: s.totalBaseBalance.toFixed(2),
-      lowStockPercentage:
-        s.activeItems > 0
-          ? ((s.lowStockItems / s.activeItems) * 100).toFixed(1)
-          : 0,
-      zeroStockPercentage:
-        s.activeItems > 0
-          ? ((s.zeroStockItems / s.activeItems) * 100).toFixed(1)
-          : 0,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedSummary,
-    });
-  } catch (error) {
-    console.error("Get summary by store error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 22. GET SUMMARY BY GROUP
-// ============================================
-exports.getSummaryByGroup = async (req, res) => {
-  try {
-    const balances = await StoreBalance.findAll({
-      include: [
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "conversionValue"],
-        },
-      ],
-    });
-
-    const summary = {};
-    balances.forEach((record) => {
-      const groupId = record.groupId;
-      if (!summary[groupId]) {
-        summary[groupId] = {
-          groupId: groupId,
-          groupName: record.group?.name || "Unknown",
-          groupCode: record.group?.code || null,
-          totalItems: 0,
-          totalBalance: 0,
-          totalBaseBalance: 0,
-          activeItems: 0,
-          inactiveItems: 0,
-          lowStockItems: 0,
-          zeroStockItems: 0,
-        };
-      }
-
-      const balance = parseFloat(record.balance);
-      summary[groupId].totalItems++;
-      summary[groupId].totalBalance += balance;
-
-      const conversionValue = parseFloat(record.item?.conversionValue) || 1;
-      summary[groupId].totalBaseBalance += balance * conversionValue;
-
-      if (record.status === "Active") {
-        summary[groupId].activeItems++;
-        if (balance === 0) {
-          summary[groupId].zeroStockItems++;
-        } else if (balance <= parseFloat(record.minStockAlert)) {
-          summary[groupId].lowStockItems++;
-        }
-      } else {
-        summary[groupId].inactiveItems++;
-      }
-    });
-
-    const formattedSummary = Object.values(summary).map((s) => ({
-      ...s,
-      totalBalance: s.totalBalance.toFixed(2),
-      totalBaseBalance: s.totalBaseBalance.toFixed(2),
-      lowStockPercentage:
-        s.activeItems > 0
-          ? ((s.lowStockItems / s.activeItems) * 100).toFixed(1)
-          : 0,
-      zeroStockPercentage:
-        s.activeItems > 0
-          ? ((s.zeroStockItems / s.activeItems) * 100).toFixed(1)
-          : 0,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedSummary,
-    });
-  } catch (error) {
-    console.error("Get summary by group error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 23. GET SUMMARY BY ITEM
-// ============================================
-exports.getSummaryByItem = async (req, res) => {
-  try {
-    const balances = await StoreBalance.findAll({
-      include: [
-        {
-          model: Item,
-          as: "item",
-          attributes: ["id", "code", "name", "standardName", "conversionValue"],
-          include: [
-            {
-              model: UOM,
-              as: "uom",
-              attributes: ["id", "code", "name"],
-            },
-          ],
-        },
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name"],
-        },
-      ],
-    });
-
-    const summary = {};
-    balances.forEach((record) => {
-      const itemId = record.itemId;
-      if (!summary[itemId]) {
-        summary[itemId] = {
-          itemId: itemId,
-          itemCode: record.item?.code || null,
-          itemName: record.item?.standardName || record.item?.name || null,
-          itemCommonName:
-            record.item?.standardName || record.item?.name || null,
-          uomCode: record.item?.uom?.code || null,
-          conversionValue: parseFloat(record.item?.conversionValue) || 1,
-          totalStores: 0,
-          totalBalance: 0,
-          totalBaseBalance: 0,
-          minBalance: Infinity,
-          maxBalance: -Infinity,
-          stores: [],
-        };
-      }
-
-      const balance = parseFloat(record.balance);
-      const baseBalance =
-        balance * (parseFloat(record.item?.conversionValue) || 1);
-
-      summary[itemId].totalStores++;
-      summary[itemId].totalBalance += balance;
-      summary[itemId].totalBaseBalance += baseBalance;
-
-      if (balance < summary[itemId].minBalance)
-        summary[itemId].minBalance = balance;
-      if (balance > summary[itemId].maxBalance)
-        summary[itemId].maxBalance = balance;
-
-      summary[itemId].stores.push({
-        storeId: record.storeId,
-        storeName: record.store?.name || null,
-        balance: balance,
-        baseBalance: baseBalance,
-        status: record.status,
-      });
-    });
-
-    const formattedSummary = Object.values(summary).map((s) => ({
-      ...s,
-      totalBalance: s.totalBalance.toFixed(2),
-      totalBaseBalance: s.totalBaseBalance.toFixed(2),
-      averageBalance: (s.totalBalance / s.totalStores).toFixed(2),
-      averageBaseBalance: (s.totalBaseBalance / s.totalStores).toFixed(2),
-      minBalance: s.minBalance === Infinity ? 0 : s.minBalance,
-      maxBalance: s.maxBalance === -Infinity ? 0 : s.maxBalance,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedSummary,
-    });
-  } catch (error) {
-    console.error("Get summary by item error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 24. GET ALL ITEMS
-// ============================================
-// balanceController.js - Fix getItems
-
-exports.getItems = async (req, res) => {
-  try {
-    const { page = 1, limit = 10000, search, categoryId, status } = req.query;
-
-    const whereClause = {};
-    const include = [
-      {
-        model: UOM,
-        as: "uom",
-        attributes: ["id", "code", "name"],
-      },
-      {
-        model: UOM,
-        as: "conversionUom",
-        attributes: ["id", "code", "name"],
-      },
-    ];
-
-    if (status) {
-      whereClause.status = status;
-    }
-
-    if (categoryId) {
-      whereClause.categoryId = parseInt(categoryId);
-    }
-
-    if (search && search.trim()) {
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: `%${search.trim()}%` } },
-        { code: { [Op.iLike]: `%${search.trim()}%` } },
-        { standardName: { [Op.iLike]: `%${search.trim()}%` } },
-        { brand: { [Op.iLike]: `%${search.trim()}%` } },
-        { barcode: { [Op.iLike]: `%${search.trim()}%` } },
-      ];
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await Item.findAndCountAll({
-      where: whereClause,
-      include: include,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["name", "ASC"]],
-      attributes: [
-        "itemId", // Use itemId here
-        "code",
-        "name",
-        "standardName",
-        "description",
-        "brand",
-        "model",
-        "barcode",
-        "categoryId",
-        "uomId",
-        "conversionUomId",
-        "conversionValue",
-        "costPrice",
-        "status",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    // Format response to include id for frontend
-    const formattedRows = rows.map((item) => ({
-      id: item.itemId, // Map itemId to id
-      itemId: item.itemId,
-      code: item.code,
-      name: item.name,
-      standardName: item.standardName,
-      description: item.description,
-      brand: item.brand,
-      model: item.model,
-      barcode: item.barcode,
-      categoryId: item.categoryId,
-      uomId: item.uomId,
-      conversionUomId: item.conversionUomId,
-      conversionValue: parseFloat(item.conversionValue) || 1,
-      costPrice: parseFloat(item.costPrice) || 0,
-      status: item.status,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      uom: item.uom,
-      conversionUom: item.conversionUom,
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: formattedRows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get items error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 25. GET ALL USERS
-// ============================================
-exports.getUsers = async (req, res) => {
-  try {
-    const { page = 1, limit = 100, search, role } = req.query;
-
-    const whereClause = {};
-
-    if (search && search.trim()) {
-      whereClause[Op.or] = [
-        { username: { [Op.iLike]: `%${search.trim()}%` } },
-        { fullName: { [Op.iLike]: `%${search.trim()}%` } },
-        { email: { [Op.iLike]: `%${search.trim()}%` } },
-      ];
-    }
-
-    if (role) {
-      whereClause.role = role;
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const { count, rows } = await User.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: offset,
-      order: [["fullName", "ASC"]],
-      attributes: [
-        "userId",
-        "username",
-        "email",
-        "fullName",
-        "role",
-        "isActive",
-        "lastLogin",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    res.status(200).json({
-      success: true,
-      data: rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("Get users error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// 26. GET USER BY ID
-// ============================================
-exports.getUserById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const user = await User.findByPk(id, {
-      attributes: [
-        "userId",
-        "username",
-        "email",
-        "fullName",
-        "role",
-        "isActive",
-        "lastLogin",
-        "createdAt",
-        "updatedAt",
-      ],
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: user,
-    });
-  } catch (error) {
-    console.error("Get user by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// GET STORE-GROUP RELATIONS
-// ============================================
-exports.getStoreGroupRelations = async (req, res) => {
-  try {
-    const { storeId } = req.query;
-
-    console.log(
-      "🔍 Fetching store-group relations, storeId:",
-      storeId || "all",
-    );
-
-    // If storeId is provided, get groups for that specific store
-    if (storeId) {
-      const store = await Store.findByPk(parseInt(storeId), {
-        include: [
-          {
-            model: Group,
-            as: "groups",
-            through: { attributes: [] },
-            attributes: ["groupId", "code", "name", "description", "status"],
-          },
-        ],
-      });
-
-      if (!store) {
-        return res.status(404).json({
-          success: false,
-          error: "Store not found",
-        });
-      }
-
-      const formattedGroups = store.groups.map((group) => ({
-        storeId: parseInt(storeId),
-        groupId: group.groupId,
-        groupName: group.name,
-        groupCode: group.code,
-        groupDescription: group.description,
-        groupStatus: group.status,
-      }));
-
-      console.log(
-        `✅ Found ${formattedGroups.length} groups for store ${storeId}`,
-      );
-
-      return res.status(200).json({
+    if (items.length === 0) {
+      return res.json({
         success: true,
-        data: formattedGroups,
+        data: [],
+        total: 0,
       });
     }
 
-    // If no storeId, get all store-group relations
-    const relations = await StoreGroupRelation.findAll({
+    // Get all balances in ONE query
+    const itemIds = items.map(i => i.itemId);
+    const balanceWhere = {
+      itemId: { [Op.in]: itemIds },
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
       include: [
-        {
-          model: Store,
-          as: "store",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["groupId", "code", "name", "description", "status"],
-        },
+        { model: Store, as: 'store', attributes: ['storeId', 'name'] },
+        { model: Group, as: 'group', attributes: ['id', 'name'] },
+        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
       ],
-      order: [["createdAt", "DESC"]],
     });
 
-    const formattedRelations = relations.map((relation) => ({
-      id: relation.id,
-      storeId: relation.storeId,
-      storeName: relation.store?.name || null,
-      storeCode: relation.store?.code || null,
-      groupId: relation.groupId,
-      groupName: relation.group?.name || null,
-      groupCode: relation.group?.code || null,
-      createdAt: relation.createdAt,
-      updatedAt: relation.updatedAt,
-    }));
+    // Group balances by item
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.itemId]) {
+        balancesByItem[balance.itemId] = [];
+      }
+      balancesByItem[balance.itemId].push(balance);
+    }
 
-    console.log(`✅ Found ${formattedRelations.length} store-group relations`);
+    // Get latest costs
+    const ItemCost = db.ItemCost;
+    let latestCosts = {};
+    if (ItemCost) {
+      const costRecords = await ItemCost.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        order: [['created_at', 'DESC']],
+      });
+      for (const cost of costRecords) {
+        if (!latestCosts[cost.itemId]) {
+          latestCosts[cost.itemId] = parseFloat(cost.newCost);
+        }
+      }
+    }
 
-    res.status(200).json({
+    // Process items
+    const reportData = [];
+    for (const item of items) {
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
+      
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
+        storeId || null,
+        groupId || null
+      );
+
+      if (costData.status !== 'Inactive' && costData.status !== 'Incomplete' && costData.status !== 'Error') {
+        reportData.push({
+          'Item Code': costData.itemCode,
+          'Item Name': costData.itemName,
+          'Standard Name': costData.itemStandardName || '',
+          'Category': costData.categoryName || '',
+          'Brand': costData.brand || '',
+          'Model': costData.model || '',
+          'Base UOM': costData.baseUOM,
+          'Unit Cost': costData.unitCost.toFixed(2),
+          'Total Quantity': costData.totalQty,
+          'Total Cost': costData.totalCost.toFixed(2),
+          'Status': costData.status,
+          'Status Message': costData.statusMessage || '',
+          'Excluded Stores': costData.excludedStores.join(', '),
+        });
+      }
+    }
+
+    res.json({
       success: true,
-      data: formattedRelations,
+      data: reportData,
+      total: reportData.length,
     });
+
   } catch (error) {
-    console.error("❌ Get store-group relations error:", error);
+    console.error('Export report error:', error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message || 'Failed to export report',
     });
   }
 };
 
-// balanceController.js - Add this method
-
-// ============================================
-// GET USER STORE AND GROUP ACCESS
-// ============================================
-exports.getUserStoreAndGroupAccess = async (req, res) => {
+/**
+ * Get cost summary - OPTIMIZED
+ * GET /api/item-costs/summary
+ */
+exports.getCostSummary = async (req, res) => {
   try {
-    const userId = req.user?.userId;
+    const { storeId, groupId } = req.query;
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: "User not authenticated",
+    const cacheKey = `summary_${storeId || 'all'}_${groupId || 'all'}`;
+    let summary = costCache.get(cacheKey);
+
+    if (summary) {
+      return res.json({
+        success: true,
+        data: summary,
       });
     }
 
-    // Call the utility function
-    const result = await getUserStoreAndGroup(userId);
+    // Get all items
+    const items = await Item.findAll();
 
-    if (!result.success) {
-      return res.status(404).json({
-        success: false,
-        error: result.error || "Failed to get user access",
-      });
-    }
-
-    console.log("✅ User access retrieved:", {
-      userId,
-      role: result.data.role,
-      isAdmin: result.data.isAdmin,
-      hasAssignments: result.data.hasAssignments,
-      storeId: result.data.assignedStoreId,
-      groupId: result.data.assignedGroupId,
-    });
-
-    res.status(200).json({
-      success: true,
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("❌ Get user store and group error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to get user access",
-    });
-  }
-};
-
-// ============================================
-// GET REQUEST GROUP PROCESSING STATUS
-// ============================================
-exports.getRequestGroupStatus = async (req, res) => {
-  try {
-    const { requestId } = req.params;
-
-    const request = await ItemRequest.findByPk(requestId);
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: "Request not found",
-      });
-    }
-
-    // Get all groups that have access to this store (asking or supplying)
-    const storeId = request.askingStoreId || request.supplyingStoreId;
-
-    // Get groups for this store via StoreGroupRelation
-    const storeWithGroups = await Store.findByPk(storeId, {
-      include: [
-        {
-          model: Group,
-          as: "groups",
-          through: { attributes: [] },
-          attributes: ["groupId", "name", "code", "description", "status"],
-        },
-      ],
-    });
-
-    const allGroups = storeWithGroups?.groups || [];
-
-    // Get processing records for this request
-    const processingRecords = await RequestGroupProcessing.findAll({
-      where: { requestId: parseInt(requestId) },
-      include: [
-        {
-          model: Group,
-          as: "group",
-          attributes: ["groupId", "name", "code"],
-        },
-        {
-          model: User,
-          as: "processedByUser",
-          attributes: ["userId", "username", "fullName"],
-        },
-      ],
-    });
-
-    // Build the response
-    const groupsWithStatus = allGroups.map((group) => {
-      const record = processingRecords.find((r) => r.groupId === group.groupId);
-      return {
-        groupId: group.groupId,
-        groupName: group.name,
-        groupCode: group.code,
-        status: record?.status || "pending",
-        processedAt: record?.processedAt || null,
-        processedBy: record?.processedByUser
-          ? {
-              userId: record.processedByUser.userId,
-              username: record.processedByUser.username,
-              fullName: record.processedByUser.fullName,
-            }
-          : null,
-        remark: record?.remark || null,
+    if (items.length === 0) {
+      summary = {
+        totalItems: 0,
+        totalValue: 0,
+        partialItems: 0,
+        storeCount: 0,
+        activeItems: 0,
+        incompleteItems: 0,
+        errorItems: 0,
       };
-    });
-
-    const processedCount = groupsWithStatus.filter(
-      (g) => g.status === "processed",
-    ).length;
-    const totalGroups = groupsWithStatus.length;
-    const isFullyProcessed = processedCount === totalGroups && totalGroups > 0;
-
-    res.status(200).json({
-      success: true,
-      data: {
-        requestId: parseInt(requestId),
-        requestCode: request.requestCode,
-        totalGroups: totalGroups,
-        processedCount: processedCount,
-        isFullyProcessed: isFullyProcessed,
-        groups: groupsWithStatus,
-      },
-    });
-  } catch (error) {
-    console.error("❌ Get request group status error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP
-// ============================================
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH AUTO-INITIALIZATION
-// ============================================
-exports.processRequestForGroup = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { requestId } = req.params;
-    const { groupId, storeId } = req.body;
-    const userId = req.user?.userId || 1;
-
-    console.log("📤 Processing request for group:", {
-      requestId,
-      groupId,
-      storeId,
-      userId,
-    });
-
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
-    if (!groupId || !storeId) {
-      return res.status(400).json({
-        success: false,
-        error: "Group ID and Store ID are required",
+      costCache.set(cacheKey, summary, 300);
+      return res.json({
+        success: true,
+        data: summary,
       });
     }
 
-    // ================================================================
-    // 2. VALIDATE GROUP EXISTS AND IS ACTIVE
-    // ================================================================
-    const group = await Group.findByPk(parseInt(groupId));
-    if (!group) {
-      return res.status(404).json({
-        success: false,
-        error: "Group not found",
-      });
-    }
+    // Get all balances
+    const itemIds = items.map(i => i.itemId);
+    const balanceWhere = {
+      itemId: { [Op.in]: itemIds },
+      status: 'Active',
+    };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
 
-    if (group.status !== "Active") {
-      return res.status(400).json({
-        success: false,
-        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
-      });
-    }
-
-    // ================================================================
-    // 3. VALIDATE STORE EXISTS AND IS ACTIVE
-    // ================================================================
-    const store = await Store.findByPk(parseInt(storeId));
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: "Store not found",
-      });
-    }
-
-    if (store.status !== "Active") {
-      return res.status(400).json({
-        success: false,
-        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
-      });
-    }
-
-    // ================================================================
-    // 4. CHECK IF GROUP HAS ACCESS TO THIS STORE
-    // ================================================================
-    const storeGroupRelation = await StoreGroupRelation.findOne({
-      where: {
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId),
-      },
-    });
-
-    if (!storeGroupRelation) {
-      return res.status(403).json({
-        success: false,
-        error: `Group "${group.name}" does not have access to store "${store.name}"`,
-      });
-    }
-
-    // ================================================================
-    // 5. CHECK IF REQUEST EXISTS AND IS APPROVED
-    // ================================================================
-    const request = await ItemRequest.findByPk(requestId, {
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
       include: [
-        {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              attributes: [
-                "id",
-                "code",
-                "name",
-                "standardName",
-                "conversionValue",
-                "status",
-              ],
-            },
-          ],
-        },
+        { model: Store, as: 'store', attributes: ['storeId'] },
+        { model: Group, as: 'group', attributes: ['id'] },
       ],
     });
 
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: "Request not found",
-      });
+    // Group balances by item
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.itemId]) {
+        balancesByItem[balance.itemId] = [];
+      }
+      balancesByItem[balance.itemId].push(balance);
     }
 
-    if (request.status !== "approved") {
-      return res.status(400).json({
-        success: false,
-        error: `Request is ${request.status}. Only approved requests can be processed.`,
+    // Get latest costs
+    const ItemCost = db.ItemCost;
+    let latestCosts = {};
+    if (ItemCost) {
+      const costRecords = await ItemCost.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        order: [['created_at', 'DESC']],
       });
+      for (const cost of costRecords) {
+        if (!latestCosts[cost.itemId]) {
+          latestCosts[cost.itemId] = parseFloat(cost.newCost);
+        }
+      }
     }
 
-    if (request.status === "finalized") {
-      return res.status(400).json({
-        success: false,
-        error: "This request has already been finalized",
-      });
-    }
+    let totalItems = 0;
+    let totalValue = 0;
+    let partialItems = 0;
+    let incompleteItems = 0;
+    let errorItems = 0;
+    const stores = new Set();
 
-    // ================================================================
-    // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-    // ================================================================
-    const existingRecord = await RequestGroupProcessing.findOne({
-      where: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId),
-      },
-    });
+    for (const item of items) {
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
+      
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
+        storeId || null,
+        groupId || null
+      );
 
-    if (existingRecord && existingRecord.status === "processed") {
-      return res.status(400).json({
-        success: false,
-        error: "This group has already processed this request",
-      });
-    }
-
-    if (existingRecord && existingRecord.status === "skipped") {
-      return res.status(400).json({
-        success: false,
-        error:
-          "This group has been skipped for this request by an administrator",
-      });
-    }
-
-    // ================================================================
-    // 7. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-    // ================================================================
-    if (
-      request.askingStoreId !== parseInt(storeId) &&
-      request.supplyingStoreId !== parseInt(storeId)
-    ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "This store is neither the asking nor supplying store for this request",
-      });
-    }
-
-    // ================================================================
-    // 8. 🔥 CHECK AND AUTO-INITIALIZE MISSING ITEMS
-    // ================================================================
-    const missingItems = [];
-    const inactiveItems = [];
-    const initializedItems = [];
-    const autoInitializedItems = [];
-
-    for (const item of request.items) {
-      // Check if item exists and is active
-      if (!item.item) {
-        missingItems.push({
-          itemId: item.itemId,
-          itemCode: "N/A",
-          itemName: "Unknown Item (deleted)",
-          reason: "Item not found in database",
-        });
+      if (costData.status === 'Incomplete') {
+        incompleteItems++;
+        continue;
+      }
+      
+      if (costData.status === 'Error') {
+        errorItems++;
         continue;
       }
 
-      if (item.item.status !== "Active") {
-        inactiveItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || "N/A",
-          itemName: item.item.standardName || item.item.name || "Unknown Item",
-          reason: `Item status is ${item.item.status}`,
-        });
-        continue;
-      }
-
-      // Check if balance exists for this store, group, and item
-      let balance = await StoreBalance.findOne({
-        where: {
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          itemId: item.itemId,
-        },
-      });
-
-      if (!balance) {
-        // 🔥 AUTO-INITIALIZE THE BALANCE WITH 0
-        console.log(
-          `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
-        );
-
-        balance = await StoreBalance.create(
-          {
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId,
-            balance: 0, // Start with 0 balance
-            minStockAlert: 0,
-            status: "Active",
-          },
-          { transaction },
-        );
-
-        // Create history record for initialization
-        await StoreBalanceHistory.create(
-          {
-            balanceId: balance.id,
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId,
-            previousBalance: 0,
-            newBalance: 0,
-            changeAmount: 0,
-            transactionType: "Stock In",
-            referenceType: "auto_initialization",
-            referenceId: request.requestId,
-            changedBy: userId,
-            remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`,
-          },
-          { transaction },
-        );
-
-        autoInitializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || "N/A",
-          itemName: item.item.standardName || item.item.name || "Unknown Item",
-          initializedBalance: 0,
-        });
-
-        initializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || "N/A",
-          itemName: item.item.standardName || item.item.name || "Unknown Item",
-          currentBalance: 0,
-          minStock: 0,
-          wasAutoInitialized: true,
-        });
-      } else if (balance.status !== "Active") {
-        inactiveItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || "N/A",
-          itemName: item.item.standardName || item.item.name || "Unknown Item",
-          currentBalance: parseFloat(balance.balance),
-          reason: `Balance status is ${balance.status}`,
-        });
-      } else {
-        initializedItems.push({
-          itemId: item.itemId,
-          itemCode: item.item.code || "N/A",
-          itemName: item.item.standardName || item.item.name || "Unknown Item",
-          currentBalance: parseFloat(balance.balance),
-          minStock: parseFloat(balance.minStockAlert) || 0,
-          wasAutoInitialized: false,
-        });
-      }
-    }
-
-    // If there are inactive items (cannot auto-fix), halt the process
-    if (inactiveItems.length > 0) {
-      let errorMessage = `Cannot process request. The following items are inactive:\n\n`;
-      inactiveItems.forEach((item) => {
-        errorMessage += `  - ${item.itemCode}: ${item.itemName} (${item.reason})\n`;
-      });
-      errorMessage += `\n💡 Please activate these items before processing.`;
-
-      return res.status(400).json({
-        success: false,
-        error: "Inactive items found",
-        message: errorMessage,
-        data: {
-          autoInitializedItems: autoInitializedItems,
-          inactiveItems: inactiveItems,
-          initializedItems: initializedItems,
-          totalItems: request.items.length,
-          initializedCount: initializedItems.length,
-          autoInitializedCount: autoInitializedItems.length,
-          inactiveCount: inactiveItems.length,
-          storeId: parseInt(storeId),
-          groupId: parseInt(groupId),
-          storeName: store.name,
-          groupName: group.name,
-        },
-      });
-    }
-
-    // Log auto-initialized items
-    if (autoInitializedItems.length > 0) {
-      console.log(
-        `✅ Auto-initialized ${autoInitializedItems.length} items for group ${group.name}:`,
-      );
-      autoInitializedItems.forEach((item) => {
-        console.log(`   - ${item.itemCode}: ${item.itemName} (Balance: 0)`);
-      });
-    }
-
-    console.log(
-      `✅ All ${request.items.length} items are ready for processing (${autoInitializedItems.length} auto-initialized)`,
-    );
-
-    // ================================================================
-    // 9. DETERMINE ACTION (Stock In or Stock Out)
-    // ================================================================
-    let action, transactionType, changeMultiplier, actionLabel;
-    if (request.askingStoreId === parseInt(storeId)) {
-      action = "STOCK_IN";
-      transactionType = "Stock In";
-      changeMultiplier = 1;
-      actionLabel = "RECEIVED";
-    } else if (request.supplyingStoreId === parseInt(storeId)) {
-      action = "STOCK_OUT";
-      transactionType = "Stock Out";
-      changeMultiplier = -1;
-      actionLabel = "SENT";
-    } else {
-      return res.status(400).json({
-        success: false,
-        error:
-          "This store is neither the asking nor supplying store for this request",
-      });
-    }
-
-    console.log(`📋 Action: ${action} for request ${request.requestCode}`);
-
-    // ================================================================
-    // 10. PROCESS EACH ITEM IN THE REQUEST
-    // ================================================================
-    const results = [];
-    const errors = [];
-
-    for (const item of request.items) {
-      try {
-        // Find the balance for this store, group, and item
-        const balance = await StoreBalance.findOne({
-          where: {
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId,
-          },
-        });
-
-        if (!balance) {
-          errors.push(
-            `Item "${item.item?.name || item.itemId}" not found in balance (should have been auto-initialized)`,
-          );
-          continue;
+      if (costData.status !== 'Inactive') {
+        totalItems++;
+        totalValue += costData.totalCost;
+        if (costData.status === 'Partial') {
+          partialItems++;
         }
-
-        const previousBalance = parseFloat(balance.balance);
-        const quantity = parseFloat(item.quantity);
-        const changeAmount = quantity * changeMultiplier;
-        const newBalance = previousBalance + changeAmount;
-
-        // Check if we have enough stock for Stock Out
-        if (action === "STOCK_OUT" && newBalance < 0) {
-          errors.push(
-            `Insufficient balance for "${item.item?.name || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
-          );
-          continue;
-        }
-
-        // Update the balance
-        balance.balance = newBalance;
-        await balance.save({ transaction });
-
-        // Create history record
-        await StoreBalanceHistory.create(
-          {
-            balanceId: balance.id,
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId,
-            previousBalance: previousBalance,
-            newBalance: newBalance,
-            changeAmount: Math.abs(changeAmount),
-            transactionType: transactionType,
-            sourceStoreId:
-              action === "STOCK_IN" ? request.supplyingStoreId : null,
-            destinationStoreId:
-              action === "STOCK_OUT" ? request.askingStoreId : null,
-            referenceType: "request",
-            referenceId: request.requestId,
-            changedBy: userId,
-            remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
-          },
-          { transaction },
-        );
-
-        results.push({
-          itemId: item.itemId,
-          itemName: item.item?.standardName || item.item?.name || "Unknown",
-          itemCode: item.item?.code || "N/A",
-          previousBalance,
-          newBalance,
-          changeAmount: Math.abs(changeAmount),
-          action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-          wasAutoInitialized: autoInitializedItems.some(
-            (ai) => ai.itemId === item.itemId,
-          ),
-        });
-
-        console.log(
-          `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`,
-        );
-      } catch (itemError) {
-        console.error(`❌ Error processing item ${item.itemId}:`, itemError);
-        errors.push(
-          `Error processing item ${item.itemId}: ${itemError.message}`,
-        );
+        costData.storeBreakdown.forEach(s => stores.add(s.storeId));
       }
     }
 
-    // ================================================================
-    // 11. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-    // ================================================================
-    const remark =
-      results.length > 0
-        ? `Processed ${results.length} items (${results.map((r) => `${r.itemCode}: ${r.action} ${r.changeAmount}${r.wasAutoInitialized ? " [auto-initialized]" : ""}`).join(", ")})`
-        : "No items processed";
-
-    if (existingRecord) {
-      existingRecord.status = "processed";
-      existingRecord.processedAt = new Date();
-      existingRecord.processedBy = userId;
-      existingRecord.remark = remark;
-      await existingRecord.save({ transaction });
-    } else {
-      await RequestGroupProcessing.create(
-        {
-          requestId: parseInt(requestId),
-          groupId: parseInt(groupId),
-          storeId: parseInt(storeId),
-          processedAt: new Date(),
-          status: "processed",
-          processedBy: userId,
-          remark: remark,
-        },
-        { transaction },
-      );
-    }
-
-    // ================================================================
-    // 12. CHECK IF ALL GROUPS HAVE PROCESSED THIS REQUEST
-    // ================================================================
-    const storeWithGroups = await Store.findByPk(parseInt(storeId), {
-      include: [
-        {
-          model: Group,
-          as: "groups",
-          through: { attributes: [] },
-          attributes: ["groupId", "name", "status"],
-          where: { status: "Active" },
-        },
-      ],
-    });
-
-    const allGroupIds = storeWithGroups?.groups?.map((g) => g.groupId) || [];
-    const processedRecords = await RequestGroupProcessing.findAll({
-      where: {
-        requestId: parseInt(requestId),
-        status: "processed",
-      },
-    });
-    const processedGroupIds = processedRecords.map((r) => r.groupId);
-
-    const allProcessed = allGroupIds.every((g) =>
-      processedGroupIds.includes(g),
-    );
-    const remainingGroups = allGroupIds.filter(
-      (g) => !processedGroupIds.includes(g),
-    );
-
-    if (allProcessed && allGroupIds.length > 0) {
-      request.status = "finalized";
-      request.finalizedAt = new Date();
-      await request.save({ transaction });
-      console.log(
-        `✅ Request ${request.requestCode} fully processed and finalized by all ${allGroupIds.length} groups`,
-      );
-    }
-
-    await transaction.commit();
-
-    // ================================================================
-    // 13. PREPARE RESPONSE
-    // ================================================================
-    const responseData = {
-      requestId: parseInt(requestId),
-      requestCode: request.requestCode,
-      groupId: parseInt(groupId),
-      groupName: group.name,
-      storeId: parseInt(storeId),
-      storeName: store.name,
-      action: action,
-      actionLabel: actionLabel,
-      autoInitializedItems: autoInitializedItems,
-      processedItems: results,
-      errors: errors,
-      isFullyProcessed: allProcessed && allGroupIds.length > 0,
-      totalGroups: allGroupIds.length,
-      processedGroups: processedGroupIds.length,
-      remainingGroups: remainingGroups,
-      remainingGroupNames: remainingGroups.map((g) => {
-        const grp = storeWithGroups?.groups?.find((g2) => g2.groupId === g);
-        return grp ? grp.name : g;
-      }),
+    summary = {
+      totalItems,
+      totalValue,
+      partialItems,
+      storeCount: stores.size,
+      activeItems: totalItems - partialItems,
+      incompleteItems,
+      errorItems,
     };
 
-    let statusMessage = `Request ${request.requestCode} processed for group ${group.name}`;
-    if (autoInitializedItems.length > 0) {
-      statusMessage += ` (${autoInitializedItems.length} item(s) auto-initialized)`;
-    }
-    if (responseData.isFullyProcessed) {
-      statusMessage += ` ✅ FULLY PROCESSED - All ${allGroupIds.length} groups have processed this request`;
-    } else if (remainingGroups.length > 0) {
-      statusMessage += ` ⏳ ${remainingGroups.length} group(s) remaining: ${responseData.remainingGroupNames.join(", ")}`;
-    }
+    costCache.set(cacheKey, summary, 300);
 
-    res.status(200).json({
+    res.json({
       success: true,
-      message: statusMessage,
-      data: responseData,
+      data: summary,
     });
+
   } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Process request for group error:", error);
+    console.error('Get cost summary error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to process request for group",
+      error: error.message || 'Failed to get cost summary',
     });
   }
 };
 
-// ============================================
-// GET ALL REQUEST PROCESSING STATUS
-// ============================================
-exports.getAllRequestProcessingStatus = async (req, res) => {
+/**
+ * Clear cache
+ * POST /api/item-costs/clear-cache
+ */
+exports.clearCache = async (req, res) => {
   try {
-    const { storeId } = req.query;
-
-    const whereClause = { status: "approved" };
-    if (storeId) {
-      whereClause[Op.or] = [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) },
-      ];
-    }
-
-    const requests = await ItemRequest.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: RequestGroupProcessing,
-          as: "groupProcessing",
-          include: [
-            {
-              model: Group,
-              as: "group",
-              attributes: ["groupId", "name", "code"],
-            },
-          ],
-        },
-        {
-          model: Store,
-          as: "askingStore",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-          attributes: ["id", "name", "code"],
-        },
-      ],
-    });
-
-    const result = requests.map((request) => {
-      const processedGroups =
-        request.groupProcessing?.filter((g) => g.status === "processed") || [];
-
-      // Get all groups for this store
-      const storeId = request.askingStoreId || request.supplyingStoreId;
-
-      return {
-        requestId: request.requestId,
-        requestCode: request.requestCode,
-        askingStoreId: request.askingStoreId,
-        supplyingStoreId: request.supplyingStoreId,
-        status: request.status,
-        processedGroups: processedGroups.map((g) => ({
-          groupId: g.groupId,
-          groupName: g.group?.name || null,
-          processedAt: g.processedAt,
-        })),
-        processedCount: processedGroups.length,
-        // Note: totalGroups would need to be calculated from store-group relations
-        // This will be done in the frontend or with additional query
-      };
-    });
-
-    res.status(200).json({
+    costCache.flushAll();
+    res.json({
       success: true,
-      data: result,
+      message: 'Cache cleared successfully',
     });
   } catch (error) {
-    console.error("❌ Get all request processing status error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================
-// SKIP GROUP PROCESSING (Admin Only)
-// ============================================
-exports.skipGroupProcessing = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { requestId } = req.params;
-    const { groupId, remark } = req.body;
-    const userId = req.user?.userId || 1;
-
-    // Check if user is admin
-    const user = await User.findByPk(userId);
-    if (!user || (user.role !== "admin" && user.role !== "Admin")) {
-      return res.status(403).json({
-        success: false,
-        error: "Only admins can skip group processing",
-      });
-    }
-
-    const request = await ItemRequest.findByPk(requestId);
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: "Request not found",
-      });
-    }
-
-    // Create or update the group processing record
-    const [record, created] = await RequestGroupProcessing.findOrCreate({
-      where: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId),
-      },
-      defaults: {
-        requestId: parseInt(requestId),
-        groupId: parseInt(groupId),
-        storeId: request.askingStoreId || request.supplyingStoreId,
-        status: "skipped",
-        processedAt: new Date(),
-        processedBy: userId,
-        remark: remark || "Skipped by admin",
-      },
-      transaction,
-    });
-
-    if (!created) {
-      record.status = "skipped";
-      record.processedAt = new Date();
-      record.processedBy = userId;
-      record.remark = remark || "Skipped by admin";
-      await record.save({ transaction });
-    }
-
-    await transaction.commit();
-
-    res.status(200).json({
-      success: true,
-      message: `Group ${groupId} skipped for request ${request.requestCode}`,
-      data: record,
-    });
-  } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Skip group processing error:", error);
+    console.error('Clear cache error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to skip group processing",
+      error: error.message || 'Failed to clear cache',
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

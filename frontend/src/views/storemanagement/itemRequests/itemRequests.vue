@@ -18,13 +18,13 @@
             @input="onSearchChange"
           />
         </div>
-        <button 
-          v-if="userIsAskingStore" 
-          class="btn-add" 
-          @click="openCreateModal"
-        >
-          ➕ New Request
-        </button>
+      <button 
+  v-if="userIsAdmin || userIsAskingStore" 
+  class="btn-add" 
+  @click="openCreateModal"
+>
+  ➕ New Request
+</button>
       </div>
     </div>
 
@@ -1127,14 +1127,17 @@ const isUserSupplyingStore = (req: ItemRequest): boolean => {
 
 const shouldShowRequest = (req: ItemRequest): boolean => {
   if (userIsAdmin.value) return true;
+  
+  // Asking store sees ALL statuses (pending, approved, finalized)
   if (isUserAskingStore(req)) return true;
+  
+  // Supplying store ONLY sees approved and finalized requests
   if (isUserSupplyingStore(req)) {
-    // Supplying store sees only approved requests (or skip stores)
-    return req.status === 'approved';
+    return req.status === 'approved' || req.status === 'finalized';
   }
+  
   return false;
 };
-
 /**
  * Check if user can edit a request
  * - Only asking store can edit

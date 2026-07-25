@@ -160,26 +160,45 @@
                         <!-- ============================================================ -->
 <!-- CONVERSION DISPLAY - UPDATED                                -->
 <!-- ============================================================ -->
+
 <div class="detail-card">
   <h4>💰 Pricing & Unit</h4>
   <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom || '-' }}</span></div>
   
-  <!-- ✅ Conversion Display - FIXED -->
   <div>
     <span>Conversion</span>
-    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item),
+        'has-conversion': hasConversion(item) && !isSelfConversion(item)
+      }"
+    >
       {{ getConversionDisplay(item) }}
     </span>
   </div>
   <div>
     <span>Conversion Unit</span>
-    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item)
+      }"
+    >
       {{ getConversionUnitDisplay(item) }}
     </span>
   </div>
   <div>
     <span>Conversion Value</span>
-    <span class="value" :class="{ 'no-conversion': !hasConversion(item) }">
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item)
+      }"
+    >
       {{ getConversionValueDisplay(item) }}
     </span>
   </div>
@@ -1039,6 +1058,13 @@ const getUOMCode = (id) => {
 // HELPER METHODS - FIXED CONVERSION DISPLAY
 // ================================================================
 
+// ================================================================
+// HELPER METHODS - FIXED CONVERSION DISPLAY
+// ================================================================
+// ================================================================
+// HELPER METHODS - CLEAN CONVERSION DISPLAY
+// ================================================================
+
 const getConversionDisplay = (item) => {
   if (!item) return 'No conversion';
   
@@ -1046,12 +1072,18 @@ const getConversionDisplay = (item) => {
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
   
-  // ✅ Only show conversion if there's a conversion unit AND value > 0 AND different from base UOM
-  if (convUnit && convValue > 0 && convUnit !== uomCode) {
-    return `${convValue} ${convUnit} = 1 ${uomCode}`;
+  // No conversion unit or value is 0
+  if (!convUnit || convValue === 0) {
+    return 'No conversion';
   }
   
-  return 'No conversion';
+  // Self-conversion (base unit)
+  if (convUnit === uomCode) {
+    return 'Base Unit';
+  }
+  
+  // Actual conversion to different unit
+  return `${convValue} ${convUnit} = 1 ${uomCode}`;
 };
 
 const getConversionUnitDisplay = (item) => {
@@ -1061,12 +1093,11 @@ const getConversionUnitDisplay = (item) => {
   const convValue = parseFloat(item.conversionValue) || 0;
   const uomCode = item.uom?.code || item.uom || '';
   
-  // ✅ Only show conversion unit if it exists, has value > 0, and is different from base UOM
-  if (convUnit && convValue > 0 && convUnit !== uomCode) {
-    return convUnit;
+  if (!convUnit || convValue === 0) {
+    return '-';
   }
   
-  return '-';
+  return convUnit === uomCode ? `${convUnit}` : convUnit;
 };
 
 const getConversionValueDisplay = (item) => {
@@ -1074,14 +1105,12 @@ const getConversionValueDisplay = (item) => {
   
   const convValue = parseFloat(item.conversionValue) || 0;
   const convUnit = item.conversionUom?.code || item.conversionUom;
-  const uomCode = item.uom?.code || item.uom || '';
   
-  // ✅ Only show conversion value if conversion unit exists and is different from base UOM
-  if (convUnit && convValue > 0 && convUnit !== uomCode) {
-    return convValue;
+  if (!convUnit) {
+    return '0';
   }
   
-  return '0';
+  return convValue;
 };
 
 const hasConversion = (item) => {
@@ -1089,11 +1118,19 @@ const hasConversion = (item) => {
   
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-  const uomCode = item.uom?.code || item.uom || '';
   
-  return !!(convUnit && convValue > 0 && convUnit !== uomCode);
+  return !!(convUnit && convValue > 0);
 };
 
+const isSelfConversion = (item) => {
+  if (!item) return false;
+  
+  const uomCode = item.uom?.code || item.uom || '';
+  const convUnit = item.conversionUom?.code || item.conversionUom;
+  const convValue = parseFloat(item.conversionValue) || 0;
+  
+  return !!(convUnit && convValue > 0 && convUnit === uomCode);
+};
 
 const getNewStatus = (currentStatus) => {
   return currentStatus === 'Active' ? 'Inactive' : 'Active';
@@ -1318,11 +1355,36 @@ const downloadTemplate = () => {
 };
 
 // ================================================================
-// SAVE ITEM
+// SAVE ITEM - COMPLETE FIXED VERSION
 // ================================================================
+
 const saveItem = async () => {
   savingItem.value = true;
   try {
+    // 🔥 Handle conversion properly
+    let conversionUomId = itemForm.value.conversionUomId || null;
+    let conversionValue = parseFloat(itemForm.value.conversionValue) || 0;
+
+    // If conversionUomId is empty string or null, set to null
+    if (!conversionUomId || conversionUomId === '') {
+      conversionUomId = null;
+      conversionValue = 0;
+    } else {
+      const uomIdInt = parseInt(itemForm.value.uomId);
+      const convUomIdInt = parseInt(conversionUomId);
+      
+      // If conversion UOM is same as base UOM, set value to 1
+      if (convUomIdInt === uomIdInt) {
+        conversionValue = 1;
+      }
+    }
+
+    console.log('📤 Saving with conversion:', {
+      uomId: itemForm.value.uomId,
+      conversionUomId: conversionUomId,
+      conversionValue: conversionValue,
+    });
+
     const formData = {
       name: itemForm.value.name,
       standardName: itemForm.value.standardName || null,
@@ -1332,8 +1394,8 @@ const saveItem = async () => {
       barcode: itemForm.value.barcode || null,
       categoryId: itemForm.value.categoryId ? parseInt(itemForm.value.categoryId) : null,
       uomId: parseInt(itemForm.value.uomId),
-      conversionUomId: itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null,
-      conversionValue: itemForm.value.conversionValue || 0,
+      conversionUomId: conversionUomId,
+      conversionValue: conversionValue,
       costPrice: itemForm.value.costPrice || 0,
       specType: specType.value,
     };
@@ -1352,28 +1414,40 @@ const saveItem = async () => {
     }
 
     let response;
-    const itemId = editingItem.value?.itemId;
+    const itemId = editingItem.value?.itemId || editingItem.value?.id;
 
     if (editingItem.value) {
+      // 🔥 UPDATE existing item
+      console.log('🔄 Updating item:', itemId, formData);
       response = await itemService.updateItem(itemId, formData);
+      
       if (response.success) {
         showToastMessage('Item updated successfully!', 'success');
+        
+        // Upload PDF if exists
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
         }
+        
         await loadItems();
         closeItemModal();
       } else {
         showToastMessage(response.error || 'Failed to update item', 'error');
       }
     } else {
+      // 🔥 CREATE new item
+      console.log('📤 Creating new item:', formData);
       response = await itemService.createItem(formData);
+      
       if (response.success) {
         showToastMessage('Item added successfully!', 'success');
         const newItemId = response.data.itemId || response.data.id;
+        
+        // Upload PDF if exists
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(newItemId, itemForm.value.specPdfFile);
         }
+        
         await loadItems();
         closeItemModal();
       } else {
@@ -1382,12 +1456,11 @@ const saveItem = async () => {
     }
   } catch (error) {
     console.error('Save item error:', error);
-    showToastMessage(error.response?.data?.error || 'Failed to save item', 'error');
+    showToastMessage(error.response?.data?.error || error.message || 'Failed to save item', 'error');
   } finally {
     savingItem.value = false;
   }
 };
-
 const uploadSpecificationFile = async (itemId, file) => {
   try {
     const response = await itemService.uploadSpecification(itemId, file);
@@ -1794,10 +1867,14 @@ const processImport = async () => {
 
 const onUOMChange = () => {
   if (itemForm.value.uomId) {
-    const selectedUOM = uomList.value.find(u => (u.uomId || u.id) === parseInt(itemForm.value.uomId));
-    if (selectedUOM && !itemForm.value.conversionUomId) {
-      itemForm.value.conversionUomId = itemForm.value.uomId;
-      itemForm.value.conversionValue = 1;
+    // Reset conversion when UOM changes
+    const uomId = parseInt(itemForm.value.uomId);
+    const currentConvUomId = itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null;
+    
+    // If conversion UOM is same as new UOM or not set, clear it
+    if (!currentConvUomId || currentConvUomId === uomId) {
+      itemForm.value.conversionUomId = null;
+      itemForm.value.conversionValue = 0;
     }
   }
 };
@@ -1990,6 +2067,24 @@ onMounted(async () => {
 /* ================================================================
    SECTION CARD
    ================================================================ */
+
+/* Add to your styles */
+.detail-card .value.base-unit {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.detail-card .value.has-conversion {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.detail-card .value.no-conversion {
+  color: #ef4444;
+}
+
+
+
 .section-card {
   background: white;
   border-radius: 16px;

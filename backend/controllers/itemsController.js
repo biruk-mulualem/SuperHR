@@ -1,10 +1,12 @@
 // controllers/itemsController.js
-'use strict';
+"use strict";
 
-const { Item, Category, UOM ,sequelize } = require('../models');
-const { Op } = require('sequelize');
-const fs = require('fs');
-const path = require('path');
+const { Item, Category, UOM, sequelize } = require("../models");
+const { Op } = require("sequelize");
+const fs = require("fs");
+const path = require("path");
+const ExcelJS = require("exceljs");
+
 // ================================================================
 // ITEM CRUD OPERATIONS
 // ================================================================
@@ -18,12 +20,12 @@ exports.getAllItems = async (req, res) => {
     const {
       page = 1,
       limit = 10,
-      search = '',
-      categoryId = '',
-      status = '',
-      uomId = '',
-      sortBy = 'createdAt',
-      sortOrder = 'DESC',
+      search = "",
+      categoryId = "",
+      status = "",
+      uomId = "",
+      sortBy = "createdAt",
+      sortOrder = "DESC",
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -61,18 +63,18 @@ exports.getAllItems = async (req, res) => {
       include: [
         {
           model: Category,
-          as: 'category',
-          attributes: ['categoryId', 'name', 'status'],
+          as: "category",
+          attributes: ["categoryId", "name", "status"],
         },
         {
           model: UOM,
-          as: 'uom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "uom",
+          attributes: ["uomId", "code", "name"],
         },
         {
           model: UOM,
-          as: 'conversionUom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "conversionUom",
+          attributes: ["uomId", "code", "name"],
         },
       ],
       order: [[sortBy, sortOrder]],
@@ -93,10 +95,10 @@ exports.getAllItems = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in getAllItems:', error);
+    console.error("Error in getAllItems:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch items',
+      message: "Failed to fetch items",
       error: error.message,
     });
   }
@@ -114,18 +116,18 @@ exports.getItemById = async (req, res) => {
       include: [
         {
           model: Category,
-          as: 'category',
-          attributes: ['categoryId', 'name', 'status'],
+          as: "category",
+          attributes: ["categoryId", "name", "status"],
         },
         {
           model: UOM,
-          as: 'uom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "uom",
+          attributes: ["uomId", "code", "name"],
         },
         {
           model: UOM,
-          as: 'conversionUom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "conversionUom",
+          attributes: ["uomId", "code", "name"],
         },
       ],
     });
@@ -133,7 +135,7 @@ exports.getItemById = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
@@ -142,10 +144,10 @@ exports.getItemById = async (req, res) => {
       data: item.getFullInfo ? item.getFullInfo() : item,
     });
   } catch (error) {
-    console.error('Error in getItemById:', error);
+    console.error("Error in getItemById:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch item',
+      message: "Failed to fetch item",
       error: error.message,
     });
   }
@@ -164,18 +166,18 @@ exports.getItemByCode = async (req, res) => {
       include: [
         {
           model: Category,
-          as: 'category',
-          attributes: ['categoryId', 'name', 'status'],
+          as: "category",
+          attributes: ["categoryId", "name", "status"],
         },
         {
           model: UOM,
-          as: 'uom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "uom",
+          attributes: ["uomId", "code", "name"],
         },
         {
           model: UOM,
-          as: 'conversionUom',
-          attributes: ['uomId', 'code', 'name'],
+          as: "conversionUom",
+          attributes: ["uomId", "code", "name"],
         },
       ],
     });
@@ -183,7 +185,7 @@ exports.getItemByCode = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
@@ -192,26 +194,18 @@ exports.getItemByCode = async (req, res) => {
       data: item,
     });
   } catch (error) {
-    console.error('Error in getItemByCode:', error);
+    console.error("Error in getItemByCode:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch item',
+      message: "Failed to fetch item",
       error: error.message,
     });
   }
 };
 
-/**
- * Create a new item
- * POST /api/items
- */
-// controllers/itemsController.js - FIXED createItem
-
-/**
- * Create a new item
- * POST /api/items
- */
-// controllers/itemsController.js - FIXED createItem
+// ================================================================
+// 🔥 FIXED: CREATE ITEM - Handles self-conversion properly
+// ================================================================
 
 /**
  * Create a new item
@@ -236,20 +230,20 @@ exports.createItem = async (req, res) => {
       specPdfName,
       specPdfSize,
       specPdfUrl,
-    } = req.body; // ✅ Use 'let' instead of 'const' for variables that might be reassigned
+    } = req.body;
 
     // Validation
     if (!name) {
       return res.status(400).json({
         success: false,
-        message: 'Item name is required',
+        message: "Item name is required",
       });
     }
 
     if (!uomId) {
       return res.status(400).json({
         success: false,
-        message: 'UOM is required',
+        message: "UOM is required",
       });
     }
 
@@ -259,7 +253,7 @@ exports.createItem = async (req, res) => {
       if (existingItem) {
         return res.status(400).json({
           success: false,
-          message: 'Item with this barcode already exists',
+          message: "Item with this barcode already exists",
         });
       }
     }
@@ -270,7 +264,7 @@ exports.createItem = async (req, res) => {
       if (!category) {
         return res.status(400).json({
           success: false,
-          message: 'Category not found',
+          message: "Category not found",
         });
       }
     }
@@ -280,30 +274,40 @@ exports.createItem = async (req, res) => {
     if (!uom) {
       return res.status(400).json({
         success: false,
-        message: 'UOM not found',
+        message: "UOM not found",
       });
     }
 
-    // ✅ FIX: Check if conversion UOM exists - ONLY if provided AND different from base UOM
-    let finalConversionUomId = null; // ✅ Use a new variable
-    let finalConversionValue = conversionValue || 0;
+    // 🔥 FIX: Handle conversion properly
+    let finalConversionUomId = null;
+    let finalConversionValue = 0;
 
+    // If conversionUomId is provided
     if (conversionUomId) {
-      // ✅ Only validate if conversionUomId is provided and different from uomId
-      if (parseInt(conversionUomId) !== parseInt(uomId)) {
-        const conversionUom = await UOM.findByPk(conversionUomId);
+      const uomIdInt = parseInt(uomId);
+      const convUomIdInt = parseInt(conversionUomId);
+      const convValue = parseFloat(conversionValue) || 0;
+
+      // ✅ If conversion UOM is same as base UOM, treat as self-conversion (no conversion needed)
+      if (convUomIdInt === uomIdInt) {
+        finalConversionUomId = uomIdInt;
+        finalConversionValue = 1;
+      } else {
+        // ✅ Different UOM - validate it exists
+        const conversionUom = await UOM.findByPk(convUomIdInt);
         if (!conversionUom) {
           return res.status(400).json({
             success: false,
-            message: 'Conversion UOM not found',
+            message: "Conversion UOM not found",
           });
         }
-        finalConversionUomId = conversionUomId;
-      } else {
-        // ✅ If same as base UOM, set to null (no conversion)
-        finalConversionUomId = null;
-        finalConversionValue = 0;
+        finalConversionUomId = convUomIdInt;
+        finalConversionValue = convValue > 0 ? convValue : 1;
       }
+    } else {
+      // ✅ No conversion provided - set to null
+      finalConversionUomId = null;
+      finalConversionValue = 0;
     }
 
     // Generate item code
@@ -320,11 +324,11 @@ exports.createItem = async (req, res) => {
       barcode: barcode || null,
       categoryId: categoryId || null,
       uomId: parseInt(uomId),
-      conversionUomId: finalConversionUomId, // ✅ Use the new variable
-      conversionValue: finalConversionValue, // ✅ Use the new variable
+      conversionUomId: finalConversionUomId,
+      conversionValue: finalConversionValue,
       costPrice: costPrice || 0,
-      status: 'Active',
-      specType: specType || 'text',
+      status: "Active",
+      specType: specType || "text",
       specText: specText || null,
       specPdfName: specPdfName || null,
       specPdfSize: specPdfSize || null,
@@ -334,43 +338,48 @@ exports.createItem = async (req, res) => {
     // Fetch created item with associations
     const createdItem = await Item.findByPk(item.itemId, {
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
-        { model: UOM, as: 'conversionUom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
       ],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Item created successfully',
+      message: "Item created successfully",
       data: createdItem,
     });
   } catch (error) {
-    console.error('Error in createItem:', error);
-    
-    // Handle unique constraint errors
-    if (error.name === 'SequelizeUniqueConstraintError') {
+    console.error("Error in createItem:", error);
+
+    if (error.name === "SequelizeUniqueConstraintError") {
       return res.status(400).json({
         success: false,
-        message: 'Item with this code or barcode already exists',
+        message: "Item with this code or barcode already exists",
         error: error.message,
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Failed to create item',
+      message: "Failed to create item",
       error: error.message,
     });
   }
 };
 
+// ================================================================
+// 🔥 FIXED: UPDATE ITEM - Handles self-conversion properly
+// ================================================================
+
 /**
  * Update an item
  * PUT /api/items/:id
  */
-
-
+/**
+ * Update an item
+ * PUT /api/items/:id
+ */
 exports.updateItem = async (req, res) => {
   try {
     const { id } = req.params;
@@ -391,14 +400,22 @@ exports.updateItem = async (req, res) => {
       specPdfName,
       specPdfSize,
       specPdfUrl,
-    } = req.body; // ✅ Use 'let' for variables that might be reassigned
+    } = req.body;
+
+    console.log('📝 Updating item:', {
+      id,
+      conversionUomId,
+      conversionValue,
+      uomId,
+      body: req.body
+    });
 
     // Find item
     const item = await Item.findByPk(id);
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
@@ -413,7 +430,7 @@ exports.updateItem = async (req, res) => {
       if (existingItem) {
         return res.status(400).json({
           success: false,
-          message: 'Item with this barcode already exists',
+          message: "Item with this barcode already exists",
         });
       }
     }
@@ -424,34 +441,62 @@ exports.updateItem = async (req, res) => {
       if (!category) {
         return res.status(400).json({
           success: false,
-          message: 'Category not found',
+          message: "Category not found",
         });
       }
     }
 
-    // Check if UOM exists
+    // Get the actual uomId (either from request or existing item)
+    const actualUomId = uomId || item.uomId;
+
+    // ✅ Check if UOM exists
     if (uomId) {
       const uom = await UOM.findByPk(uomId);
       if (!uom) {
         return res.status(400).json({
           success: false,
-          message: 'UOM not found',
+          message: "UOM not found",
         });
       }
     }
 
-    // ✅ Handle conversion UOM properly
-    let finalConversionUomId = conversionUomId !== undefined ? conversionUomId : item.conversionUomId;
-    let finalConversionValue = conversionValue !== undefined ? conversionValue : item.conversionValue;
+    // 🔥 FIX: Handle conversion properly
+    let finalConversionUomId = null;
+    let finalConversionValue = 0;
 
-    // If conversionUomId is provided and same as uomId, set to null
-    if (finalConversionUomId && uomId && parseInt(finalConversionUomId) === parseInt(uomId)) {
+    // If conversionUomId is provided (not undefined, not null, not empty string)
+    if (conversionUomId !== undefined && conversionUomId !== null && conversionUomId !== "") {
+      const uomIdInt = parseInt(actualUomId);
+      const convUomIdInt = parseInt(conversionUomId);
+      const convValue = parseFloat(conversionValue) || 0;
+
+      // ✅ If conversion UOM is same as base UOM, treat as self-conversion
+      if (convUomIdInt === uomIdInt) {
+        finalConversionUomId = uomIdInt;
+        finalConversionValue = 1;
+        console.log('✅ Self-conversion detected:', { finalConversionUomId, finalConversionValue });
+      } else {
+        // ✅ Different UOM - validate it exists
+        const conversionUom = await UOM.findByPk(convUomIdInt);
+        if (!conversionUom) {
+          return res.status(400).json({
+            success: false,
+            message: "Conversion UOM not found",
+          });
+        }
+        finalConversionUomId = convUomIdInt;
+        finalConversionValue = convValue > 0 ? convValue : 1;
+        console.log('✅ Different conversion UOM:', { finalConversionUomId, finalConversionValue });
+      }
+    } else {
+      // ✅ No conversion provided - set to null
       finalConversionUomId = null;
       finalConversionValue = 0;
+      console.log('✅ No conversion provided, setting to null');
     }
 
-    // Update item
-    await item.update({
+    // Prepare update data
+    const updateData = {
       name: name || item.name,
       standardName: standardName !== undefined ? standardName : item.standardName,
       description: description !== undefined ? description : item.description,
@@ -468,31 +513,212 @@ exports.updateItem = async (req, res) => {
       specPdfName: specPdfName !== undefined ? specPdfName : item.specPdfName,
       specPdfSize: specPdfSize !== undefined ? specPdfSize : item.specPdfSize,
       specPdfUrl: specPdfUrl !== undefined ? specPdfUrl : item.specPdfUrl,
-    });
+    };
+
+    console.log('📤 Final update data:', updateData);
+
+    // Update item
+    await item.update(updateData);
 
     // Fetch updated item with associations
     const updatedItem = await Item.findByPk(id, {
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
-        { model: UOM, as: 'conversionUom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
       ],
+    });
+
+    console.log('✅ Item updated successfully:', {
+      id: updatedItem.itemId,
+      conversionUomId: updatedItem.conversionUomId,
+      conversionValue: updatedItem.conversionValue,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Item updated successfully',
+      message: "Item updated successfully",
       data: updatedItem,
     });
   } catch (error) {
-    console.error('Error in updateItem:', error);
+    console.error("Error in updateItem:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update item',
+      message: "Failed to update item",
       error: error.message,
     });
   }
 };
+
+// ================================================================
+// 🔥 FIXED: IMPORT ITEMS - Handles self-conversion properly
+// ================================================================
+
+/**
+ * Import items from CSV data
+ * POST /api/items/import
+ */
+exports.importItems = async (req, res) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Items data is required",
+      });
+    }
+
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const itemData of items) {
+      try {
+        // Clean and validate data
+        const cleanData = {
+          name: itemData.name?.trim(),
+          standardName: itemData.standardName?.trim() || "",
+          description: itemData.description?.trim() || "",
+          brand: itemData.brand?.trim() || "",
+          model: itemData.model?.trim() || "",
+          barcode: itemData.barcode?.toString().replace(/[^0-9]/g, "") || null,
+          costPrice: parseFloat(itemData.costPrice) || 0,
+          conversionValue: parseFloat(itemData.conversionValue) || 0,
+          specText: itemData.specText?.trim() || "",
+        };
+
+        // Validate required fields
+        if (!cleanData.name) {
+          throw new Error("Item name is required");
+        }
+
+        // Find or create category
+        let category = null;
+        if (itemData.categoryName?.trim()) {
+          category = await Category.findOne({
+            where: { name: { [Op.iLike]: itemData.categoryName.trim() } },
+          });
+          if (!category) {
+            category = await Category.create({
+              name: itemData.categoryName.trim(),
+              status: "Active",
+            });
+          }
+        }
+
+        // Find or create UOM
+        let uom = null;
+        if (itemData.uomCode?.trim()) {
+          uom = await UOM.findOne({
+            where: { code: { [Op.iLike]: itemData.uomCode.trim() } },
+          });
+          if (!uom) {
+            uom = await UOM.create({
+              code: itemData.uomCode.trim().toUpperCase(),
+              name: itemData.uomCode.trim(),
+              status: "Active",
+            });
+          }
+        } else {
+          throw new Error("UOM code is required");
+        }
+
+        // 🔥 FIX: Handle conversion UOM properly
+        let conversionUom = null;
+        let finalConversionUomId = null;
+        let finalConversionValue = 0;
+
+        const conversionUomCode = itemData.conversionUomCode?.trim();
+
+        if (conversionUomCode) {
+          // Check if conversion UOM is same as base UOM
+          if (conversionUomCode.toUpperCase() === uom.code.toUpperCase()) {
+            // ✅ Self-conversion: set conversion UOM to the same as base UOM
+            finalConversionUomId = uom.uomId;
+            finalConversionValue = 1;
+          } else {
+            // ✅ Different UOM - find or create it
+            conversionUom = await UOM.findOne({
+              where: { code: { [Op.iLike]: conversionUomCode } },
+            });
+            if (!conversionUom) {
+              conversionUom = await UOM.create({
+                code: conversionUomCode.toUpperCase(),
+                name: conversionUomCode.trim(),
+                status: "Active",
+              });
+            }
+            finalConversionUomId = conversionUom.uomId;
+            finalConversionValue = cleanData.conversionValue > 0 ? cleanData.conversionValue : 1;
+          }
+        }
+
+        // Generate item code
+        const code = await Item.generateItemCode();
+
+        // Create item
+        const item = await Item.create({
+          code,
+          name: cleanData.name,
+          standardName: cleanData.standardName,
+          description: cleanData.description,
+          brand: cleanData.brand,
+          model: cleanData.model,
+          barcode: cleanData.barcode,
+          categoryId: category ? category.categoryId : null,
+          uomId: uom ? uom.uomId : null,
+          conversionUomId: finalConversionUomId,
+          conversionValue: finalConversionValue,
+          costPrice: cleanData.costPrice,
+          status: "Active",
+          specType: "text",
+          specText: cleanData.specText,
+        });
+
+        results.push({
+          success: true,
+          item: {
+            id: item.itemId,
+            code: item.code,
+            name: item.name,
+          },
+        });
+        successCount++;
+      } catch (error) {
+        console.error("Import item error:", error);
+        results.push({
+          success: false,
+          data: itemData,
+          error: error.message || "Validation error",
+        });
+        failureCount++;
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `${successCount} items imported successfully`,
+      data: {
+        results,
+        total: items.length,
+        success: successCount,
+        failed: failureCount,
+      },
+    });
+  } catch (error) {
+    console.error("Error in importItems:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to import items",
+      error: error.message,
+    });
+  }
+};
+
+// ================================================================
+// REMAINING CONTROLLER METHODS
+// ================================================================
 
 /**
  * Update item status (Activate/Deactivate)
@@ -503,25 +729,22 @@ exports.updateItemStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // Validate status
-    const validStatuses = ['Active', 'Inactive', 'Discontinued'];
+    const validStatuses = ["Active", "Inactive", "Discontinued"];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Must be Active, Inactive, or Discontinued',
+        message: "Invalid status. Must be Active, Inactive, or Discontinued",
       });
     }
 
-    // Find item
     const item = await Item.findByPk(id);
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
-    // Update status
     await item.update({ status });
 
     res.status(200).json({
@@ -536,10 +759,10 @@ exports.updateItemStatus = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in updateItemStatus:', error);
+    console.error("Error in updateItemStatus:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update item status',
+      message: "Failed to update item status",
       error: error.message,
     });
   }
@@ -557,22 +780,22 @@ exports.deactivateItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
-    if (item.status === 'Inactive') {
+    if (item.status === "Inactive") {
       return res.status(400).json({
         success: false,
-        message: 'Item is already inactive',
+        message: "Item is already inactive",
       });
     }
 
-    await item.update({ status: 'Inactive' });
+    await item.update({ status: "Inactive" });
 
     res.status(200).json({
       success: true,
-      message: 'Item deactivated successfully',
+      message: "Item deactivated successfully",
       data: {
         id: item.itemId,
         code: item.code,
@@ -581,10 +804,10 @@ exports.deactivateItem = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in deactivateItem:', error);
+    console.error("Error in deactivateItem:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to deactivate item',
+      message: "Failed to deactivate item",
       error: error.message,
     });
   }
@@ -602,22 +825,22 @@ exports.activateItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
-    if (item.status === 'Active') {
+    if (item.status === "Active") {
       return res.status(400).json({
         success: false,
-        message: 'Item is already active',
+        message: "Item is already active",
       });
     }
 
-    await item.update({ status: 'Active' });
+    await item.update({ status: "Active" });
 
     res.status(200).json({
       success: true,
-      message: 'Item activated successfully',
+      message: "Item activated successfully",
       data: {
         id: item.itemId,
         code: item.code,
@@ -626,10 +849,10 @@ exports.activateItem = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in activateItem:', error);
+    console.error("Error in activateItem:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to activate item',
+      message: "Failed to activate item",
       error: error.message,
     });
   }
@@ -647,16 +870,15 @@ exports.deleteItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
-    // Soft delete - set status to Discontinued
-    await item.update({ status: 'Discontinued' });
+    await item.update({ status: "Discontinued" });
 
     res.status(200).json({
       success: true,
-      message: 'Item deleted successfully',
+      message: "Item deleted successfully",
       data: {
         id: item.itemId,
         code: item.code,
@@ -665,10 +887,10 @@ exports.deleteItem = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in deleteItem:', error);
+    console.error("Error in deleteItem:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete item',
+      message: "Failed to delete item",
       error: error.message,
     });
   }
@@ -686,7 +908,7 @@ exports.permanentDeleteItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found',
+        message: "Item not found",
       });
     }
 
@@ -694,13 +916,13 @@ exports.permanentDeleteItem = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Item permanently deleted',
+      message: "Item permanently deleted",
     });
   } catch (error) {
-    console.error('Error in permanentDeleteItem:', error);
+    console.error("Error in permanentDeleteItem:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete item',
+      message: "Failed to delete item",
       error: error.message,
     });
   }
@@ -721,10 +943,10 @@ exports.generateItemCode = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in generateItemCode:', error);
+    console.error("Error in generateItemCode:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate item code',
+      message: "Failed to generate item code",
       error: error.message,
     });
   }
@@ -742,20 +964,20 @@ exports.getItemsByCategory = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        message: 'Category not found',
+        message: "Category not found",
       });
     }
 
     const items = await Item.findAll({
       where: {
         categoryId: parseInt(categoryId),
-        status: 'Active',
+        status: "Active",
       },
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
       ],
-      order: [['name', 'ASC']],
+      order: [["name", "ASC"]],
     });
 
     res.status(200).json({
@@ -767,10 +989,10 @@ exports.getItemsByCategory = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in getItemsByCategory:', error);
+    console.error("Error in getItemsByCategory:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch items by category',
+      message: "Failed to fetch items by category",
       error: error.message,
     });
   }
@@ -787,7 +1009,7 @@ exports.searchItems = async (req, res) => {
     if (!q) {
       return res.status(400).json({
         success: false,
-        message: 'Search query is required',
+        message: "Search query is required",
       });
     }
 
@@ -802,10 +1024,10 @@ exports.searchItems = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in searchItems:', error);
+    console.error("Error in searchItems:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to search items',
+      message: "Failed to search items",
       error: error.message,
     });
   }
@@ -827,10 +1049,10 @@ exports.getActiveItems = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in getActiveItems:', error);
+    console.error("Error in getActiveItems:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch active items',
+      message: "Failed to fetch active items",
       error: error.message,
     });
   }
@@ -843,19 +1065,23 @@ exports.getActiveItems = async (req, res) => {
 exports.getItemStats = async (req, res) => {
   try {
     const totalItems = await Item.count();
-    const activeItems = await Item.count({ where: { status: 'Active' } });
-    const inactiveItems = await Item.count({ where: { status: 'Inactive' } });
-    const discontinuedItems = await Item.count({ where: { status: 'Discontinued' } });
+    const activeItems = await Item.count({ where: { status: "Active" } });
+    const inactiveItems = await Item.count({ where: { status: "Inactive" } });
+    const discontinuedItems = await Item.count({
+      where: { status: "Discontinued" },
+    });
 
-    // Get category count - using raw query
-    const categoryStats = await sequelize.query(`
+    const categoryStats = await sequelize.query(
+      `
       SELECT 
         c.name as "categoryName",
         COUNT(i.id) as count
       FROM items i
       LEFT JOIN categories c ON i.category_id = c.id
       GROUP BY c.name
-    `, { type: sequelize.QueryTypes.SELECT });
+    `,
+      { type: sequelize.QueryTypes.SELECT },
+    );
 
     res.status(200).json({
       success: true,
@@ -868,10 +1094,10 @@ exports.getItemStats = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in getItemStats:', error);
+    console.error("Error in getItemStats:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch item statistics',
+      message: "Failed to fetch item statistics",
       error: error.message,
     });
   }
@@ -888,7 +1114,7 @@ exports.bulkCreateItems = async (req, res) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Items array is required',
+        message: "Items array is required",
       });
     }
 
@@ -897,14 +1123,12 @@ exports.bulkCreateItems = async (req, res) => {
 
     for (const itemData of items) {
       try {
-        // Generate code
         const code = await Item.generateItemCode();
 
-        // Create item
         const item = await Item.create({
           ...itemData,
           code,
-          status: 'Active',
+          status: "Active",
         });
 
         createdItems.push(item);
@@ -926,21 +1150,14 @@ exports.bulkCreateItems = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in bulkCreateItems:', error);
+    console.error("Error in bulkCreateItems:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create items',
+      message: "Failed to create items",
       error: error.message,
     });
   }
 };
-
-/**
- * Export items as CSV
- * GET /api/items/export
- */
-// controllers/itemsController.js
-const ExcelJS = require('exceljs');
 
 /**
  * Export items as Excel file
@@ -948,7 +1165,7 @@ const ExcelJS = require('exceljs');
  */
 exports.exportItems = async (req, res) => {
   try {
-    const { categoryId, status, format = 'xlsx' } = req.query;
+    const { categoryId, status, format = "xlsx" } = req.query;
     const whereClause = {};
 
     if (categoryId) {
@@ -962,161 +1179,168 @@ exports.exportItems = async (req, res) => {
     const items = await Item.findAll({
       where: whereClause,
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
-        { model: UOM, as: 'conversionUom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
       ],
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
     });
 
-    // If CSV format is requested, return CSV
-    if (format === 'csv') {
-      const csvData = items.map(item => ({
+    if (format === "csv") {
+      const csvData = items.map((item) => ({
         Code: item.code,
         Name: item.name,
-        'Standard Name': item.standardName || '',
-        Category: item.category ? item.category.name : '',
-        UOM: item.uom ? item.uom.code : '',
-        'Conversion UOM': item.conversionUom ? item.conversionUom.code : '',
-        'Conversion Value': item.conversionValue,
-        'Cost Price': item.costPrice,
+        "Standard Name": item.standardName || "",
+        Category: item.category ? item.category.name : "",
+        UOM: item.uom ? item.uom.code : "",
+        "Conversion UOM": item.conversionUom ? item.conversionUom.code : "",
+        "Conversion Value": item.conversionValue,
+        "Cost Price": item.costPrice,
         Status: item.status,
-        Created: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '',
+        Created: item.createdAt
+          ? new Date(item.createdAt).toLocaleDateString()
+          : "",
       }));
 
-      // Return CSV
       const headers = Object.keys(csvData[0] || {});
-      let csvContent = headers.join(',') + '\n';
-      csvData.forEach(row => {
-        csvContent += headers.map(h => {
-          let val = row[h] || '';
-          if (typeof val === 'string' && val.includes(',')) {
-            val = `"${val}"`;
-          }
-          return val;
-        }).join(',') + '\n';
+      let csvContent = headers.join(",") + "\n";
+      csvData.forEach((row) => {
+        csvContent +=
+          headers
+            .map((h) => {
+              let val = row[h] || "";
+              if (typeof val === "string" && val.includes(",")) {
+                val = `"${val}"`;
+              }
+              return val;
+            })
+            .join(",") + "\n";
       });
 
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=items_export_${new Date().toISOString().split('T')[0]}.csv`);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=items_export_${new Date().toISOString().split("T")[0]}.csv`,
+      );
       return res.send(csvContent);
     }
 
-    // ============================================================
-    // EXCEL EXPORT (Default)
-    // ============================================================
+    // Excel export (default)
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Inventory Management System';
+    workbook.creator = "Inventory Management System";
     workbook.created = new Date();
-    
-    // Create main sheet
-    const worksheet = workbook.addWorksheet('Items', {
-      properties: { tabColor: { argb: 'FF3B82F6' } },
-      pageSetup: { orientation: 'landscape', fitToPage: true }
+
+    const worksheet = workbook.addWorksheet("Items", {
+      properties: { tabColor: { argb: "FF3B82F6" } },
+      pageSetup: { orientation: "landscape", fitToPage: true },
     });
 
-    // ============================================================
-    // STYLES
-    // ============================================================
     const headerStyle = {
-      font: { 
-        name: 'Segoe UI', 
-        size: 11, 
-        bold: true, 
-        color: { argb: 'FFFFFFFF' } 
+      font: {
+        name: "Segoe UI",
+        size: 11,
+        bold: true,
+        color: { argb: "FFFFFFFF" },
       },
-      fill: { 
-        type: 'pattern', 
-        pattern: 'solid', 
-        fgColor: { argb: 'FF3B82F6' } 
+      fill: {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF3B82F6" },
       },
       border: {
-        top: { style: 'thin', color: { argb: 'FF2563EB' } },
-        bottom: { style: 'thin', color: { argb: 'FF2563EB' } },
-        left: { style: 'thin', color: { argb: 'FF2563EB' } },
-        right: { style: 'thin', color: { argb: 'FF2563EB' } }
+        top: { style: "thin", color: { argb: "FF2563EB" } },
+        bottom: { style: "thin", color: { argb: "FF2563EB" } },
+        left: { style: "thin", color: { argb: "FF2563EB" } },
+        right: { style: "thin", color: { argb: "FF2563EB" } },
       },
-      alignment: { 
-        horizontal: 'center', 
-        vertical: 'middle',
-        wrapText: true
-      }
+      alignment: {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      },
     };
 
     const cellStyle = {
-      font: { name: 'Segoe UI', size: 10 },
+      font: { name: "Segoe UI", size: 10 },
       border: {
-        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+        top: { style: "thin", color: { argb: "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+        left: { style: "thin", color: { argb: "FFE2E8F0" } },
+        right: { style: "thin", color: { argb: "FFE2E8F0" } },
       },
-      alignment: { 
-        vertical: 'middle',
-        wrapText: true
-      }
+      alignment: {
+        vertical: "middle",
+        wrapText: true,
+      },
     };
 
     const statusStyles = {
-      'Active': {
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } },
-        font: { color: { argb: 'FF166534' }, bold: true }
+      Active: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFDCFCE7" },
+        },
+        font: { color: { argb: "FF166534" }, bold: true },
       },
-      'Inactive': {
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } },
-        font: { color: { argb: 'FF92400E' }, bold: true }
+      Inactive: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFEF3C7" },
+        },
+        font: { color: { argb: "FF92400E" }, bold: true },
       },
-      'Discontinued': {
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } },
-        font: { color: { argb: 'FF991B1B' }, bold: true }
-      }
+      Discontinued: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFEE2E2" },
+        },
+        font: { color: { argb: "FF991B1B" }, bold: true },
+      },
     };
 
-    // ============================================================
-    // HEADER ROWS (Title & Metadata)
-    // ============================================================
-    
     // Title Row
-    worksheet.mergeCells('A1:J1');
-    const titleCell = worksheet.getCell('A1');
-    titleCell.value = '📦 Item Master Data Export';
-    titleCell.font = { name: 'Segoe UI', size: 18, bold: true, color: { argb: 'FF1E293B' } };
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.mergeCells("A1:J1");
+    const titleCell = worksheet.getCell("A1");
+    titleCell.value = "📦 Item Master Data Export";
+    titleCell.font = {
+      name: "Segoe UI",
+      size: 18,
+      bold: true,
+      color: { argb: "FF1E293B" },
+    };
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
     worksheet.getRow(1).height = 40;
 
     // Metadata Row
-    worksheet.mergeCells('A2:J2');
-    const metaCell = worksheet.getCell('A2');
-    metaCell.value = `Exported on: ${new Date().toLocaleString()} | Total Items: ${items.length} | Status: ${status || 'All'}`;
-    metaCell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF64748B' } };
-    metaCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.mergeCells("A2:J2");
+    const metaCell = worksheet.getCell("A2");
+    metaCell.value = `Exported on: ${new Date().toLocaleString()} | Total Items: ${items.length} | Status: ${status || "All"}`;
+    metaCell.font = { name: "Segoe UI", size: 10, color: { argb: "FF64748B" } };
+    metaCell.alignment = { horizontal: "center", vertical: "middle" };
     worksheet.getRow(2).height = 25;
 
-    // Blank row
     worksheet.getRow(3).height = 10;
 
-    // ============================================================
-    // COLUMN HEADERS
-    // ============================================================
     const columns = [
-      { header: '#', key: 'index', width: 6 },
-      { header: 'Item Code', key: 'code', width: 16 },
-      { header: 'Item Name', key: 'name', width: 30 },
-      { header: 'Standard Name', key: 'standardName', width: 25 },
-      { header: 'Category', key: 'category', width: 20 },
-      { header: 'UOM', key: 'uom', width: 12 },
-      { header: 'Conversion UOM', key: 'conversionUom', width: 14 },
-      { header: 'Conversion Value', key: 'conversionValue', width: 14 },
-      { header: 'Cost Price', key: 'costPrice', width: 14 },
-      { header: 'Status', key: 'status', width: 14 },
+      { header: "#", key: "index", width: 6 },
+      { header: "Item Code", key: "code", width: 16 },
+      { header: "Item Name", key: "name", width: 30 },
+      { header: "Standard Name", key: "standardName", width: 25 },
+      { header: "Category", key: "category", width: 20 },
+      { header: "UOM", key: "uom", width: 12 },
+      { header: "Conversion UOM", key: "conversionUom", width: 14 },
+      { header: "Conversion Value", key: "conversionValue", width: 14 },
+      { header: "Cost Price", key: "costPrice", width: 14 },
+      { header: "Status", key: "status", width: 14 },
     ];
 
-    // Set column widths
     columns.forEach((col, index) => {
       worksheet.getColumn(index + 1).width = col.width;
     });
 
-    // Write headers
     const headerRow = worksheet.getRow(4);
     columns.forEach((col, index) => {
       const cell = headerRow.getCell(index + 1);
@@ -1125,9 +1349,6 @@ exports.exportItems = async (req, res) => {
     });
     headerRow.height = 30;
 
-    // ============================================================
-    // DATA ROWS
-    // ============================================================
     let rowIndex = 5;
     let totalCost = 0;
 
@@ -1139,10 +1360,10 @@ exports.exportItems = async (req, res) => {
         idx + 1,
         item.code,
         item.name,
-        item.standardName || '-',
-        item.category ? item.category.name : '-',
-        item.uom ? item.uom.code : '-',
-        item.conversionUom ? item.conversionUom.code : '-',
+        item.standardName || "-",
+        item.category ? item.category.name : "-",
+        item.uom ? item.uom.code : "-",
+        item.conversionUom ? item.conversionUom.code : "-",
         item.conversionValue || 0,
         item.costPrice || 0,
         item.status,
@@ -1152,303 +1373,68 @@ exports.exportItems = async (req, res) => {
         const cell = row.getCell(colIndex + 1);
         cell.value = val;
         Object.assign(cell, cellStyle);
-        
-        // Right align numbers
+
         if ([7, 8, 9].includes(colIndex)) {
-          cell.alignment = { ...cellStyle.alignment, horizontal: 'right' };
-        }
-        
-        // Center align index
-        if (colIndex === 0) {
-          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
+          cell.alignment = { ...cellStyle.alignment, horizontal: "right" };
         }
 
-        // Apply status styling
+        if (colIndex === 0) {
+          cell.alignment = { ...cellStyle.alignment, horizontal: "center" };
+        }
+
         if (colIndex === 9 && statusStyles[val]) {
           Object.assign(cell, statusStyles[val]);
-          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
+          cell.alignment = { ...cellStyle.alignment, horizontal: "center" };
         }
       });
 
-      // Accumulate total cost
       totalCost += parseFloat(item.costPrice) || 0;
       rowIndex++;
     });
 
-    // ============================================================
-    // FOOTER ROWS (Summary)
-    // ============================================================
     const footerStart = rowIndex + 1;
-    
-    // Blank row
     worksheet.getRow(footerStart).height = 10;
-    
-    // Summary section
+
     const summaryRow = worksheet.getRow(footerStart + 1);
     summaryRow.height = 28;
-    
-    // Merge summary cells
+
     worksheet.mergeCells(`A${footerStart + 1}:I${footerStart + 1}`);
     const summaryCell = worksheet.getCell(`A${footerStart + 1}`);
     summaryCell.value = `📊 Summary: Total Items: ${items.length} | Total Cost: ${totalCost.toFixed(2)}`;
-    summaryCell.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF1E293B' } };
-    summaryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-    summaryCell.border = {
-      top: { style: 'medium', color: { argb: 'FFCBD5E1' } },
-      bottom: { style: 'medium', color: { argb: 'FFCBD5E1' } },
-      left: { style: 'medium', color: { argb: 'FFCBD5E1' } },
-      right: { style: 'medium', color: { argb: 'FFCBD5E1' } }
+    summaryCell.font = {
+      name: "Segoe UI",
+      size: 12,
+      bold: true,
+      color: { argb: "FF1E293B" },
     };
-    summaryCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    summaryCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFF1F5F9" },
+    };
+    summaryCell.border = {
+      top: { style: "medium", color: { argb: "FFCBD5E1" } },
+      bottom: { style: "medium", color: { argb: "FFCBD5E1" } },
+      left: { style: "medium", color: { argb: "FFCBD5E1" } },
+      right: { style: "medium", color: { argb: "FFCBD5E1" } },
+    };
+    summaryCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // ============================================================
-    // CATEGORY BREAKDOWN SHEET (Optional)
-    // ============================================================
-    const categoryWorksheet = workbook.addWorksheet('Category Breakdown', {
-      properties: { tabColor: { argb: 'FF10B981' } }
-    });
+    const filename = `items_export_${new Date().toISOString().split("T")[0]}.xlsx`;
 
-    // Category breakdown headers
-    const catColumns = [
-      { header: '#', key: 'index', width: 8 },
-      { header: 'Category', key: 'category', width: 30 },
-      { header: 'Item Count', key: 'count', width: 16 },
-      { header: 'Total Cost', key: 'totalCost', width: 18 },
-      { header: 'Avg Cost', key: 'avgCost', width: 18 },
-    ];
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
 
-    catColumns.forEach((col, index) => {
-      categoryWorksheet.getColumn(index + 1).width = col.width;
-    });
-
-    // Category header row
-    const catHeaderRow = categoryWorksheet.getRow(1);
-    catColumns.forEach((col, index) => {
-      const cell = catHeaderRow.getCell(index + 1);
-      cell.value = col.header;
-      Object.assign(cell, headerStyle);
-    });
-    catHeaderRow.height = 30;
-
-    // Calculate category breakdown
-    const categoryMap = {};
-    items.forEach(item => {
-      const catName = item.category ? item.category.name : 'Uncategorized';
-      if (!categoryMap[catName]) {
-        categoryMap[catName] = { count: 0, totalCost: 0 };
-      }
-      categoryMap[catName].count++;
-      categoryMap[catName].totalCost += parseFloat(item.costPrice) || 0;
-    });
-
-    // Write category data
-    let catRowIndex = 2;
-    const catEntries = Object.entries(categoryMap).sort((a, b) => b[1].count - a[1].count);
-    catEntries.forEach(([catName, data], idx) => {
-      const row = categoryWorksheet.getRow(catRowIndex);
-      row.height = 22;
-      
-      const cells = [
-        idx + 1,
-        catName,
-        data.count,
-        data.totalCost.toFixed(2),
-        (data.totalCost / data.count).toFixed(2)
-      ];
-
-      cells.forEach((val, colIndex) => {
-        const cell = row.getCell(colIndex + 1);
-        cell.value = val;
-        Object.assign(cell, cellStyle);
-        
-        // Right align numbers
-        if ([2, 3, 4].includes(colIndex)) {
-          cell.alignment = { ...cellStyle.alignment, horizontal: 'right' };
-        }
-        if (colIndex === 0) {
-          cell.alignment = { ...cellStyle.alignment, horizontal: 'center' };
-        }
-      });
-      
-      catRowIndex++;
-    });
-
-    // ============================================================
-    // SEND RESPONSE
-    // ============================================================
-    const filename = `items_export_${new Date().toISOString().split('T')[0]}.xlsx`;
-    
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-    
     await workbook.xlsx.write(res);
     res.end();
-
   } catch (error) {
-    console.error('Error in exportItems:', error);
+    console.error("Error in exportItems:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to export items',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * Import items from CSV data
- * POST /api/items/import
- */
-// controllers/itemsController.js - Updated importItems
-
-// controllers/itemsController.js - FIXED importItems
-
-/**
- * Import items from CSV data
- * POST /api/items/import
- */
-exports.importItems = async (req, res) => {
-  try {
-    const { items } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Items data is required',
-      });
-    }
-
-    const results = [];
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const itemData of items) {
-      try {
-        // Clean and validate data
-        const cleanData = {
-          name: itemData.name?.trim(),
-          standardName: itemData.standardName?.trim() || '',
-          description: itemData.description?.trim() || '',
-          brand: itemData.brand?.trim() || '',
-          model: itemData.model?.trim() || '',
-          barcode: itemData.barcode?.toString().replace(/[^0-9]/g, '') || null,
-          costPrice: parseFloat(itemData.costPrice) || 0,
-          conversionValue: parseFloat(itemData.conversionValue) || 0,
-          specText: itemData.specText?.trim() || '',
-        };
-
-        // Validate required fields
-        if (!cleanData.name) {
-          throw new Error('Item name is required');
-        }
-
-        // Find or create category
-        let category = null;
-        if (itemData.categoryName?.trim()) {
-          category = await Category.findOne({
-            where: { name: { [Op.iLike]: itemData.categoryName.trim() } },
-          });
-          if (!category) {
-            category = await Category.create({
-              name: itemData.categoryName.trim(),
-              status: 'Active',
-            });
-          }
-        }
-
-        // Find or create UOM
-        let uom = null;
-        if (itemData.uomCode?.trim()) {
-          uom = await UOM.findOne({
-            where: { code: { [Op.iLike]: itemData.uomCode.trim() } },
-          });
-          if (!uom) {
-            uom = await UOM.create({
-              code: itemData.uomCode.trim().toUpperCase(),
-              name: itemData.uomCode.trim(),
-              status: 'Active',
-            });
-          }
-        } else {
-          // ✅ If no UOM code provided, create a default one or throw error
-          throw new Error('UOM code is required');
-        }
-
-        // ✅ FIX: Find or create conversion UOM - ONLY if conversionUomCode is provided
-        let conversionUom = null;
-        const conversionUomCode = itemData.conversionUomCode?.trim();
-        
-        // ✅ Only look for conversion UOM if a code was provided AND it's different from base UOM
-        if (conversionUomCode && conversionUomCode.toUpperCase() !== uom.code.toUpperCase()) {
-          conversionUom = await UOM.findOne({
-            where: { code: { [Op.iLike]: conversionUomCode } },
-          });
-          if (!conversionUom) {
-            conversionUom = await UOM.create({
-              code: conversionUomCode.toUpperCase(),
-              name: conversionUomCode.trim(),
-              status: 'Active',
-            });
-          }
-        }
-        // ✅ If conversionUomCode is empty or same as base UOM, keep it null
-
-        // Generate item code
-        const code = await Item.generateItemCode();
-
-        // Create item
-        const item = await Item.create({
-          code,
-          name: cleanData.name,
-          standardName: cleanData.standardName,
-          description: cleanData.description,
-          brand: cleanData.brand,
-          model: cleanData.model,
-          barcode: cleanData.barcode,
-          categoryId: category ? category.categoryId : null,
-          uomId: uom ? uom.uomId : null,
-          conversionUomId: conversionUom ? conversionUom.uomId : null, // ✅ Null if no conversion UOM
-          conversionValue: cleanData.conversionValue,
-          costPrice: cleanData.costPrice,
-          status: 'Active',
-          specType: 'text',
-          specText: cleanData.specText,
-        });
-
-        results.push({
-          success: true,
-          item: {
-            id: item.itemId,
-            code: item.code,
-            name: item.name,
-          },
-        });
-        successCount++;
-      } catch (error) {
-        console.error('Import item error:', error);
-        results.push({
-          success: false,
-          data: itemData,
-          error: error.message || 'Validation error',
-        });
-        failureCount++;
-      }
-    }
-
-    res.status(201).json({
-      success: true,
-      message: `${successCount} items imported successfully`,
-      data: {
-        results,
-        total: items.length,
-        success: successCount,
-        failed: failureCount,
-      },
-    });
-  } catch (error) {
-    console.error('Error in importItems:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to import items',
+      message: "Failed to export items",
       error: error.message,
     });
   }
@@ -1461,11 +1447,11 @@ exports.importItems = async (req, res) => {
 exports.uploadItemSpecification = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'No file uploaded. Please upload a PDF file.'
+        message: "No file uploaded. Please upload a PDF file.",
       });
     }
 
@@ -1473,49 +1459,47 @@ exports.uploadItemSpecification = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found'
+        message: "Item not found",
       });
     }
 
-    // Build file URL
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const baseUrl =
+      process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
     const fileUrl = `${baseUrl}/uploads/items/specifications/${req.file.filename}`;
 
-    // Update item with specification info
     await item.update({
-      specType: 'pdf',
+      specType: "pdf",
       specPdfName: req.file.originalname,
       specPdfSize: `${(req.file.size / 1024).toFixed(1)} KB`,
-      specPdfUrl: fileUrl
+      specPdfUrl: fileUrl,
     });
 
-    // Fetch updated item
     const updatedItem = await Item.findByPk(id, {
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
-        { model: UOM, as: 'conversionUom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
       ],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Specification uploaded successfully',
+      message: "Specification uploaded successfully",
       data: {
         item: updatedItem,
         file: {
           name: req.file.originalname,
           size: req.file.size,
           filename: req.file.filename,
-          url: fileUrl
-        }
-      }
+          url: fileUrl,
+        },
+      },
     });
   } catch (error) {
-    console.error('Error in uploadItemSpecification:', error);
+    console.error("Error in uploadItemSpecification:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to upload specification',
+      message: "Failed to upload specification",
       error: error.message,
     });
   }
@@ -1533,64 +1517,61 @@ exports.removeItemSpecification = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Item not found'
+        message: "Item not found",
       });
     }
 
-    // Delete file from disk if exists
     if (item.specPdfUrl) {
       try {
-        // Extract filename from URL
-        const urlParts = item.specPdfUrl.split('/');
+        const urlParts = item.specPdfUrl.split("/");
         const filename = urlParts[urlParts.length - 1];
-        const filePath = path.join(__dirname, '..', 'uploads', 'items', 'specifications', filename);
-        
+        const filePath = path.join(
+          __dirname,
+          "..",
+          "uploads",
+          "items",
+          "specifications",
+          filename,
+        );
+
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
           console.log(`Deleted file: ${filePath}`);
         }
       } catch (fileError) {
-        console.error('Error deleting file:', fileError);
-        // Continue even if file deletion fails
+        console.error("Error deleting file:", fileError);
       }
     }
 
-    // Clear specification fields
     await item.update({
-      specType: 'text',
+      specType: "text",
       specPdfName: null,
       specPdfSize: null,
-      specPdfUrl: null
+      specPdfUrl: null,
     });
 
-    // Fetch updated item
     const updatedItem = await Item.findByPk(id, {
       include: [
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'uom' },
-        { model: UOM, as: 'conversionUom' },
+        { model: Category, as: "category" },
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
       ],
     });
 
     res.status(200).json({
       success: true,
-      message: 'Specification removed successfully',
-      data: updatedItem
+      message: "Specification removed successfully",
+      data: updatedItem,
     });
   } catch (error) {
-    console.error('Error in removeItemSpecification:', error);
+    console.error("Error in removeItemSpecification:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to remove specification',
+      message: "Failed to remove specification",
       error: error.message,
     });
   }
 };
-
-
-
-// controllers/itemsController.js
-// ... (all your existing code)
 
 // ================================================================
 // CATEGORY CONTROLLER FUNCTIONS
@@ -1602,9 +1583,9 @@ exports.removeItemSpecification = async (req, res) => {
  */
 exports.getAllCategories = async (req, res) => {
   try {
-    const { Category } = require('../models');
+    const { Category } = require("../models");
     const categories = await Category.findAll({
-      order: [['name', 'ASC']],
+      order: [["name", "ASC"]],
     });
 
     res.status(200).json({
@@ -1612,10 +1593,10 @@ exports.getAllCategories = async (req, res) => {
       data: categories,
     });
   } catch (error) {
-    console.error('Error in getAllCategories:', error);
+    console.error("Error in getAllCategories:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch categories',
+      error: "Failed to fetch categories",
     });
   }
 };
@@ -1626,15 +1607,15 @@ exports.getAllCategories = async (req, res) => {
  */
 exports.getCategoryById = async (req, res) => {
   try {
-    const { Category, Item } = require('../models');
+    const { Category, Item } = require("../models");
     const { id } = req.params;
 
     const category = await Category.findByPk(id, {
       include: [
         {
           model: Item,
-          as: 'items',
-          attributes: ['itemId', 'code', 'name', 'status'],
+          as: "items",
+          attributes: ["itemId", "code", "name", "status"],
         },
       ],
     });
@@ -1642,7 +1623,7 @@ exports.getCategoryById = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        error: 'Category not found',
+        error: "Category not found",
       });
     }
 
@@ -1651,10 +1632,10 @@ exports.getCategoryById = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error('Error in getCategoryById:', error);
+    console.error("Error in getCategoryById:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch category',
+      error: "Failed to fetch category",
     });
   }
 };
@@ -1665,18 +1646,17 @@ exports.getCategoryById = async (req, res) => {
  */
 exports.createCategory = async (req, res) => {
   try {
-    const { Category } = require('../models');
-    const { Op } = require('sequelize');
+    const { Category } = require("../models");
+    const { Op } = require("sequelize");
     const { name, description } = req.body;
 
     if (!name) {
       return res.status(400).json({
         success: false,
-        error: 'Category name is required',
+        error: "Category name is required",
       });
     }
 
-    // Check if category already exists
     const existingCategory = await Category.findOne({
       where: { name: { [Op.iLike]: name } },
     });
@@ -1684,14 +1664,14 @@ exports.createCategory = async (req, res) => {
     if (existingCategory) {
       return res.status(400).json({
         success: false,
-        error: 'Category with this name already exists',
+        error: "Category with this name already exists",
       });
     }
 
     const category = await Category.create({
       name,
       description,
-      status: 'Active',
+      status: "Active",
     });
 
     res.status(201).json({
@@ -1699,10 +1679,10 @@ exports.createCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error('Error in createCategory:', error);
+    console.error("Error in createCategory:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create category',
+      error: "Failed to create category",
     });
   }
 };
@@ -1713,8 +1693,8 @@ exports.createCategory = async (req, res) => {
  */
 exports.updateCategory = async (req, res) => {
   try {
-    const { Category } = require('../models');
-    const { Op } = require('sequelize');
+    const { Category } = require("../models");
+    const { Op } = require("sequelize");
     const { id } = req.params;
     const { name, description, status } = req.body;
 
@@ -1723,11 +1703,10 @@ exports.updateCategory = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        error: 'Category not found',
+        error: "Category not found",
       });
     }
 
-    // Check if name already exists (excluding current category)
     if (name && name !== category.name) {
       const existingCategory = await Category.findOne({
         where: {
@@ -1739,7 +1718,7 @@ exports.updateCategory = async (req, res) => {
       if (existingCategory) {
         return res.status(400).json({
           success: false,
-          error: 'Category with this name already exists',
+          error: "Category with this name already exists",
         });
       }
     }
@@ -1755,10 +1734,10 @@ exports.updateCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error('Error in updateCategory:', error);
+    console.error("Error in updateCategory:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update category',
+      error: "Failed to update category",
     });
   }
 };
@@ -1769,14 +1748,14 @@ exports.updateCategory = async (req, res) => {
  */
 exports.updateCategoryStatus = async (req, res) => {
   try {
-    const { Category } = require('../models');
+    const { Category } = require("../models");
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status || !['Active', 'Inactive'].includes(status)) {
+    if (!status || !["Active", "Inactive"].includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid status. Must be Active or Inactive',
+        error: "Invalid status. Must be Active or Inactive",
       });
     }
 
@@ -1785,7 +1764,7 @@ exports.updateCategoryStatus = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        error: 'Category not found',
+        error: "Category not found",
       });
     }
 
@@ -1796,10 +1775,10 @@ exports.updateCategoryStatus = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error('Error in updateCategoryStatus:', error);
+    console.error("Error in updateCategoryStatus:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update category status',
+      error: "Failed to update category status",
     });
   }
 };
@@ -1810,7 +1789,7 @@ exports.updateCategoryStatus = async (req, res) => {
  */
 exports.deleteCategory = async (req, res) => {
   try {
-    const { Category } = require('../models');
+    const { Category } = require("../models");
     const { id } = req.params;
 
     const category = await Category.findByPk(id);
@@ -1818,11 +1797,10 @@ exports.deleteCategory = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        error: 'Category not found',
+        error: "Category not found",
       });
     }
 
-    // Check if category has items
     const itemCount = await category.countItems();
     if (itemCount > 0) {
       return res.status(400).json({
@@ -1835,13 +1813,13 @@ exports.deleteCategory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Category deleted successfully',
+      message: "Category deleted successfully",
     });
   } catch (error) {
-    console.error('Error in deleteCategory:', error);
+    console.error("Error in deleteCategory:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete category',
+      error: "Failed to delete category",
     });
   }
 };
@@ -1856,9 +1834,9 @@ exports.deleteCategory = async (req, res) => {
  */
 exports.getAllUOMs = async (req, res) => {
   try {
-    const { UOM } = require('../models');
+    const { UOM } = require("../models");
     const uoms = await UOM.findAll({
-      order: [['code', 'ASC']],
+      order: [["code", "ASC"]],
     });
 
     res.status(200).json({
@@ -1866,10 +1844,10 @@ exports.getAllUOMs = async (req, res) => {
       data: uoms,
     });
   } catch (error) {
-    console.error('Error in getAllUOMs:', error);
+    console.error("Error in getAllUOMs:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch UOMs',
+      error: "Failed to fetch UOMs",
     });
   }
 };
@@ -1880,15 +1858,15 @@ exports.getAllUOMs = async (req, res) => {
  */
 exports.getUOMById = async (req, res) => {
   try {
-    const { UOM, Item } = require('../models');
+    const { UOM, Item } = require("../models");
     const { id } = req.params;
 
     const uom = await UOM.findByPk(id, {
       include: [
         {
           model: Item,
-          as: 'items',
-          attributes: ['itemId', 'code', 'name', 'status'],
+          as: "items",
+          attributes: ["itemId", "code", "name", "status"],
         },
       ],
     });
@@ -1896,7 +1874,7 @@ exports.getUOMById = async (req, res) => {
     if (!uom) {
       return res.status(404).json({
         success: false,
-        error: 'UOM not found',
+        error: "UOM not found",
       });
     }
 
@@ -1905,10 +1883,10 @@ exports.getUOMById = async (req, res) => {
       data: uom,
     });
   } catch (error) {
-    console.error('Error in getUOMById:', error);
+    console.error("Error in getUOMById:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch UOM',
+      error: "Failed to fetch UOM",
     });
   }
 };
@@ -1919,18 +1897,17 @@ exports.getUOMById = async (req, res) => {
  */
 exports.createUOM = async (req, res) => {
   try {
-    const { UOM } = require('../models');
-    const { Op } = require('sequelize');
+    const { UOM } = require("../models");
+    const { Op } = require("sequelize");
     const { code, name, description } = req.body;
 
     if (!code || !name) {
       return res.status(400).json({
         success: false,
-        error: 'Code and name are required',
+        error: "Code and name are required",
       });
     }
 
-    // Check if UOM with code already exists
     const existingUOM = await UOM.findOne({
       where: { code: { [Op.iLike]: code } },
     });
@@ -1938,7 +1915,7 @@ exports.createUOM = async (req, res) => {
     if (existingUOM) {
       return res.status(400).json({
         success: false,
-        error: 'UOM with this code already exists',
+        error: "UOM with this code already exists",
       });
     }
 
@@ -1946,7 +1923,7 @@ exports.createUOM = async (req, res) => {
       code: code.toUpperCase(),
       name,
       description,
-      status: 'Active',
+      status: "Active",
     });
 
     res.status(201).json({
@@ -1954,10 +1931,10 @@ exports.createUOM = async (req, res) => {
       data: uom,
     });
   } catch (error) {
-    console.error('Error in createUOM:', error);
+    console.error("Error in createUOM:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create UOM',
+      error: "Failed to create UOM",
     });
   }
 };
@@ -1968,7 +1945,7 @@ exports.createUOM = async (req, res) => {
  */
 exports.updateUOM = async (req, res) => {
   try {
-    const { UOM } = require('../models');
+    const { UOM } = require("../models");
     const { id } = req.params;
     const { name, description, status } = req.body;
 
@@ -1977,7 +1954,7 @@ exports.updateUOM = async (req, res) => {
     if (!uom) {
       return res.status(404).json({
         success: false,
-        error: 'UOM not found',
+        error: "UOM not found",
       });
     }
 
@@ -1992,10 +1969,10 @@ exports.updateUOM = async (req, res) => {
       data: uom,
     });
   } catch (error) {
-    console.error('Error in updateUOM:', error);
+    console.error("Error in updateUOM:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update UOM',
+      error: "Failed to update UOM",
     });
   }
 };
@@ -2006,14 +1983,14 @@ exports.updateUOM = async (req, res) => {
  */
 exports.updateUOMStatus = async (req, res) => {
   try {
-    const { UOM } = require('../models');
+    const { UOM } = require("../models");
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status || !['Active', 'Inactive'].includes(status)) {
+    if (!status || !["Active", "Inactive"].includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid status. Must be Active or Inactive',
+        error: "Invalid status. Must be Active or Inactive",
       });
     }
 
@@ -2022,7 +1999,7 @@ exports.updateUOMStatus = async (req, res) => {
     if (!uom) {
       return res.status(404).json({
         success: false,
-        error: 'UOM not found',
+        error: "UOM not found",
       });
     }
 
@@ -2033,10 +2010,10 @@ exports.updateUOMStatus = async (req, res) => {
       data: uom,
     });
   } catch (error) {
-    console.error('Error in updateUOMStatus:', error);
+    console.error("Error in updateUOMStatus:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update UOM status',
+      error: "Failed to update UOM status",
     });
   }
 };
@@ -2047,7 +2024,7 @@ exports.updateUOMStatus = async (req, res) => {
  */
 exports.deleteUOM = async (req, res) => {
   try {
-    const { UOM } = require('../models');
+    const { UOM } = require("../models");
     const { id } = req.params;
 
     const uom = await UOM.findByPk(id);
@@ -2055,11 +2032,10 @@ exports.deleteUOM = async (req, res) => {
     if (!uom) {
       return res.status(404).json({
         success: false,
-        error: 'UOM not found',
+        error: "UOM not found",
       });
     }
 
-    // Check if UOM is used in any items
     const itemCount = await uom.countItems();
     if (itemCount > 0) {
       return res.status(400).json({
@@ -2072,13 +2048,13 @@ exports.deleteUOM = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'UOM deleted successfully',
+      message: "UOM deleted successfully",
     });
   } catch (error) {
-    console.error('Error in deleteUOM:', error);
+    console.error("Error in deleteUOM:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete UOM',
+      error: "Failed to delete UOM",
     });
   }
 };
