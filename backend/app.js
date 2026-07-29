@@ -94,7 +94,7 @@ const auditRoutes = require('./routes/auditRoutes');
 const balanceRoutes = require('./routes/balanceRoutes');
 const itemCostRoutes = require('./routes/itemCostRoutes');
 const StoreDashboardRoutes = require('./routes/StoreDashboardRoutes');
-
+const checkerDashboardRoutes=require('./routes/checkerDashboardRoutes');
 const costDashboardRoutes = require('./routes/costDashboardRoutes');
 
 // ============================================================================
@@ -151,6 +151,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/item-costs', itemCostRoutes);
 app.use('/api/store-dashboard', StoreDashboardRoutes);
 app.use('/api/cost-dashboard', costDashboardRoutes);
+app.use('/api/checker-dashboard', checkerDashboardRoutes);
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT

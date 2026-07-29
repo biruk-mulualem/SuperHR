@@ -1,967 +1,746 @@
-'use strict';
+// auditController.js - Fixed version with proper reference ID handling
 
-const db = require('../models');
-const { Item, StoreBalance, Store, Group, UOM, User, Category } = db;
-const { Op } = require('sequelize');
-const NodeCache = require('node-cache');
+const { Op } = require("sequelize");
+const { getUserStoreAndGroup } = require("../utils/userAccess");
+const ExcelJS = require('exceljs');
 
-// ================================================================
-// CACHE CONFIGURATION
-// ================================================================
+const {
+  StoreBalance,
+  StoreBalanceHistory,
+  Store,
+  Group,
+  Item,
+  UOM,
+  Category,
+  StoreGroupRelation,
+  User,
+  sequelize,
+} = require("../models");
 
-const costCache = new NodeCache({ 
-  stdTTL: 300, // 5 minutes default
-  checkperiod: 60,
-  maxKeys: 100
-});
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
 
-// ================================================================
-// 🔥 FIXED: Calculate item cost with proper conversion handling
-// ================================================================
+const formatBalance = (record) => {
+  const item = record.item;
+  const conversionValue = item?.conversionValue !== undefined && item?.conversionValue !== null 
+    ? parseFloat(item.conversionValue) 
+    : 1;
+  const balance = parseFloat(record.balance);
+  const minStock = parseFloat(record.minStockAlert) || 0;
 
-function calculateItemCostOptimized(item, balances, unitCost, storeId = null, groupId = null) {
-  try {
-    // 🔥 Check if item has required data for cost calculation
-    const hasUnitCost = unitCost !== undefined && unitCost !== null && unitCost >= 0;
-    const hasConversionUom = item.conversionUomId !== undefined && item.conversionUomId !== null;
-    const hasConversionValue = item.conversionValue !== undefined && item.conversionValue !== null && parseFloat(item.conversionValue) > 0;
-    
-    // 🔥 Track missing data for error reporting
-    const missingData = [];
-    if (!hasUnitCost && unitCost !== 0) {
-      missingData.push('Unit Cost');
-    }
-    if (!hasConversionUom) {
-      missingData.push('Conversion UOM');
-    }
-    if (!hasConversionValue) {
-      missingData.push('Conversion Value');
-    }
-
-    // 🔥 If no balances, return item with status indicating missing data
-    if (!balances || balances.length === 0) {
-      let status = 'Active';
-      let statusMessage = 'No balances found';
-      
-      if (missingData.length > 0) {
-        status = 'Incomplete';
-        statusMessage = `Missing: ${missingData.join(', ')}`;
-      }
-
-      return {
-        id: item.itemId,
-        itemCode: item.code,
-        itemName: item.name,
-        itemStandardName: item.standardName || '',
-        categoryName: item.category?.name || '',
-        brand: item.brand || '',
-        model: item.model || '',
-        baseUOM: item.uom?.code || 'Units',
-        unitCost: unitCost || 0,
-        totalQty: 0,
-        totalCost: 0,
-        status: status,
-        statusMessage: statusMessage,
-        userStatus: item.status || 'Active',
-        storeBreakdown: [],
-        excludedStores: [],
-        costHistory: [],
-        includedStoresCount: 0,
-        excludedStoresCount: 0,
-        isFiltered: !!storeId,
-        hasMissingData: missingData.length > 0,
-        missingData: missingData,
-        requiresSetup: missingData.length > 0,
-      };
-    }
-
-    // 🔥 Check if item is missing conversion data (but has balances)
-    if (!hasConversionUom || !hasConversionValue) {
-      let status = 'Incomplete';
-      let statusMessage = `Cannot calculate cost - Missing: ${missingData.join(', ')}`;
-      
-      // Still show the balances but with error status
-      const storeBreakdown = balances.map(balance => ({
-        storeId: balance.storeId,
-        storeName: balance.store?.name || 'Unknown Store',
-        hasConflict: false,
-        isExcluded: true,
-        agreedQuantity: parseFloat(balance.balance) || 0,
-        groups: [{
-          groupId: balance.groupId,
-          groupName: balance.group?.name || 'Unknown Group',
-          quantity: parseFloat(balance.balance) || 0,
-          originalQuantity: parseFloat(balance.balance) || 0,
-          originalUOM: balance.item?.uom?.code || 'Units',
-          conversionRate: 1,
-          baseQuantity: parseFloat(balance.balance) || 0,
-          balanceId: balance.id,
-        }],
-      }));
-
-      return {
-        id: item.itemId,
-        itemCode: item.code,
-        itemName: item.name,
-        itemStandardName: item.standardName || '',
-        categoryName: item.category?.name || '',
-        brand: item.brand || '',
-        model: item.model || '',
-        baseUOM: item.uom?.code || 'Units',
-        unitCost: unitCost || 0,
-        totalQty: 0,
-        totalCost: 0,
-        status: status,
-        statusMessage: statusMessage,
-        userStatus: item.status || 'Active',
-        storeBreakdown: storeBreakdown,
-        excludedStores: storeBreakdown.map(s => s.storeName),
-        costHistory: [],
-        includedStoresCount: 0,
-        excludedStoresCount: storeBreakdown.length,
-        isFiltered: !!storeId,
-        hasMissingData: true,
-        missingData: missingData,
-        requiresSetup: true,
-      };
-    }
-
-    // 🔥 Group balances by store with conversion
-    const storeMap = new Map();
-    const baseUOM = item.uom?.code || 'Units';
-    const conversionUomId = item.conversionUomId;
-    const conversionValue = parseFloat(item.conversionValue) || 1;
-
-    for (const balance of balances) {
-      const storeIdKey = balance.storeId;
-      if (!storeMap.has(storeIdKey)) {
-        storeMap.set(storeIdKey, {
-          storeId: balance.storeId,
-          storeName: balance.store?.name || 'Unknown Store',
-          storeCode: balance.store?.code || '',
-          groups: [],
-          totalQty: 0,
-        });
-      }
-
-      const storeData = storeMap.get(storeIdKey);
-      let quantity = parseFloat(balance.balance) || 0;
-      let originalQuantity = quantity;
-      const originalUOM = balance.item?.uom?.code || 'Units';
-      let conversionRate = 1;
-
-      // 🔥 Handle UOM conversion - ONLY if conversion data exists
-      if (balance.uomId === conversionUomId && conversionUomId && conversionValue > 0) {
-        conversionRate = conversionValue;
-        quantity = originalQuantity * conversionRate;
-      }
-
-      storeData.groups.push({
-        groupId: balance.groupId,
-        groupName: balance.group?.name || 'Unknown Group',
-        quantity: quantity,
-        originalQuantity: originalQuantity,
-        originalUOM: originalUOM,
-        conversionRate: conversionRate,
-        baseQuantity: quantity,
-        balanceId: balance.id,
-      });
-      storeData.totalQty += quantity;
-    }
-
-    // Process store breakdown
-    const storeBreakdown = [];
-    for (const [storeIdKey, storeData] of storeMap) {
-      const quantities = storeData.groups.map(g => g.quantity);
-      const firstQty = quantities[0];
-      const allSame = quantities.every(q => Math.abs(q - firstQty) < 0.0001);
-
-      storeBreakdown.push({
-        storeId: storeData.storeId,
-        storeName: storeData.storeName,
-        hasConflict: !allSame,
-        isExcluded: !allSame,
-        agreedQuantity: allSame ? firstQty : 0,
-        groups: storeData.groups.map(g => ({
-          groupId: g.groupId,
-          groupName: g.groupName,
-          quantity: g.quantity,
-          originalQuantity: g.originalQuantity,
-          originalUOM: g.originalUOM,
-          conversionRate: g.conversionRate,
-          baseQuantity: g.baseQuantity,
-          balanceId: g.balanceId,
-        })),
-      });
-    }
-
-    // Calculate totals
-    let includedStores = [];
-    let totalQty = 0;
-    let excludedStores = [];
-
-    if (storeId) {
-      const filteredStore = storeBreakdown.find(s => s.storeId === Number(storeId));
-      if (filteredStore) {
-        if (!filteredStore.isExcluded) {
-          includedStores = [filteredStore];
-          totalQty = filteredStore.agreedQuantity;
-        } else {
-          excludedStores = [filteredStore.storeName];
-        }
-      }
-    } else {
-      includedStores = storeBreakdown.filter(s => !s.isExcluded);
-      totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
-      excludedStores = storeBreakdown.filter(s => s.isExcluded).map(s => s.storeName);
-    }
-
-    // 🔥 Calculate total cost ONLY if we have unit cost
-    const totalCost = hasUnitCost ? totalQty * unitCost : 0;
-    const userStatus = item.status || 'Active';
-
-    // Determine status
-    let status = 'Active';
-    let statusMessage = 'Complete data';
-    
-    if (userStatus === 'Inactive') {
-      status = 'Inactive';
-      statusMessage = 'Item is inactive';
-    } else if (!hasUnitCost && unitCost === 0) {
-      status = 'Incomplete';
-      statusMessage = 'Missing Unit Cost';
-    } else if (excludedStores.length > 0 && includedStores.length > 0) {
-      status = 'Partial';
-      statusMessage = `${excludedStores.length} store(s) excluded due to conflicts`;
-    } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
-      status = 'Conflict';
-      statusMessage = 'All stores have conflicts';
-    } else {
-      status = 'Active';
-      statusMessage = 'Complete data';
-    }
-
-    return {
-      id: item.itemId,
-      itemCode: item.code,
-      itemName: item.name,
-      itemStandardName: item.standardName || '',
-      categoryName: item.category?.name || '',
-      brand: item.brand || '',
-      model: item.model || '',
-      baseUOM: baseUOM,
-      unitCost: unitCost || 0,
-      totalQty: totalQty,
-      totalCost: totalCost,
-      status: status,
-      statusMessage: statusMessage,
-      userStatus: userStatus,
-      storeBreakdown: storeBreakdown,
-      excludedStores: excludedStores,
-      costHistory: [],
-      includedStoresCount: includedStores.length,
-      excludedStoresCount: excludedStores.length,
-      isFiltered: !!storeId,
-      hasMissingData: missingData.length > 0 || !hasUnitCost,
-      missingData: missingData,
-      requiresSetup: missingData.length > 0 || !hasUnitCost,
-    };
-  } catch (error) {
-    console.error('Error in calculateItemCostOptimized:', error);
-    return {
-      id: item.itemId,
-      itemCode: item.code || 'Unknown',
-      itemName: item.name || 'Unknown Item',
-      itemStandardName: '',
-      categoryName: '',
-      brand: '',
-      model: '',
-      baseUOM: 'Units',
-      unitCost: 0,
-      totalQty: 0,
-      totalCost: 0,
-      status: 'Error',
-      statusMessage: error.message || 'Error calculating cost',
-      userStatus: 'Active',
-      storeBreakdown: [],
-      excludedStores: [],
-      costHistory: [],
-      includedStoresCount: 0,
-      excludedStoresCount: 0,
-      isFiltered: !!storeId,
-      hasMissingData: true,
-      missingData: ['Data Error'],
-      requiresSetup: true,
-    };
-  }
-}
-
-// ================================================================
-// HELPER: Get item cost history
-// ================================================================
-
-async function getItemCostHistory(itemId, limit = 10) {
-  try {
-    const ItemCost = db.ItemCost;
-    if (!ItemCost) return [];
-
-    const history = await ItemCost.findAll({
-      where: { itemId: itemId },
-      order: [['created_at', 'DESC']],
-      limit: limit,
-      attributes: ['id', 'previousCost', 'newCost', 'reason', 'changedBy', 'created_at'],
-    });
-
-    return history.map(h => ({
-      id: h.id,
-      previousCost: parseFloat(h.previousCost) || 0,
-      newCost: parseFloat(h.newCost) || 0,
-      reason: h.reason || '',
-      changedBy: h.changedBy || 'System',
-      createdAt: h.created_at,
-    }));
-  } catch (error) {
-    console.error('Error getting item cost history:', error);
-    return [];
-  }
-}
-
-// ================================================================
-// OPTIMIZED CONTROLLER METHODS
-// ================================================================
+  return {
+    id: record.id,
+    storeId: record.storeId,
+    storeName: record.store?.name || null,
+    groupId: record.groupId,
+    groupName: record.group?.name || null,
+    itemId: record.itemId,
+    itemCode: item?.code || null,
+    itemName: item?.standardName || item?.name || null,
+    itemCommonName: item?.standardName || item?.name || null,
+    category: item?.category || null,
+    uomCode: item?.uom?.code || null,
+    uomName: item?.uom?.name || null,
+    conversionUomCode: item?.conversionUom?.code || null,
+    conversionValue: conversionValue,
+    balance: balance,
+    minStock: minStock,
+    baseBalance: balance * conversionValue,
+    status: record.status,
+    statusClass: balance === 0 ? 'zero' : (balance <= minStock ? 'low' : 'normal'),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+};
 
 /**
- * Get all items with cost calculations - OPTIMIZED
- * GET /api/item-costs
+ * Calculate group summary
  */
-exports.getItemsWithCost = async (req, res) => {
-  try {
-    const { storeId, groupId, status, search, page = 1, limit = 10 } = req.query;
+const calculateGroupSummary = (balances) => {
+  const summary = {
+    totalItems: 0,
+    totalBalance: 0,
+    totalBaseBalance: 0,
+    activeItems: 0,
+    inactiveItems: 0,
+    lowStockItems: 0,
+    zeroStockItems: 0,
+    averageBalance: 0,
+    lowStockPercentage: 0,
+    zeroStockPercentage: 0,
+  };
 
-    // Create cache key from all params
-    const cacheKey = `items_${storeId || 'all'}_${groupId || 'all'}_${status || 'all'}_${search || 'all'}_${page}_${limit}`;
-    
-    // Check cache
-    const cachedData = costCache.get(cacheKey);
-    if (cachedData) {
-      console.log('✅ Cache hit for:', cacheKey);
-      return res.json(cachedData);
-    }
+  balances.forEach((record) => {
+    const balance = parseFloat(record.balance);
+    const conversionValue = parseFloat(record.item?.conversionValue) || 1;
+    const baseBalance = balance * conversionValue;
+    const minStock = parseFloat(record.minStockAlert) || 0;
 
-    console.log('⏳ Cache miss for:', cacheKey);
+    summary.totalItems++;
+    summary.totalBalance += balance;
+    summary.totalBaseBalance += baseBalance;
 
-    // Build query for items
-    const itemWhere = {};
-    
-    if (search) {
-      const searchTerm = search.toLowerCase();
-      itemWhere[Op.or] = [
-        { code: { [Op.like]: `%${searchTerm}%` } },
-        { name: { [Op.like]: `%${searchTerm}%` } },
-        { standardName: { [Op.like]: `%${searchTerm}%` } },
-        { brand: { [Op.like]: `%${searchTerm}%` } },
-        { model: { [Op.like]: `%${searchTerm}%` } },
-      ];
-    }
-
-    // If store filter is applied, only get items that have balances in that store
-    let itemIdsWithBalance = null;
-    if (storeId) {
-      const balances = await StoreBalance.findAll({
-        where: {
-          storeId: storeId,
-          status: 'Active',
-        },
-        attributes: ['itemId'],
-        group: ['itemId'],
-      });
-      
-      itemIdsWithBalance = balances.map(b => b.itemId);
-      
-      if (itemIdsWithBalance.length === 0) {
-        const emptyResponse = {
-          success: true,
-          data: [],
-          pagination: {
-            total: 0,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            pages: 0,
-          },
-        };
-        costCache.set(cacheKey, emptyResponse);
-        return res.json(emptyResponse);
+    if (record.status === "Active") {
+      summary.activeItems++;
+      if (balance === 0) {
+        summary.zeroStockItems++;
+      } else if (balance <= minStock) {
+        summary.lowStockItems++;
       }
-      
-      itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
+    } else {
+      summary.inactiveItems++;
+    }
+  });
+
+  summary.averageBalance = summary.totalItems > 0 ? summary.totalBalance / summary.totalItems : 0;
+  summary.lowStockPercentage = summary.activeItems > 0 ? ((summary.lowStockItems / summary.activeItems) * 100) : 0;
+  summary.zeroStockPercentage = summary.activeItems > 0 ? ((summary.zeroStockItems / summary.activeItems) * 100) : 0;
+
+  return summary;
+};
+
+// ============================================
+// HELPER: Get last transaction details (WITH reference ID)
+// ============================================
+
+/**
+ * Get last transaction dates AND reference IDs for each item per group
+ */
+const getLastTransactionDetails = async (storeId, groupIds, itemIds) => {
+  try {
+    if (!groupIds.length || !itemIds.length) {
+      return {};
     }
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    console.log(`🔍 Getting last transaction details for ${itemIds.length} items across ${groupIds.length} groups`);
 
-    // Get items with pagination
-    const { count, rows: items } = await Item.findAndCountAll({
-      where: itemWhere,
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
-      ],
-      order: [['name', 'ASC']],
-      limit: parseInt(limit),
-      offset: offset,
+    const query = `
+      SELECT DISTINCT ON (sbh."item_id", sbh."group_id") 
+        sbh."item_id" as "itemId",
+        sbh."group_id" as "groupId",
+        sbh."created_at" as "lastTransactionDate",
+        sbh."reference_id" as "referenceId",
+        sbh."reference_type" as "referenceType"
+      FROM "store_balance_histories" sbh
+      WHERE sbh."store_id" = :storeId
+        AND sbh."group_id" IN (:groupIds)
+        AND sbh."item_id" IN (:itemIds)
+      ORDER BY sbh."item_id", sbh."group_id", sbh."created_at" DESC
+    `;
+
+    const results = await sequelize.query(query, {
+      replacements: {
+        storeId: parseInt(storeId),
+        groupIds: groupIds,
+        itemIds: itemIds
+      },
+      type: sequelize.QueryTypes.SELECT
     });
 
-    if (items.length === 0) {
-      const emptyResponse = {
-        success: true,
-        data: [],
-        pagination: {
-          total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          pages: 0,
-        },
+    console.log(`✅ Found ${results.length} last transaction records`);
+
+    const lastTxMap = {};
+    results.forEach(row => {
+      const key = `${row.itemId}_${row.groupId}`;
+      lastTxMap[key] = {
+        lastTransactionDate: row.lastTransactionDate,
+        referenceId: row.referenceId,
+        referenceType: row.referenceType
       };
-      costCache.set(cacheKey, emptyResponse);
-      return res.json(emptyResponse);
+    });
+
+    return lastTxMap;
+
+  } catch (error) {
+    console.error('❌ Error getting last transaction details:', error);
+    return {};
+  }
+};
+
+/**
+ * Determine comparison status - SIMPLIFIED (No Outlier)
+ */
+const determineStatus = (values, totalGroups) => {
+  const validValues = values.filter(v => v !== null && v !== undefined);
+  const missingCount = totalGroups - validValues.length;
+  
+  if (validValues.length === 0) {
+    return 'No Data';
+  }
+  
+  if (missingCount > 0) {
+    return 'Conflict';
+  }
+  
+  const uniqueValues = [...new Set(validValues)];
+  
+  if (uniqueValues.length === 1) {
+    return 'Matched';
+  } else {
+    return 'Conflict';
+  }
+};
+
+/**
+ * Get status class for frontend - SIMPLIFIED
+ */
+const getStatusClass = (status) => {
+  const map = {
+    'Matched': 'matched',
+    'Conflict': 'conflict',
+    'No Data': 'unknown'
+  };
+  return map[status] || 'unknown';
+};
+
+/**
+ * 1. GET STORE AUDIT - MAIN ENDPOINT
+ * GET /api/audit/store/:storeId
+ */
+exports.getStoreAudit = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { includeTransactions = 'true', transactionLimit = 10 } = req.query;
+
+    console.log(`🔍 Getting audit data for store: ${storeId}`);
+
+    const store = await Store.findByPk(parseInt(storeId), {
+      attributes: ['storeId', 'name', 'code', 'location', 'status'],
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found',
+      });
     }
 
-    // Get ALL balances in ONE query
-    const itemIds = items.map(i => i.itemId);
-    const balanceWhere = {
-      itemId: { [Op.in]: itemIds },
-      status: 'Active',
-    };
-    if (storeId) balanceWhere.storeId = storeId;
-    if (groupId) balanceWhere.groupId = groupId;
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code', 'description', 'status'],
+        }
+      ],
+      order: [['createdAt', 'ASC']],
+    });
+
+    const groups = storeGroups
+      .map(sg => sg.group)
+      .filter(g => g !== null);
+
+    console.log(`📋 Found ${groups.length} groups for store ${storeId}`);
 
     const allBalances = await StoreBalance.findAll({
-      where: balanceWhere,
+      where: {
+        storeId: parseInt(storeId),
+      },
       include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
-        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
-        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+        {
+          model: Store,
+          as: "store",
+          attributes: ["storeId", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["groupId", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["itemId", "code", "name", "standardName", "conversionValue", "categoryId"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: Category,
+              as: "category",
+              attributes: ["categoryId", "name", "description"],
+            },
+          ],
+        },
       ],
+      order: [["groupId", "ASC"], ["itemId", "ASC"]],
     });
 
-    // Group balances by item
-    const balancesByItem = {};
-    for (const balance of allBalances) {
-      if (!balancesByItem[balance.itemId]) {
-        balancesByItem[balance.itemId] = [];
-      }
-      balancesByItem[balance.itemId].push(balance);
-    }
+    console.log(`✅ Found ${allBalances.length} balances for store ${storeId}`);
 
-    // Get latest costs in ONE query
-    const ItemCost = db.ItemCost;
-    let latestCosts = {};
-    if (ItemCost) {
-      const costRecords = await ItemCost.findAll({
-        where: { itemId: { [Op.in]: itemIds } },
-        order: [['created_at', 'DESC']],
-        attributes: ['itemId', 'newCost', 'created_at'],
-      });
-      
-      // Group by itemId and take first (latest)
-      for (const cost of costRecords) {
-        if (!latestCosts[cost.itemId]) {
-          latestCosts[cost.itemId] = parseFloat(cost.newCost);
-        }
+    const categorySet = new Set();
+    allBalances.forEach(balance => {
+      if (balance.item?.category?.name) {
+        categorySet.add(balance.item.category.name);
       }
-    }
+    });
+    const categories = Array.from(categorySet);
 
-    // Process each item using pre-fetched data
-    const results = [];
-    for (const item of items) {
-      const itemBalances = balancesByItem[item.itemId] || [];
-      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
-      
-      const costData = calculateItemCostOptimized(
-        item,
-        itemBalances,
-        unitCost,
-        storeId || null,
-        groupId || null
-      );
+    // ✅ FIX: Use getLastTransactionDetails instead of getLastTransactionDates
+    const groupIds = groups.map(g => g.groupId);
+    const itemIds = [...new Set(allBalances.map(b => b.itemId))];
+    const lastTxMap = await getLastTransactionDetails(storeId, groupIds, itemIds);
 
-      // Apply status filter - include 'Incomplete' and 'Error' statuses
-      if (status) {
-        if (status === 'Active' && costData.status !== 'Active') continue;
-        if (status === 'Partial' && costData.status !== 'Partial') continue;
-        if (status === 'Inactive' && costData.status !== 'Inactive') continue;
-        if (status === 'Incomplete' && costData.status !== 'Incomplete') continue;
-        if (status === 'Error' && costData.status !== 'Error') continue;
-        if (status === 'Conflict' && costData.status !== 'Conflict') continue;
-      }
-      
-      // Filter out items with zero quantity when store is selected (except incomplete/error items)
-      if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0 && 
-          costData.status !== 'Incomplete' && costData.status !== 'Error') {
-        continue;
-      }
+    if (allBalances.length === 0) {
+      const formattedGroups = groups.map(group => ({
+        groupId: group.groupId,
+        name: group.name,
+        code: group.code || '',
+        description: group.description || '',
+        status: group.status || 'Active',
+        balanceCount: 0,
+        summary: {
+          totalItems: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          activeItems: 0,
+          inactiveItems: 0,
+          lowStockItems: 0,
+          zeroStockItems: 0,
+          averageBalance: 0,
+          lowStockPercentage: 0,
+          zeroStockPercentage: 0,
+        },
+        balances: [],
+        transactions: [],
+      }));
 
-      results.push(costData);
-    }
-
-    // Calculate correct total count based on filters
-    let totalCount = count;
-    
-    // If status filter is applied, we need to count filtered items
-    if (status || storeId) {
-      // Get all items that match the base query (without pagination)
-      const allItemsWhere = { ...itemWhere };
-      if (storeId && itemIdsWithBalance) {
-        allItemsWhere.itemId = { [Op.in]: itemIdsWithBalance };
-      }
-      
-      const allItems = await Item.findAll({
-        where: allItemsWhere,
-        include: [
-          { model: UOM, as: 'uom' },
-          { model: Category, as: 'category' },
-        ],
-        order: [['name', 'ASC']],
-      });
-      
-      // Get all balances for counting
-      const allItemIds = allItems.map(i => i.itemId);
-      const allBalancesForCount = await StoreBalance.findAll({
-        where: {
-          itemId: { [Op.in]: allItemIds },
-          status: 'Active',
-          ...(storeId && { storeId }),
-          ...(groupId && { groupId }),
+      return res.status(200).json({
+        success: true,
+        data: {
+          store: {
+            id: store.storeId,
+            name: store.name,
+            code: store.code,
+            location: store.location,
+            status: store.status,
+          },
+          groups: formattedGroups,
+          categories: categories,
+          summary: {
+            totalGroups: groups.length,
+            totalItems: 0,
+            totalBalance: 0,
+            totalBaseBalance: 0,
+            activeItems: 0,
+            inactiveItems: 0,
+            matchedItems: 0,
+            conflictItems: 0,
+            dateDiffItems: 0,
+            totalProducts: 0,
+            categories: categories,
+          },
+          comparison: {
+            items: [],
+            summary: {
+              total: 0,
+              matched: 0,
+              conflict: 0,
+              dateDiff: 0,
+              matchedPercentage: "0",
+              conflictPercentage: "0",
+              dateDiffPercentage: "0",
+            },
+          },
         },
       });
-      
-      const balancesByItemForCount = {};
-      for (const b of allBalancesForCount) {
-        if (!balancesByItemForCount[b.itemId]) balancesByItemForCount[b.itemId] = [];
-        balancesByItemForCount[b.itemId].push(b);
-      }
-      
-      // Get costs for counting
-      let costsForCount = {};
-      if (ItemCost) {
-        const costRecords = await ItemCost.findAll({
-          where: { itemId: { [Op.in]: allItemIds } },
-          order: [['created_at', 'DESC']],
+    }
+
+    const groupedBalances = {};
+    const groupSummaries = {};
+
+    groups.forEach((group) => {
+      const groupBalances = allBalances.filter((b) => b.groupId === group.groupId);
+      groupedBalances[group.groupId] = groupBalances;
+      groupSummaries[group.groupId] = calculateGroupSummary(groupBalances);
+    });
+
+    // STEP 2: Build comparison data with last transaction details
+    const itemMap = new Map();
+    
+    allBalances.forEach((balance) => {
+      const itemId = balance.itemId;
+      if (!itemMap.has(itemId)) {
+        itemMap.set(itemId, {
+          itemId: itemId,
+          code: balance.item?.code || null,
+          itemName: balance.item?.standardName || balance.item?.name || null,
+          commonName: balance.item?.standardName || balance.item?.name || null,
+          standardName: balance.item?.standardName || null,
+          category: balance.item?.category?.name || null,
+          uomCode: balance.item?.uom?.code || null,
+          uomName: balance.item?.uom?.name || null,
+          conversionValue: parseFloat(balance.item?.conversionValue) || 1,
+          groupBalances: {},
+          groupLastTxDetails: {}, // ✅ Changed from groupLastTxDates
         });
-        for (const cost of costRecords) {
-          if (!costsForCount[cost.itemId]) {
-            costsForCount[cost.itemId] = parseFloat(cost.newCost);
+      }
+      const item = itemMap.get(itemId);
+      item.groupBalances[balance.groupId] = parseFloat(balance.balance);
+      
+      const key = `${itemId}_${balance.groupId}`;
+      if (lastTxMap[key]) {
+        // ✅ Store both date AND reference ID
+        item.groupLastTxDetails[balance.groupId] = {
+          lastTransactionDate: lastTxMap[key].lastTransactionDate,
+          referenceId: lastTxMap[key].referenceId,
+          referenceType: lastTxMap[key].referenceType
+        };
+      }
+    });
+
+    // STEP 3: Determine status and detect date differences
+    const comparisonItems = [];
+    let matchedCount = 0;
+    let conflictCount = 0;
+    let dateDiffCount = 0;
+
+    itemMap.forEach((item) => {
+      const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null);
+      const totalGroups = groups.length;
+      const status = determineStatus(values, totalGroups);
+      
+      // ✅ UPDATED: Check for date differences WITH reference ID
+      const txDetails = Object.values(item.groupLastTxDetails || {}).filter(d => d !== undefined && d !== null);
+      let hasDateDiff = false;
+      let dateDiffDetails = null;
+      
+      if (txDetails.length > 1) {
+        // Extract dates and reference IDs
+        const dates = txDetails.map(d => d.lastTransactionDate).filter(d => d !== undefined && d !== null);
+        const referenceIds = txDetails.map(d => d.referenceId).filter(id => id !== undefined && id !== null);
+        
+        if (dates.length > 1) {
+          // Check if dates are different
+          const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))];
+          const datesAreDifferent = uniqueDateStrings.length > 1;
+          
+          if (datesAreDifferent) {
+            // Check if reference IDs are different (or missing)
+            const uniqueReferenceIds = [...new Set(referenceIds)];
+            const hasSameReferenceId = uniqueReferenceIds.length === 1 && uniqueReferenceIds[0] !== null;
+            const hasMissingReferenceId = referenceIds.length < txDetails.length;
+            const hasDifferentReferenceId = uniqueReferenceIds.length > 1;
+            
+            // ✅ Only count as Date Diff if:
+            // 1. Dates are different AND reference IDs are different
+            // 2. OR dates are different AND one group has no reference ID
+            if (hasDifferentReferenceId || hasMissingReferenceId) {
+              hasDateDiff = true;
+              
+              // Calculate date diff details
+              const dateObjects = dates.map(d => new Date(d));
+              const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())));
+              const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())));
+              const diffMs = latestDate - earliestDate;
+              const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+              
+              dateDiffDetails = {
+                latestDate: latestDate.toISOString(),
+                earliestDate: earliestDate.toISOString(),
+                diffDays: diffDays,
+                diffHours: Math.round(diffMs / (1000 * 60 * 60)),
+                uniqueDates: uniqueDateStrings,
+                referenceIds: referenceIds,
+                hasSameReferenceId: hasSameReferenceId,
+              };
+            }
           }
         }
       }
       
-      let filteredCount = 0;
-      for (const item of allItems) {
-        const itemBalances = balancesByItemForCount[item.itemId] || [];
-        const unitCost = costsForCount[item.itemId] || parseFloat(item.costPrice) || 0;
-        
-        const costData = calculateItemCostOptimized(
-          item,
-          itemBalances,
-          unitCost,
-          storeId || null,
-          groupId || null
-        );
-        
-        if (status) {
-          if (status === 'Active' && costData.status !== 'Active') continue;
-          if (status === 'Partial' && costData.status !== 'Partial') continue;
-          if (status === 'Inactive' && costData.status !== 'Inactive') continue;
-          if (status === 'Incomplete' && costData.status !== 'Incomplete') continue;
-          if (status === 'Error' && costData.status !== 'Error') continue;
-          if (status === 'Conflict' && costData.status !== 'Conflict') continue;
+      // Count statuses
+      if (status === 'Matched') {
+        matchedCount++;
+        if (hasDateDiff) {
+          dateDiffCount++;
         }
-        if (storeId && costData.totalQty === 0 && costData.storeBreakdown.length === 0 && 
-            costData.status !== 'Incomplete' && costData.status !== 'Error') continue;
-        filteredCount++;
+      } else if (status === 'Conflict') {
+        conflictCount++;
       }
-      totalCount = filteredCount;
-    }
 
-    const response = {
-      success: true,
-      data: results,
-      pagination: {
-        total: totalCount,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(totalCount / parseInt(limit)),
+      comparisonItems.push({
+        ...item,
+        status,
+        statusClass: getStatusClass(status),
+        values,
+        groupLastTxDetails: item.groupLastTxDetails || {},
+        hasDateDiff: hasDateDiff,
+        dateDiffDetails: dateDiffDetails,
+      });
+    });
+
+    // STEP 4: Build group audit data with transactions
+    const groupAuditData = await Promise.all(groups.map(async (group) => {
+      const balances = groupedBalances[group.groupId] || [];
+      const formattedBalances = balances.map((b) => formatBalance(b));
+
+      let transactions = [];
+      if (includeTransactions === 'true') {
+        try {
+          const allTransactions = await StoreBalanceHistory.findAll({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: group.groupId,
+            },
+            include: [
+              {
+                model: Store,
+                as: "store",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: Group,
+                as: "group",
+                attributes: ["groupId", "name", "code"],
+              },
+              {
+                model: Item,
+                as: "item",
+                attributes: ["itemId", "code", "name", "standardName"],
+                include: [
+                  {
+                    model: UOM,
+                    as: "uom",
+                    attributes: ["id", "code", "name"],
+                  },
+                ],
+              },
+              {
+                model: Store,
+                as: "sourceStore",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: Store,
+                as: "destinationStore",
+                attributes: ["storeId", "name", "code"],
+              },
+              {
+                model: User,
+                as: "changedByUser",
+                attributes: ["userId", "username", "fullName"],
+              },
+            ],
+            order: [["createdAt", "DESC"]],
+            limit: parseInt(transactionLimit),
+          });
+
+          transactions = allTransactions.map((t) => ({
+            id: t.id,
+            balanceId: t.balanceId,
+            storeName: t.store?.name || null,
+            groupName: t.group?.name || null,
+            itemName: t.item?.standardName || t.item?.name || null,
+            itemCode: t.item?.code || null,
+            uomCode: t.item?.uom?.code || null,
+            previousBalance: parseFloat(t.previousBalance),
+            newBalance: parseFloat(t.newBalance),
+            changeAmount: parseFloat(t.changeAmount),
+            transactionType: t.transactionType,
+            sourceStore: t.sourceStore?.name || null,
+            destinationStore: t.destinationStore?.name || null,
+            referenceType: t.referenceType,
+            referenceId: t.referenceId,
+            changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+            remark: t.remark,
+            createdAt: t.createdAt,
+          }));
+        } catch (txError) {
+          console.error(`⚠️ Error fetching transactions for group ${group.groupId}:`, txError);
+        }
+      }
+
+      return {
+        groupId: group.groupId,
+        name: group.name,
+        code: group.code || '',
+        description: group.description || '',
+        status: group.status || 'Active',
+        balanceCount: balances.length,
+        summary: groupSummaries[group.groupId] || {
+          totalItems: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          activeItems: 0,
+          inactiveItems: 0,
+          lowStockItems: 0,
+          zeroStockItems: 0,
+          averageBalance: 0,
+          lowStockPercentage: 0,
+          zeroStockPercentage: 0,
+        },
+        balances: formattedBalances,
+        transactions: transactions,
+      };
+    }));
+
+    // STEP 5: Calculate overall summary
+    const overallSummary = {
+      totalGroups: groups.length,
+      totalItems: allBalances.length,
+      totalBalance: allBalances.reduce((sum, b) => sum + parseFloat(b.balance), 0),
+      totalBaseBalance: allBalances.reduce((sum, b) => {
+        const cv = parseFloat(b.item?.conversionValue) || 1;
+        return sum + (parseFloat(b.balance) * cv);
+      }, 0),
+      activeItems: allBalances.filter(b => b.status === 'Active').length,
+      inactiveItems: allBalances.filter(b => b.status !== 'Active').length,
+      matchedItems: matchedCount,
+      conflictItems: conflictCount,
+      dateDiffItems: dateDiffCount,
+      totalProducts: itemMap.size,
+      categories: categories,
+    };
+
+    // STEP 6: Build final response
+    const responseData = {
+      store: {
+        id: store.storeId,
+        name: store.name,
+        code: store.code,
+        location: store.location,
+        status: store.status,
+      },
+      groups: groupAuditData,
+      summary: overallSummary,
+      categories: categories,
+      comparison: {
+        items: comparisonItems,
+        summary: {
+          total: itemMap.size,
+          matched: matchedCount,
+          conflict: conflictCount,
+          dateDiff: dateDiffCount,
+          matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : "0",
+          conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : "0",
+          dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : "0",
+        },
       },
     };
 
-    // Store in cache
-    costCache.set(cacheKey, response);
-    console.log('✅ Data cached for:', cacheKey);
+    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${conflictCount} conflicts, ${dateDiffCount} with date differences`);
 
-    res.json(response);
-
-  } catch (error) {
-    console.error('Get items with cost error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get items with cost',
-    });
-  }
-};
-
-/**
- * Get single item with cost calculation - OPTIMIZED
- * GET /api/item-costs/:itemId
- */
-exports.getItemCost = async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const { storeId, groupId } = req.query;
-
-    // Get the item
-    const item = await Item.findByPk(itemId, {
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
-      ],
-    });
-
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        error: 'Item not found',
-      });
-    }
-
-    // Get balances for this item
-    const balanceWhere = {
-      itemId: itemId,
-      status: 'Active',
-    };
-    if (storeId) balanceWhere.storeId = storeId;
-    if (groupId) balanceWhere.groupId = groupId;
-
-    const balances = await StoreBalance.findAll({
-      where: balanceWhere,
-      include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
-        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
-        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
-      ],
-    });
-
-    // Get latest cost
-    const ItemCost = db.ItemCost;
-    let unitCost = parseFloat(item.costPrice) || 0;
-    if (ItemCost) {
-      const latestCost = await ItemCost.findOne({
-        where: { itemId: itemId },
-        order: [['created_at', 'DESC']],
-      });
-      if (latestCost) {
-        unitCost = parseFloat(latestCost.newCost);
-      }
-    }
-
-    // Calculate cost
-    const costData = calculateItemCostOptimized(
-      item,
-      balances,
-      unitCost,
-      storeId || null,
-      groupId || null
-    );
-
-    // Get cost history
-    const history = await getItemCostHistory(parseInt(itemId), 10);
-    costData.costHistory = history;
-
-    res.json({
+    return res.status(200).json({
       success: true,
-      data: costData,
+      data: responseData,
     });
 
   } catch (error) {
-    console.error('Get item cost error:', error);
-    res.status(500).json({
+    console.error("❌ Get store audit error:", error);
+    return res.status(500).json({
       success: false,
-      error: error.message || 'Failed to get item cost',
+      error: error.message || 'Failed to get store audit data',
     });
   }
 };
 
-/**
- * Get cost history for an item
- * GET /api/item-costs/:itemId/history
- */
-exports.getItemCostHistory = async (req, res) => {
+// ============================================
+// 2. GET STORES WITH GROUPS
+// ============================================
+exports.getStoresWithGroups = async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { limit = 20 } = req.query;
-
-    const history = await getItemCostHistory(parseInt(itemId), parseInt(limit));
-
-    res.json({
-      success: true,
-      data: history,
-    });
-
-  } catch (error) {
-    console.error('Get item cost history error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get item cost history',
-    });
-  }
-};
-
-/**
- * Update item cost
- * POST /api/item-costs/:itemId
- */
-/**
- * Update item cost
- * POST /api/item-costs/:itemId
- */
-exports.updateItemCost = async (req, res) => {
-  const t = await db.sequelize.transaction();
-
-  try {
-    const { itemId } = req.params;
-    const { unitCost, reason } = req.body;
     const userId = req.user?.userId;
-
-    if (!unitCost || unitCost <= 0) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: 'Valid unit cost is required',
-      });
-    }
-
-    const item = await Item.findByPk(itemId);
-    if (!item) {
-      await t.rollback();
-      return res.status(404).json({
-        success: false,
-        error: 'Item not found',
-      });
-    }
-
-    const previousCost = parseFloat(item.costPrice) || 0;
-
-    // Update the item's cost price
-    await item.update({
-      costPrice: unitCost,
-    }, { transaction: t });
-
-    // Log the cost change in item_cost table
-    const ItemCost = db.ItemCost;
-    if (ItemCost) {
-      await ItemCost.create({
-        itemId: itemId,
-        previousCost: previousCost,
-        newCost: unitCost,
-        reason: reason || 'Manual update',
-        changedBy: userId || 'System',
-        created_at: new Date(),
-      }, { transaction: t });
-    }
-
-    await t.commit();
-
-    // Clear cache
-    costCache.flushAll();
-
-    // 🔥 FIX: Get the updated item data directly
-    const updatedItem = await Item.findByPk(itemId, {
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
-      ],
-    });
-
-    // Get balances for this item
-    const balances = await StoreBalance.findAll({
-      where: {
-        itemId: itemId,
-        status: 'Active',
-      },
-      include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
-        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
-        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
-      ],
-    });
-
-    // Get latest cost
-    let unitCostValue = parseFloat(item.costPrice) || 0;
-    if (ItemCost) {
-      const latestCost = await ItemCost.findOne({
-        where: { itemId: itemId },
-        order: [['created_at', 'DESC']],
-      });
-      if (latestCost) {
-        unitCostValue = parseFloat(latestCost.newCost);
+    
+    let stores = [];
+    
+    if (userId) {
+      const accessResult = await getUserStoreAndGroup(userId);
+      
+      if (accessResult.success) {
+        if (accessResult.data.isAdmin) {
+          stores = await Store.findAll({
+            attributes: ['storeId', 'code', 'name', 'location', 'status'],
+            include: [
+              {
+                model: Group,
+                as: 'groups',
+                through: { attributes: [] },
+                attributes: ['id', 'name', 'code', 'description', 'status'],
+                where: { status: 'Active' },
+                required: false,
+              },
+            ],
+            where: { status: 'Active' },
+            order: [['name', 'ASC']],
+          });
+        } else {
+          const assignedStore = accessResult.data.assignedStore;
+          if (assignedStore) {
+            const store = await Store.findByPk(assignedStore.id, {
+              attributes: ['storeId', 'code', 'name', 'location', 'status'],
+              include: [
+                {
+                  model: Group,
+                  as: 'groups',
+                  through: { attributes: [] },
+                  attributes: ['id', 'name', 'code', 'description', 'status'],
+                  where: { status: 'Active' },
+                  required: false,
+                },
+              ],
+            });
+            if (store) stores = [store];
+          }
+        }
       }
     }
 
-    // Calculate cost
-    const costData = calculateItemCostOptimized(
-      updatedItem,
-      balances,
-      unitCostValue,
-      null,
-      null
-    );
-
-    // Get cost history
-    const history = await getItemCostHistory(parseInt(itemId), 5);
-    costData.costHistory = history;
-
-    res.json({
-      success: true,
-      message: 'Item cost updated successfully',
-      data: costData,
-    });
-
-  } catch (error) {
-    await t.rollback();
-    console.error('Update item cost error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to update item cost',
-      });
-    }
-  }
-};
-
-/**
- * Toggle item status (Active/Inactive)
- * PATCH /api/item-costs/:itemId/status
- */
-exports.toggleItemStatus = async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const { status } = req.body;
-
-    if (!['Active', 'Inactive'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid status. Must be Active or Inactive',
-      });
-    }
-
-    const item = await Item.findByPk(itemId);
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        error: 'Item not found',
-      });
-    }
-
-    await item.update({ status: status });
-
-    // Clear cache
-    costCache.flushAll();
-
-    // Get the updated item data directly
-    const updatedItem = await Item.findByPk(itemId, {
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
-      ],
-    });
-
-    // Get balances for this item
-    const balances = await StoreBalance.findAll({
-      where: {
-        itemId: itemId,
-        status: 'Active',
-      },
-      include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
-        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
-        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
-      ],
-    });
-
-    // Get latest cost
-    const ItemCost = db.ItemCost;
-    let unitCost = parseFloat(item.costPrice) || 0;
-    if (ItemCost) {
-      const latestCost = await ItemCost.findOne({
-        where: { itemId: itemId },
-        order: [['created_at', 'DESC']],
-      });
-      if (latestCost) {
-        unitCost = parseFloat(latestCost.newCost);
-      }
-    }
-
-    // Calculate cost
-    const costData = calculateItemCostOptimized(
-      updatedItem,
-      balances,
-      unitCost,
-      null,
-      null
-    );
-
-    // Get cost history
-    const history = await getItemCostHistory(parseInt(itemId), 5);
-    costData.costHistory = history;
-
-    return res.json({
-      success: true,
-      message: `Item status updated to ${status}`,
-      data: costData,
-    });
-
-  } catch (error) {
-    console.error('Toggle item status error:', error);
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to update item status',
-      });
-    }
-  }
-};
-
-/**
- * Get stores for dropdown
- * GET /api/item-costs/stores
- */
-exports.getStores = async (req, res) => {
-  try {
-    const storeCacheKey = 'stores_list';
-    let stores = costCache.get(storeCacheKey);
-
-    if (!stores) {
+    if (stores.length === 0) {
       stores = await Store.findAll({
+        attributes: ['storeId', 'code', 'name', 'location', 'status'],
+        include: [
+          {
+            model: Group,
+            as: 'groups',
+            through: { attributes: [] },
+            attributes: ['id', 'name', 'code', 'description', 'status'],
+            where: { status: 'Active' },
+            required: false,
+          },
+        ],
         where: { status: 'Active' },
-        attributes: ['storeId', 'name', 'code'],
         order: [['name', 'ASC']],
       });
-      costCache.set(storeCacheKey, stores, 3600);
     }
 
-    res.json({
+    const formattedStores = stores.map(store => {
+      const storeId = store.storeId || store.id;
+      return {
+        id: storeId,
+        name: store.name,
+        code: store.code,
+        location: store.location,
+        status: store.status,
+        groups: (store.groups || []).map(group => ({
+          id: group.id,
+          groupId: group.id,
+          name: group.name,
+          code: group.code,
+          description: group.description,
+          status: group.status,
+        })),
+      };
+    });
+
+    console.log(`✅ Found ${formattedStores.length} stores with groups`);
+
+    res.status(200).json({
       success: true,
-      data: stores.map(s => ({
-        id: s.storeId,
-        name: s.name,
-        code: s.code,
-      })),
+      data: formattedStores,
     });
 
   } catch (error) {
-    console.error('Get stores error:', error);
+    console.error("❌ Get stores with groups error:", error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get stores',
@@ -969,328 +748,1163 @@ exports.getStores = async (req, res) => {
   }
 };
 
-/**
- * Get groups for dropdown
- * GET /api/item-costs/groups
- */
-exports.getGroups = async (req, res) => {
+// ============================================
+// 3. GET CATEGORIES
+// ============================================
+exports.getCategories = async (req, res) => {
   try {
-    const groupCacheKey = 'groups_list';
-    let groups = costCache.get(groupCacheKey);
-
-    if (!groups) {
-      groups = await Group.findAll({
-        where: { status: 'Active' },
-        attributes: ['id', 'name', 'code'],
-        order: [['name', 'ASC']],
-      });
-      costCache.set(groupCacheKey, groups, 3600);
-    }
-
-    res.json({
-      success: true,
-      data: groups,
-    });
-
-  } catch (error) {
-    console.error('Get groups error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get groups',
-    });
-  }
-};
-
-/**
- * Export cost report - OPTIMIZED
- * GET /api/item-costs/export
- */
-exports.exportCostReport = async (req, res) => {
-  try {
-    const { storeId, groupId } = req.query;
-
-    // Get all items
-    const items = await Item.findAll({
-      include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-      ],
+    const categories = await Category.findAll({
+      attributes: ['categoryId', 'name', 'description', 'status'],
+      where: { status: 'Active' },
       order: [['name', 'ASC']],
     });
 
-    if (items.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-        total: 0,
+    const formattedCategories = categories.map(cat => ({
+      id: cat.categoryId,
+      name: cat.name,
+      description: cat.description,
+      status: cat.status,
+    }));
+
+    console.log(`✅ Found ${formattedCategories.length} categories`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedCategories,
+    });
+
+  } catch (error) {
+    console.error("❌ Get categories error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get categories',
+    });
+  }
+};
+
+// ============================================
+// 4. GET GROUP COMPARISON - UPDATED (No Outlier)
+// ============================================
+exports.getGroupComparison = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    console.log(`🔍 Getting group comparison for store: ${storeId}`);
+
+    const store = await Store.findByPk(parseInt(storeId), {
+      attributes: ['id', 'name', 'code'],
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found',
       });
     }
 
-    // Get all balances in ONE query
-    const itemIds = items.map(i => i.itemId);
-    const balanceWhere = {
-      itemId: { [Op.in]: itemIds },
-      status: 'Active',
-    };
-    if (storeId) balanceWhere.storeId = storeId;
-    if (groupId) balanceWhere.groupId = groupId;
-
-    const allBalances = await StoreBalance.findAll({
-      where: balanceWhere,
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
       include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name'] },
-        { model: Group, as: 'group', attributes: ['id', 'name'] },
-        { model: Item, as: 'item', include: [{ model: UOM, as: 'uom' }] },
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code', 'status'],
+          where: { status: 'Active' },
+        }
       ],
     });
 
-    // Group balances by item
-    const balancesByItem = {};
-    for (const balance of allBalances) {
-      if (!balancesByItem[balance.itemId]) {
-        balancesByItem[balance.itemId] = [];
-      }
-      balancesByItem[balance.itemId].push(balance);
-    }
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null);
 
-    // Get latest costs
-    const ItemCost = db.ItemCost;
-    let latestCosts = {};
-    if (ItemCost) {
-      const costRecords = await ItemCost.findAll({
-        where: { itemId: { [Op.in]: itemIds } },
-        order: [['created_at', 'DESC']],
+    if (groups.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          store: { id: store.id, name: store.name, code: store.code },
+          groups: [],
+          items: [],
+          summary: { totalItems: 0, totalGroups: 0, totalBalance: 0 },
+        },
       });
-      for (const cost of costRecords) {
-        if (!latestCosts[cost.itemId]) {
-          latestCosts[cost.itemId] = parseFloat(cost.newCost);
-        }
-      }
     }
 
-    // Process items
-    const reportData = [];
-    for (const item of items) {
-      const itemBalances = balancesByItem[item.itemId] || [];
-      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
-      
-      const costData = calculateItemCostOptimized(
-        item,
-        itemBalances,
-        unitCost,
-        storeId || null,
-        groupId || null
-      );
+    const allBalances = await StoreBalance.findAll({
+      where: {
+        storeId: parseInt(storeId),
+        status: 'Active',
+      },
+      include: [
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName", "conversionValue"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+      ],
+      order: [["itemId", "ASC"]],
+    });
 
-      if (costData.status !== 'Inactive' && costData.status !== 'Incomplete' && costData.status !== 'Error') {
-        reportData.push({
-          'Item Code': costData.itemCode,
-          'Item Name': costData.itemName,
-          'Standard Name': costData.itemStandardName || '',
-          'Category': costData.categoryName || '',
-          'Brand': costData.brand || '',
-          'Model': costData.model || '',
-          'Base UOM': costData.baseUOM,
-          'Unit Cost': costData.unitCost.toFixed(2),
-          'Total Quantity': costData.totalQty,
-          'Total Cost': costData.totalCost.toFixed(2),
-          'Status': costData.status,
-          'Status Message': costData.statusMessage || '',
-          'Excluded Stores': costData.excludedStores.join(', '),
+    const itemMap = new Map();
+    allBalances.forEach((balance) => {
+      const itemId = balance.itemId;
+      if (!itemMap.has(itemId)) {
+        itemMap.set(itemId, {
+          itemId: itemId,
+          itemCode: balance.item?.code || null,
+          itemName: balance.item?.standardName || balance.item?.name || null,
+          uomCode: balance.item?.uom?.code || null,
+          conversionValue: parseFloat(balance.item?.conversionValue) || 1,
+          groups: {},
         });
       }
-    }
+      const item = itemMap.get(itemId);
+      item.groups[balance.groupId] = {
+        groupName: balance.group?.name || null,
+        balance: parseFloat(balance.balance),
+        minStock: parseFloat(balance.minStockAlert) || 0,
+      };
+    });
 
-    res.json({
+    const comparisonItems = [];
+    let matchedItems = 0;
+    let conflictItems = 0;
+
+    itemMap.forEach((item) => {
+      const values = Object.values(item.groups).map(g => g.balance);
+      const uniqueValues = [...new Set(values)];
+      
+      let status = 'No Data';
+      if (values.length === 0) {
+        status = 'No Data';
+      } else if (uniqueValues.length === 1) {
+        status = 'Matched';
+        matchedItems++;
+      } else {
+        status = 'Conflict';
+        conflictItems++;
+      }
+
+      comparisonItems.push({
+        ...item,
+        status,
+        statusClass: status.toLowerCase(),
+        totalBalance: values.reduce((sum, v) => sum + v, 0),
+        averageBalance: values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0,
+        groupCount: values.length,
+        minBalance: values.length > 0 ? Math.min(...values) : 0,
+        maxBalance: values.length > 0 ? Math.max(...values) : 0,
+      });
+    });
+
+    const summary = {
+      totalItems: comparisonItems.length,
+      totalGroups: groups.length,
+      totalBalance: comparisonItems.reduce((sum, item) => sum + item.totalBalance, 0),
+      matchedItems,
+      conflictItems,
+    };
+
+    res.status(200).json({
       success: true,
-      data: reportData,
-      total: reportData.length,
+      data: {
+        store: { id: store.id, name: store.name, code: store.code },
+        groups: groups.map(g => ({ groupId: g.groupId, name: g.name, code: g.code, status: g.status })),
+        items: comparisonItems,
+        summary,
+      },
     });
 
   } catch (error) {
-    console.error('Export report error:', error);
+    console.error("❌ Get group comparison error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to export report',
+      error: error.message || 'Failed to get group comparison',
     });
   }
 };
 
-/**
- * Get cost summary - OPTIMIZED
- * GET /api/item-costs/summary
- */
-exports.getCostSummary = async (req, res) => {
+// ============================================
+// 5. GET BALANCE SNAPSHOT
+// ============================================
+exports.getBalanceSnapshot = async (req, res) => {
   try {
-    const { storeId, groupId } = req.query;
+    const { storeId, groupId } = req.params;
 
-    const cacheKey = `summary_${storeId || 'all'}_${groupId || 'all'}`;
-    let summary = costCache.get(cacheKey);
+    console.log(`🔍 Getting balance snapshot for store: ${storeId}, group: ${groupId}`);
 
-    if (summary) {
-      return res.json({
-        success: true,
-        data: summary,
-      });
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      return res.status(404).json({ success: false, error: 'Store not found' });
     }
 
-    // Get all items
-    const items = await Item.findAll();
-
-    if (items.length === 0) {
-      summary = {
-        totalItems: 0,
-        totalValue: 0,
-        partialItems: 0,
-        storeCount: 0,
-        activeItems: 0,
-        incompleteItems: 0,
-        errorItems: 0,
-      };
-      costCache.set(cacheKey, summary, 300);
-      return res.json({
-        success: true,
-        data: summary,
-      });
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Group not found' });
     }
 
-    // Get all balances
-    const itemIds = items.map(i => i.itemId);
-    const balanceWhere = {
-      itemId: { [Op.in]: itemIds },
-      status: 'Active',
-    };
-    if (storeId) balanceWhere.storeId = storeId;
-    if (groupId) balanceWhere.groupId = groupId;
+    const relation = await StoreGroupRelation.findOne({
+      where: { storeId: parseInt(storeId), groupId: parseInt(groupId) },
+    });
 
-    const allBalances = await StoreBalance.findAll({
-      where: balanceWhere,
+    if (!relation) {
+      return res.status(403).json({ success: false, error: 'Group does not have access to this store' });
+    }
+
+    const balances = await StoreBalance.findAll({
+      where: { storeId: parseInt(storeId), groupId: parseInt(groupId) },
       include: [
-        { model: Store, as: 'store', attributes: ['storeId'] },
-        { model: Group, as: 'group', attributes: ['id'] },
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName", "conversionValue"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+      order: [["itemId", "ASC"]],
+    });
+
+    const recentTransactions = await StoreBalanceHistory.findAll({
+      where: { storeId: parseInt(storeId), groupId: parseInt(groupId) },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+        {
+          model: User,
+          as: "changedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: 10,
+    });
+
+    const snapshot = {
+      store: { id: store.id, name: store.name, code: store.code },
+      group: { id: group.id, name: group.name, code: group.code, description: group.description },
+      summary: calculateGroupSummary(balances),
+      balances: balances.map(b => formatBalance(b)),
+      recentTransactions: recentTransactions.map(t => ({
+        id: t.id,
+        itemName: t.item?.standardName || t.item?.name || null,
+        itemCode: t.item?.code || null,
+        uomCode: t.item?.uom?.code || null,
+        previousBalance: parseFloat(t.previousBalance),
+        newBalance: parseFloat(t.newBalance),
+        changeAmount: parseFloat(t.changeAmount),
+        transactionType: t.transactionType,
+        changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+        remark: t.remark,
+        createdAt: t.createdAt,
+      })),
+      generatedAt: new Date().toISOString(),
+    };
+
+    res.status(200).json({ success: true, data: snapshot });
+
+  } catch (error) {
+    console.error("❌ Get balance snapshot error:", error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get balance snapshot' });
+  }
+};
+
+// ============================================
+// 6. GET ITEM TRANSACTIONS
+// ============================================
+exports.getItemTransactions = async (req, res) => {
+  try {
+    const { storeId, itemId } = req.params;
+    const { limit = 10 } = req.query;
+
+    console.log(`🔍 Getting transactions for item ${itemId} in store ${storeId}`);
+
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      return res.status(404).json({ success: false, error: 'Store not found' });
+    }
+
+    const item = await Item.findByPk(parseInt(itemId));
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Item not found' });
+    }
+
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code'],
+        }
       ],
     });
 
-    // Group balances by item
-    const balancesByItem = {};
-    for (const balance of allBalances) {
-      if (!balancesByItem[balance.itemId]) {
-        balancesByItem[balance.itemId] = [];
-      }
-      balancesByItem[balance.itemId].push(balance);
-    }
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null);
 
-    // Get latest costs
-    const ItemCost = db.ItemCost;
-    let latestCosts = {};
-    if (ItemCost) {
-      const costRecords = await ItemCost.findAll({
-        where: { itemId: { [Op.in]: itemIds } },
-        order: [['created_at', 'DESC']],
+    const groupTransactions = {};
+    for (const group of groups) {
+      const transactions = await StoreBalanceHistory.findAll({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: group.groupId,
+          itemId: parseInt(itemId),
+        },
+        include: [
+          {
+            model: Store,
+            as: "store",
+            attributes: ["id", "name", "code"],
+          },
+          {
+            model: Group,
+            as: "group",
+            attributes: ["id", "name", "code"],
+          },
+          {
+            model: Item,
+            as: "item",
+            attributes: ["id", "code", "name", "standardName"],
+            include: [
+              {
+                model: UOM,
+                as: "uom",
+                attributes: ["id", "code", "name"],
+              },
+            ],
+          },
+          {
+            model: User,
+            as: "changedByUser",
+            attributes: ["userId", "username", "fullName"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: parseInt(limit),
       });
-      for (const cost of costRecords) {
-        if (!latestCosts[cost.itemId]) {
-          latestCosts[cost.itemId] = parseFloat(cost.newCost);
-        }
-      }
+
+      groupTransactions[group.groupId] = {
+        group: {
+          id: group.groupId,
+          name: group.name,
+          code: group.code,
+        },
+        transactions: transactions.map((t) => ({
+          id: t.id,
+          balanceId: t.balanceId,
+          storeName: t.store?.name || null,
+          groupName: t.group?.name || null,
+          itemName: t.item?.standardName || t.item?.name || null,
+          itemCode: t.item?.code || null,
+          uomCode: t.item?.uom?.code || null,
+          previousBalance: parseFloat(t.previousBalance),
+          newBalance: parseFloat(t.newBalance),
+          changeAmount: parseFloat(t.changeAmount),
+          transactionType: t.transactionType,
+          sourceStore: t.sourceStore?.name || null,
+          destinationStore: t.destinationStore?.name || null,
+          referenceType: t.referenceType,
+          referenceId: t.referenceId,
+          changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+          remark: t.remark,
+          createdAt: t.createdAt,
+        })),
+        count: transactions.length,
+      };
     }
 
-    let totalItems = 0;
-    let totalValue = 0;
-    let partialItems = 0;
-    let incompleteItems = 0;
-    let errorItems = 0;
-    const stores = new Set();
+    const balances = await StoreBalance.findAll({
+      where: {
+        storeId: parseInt(storeId),
+        itemId: parseInt(itemId),
+      },
+      include: [
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+      ],
+    });
 
-    for (const item of items) {
-      const itemBalances = balancesByItem[item.itemId] || [];
-      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
-      
-      const costData = calculateItemCostOptimized(
-        item,
-        itemBalances,
-        unitCost,
-        storeId || null,
-        groupId || null
-      );
+    const balanceMap = {};
+    balances.forEach((b) => {
+      balanceMap[b.groupId] = {
+        balance: parseFloat(b.balance),
+        minStock: parseFloat(b.minStockAlert) || 0,
+        status: b.status,
+      };
+    });
 
-      if (costData.status === 'Incomplete') {
-        incompleteItems++;
-        continue;
-      }
-      
-      if (costData.status === 'Error') {
-        errorItems++;
-        continue;
-      }
+    res.status(200).json({
+      success: true,
+      data: {
+        store: {
+          id: store.id,
+          name: store.name,
+          code: store.code,
+        },
+        item: {
+          id: item.itemId || item.id,
+          code: item.code,
+          name: item.name,
+          standardName: item.standardName,
+          uomCode: item.uom?.code || null,
+        },
+        currentBalances: balanceMap,
+        groupTransactions,
+        summary: {
+          totalGroups: groups.length,
+          totalTransactions: Object.values(groupTransactions).reduce((sum, g) => sum + g.count, 0),
+        },
+      },
+    });
 
-      if (costData.status !== 'Inactive') {
-        totalItems++;
-        totalValue += costData.totalCost;
-        if (costData.status === 'Partial') {
-          partialItems++;
-        }
-        costData.storeBreakdown.forEach(s => stores.add(s.storeId));
-      }
+  } catch (error) {
+    console.error("❌ Get item transactions error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get item transactions',
+    });
+  }
+};
+
+// ============================================
+// 7. GET USER AUDIT ACCESS
+// ============================================
+exports.getUserAuditAccess = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User not authenticated' });
     }
 
-    summary = {
-      totalItems,
-      totalValue,
-      partialItems,
-      storeCount: stores.size,
-      activeItems: totalItems - partialItems,
-      incompleteItems,
-      errorItems,
+    const result = await getUserStoreAndGroup(userId);
+    
+    if (!result.success) {
+      return res.status(404).json({ success: false, error: result.error || 'Failed to get user access' });
+    }
+
+    if (result.data.isAdmin) {
+      const allStores = await Store.findAll({
+        attributes: ['id', 'name', 'code', 'location', 'status'],
+        order: [['name', 'ASC']],
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          isAdmin: true,
+          stores: allStores,
+          hasAccess: true,
+        },
+      });
+    }
+
+    const userGroups = result.data.allGroups || [];
+    const storeIds = new Set();
+    
+    userGroups.forEach(group => {
+      group.stores?.forEach(store => {
+        storeIds.add(store.id);
+      });
+    });
+
+    const stores = await Store.findAll({
+      where: { id: { [Op.in]: Array.from(storeIds) } },
+      attributes: ['id', 'name', 'code', 'location', 'status'],
+      order: [['name', 'ASC']],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        isAdmin: false,
+        stores: stores,
+        hasAccess: stores.length > 0,
+        assignedStoreId: result.data.assignedStoreId,
+        assignedGroupId: result.data.assignedGroupId,
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Get user audit access error:", error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get user access' });
+  }
+};
+
+// ============================================
+// 8. EXPORT AUDIT DATA - UPDATED
+// ============================================
+exports.exportAuditData = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { format = 'excel' } = req.query;
+
+    console.log(`📤 Exporting audit data for store: ${storeId}`);
+
+    const mockReq = {
+      params: { storeId },
+      query: { includeTransactions: 'false' },
     };
 
-    costCache.set(cacheKey, summary, 300);
+    let auditResult = null;
+    const mockRes = {
+      status: function(code) {
+        return {
+          json: function(data) {
+            auditResult = data;
+            return this;
+          }
+        };
+      }
+    };
 
-    res.json({
-      success: true,
-      data: summary,
+    await exports.getStoreAudit(mockReq, mockRes);
+
+    if (!auditResult || !auditResult.success) {
+      console.error('❌ Failed to get audit data:', auditResult?.error || 'Unknown error');
+      return res.status(500).json({ 
+        success: false, 
+        error: auditResult?.error || 'Failed to get audit data for export' 
+      });
+    }
+
+    const data = auditResult.data;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = now.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
     });
 
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    workbook.created = now;
+    
+    const worksheet = workbook.addWorksheet('Stock Audit', {
+      properties: { tabColor: { argb: 'FF1A237E' } },
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
+    });
+
+    const colors = {
+      primary: 'FF1A237E',
+      secondary: 'FF0D47A1',
+      lightGray: 'FFF5F5F5',
+      border: 'FFE0E0E0',
+      green: 'FF2E7D32',
+      red: 'FFD32F2F',
+      white: 'FFFFFFFF',
+      black: 'FF000000'
+    };
+
+    // Company Header
+    worksheet.mergeCells('A1:G1');
+    const headerCell = worksheet.getCell('A1');
+    headerCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    headerCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    worksheet.mergeCells('A2:G2');
+    const subHeaderCell = worksheet.getCell('A2');
+    subHeaderCell.value = 'WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!';
+    subHeaderCell.font = { name: 'Arial', size: 12, color: { argb: 'FF000000' } };
+    subHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Report Title
+    worksheet.addRow([]);
+    worksheet.mergeCells('A4:G4');
+    const titleCell = worksheet.getCell('A4');
+    titleCell.value = 'STOCK AUDIT REPORT';
+    titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Store and Group Info
+    worksheet.addRow([]);
+    
+    const firstGroup = data.groups[0] || {};
+    const groupName = firstGroup.name || 'N/A';
+    const groupCode = firstGroup.code || 'N/A';
+    const categories = (data.categories && data.categories.length > 0) 
+      ? data.categories.join(', ') 
+      : 'All';
+    const generatedBy = req.user?.fullName || req.user?.username || 'Admin';
+
+    worksheet.addRow(['Store:', data.store.name, '', 'Group:', groupName]);
+    worksheet.addRow(['Store Code:', data.store.code, '', 'Group Code:', groupCode]);
+    worksheet.addRow(['Category:', categories, '', 'Status:', 'All']);
+    worksheet.addRow(['Generated By:', generatedBy, '', 'Date/Time:', `${dateStr} at ${timeStr}`]);
+
+    const infoRows = [6, 7, 8, 9];
+    infoRows.forEach(rowNum => {
+      const row = worksheet.getRow(rowNum);
+      row.eachCell((cell, colNumber) => {
+        if (colNumber % 2 === 1) {
+          cell.font = { name: 'Arial', size: 10, bold: true };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0F0F0' }
+          };
+        } else {
+          cell.font = { name: 'Arial', size: 10 };
+        }
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+    });
+
+    // Summary Section
+    worksheet.addRow([]);
+    
+    const totalItems = data.summary.totalItems || 0;
+    const activeItems = data.summary.activeItems || 0;
+    const zeroStockItems = data.summary.zeroStockItems || 0;
+    const lowStockItems = data.summary.lowStockItems || 0;
+    const matchedItems = data.comparison?.summary?.matched || 0;
+    const conflictItems = data.comparison?.summary?.conflict || 0;
+
+    worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
+    const summaryTitle = worksheet.getCell(`A${worksheet.rowCount}`);
+    summaryTitle.value = 'SUMMARY';
+    summaryTitle.font = { name: 'Arial', size: 12, bold: true, color: { argb: colors.primary }, underline: true };
+    summaryTitle.alignment = { horizontal: 'left', vertical: 'middle' };
+
+    worksheet.addRow([]);
+    
+    const summaryData = [
+      ['Store:', data.store.name, 'Total Items:', totalItems],
+      ['Group:', groupName, 'Active Items:', activeItems],
+      ['', '', 'Zero Balance Items:', zeroStockItems],
+      ['', '', 'Low Stock Items:', lowStockItems],
+      ['', '', 'Matched Items:', matchedItems],
+      ['', '', 'Items with Conflict:', conflictItems]
+    ];
+
+    summaryData.forEach(rowData => {
+      const row = worksheet.addRow(rowData);
+      row.eachCell((cell, colNumber) => {
+        if (colNumber % 2 === 1 && rowData[colNumber - 1] !== '') {
+          cell.font = { name: 'Arial', size: 10, bold: true };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0F0F0' }
+          };
+        } else if (colNumber % 2 === 0 && rowData[colNumber - 1] !== '') {
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        }
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+    });
+
+    // Main Data Table
+    worksheet.addRow([]);
+    
+    const headers = [
+      '#',
+      'Item Code',
+      'Item Name',
+      'Category',
+      'UOM',
+      ...data.groups.map(g => `${g.name} (Balance)`),
+      'Status',
+      'Balance Conflict'
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+    
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: colors.primary }
+      };
+      cell.font = {
+        name: 'Arial',
+        size: 10,
+        bold: true,
+        color: { argb: colors.white }
+      };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: true
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: colors.border } },
+        bottom: { style: 'thin', color: { argb: colors.border } },
+        left: { style: 'thin', color: { argb: colors.border } },
+        right: { style: 'thin', color: { argb: colors.border } }
+      };
+    });
+
+    const allItems = new Map();
+    data.groups.forEach(group => {
+      group.balances.forEach(balance => {
+        const itemKey = balance.itemId;
+        if (!allItems.has(itemKey)) {
+          allItems.set(itemKey, {
+            itemId: balance.itemId,
+            itemCode: balance.itemCode,
+            itemName: balance.itemName,
+            category: balance.category?.name || 'N/A',
+            uomCode: balance.uomCode || 'PCS',
+            balances: {},
+            status: 'Active',
+            hasConflict: false
+          });
+        }
+        const item = allItems.get(itemKey);
+        item.balances[group.groupId] = balance.balance;
+        if (data.comparison && data.comparison.items) {
+          const compItem = data.comparison.items.find(ci => ci.itemId === balance.itemId);
+          if (compItem) {
+            item.status = compItem.status || 'Active';
+            if (compItem.status === 'Conflict') {
+              item.hasConflict = true;
+            }
+          }
+        }
+      });
+    });
+
+    const itemsArray = Array.from(allItems.values())
+      .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+    let rowNumber = 1;
+    let rowIndex = 0;
+    
+    itemsArray.forEach((item) => {
+      const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
+      const uniqueBalances = [...new Set(balances)];
+      const hasConflict = uniqueBalances.length > 1;
+      
+      const rowData = [
+        rowNumber++,
+        item.itemCode || '',
+        item.itemName || '',
+        item.category || '',
+        item.uomCode || '',
+        ...data.groups.map(g => {
+          const balance = item.balances[g.groupId];
+          return balance !== undefined ? balance : '-';
+        }),
+        item.status || 'No Data',
+        hasConflict ? 'Yes' : 'No'
+      ];
+      
+      const row = worksheet.addRow(rowData);
+      
+      const bgColor = rowIndex % 2 === 0 ? colors.white : colors.lightGray;
+      row.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: bgColor }
+        };
+        cell.font = { name: 'Arial', size: 9 };
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle'
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+      
+      const statusCell = row.getCell(headers.length - 1);
+      const status = item.status || 'No Data';
+      let statusColor = colors.black;
+      if (status === 'Matched') statusColor = colors.green;
+      else if (status === 'Conflict') statusColor = colors.red;
+      
+      statusCell.font = {
+        name: 'Arial',
+        size: 9,
+        bold: true,
+        color: { argb: statusColor }
+      };
+      
+      const conflictCell = row.getCell(headers.length);
+      if (hasConflict) {
+        conflictCell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: true,
+          color: { argb: colors.red }
+        };
+        conflictCell.value = '⚠ Yes';
+      } else {
+        conflictCell.font = {
+          name: 'Arial',
+          size: 9,
+          color: { argb: colors.green }
+        };
+        conflictCell.value = '✓ No';
+      }
+      
+      rowIndex++;
+    });
+
+    // Footer
+    worksheet.addRow([]);
+    const footerRow = worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
+    worksheet.addRow(['SUPER DOUBLE "T" GENERAL TRADING PLC - Stock Audit Report']);
+    worksheet.addRow(['WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!']);
+
+    const footerStartRow = worksheet.rowCount - 2;
+    for (let i = 0; i < 3; i++) {
+      const row = worksheet.getRow(footerStartRow + i);
+      row.eachCell((cell) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (i === 1) {
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        } else {
+          cell.font = { name: 'Arial', size: 9, color: { argb: 'FF666666' } };
+        }
+      });
+      if (i === 0) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      } else if (i === 1) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      } else if (i === 2) {
+        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+      }
+    }
+
+    // Auto-fit columns
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? String(cell.value).length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = Math.min(Math.max(maxLength + 2, 10), 30);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const fileName = `stock_audit_${data.store.code}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    
+    return res.send(buffer);
+
   } catch (error) {
-    console.error('Get cost summary error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get cost summary',
+    console.error("❌ Export audit data error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to export audit data' 
     });
   }
 };
 
-/**
- * Clear cache
- * POST /api/item-costs/clear-cache
- */
-exports.clearCache = async (req, res) => {
+// ============================================
+// 9. GET AUDIT SUMMARY - UPDATED
+// ============================================
+exports.getAuditSummary = async (req, res) => {
   try {
-    costCache.flushAll();
-    res.json({
-      success: true,
-      message: 'Cache cleared successfully',
+    const { storeId } = req.params;
+
+    const auditResult = await exports.getStoreAudit({
+      params: { storeId },
+      query: { includeTransactions: 'false' },
     });
+
+    if (!auditResult.success) {
+      return res.status(500).json({ success: false, error: 'Failed to get audit summary' });
+    }
+
+    const data = auditResult.data;
+
+    const summary = {
+      store: data.store,
+      overview: {
+        totalGroups: data.summary.totalGroups,
+        totalItems: data.summary.totalItems,
+        totalBalance: data.summary.totalBalance,
+        activeItems: data.summary.activeItems,
+        inactiveItems: data.summary.inactiveItems,
+        matchedItems: data.summary.matchedItems,
+        conflictItems: data.summary.conflictItems,
+      },
+      groups: data.groups.map(g => ({
+        groupId: g.groupId,
+        name: g.name,
+        totalItems: g.summary.totalItems,
+        totalBalance: g.summary.totalBalance,
+        lowStockItems: g.summary.lowStockItems,
+        zeroStockItems: g.summary.zeroStockItems,
+        lowStockPercentage: g.summary.lowStockPercentage,
+        zeroStockPercentage: g.summary.zeroStockPercentage,
+      })),
+      comparison: data.comparison.summary,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    res.status(200).json({ success: true, data: summary });
+
   } catch (error) {
-    console.error('Clear cache error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to clear cache',
-    });
+    console.error("❌ Get audit summary error:", error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get audit summary' });
   }
 };
 
+// ============================================
+// 10. GET AUDIT DASHBOARD - UPDATED
+// ============================================
+exports.getAuditDashboard = async (req, res) => {
+  try {
+    const { storeId } = req.params;
 
+    const auditResult = await exports.getStoreAudit({
+      params: { storeId },
+      query: { includeTransactions: 'true', transactionLimit: 10 },
+    });
 
+    if (!auditResult.success) {
+      return res.status(500).json({ success: false, error: 'Failed to get audit dashboard' });
+    }
 
+    const data = auditResult.data;
 
+    const lowStockAlerts = [];
+    data.groups.forEach(group => {
+      group.balances.forEach(balance => {
+        if (balance.status === 'Active' && balance.balance <= balance.minStock) {
+          lowStockAlerts.push({
+            id: balance.id,
+            itemName: balance.itemName,
+            itemCode: balance.itemCode,
+            balance: balance.balance,
+            minStock: balance.minStock,
+            groupName: group.name,
+            uomCode: balance.uomCode,
+            statusClass: balance.balance === 0 ? 'critical' : 'warning',
+          });
+        }
+      });
+    });
 
+    const recentActivity = [];
+    data.groups.forEach(group => {
+      group.transactions.slice(0, 5).forEach(tx => {
+        recentActivity.push({
+          ...tx,
+          groupName: group.name,
+        });
+      });
+    });
+    recentActivity.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const topActivity = recentActivity.slice(0, 10);
 
+    const dashboard = {
+      store: data.store,
+      overview: {
+        totalGroups: data.summary.totalGroups,
+        totalItems: data.summary.totalItems,
+        totalBalance: data.summary.totalBalance,
+        activeItems: data.summary.activeItems,
+        inactiveItems: data.summary.inactiveItems,
+        matchedItems: data.comparison.summary.matched,
+        conflictItems: data.comparison.summary.conflict,
+      },
+      groups: data.groups.map(g => ({
+        groupId: g.groupId,
+        name: g.name,
+        totalItems: g.summary.totalItems,
+        totalBalance: g.summary.totalBalance,
+        lowStockItems: g.summary.lowStockItems,
+        zeroStockItems: g.summary.zeroStockItems,
+        lowStockPercentage: g.summary.lowStockPercentage,
+        zeroStockPercentage: g.summary.zeroStockPercentage,
+      })),
+      recentActivity: topActivity,
+      lowStockAlerts: lowStockAlerts.slice(0, 10),
+      comparisonSummary: data.comparison.summary,
+      lastUpdated: new Date().toISOString(),
+    };
 
+    res.status(200).json({ success: true, data: dashboard });
 
+  } catch (error) {
+    console.error("❌ Get audit dashboard error:", error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to get audit dashboard' });
+  }
+};
 
+// ============================================
+// 11. UPDATE ITEM TRANSACTION DATES
+// ============================================
+exports.updateItemTransactionDates = async (req, res) => {
+  const transaction = await sequelize.transaction()
+  
+  try {
+    const { storeId, itemId } = req.params
+    const { dates } = req.body
+    const userId = req.user?.userId || 1
+    
+    console.log(`📝 Updating transaction dates for item ${itemId} in store ${storeId}`)
+    console.log('📝 Updates:', dates)
+    
+    const item = await Item.findByPk(parseInt(itemId))
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found'
+      })
+    }
+    
+    const store = await Store.findByPk(parseInt(storeId))
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found'
+      })
+    }
+    
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code'],
+        }
+      ]
+    })
+    
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null)
+    
+    const updatedGroups = []
+    for (const group of groups) {
+      const groupId = group.groupId
+      const newDate = dates[groupId]
+      
+      if (!newDate) continue
+      
+      const lastTx = await StoreBalanceHistory.findOne({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: groupId,
+          itemId: parseInt(itemId),
+        },
+        order: [['createdAt', 'DESC']],
+        transaction: transaction
+      })
+      
+      if (!lastTx) {
+        console.log(`⚠️ No transaction found for group ${groupId}`)
+        continue
+      }
+      
+      const newDateObj = new Date(newDate)
+      await lastTx.update({
+        createdAt: newDateObj,
+        updatedAt: new Date()
+      }, { transaction })
+      
+      updatedGroups.push({
+        groupId: groupId,
+        groupName: group.name,
+        oldDate: lastTx.createdAt,
+        newDate: newDateObj
+      })
+      
+      console.log(`✅ Updated group ${groupId} date from ${lastTx.createdAt} to ${newDate}`)
+    }
+    
+    await transaction.commit()
+    
+    res.status(200).json({
+      success: true,
+      message: `Updated ${updatedGroups.length} group(s)`,
+      data: {
+        itemId: parseInt(itemId),
+        storeId: parseInt(storeId),
+        updatedGroups: updatedGroups
+      }
+    })
+    
+  } catch (error) {
+    await transaction.rollback()
+    console.error('❌ Error updating transaction dates:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update transaction dates'
+    })
+  }
+}
 
-
-
-
-
+module.exports = exports;

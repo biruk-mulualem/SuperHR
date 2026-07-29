@@ -1,5 +1,5 @@
 // services/auditService.ts
-// Complete Audit Service - Updated with new endpoints
+// Complete Audit Service - Updated: Removed Outlier concept
 
 import api from "./interceptor";
 
@@ -125,7 +125,7 @@ export interface AuditTransaction {
 }
 
 // ============================================
-// SUMMARY TYPES
+// SUMMARY TYPES - UPDATED (Removed Outlier)
 // ============================================
 
 export interface AuditGroupSummary {
@@ -149,8 +149,8 @@ export interface AuditStoreSummary {
     activeItems: number;
     inactiveItems: number;
     matchedItems: number;
-    outlierItems: number;
-    conflictItems: number;
+    conflictItems: number;  // Now includes all discrepancies
+    dateDiffItems: number;  // Items with date differences
     totalProducts: number;
     lowStockItems: number;
     zeroStockItems: number;
@@ -211,7 +211,7 @@ export interface UserAccessData {
 }
 
 // ============================================
-// AUDIT RESPONSE TYPES
+// AUDIT RESPONSE TYPES - UPDATED
 // ============================================
 
 export interface ComparisonItem {
@@ -225,9 +225,18 @@ export interface ComparisonItem {
     uomName: string | null;
     conversionValue: number;
     groupBalances: Record<number, number>;
-    status: 'Matched' | 'Outlier' | 'Conflict' | 'No Data';
-    statusClass: 'matched' | 'outlier' | 'conflict' | 'unknown';
+    groupLastTxDates: Record<number, string>;
+    status: 'Matched' | 'Conflict' | 'No Data';  // Removed Outlier
+    statusClass: 'matched' | 'conflict' | 'unknown';
     values: number[];
+    hasDateDiff: boolean;
+    dateDiffDetails: {
+        latestDate: string;
+        earliestDate: string;
+        diffDays: number;
+        diffHours: number;
+        uniqueDates: string[];
+    } | null;
 }
 
 export interface GroupAuditData {
@@ -251,11 +260,11 @@ export interface StoreAuditResponse {
         summary: {
             total: number;
             matched: number;
-            outlier: number;
-            conflict: number;
+            conflict: number;  // Combined (was outlier + conflict)
+            dateDiff: number;
             matchedPercentage: string;
-            outlierPercentage: string;
             conflictPercentage: string;
+            dateDiffPercentage: string;
         };
     };
 }
@@ -272,8 +281,8 @@ export interface DashboardResponse {
         zeroStockItems: number;
         lowStockItems: number;
         matchedItems: number;
-        outlierItems: number;
-        conflictItems: number;
+        conflictItems: number;  // Combined
+        dateDiffItems: number;
     };
     groups: Array<{
         groupId: number;
@@ -299,11 +308,11 @@ export interface DashboardResponse {
     comparisonSummary: {
         total: number;
         matched: number;
-        outlier: number;
-        conflict: number;
+        conflict: number;  // Combined
+        dateDiff: number;
         matchedPercentage: string;
-        outlierPercentage: string;
         conflictPercentage: string;
+        dateDiffPercentage: string;
     };
     lastUpdated: string;
 }
@@ -342,8 +351,7 @@ export interface GroupComparisonResponse {
         totalGroups: number;
         totalBalance: number;
         matchedItems: number;
-        outlierItems: number;
-        conflictItems: number;
+        conflictItems: number;  // Combined
     };
 }
 
@@ -631,7 +639,83 @@ class AuditService {
     }
 
     // ================================================================
-    // UTILITY METHODS
+    // DATE MANAGEMENT
+    // ================================================================
+
+    /**
+     * Update transaction dates for an item across groups
+     */
+    async updateItemTransactionDates(
+        storeId: number | string,
+        itemId: number | string,
+        dateUpdates: Record<string, string>
+    ): Promise<{ 
+        success: boolean; 
+        data?: any; 
+        message?: string; 
+        error?: string;
+        updatedGroups?: Array<{
+            groupId: number;
+            groupName: string;
+            oldDate: string;
+            newDate: string;
+        }>;
+    }> {
+        try {
+            const storeIdNum = typeof storeId === 'string' ? parseInt(storeId, 10) : storeId;
+            const itemIdNum = typeof itemId === 'string' ? parseInt(itemId, 10) : itemId;
+            
+            if (!storeIdNum || isNaN(storeIdNum)) {
+                return { success: false, error: 'Invalid store ID' };
+            }
+            
+            if (!itemIdNum || isNaN(itemIdNum)) {
+                return { success: false, error: 'Invalid item ID' };
+            }
+            
+            if (!dateUpdates || typeof dateUpdates !== 'object' || Array.isArray(dateUpdates)) {
+                return {
+                    success: false,
+                    error: 'Invalid date updates data - expected an object with groupId: date pairs'
+                };
+            }
+            
+            const validUpdates: Record<string, string> = {};
+            for (const [groupId, date] of Object.entries(dateUpdates)) {
+                const groupIdNum = parseInt(groupId, 10);
+                if (isNaN(groupIdNum)) continue;
+                
+                if (!date) continue;
+                
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) continue;
+                
+                validUpdates[groupId] = date;
+            }
+            
+            if (Object.keys(validUpdates).length === 0) {
+                return {
+                    success: false,
+                    error: 'No valid dates to update. Please provide valid dates for at least one group.'
+                };
+            }
+            
+            const response = await api.put(`/audit/items/${storeIdNum}/${itemIdNum}/dates`, {
+                dates: validUpdates
+            });
+            
+            return response.data;
+        } catch (error: any) {
+            console.error('Error updating transaction dates:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message || 'Failed to update dates'
+            };
+        }
+    }
+
+    // ================================================================
+    // UTILITY METHODS - UPDATED (Removed Outlier)
     // ================================================================
 
     /**
@@ -698,7 +782,7 @@ class AuditService {
     }
 
     /**
-     * Calculate summary from balances
+     * Calculate summary from balances - UPDATED (Removed Outlier)
      */
     calculateSummary(balances: AuditBalance[]): AuditStoreSummary {
         const totalItems = balances.length;
@@ -712,7 +796,7 @@ class AuditService {
             return balance > 0 && balance <= minStock;
         }).length;
 
-        // Calculate comparison stats
+        // Calculate comparison stats - No Outlier
         const itemMap = new Map();
         balances.forEach(b => {
             if (!itemMap.has(b.itemId)) {
@@ -725,15 +809,22 @@ class AuditService {
         });
 
         let matchedItems = 0;
-        let outlierItems = 0;
-        let conflictItems = 0;
+        let conflictItems = 0;  // Combined (was outlier + conflict)
+        let dateDiffItems = 0;
 
         itemMap.forEach((item) => {
             const values = item.balances;
             const uniqueValues = [...new Set(values)];
-            if (uniqueValues.length === 1) matchedItems++;
-            else if (uniqueValues.length === 2) outlierItems++;
-            else if (uniqueValues.length > 2) conflictItems++;
+            
+            // Check for date differences
+            // This would need date data, simplified for now
+            // In real implementation, this would come from the API
+            
+            if (uniqueValues.length === 1) {
+                matchedItems++;
+            } else {
+                conflictItems++;  // Any difference = Conflict
+            }
         });
 
         return {
@@ -745,8 +836,8 @@ class AuditService {
             zeroStockItems,
             lowStockItems,
             matchedItems,
-            outlierItems,
             conflictItems,
+            dateDiffItems,
             totalProducts: itemMap.size,
             healthyItems: activeItems - zeroStockItems - lowStockItems,
             averageBalance: totalItems > 0 ? totalBalance / totalItems : 0,
@@ -766,27 +857,25 @@ class AuditService {
     }
 
     /**
-     * Get status label for UI
+     * Get status label for UI - UPDATED (Removed Outlier)
      */
     getStatusLabel(status: string): string {
         const labels: Record<string, string> = {
             'Active': '✅ Active',
             'Inactive': '⏸️ Inactive',
             'Matched': '✅ Matched',
-            'Outlier': '⚠️ Outlier',
-            'Conflict': '🚨 Conflict',
+            'Conflict': '🚨 Conflict',  // Now covers all discrepancies
             'No Data': '📭 No Data'
         };
         return labels[status] || status;
     }
 
     /**
-     * Get comparison status class
+     * Get comparison status class - UPDATED (Removed Outlier)
      */
     getComparisonStatusClass(status: string): string {
         const map: Record<string, string> = {
             'Matched': 'matched',
-            'Outlier': 'outlier',
             'Conflict': 'conflict',
             'No Data': 'unknown'
         };
@@ -817,107 +906,6 @@ class AuditService {
         return map[type] || 'adjustment';
     }
 
-
-/**
- * Update transaction dates for an item across groups
- */
-// services/auditService.ts - Update the method
-
-/**
- * Update transaction dates for an item across groups
- * @param storeId - The store ID
- * @param itemId - The item ID
- * @param dateUpdates - Object with groupId as key and date string as value
- * @returns API response with success status and data
- */
-async updateItemTransactionDates(
-    storeId: number | string,
-    itemId: number | string,
-    dateUpdates: Record<string, string>
-): Promise<{ 
-    success: boolean; 
-    data?: any; 
-    message?: string; 
-    error?: string;
-    updatedGroups?: Array<{
-        groupId: number;
-        groupName: string;
-        oldDate: string;
-        newDate: string;
-    }>;
-}> {
-    try {
-        // Ensure IDs are numbers
-        const storeIdNum = typeof storeId === 'string' ? parseInt(storeId, 10) : storeId;
-        const itemIdNum = typeof itemId === 'string' ? parseInt(itemId, 10) : itemId;
-        
-        // Validate inputs
-        if (!storeIdNum || isNaN(storeIdNum)) {
-            return {
-                success: false,
-                error: 'Invalid store ID'
-            };
-        }
-        
-        if (!itemIdNum || isNaN(itemIdNum)) {
-            return {
-                success: false,
-                error: 'Invalid item ID'
-            };
-        }
-        
-        // Validate dateUpdates is an object
-        if (!dateUpdates || typeof dateUpdates !== 'object' || Array.isArray(dateUpdates)) {
-            return {
-                success: false,
-                error: 'Invalid date updates data - expected an object with groupId: date pairs'
-            };
-        }
-        
-        // Make sure dates are valid
-        const validUpdates: Record<string, string> = {};
-        for (const [groupId, date] of Object.entries(dateUpdates)) {
-            const groupIdNum = parseInt(groupId, 10);
-            if (isNaN(groupIdNum)) {
-                console.warn(`Skipping invalid group ID: ${groupId}`);
-                continue;
-            }
-            
-            if (!date) {
-                console.warn(`Skipping empty date for group ${groupId}`);
-                continue;
-            }
-            
-            const dateObj = new Date(date);
-            if (isNaN(dateObj.getTime())) {
-                console.warn(`Skipping invalid date for group ${groupId}: ${date}`);
-                continue;
-            }
-            
-            validUpdates[groupId] = date;
-        }
-        
-        if (Object.keys(validUpdates).length === 0) {
-            return {
-                success: false,
-                error: 'No valid dates to update. Please provide valid dates for at least one group.'
-            };
-        }
-        
-        // ✅ CORRECT URL - matches the route
-        const response = await api.put(`/audit/items/${storeIdNum}/${itemIdNum}/dates`, {
-            dates: validUpdates
-        });
-        
-        return response.data;
-    } catch (error: any) {
-        console.error('Error updating transaction dates:', error);
-        return {
-            success: false,
-            error: error.response?.data?.error || error.message || 'Failed to update dates'
-        };
-    }
-}
     /**
      * Get reference type label
      */
@@ -1026,17 +1014,15 @@ async updateItemTransactionDates(
     }
 
     /**
-     * Group comparison items by status
+     * Group comparison items by status - UPDATED (Removed Outlier)
      */
     groupComparisonByStatus(items: ComparisonItem[]): {
         matched: ComparisonItem[];
-        outlier: ComparisonItem[];
         conflict: ComparisonItem[];
         noData: ComparisonItem[];
     } {
         return {
             matched: items.filter(i => i.status === 'Matched'),
-            outlier: items.filter(i => i.status === 'Outlier'),
             conflict: items.filter(i => i.status === 'Conflict'),
             noData: items.filter(i => i.status === 'No Data'),
         };
@@ -1117,12 +1103,73 @@ async updateItemTransactionDates(
     }
 
     /**
-     * Get comparison summary from audit data
+     * Get comparison summary from audit data - UPDATED (Removed Outlier)
      */
     getComparisonSummary(comparison: { items: ComparisonItem[]; summary: any }) {
         return {
             ...comparison.summary,
             items: comparison.items,
+        };
+    }
+
+    /**
+     * Get item comparison status based on balance values - UPDATED
+     */
+    getItemStatus(values: number[]): 'Matched' | 'Conflict' | 'No Data' {
+        const validValues = values.filter(v => v !== null && v !== undefined);
+        
+        if (validValues.length === 0) {
+            return 'No Data';
+        }
+        
+        const uniqueValues = [...new Set(validValues)];
+        
+        if (uniqueValues.length === 1) {
+            return 'Matched';
+        } else {
+            return 'Conflict';  // Any difference = Conflict
+        }
+    }
+
+    /**
+     * Check if an item has date differences across groups
+     */
+    hasDateDifference(dates: (string | null | undefined)[]): boolean {
+        const validDates = dates.filter(d => d !== null && d !== undefined);
+        if (validDates.length < 2) return false;
+        
+        const uniqueDateStrings = [...new Set(validDates.map(d => new Date(d).toDateString()))];
+        return uniqueDateStrings.length > 1;
+    }
+
+    /**
+     * Get date difference details
+     */
+    getDateDiffDetails(dates: (string | null | undefined)[]): {
+        hasDiff: boolean;
+        diffDays: number;
+        latestDate: string | null;
+        earliestDate: string | null;
+        uniqueDates: string[];
+    } | null {
+        const validDates = dates.filter(d => d !== null && d !== undefined) as string[];
+        if (validDates.length < 2) return null;
+        
+        const uniqueDateStrings = [...new Set(validDates.map(d => new Date(d).toDateString()))];
+        if (uniqueDateStrings.length <= 1) return null;
+        
+        const dateObjects = validDates.map(d => new Date(d));
+        const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())));
+        const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())));
+        const diffMs = latestDate.getTime() - earliestDate.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        
+        return {
+            hasDiff: true,
+            diffDays,
+            latestDate: latestDate.toISOString(),
+            earliestDate: earliestDate.toISOString(),
+            uniqueDates: uniqueDateStrings,
         };
     }
 }

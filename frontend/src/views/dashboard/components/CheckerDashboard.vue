@@ -1,4 +1,4 @@
-<!-- views/dashboard/AnalyticsDashboard.vue -->
+<!-- views/dashboard/CheckerDashboard.vue -->
 <template>
   <div class="analytics-dashboard">
     <!-- ==================== HEADER ==================== -->
@@ -37,350 +37,182 @@
       <p>Loading analytics data...</p>
     </div>
 
+    <!-- ==================== ERROR ==================== -->
+    <div v-else-if="error" class="error-state">
+      <div class="error-icon">❌</div>
+      <h3>Error Loading Data</h3>
+      <p>{{ error }}</p>
+      <button class="btn-retry" @click="loadDashboardData">Retry</button>
+    </div>
+
     <template v-else>
       <!-- ============================================================ -->
-      <!-- SECTION 1: INVENTORY SUMMARY                                 -->
+      <!-- SECTION: THREE MAIN CARDS                                     -->
       <!-- ============================================================ -->
-      <div class="section-title">
-        <h2>📦 Inventory Analysis</h2>
-        <span class="section-subtitle">Item master data health check</span>
-      </div>
-
-      <div class="stats-grid inventory-grid">
-        <div class="stat-card primary">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">📦</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.totalItems) }}</div>
-            <div class="stat-label">Total Items</div>
-            <div class="stat-sub">All items in system</div>
-          </div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">✅</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.activeItems) }}</div>
-            <div class="stat-label">Active Items</div>
-            <div class="stat-sub">{{ getPercent(inventoryStats.activeItems, inventoryStats.totalItems) }}% of total</div>
-          </div>
-        </div>
-        <div class="stat-card danger">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">⏸️</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.inactiveItems) }}</div>
-            <div class="stat-label">Inactive Items</div>
-            <div class="stat-sub">{{ getPercent(inventoryStats.inactiveItems, inventoryStats.totalItems) }}% of total</div>
-          </div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">🔄</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.missingConversion) }}</div>
-            <div class="stat-label">Missing Conversion</div>
-            <div class="stat-sub">No conversion UOM or value</div>
-          </div>
-        </div>
-        <div class="stat-card danger">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">💰</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.missingCost) }}</div>
-            <div class="stat-label">Missing Cost</div>
-            <div class="stat-sub">Zero or null cost price</div>
-          </div>
-        </div>
-        <div class="stat-card info">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">📊</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(inventoryStats.healthyItems) }}</div>
-            <div class="stat-label">Healthy Items</div>
-            <div class="stat-sub">Complete data (Active + Cost + Conversion)</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Inventory Charts -->
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="chart-header">
-            <span class="chart-header-title">📊 Item Status Distribution</span>
-          </div>
-          <div class="chart-body">
-            <div class="bar-chart">
-              <div class="bar-item" v-for="item in statusChartData" :key="item.label">
-                <div class="bar-label">{{ item.label }}</div>
-                <div class="bar-track">
-                  <div class="bar-fill" :style="{ width: item.percent + '%', background: item.color }">
-                    <span class="bar-value">{{ item.value }}</span>
-                  </div>
-                </div>
-                <div class="bar-percent">{{ item.percent }}%</div>
-              </div>
+      <div class="main-cards-grid">
+        
+        <!-- CARD 1: Total Items Card -->
+        <div class="main-card">
+          <div class="main-card-header">
+            <div class="main-card-icon blue">
+              <span>📦</span>
+            </div>
+            <div class="main-card-title-group">
+              <h3>Total Items</h3>
+              <span class="main-card-subtitle">Item master data health</span>
             </div>
           </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header">
-            <span class="chart-header-title">📋 Data Completeness</span>
-          </div>
-          <div class="chart-body">
-            <div class="donut-container">
-              <div class="donut-chart">
-                <svg viewBox="0 0 200 200" class="donut-svg">
-                  <circle cx="100" cy="100" r="80" fill="none" stroke="#e2e8f0" stroke-width="35" />
-                  <circle 
-                    v-for="(segment, index) in completenessSegments" 
-                    :key="index"
-                    cx="100" 
-                    cy="100" 
-                    r="80" 
-                    fill="none" 
-                    :stroke="segment.color" 
-                    stroke-width="35"
-                    :stroke-dasharray="`${segment.circumference} ${totalCircumference}`"
-                    :stroke-dashoffset="segment.offset"
-                    transform="rotate(-90 100 100)"
-                    class="donut-segment"
-                  />
-                  <text x="100" y="95" text-anchor="middle" font-size="18" font-weight="700" fill="#1e293b">
-                    {{ inventoryStats.healthyItems }}
-                  </text>
-                  <text x="100" y="115" text-anchor="middle" font-size="10" fill="#94a3b8">
-                    Healthy Items
-                  </text>
-                </svg>
-              </div>
-              <div class="donut-legend">
-                <div v-for="item in completenessLegend" :key="item.label" class="legend-item">
-                  <span class="legend-color" :style="{ background: item.color }"></span>
-                  <span class="legend-label">{{ item.label }}</span>
-                  <span class="legend-value">{{ item.value }}</span>
-                  <span class="legend-percent">{{ item.percent }}%</span>
+          <div class="main-card-body">
+            <div class="main-stat-value">{{ formatNumber(inventoryStats.totalItems) }}</div>
+            <div class="main-stat-label">Total Items in System</div>
+            
+            <!-- Sub Data: Active & Inactive -->
+            <div class="sub-data-grid">
+              <div class="sub-data-item">
+                <div class="sub-data-dot active"></div>
+                <div class="sub-data-content">
+                  <span class="sub-data-label">Active</span>
+                  <span class="sub-data-value">{{ formatNumber(inventoryStats.activeItems) }}</span>
+                  <span class="sub-data-percent">{{ getPercent(inventoryStats.activeItems, inventoryStats.totalItems) }}%</span>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============================================================ -->
-      <!-- SECTION 2: AUDIT SUMMARY                                     -->
-      <!-- ============================================================ -->
-      <div class="section-title" style="margin-top: 32px;">
-        <h2>🔍 Audit Analysis</h2>
-        <span class="section-subtitle">Store balance reconciliation status</span>
-      </div>
-
-      <div class="stats-grid audit-grid">
-        <div class="stat-card info">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">🏪</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.totalStores) }}</div>
-            <div class="stat-label">Total Stores</div>
-            <div class="stat-sub">Active stores</div>
-          </div>
-        </div>
-        <div class="stat-card success">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">✅</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.matched) }}</div>
-            <div class="stat-label">Matched</div>
-            <div class="stat-sub">{{ getPercent(auditStats.matched, auditStats.totalItems) }}% of items</div>
-          </div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">⚠️</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.outliers) }}</div>
-            <div class="stat-label">Outliers</div>
-            <div class="stat-sub">{{ getPercent(auditStats.outliers, auditStats.totalItems) }}% of items</div>
-          </div>
-        </div>
-        <div class="stat-card danger">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">🚨</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.conflicts) }}</div>
-            <div class="stat-label">Conflicts</div>
-            <div class="stat-sub">{{ getPercent(auditStats.conflicts, auditStats.totalItems) }}% of items</div>
-          </div>
-        </div>
-        <div class="stat-card purple">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">📅</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.dateDiffs) }}</div>
-            <div class="stat-label">Date Differences</div>
-            <div class="stat-sub">{{ getPercent(auditStats.dateDiffs, auditStats.totalItems) }}% of items</div>
-          </div>
-        </div>
-        <div class="stat-card primary">
-          <div class="stat-icon-wrapper">
-            <span class="stat-icon">📊</span>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ formatNumber(auditStats.totalItems) }}</div>
-            <div class="stat-label">Total Items Audited</div>
-            <div class="stat-sub">Across all stores</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audit Charts -->
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="chart-header">
-            <span class="chart-header-title">🏪 Store-wise Status</span>
-          </div>
-          <div class="chart-body">
-            <div class="store-chart">
-              <div v-for="store in storeStatusData" :key="store.name" class="store-bar-row">
-                <div class="store-bar-info">
-                  <span class="store-name">{{ store.name }}</span>
-                  <span class="store-total">{{ store.total }} items</span>
-                </div>
-                <div class="store-bar-track">
-                  <div class="store-bar-fill" :style="{ width: store.percent + '%' }">
-                    <div class="store-bar-segments">
-                      <div 
-                        v-for="(seg, idx) in store.segments" 
-                        :key="idx"
-                        class="segment"
-                        :style="{ 
-                          width: seg.percent + '%', 
-                          background: seg.color 
-                        }"
-                        :title="seg.label + ': ' + seg.count"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-                <div class="store-bar-legend">
-                  <span v-for="(seg, idx) in store.segments" :key="idx" class="legend-dot" :style="{ background: seg.color }">
-                    {{ seg.label }}
-                  </span>
+              <div class="sub-data-item">
+                <div class="sub-data-dot inactive"></div>
+                <div class="sub-data-content">
+                  <span class="sub-data-label">Inactive</span>
+                  <span class="sub-data-value">{{ formatNumber(inventoryStats.inactiveItems) }}</span>
+                  <span class="sub-data-percent">{{ getPercent(inventoryStats.inactiveItems, inventoryStats.totalItems) }}%</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="chart-card">
-          <div class="chart-header">
-            <span class="chart-header-title">📊 Audit Status Distribution</span>
+        <!-- CARD 2: Missing Data Card -->
+     
+<div class="main-card">
+  <div class="main-card-header">
+    <div class="main-card-icon orange">
+      <span>⚠️</span>
+    </div>
+    <div class="main-card-title-group">
+      <h3>Missing Data</h3>
+      <span class="main-card-subtitle">Items needing attention</span>
+    </div>
+  </div>
+  <div class="main-card-body">
+    <div class="main-stat-value">{{ formatNumber(138 + 184 - 13) }}</div>
+    <div class="main-stat-label">Items with Missing Data</div>
+    
+    <!-- Sub Data: Missing Cost & Conversion Issues -->
+    <div class="sub-data-grid two-items">
+      <div class="sub-data-item">
+        <div class="sub-data-dot cost"></div>
+        <div class="sub-data-content">
+          <span class="sub-data-label">Missing Cost</span>
+          <span class="sub-data-value">{{ formatNumber(138) }}</span>
+          <span class="sub-data-percent">5.3%</span>
+        </div>
+      </div>
+      <div class="sub-data-item">
+        <div class="sub-data-dot conversion-merged"></div>
+        <div class="sub-data-content">
+          <span class="sub-data-label">Conversion Issues</span>
+          <span class="sub-data-value">{{ formatNumber(184) }}</span>
+          <span class="sub-data-percent">7.1%</span>
+        </div>
+      </div>
+    </div>
+    
+   
+  </div>
+</div>
+
+        <!-- CARD 3: Total Stores Card -->
+        <div class="main-card">
+          <div class="main-card-header">
+            <div class="main-card-icon purple">
+              <span>🏪</span>
+            </div>
+            <div class="main-card-title-group">
+              <h3>Total Stores</h3>
+              <span class="main-card-subtitle">Store reconciliation status</span>
+            </div>
           </div>
-          <div class="chart-body">
-            <div class="audit-pie-container">
-              <div class="audit-pie">
-                <svg viewBox="0 0 200 200" class="pie-svg">
-                  <circle cx="100" cy="100" r="80" fill="none" stroke="#e2e8f0" stroke-width="35" />
-                  <circle 
-                    v-for="(segment, index) in auditPieSegments" 
-                    :key="index"
-                    cx="100" 
-                    cy="100" 
-                    r="80" 
-                    fill="none" 
-                    :stroke="segment.color" 
-                    stroke-width="35"
-                    :stroke-dasharray="`${segment.circumference} ${totalCircumference}`"
-                    :stroke-dashoffset="segment.offset"
-                    transform="rotate(-90 100 100)"
-                    class="pie-segment"
-                  />
-                  <text x="100" y="95" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">
-                    {{ auditStats.totalItems }}
-                  </text>
-                  <text x="100" y="115" text-anchor="middle" font-size="10" fill="#94a3b8">
-                    Total Items
-                  </text>
-                </svg>
+          <div class="main-card-body">
+            <div class="main-stat-value">{{ formatNumber(auditStats.totalStores) }}</div>
+            <div class="main-stat-label">Active Stores</div>
+            
+            <!-- Sub Data: Conflict, Date Diff -->
+            <div class="sub-data-grid two-items">
+              <div class="sub-data-item">
+                <div class="sub-data-dot conflict"></div>
+                <div class="sub-data-content">
+                  <span class="sub-data-label">Conflict</span>
+                  <span class="sub-data-value">{{ formatNumber(auditStats.conflicts) }}</span>
+                  <span class="sub-data-percent">{{ getPercent(auditStats.conflicts, auditStats.totalItems) }}%</span>
+                </div>
               </div>
-              <div class="audit-pie-legend">
-                <div v-for="item in auditPieLegend" :key="item.label" class="legend-item">
-                  <span class="legend-color" :style="{ background: item.color }"></span>
-                  <span class="legend-label">{{ item.label }}</span>
-                  <span class="legend-value">{{ item.value }}</span>
-                  <span class="legend-percent">{{ item.percent }}%</span>
+              <div class="sub-data-item">
+                <div class="sub-data-dot date-diff"></div>
+                <div class="sub-data-content">
+                  <span class="sub-data-label">Date Diff</span>
+                  <span class="sub-data-value">{{ formatNumber(auditStats.dateDiffs) }}</span>
+                  <span class="sub-data-percent">{{ getPercent(auditStats.dateDiffs, auditStats.totalItems) }}%</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
       </div>
 
       <!-- ============================================================ -->
-      <!-- SECTION 3: STORE COMPARISON TABLE                           -->
+      <!-- SECTION: STORE CONFLICT CHART (Horizontal Bar Chart)         -->
       <!-- ============================================================ -->
       <div class="section-title">
         <div class="section-title-left">
-          <h2>📋 Store Comparison</h2>
-          <span class="section-subtitle">Detailed breakdown by store</span>
+          <h2>🏪 Stores with Most Conflicts</h2>
+          <span class="section-subtitle">Sorted by conflict count (highest to lowest)</span>
         </div>
       </div>
 
       <div class="section-card">
-        <div class="table-container">
-          <table class="comparison-table">
-            <thead>
-              <tr>
-                <th>Store Name</th>
-                <th>Total Items</th>
-                <th>✅ Matched</th>
-                <th>⚠️ Outliers</th>
-                <th>🚨 Conflicts</th>
-                <th>📅 Date Diff</th>
-                <th>Health Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="store in storeComparison" :key="store.name">
-                <td class="store-cell">{{ store.name }}</td>
-                <td class="text-center">{{ formatNumber(store.total) }}</td>
-                <td class="text-center success-text">{{ formatNumber(store.matched) }}</td>
-                <td class="text-center warning-text">{{ formatNumber(store.outliers) }}</td>
-                <td class="text-center danger-text">{{ formatNumber(store.conflicts) }}</td>
-                <td class="text-center purple-text">{{ formatNumber(store.dateDiffs) }}</td>
-                <td>
-                  <div class="health-score">
-                    <div class="score-bar">
-                      <div class="score-fill" :style="{ width: store.health + '%', background: getHealthColor(store.health) }"></div>
-                    </div>
-                    <span class="score-value">{{ store.health }}%</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-if="storeConflictData.length === 0" class="empty-state-small">
+          No store data available
+        </div>
+        <div v-else class="conflict-chart">
+          <div 
+            v-for="store in sortedByConflicts" 
+            :key="store.name" 
+            class="conflict-bar-row"
+          >
+            <div class="conflict-bar-label">
+              <span class="store-name">{{ store.name }}</span>
+              <!-- <span class="store-conflict-count">{{ store.conflicts }}</span> -->
+            </div>
+            <div class="conflict-bar-track">
+              <div 
+                class="conflict-bar-fill" 
+                :style="{ 
+                  width: getConflictPercentage(store.conflicts) + '%',
+                  background: getConflictColor(store.conflicts)
+                }"
+              >
+                <span class="conflict-bar-value">{{ store.conflicts }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- ============================================================ -->
-      <!-- SECTION 4: TOP ISSUES                                        -->
+      <!-- SECTION: TOP ISSUES - LIMITED TO 10 EACH                     -->
       <!-- ============================================================ -->
       <div class="section-title">
         <div class="section-title-left">
           <h2>⚠️ Top Issues</h2>
-          <span class="section-subtitle">Items needing immediate attention</span>
+          <span class="section-subtitle">Top 10 items needing immediate attention</span>
         </div>
       </div>
 
@@ -401,24 +233,6 @@
             </div>
           </div>
         </div>
-
-        <div class="section-card">
-          <div class="section-header">
-            <h3>⚠️ Top Outliers</h3>
-            <span class="badge warning">{{ topOutliers.length }}</span>
-          </div>
-          <div class="issues-list">
-            <div v-if="topOutliers.length === 0" class="empty-state-small">✅ No outliers</div>
-            <div v-for="(item, index) in topOutliers" :key="index" class="issue-item outlier">
-              <span class="issue-rank">{{ index + 1 }}</span>
-              <span class="issue-code">{{ item.code }}</span>
-              <span class="issue-name">{{ item.name }}</span>
-              <span class="issue-store">{{ item.store }}</span>
-              <span class="issue-value">Diff: {{ item.diff }}</span>
-            </div>
-          </div>
-        </div>
-
         <div class="section-card">
           <div class="section-header">
             <h3>📅 Date Differences</h3>
@@ -431,10 +245,15 @@
               <span class="issue-code">{{ item.code }}</span>
               <span class="issue-name">{{ item.name }}</span>
               <span class="issue-store">{{ item.store }}</span>
-              <span class="issue-value">{{ item.days }} days</span>
+            
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Last Updated -->
+      <div class="last-updated" v-if="lastUpdated">
+        <span>🔄 Last updated: {{ formatDateTime(lastUpdated) }}</span>
       </div>
     </template>
 
@@ -446,72 +265,65 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import checkerDashboardService from '@/stores/checkerDashboardService'
 
 // ================================================================
 // STATE
 // ================================================================
 
-const loading = ref(false)
+const loading = ref(true)
+const error = ref(null)
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
+// Dashboard data from API
+const dashboardData = ref(null)
+
 // ================================================================
-// DEMO DATA
+// COMPUTED - Data from API
 // ================================================================
 
-// Inventory Stats
-const inventoryStats = ref({
-  totalItems: 2136,
-  activeItems: 1958,
-  inactiveItems: 178,
-  missingConversion: 171,
-  missingCost: 138,
-  healthyItems: 1649
+const inventoryStats = computed(() => {
+  return dashboardData.value?.inventoryStats || {
+    totalItems: 0,
+    activeItems: 0,
+    inactiveItems: 0,
+    missingConversion: 0,
+    missingCost: 0,
+    healthyItems: 0
+  }
 })
 
-// Audit Stats
-const auditStats = ref({
-  totalStores: 6,
-  totalItems: 2136,
-  matched: 1859,
-  outliers: 127,
-  conflicts: 4,
-  dateDiffs: 146
+const auditStats = computed(() => {
+  return dashboardData.value?.auditStats || {
+    totalStores: 0,
+    totalItems: 0,
+    matched: 0,
+    conflicts: 0,
+    dateDiffs: 0
+  }
 })
 
-// Store Comparison Data
-const storeComparison = ref([
-  { name: 'MainStore_1_yeshi', total: 1859, matched: 1723, outliers: 116, conflicts: 2, dateDiffs: 18 },
-  { name: 'MainStore_3', total: 116, matched: 89, outliers: 11, conflicts: 1, dateDiffs: 15 },
-  { name: 'Mainstore_2_DULENTY_store _1', total: 126, matched: 47, outliers: 0, conflicts: 1, dateDiffs: 78 },
-  { name: 'MainStore_1_Ground', total: 63, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 63 },
-  { name: 'MainStore_1_Dulenty', total: 2, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 2 },
-  { name: 'MainStore_1_Mekanisa', total: 3, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 3 }
-])
+const storeConflictData = computed(() => {
+  return dashboardData.value?.storeConflictData || []
+})
 
-// Top Issues
-const topConflicts = ref([
-  { code: 'SDT001031', name: '10 Channel Mixer Pro', store: 'MainStore_1_yeshi', diff: 5 },
-  { code: 'SDT001032', name: 'HDMI Splitter 4K', store: 'MainStore_1_yeshi', diff: 3 },
-  { code: 'STORE3-003', name: 'Power Adapter 12V', store: 'MainStore_3', diff: 3 }
-])
+const topConflicts = computed(() => {
+  return dashboardData.value?.topConflicts || []
+})
 
-const topOutliers = ref([
-  { code: 'SDT002599', name: 'Aluminium Paste 250kg', store: 'MainStore_1_yeshi', diff: 2 },
-  { code: 'SDT001543', name: 'ATS Cabinet 2500A', store: 'MainStore_1_yeshi', diff: 2 },
-  { code: 'STORE3-002', name: 'Network Switch 24 Port', store: 'MainStore_3', diff: 1 }
-])
+const topDateDiffs = computed(() => {
+  return dashboardData.value?.topDateDiffs || []
+})
 
-const topDateDiffs = ref([
-  { code: 'SDT002600', name: 'Paint Thinner 1L', store: 'MainStore_1_yeshi', days: 14 },
-  { code: 'SDT002601', name: 'Primer Coating', store: 'MainStore_1_yeshi', days: 17 },
-  { code: 'SDT002602', name: 'Industrial Adhesive', store: 'MainStore_1_yeshi', days: 1 }
-])
+const lastUpdated = computed(() => {
+  return dashboardData.value?.summary?.lastUpdated || null
+})
 
 // ================================================================
-// COMPUTED
+// COMPUTED - UI Helpers
 // ================================================================
 
 const currentDate = computed(() => {
@@ -523,139 +335,123 @@ const currentDate = computed(() => {
   })
 })
 
-const statusChartData = computed(() => {
-  const total = inventoryStats.value.totalItems
-  return [
-    { label: 'Active', value: inventoryStats.value.activeItems, percent: Math.round((inventoryStats.value.activeItems / total) * 100), color: '#10b981' },
-    { label: 'Inactive', value: inventoryStats.value.inactiveItems, percent: Math.round((inventoryStats.value.inactiveItems / total) * 100), color: '#94a3b8' },
-    { label: 'Missing Conversion', value: inventoryStats.value.missingConversion, percent: Math.round((inventoryStats.value.missingConversion / total) * 100), color: '#f59e0b' },
-    { label: 'Missing Cost', value: inventoryStats.value.missingCost, percent: Math.round((inventoryStats.value.missingCost / total) * 100), color: '#ef4444' },
-    { label: 'Healthy', value: inventoryStats.value.healthyItems, percent: Math.round((inventoryStats.value.healthyItems / total) * 100), color: '#3b82f6' }
-  ]
+// Sort stores by conflicts (highest to lowest)
+const sortedByConflicts = computed(() => {
+  return [...storeConflictData.value]
+    .sort((a, b) => b.conflicts - a.conflicts)
 })
 
-const completenessSegments = computed(() => {
-  const total = inventoryStats.value.totalItems
-  const segments = [
-    { label: 'Healthy', value: inventoryStats.value.healthyItems, color: '#3b82f6' },
-    { label: 'Missing Conversion', value: inventoryStats.value.missingConversion, color: '#f59e0b' },
-    { label: 'Missing Cost', value: inventoryStats.value.missingCost, color: '#ef4444' },
-    { label: 'Inactive', value: inventoryStats.value.inactiveItems, color: '#94a3b8' }
-  ]
-  
-  const circumference = 2 * Math.PI * 80
-  let offset = 0
-  
-  return segments.map(seg => {
-    const percent = total > 0 ? seg.value / total : 0
-    const value = percent * circumference
-    const result = {
-      ...seg,
-      circumference: value,
-      offset: -offset,
-      percent: Math.round(percent * 100)
-    }
-    offset += value
-    return result
-  }).filter(s => s.value > 0)
-})
-
-const totalCircumference = computed(() => 2 * Math.PI * 80)
-
-const completenessLegend = computed(() => {
-  return completenessSegments.value.map(s => ({
-    label: s.label,
-    color: s.color,
-    value: s.value,
-    percent: s.percent
-  }))
-})
-
-const storeStatusData = computed(() => {
-  return storeComparison.value.map(store => {
-    const total = store.total
-    const segments = [
-      { label: 'Matched', count: store.matched, color: '#10b981' },
-      { label: 'Outliers', count: store.outliers, color: '#f59e0b' },
-      { label: 'Conflicts', count: store.conflicts, color: '#ef4444' },
-      { label: 'Date Diff', count: store.dateDiffs, color: '#8b5cf6' }
-    ]
-    
-    return {
-      ...store,
-      segments: segments.map(s => ({
-        ...s,
-        percent: total > 0 ? Math.round((s.count / total) * 100) : 0
-      })),
-      percent: total > 0 ? Math.round((store.matched / total) * 100) : 0
-    }
-  })
-})
-
-const auditPieSegments = computed(() => {
-  const total = auditStats.value.totalItems
-  const segments = [
-    { label: 'Matched', value: auditStats.value.matched, color: '#10b981' },
-    { label: 'Outliers', value: auditStats.value.outliers, color: '#f59e0b' },
-    { label: 'Conflicts', value: auditStats.value.conflicts, color: '#ef4444' },
-    { label: 'Date Diff', value: auditStats.value.dateDiffs, color: '#8b5cf6' }
-  ]
-  
-  const circumference = 2 * Math.PI * 80
-  let offset = 0
-  
-  return segments.map(seg => {
-    const percent = total > 0 ? seg.value / total : 0
-    const value = percent * circumference
-    const result = {
-      ...seg,
-      circumference: value,
-      offset: -offset,
-      percent: Math.round(percent * 100)
-    }
-    offset += value
-    return result
-  }).filter(s => s.value > 0)
-})
-
-const auditPieLegend = computed(() => {
-  return auditPieSegments.value.map(s => ({
-    label: s.label,
-    color: s.color,
-    value: s.value,
-    percent: s.percent
-  }))
+// Get max conflicts for percentage calculation
+const maxConflicts = computed(() => {
+  if (sortedByConflicts.value.length === 0) return 0
+  return sortedByConflicts.value[0].conflicts
 })
 
 // ================================================================
 // METHODS
 // ================================================================
 
+/**
+ * Load dashboard data from API
+ */
+const loadDashboardData = async () => {
+  loading.value = true
+  error.value = null
+
+  try {
+    console.log('📊 Loading dashboard data...')
+    const result = await checkerDashboardService.getDashboardSummary()
+    
+    if (result.success) {
+      dashboardData.value = result.data
+      console.log('✅ Dashboard data loaded:', dashboardData.value)
+    } else {
+      error.value = result.error || 'Failed to load dashboard data'
+      showToastMessage(error.value, 'error')
+    }
+  } catch (err) {
+    console.error('❌ Error loading dashboard:', err)
+    error.value = err.message || 'Failed to load dashboard data'
+    showToastMessage(error.value, 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * Refresh data
+ */
+const refreshData = async () => {
+  try {
+    loading.value = true
+    const result = await checkerDashboardService.refreshDashboard()
+    
+    if (result.success) {
+      showToastMessage('Data refreshed successfully!', 'success')
+      await loadDashboardData()
+    } else {
+      showToastMessage(result.message || 'Failed to refresh data', 'error')
+    }
+  } catch (err) {
+    console.error('❌ Error refreshing data:', err)
+    showToastMessage('Failed to refresh data', 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * Format number with commas
+ */
 const formatNumber = (value) => {
   if (!value && value !== 0) return '0'
   return value.toLocaleString()
 }
 
+/**
+ * Get percentage
+ */
 const getPercent = (value, total) => {
   if (total === 0) return 0
   return Math.round((value / total) * 100)
 }
 
-const getHealthColor = (score) => {
-  if (score >= 80) return '#10b981'
-  if (score >= 60) return '#f59e0b'
-  if (score >= 40) return '#f97316'
-  return '#ef4444'
+/**
+ * Get conflict percentage for bar width
+ */
+const getConflictPercentage = (conflicts) => {
+  if (maxConflicts.value === 0) return 0
+  return Math.round((conflicts / maxConflicts.value) * 100)
 }
 
-const refreshData = () => {
-  loading.value = true
-  setTimeout(() => {
-    loading.value = false
-    showToastMessage('Data refreshed!', 'success')
-  }, 800)
+/**
+ * Get conflict color based on severity
+ */
+const getConflictColor = (conflicts) => {
+  if (conflicts === 0) return '#94a3b8'
+  if (conflicts <= 5) return '#f59e0b'
+  if (conflicts <= 20) return '#f97316'
+  if (conflicts <= 50) return '#ef4444'
+  return '#dc2626'
 }
 
+/**
+ * Format datetime
+ */
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+/**
+ * Show toast message
+ */
 const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg
   toastType.value = type
@@ -664,6 +460,14 @@ const showToastMessage = (msg, type = 'success') => {
     showToast.value = false
   }, 3000)
 }
+
+// ================================================================
+// LIFECYCLE
+// ================================================================
+
+onMounted(() => {
+  loadDashboardData()
+})
 </script>
 
 <style scoped>
@@ -681,7 +485,7 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   HEADER (same as before)
+   HEADER
    ================================================================ */
 .dashboard-header {
   background: white;
@@ -790,6 +594,50 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
+   ERROR STATE
+   ================================================================ */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  background: white;
+  border-radius: 16px;
+}
+
+.error-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.error-state h3 {
+  color: #dc2626;
+  margin-bottom: 8px;
+}
+
+.error-state p {
+  color: #64748b;
+  margin-bottom: 16px;
+}
+
+.btn-retry {
+  padding: 8px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-retry:hover {
+  background: #2563eb;
+}
+
+/* ================================================================
    SECTION TITLE
    ================================================================ */
 .section-title {
@@ -820,353 +668,151 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   STATS GRID
+   THREE MAIN CARDS GRID
    ================================================================ */
-.stats-grid {
+.main-cards-grid {
   display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
 
-.inventory-grid {
-  grid-template-columns: repeat(6, 1fr);
-}
-
-.audit-grid {
-  grid-template-columns: repeat(6, 1fr);
-}
-
-.stat-card {
+.main-card {
   background: white;
   border-radius: 16px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
   transition: all 0.2s;
 }
 
-.stat-card:hover {
+.main-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.stat-icon-wrapper {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+.main-card-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.main-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
-.stat-icon {
-  font-size: 24px;
-}
+.main-card-icon.blue { background: #dbeafe; }
+.main-card-icon.orange { background: #fef3c7; }
+.main-card-icon.purple { background: #ede9fe; }
 
-.stat-card.primary .stat-icon-wrapper { background: #dbeafe; }
-.stat-card.success .stat-icon-wrapper { background: #dcfce7; }
-.stat-card.warning .stat-icon-wrapper { background: #fef3c7; }
-.stat-card.danger .stat-icon-wrapper { background: #fee2e2; }
-.stat-card.purple .stat-icon-wrapper { background: #ede9fe; }
-.stat-card.info .stat-icon-wrapper { background: #e0f2fe; }
-
-.stat-content {
+.main-card-title-group {
   flex: 1;
 }
 
-.stat-value {
-  font-size: 22px;
+.main-card-title-group h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.main-card-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.main-card-body {
+  padding: 16px 20px 20px;
+}
+
+.main-stat-value {
+  font-size: 28px;
   font-weight: 700;
   color: #1e293b;
   line-height: 1.2;
 }
 
-.stat-label {
+.main-stat-label {
   font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.stat-sub {
-  font-size: 11px;
   color: #94a3b8;
-  margin-top: 2px;
+  margin-bottom: 14px;
 }
 
-.stat-card.primary .stat-value { color: #2563eb; }
-.stat-card.success .stat-value { color: #16a34a; }
-.stat-card.warning .stat-value { color: #d97706; }
-.stat-card.danger .stat-value { color: #dc2626; }
-.stat-card.purple .stat-value { color: #7c3aed; }
-.stat-card.info .stat-value { color: #0891b2; }
-
-/* ================================================================
-   CHART ROW
-   ================================================================ */
-.chart-row {
+/* Sub Data Grid */
+.sub-data-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 10px;
 }
 
-.chart-card {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  overflow: hidden;
+.sub-data-grid.two-items {
+  grid-template-columns: 1fr 1fr;
 }
 
-.chart-header {
+.sub-data-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  gap: 10px;
+  padding: 10px 12px;
   background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  border-radius: 8px;
+  border: 1px solid #e8ecf0;
+  transition: all 0.2s;
 }
 
-.chart-header-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.chart-body {
-  padding: 20px 24px;
-}
-
-/* ================================================================
-   BAR CHART
-   ================================================================ */
-.bar-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.bar-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.bar-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  min-width: 120px;
-}
-
-.bar-track {
-  flex: 1;
-  height: 24px;
+.sub-data-item:hover {
   background: #f1f5f9;
-  border-radius: 6px;
-  overflow: hidden;
-  position: relative;
+  border-color: #cbd5e1;
 }
 
-.bar-fill {
-  height: 100%;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 10px;
-  transition: width 0.8s ease;
-  min-width: 30px;
-}
-
-.bar-value {
-  font-size: 11px;
-  font-weight: 600;
-  color: white;
-}
-
-.bar-percent {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  min-width: 45px;
-  text-align: right;
-}
-
-/* ================================================================
-   DONUT CHART
-   ================================================================ */
-.donut-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
-  flex-wrap: wrap;
-}
-
-.donut-chart {
-  width: 200px;
-  height: 200px;
-}
-
-.donut-svg {
-  width: 100%;
-  height: 100%;
-}
-
-.donut-segment {
-  transition: stroke-dasharray 0.8s ease, stroke-dashoffset 0.8s ease;
-}
-
-.donut-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-
-.legend-color {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+.sub-data-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.legend-label {
-  color: #1e293b;
-  min-width: 60px;
+.sub-data-dot.active { background: #10b981; }
+.sub-data-dot.inactive { background: #94a3b8; }
+.sub-data-dot.conversion-merged { background: #f59e0b; }
+.sub-data-dot.cost { background: #ef4444; }
+.sub-data-dot.conflict { background: #ef4444; }
+.sub-data-dot.date-diff { background: #8b5cf6; }
+
+.sub-data-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.legend-value {
+.sub-data-label {
+  font-size: 11px;
+  color: #64748b;
+  min-width: 70px;
+}
+
+.sub-data-value {
+  font-size: 14px;
   font-weight: 600;
   color: #1e293b;
   margin-left: auto;
-  min-width: 30px;
-  text-align: right;
 }
 
-.legend-percent {
-  font-size: 12px;
+.sub-data-percent {
+  font-size: 11px;
   color: #94a3b8;
-  min-width: 40px;
+  min-width: 35px;
   text-align: right;
-}
-
-/* ================================================================
-   STORE CHART
-   ================================================================ */
-.store-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.store-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.store-bar-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 120px;
-}
-
-.store-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.store-total {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.store-bar-track {
-  flex: 1;
-  height: 20px;
-  background: #f1f5f9;
-  border-radius: 6px;
-  overflow: hidden;
-  min-width: 100px;
-}
-
-.store-bar-fill {
-  height: 100%;
-  border-radius: 6px;
-  transition: width 0.8s ease;
-}
-
-.store-bar-segments {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.segment {
-  height: 100%;
-  transition: width 0.8s ease;
-}
-
-.store-bar-legend {
-  display: flex;
-  gap: 8px;
-  font-size: 10px;
-  color: #64748b;
-  flex-wrap: wrap;
-  min-width: 80px;
-}
-
-.legend-dot {
-  display: inline-block;
-  padding: 0 6px;
-  border-radius: 10px;
-  color: white;
-  font-weight: 500;
-}
-
-/* ================================================================
-   AUDIT PIE
-   ================================================================ */
-.audit-pie-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
-  flex-wrap: wrap;
-}
-
-.audit-pie {
-  width: 200px;
-  height: 200px;
-}
-
-.pie-svg {
-  width: 100%;
-  height: 100%;
-}
-
-.pie-segment {
-  transition: stroke-dasharray 0.8s ease, stroke-dashoffset 0.8s ease;
-}
-
-.audit-pie-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 /* ================================================================
@@ -1182,77 +828,68 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 /* ================================================================
-   TABLE
+   CONFLICT CHART - HORIZONTAL BAR
    ================================================================ */
-.table-container {
-  overflow-x: auto;
+.conflict-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
 }
 
-.comparison-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.comparison-table th,
-.comparison-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.comparison-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  color: #475569;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.store-cell {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.success-text { color: #16a34a; font-weight: 600; }
-.warning-text { color: #d97706; font-weight: 600; }
-.danger-text { color: #dc2626; font-weight: 600; }
-.purple-text { color: #7c3aed; font-weight: 600; }
-
-/* ================================================================
-   HEALTH SCORE
-   ================================================================ */
-.health-score {
+.conflict-bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
-.score-bar {
-  flex: 1;
-  height: 6px;
-  background: #f1f5f9;
-  border-radius: 3px;
-  overflow: hidden;
-  min-width: 60px;
+.conflict-bar-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 200px;
+  gap: 12px;
 }
 
-.score-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.6s ease;
+.conflict-bar-label .store-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+  white-space: nowrap;
 }
 
-.score-value {
+.conflict-bar-label .store-conflict-count {
   font-size: 12px;
   font-weight: 600;
-  color: #1e293b;
-  min-width: 40px;
+  color: #64748b;
+  min-width: 30px;
+  text-align: right;
+}
+
+.conflict-bar-track {
+  flex: 1;
+  height: 28px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.conflict-bar-fill {
+  height: 100%;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  transition: width 0.8s ease;
+  min-width: 30px;
+}
+
+.conflict-bar-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
 }
 
 /* ================================================================
@@ -1260,7 +897,7 @@ const showToastMessage = (msg, type = 'success') => {
    ================================================================ */
 .issues-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1291,11 +928,6 @@ const showToastMessage = (msg, type = 'success') => {
   color: #991b1b;
 }
 
-.badge.warning {
-  background: #fef3c7;
-  color: #92400e;
-}
-
 .badge.purple {
   background: #ede9fe;
   color: #6d28d9;
@@ -1305,7 +937,7 @@ const showToastMessage = (msg, type = 'success') => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 250px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -1350,7 +982,6 @@ const showToastMessage = (msg, type = 'success') => {
 }
 
 .issue-item.conflict { border-left: 3px solid #ef4444; }
-.issue-item.outlier { border-left: 3px solid #f59e0b; }
 .issue-item.date-diff { border-left: 3px solid #8b5cf6; }
 
 .empty-state-small {
@@ -1378,6 +1009,17 @@ const showToastMessage = (msg, type = 'success') => {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;
+}
+
+/* ================================================================
+   LAST UPDATED
+   ================================================================ */
+.last-updated {
+  text-align: center;
+  padding: 16px;
+  color: #94a3b8;
+  font-size: 13px;
+  margin-top: 8px;
 }
 
 /* ================================================================
@@ -1410,20 +1052,17 @@ const showToastMessage = (msg, type = 'success') => {
    RESPONSIVE
    ================================================================ */
 @media (max-width: 1200px) {
-  .inventory-grid {
+  .main-cards-grid {
     grid-template-columns: repeat(3, 1fr);
-  }
-  .audit-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .issues-grid {
-    grid-template-columns: 1fr 1fr;
   }
 }
 
 @media (max-width: 992px) {
-  .chart-row {
+  .issues-grid {
     grid-template-columns: 1fr;
+  }
+  .conflict-bar-label {
+    min-width: 140px;
   }
 }
 
@@ -1431,44 +1070,34 @@ const showToastMessage = (msg, type = 'success') => {
   .analytics-dashboard { padding: 16px; }
   .dashboard-header { flex-direction: column; align-items: flex-start; }
   .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; }
-  .inventory-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .audit-grid {
-    grid-template-columns: 1fr 1fr;
+  .main-cards-grid {
+    grid-template-columns: 1fr;
   }
   .issues-grid {
     grid-template-columns: 1fr;
   }
-  .store-bar-row {
+  .sub-data-grid {
+    grid-template-columns: 1fr;
+  }
+  .sub-data-grid.two-items {
+    grid-template-columns: 1fr;
+  }
+  .conflict-bar-row {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
   }
-  .store-bar-info {
-    flex-direction: row;
-    justify-content: space-between;
+  .conflict-bar-label {
+    min-width: unset;
   }
 }
 
 @media (max-width: 480px) {
-  .inventory-grid {
+  .issues-grid {
     grid-template-columns: 1fr;
   }
-  .audit-grid {
-    grid-template-columns: 1fr;
-  }
-  .donut-container,
-  .audit-pie-container {
-    flex-direction: column;
-    gap: 16px;
-  }
-  .bar-item {
-    flex-wrap: wrap;
-  }
-  .bar-label {
-    min-width: 80px;
-    font-size: 11px;
+  .conflict-bar-label .store-name {
+    font-size: 12px;
   }
 }
 </style>

@@ -3,7 +3,7 @@
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
-        <h2>🔍 Audit & Reconciliation Dashboard</h2>
+        <h2>🔍 Audit & Reconciliation</h2>
         <span class="total-badge">{{ filteredAuditData.length }} Products</span>
       </div>
       <div class="header-actions">
@@ -41,10 +41,6 @@
         <span class="summary-label">✅ Matched</span>
         <span class="summary-value">{{ matchedCount }}</span>
       </div>
-      <div class="summary-card warning">
-        <span class="summary-label">⚠️ Outlier</span>
-        <span class="summary-value">{{ outlierCount }}</span>
-      </div>
       <div class="summary-card critical">
         <span class="summary-label">🚨 Conflict</span>
         <span class="summary-value">{{ conflictCount }}</span>
@@ -69,7 +65,6 @@
       <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
         <option value="">All Status</option>
         <option value="Matched">✅ Matched</option>
-        <option value="Outlier">⚠️ Outlier</option>
         <option value="Conflict">🚨 Conflict</option>
         <option value="DateDiff">📅 Date Diff</option>
       </select>
@@ -80,18 +75,17 @@
 
     <!-- ==================== PRODUCT COMPARISON TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <!-- ⭐ LOADING STATE - Show this when loading -->
+      <!-- Loading State -->
       <div v-if="loading || refreshing" class="loading-state">
         <div class="spinner-large"></div>
         <p class="loading-text">{{ loading ? 'Loading audit data...' : 'Refreshing data...' }}</p>
         <p class="loading-subtext">Please wait while we fetch the data</p>
       </div>
 
-      <!-- ⭐ INITIAL LOADING STATE - When no store is selected yet -->
+      <!-- Initial Loading State -->
       <div v-else-if="!selectedStoreId && !loading && !error" class="loading-state">
         <div class="spinner-large"></div>
         <p class="loading-text">Loading available stores...</p>
-      
       </div>
 
       <!-- Error State -->
@@ -102,7 +96,7 @@
         <button class="btn-retry" @click="retryLoad">Retry</button>
       </div>
 
-      <!-- ⭐ No Data State - Only show when NOT loading and data is empty -->
+      <!-- No Data State -->
       <div v-else-if="storeStockData.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">📦</div>
         <h3>No Products Found</h3>
@@ -119,7 +113,7 @@
         </div>
       </div>
 
-      <!-- ⭐ No Results State (filtered out) -->
+      <!-- No Results State -->
       <div v-else-if="filteredAuditData.length === 0 && storeStockData.length > 0 && !loading" class="empty-state">
         <div class="empty-icon">🔍</div>
         <h3>No Results Found</h3>
@@ -155,7 +149,6 @@
                 <div class="product-info">
                   <span class="common-name">{{ item.commonName || item.itemName }}</span>
                   <span class="standard-name">{{ item.standardName || '' }}</span>
-                 
                 </div>
               </td>
               <td>{{ item.category || '-' }}</td>
@@ -167,19 +160,19 @@
                 {{ getGroupValue(item, group.id) }}
               </td>
 
-           <td>
-  <span :class="['status-badge', getStatusClass(item.status)]">
-    {{ item.status }}
-  </span>
-  <span 
-    v-if="item.hasDateDiff" 
-    class="date-diff-icon clickable" 
-    title="Different last transaction dates across groups - Click to update"
-    @click.stop="openDateUpdateModal(item)"
-  >
-    📅
-  </span>
-</td>
+              <td>
+                <span :class="['status-badge', getStatusClass(item.status)]">
+                  {{ item.status }}
+                </span>
+                <span 
+                  v-if="item.hasDateDiff" 
+                  class="date-diff-icon clickable" 
+                  title="Different last transaction dates across groups - Click to update"
+                  @click.stop="openDateUpdateModal(item)"
+                >
+                  📅
+                </span>
+              </td>
               <td>
                 <button
                   @click="openTransactionModal(item)"
@@ -294,105 +287,103 @@
       </div>
     </div>
 
-
-<!-- ==================== DATE UPDATE MODAL ==================== -->
-<div v-if="showDateUpdateModal" class="modal-overlay" @click.self="closeDateUpdateModal">
-  <div class="modal-container date-update-modal">
-    <div class="modal-header">
-      <h3>📅 Update Last Transaction Dates</h3>
-      <button class="modal-close" @click="closeDateUpdateModal">✕</button>
-    </div>
-    <div class="modal-body">
-      <!-- Product Info -->
-      <div class="transaction-product">
-        <h4>{{ selectedDateItem?.commonName || selectedDateItem?.itemName }}</h4>
-        <div class="product-meta">
-          <span><strong>Code:</strong> {{ selectedDateItem?.code }}</span>
-          <span><strong>Category:</strong> {{ selectedDateItem?.category || '-' }}</span>
-          <span><strong>Store:</strong> {{ selectedStoreName }}</span>
-          <span><strong>Status:</strong> 
-            <span :class="['status-badge', getStatusClass(selectedDateItem?.status)]">
-              {{ selectedDateItem?.status }}
-            </span>
-            <span v-if="selectedDateItem?.hasDateDiff" class="date-diff-icon">📅</span>
-          </span>
+    <!-- ==================== DATE UPDATE MODAL ==================== -->
+    <div v-if="showDateUpdateModal" class="modal-overlay" @click.self="closeDateUpdateModal">
+      <div class="modal-container date-update-modal">
+        <div class="modal-header">
+          <h3>📅 Update Last Transaction Dates</h3>
+          <button class="modal-close" @click="closeDateUpdateModal">✕</button>
         </div>
-        <div class="date-diff-summary" v-if="selectedDateItem?.dateDiffDetails">
-          <span class="diff-badge">
-            ⚠️ Different dates detected: 
-            {{ selectedDateItem.dateDiffDetails.diffDays }} day(s) apart
-          </span>
-        </div>
-      </div>
-
-      <!-- Group Date Cards -->
-      <div class="group-date-cards">
-        <div 
-          v-for="group in activeGroups" 
-          :key="group.id"
-          class="group-date-card"
-          :class="{ 'has-date': getGroupLastTxDate(selectedDateItem, group.id) }"
-        >
-          <div class="group-date-header">
-            <span class="group-name">{{ group.name }}</span>
-            <span class="group-balance">Balance: {{ getGroupValue(selectedDateItem, group.id) }}</span>
-          </div>
-          <div class="group-date-body">
-            <div class="date-display">
-              <span class="date-label">Last Transaction:</span>
-              <span class="date-value" v-if="getGroupLastTxDate(selectedDateItem, group.id)">
-                {{ formatDate(getGroupLastTxDate(selectedDateItem, group.id)) }}
+        <div class="modal-body">
+          <!-- Product Info -->
+          <div class="transaction-product">
+            <h4>{{ selectedDateItem?.commonName || selectedDateItem?.itemName }}</h4>
+            <div class="product-meta">
+              <span><strong>Code:</strong> {{ selectedDateItem?.code }}</span>
+              <span><strong>Category:</strong> {{ selectedDateItem?.category || '-' }}</span>
+              <span><strong>Store:</strong> {{ selectedStoreName }}</span>
+              <span><strong>Status:</strong> 
+                <span :class="['status-badge', getStatusClass(selectedDateItem?.status)]">
+                  {{ selectedDateItem?.status }}
+                </span>
+                <span v-if="selectedDateItem?.hasDateDiff" class="date-diff-icon">📅</span>
               </span>
-              <span class="date-value no-date" v-else>No transactions</span>
             </div>
-            <div class="date-actions">
-              <button 
-                class="btn-update-date" 
-                @click="openDatePicker(selectedDateItem, group.id)"
-                :disabled="!getGroupLastTxDate(selectedDateItem, group.id)"
-              >
-                ✏️ Update
-              </button>
-              <button 
-                class="btn-reset-date" 
-                @click="resetToLatestDate(selectedDateItem, group.id)"
-                v-if="getGroupLastTxDate(selectedDateItem, group.id)"
-                title="Set to latest date across all groups"
-              >
-                📋 Sync
-              </button>
+            <div class="date-diff-summary" v-if="selectedDateItem?.dateDiffDetails">
+              <span class="diff-badge">
+                ⚠️ Different dates detected: 
+                {{ selectedDateItem.dateDiffDetails.diffDays }} day(s) apart
+              </span>
             </div>
           </div>
-          <div class="group-date-footer" v-if="selectedDateItem?._tempDate && selectedDateItem._tempDate[group.id]">
-            <span class="temp-date-label">New date:</span>
-            <span class="temp-date-value">{{ formatDate(selectedDateItem._tempDate[group.id]) }}</span>
-            <button class="btn-apply-date" @click="applyDateUpdate(selectedDateItem, group.id)">
-              ✅ Apply
-            </button>
-            <button class="btn-cancel-date" @click="cancelDateUpdate(selectedDateItem, group.id)">
-              ✕
-            </button>
+
+          <!-- Group Date Cards -->
+          <div class="group-date-cards">
+            <div 
+              v-for="group in activeGroups" 
+              :key="group.id"
+              class="group-date-card"
+              :class="{ 'has-date': getGroupLastTxDate(selectedDateItem, group.id) }"
+            >
+              <div class="group-date-header">
+                <span class="group-name">{{ group.name }}</span>
+                <span class="group-balance">Balance: {{ getGroupValue(selectedDateItem, group.id) }}</span>
+              </div>
+              <div class="group-date-body">
+                <div class="date-display">
+                  <span class="date-label">Last Transaction:</span>
+                  <span class="date-value" v-if="getGroupLastTxDate(selectedDateItem, group.id)">
+                    {{ formatDate(getGroupLastTxDate(selectedDateItem, group.id)) }}
+                  </span>
+                  <span class="date-value no-date" v-else>No transactions</span>
+                </div>
+                <div class="date-actions">
+                  <button 
+                    class="btn-update-date" 
+                    @click="openDatePicker(selectedDateItem, group.id)"
+                    :disabled="!getGroupLastTxDate(selectedDateItem, group.id)"
+                  >
+                    ✏️ Update
+                  </button>
+                  <button 
+                    class="btn-reset-date" 
+                    @click="resetToLatestDate(selectedDateItem, group.id)"
+                    v-if="getGroupLastTxDate(selectedDateItem, group.id)"
+                    title="Set to latest date across all groups"
+                  >
+                    📋 Sync
+                  </button>
+                </div>
+              </div>
+              <div class="group-date-footer" v-if="selectedDateItem?._tempDate && selectedDateItem._tempDate[group.id]">
+                <span class="temp-date-label">New date:</span>
+                <span class="temp-date-value">{{ formatDate(selectedDateItem._tempDate[group.id]) }}</span>
+                <button class="btn-apply-date" @click="applyDateUpdate(selectedDateItem, group.id)">
+                  ✅ Apply
+                </button>
+                <button class="btn-cancel-date" @click="cancelDateUpdate(selectedDateItem, group.id)">
+                  ✕
+                </button>
+              </div>
+            </div>
           </div>
+
+          <!-- Date Picker (hidden input) -->
+          <input 
+            type="datetime-local" 
+            ref="datePickerInput"
+            style="display: none;"
+            @change="onDatePickerChange"
+          />
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeDateUpdateModal">Close</button>
+          <button class="btn-primary" @click="saveAllDateUpdates" :disabled="savingDates">
+            {{ savingDates ? 'Saving...' : '💾 Save All Changes' }}
+          </button>
         </div>
       </div>
-
-      <!-- Date Picker (hidden input) -->
-      <input 
-        type="datetime-local" 
-        ref="datePickerInput"
-        style="display: none;"
-        @change="onDatePickerChange"
-      />
     </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" @click="closeDateUpdateModal">Close</button>
-      <button class="btn-primary" @click="saveAllDateUpdates" :disabled="savingDates">
-        {{ savingDates ? 'Saving...' : '💾 Save All Changes' }}
-      </button>
-    </div>
-  </div>
-</div>
-    
 
     <!-- ==================== EXPORT MODAL ==================== -->
     <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
@@ -405,9 +396,6 @@
           <div class="export-options">
             <div class="export-option" @click="exportType = 'full'">
               <input type="radio" v-model="exportType" value="full" /> Full Report
-            </div>
-            <div class="export-option" @click="exportType = 'outlier'">
-              <input type="radio" v-model="exportType" value="outlier" /> Outliers Only
             </div>
             <div class="export-option" @click="exportType = 'conflict'">
               <input type="radio" v-model="exportType" value="conflict" /> Conflicts Only
@@ -480,18 +468,15 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
-// ================================================================
-// NEW STATE FOR DATE UPDATE
-// ================================================================
+// Date Update Modal
 const showDateUpdateModal = ref(false)
 const selectedDateItem = ref(null)
 const savingDates = ref(false)
 const datePickerInput = ref(null)
 let currentDatePickerGroup = null
 
-
 // ================================================================
-// COMPUTED
+// COMPUTED - UPDATED (Removed Outlier)
 // ================================================================
 const selectedStore = computed(() => {
   return stores.value.find(s => s.id === selectedStoreId.value)
@@ -564,10 +549,6 @@ const matchedCount = computed(() => {
   return filteredAuditData.value.filter(item => item.status === 'Matched').length
 })
 
-const outlierCount = computed(() => {
-  return filteredAuditData.value.filter(item => item.status === 'Outlier').length
-})
-
 const conflictCount = computed(() => {
   return filteredAuditData.value.filter(item => item.status === 'Conflict').length
 })
@@ -575,220 +556,6 @@ const conflictCount = computed(() => {
 const dateDiffCount = computed(() => {
   return filteredAuditData.value.filter(item => item.hasDateDiff === true).length
 })
-
-
-
-
-
-// ================================================================
-// NEW METHODS FOR DATE UPDATE
-// ================================================================
-
-/**
- * Open the date update modal
- */
-const openDateUpdateModal = (item) => {
-  if (!item.hasDateDiff) {
-    showToastMessage('No date differences to update', 'info')
-    return
-  }
-  
-  // Create a deep copy to avoid mutating the original
-  selectedDateItem.value = JSON.parse(JSON.stringify(item))
-  selectedDateItem.value._tempDate = {}
-  showDateUpdateModal.value = true
-}
-
-/**
- * Close the date update modal
- */
-const closeDateUpdateModal = () => {
-  showDateUpdateModal.value = false
-  selectedDateItem.value = null
-  currentDatePickerGroup = null
-}
-
-/**
- * Get the last transaction date for a specific group
- */
-const getGroupLastTxDate = (item, groupId) => {
-  if (!item || !item.groupLastTxDates) return null
-  return item.groupLastTxDates[groupId] || null
-}
-
-/**
- * Open the date picker for a specific group
- */
-const openDatePicker = (item, groupId) => {
-  const currentDate = getGroupLastTxDate(item, groupId)
-  if (!currentDate) {
-    showToastMessage('No transaction date to update', 'error')
-    return
-  }
-  
-  currentDatePickerGroup = groupId
-  
-  // Format the date for the datetime-local input
-  const date = new Date(currentDate)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  
-  // Set the value and trigger the picker
-  if (datePickerInput.value) {
-    datePickerInput.value.value = `${year}-${month}-${day}T${hours}:${minutes}`
-    datePickerInput.value.showPicker()
-  }
-}
-
-/**
- * Handle date picker change
- */
-const onDatePickerChange = (event) => {
-  if (!selectedDateItem.value || !currentDatePickerGroup) return
-  
-  const newDate = event.target.value
-  if (newDate) {
-    if (!selectedDateItem.value._tempDate) {
-      selectedDateItem.value._tempDate = {}
-    }
-    selectedDateItem.value._tempDate[currentDatePickerGroup] = newDate
-    showToastMessage('Date updated temporarily. Click "Apply" to save.', 'info')
-  }
-  currentDatePickerGroup = null
-}
-
-/**
- * Apply a single date update
- */
-const applyDateUpdate = (item, groupId) => {
-  if (!item._tempDate || !item._tempDate[groupId]) {
-    showToastMessage('No date change to apply', 'error')
-    return
-  }
-  
-  // Update the actual date
-  item.groupLastTxDates[groupId] = item._tempDate[groupId]
-  delete item._tempDate[groupId]
-  
-  // Recalculate date diff
-  recalculateDateDiff(item)
-  
-  showToastMessage('Date updated successfully', 'success')
-}
-
-/**
- * Cancel a date update
- */
-const cancelDateUpdate = (item, groupId) => {
-  if (item._tempDate) {
-    delete item._tempDate[groupId]
-  }
-  showToastMessage('Date update cancelled', 'info')
-}
-
-/**
- * Reset to the latest date across all groups
- */
-const resetToLatestDate = (item, groupId) => {
-  const allDates = Object.values(item.groupLastTxDates || {}).filter(d => d)
-  if (allDates.length === 0) return
-  
-  const latestDate = new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
-  
-  if (!item._tempDate) {
-    item._tempDate = {}
-  }
-  item._tempDate[groupId] = latestDate.toISOString()
-  
-  showToastMessage(`Set to latest date: ${formatDate(latestDate.toISOString())}`, 'info')
-}
-
-/**
- * Recalculate date diff after updates
- */
-const recalculateDateDiff = (item) => {
-  const dates = Object.values(item.groupLastTxDates || {}).filter(d => d)
-  const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))]
-  const hasDateDiff = uniqueDateStrings.length > 1
-  
-  item.hasDateDiff = hasDateDiff
-  
-  if (hasDateDiff && dates.length > 1) {
-    const dateObjects = dates.map(d => new Date(d))
-    const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())))
-    const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())))
-    const diffMs = latestDate - earliestDate
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
-    
-    item.dateDiffDetails = {
-      latestDate: latestDate.toISOString(),
-      earliestDate: earliestDate.toISOString(),
-      diffDays: diffDays,
-      diffHours: Math.round(diffMs / (1000 * 60 * 60)),
-      uniqueDates: uniqueDateStrings,
-    }
-  } else {
-    item.dateDiffDetails = null
-  }
-}
-
-/**
- * Save all date updates to the backend
- */
-const saveAllDateUpdates = async () => {
-  if (!selectedDateItem.value) return
-  
-  savingDates.value = true
-  
-  try {
-    // Build the update payload
-    const updates = {}
-    const groups = activeGroups.value
-    
-    for (const group of groups) {
-      const date = getGroupLastTxDate(selectedDateItem.value, group.id)
-      if (date) {
-        updates[group.id] = date
-      }
-    }
-    
-    // Call API to update dates
-    const result = await auditService.updateItemTransactionDates(
-      selectedStoreId.value,
-      selectedDateItem.value.itemId,
-      updates
-    )
-    
-    if (result.success) {
-      showToastMessage('All dates updated successfully!', 'success')
-      
-      // Update local data
-      const originalItem = storeStockData.value.find(
-        item => item.itemId === selectedDateItem.value.itemId
-      )
-      if (originalItem) {
-        originalItem.groupLastTxDates = { ...selectedDateItem.value.groupLastTxDates }
-        originalItem.hasDateDiff = selectedDateItem.value.hasDateDiff
-        originalItem.dateDiffDetails = selectedDateItem.value.dateDiffDetails
-      }
-      
-      closeDateUpdateModal()
-      
-      // Refresh data to reflect changes
-      await refreshData()
-    } else {
-      showToastMessage(result.error || 'Failed to update dates', 'error')
-    }
-  } catch (error) {
-    console.error('Error saving date updates:', error)
-    showToastMessage('Failed to save date updates', 'error')
-  } finally {
-    savingDates.value = false
-  }
-}
 
 // ================================================================
 // METHODS
@@ -798,11 +565,193 @@ const getStatusClass = (status) => {
   if (!status) return 'unknown'
   const map = {
     'Matched': 'matched',
-    'Outlier': 'outlier',
     'Conflict': 'conflict',
     'No Data': 'unknown'
   }
   return map[status] || 'unknown'
+}
+
+const getGroupValue = (item, groupId) => {
+  const value = item.groupBalances?.[groupId]
+  return value !== undefined && value !== null ? value : '-'
+}
+
+const getRowClass = (item) => {
+  if (item.status === 'Conflict') return 'conflict-row'
+  if (item.status === 'Matched' && item.hasDateDiff) return 'date-diff-row'
+  if (item.status === 'Matched') return 'matched-row'
+  return ''
+}
+
+const getCellClass = (item, groupId) => {
+  const value = getGroupValue(item, groupId)
+  const values = Object.values(item.groupBalances || {})
+
+  if (values.length === 0) return 'normal-cell'
+
+  const uniqueValues = [...new Set(values)]
+
+  if (uniqueValues.length === 1) {
+    return 'normal-cell'
+  } else {
+    // Any difference = Conflict
+    return 'conflict-cell'
+  }
+}
+
+// -- Transform Audit Data - UPDATED (Removed Outlier) --
+const transformAuditData = (data) => {
+  console.log('🔄 Transform audit data:', data)
+
+  if (!data) {
+    return []
+  }
+
+  if (data.comparison && data.comparison.items) {
+    const totalGroups = data.groups ? data.groups.length : 0
+
+    return data.comparison.items.map(item => {
+      const groupBalances = item.groupBalances || {}
+      const groupLastTxDates = item.groupLastTxDates || {}
+
+      const values = Object.values(groupBalances).filter(v => v !== undefined && v !== null)
+      const missingCount = totalGroups - values.length
+
+      // Check for date differences
+      const dates = Object.values(groupLastTxDates).filter(d => d !== undefined && d !== null)
+      const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
+      const hasDateDiff = uniqueDates.length > 1
+
+      let status = 'No Data'
+      let statusClass = 'unknown'
+
+      if (values.length === 0) {
+        status = 'No Data'
+        statusClass = 'unknown'
+      } else if (missingCount > 0) {
+        status = 'Conflict'
+        statusClass = 'conflict'
+      } else {
+        const uniqueValues = [...new Set(values)]
+        if (uniqueValues.length === 1) {
+          status = 'Matched'
+          statusClass = 'matched'
+        } else {
+          // Any difference = Conflict (combines old Outlier + Conflict)
+          status = 'Conflict'
+          statusClass = 'conflict'
+        }
+      }
+
+      return {
+        productId: item.itemId,
+        itemId: item.itemId,
+        code: item.code || '',
+        commonName: item.commonName || item.itemName || 'Unknown',
+        itemName: item.itemName || 'Unknown',
+        standardName: item.standardName || '',
+        category: item.category || 'General',
+        uom: item.uomCode || '',
+        uomCode: item.uomCode || '',
+        groupBalances: groupBalances,
+        groupLastTxDates: groupLastTxDates,
+        hasDateDiff: hasDateDiff,
+        dateDiffDetails: hasDateDiff ? {
+          uniqueDates: uniqueDates,
+          dateCount: dates.length,
+          latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
+          earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
+        } : null,
+        status: status,
+        statusClass: statusClass
+      }
+    })
+  }
+
+  // Fallback: Build from groups data
+  if (!data.groups) {
+    return []
+  }
+
+  const groups = data.groups || []
+  const totalGroups = groups.length
+  const itemMap = new Map()
+
+  groups.forEach(group => {
+    const balances = group.balances || []
+    balances.forEach(balance => {
+      if (!itemMap.has(balance.itemId)) {
+        itemMap.set(balance.itemId, {
+          productId: balance.itemId,
+          itemId: balance.itemId,
+          code: balance.itemCode || '',
+          commonName: balance.itemCommonName || balance.itemName || 'Unknown',
+          itemName: balance.itemName || 'Unknown',
+          standardName: balance.itemCommonName || '',
+          category: balance.category || 'General',
+          uom: balance.uomCode || '',
+          uomCode: balance.uomCode || '',
+          groupBalances: {},
+          groupLastTxDates: {},
+          hasDateDiff: false,
+          dateDiffDetails: null,
+          status: 'Matched'
+        })
+      }
+    })
+  })
+
+  groups.forEach(group => {
+    const groupId = group.groupId
+    const balances = group.balances || []
+
+    balances.forEach(balance => {
+      const item = itemMap.get(balance.itemId)
+      if (item) {
+        item.groupBalances[groupId] = balance.balance
+        if (balance.lastTransactionDate) {
+          item.groupLastTxDates[groupId] = balance.lastTransactionDate
+        }
+      }
+    })
+  })
+
+  itemMap.forEach((item) => {
+    const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null)
+    const missingCount = totalGroups - values.length
+
+    const dates = Object.values(item.groupLastTxDates).filter(d => d !== undefined && d !== null)
+    const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
+    const hasDateDiff = uniqueDates.length > 1
+
+    if (values.length === 0) {
+      item.status = 'No Data'
+      item.statusClass = 'unknown'
+    } else if (missingCount > 0) {
+      item.status = 'Conflict'
+      item.statusClass = 'conflict'
+    } else {
+      const uniqueValues = [...new Set(values)]
+      if (uniqueValues.length === 1) {
+        item.status = 'Matched'
+        item.statusClass = 'matched'
+      } else {
+        // Any difference = Conflict
+        item.status = 'Conflict'
+        item.statusClass = 'conflict'
+      }
+    }
+
+    item.hasDateDiff = hasDateDiff
+    item.dateDiffDetails = hasDateDiff ? {
+      uniqueDates: uniqueDates,
+      dateCount: dates.length,
+      latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
+      earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
+    } : null
+  })
+
+  return Array.from(itemMap.values())
 }
 
 // -- Load Categories --
@@ -958,165 +907,6 @@ const loadStoreData = async (storeId) => {
   }
 }
 
-// -- Transform Audit Data --
-const transformAuditData = (data) => {
-  console.log('🔄 Transform audit data:', data)
-
-  if (!data) {
-    return []
-  }
-
-  if (data.comparison && data.comparison.items) {
-    const totalGroups = data.groups ? data.groups.length : 0
-
-    return data.comparison.items.map(item => {
-      const groupBalances = item.groupBalances || {}
-      const groupLastTxDates = item.groupLastTxDates || {}
-
-      const values = Object.values(groupBalances).filter(v => v !== undefined && v !== null)
-      const missingCount = totalGroups - values.length
-
-      // Check for date differences
-      const dates = Object.values(groupLastTxDates).filter(d => d !== undefined && d !== null)
-      const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
-      const hasDateDiff = uniqueDates.length > 1
-
-      let status = 'No Data'
-      let statusClass = 'unknown'
-
-      if (values.length === 0) {
-        status = 'No Data'
-        statusClass = 'no-data'
-      } else if (missingCount > 0) {
-        status = 'Conflict'
-        statusClass = 'conflict'
-      } else {
-        const uniqueValues = [...new Set(values)]
-        if (uniqueValues.length === 1) {
-          status = 'Matched'
-          statusClass = 'matched'
-        } else if (uniqueValues.length === 2) {
-          status = 'Outlier'
-          statusClass = 'outlier'
-        } else {
-          status = 'Conflict'
-          statusClass = 'conflict'
-        }
-      }
-
-      return {
-        productId: item.itemId,
-        itemId: item.itemId,
-        code: item.code || '',
-        commonName: item.commonName || item.itemName || 'Unknown',
-        itemName: item.itemName || 'Unknown',
-        standardName: item.standardName || '',
-        category: item.category || 'General',
-        uom: item.uomCode || '',
-        uomCode: item.uomCode || '',
-        groupBalances: groupBalances,
-        groupLastTxDates: groupLastTxDates,
-        hasDateDiff: hasDateDiff,
-        dateDiffDetails: hasDateDiff ? {
-          uniqueDates: uniqueDates,
-          dateCount: dates.length,
-          latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
-          earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
-        } : null,
-        status: status,
-        statusClass: statusClass
-      }
-    })
-  }
-
-  // Fallback: Build from groups data
-  if (!data.groups) {
-    return []
-  }
-
-  const groups = data.groups || []
-  const totalGroups = groups.length
-  const itemMap = new Map()
-
-  groups.forEach(group => {
-    const balances = group.balances || []
-    balances.forEach(balance => {
-      if (!itemMap.has(balance.itemId)) {
-        itemMap.set(balance.itemId, {
-          productId: balance.itemId,
-          itemId: balance.itemId,
-          code: balance.itemCode || '',
-          commonName: balance.itemCommonName || balance.itemName || 'Unknown',
-          itemName: balance.itemName || 'Unknown',
-          standardName: balance.itemCommonName || '',
-          category: balance.category || 'General',
-          uom: balance.uomCode || '',
-          uomCode: balance.uomCode || '',
-          groupBalances: {},
-          groupLastTxDates: {},
-          hasDateDiff: false,
-          dateDiffDetails: null,
-          status: 'Matched'
-        })
-      }
-    })
-  })
-
-  groups.forEach(group => {
-    const groupId = group.groupId
-    const balances = group.balances || []
-
-    balances.forEach(balance => {
-      const item = itemMap.get(balance.itemId)
-      if (item) {
-        item.groupBalances[groupId] = balance.balance
-        if (balance.lastTransactionDate) {
-          item.groupLastTxDates[groupId] = balance.lastTransactionDate
-        }
-      }
-    })
-  })
-
-  itemMap.forEach((item) => {
-    const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null)
-    const missingCount = totalGroups - values.length
-
-    const dates = Object.values(item.groupLastTxDates).filter(d => d !== undefined && d !== null)
-    const uniqueDates = [...new Set(dates.map(d => new Date(d).toDateString()))]
-    const hasDateDiff = uniqueDates.length > 1
-
-    if (values.length === 0) {
-      item.status = 'No Data'
-      item.statusClass = 'no-data'
-    } else if (missingCount > 0) {
-      item.status = 'Conflict'
-      item.statusClass = 'conflict'
-    } else {
-      const uniqueValues = [...new Set(values)]
-      if (uniqueValues.length === 1) {
-        item.status = 'Matched'
-        item.statusClass = 'matched'
-      } else if (uniqueValues.length === 2) {
-        item.status = 'Outlier'
-        item.statusClass = 'outlier'
-      } else {
-        item.status = 'Conflict'
-        item.statusClass = 'conflict'
-      }
-    }
-
-    item.hasDateDiff = hasDateDiff
-    item.dateDiffDetails = hasDateDiff ? {
-      uniqueDates: uniqueDates,
-      dateCount: dates.length,
-      latestDate: dates.length > 0 ? new Date(Math.max(...dates.map(d => new Date(d).getTime()))) : null,
-      earliestDate: dates.length > 0 ? new Date(Math.min(...dates.map(d => new Date(d).getTime()))) : null,
-    } : null
-  })
-
-  return Array.from(itemMap.values())
-}
-
 // -- Store Change --
 const onStoreChange = async () => {
   if (selectedStoreId.value) {
@@ -1127,42 +917,6 @@ const onStoreChange = async () => {
     await loadStoreData(selectedStoreId.value)
   } else {
     storeStockData.value = []
-  }
-}
-
-const getGroupValue = (item, groupId) => {
-  const value = item.groupBalances?.[groupId]
-  return value !== undefined && value !== null ? value : '-'
-}
-
-const getRowClass = (item) => {
-  if (item.status === 'Conflict') return 'conflict-row'
-  if (item.status === 'Outlier') return 'outlier-row'
-  if (item.status === 'Matched' && item.hasDateDiff) return 'date-diff-row'
-  if (item.status === 'Matched') return 'matched-row'
-  return ''
-}
-
-const getCellClass = (item, groupId) => {
-  const value = getGroupValue(item, groupId)
-  const values = Object.values(item.groupBalances || {})
-
-  if (values.length === 0) return 'normal-cell'
-
-  const uniqueValues = [...new Set(values)]
-
-  if (uniqueValues.length === 1) {
-    return 'normal-cell'
-  } else if (uniqueValues.length === 2) {
-    const majorityValue = values.find(v => values.filter(x => x === v).length > 1)
-
-    if (value === majorityValue) {
-      return 'normal-cell'
-    } else {
-      return 'outlier-cell'
-    }
-  } else {
-    return 'conflict-cell'
   }
 }
 
@@ -1268,6 +1022,170 @@ const formatDate = (dateStr) => {
   }
 }
 
+// -- Date Update Methods --
+const getGroupLastTxDate = (item, groupId) => {
+  if (!item || !item.groupLastTxDates) return null
+  return item.groupLastTxDates[groupId] || null
+}
+
+const openDateUpdateModal = (item) => {
+  if (!item.hasDateDiff) {
+    showToastMessage('No date differences to update', 'info')
+    return
+  }
+  
+  selectedDateItem.value = JSON.parse(JSON.stringify(item))
+  selectedDateItem.value._tempDate = {}
+  showDateUpdateModal.value = true
+}
+
+const closeDateUpdateModal = () => {
+  showDateUpdateModal.value = false
+  selectedDateItem.value = null
+  currentDatePickerGroup = null
+}
+
+const openDatePicker = (item, groupId) => {
+  const currentDate = getGroupLastTxDate(item, groupId)
+  if (!currentDate) {
+    showToastMessage('No transaction date to update', 'error')
+    return
+  }
+  
+  currentDatePickerGroup = groupId
+  
+  const date = new Date(currentDate)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  
+  if (datePickerInput.value) {
+    datePickerInput.value.value = `${year}-${month}-${day}T${hours}:${minutes}`
+    datePickerInput.value.showPicker()
+  }
+}
+
+const onDatePickerChange = (event) => {
+  if (!selectedDateItem.value || !currentDatePickerGroup) return
+  
+  const newDate = event.target.value
+  if (newDate) {
+    if (!selectedDateItem.value._tempDate) {
+      selectedDateItem.value._tempDate = {}
+    }
+    selectedDateItem.value._tempDate[currentDatePickerGroup] = newDate
+    showToastMessage('Date updated temporarily. Click "Apply" to save.', 'info')
+  }
+  currentDatePickerGroup = null
+}
+
+const applyDateUpdate = (item, groupId) => {
+  if (!item._tempDate || !item._tempDate[groupId]) {
+    showToastMessage('No date change to apply', 'error')
+    return
+  }
+  
+  item.groupLastTxDates[groupId] = item._tempDate[groupId]
+  delete item._tempDate[groupId]
+  recalculateDateDiff(item)
+  showToastMessage('Date updated successfully', 'success')
+}
+
+const cancelDateUpdate = (item, groupId) => {
+  if (item._tempDate) {
+    delete item._tempDate[groupId]
+  }
+  showToastMessage('Date update cancelled', 'info')
+}
+
+const resetToLatestDate = (item, groupId) => {
+  const allDates = Object.values(item.groupLastTxDates || {}).filter(d => d)
+  if (allDates.length === 0) return
+  
+  const latestDate = new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
+  
+  if (!item._tempDate) {
+    item._tempDate = {}
+  }
+  item._tempDate[groupId] = latestDate.toISOString()
+  showToastMessage(`Set to latest date: ${formatDate(latestDate.toISOString())}`, 'info')
+}
+
+const recalculateDateDiff = (item) => {
+  const dates = Object.values(item.groupLastTxDates || {}).filter(d => d)
+  const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))]
+  const hasDateDiff = uniqueDateStrings.length > 1
+  
+  item.hasDateDiff = hasDateDiff
+  
+  if (hasDateDiff && dates.length > 1) {
+    const dateObjects = dates.map(d => new Date(d))
+    const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())))
+    const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())))
+    const diffMs = latestDate - earliestDate
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+    
+    item.dateDiffDetails = {
+      latestDate: latestDate.toISOString(),
+      earliestDate: earliestDate.toISOString(),
+      diffDays: diffDays,
+      diffHours: Math.round(diffMs / (1000 * 60 * 60)),
+      uniqueDates: uniqueDateStrings,
+    }
+  } else {
+    item.dateDiffDetails = null
+  }
+}
+
+const saveAllDateUpdates = async () => {
+  if (!selectedDateItem.value) return
+  
+  savingDates.value = true
+  
+  try {
+    const updates = {}
+    const groups = activeGroups.value
+    
+    for (const group of groups) {
+      const date = getGroupLastTxDate(selectedDateItem.value, group.id)
+      if (date) {
+        updates[group.id] = date
+      }
+    }
+    
+    const result = await auditService.updateItemTransactionDates(
+      selectedStoreId.value,
+      selectedDateItem.value.itemId,
+      updates
+    )
+    
+    if (result.success) {
+      showToastMessage('All dates updated successfully!', 'success')
+      
+      const originalItem = storeStockData.value.find(
+        item => item.itemId === selectedDateItem.value.itemId
+      )
+      if (originalItem) {
+        originalItem.groupLastTxDates = { ...selectedDateItem.value.groupLastTxDates }
+        originalItem.hasDateDiff = selectedDateItem.value.hasDateDiff
+        originalItem.dateDiffDetails = selectedDateItem.value.dateDiffDetails
+      }
+      
+      closeDateUpdateModal()
+      await refreshData()
+    } else {
+      showToastMessage(result.error || 'Failed to update dates', 'error')
+    }
+  } catch (error) {
+    console.error('Error saving date updates:', error)
+    showToastMessage('Failed to save date updates', 'error')
+  } finally {
+    savingDates.value = false
+  }
+}
+
 // -- Filters --
 const onSearchChange = () => {
   currentPage.value = 1
@@ -1366,6 +1284,7 @@ onMounted(() => {
   loadCategories()
 })
 </script>
+
 
 <style scoped>
 /* ================================================================

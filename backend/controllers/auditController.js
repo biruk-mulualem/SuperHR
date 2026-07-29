@@ -1,4 +1,4 @@
-// auditController.js - Complete Audit Controller with Group Comparison
+// auditController.js - Complete Audit Controller with OUTLIER REMOVED
 
 const { Op } = require("sequelize");
 const { getUserStoreAndGroup } = require("../utils/userAccess");
@@ -8,7 +8,6 @@ const {
   StoreBalance,
   StoreBalanceHistory,
   Store,
-  
   Group,
   Item,
   UOM,
@@ -24,15 +23,11 @@ const {
 
 const formatBalance = (record) => {
   const item = record.item;
-  // ✅ Get the REAL conversion value from the item
   const conversionValue = item?.conversionValue !== undefined && item?.conversionValue !== null 
     ? parseFloat(item.conversionValue) 
     : 1;
   const balance = parseFloat(record.balance);
   const minStock = parseFloat(record.minStockAlert) || 0;
-
-  // Log for debugging
-  console.log(`📊 Formatting ${item?.code}: conversionValue = ${conversionValue}`);
 
   return {
     id: record.id,
@@ -48,7 +43,7 @@ const formatBalance = (record) => {
     uomCode: item?.uom?.code || null,
     uomName: item?.uom?.name || null,
     conversionUomCode: item?.conversionUom?.code || null,
-    conversionValue: conversionValue, // ✅ Real conversion value
+    conversionValue: conversionValue,
     balance: balance,
     minStock: minStock,
     baseBalance: balance * conversionValue,
@@ -112,13 +107,6 @@ const calculateGroupSummary = (balances) => {
 /**
  * Get last transaction dates for each item per group
  */
-// ============================================
-// HELPER: Get last transaction dates
-// ============================================
-
-/**
- * Get last transaction dates for each item per group
- */
 const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
   try {
     if (!groupIds.length || !itemIds.length) {
@@ -164,13 +152,8 @@ const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
   }
 };
 
-
-
 /**
- * Determine comparison status
- */
-/**
- * Determine comparison status based on values across groups
+ * Determine comparison status - SIMPLIFIED (No Outlier)
  */
 const determineStatus = (values, totalGroups) => {
   // Filter out null/undefined values
@@ -192,20 +175,18 @@ const determineStatus = (values, totalGroups) => {
   
   if (uniqueValues.length === 1) {
     return 'Matched'
-  } else if (uniqueValues.length === 2) {
-    return 'Outlier'
   } else {
+    // Any difference = Conflict (whether 2 or 3+ different values)
     return 'Conflict'
   }
 }
 
 /**
- * Get status class for frontend
+ * Get status class for frontend - SIMPLIFIED
  */
 const getStatusClass = (status) => {
   const map = {
     'Matched': 'matched',
-    'Outlier': 'outlier',
     'Conflict': 'conflict',
     'No Data': 'unknown'
   };
@@ -216,7 +197,6 @@ const getStatusClass = (status) => {
  * 1. GET STORE AUDIT - MAIN ENDPOINT
  * GET /api/audit/store/:storeId
  */
-
 exports.getStoreAudit = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -308,7 +288,7 @@ exports.getStoreAudit = async (req, res) => {
     });
     const categories = Array.from(categorySet);
 
-    // ⭐ STEP 1: Get last transaction dates for each item per group
+    // STEP 1: Get last transaction dates for each item per group
     const groupIds = groups.map(g => g.groupId);
     const itemIds = [...new Set(allBalances.map(b => b.itemId))];
     const lastTxMap = await getLastTransactionDates(storeId, groupIds, itemIds);
@@ -360,7 +340,6 @@ exports.getStoreAudit = async (req, res) => {
             activeItems: 0,
             inactiveItems: 0,
             matchedItems: 0,
-            outlierItems: 0,
             conflictItems: 0,
             dateDiffItems: 0,
             totalProducts: 0,
@@ -371,11 +350,9 @@ exports.getStoreAudit = async (req, res) => {
             summary: {
               total: 0,
               matched: 0,
-              outlier: 0,
               conflict: 0,
               dateDiff: 0,
               matchedPercentage: "0",
-              outlierPercentage: "0",
               conflictPercentage: "0",
               dateDiffPercentage: "0",
             },
@@ -394,7 +371,7 @@ exports.getStoreAudit = async (req, res) => {
       groupSummaries[group.groupId] = calculateGroupSummary(groupBalances);
     });
 
-    // ⭐ STEP 2: Build comparison data with last transaction dates
+    // STEP 2: Build comparison data with last transaction dates
     const itemMap = new Map();
     
     allBalances.forEach((balance) => {
@@ -423,10 +400,9 @@ exports.getStoreAudit = async (req, res) => {
       }
     });
 
-    // ⭐ STEP 3: Determine status and detect date differences
+    // STEP 3: Determine status and detect date differences
     const comparisonItems = [];
     let matchedCount = 0;
-    let outlierCount = 0;
     let conflictCount = 0;
     let dateDiffCount = 0;
 
@@ -458,16 +434,14 @@ exports.getStoreAudit = async (req, res) => {
         };
       }
       
-      // Count statuses
+      // Count statuses - SIMPLIFIED: No Outlier
       if (status === 'Matched') {
         matchedCount++;
         if (hasDateDiff) {
           dateDiffCount++;
         }
-      } else if (status === 'Outlier') {
-        outlierCount++;
       } else if (status === 'Conflict') {
-        conflictCount++;
+        conflictCount++; // Now includes all discrepancies
       }
 
       comparisonItems.push({
@@ -481,7 +455,7 @@ exports.getStoreAudit = async (req, res) => {
       });
     });
 
-    // ⭐ STEP 4: Build group audit data with transactions
+    // STEP 4: Build group audit data with transactions
     const groupAuditData = await Promise.all(groups.map(async (group) => {
       const balances = groupedBalances[group.groupId] || [];
       const formattedBalances = balances.map((b) => formatBalance(b));
@@ -559,7 +533,6 @@ exports.getStoreAudit = async (req, res) => {
           }));
         } catch (txError) {
           console.error(`⚠️ Error fetching transactions for group ${group.groupId}:`, txError);
-          // Continue with empty transactions
         }
       }
 
@@ -587,7 +560,7 @@ exports.getStoreAudit = async (req, res) => {
       };
     }));
 
-    // ⭐ STEP 5: Calculate overall summary
+    // STEP 5: Calculate overall summary
     const overallSummary = {
       totalGroups: groups.length,
       totalItems: allBalances.length,
@@ -599,14 +572,13 @@ exports.getStoreAudit = async (req, res) => {
       activeItems: allBalances.filter(b => b.status === 'Active').length,
       inactiveItems: allBalances.filter(b => b.status !== 'Active').length,
       matchedItems: matchedCount,
-      outlierItems: outlierCount,
-      conflictItems: conflictCount,
+      conflictItems: conflictCount, // Combined: all discrepancies
       dateDiffItems: dateDiffCount,
       totalProducts: itemMap.size,
       categories: categories,
     };
 
-    // ⭐ STEP 6: Build final response
+    // STEP 6: Build final response - SIMPLIFIED
     const responseData = {
       store: {
         id: store.storeId,
@@ -623,20 +595,17 @@ exports.getStoreAudit = async (req, res) => {
         summary: {
           total: itemMap.size,
           matched: matchedCount,
-          outlier: outlierCount,
-          conflict: conflictCount,
+          conflict: conflictCount, // No more outlier
           dateDiff: dateDiffCount,
           matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : "0",
-          outlierPercentage: itemMap.size > 0 ? ((outlierCount / itemMap.size) * 100).toFixed(1) : "0",
           conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : "0",
           dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : "0",
         },
       },
     };
 
-    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${dateDiffCount} with date differences`);
+    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${conflictCount} conflicts, ${dateDiffCount} with date differences`);
 
-    // ✅ FIX: Make sure we're using the correct response object
     return res.status(200).json({
       success: true,
       data: responseData,
@@ -644,7 +613,6 @@ exports.getStoreAudit = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Get store audit error:", error);
-    // ✅ FIX: Make sure error response uses the correct res object
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to get store audit data',
@@ -655,117 +623,6 @@ exports.getStoreAudit = async (req, res) => {
 // ============================================
 // 2. GET STORES WITH GROUPS
 // ============================================
-// ============================================
-// 11. UPDATE ITEM TRANSACTION DATES
-// ============================================
-exports.updateItemTransactionDates = async (req, res) => {
-  const transaction = await sequelize.transaction()
-  
-  try {
-    const { storeId, itemId } = req.params
-    const { dates } = req.body
-    const userId = req.user?.userId || 1
-    
-    console.log(`📝 Updating transaction dates for item ${itemId} in store ${storeId}`)
-    console.log('📝 Updates:', dates)
-    
-    // Validate item exists
-    const item = await Item.findByPk(parseInt(itemId))
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        error: 'Item not found'
-      })
-    }
-    
-    // Validate store exists
-    const store = await Store.findByPk(parseInt(storeId))
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: 'Store not found'
-      })
-    }
-    
-    // Get all groups for this store
-    const storeGroups = await StoreGroupRelation.findAll({
-      where: { storeId: parseInt(storeId) },
-      include: [
-        {
-          model: Group,
-          as: 'group',
-          attributes: ['groupId', 'name', 'code'],
-        }
-      ]
-    })
-    
-    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null)
-    
-    // Update each group's last transaction date
-    const updatedGroups = []
-    for (const group of groups) {
-      const groupId = group.groupId
-      const newDate = dates[groupId]
-      
-      if (!newDate) continue
-      
-      // Get the latest transaction for this item/group
-      const lastTx = await StoreBalanceHistory.findOne({
-        where: {
-          storeId: parseInt(storeId),
-          groupId: groupId,
-          itemId: parseInt(itemId),
-        },
-        order: [['createdAt', 'DESC']],
-        transaction: transaction
-      })
-      
-      if (!lastTx) {
-        console.log(`⚠️ No transaction found for group ${groupId}`)
-        continue
-      }
-      
-      // Update the transaction date
-      const newDateObj = new Date(newDate)
-      await lastTx.update({
-        createdAt: newDateObj,
-        updatedAt: new Date()
-      }, { transaction })
-      
-      updatedGroups.push({
-        groupId: groupId,
-        groupName: group.name,
-        oldDate: lastTx.createdAt,
-        newDate: newDateObj
-      })
-      
-      console.log(`✅ Updated group ${groupId} date from ${lastTx.createdAt} to ${newDate}`)
-    }
-    
-    await transaction.commit()
-    
-    res.status(200).json({
-      success: true,
-      message: `Updated ${updatedGroups.length} group(s)`,
-      data: {
-        itemId: parseInt(itemId),
-        storeId: parseInt(storeId),
-        updatedGroups: updatedGroups
-      }
-    })
-    
-  } catch (error) {
-    await transaction.rollback()
-    console.error('❌ Error updating transaction dates:', error)
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to update transaction dates'
-    })
-  }
-}
-
-
-
 exports.getStoresWithGroups = async (req, res) => {
   try {
     const userId = req.user?.userId;
@@ -777,9 +634,8 @@ exports.getStoresWithGroups = async (req, res) => {
       
       if (accessResult.success) {
         if (accessResult.data.isAdmin) {
-          // Admin: get all stores with their groups
           stores = await Store.findAll({
-            attributes: ['storeId', 'code', 'name', 'location', 'status'], // Use storeId instead of id
+            attributes: ['storeId', 'code', 'name', 'location', 'status'],
             include: [
               {
                 model: Group,
@@ -794,7 +650,6 @@ exports.getStoresWithGroups = async (req, res) => {
             order: [['name', 'ASC']],
           });
         } else {
-          // Non-admin: get only assigned store
           const assignedStore = accessResult.data.assignedStore;
           if (assignedStore) {
             const store = await Store.findByPk(assignedStore.id, {
@@ -816,7 +671,6 @@ exports.getStoresWithGroups = async (req, res) => {
       }
     }
 
-    // If no stores found, try to get all active stores
     if (stores.length === 0) {
       stores = await Store.findAll({
         attributes: ['storeId', 'code', 'name', 'location', 'status'],
@@ -835,23 +689,10 @@ exports.getStoresWithGroups = async (req, res) => {
       });
     }
 
-    // Log the raw stores to debug
-    console.log('🔍 Raw stores from DB:', stores.map(s => ({ 
-      id: s.storeId || s.id,  // Use storeId or fallback to id
-      name: s.name, 
-      code: s.code,
-      hasGroups: !!(s.groups)
-    })))
-
-    // Format response - MAKE SURE ID IS INCLUDED
     const formattedStores = stores.map(store => {
-      // Get the store ID - try storeId first, then id
       const storeId = store.storeId || store.id;
-      
-      console.log(`📋 Formatting store: ID=${storeId}, Name=${store.name}`);
-      
       return {
-        id: storeId, // THIS IS CRITICAL - include the store ID
+        id: storeId,
         name: store.name,
         code: store.code,
         location: store.location,
@@ -868,7 +709,6 @@ exports.getStoresWithGroups = async (req, res) => {
     });
 
     console.log(`✅ Found ${formattedStores.length} stores with groups`);
-    console.log(`📋 First formatted store:`, JSON.stringify(formattedStores[0], null, 2));
 
     res.status(200).json({
       success: true,
@@ -883,11 +723,10 @@ exports.getStoresWithGroups = async (req, res) => {
     });
   }
 };
+
 // ============================================
 // 3. GET CATEGORIES
 // ============================================
-// auditController.js - Updated getCategories
-
 exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.findAll({
@@ -920,7 +759,7 @@ exports.getCategories = async (req, res) => {
 };
 
 // ============================================
-// 4. GET GROUP COMPARISON
+// 4. GET GROUP COMPARISON - UPDATED (No Outlier)
 // ============================================
 exports.getGroupComparison = async (req, res) => {
   try {
@@ -992,7 +831,7 @@ exports.getGroupComparison = async (req, res) => {
       order: [["itemId", "ASC"]],
     });
 
-    // Build comparison items
+    // Build comparison items - SIMPLIFIED
     const itemMap = new Map();
     allBalances.forEach((balance) => {
       const itemId = balance.itemId;
@@ -1016,7 +855,6 @@ exports.getGroupComparison = async (req, res) => {
 
     const comparisonItems = [];
     let matchedItems = 0;
-    let outlierItems = 0;
     let conflictItems = 0;
 
     itemMap.forEach((item) => {
@@ -1024,10 +862,15 @@ exports.getGroupComparison = async (req, res) => {
       const uniqueValues = [...new Set(values)];
       
       let status = 'No Data';
-      if (values.length === 0) status = 'No Data';
-      else if (uniqueValues.length === 1) { status = 'Matched'; matchedItems++; }
-      else if (uniqueValues.length === 2) { status = 'Outlier'; outlierItems++; }
-      else { status = 'Conflict'; conflictItems++; }
+      if (values.length === 0) {
+        status = 'No Data';
+      } else if (uniqueValues.length === 1) {
+        status = 'Matched';
+        matchedItems++;
+      } else {
+        status = 'Conflict'; // Any difference = Conflict
+        conflictItems++;
+      }
 
       comparisonItems.push({
         ...item,
@@ -1046,7 +889,6 @@ exports.getGroupComparison = async (req, res) => {
       totalGroups: groups.length,
       totalBalance: comparisonItems.reduce((sum, item) => sum + item.totalBalance, 0),
       matchedItems,
-      outlierItems,
       conflictItems,
     };
 
@@ -1222,7 +1064,6 @@ exports.getItemTransactions = async (req, res) => {
 
     const groups = storeGroups.map(sg => sg.group).filter(g => g !== null);
 
-    // Get transactions for this item across all groups
     const groupTransactions = {};
     for (const group of groups) {
       const transactions = await StoreBalanceHistory.findAll({
@@ -1294,7 +1135,6 @@ exports.getItemTransactions = async (req, res) => {
       };
     }
 
-    // Get current balances
     const balances = await StoreBalance.findAll({
       where: {
         storeId: parseInt(storeId),
@@ -1417,9 +1257,8 @@ exports.getUserAuditAccess = async (req, res) => {
 };
 
 // ============================================
-// 8. EXPORT AUDIT DATA
+// 8. EXPORT AUDIT DATA - UPDATED
 // ============================================
-
 exports.exportAuditData = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -1427,13 +1266,11 @@ exports.exportAuditData = async (req, res) => {
 
     console.log(`📤 Exporting audit data for store: ${storeId}`);
 
-    // Create a mock request object for getStoreAudit
     const mockReq = {
       params: { storeId },
       query: { includeTransactions: 'false' },
     };
 
-    // Create a mock response object to capture the result
     let auditResult = null;
     const mockRes = {
       status: function(code) {
@@ -1446,10 +1283,8 @@ exports.exportAuditData = async (req, res) => {
       }
     };
 
-    // Call getStoreAudit with mock objects
     await exports.getStoreAudit(mockReq, mockRes);
 
-    // Check if we got a successful result
     if (!auditResult || !auditResult.success) {
       console.error('❌ Failed to get audit data:', auditResult?.error || 'Unknown error');
       return res.status(500).json({ 
@@ -1460,7 +1295,6 @@ exports.exportAuditData = async (req, res) => {
 
     const data = auditResult.data;
 
-    // Get current date and time
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { 
       year: 'numeric', 
@@ -1473,33 +1307,27 @@ exports.exportAuditData = async (req, res) => {
       hour12: true 
     });
 
-    // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
     workbook.created = now;
     
-    // Create worksheet
     const worksheet = workbook.addWorksheet('Stock Audit', {
       properties: { tabColor: { argb: 'FF1A237E' } },
       pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
     });
 
-    // Define colors
     const colors = {
       primary: 'FF1A237E',
       secondary: 'FF0D47A1',
       lightGray: 'FFF5F5F5',
       border: 'FFE0E0E0',
       green: 'FF2E7D32',
-      orange: 'FFED6C02',
       red: 'FFD32F2F',
       white: 'FFFFFFFF',
       black: 'FF000000'
     };
 
-    // ============================================
-    // SECTION 1: COMPANY HEADER
-    // ============================================
+    // Company Header
     worksheet.mergeCells('A1:G1');
     const headerCell = worksheet.getCell('A1');
     headerCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
@@ -1512,9 +1340,7 @@ exports.exportAuditData = async (req, res) => {
     subHeaderCell.font = { name: 'Arial', size: 12, color: { argb: 'FF000000' } };
     subHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // ============================================
-    // SECTION 2: REPORT TITLE
-    // ============================================
+    // Report Title
     worksheet.addRow([]);
     worksheet.mergeCells('A4:G4');
     const titleCell = worksheet.getCell('A4');
@@ -1522,12 +1348,9 @@ exports.exportAuditData = async (req, res) => {
     titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // ============================================
-    // SECTION 3: STORE AND GROUP INFO
-    // ============================================
+    // Store and Group Info
     worksheet.addRow([]);
     
-    // Get store and group info
     const firstGroup = data.groups[0] || {};
     const groupName = firstGroup.name || 'N/A';
     const groupCode = firstGroup.code || 'N/A';
@@ -1536,19 +1359,16 @@ exports.exportAuditData = async (req, res) => {
       : 'All';
     const generatedBy = req.user?.fullName || req.user?.username || 'Admin';
 
-    // Row 6: Store and Group
     worksheet.addRow(['Store:', data.store.name, '', 'Group:', groupName]);
     worksheet.addRow(['Store Code:', data.store.code, '', 'Group Code:', groupCode]);
     worksheet.addRow(['Category:', categories, '', 'Status:', 'All']);
     worksheet.addRow(['Generated By:', generatedBy, '', 'Date/Time:', `${dateStr} at ${timeStr}`]);
 
-    // Style the info rows
     const infoRows = [6, 7, 8, 9];
     infoRows.forEach(rowNum => {
       const row = worksheet.getRow(rowNum);
       row.eachCell((cell, colNumber) => {
         if (colNumber % 2 === 1) {
-          // Labels (bold)
           cell.font = { name: 'Arial', size: 10, bold: true };
           cell.fill = {
             type: 'pattern',
@@ -1556,7 +1376,6 @@ exports.exportAuditData = async (req, res) => {
             fgColor: { argb: 'FFF0F0F0' }
           };
         } else {
-          // Values (normal)
           cell.font = { name: 'Arial', size: 10 };
         }
         cell.alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1569,22 +1388,16 @@ exports.exportAuditData = async (req, res) => {
       });
     });
 
-    // ============================================
-    // SECTION 4: SUMMARY
-    // ============================================
+    // Summary Section - UPDATED
     worksheet.addRow([]);
     
-    // Calculate summary data
     const totalItems = data.summary.totalItems || 0;
     const activeItems = data.summary.activeItems || 0;
     const zeroStockItems = data.summary.zeroStockItems || 0;
     const lowStockItems = data.summary.lowStockItems || 0;
-    
-    // Calculate items with balance differences (outlier + conflict)
-    const itemsWithDiff = (data.comparison?.summary?.outlier || 0) + (data.comparison?.summary?.conflict || 0);
     const matchedItems = data.comparison?.summary?.matched || 0;
+    const conflictItems = data.comparison?.summary?.conflict || 0; // Combined
 
-    // Summary title
     worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
     const summaryTitle = worksheet.getCell(`A${worksheet.rowCount}`);
     summaryTitle.value = 'SUMMARY';
@@ -1593,21 +1406,19 @@ exports.exportAuditData = async (req, res) => {
 
     worksheet.addRow([]);
     
-    // Summary values in a clean grid
     const summaryData = [
       ['Store:', data.store.name, 'Total Items:', totalItems],
       ['Group:', groupName, 'Active Items:', activeItems],
       ['', '', 'Zero Balance Items:', zeroStockItems],
       ['', '', 'Low Stock Items:', lowStockItems],
       ['', '', 'Matched Items:', matchedItems],
-      ['', '', 'Items with Balance Difference:', itemsWithDiff]
+      ['', '', 'Items with Conflict:', conflictItems] // Renamed
     ];
 
     summaryData.forEach(rowData => {
       const row = worksheet.addRow(rowData);
       row.eachCell((cell, colNumber) => {
         if (colNumber % 2 === 1 && rowData[colNumber - 1] !== '') {
-          // Labels (bold)
           cell.font = { name: 'Arial', size: 10, bold: true };
           cell.fill = {
             type: 'pattern',
@@ -1615,7 +1426,6 @@ exports.exportAuditData = async (req, res) => {
             fgColor: { argb: 'FFF0F0F0' }
           };
         } else if (colNumber % 2 === 0 && rowData[colNumber - 1] !== '') {
-          // Values (bold with color)
           cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
         }
         cell.alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1628,12 +1438,9 @@ exports.exportAuditData = async (req, res) => {
       });
     });
 
-    // ============================================
-    // SECTION 5: MAIN DATA TABLE
-    // ============================================
+    // Main Data Table - Updated
     worksheet.addRow([]);
     
-    // Build headers
     const headers = [
       '#',
       'Item Code',
@@ -1642,13 +1449,11 @@ exports.exportAuditData = async (req, res) => {
       'UOM',
       ...data.groups.map(g => `${g.name} (Balance)`),
       'Status',
-      'Balance Diff'
+      'Balance Conflict'
     ];
 
-    // Add header row
     const headerRow = worksheet.addRow(headers);
     
-    // Style header
     headerRow.eachCell((cell) => {
       cell.fill = {
         type: 'pattern',
@@ -1674,7 +1479,6 @@ exports.exportAuditData = async (req, res) => {
       };
     });
 
-    // Get all unique items across all groups
     const allItems = new Map();
     data.groups.forEach(group => {
       group.balances.forEach(balance => {
@@ -1688,38 +1492,33 @@ exports.exportAuditData = async (req, res) => {
             uomCode: balance.uomCode || 'PCS',
             balances: {},
             status: 'Active',
-            balanceDiff: false
+            hasConflict: false
           });
         }
         const item = allItems.get(itemKey);
         item.balances[group.groupId] = balance.balance;
-        // Update status based on comparison
         if (data.comparison && data.comparison.items) {
           const compItem = data.comparison.items.find(ci => ci.itemId === balance.itemId);
           if (compItem) {
             item.status = compItem.status || 'Active';
-            // Check if there's a balance difference
-            if (compItem.status === 'Outlier' || compItem.status === 'Conflict') {
-              item.balanceDiff = true;
+            if (compItem.status === 'Conflict') {
+              item.hasConflict = true;
             }
           }
         }
       });
     });
 
-    // Convert to array and sort by item code
     const itemsArray = Array.from(allItems.values())
       .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
 
-    // Add data rows
     let rowNumber = 1;
     let rowIndex = 0;
     
     itemsArray.forEach((item) => {
-      // Calculate if there's a balance difference
       const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
       const uniqueBalances = [...new Set(balances)];
-      const hasBalanceDiff = uniqueBalances.length > 1;
+      const hasConflict = uniqueBalances.length > 1;
       
       const rowData = [
         rowNumber++,
@@ -1732,12 +1531,11 @@ exports.exportAuditData = async (req, res) => {
           return balance !== undefined ? balance : '-';
         }),
         item.status || 'No Data',
-        hasBalanceDiff ? 'Yes' : 'No'
+        hasConflict ? 'Yes' : 'No'
       ];
       
       const row = worksheet.addRow(rowData);
       
-      // Style row
       const bgColor = rowIndex % 2 === 0 ? colors.white : colors.lightGray;
       row.eachCell((cell) => {
         cell.fill = {
@@ -1758,12 +1556,10 @@ exports.exportAuditData = async (req, res) => {
         };
       });
       
-      // Status column styling
       const statusCell = row.getCell(headers.length - 1);
       const status = item.status || 'No Data';
       let statusColor = colors.black;
       if (status === 'Matched') statusColor = colors.green;
-      else if (status === 'Outlier') statusColor = colors.orange;
       else if (status === 'Conflict') statusColor = colors.red;
       
       statusCell.font = {
@@ -1773,113 +1569,33 @@ exports.exportAuditData = async (req, res) => {
         color: { argb: statusColor }
       };
       
-      // Balance Diff column styling
-      const diffCell = row.getCell(headers.length);
-      if (hasBalanceDiff) {
-        diffCell.font = {
+      const conflictCell = row.getCell(headers.length);
+      if (hasConflict) {
+        conflictCell.font = {
           name: 'Arial',
           size: 9,
           bold: true,
           color: { argb: colors.red }
         };
-        diffCell.value = '⚠ Yes';
+        conflictCell.value = '⚠ Yes';
       } else {
-        diffCell.font = {
+        conflictCell.font = {
           name: 'Arial',
           size: 9,
           color: { argb: colors.green }
         };
-        diffCell.value = '✓ No';
+        conflictCell.value = '✓ No';
       }
       
       rowIndex++;
     });
 
-    // ============================================
-    // SECTION 6: ITEMS WITH BALANCE DIFFERENCES
-    // ============================================
-    const diffItems = itemsArray.filter(item => {
-      const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
-      return new Set(balances).size > 1;
-    });
-
-    if (diffItems.length > 0) {
-      worksheet.addRow([]);
-      worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
-      const diffTitle = worksheet.getCell(`A${worksheet.rowCount}`);
-      diffTitle.value = `ITEMS WITH BALANCE DIFFERENCES (${diffItems.length} items)`;
-      diffTitle.font = { name: 'Arial', size: 12, bold: true, color: { argb: colors.red }, underline: true };
-      diffTitle.alignment = { horizontal: 'left', vertical: 'middle' };
-
-      worksheet.addRow([]);
-      
-      // Add diff items table
-      const diffHeaders = ['#', 'Item Code', 'Item Name', ...data.groups.map(g => `${g.name} (Balance)`), 'Status'];
-      const diffHeaderRow = worksheet.addRow(diffHeaders);
-      
-      diffHeaderRow.eachCell((cell) => {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: colors.red }
-        };
-        cell.font = {
-          name: 'Arial',
-          size: 10,
-          bold: true,
-          color: { argb: colors.white }
-        };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border = {
-          top: { style: 'thin', color: { argb: colors.border } },
-          bottom: { style: 'thin', color: { argb: colors.border } },
-          left: { style: 'thin', color: { argb: colors.border } },
-          right: { style: 'thin', color: { argb: colors.border } }
-        };
-      });
-
-      let diffRowNum = 1;
-      diffItems.forEach((item) => {
-        const rowData = [
-          diffRowNum++,
-          item.itemCode || '',
-          item.itemName || '',
-          ...data.groups.map(g => {
-            const balance = item.balances[g.groupId];
-            return balance !== undefined ? balance : '-';
-          }),
-          item.status || 'No Data'
-        ];
-        
-        const row = worksheet.addRow(rowData);
-        const bgColor = (diffRowNum - 1) % 2 === 0 ? colors.white : colors.lightGray;
-        row.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: bgColor }
-          };
-          cell.font = { name: 'Arial', size: 9 };
-          cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          cell.border = {
-            top: { style: 'thin', color: { argb: colors.border } },
-            bottom: { style: 'thin', color: { argb: colors.border } },
-            left: { style: 'thin', color: { argb: colors.border } },
-            right: { style: 'thin', color: { argb: colors.border } }
-          };
-        });
-      });
-    }
-
-    // ============================================
-    // SECTION 7: FOOTER
-    // ============================================
+    // Footer
     worksheet.addRow([]);
     const footerRow = worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
     worksheet.addRow(['SUPER DOUBLE "T" GENERAL TRADING PLC - Stock Audit Report']);
     worksheet.addRow(['WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!']);
 
-    // Style footer
     const footerStartRow = worksheet.rowCount - 2;
     for (let i = 0; i < 3; i++) {
       const row = worksheet.getRow(footerStartRow + i);
@@ -1900,9 +1616,7 @@ exports.exportAuditData = async (req, res) => {
       }
     }
 
-    // ============================================
-    // AUTO-FIT COLUMNS
-    // ============================================
+    // Auto-fit columns
     worksheet.columns.forEach((column) => {
       let maxLength = 0;
       column.eachCell({ includeEmpty: true }, (cell) => {
@@ -1914,12 +1628,8 @@ exports.exportAuditData = async (req, res) => {
       column.width = Math.min(Math.max(maxLength + 2, 10), 30);
     });
 
-    // ============================================
-    // GENERATE EXCEL FILE
-    // ============================================
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Set headers and send
     const fileName = `stock_audit_${data.store.code}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -1938,7 +1648,7 @@ exports.exportAuditData = async (req, res) => {
 };
 
 // ============================================
-// 9. GET AUDIT SUMMARY
+// 9. GET AUDIT SUMMARY - UPDATED
 // ============================================
 exports.getAuditSummary = async (req, res) => {
   try {
@@ -1964,8 +1674,7 @@ exports.getAuditSummary = async (req, res) => {
         activeItems: data.summary.activeItems,
         inactiveItems: data.summary.inactiveItems,
         matchedItems: data.summary.matchedItems,
-        outlierItems: data.summary.outlierItems,
-        conflictItems: data.summary.conflictItems,
+        conflictItems: data.summary.conflictItems, // Combined
       },
       groups: data.groups.map(g => ({
         groupId: g.groupId,
@@ -1990,7 +1699,7 @@ exports.getAuditSummary = async (req, res) => {
 };
 
 // ============================================
-// 10. GET AUDIT DASHBOARD
+// 10. GET AUDIT DASHBOARD - UPDATED
 // ============================================
 exports.getAuditDashboard = async (req, res) => {
   try {
@@ -2007,7 +1716,6 @@ exports.getAuditDashboard = async (req, res) => {
 
     const data = auditResult.data;
 
-    // Extract low stock alerts
     const lowStockAlerts = [];
     data.groups.forEach(group => {
       group.balances.forEach(balance => {
@@ -2026,7 +1734,6 @@ exports.getAuditDashboard = async (req, res) => {
       });
     });
 
-    // Get recent activity
     const recentActivity = [];
     data.groups.forEach(group => {
       group.transactions.slice(0, 5).forEach(tx => {
@@ -2048,8 +1755,7 @@ exports.getAuditDashboard = async (req, res) => {
         activeItems: data.summary.activeItems,
         inactiveItems: data.summary.inactiveItems,
         matchedItems: data.comparison.summary.matched,
-        outlierItems: data.comparison.summary.outlier,
-        conflictItems: data.comparison.summary.conflict,
+        conflictItems: data.comparison.summary.conflict, // Combined
       },
       groups: data.groups.map(g => ({
         groupId: g.groupId,
@@ -2074,5 +1780,108 @@ exports.getAuditDashboard = async (req, res) => {
     res.status(500).json({ success: false, error: error.message || 'Failed to get audit dashboard' });
   }
 };
+
+// ============================================
+// 11. UPDATE ITEM TRANSACTION DATES
+// ============================================
+exports.updateItemTransactionDates = async (req, res) => {
+  const transaction = await sequelize.transaction()
+  
+  try {
+    const { storeId, itemId } = req.params
+    const { dates } = req.body
+    const userId = req.user?.userId || 1
+    
+    console.log(`📝 Updating transaction dates for item ${itemId} in store ${storeId}`)
+    console.log('📝 Updates:', dates)
+    
+    const item = await Item.findByPk(parseInt(itemId))
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'Item not found'
+      })
+    }
+    
+    const store = await Store.findByPk(parseInt(storeId))
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found'
+      })
+    }
+    
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code'],
+        }
+      ]
+    })
+    
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null)
+    
+    const updatedGroups = []
+    for (const group of groups) {
+      const groupId = group.groupId
+      const newDate = dates[groupId]
+      
+      if (!newDate) continue
+      
+      const lastTx = await StoreBalanceHistory.findOne({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: groupId,
+          itemId: parseInt(itemId),
+        },
+        order: [['createdAt', 'DESC']],
+        transaction: transaction
+      })
+      
+      if (!lastTx) {
+        console.log(`⚠️ No transaction found for group ${groupId}`)
+        continue
+      }
+      
+      const newDateObj = new Date(newDate)
+      await lastTx.update({
+        createdAt: newDateObj,
+        updatedAt: new Date()
+      }, { transaction })
+      
+      updatedGroups.push({
+        groupId: groupId,
+        groupName: group.name,
+        oldDate: lastTx.createdAt,
+        newDate: newDateObj
+      })
+      
+      console.log(`✅ Updated group ${groupId} date from ${lastTx.createdAt} to ${newDate}`)
+    }
+    
+    await transaction.commit()
+    
+    res.status(200).json({
+      success: true,
+      message: `Updated ${updatedGroups.length} group(s)`,
+      data: {
+        itemId: parseInt(itemId),
+        storeId: parseInt(storeId),
+        updatedGroups: updatedGroups
+      }
+    })
+    
+  } catch (error) {
+    await transaction.rollback()
+    console.error('❌ Error updating transaction dates:', error)
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update transaction dates'
+    })
+  }
+}
 
 module.exports = exports;
