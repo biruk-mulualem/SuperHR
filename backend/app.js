@@ -95,6 +95,7 @@ const balanceRoutes = require('./routes/balanceRoutes');
 const itemCostRoutes = require('./routes/itemCostRoutes');
 const StoreDashboardRoutes = require('./routes/StoreDashboardRoutes');
 
+const costDashboardRoutes = require('./routes/costDashboardRoutes');
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -149,6 +150,7 @@ app.use('/api/balances', balanceRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/item-costs', itemCostRoutes);
 app.use('/api/store-dashboard', StoreDashboardRoutes);
+app.use('/api/cost-dashboard', costDashboardRoutes);
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT

@@ -1,26 +1,27 @@
 // controllers/itemRequestController.js
-'use strict';
+"use strict";
 
-const db = require('../models');
-const { 
-  ItemRequest, 
-  ItemRequestDetail, 
-  Store, 
-  Item, 
-  UOM, 
+const db = require("../models");
+const {
+  ItemRequest,
+  ItemRequestDetail,
+  Store,
+  Item,
+  UOM,
   User,
   StoreBalance,
   RequestNotification,
   StoreGroupRelation,
-  Group
+  Group,
+  sequelize,
 } = db;
-const { Op } = require('sequelize');
+const { Op } = require("sequelize");
 
 // ================================================================
 // HELPER: Skip stock validation for specific stores
 // ================================================================
-const STOCK_VALIDATION_SKIP_STORES = ['STORE-006', 'STORE-007'];
-const SKIP_NOTIFICATION_STORES = ['STORE-006', 'STORE-007'];
+const STOCK_VALIDATION_SKIP_STORES = ["STORE-006", "STORE-007"];
+const SKIP_NOTIFICATION_STORES = ["STORE-006", "STORE-007"];
 
 const shouldSkipStockValidation = (storeCode) => {
   return STOCK_VALIDATION_SKIP_STORES.includes(storeCode);
@@ -41,47 +42,49 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
   if (!store) {
     return {
       isValid: false,
-      errors: [{ message: 'Store not found' }],
-      stockInfo: []
+      errors: [{ message: "Store not found" }],
+      stockInfo: [],
     };
   }
 
   if (shouldSkipStockValidation(store.code)) {
-    console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
-    
+    console.log(
+      `⚠️ Skipping stock validation for store: ${store.code} (${store.name})`,
+    );
+
     for (const item of items) {
       const itemRecord = await Item.findByPk(item.itemId, {
-        include: [{ model: UOM, as: 'uom' }]
+        include: [{ model: UOM, as: "uom" }],
       });
-      
+
       if (!itemRecord) {
         errors.push({
           itemId: item.itemId,
           requestedQuantity: item.quantity,
-          message: `Item with ID ${item.itemId} not found`
+          message: `Item with ID ${item.itemId} not found`,
         });
         continue;
       }
-      
+
       stockInfo.push({
         itemId: item.itemId,
         itemName: itemRecord.name,
         itemCode: itemRecord.code,
-        uomCode: itemRecord.uom?.code || 'Units',
+        uomCode: itemRecord.uom?.code || "Units",
         availableQuantity: Number.MAX_SAFE_INTEGER,
         requestedQuantity: item.quantity,
         balance: null,
         stockValidationSkipped: true,
-        skipReason: `Store ${store.code} is exempt from stock validation`
+        skipReason: `Store ${store.code} is exempt from stock validation`,
       });
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors,
       stockInfo,
       validationSkipped: true,
-      skipReason: `Store ${store.code} is exempt from stock validation`
+      skipReason: `Store ${store.code} is exempt from stock validation`,
     };
   }
 
@@ -90,8 +93,8 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
       where: {
         storeId: supplyingStoreId,
         itemId: item.itemId,
-        status: 'Active'
-      }
+        status: "Active",
+      },
     });
 
     if (!balance) {
@@ -99,7 +102,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         itemId: item.itemId,
         requestedQuantity: item.quantity,
         availableQuantity: 0,
-        message: `This item is not available in the selected supplying store`
+        message: `This item is not available in the selected supplying store`,
       });
       continue;
     }
@@ -109,24 +112,24 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
 
     stockInfo.push({
       itemId: item.itemId,
-      itemName: item.itemName || 'Unknown',
-      itemCode: item.itemCode || 'N/A',
-      uomCode: item.uomCode || 'Units',
+      itemName: item.itemName || "Unknown",
+      itemCode: item.itemCode || "N/A",
+      uomCode: item.uomCode || "Units",
       availableQuantity,
       requestedQuantity,
-      balance: balance
+      balance: balance,
     });
 
     if (requestedQuantity > availableQuantity) {
       errors.push({
         itemId: item.itemId,
-        itemName: item.itemName || 'Unknown',
-        itemCode: item.itemCode || 'N/A',
+        itemName: item.itemName || "Unknown",
+        itemCode: item.itemCode || "N/A",
         requestedQuantity,
         availableQuantity,
         shortage: requestedQuantity - availableQuantity,
-        uomCode: item.uomCode || 'Units',
-        message: `Insufficient stock.`
+        uomCode: item.uomCode || "Units",
+        message: `Insufficient stock.`,
       });
     }
   }
@@ -135,7 +138,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     isValid: errors.length === 0,
     errors,
     stockInfo,
-    validationSkipped: false
+    validationSkipped: false,
   };
 };
 
@@ -143,10 +146,11 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
 // HELPER: Create notifications for all groups in a store
 // ================================================================
 
-
 async function createRequestNotifications(requestId, storeId) {
   try {
-    console.log(`📤 Creating notifications for request ${requestId}, store ${storeId}`);
+    console.log(
+      `📤 Creating notifications for request ${requestId}, store ${storeId}`,
+    );
 
     // 🔥 Get all active groups
     const groups = await db.sequelize.query(
@@ -157,7 +161,7 @@ async function createRequestNotifications(requestId, storeId) {
       {
         replacements: { storeId: parseInt(storeId) },
         type: db.sequelize.QueryTypes.SELECT,
-      }
+      },
     );
 
     console.log(`📋 Found ${groups.length} groups`);
@@ -169,20 +173,20 @@ async function createRequestNotifications(requestId, storeId) {
 
     // 🔥 Use bulk create for better performance
     const notificationsData = groups
-      .map(group => {
+      .map((group) => {
         const groupId = parseInt(group.id);
         if (!groupId || isNaN(groupId)) return null;
-        
+
         return {
           request_id: parseInt(requestId),
           group_id: groupId,
           store_id: parseInt(storeId),
-          status: 'pending',
+          status: "pending",
           created_at: new Date(),
           updated_at: new Date(),
         };
       })
-      .filter(item => item !== null);
+      .filter((item) => item !== null);
 
     if (notificationsData.length === 0) {
       console.log(`⚠️ No valid groups to create notifications for`);
@@ -197,9 +201,8 @@ async function createRequestNotifications(requestId, storeId) {
 
     console.log(`✅ Created ${result.length} notifications`);
     return result.length;
-
   } catch (error) {
-    console.error('❌ Error creating notifications:', error);
+    console.error("❌ Error creating notifications:", error);
     // Don't throw - just log and continue
     // The request should still be created even if notifications fail
     return 0;
@@ -224,12 +227,19 @@ async function isRequestFullyAccepted(requestId) {
     };
   }
 
-  const acceptedCount = notifications.filter(n => n.status === 'accepted').length;
-  const rejectedCount = notifications.filter(n => n.status === 'rejected').length;
-  const pendingCount = notifications.filter(n => n.status === 'pending').length;
-  
+  const acceptedCount = notifications.filter(
+    (n) => n.status === "accepted",
+  ).length;
+  const rejectedCount = notifications.filter(
+    (n) => n.status === "rejected",
+  ).length;
+  const pendingCount = notifications.filter(
+    (n) => n.status === "pending",
+  ).length;
+
   return {
-    allAccepted: acceptedCount === notifications.length && notifications.length > 0,
+    allAccepted:
+      acceptedCount === notifications.length && notifications.length > 0,
     hasRejection: rejectedCount > 0,
     total: notifications.length,
     acceptedCount,
@@ -248,32 +258,45 @@ exports.checkStockAvailability = async (req, res) => {
     if (!storeId || !items) {
       return res.status(400).json({
         success: false,
-        error: 'Store ID and items are required'
+        error: "Store ID and items are required",
       });
     }
 
     const parsedItems = JSON.parse(items);
-    const validationResult = await validateStockAvailability(parseInt(storeId), parsedItems);
+    const validationResult = await validateStockAvailability(
+      parseInt(storeId),
+      parsedItems,
+    );
 
     const itemDetails = await Promise.all(
       parsedItems.map(async (item) => {
         const itemData = await Item.findByPk(item.itemId, {
-          include: [{ model: UOM, as: 'uom' }]
+          include: [{ model: UOM, as: "uom" }],
         });
-        const stockInfo = validationResult.stockInfo.find(s => s.itemId === item.itemId);
+        const stockInfo = validationResult.stockInfo.find(
+          (s) => s.itemId === item.itemId,
+        );
         return {
           ...item,
-          itemName: itemData?.name || 'Unknown',
-          itemCode: itemData?.code || 'N/A',
-          uomCode: itemData?.uom?.code || 'Units',
+          itemName: itemData?.name || "Unknown",
+          itemCode: itemData?.code || "N/A",
+          uomCode: itemData?.uom?.code || "Units",
           availableQuantity: stockInfo?.availableQuantity || 0,
-          isAvailable: validationResult.validationSkipped ? true : (stockInfo?.availableQuantity > 0),
-          hasEnoughStock: validationResult.validationSkipped ? true : (stockInfo?.availableQuantity >= item.quantity),
-          shortage: validationResult.validationSkipped ? 0 : (stockInfo ? Math.max(0, item.quantity - stockInfo.availableQuantity) : item.quantity),
+          isAvailable: validationResult.validationSkipped
+            ? true
+            : stockInfo?.availableQuantity > 0,
+          hasEnoughStock: validationResult.validationSkipped
+            ? true
+            : stockInfo?.availableQuantity >= item.quantity,
+          shortage: validationResult.validationSkipped
+            ? 0
+            : stockInfo
+              ? Math.max(0, item.quantity - stockInfo.availableQuantity)
+              : item.quantity,
           stockValidationSkipped: validationResult.validationSkipped || false,
-          skipReason: validationResult.skipReason || null
+          skipReason: validationResult.skipReason || null,
         };
-      })
+      }),
     );
 
     res.json({
@@ -286,17 +309,19 @@ exports.checkStockAvailability = async (req, res) => {
         errors: validationResult.errors,
         summary: {
           totalItems: parsedItems.length,
-          availableItems: itemDetails.filter(i => i.isAvailable).length,
-          itemsWithShortage: itemDetails.filter(i => i.hasEnoughStock === false).length,
-          validationSkipped: validationResult.validationSkipped
-        }
-      }
+          availableItems: itemDetails.filter((i) => i.isAvailable).length,
+          itemsWithShortage: itemDetails.filter(
+            (i) => i.hasEnoughStock === false,
+          ).length,
+          validationSkipped: validationResult.validationSkipped,
+        },
+      },
     });
   } catch (error) {
-    console.error('Check stock error:', error);
+    console.error("Check stock error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to check stock availability'
+      error: "Failed to check stock availability",
     });
   }
 };
@@ -307,41 +332,39 @@ exports.checkStockAvailability = async (req, res) => {
 
 // controllers/itemRequestController.js - COMPLETE FIXED getRequests
 
-// controllers/itemRequestController.js - COMPLETE FIXED getRequests
-
 exports.getRequests = async (req, res) => {
   try {
     const {
       page = 1,
       limit = 10,
-      search = '',
-      status = 'all',
-      storeId = 'all',
-      userId = 'all',
-      sortBy = 'createdAt',
-      sortOrder = 'DESC'
+      search = "",
+      status = "all",
+      storeId = "all",
+      userId = "all",
+      sortBy = "createdAt",
+      sortOrder = "DESC",
     } = req.query;
 
     const offset = (page - 1) * limit;
     const where = {};
     const userRelevantWhere = {};
-    
+
     // 🔥 Get the logged-in user
     const currentUser = req.user;
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
     const userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
 
-    console.log('🔍 Current user:', {
+    console.log("🔍 Current user:", {
       userId: currentUserId,
       role: currentUserRole,
-      storeId: userStoreId
+      storeId: userStoreId,
     });
 
     // ================================================================
     // 🔥 STATUS FILTER
     // ================================================================
-    if (status !== 'all') {
+    if (status !== "all") {
       where.status = status;
       userRelevantWhere.status = status;
     }
@@ -350,97 +373,107 @@ exports.getRequests = async (req, res) => {
     // 🔥 STORE FILTER - Based on user role
     // ================================================================
     let userRelevantCondition = {};
-    
-    if (storeId !== 'all') {
+
+    if (storeId !== "all") {
       // When a specific store is selected in filter
       where[Op.or] = [
         { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) }
+        { supplyingStoreId: parseInt(storeId) },
       ];
       userRelevantWhere[Op.or] = [
         { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) }
+        { supplyingStoreId: parseInt(storeId) },
       ];
     } else {
       // Auto-filter based on user role
-      if (currentUserRole === 'admin') {
+      if (currentUserRole === "admin") {
         // Admin sees all requests
-        console.log('👑 Admin user - showing all requests');
+        console.log("👑 Admin user - showing all requests");
         // No additional filters needed
-      } else if (currentUserRole === 'storekeeper' || currentUserRole === 'store_it') {
+      } else if (
+        currentUserRole === "storekeeper" ||
+        currentUserRole === "store_it"
+      ) {
         if (userStoreId) {
           // 🔥 FIX: Show ALL requests where the user's store is involved
           // This includes BOTH asking AND supplying stores, for ALL statuses
           where[Op.or] = [
             { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId }  // ✅ REMOVED the status restriction
+            { supplyingStoreId: userStoreId }, // ✅ REMOVED the status restriction
           ];
-          
+
           // 🔥 For user-relevant counting
           userRelevantCondition = {
             [Op.or]: [
               { requestedById: currentUserId },
               { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId }
-            ]
+              { supplyingStoreId: userStoreId },
+            ],
           };
-          
+
           userRelevantWhere[Op.or] = [
             { requestedById: currentUserId },
             { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId }
+            { supplyingStoreId: userStoreId },
           ];
-          
-          console.log(`📦 Store user (${currentUserRole}) - showing ALL requests for store ${userStoreId}`);
+
+          console.log(
+            `📦 Store user (${currentUserRole}) - showing ALL requests for store ${userStoreId}`,
+          );
         } else {
           if (currentUserId) {
             where.requestedById = currentUserId;
             userRelevantWhere.requestedById = currentUserId;
-            console.log(`👤 User has no store assigned - showing only their requests`);
+            console.log(
+              `👤 User has no store assigned - showing only their requests`,
+            );
           }
         }
-      } else if (currentUserRole === 'checker' || currentUserRole === 'finance') {
+      } else if (
+        currentUserRole === "checker" ||
+        currentUserRole === "finance"
+      ) {
         // Checker/Finance can see approved and finalized requests
-        if (status === 'all') {
-          where.status = { [Op.in]: ['approved', 'finalized'] };
-          userRelevantWhere.status = { [Op.in]: ['approved', 'finalized'] };
+        if (status === "all") {
+          where.status = { [Op.in]: ["approved", "finalized"] };
+          userRelevantWhere.status = { [Op.in]: ["approved", "finalized"] };
         }
         if (userStoreId) {
           where[Op.or] = [
             { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId }
+            { supplyingStoreId: userStoreId },
           ];
           userRelevantWhere[Op.or] = [
             { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId }
+            { supplyingStoreId: userStoreId },
           ];
         }
-        console.log(`📊 Checker/Finance user - showing approved/finalized requests`);
+        console.log(
+          `📊 Checker/Finance user - showing approved/finalized requests`,
+        );
       } else {
         // Other users see requests they created or are involved in
         if (currentUserId) {
-          where[Op.or] = [
-            { requestedById: currentUserId }
-          ];
-          userRelevantWhere[Op.or] = [
-            { requestedById: currentUserId }
-          ];
+          where[Op.or] = [{ requestedById: currentUserId }];
+          userRelevantWhere[Op.or] = [{ requestedById: currentUserId }];
           if (userStoreId) {
             where[Op.or].push(
               { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId }
+              { supplyingStoreId: userStoreId },
             );
             userRelevantWhere[Op.or].push(
               { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId }
+              { supplyingStoreId: userStoreId },
             );
           }
         }
-        console.log(`👤 Other role (${currentUserRole}) - showing requests they created or involved in`);
+        console.log(
+          `👤 Other role (${currentUserRole}) - showing requests they created or involved in`,
+        );
       }
     }
 
-    if (userId !== 'all') {
+    if (userId !== "all") {
       where.requestedById = userId;
       userRelevantWhere.requestedById = userId;
     }
@@ -449,17 +482,17 @@ exports.getRequests = async (req, res) => {
       const searchCondition = {
         [Op.or]: [
           { requestCode: { [Op.like]: `%${search}%` } },
-          { remark: { [Op.like]: `%${search}%` } }
-        ]
+          { remark: { [Op.like]: `%${search}%` } },
+        ],
       };
       where[Op.and] = where[Op.and] || [];
       where[Op.and].push(searchCondition);
-      
+
       userRelevantWhere[Op.and] = userRelevantWhere[Op.and] || [];
       userRelevantWhere[Op.and].push(searchCondition);
     }
 
-    console.log('📋 Final WHERE clause:', JSON.stringify(where, null, 2));
+    console.log("📋 Final WHERE clause:", JSON.stringify(where, null, 2));
 
     // ================================================================
     // 🔥 GET CORRECT TOTAL COUNT
@@ -471,49 +504,54 @@ exports.getRequests = async (req, res) => {
     // 🔥 QUERY DATABASE
     // ================================================================
     let rows = [];
-    
-    if (currentUserId && userStoreId && currentUserRole !== 'admin') {
+
+    if (currentUserId && userStoreId && currentUserRole !== "admin") {
       // 🔥 Get user's relevant requests first
       const userRequests = await ItemRequest.findAll({
         where: {
           ...where,
-          ...userRelevantCondition
+          ...userRelevantCondition,
         },
         limit: parseInt(limit),
         order: [[sortBy, sortOrder]],
         include: [
           {
             model: ItemRequestDetail,
-            as: 'items',
+            as: "items",
             include: [
               {
                 model: Item,
-                as: 'item',
-                include: [
-                  { model: UOM, as: 'uom' }
-                ]
-              }
-            ]
+                as: "item",
+                include: [{ model: UOM, as: "uom" }],
+              },
+            ],
           },
           {
             model: Store,
-            as: 'askingStore'
+            as: "askingStore",
           },
           {
             model: Store,
-            as: 'supplyingStore'
+            as: "supplyingStore",
           },
           {
             model: User,
-            as: 'requestedByUser',
-            attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+            as: "requestedByUser",
+            attributes: [
+              "userId",
+              "username",
+              "fullName",
+              "email",
+              "roleId",
+              "departmentId",
+            ],
           },
           {
             model: RequestNotification,
-            as: 'notifications',
+            as: "notifications",
             include: [
-              { model: Group, as: 'group' },
-              { model: User, as: 'respondedByUser' },
+              { model: Group, as: "group" },
+              { model: User, as: "respondedByUser" },
             ],
           },
         ],
@@ -521,34 +559,40 @@ exports.getRequests = async (req, res) => {
 
       // Get the remaining requests
       const remainingLimit = parseInt(limit) - userRequests.length;
-      
+
       let otherRequests = [];
       if (remainingLimit > 0) {
         const userRelevantCount = await ItemRequest.count({
           where: {
             ...where,
-            ...userRelevantCondition
-          }
+            ...userRelevantCondition,
+          },
         });
-        
+
         let otherOffset = parseInt(offset);
         if (page == 1) {
           otherOffset = 0;
         } else {
-          const userRelevantOnPreviousPages = Math.min((parseInt(page) - 1) * parseInt(limit), userRelevantCount);
-          otherOffset = Math.max(0, parseInt(offset) - userRelevantOnPreviousPages);
+          const userRelevantOnPreviousPages = Math.min(
+            (parseInt(page) - 1) * parseInt(limit),
+            userRelevantCount,
+          );
+          otherOffset = Math.max(
+            0,
+            parseInt(offset) - userRelevantOnPreviousPages,
+          );
         }
-        
+
         // 🔥 Get other requests (excluding user's relevant ones)
         const otherWhere = {
           ...where,
           [Op.and]: [
             { requestedById: { [Op.ne]: currentUserId } },
             { askingStoreId: { [Op.ne]: userStoreId } },
-            { supplyingStoreId: { [Op.ne]: userStoreId } }
-          ]
+            { supplyingStoreId: { [Op.ne]: userStoreId } },
+          ],
         };
-        
+
         otherRequests = await ItemRequest.findAll({
           where: otherWhere,
           limit: remainingLimit,
@@ -557,36 +601,41 @@ exports.getRequests = async (req, res) => {
           include: [
             {
               model: ItemRequestDetail,
-              as: 'items',
+              as: "items",
               include: [
                 {
                   model: Item,
-                  as: 'item',
-                  include: [
-                    { model: UOM, as: 'uom' }
-                  ]
-                }
-              ]
+                  as: "item",
+                  include: [{ model: UOM, as: "uom" }],
+                },
+              ],
             },
             {
               model: Store,
-              as: 'askingStore'
+              as: "askingStore",
             },
             {
               model: Store,
-              as: 'supplyingStore'
+              as: "supplyingStore",
             },
             {
               model: User,
-              as: 'requestedByUser',
-              attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+              as: "requestedByUser",
+              attributes: [
+                "userId",
+                "username",
+                "fullName",
+                "email",
+                "roleId",
+                "departmentId",
+              ],
             },
             {
               model: RequestNotification,
-              as: 'notifications',
+              as: "notifications",
               include: [
-                { model: Group, as: 'group' },
-                { model: User, as: 'respondedByUser' },
+                { model: Group, as: "group" },
+                { model: User, as: "respondedByUser" },
               ],
             },
           ],
@@ -594,8 +643,10 @@ exports.getRequests = async (req, res) => {
       }
 
       rows = [...userRequests, ...otherRequests];
-      
-      console.log(`✅ Found ${userRequests.length} user-relevant requests and ${otherRequests.length} other requests (total: ${rows.length})`);
+
+      console.log(
+        `✅ Found ${userRequests.length} user-relevant requests and ${otherRequests.length} other requests (total: ${rows.length})`,
+      );
     } else {
       // Admin or no user store - normal query
       rows = await ItemRequest.findAll({
@@ -606,36 +657,41 @@ exports.getRequests = async (req, res) => {
         include: [
           {
             model: ItemRequestDetail,
-            as: 'items',
+            as: "items",
             include: [
               {
                 model: Item,
-                as: 'item',
-                include: [
-                  { model: UOM, as: 'uom' }
-                ]
-              }
-            ]
+                as: "item",
+                include: [{ model: UOM, as: "uom" }],
+              },
+            ],
           },
           {
             model: Store,
-            as: 'askingStore'
+            as: "askingStore",
           },
           {
             model: Store,
-            as: 'supplyingStore'
+            as: "supplyingStore",
           },
           {
             model: User,
-            as: 'requestedByUser',
-            attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+            as: "requestedByUser",
+            attributes: [
+              "userId",
+              "username",
+              "fullName",
+              "email",
+              "roleId",
+              "departmentId",
+            ],
           },
           {
             model: RequestNotification,
-            as: 'notifications',
+            as: "notifications",
             include: [
-              { model: Group, as: 'group' },
-              { model: User, as: 'respondedByUser' },
+              { model: Group, as: "group" },
+              { model: User, as: "respondedByUser" },
             ],
           },
         ],
@@ -650,15 +706,15 @@ exports.getRequests = async (req, res) => {
           total: totalCount,
           page: parseInt(page),
           limit: parseInt(limit),
-          pages: Math.ceil(totalCount / limit)
-        }
-      }
+          pages: Math.ceil(totalCount / limit),
+        },
+      },
     });
   } catch (error) {
-    console.error('❌ Get requests error:', error);
+    console.error("❌ Get requests error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch requests'
+      error: "Failed to fetch requests",
     });
   }
 };
@@ -674,36 +730,41 @@ exports.getRequestById = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
@@ -712,19 +773,19 @@ exports.getRequestById = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        error: "Request not found",
       });
     }
 
     res.json({
       success: true,
-      data: request
+      data: request,
     });
   } catch (error) {
-    console.error('Get request error:', error);
+    console.error("Get request error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch request'
+      error: "Failed to fetch request",
     });
   }
 };
@@ -734,15 +795,14 @@ exports.getRequestById = async (req, res) => {
 // ================================================================
 // controllers/itemRequestController.js - COMPLETE createRequest
 
-
-
-
 // ================================================================
 // HELPER: Create notifications (for non-skip stores only)
 // ================================================================
 async function createRequestNotifications(requestId, storeId) {
   try {
-    console.log(`📤 Creating notifications for request ${requestId}, store ${storeId}`);
+    console.log(
+      `📤 Creating notifications for request ${requestId}, store ${storeId}`,
+    );
 
     const groups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
@@ -752,7 +812,7 @@ async function createRequestNotifications(requestId, storeId) {
       {
         replacements: { storeId: parseInt(storeId) },
         type: db.sequelize.QueryTypes.SELECT,
-      }
+      },
     );
 
     console.log(`📋 Found ${groups.length} groups`);
@@ -763,20 +823,20 @@ async function createRequestNotifications(requestId, storeId) {
     }
 
     const notificationsData = groups
-      .map(group => {
+      .map((group) => {
         const groupId = parseInt(group.id);
         if (!groupId || isNaN(groupId)) return null;
-        
+
         return {
           request_id: parseInt(requestId),
           group_id: groupId,
           store_id: parseInt(storeId),
-          status: 'pending',
+          status: "pending",
           created_at: new Date(),
           updated_at: new Date(),
         };
       })
-      .filter(item => item !== null);
+      .filter((item) => item !== null);
 
     if (notificationsData.length === 0) {
       console.log(`⚠️ No valid groups to create notifications for`);
@@ -790,9 +850,8 @@ async function createRequestNotifications(requestId, storeId) {
 
     console.log(`✅ Created ${result.length} notifications`);
     return result.length;
-
   } catch (error) {
-    console.error('❌ Error creating notifications:', error);
+    console.error("❌ Error creating notifications:", error);
     return 0;
   }
 }
@@ -810,8 +869,8 @@ exports.createRequest = async (req, res) => {
       items,
       requestedById,
       requestedDate,
-      status = 'pending',
-      remark
+      status = "pending",
+      remark,
     } = req.body;
 
     // ================================================================
@@ -821,7 +880,7 @@ exports.createRequest = async (req, res) => {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: 'Asking store and supplying store are required'
+        error: "Asking store and supplying store are required",
       });
     }
 
@@ -829,7 +888,7 @@ exports.createRequest = async (req, res) => {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: 'Asking store and supplying store cannot be the same'
+        error: "Asking store and supplying store cannot be the same",
       });
     }
 
@@ -843,23 +902,23 @@ exports.createRequest = async (req, res) => {
       await t.rollback();
       return res.status(404).json({
         success: false,
-        error: 'One or both stores not found'
+        error: "One or both stores not found",
       });
     }
 
-    if (askingStore.status !== 'Active') {
+    if (askingStore.status !== "Active") {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: `Asking store "${askingStore.name}" is not active`
+        error: `Asking store "${askingStore.name}" is not active`,
       });
     }
 
-    if (supplyingStore.status !== 'Active') {
+    if (supplyingStore.status !== "Active") {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: `Supplying store "${supplyingStore.name}" is not active`
+        error: `Supplying store "${supplyingStore.name}" is not active`,
       });
     }
 
@@ -868,7 +927,9 @@ exports.createRequest = async (req, res) => {
     // ================================================================
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
     if (skipNotifications) {
-      console.log(`⚠️ Store ${supplyingStore.code} (${supplyingStore.name}) - Notifications will be skipped`);
+      console.log(
+        `⚠️ Store ${supplyingStore.code} (${supplyingStore.name}) - Notifications will be skipped`,
+      );
     }
 
     // ================================================================
@@ -880,7 +941,7 @@ exports.createRequest = async (req, res) => {
         await t.rollback();
         return res.status(404).json({
           success: false,
-          error: 'User not found'
+          error: "User not found",
         });
       }
     }
@@ -892,23 +953,21 @@ exports.createRequest = async (req, res) => {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: 'At least one item is required'
+        error: "At least one item is required",
       });
     }
 
     const validatedItems = [];
     const validationErrors = [];
-    const itemIds = items.map(item => item.itemId);
+    const itemIds = items.map((item) => item.itemId);
 
     const itemRecords = await Item.findAll({
       where: { itemId: { [Op.in]: itemIds } },
-      include: [
-        { model: UOM, as: 'uom' }
-      ]
+      include: [{ model: UOM, as: "uom" }],
     });
 
     const itemMap = {};
-    itemRecords.forEach(record => {
+    itemRecords.forEach((record) => {
       itemMap[record.itemId] = record;
     });
 
@@ -917,21 +976,21 @@ exports.createRequest = async (req, res) => {
       if (!itemRecord) {
         validationErrors.push({
           itemId: item.itemId,
-          itemName: 'Unknown Item',
-          itemCode: 'N/A',
+          itemName: "Unknown Item",
+          itemCode: "N/A",
           requestedQuantity: item.quantity,
-          message: `Item with ID ${item.itemId} not found in database`
+          message: `Item with ID ${item.itemId} not found in database`,
         });
         continue;
       }
 
-      if (itemRecord.status !== 'Active') {
+      if (itemRecord.status !== "Active") {
         validationErrors.push({
           itemId: item.itemId,
           itemName: itemRecord.name,
           itemCode: itemRecord.code,
           requestedQuantity: item.quantity,
-          message: `Item "${itemRecord.name}" is ${itemRecord.status}`
+          message: `Item "${itemRecord.name}" is ${itemRecord.status}`,
         });
         continue;
       }
@@ -942,7 +1001,7 @@ exports.createRequest = async (req, res) => {
           itemName: itemRecord.name,
           itemCode: itemRecord.code,
           requestedQuantity: item.quantity || 0,
-          message: 'Quantity must be greater than 0'
+          message: "Quantity must be greater than 0",
         });
         continue;
       }
@@ -952,7 +1011,7 @@ exports.createRequest = async (req, res) => {
         itemRecord,
         itemName: itemRecord.name,
         itemCode: itemRecord.code,
-        uomCode: itemRecord.uom?.code || 'Units'
+        uomCode: itemRecord.uom?.code || "Units",
       });
     }
 
@@ -960,34 +1019,46 @@ exports.createRequest = async (req, res) => {
       await t.rollback();
       return res.status(400).json({
         success: false,
-        error: 'Item validation failed',
-        message: 'Some items are invalid or inactive',
-        errors: validationErrors
+        error: "Item validation failed",
+        message: "Some items are invalid or inactive",
+        errors: validationErrors,
       });
     }
 
     // ================================================================
     // 6. STOCK AVAILABILITY VALIDATION
     // ================================================================
-    const stockValidation = await validateStockAvailability(supplyingStoreId, validatedItems);
+    const stockValidation = await validateStockAvailability(
+      supplyingStoreId,
+      validatedItems,
+    );
 
-    if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
+    if (
+      !stockValidation.validationSkipped &&
+      stockValidation.errors.length > 0
+    ) {
       await t.rollback();
-      
+
       return res.status(400).json({
         success: false,
-        error: 'Stock validation failed',
+        error: "Stock validation failed",
         errors: stockValidation.errors,
         stockInfo: stockValidation.stockInfo,
         summary: {
           totalItems: validatedItems.length,
-          itemsWithStock: stockValidation.stockInfo.filter(s => s.availableQuantity > 0).length,
-          itemsWithoutStock: stockValidation.errors.filter(e => e.availableQuantity === 0).length,
-          itemsWithShortage: stockValidation.errors.filter(e => e.availableQuantity > 0 && e.shortage > 0).length,
+          itemsWithStock: stockValidation.stockInfo.filter(
+            (s) => s.availableQuantity > 0,
+          ).length,
+          itemsWithoutStock: stockValidation.errors.filter(
+            (e) => e.availableQuantity === 0,
+          ).length,
+          itemsWithShortage: stockValidation.errors.filter(
+            (e) => e.availableQuantity > 0 && e.shortage > 0,
+          ).length,
           storeName: supplyingStore.name,
           storeId: supplyingStoreId,
-          validationSkipped: false
-        }
+          validationSkipped: false,
+        },
       });
     }
 
@@ -999,38 +1070,46 @@ exports.createRequest = async (req, res) => {
     // ================================================================
     // 8. CREATE THE REQUEST
     // ================================================================
-    const request = await ItemRequest.create({
-      requestCode,
-      askingStoreId: parseInt(askingStoreId),
-      supplyingStoreId: parseInt(supplyingStoreId),
-      requestedById: requestedById || null,
-      requestedDate: requestedDate || new Date().toISOString().split('T')[0],
-      status: status || 'pending',
-      remark: remark || null
-    }, { transaction: t });
+    const request = await ItemRequest.create(
+      {
+        requestCode,
+        askingStoreId: parseInt(askingStoreId),
+        supplyingStoreId: parseInt(supplyingStoreId),
+        requestedById: requestedById || null,
+        requestedDate: requestedDate || new Date().toISOString().split("T")[0],
+        status: status || "pending",
+        remark: remark || null,
+      },
+      { transaction: t },
+    );
 
     // ================================================================
     // 9. CREATE ITEM DETAILS
     // ================================================================
     await Promise.all(
       validatedItems.map(async (item) => {
-        return ItemRequestDetail.create({
-          requestId: request.requestId,
-          itemId: item.itemId,
-          quantity: item.quantity,
-          remark: item.remark || null
-        }, { transaction: t });
-      })
+        return ItemRequestDetail.create(
+          {
+            requestId: request.requestId,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            remark: item.remark || null,
+          },
+          { transaction: t },
+        );
+      }),
     );
 
     // ================================================================
     // 10. CREATE NOTIFICATIONS - SKIP FOR FOREIGN/LOCAL PURCHASE STORES
     // ================================================================
     let notificationCount = 0;
-    
+
     if (!skipNotifications) {
-      console.log(`📤 Creating notifications for request ${request.requestId}, store ${supplyingStoreId}`);
-      
+      console.log(
+        `📤 Creating notifications for request ${request.requestId}, store ${supplyingStoreId}`,
+      );
+
       try {
         // Get all active groups for the supplying store
         const groups = await db.sequelize.query(
@@ -1042,10 +1121,12 @@ exports.createRequest = async (req, res) => {
             replacements: { storeId: parseInt(supplyingStoreId) },
             type: db.sequelize.QueryTypes.SELECT,
             transaction: t,
-          }
+          },
         );
 
-        console.log(`📋 Found ${groups.length} groups for store ${supplyingStoreId}`);
+        console.log(
+          `📋 Found ${groups.length} groups for store ${supplyingStoreId}`,
+        );
 
         if (groups && groups.length > 0) {
           for (const group of groups) {
@@ -1077,28 +1158,39 @@ exports.createRequest = async (req, res) => {
                     request_id: request.requestId,
                     group_id: groupId,
                     store_id: parseInt(supplyingStoreId),
-                    status: 'pending',
+                    status: "pending",
                   },
                   type: db.sequelize.QueryTypes.INSERT,
                   transaction: t,
-                }
+                },
               );
               notificationCount++;
-              console.log(`✅ Created notification for group ${groupId} (${group.name})`);
+              console.log(
+                `✅ Created notification for group ${groupId} (${group.name})`,
+              );
             } catch (err) {
-              console.error(`❌ Failed to insert for group ${groupId}:`, err.message);
+              console.error(
+                `❌ Failed to insert for group ${groupId}:`,
+                err.message,
+              );
             }
           }
-          console.log(`✅ Created ${notificationCount}/${groups.length} notifications`);
+          console.log(
+            `✅ Created ${notificationCount}/${groups.length} notifications`,
+          );
         } else {
-          console.log(`⚠️ No active groups found for store ${supplyingStoreId}`);
+          console.log(
+            `⚠️ No active groups found for store ${supplyingStoreId}`,
+          );
         }
       } catch (notifError) {
-        console.error('❌ Error creating notifications:', notifError);
+        console.error("❌ Error creating notifications:", notifError);
         // Don't rollback - request still created even if notifications fail
       }
     } else {
-      console.log(`⚠️ SKIPPED notifications for store: ${supplyingStore.code} (${supplyingStore.name}) - Foreign/Local Purchase`);
+      console.log(
+        `⚠️ SKIPPED notifications for store: ${supplyingStore.code} (${supplyingStore.name}) - Foreign/Local Purchase`,
+      );
     }
 
     // ================================================================
@@ -1113,36 +1205,41 @@ exports.createRequest = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
@@ -1151,35 +1248,35 @@ exports.createRequest = async (req, res) => {
     // ================================================================
     // 13. PREPARE RESPONSE
     // ================================================================
-    const stockInfoResponse = stockValidation.validationSkipped 
-      ? stockValidation.stockInfo.map(s => ({
+    const stockInfoResponse = stockValidation.validationSkipped
+      ? stockValidation.stockInfo.map((s) => ({
           itemId: s.itemId,
           itemName: s.itemName,
           itemCode: s.itemCode,
           availableQuantity: Number.MAX_SAFE_INTEGER,
-          availableQuantityDisplay: 'Unlimited (SKIPPED)',
+          availableQuantityDisplay: "Unlimited (SKIPPED)",
           requestedQuantity: s.requestedQuantity,
           uomCode: s.uomCode,
           hasStock: true,
           hasEnoughStock: true,
           stockValidationSkipped: true,
-          skipReason: s.skipReason
+          skipReason: s.skipReason,
         }))
-      : stockValidation.stockInfo.map(s => ({
+      : stockValidation.stockInfo.map((s) => ({
           itemId: s.itemId,
-          itemName: s.itemName || 'Unknown',
-          itemCode: s.itemCode || 'N/A',
+          itemName: s.itemName || "Unknown",
+          itemCode: s.itemCode || "N/A",
           availableQuantity: s.availableQuantity,
           requestedQuantity: s.requestedQuantity,
-          uomCode: s.uomCode || 'Units',
+          uomCode: s.uomCode || "Units",
           hasStock: s.availableQuantity > 0,
           hasEnoughStock: s.requestedQuantity <= s.availableQuantity,
-          stockValidationSkipped: false
+          stockValidationSkipped: false,
         }));
 
-    const responseMessage = skipNotifications 
+    const responseMessage = skipNotifications
       ? `✅ Request created successfully. (${supplyingStore.code} - No approval required - Foreign/Local Purchase)`
-      : '✅ Request created successfully. Notifications sent to all groups.';
+      : "✅ Request created successfully. Notifications sent to all groups.";
 
     res.status(201).json({
       success: true,
@@ -1187,39 +1284,42 @@ exports.createRequest = async (req, res) => {
       data: {
         request: completeRequest,
         skipNotifications: skipNotifications,
-        skipReason: skipNotifications ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)` : null,
+        skipReason: skipNotifications
+          ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)`
+          : null,
         notificationCount: notificationCount,
         stockValidation: {
-          allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
+          allItemsAvailable:
+            stockValidation.isValid || stockValidation.validationSkipped,
           validationSkipped: stockValidation.validationSkipped,
           skipReason: stockValidation.skipReason || null,
           items: stockInfoResponse,
           summary: {
             totalItems: validatedItems.length,
-            allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
+            allItemsAvailable:
+              stockValidation.isValid || stockValidation.validationSkipped,
             storeName: supplyingStore.name,
             storeCode: supplyingStore.code,
-            validationSkipped: stockValidation.validationSkipped
-          }
-        }
-      }
+            validationSkipped: stockValidation.validationSkipped,
+          },
+        },
+      },
     });
-
   } catch (error) {
     await t.rollback();
-    console.error('❌ Create request error:', error);
-    
-    if (error.name === 'SequelizeValidationError') {
+    console.error("❌ Create request error:", error);
+
+    if (error.name === "SequelizeValidationError") {
       return res.status(400).json({
         success: false,
-        error: 'Validation error',
-        message: error.errors.map(e => e.message).join(', ')
+        error: "Validation error",
+        message: error.errors.map((e) => e.message).join(", "),
       });
     }
 
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to create request'
+      error: error.message || "Failed to create request",
     });
   }
 };
@@ -1238,7 +1338,7 @@ exports.updateRequest = async (req, res) => {
       items,
       requestedById,
       requestedDate,
-      remark
+      remark,
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, req.body);
@@ -1250,15 +1350,15 @@ exports.updateRequest = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        error: "Request not found",
       });
     }
 
     // ✅ Allow editing if status is pending OR rejected
-    if (request.status === 'finalized') {
+    if (request.status === "finalized") {
       return res.status(400).json({
         success: false,
-        error: 'Cannot edit finalized requests'
+        error: "Cannot edit finalized requests",
       });
     }
 
@@ -1268,10 +1368,11 @@ exports.updateRequest = async (req, res) => {
     await request.update({
       askingStoreId: askingStoreId || request.askingStoreId,
       supplyingStoreId: supplyingStoreId || request.supplyingStoreId,
-      requestedById: requestedById !== undefined ? requestedById : request.requestedById,
+      requestedById:
+        requestedById !== undefined ? requestedById : request.requestedById,
       requestedDate: requestedDate || request.requestedDate,
-      status: 'pending', // 🔥 ALWAYS reset to pending
-      remark: remark !== undefined ? remark : request.remark
+      status: "pending", // 🔥 ALWAYS reset to pending
+      remark: remark !== undefined ? remark : request.remark,
     });
 
     // ================================================================
@@ -1280,7 +1381,7 @@ exports.updateRequest = async (req, res) => {
     if (items && items.length > 0) {
       // Delete existing items
       await ItemRequestDetail.destroy({
-        where: { requestId: id }
+        where: { requestId: id },
       });
 
       // Create new items in parallel
@@ -1290,9 +1391,9 @@ exports.updateRequest = async (req, res) => {
             requestId: request.requestId,
             itemId: item.itemId,
             quantity: item.quantity,
-            remark: item.remark || null
+            remark: item.remark || null,
           });
-        })
+        }),
       );
     }
 
@@ -1301,14 +1402,17 @@ exports.updateRequest = async (req, res) => {
     // ================================================================
     console.log(`🗑️ Deleting existing notifications for request ${id}`);
     await RequestNotification.destroy({
-      where: { request_id: id }
+      where: { request_id: id },
     });
 
     // ================================================================
     // STEP 5: CREATE NEW NOTIFICATIONS - NO TRANSACTION
     // ================================================================
     console.log(`📤 Creating new notifications for request ${id}`);
-    await createRequestNotifications(request.requestId, request.supplyingStoreId);
+    await createRequestNotifications(
+      request.requestId,
+      request.supplyingStoreId,
+    );
 
     console.log(`✅ Request ${id} updated successfully`);
 
@@ -1319,36 +1423,41 @@ exports.updateRequest = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
@@ -1356,15 +1465,15 @@ exports.updateRequest = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Request updated successfully. New notifications sent to all groups.',
+      message:
+        "Request updated successfully. New notifications sent to all groups.",
       data: updatedRequest,
     });
-
   } catch (error) {
-    console.error('❌ Update request error:', error);
+    console.error("❌ Update request error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to update request'
+      error: error.message || "Failed to update request",
     });
   }
 };
@@ -1377,11 +1486,12 @@ exports.updateStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ['pending', 'approved', 'rejected', 'finalized'];
+    const validStatuses = ["pending", "approved", "rejected", "finalized"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid status. Must be one of: pending, approved, rejected, finalized'
+        error:
+          "Invalid status. Must be one of: pending, approved, rejected, finalized",
       });
     }
 
@@ -1389,55 +1499,61 @@ exports.updateStatus = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        error: "Request not found",
       });
     }
 
-    if (request.status === 'finalized') {
+    if (request.status === "finalized") {
       return res.status(400).json({
         success: false,
-        error: 'Cannot change status of finalized requests'
+        error: "Cannot change status of finalized requests",
       });
     }
 
-    if (request.status === 'rejected' && status === 'approved') {
+    if (request.status === "rejected" && status === "approved") {
       return res.status(400).json({
         success: false,
-        error: 'Cannot approve a rejected request. Edit the request to reset status to pending'
+        error:
+          "Cannot approve a rejected request. Edit the request to reset status to pending",
       });
     }
 
     await request.update({
-      status: status
+      status: status,
     });
 
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
       ],
     });
@@ -1445,13 +1561,13 @@ exports.updateStatus = async (req, res) => {
     res.json({
       success: true,
       message: `Request ${status} successfully`,
-      data: updatedRequest
+      data: updatedRequest,
     });
   } catch (error) {
-    console.error('Update status error:', error);
+    console.error("Update status error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to update status'
+      error: error.message || "Failed to update status",
     });
   }
 };
@@ -1467,7 +1583,7 @@ exports.getByUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: 'User not found'
+        error: "User not found",
       });
     }
 
@@ -1476,51 +1592,56 @@ exports.getByUser = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     res.json({
       success: true,
-      data: requests
+      data: requests,
     });
   } catch (error) {
-    console.error('Get by user error:', error);
+    console.error("Get by user error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch requests for user'
+      error: "Failed to fetch requests for user",
     });
   }
 };
@@ -1537,51 +1658,56 @@ exports.getMyRequests = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     res.json({
       success: true,
-      data: requests
+      data: requests,
     });
   } catch (error) {
-    console.error('Get my requests error:', error);
+    console.error("Get my requests error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch your requests'
+      error: "Failed to fetch your requests",
     });
   }
 };
@@ -1593,11 +1719,12 @@ exports.getByStatus = async (req, res) => {
   try {
     const { status } = req.params;
 
-    const validStatuses = ['pending', 'approved', 'rejected', 'finalized'];
+    const validStatuses = ["pending", "approved", "rejected", "finalized"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid status. Must be one of: pending, approved, rejected, finalized'
+        error:
+          "Invalid status. Must be one of: pending, approved, rejected, finalized",
       });
     }
 
@@ -1606,51 +1733,56 @@ exports.getByStatus = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     res.json({
       success: true,
-      data: requests
+      data: requests,
     });
   } catch (error) {
-    console.error('Get by status error:', error);
+    console.error("Get by status error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch requests by status'
+      error: "Failed to fetch requests by status",
     });
   }
 };
@@ -1665,64 +1797,69 @@ exports.getByDateRange = async (req, res) => {
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: 'startDate and endDate are required'
+        error: "startDate and endDate are required",
       });
     }
 
     const requests = await ItemRequest.findAll({
       where: {
         requestedDate: {
-          [Op.between]: [startDate, endDate]
-        }
+          [Op.between]: [startDate, endDate],
+        },
       },
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
-      order: [['requestedDate', 'DESC']]
+      order: [["requestedDate", "DESC"]],
     });
 
     res.json({
       success: true,
-      data: requests
+      data: requests,
     });
   } catch (error) {
-    console.error('Get by date range error:', error);
+    console.error("Get by date range error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch requests by date range'
+      error: "Failed to fetch requests by date range",
     });
   }
 };
@@ -1738,40 +1875,41 @@ exports.deleteRequest = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        error: "Request not found",
       });
     }
 
-    if (request.status === 'approved') {
+    if (request.status === "approved") {
       return res.status(400).json({
         success: false,
-        error: 'Cannot delete approved requests. Edit the request to reset status to pending first'
+        error:
+          "Cannot delete approved requests. Edit the request to reset status to pending first",
       });
     }
 
-    if (request.status === 'finalized') {
+    if (request.status === "finalized") {
       return res.status(400).json({
         success: false,
-        error: 'Cannot delete finalized requests'
+        error: "Cannot delete finalized requests",
       });
     }
 
     // Delete notifications first
     await RequestNotification.destroy({
-      where: { request_id: id }
+      where: { request_id: id },
     });
 
     await request.destroy();
 
     res.json({
       success: true,
-      message: 'Request deleted successfully'
+      message: "Request deleted successfully",
     });
   } catch (error) {
-    console.error('Delete request error:', error);
+    console.error("Delete request error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to delete request'
+      error: error.message || "Failed to delete request",
     });
   }
 };
@@ -1787,36 +1925,41 @@ exports.getRequestWithNotifications = async (req, res) => {
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email', 'roleId', 'departmentId']
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
-          as: 'notifications',
+          as: "notifications",
           include: [
-            { model: Group, as: 'group' },
-            { model: User, as: 'respondedByUser' },
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
           ],
         },
       ],
@@ -1825,25 +1968,32 @@ exports.getRequestWithNotifications = async (req, res) => {
     if (!request) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        error: "Request not found",
       });
     }
 
     const notifications = request.notifications || [];
     const total = notifications.length;
-    const accepted = notifications.filter(n => n.status === 'accepted').length;
-    const rejected = notifications.filter(n => n.status === 'rejected').length;
-    const pending = notifications.filter(n => n.status === 'pending').length;
+    const accepted = notifications.filter(
+      (n) => n.status === "accepted",
+    ).length;
+    const rejected = notifications.filter(
+      (n) => n.status === "rejected",
+    ).length;
+    const pending = notifications.filter((n) => n.status === "pending").length;
     const allAccepted = total > 0 && accepted === total;
     const hasRejection = rejected > 0;
 
     const rejectionReasons = notifications
-      .filter(n => n.status === 'rejected')
-      .map(n => ({
+      .filter((n) => n.status === "rejected")
+      .map((n) => ({
         groupId: n.group_id,
-        groupName: n.group?.name || 'Unknown Group',
+        groupName: n.group?.name || "Unknown Group",
         reason: n.rejected_reason,
-        respondedBy: n.respondedByUser?.fullName || n.respondedByUser?.username || 'Unknown',
+        respondedBy:
+          n.respondedByUser?.fullName ||
+          n.respondedByUser?.username ||
+          "Unknown",
         respondedAt: n.responded_at,
       }));
 
@@ -1863,10 +2013,10 @@ exports.getRequestWithNotifications = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error getting request with notifications:', error);
+    console.error("Error getting request with notifications:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to get request'
+      error: error.message || "Failed to get request",
     });
   }
 };
@@ -1885,10 +2035,10 @@ exports.checkRequestNotificationStatus = async (req, res) => {
       data: status,
     });
   } catch (error) {
-    console.error('Error checking notification status:', error);
+    console.error("Error checking notification status:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to check notification status'
+      error: error.message || "Failed to check notification status",
     });
   }
 };
@@ -1904,42 +2054,42 @@ exports.acceptNotification = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'User not authenticated'
+        error: "User not authenticated",
       });
     }
 
     const notification = await RequestNotification.findByPk(notificationId);
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
-        error: 'Notification not found'
+        error: "Notification not found",
       });
     }
 
-    if (notification.status !== 'pending') {
+    if (notification.status !== "pending") {
       return res.status(400).json({
         success: false,
-        error: `Notification is already ${notification.status}`
+        error: `Notification is already ${notification.status}`,
       });
     }
 
     await notification.update({
-      status: 'accepted',
+      status: "accepted",
       responded_by: userId,
       responded_at: new Date(),
     });
 
     res.status(200).json({
       success: true,
-      message: 'Notification accepted successfully',
+      message: "Notification accepted successfully",
       data: notification,
     });
   } catch (error) {
-    console.error('Error accepting notification:', error);
+    console.error("Error accepting notification:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to accept notification'
+      error: error.message || "Failed to accept notification",
     });
   }
 };
@@ -1956,35 +2106,35 @@ exports.rejectNotification = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'User not authenticated'
+        error: "User not authenticated",
       });
     }
 
     if (!reason || reason.trim().length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'Rejection reason is required'
+        error: "Rejection reason is required",
       });
     }
 
     const notification = await RequestNotification.findByPk(notificationId);
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
-        error: 'Notification not found'
+        error: "Notification not found",
       });
     }
 
-    if (notification.status !== 'pending') {
+    if (notification.status !== "pending") {
       return res.status(400).json({
         success: false,
-        error: `Notification is already ${notification.status}`
+        error: `Notification is already ${notification.status}`,
       });
     }
 
     await notification.update({
-      status: 'rejected',
+      status: "rejected",
       rejected_reason: reason.trim(),
       responded_by: userId,
       responded_at: new Date(),
@@ -1992,14 +2142,14 @@ exports.rejectNotification = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Notification rejected',
+      message: "Notification rejected",
       data: notification,
     });
   } catch (error) {
-    console.error('Error rejecting notification:', error);
+    console.error("Error rejecting notification:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to reject notification'
+      error: error.message || "Failed to reject notification",
     });
   }
 };
@@ -2014,19 +2164,20 @@ exports.getRejectionReasons = async (req, res) => {
     const notifications = await RequestNotification.findAll({
       where: {
         request_id: requestId,
-        status: 'rejected',
+        status: "rejected",
       },
       include: [
-        { model: Group, as: 'group' },
-        { model: User, as: 'respondedByUser' },
+        { model: Group, as: "group" },
+        { model: User, as: "respondedByUser" },
       ],
     });
 
-    const reasons = notifications.map(n => ({
+    const reasons = notifications.map((n) => ({
       groupId: n.group_id,
-      groupName: n.group?.name || 'Unknown Group',
+      groupName: n.group?.name || "Unknown Group",
       reason: n.rejected_reason,
-      respondedBy: n.respondedByUser?.fullName || n.respondedByUser?.username || 'Unknown',
+      respondedBy:
+        n.respondedByUser?.fullName || n.respondedByUser?.username || "Unknown",
       respondedAt: n.responded_at,
     }));
 
@@ -2035,10 +2186,10 @@ exports.getRejectionReasons = async (req, res) => {
       data: reasons,
     });
   } catch (error) {
-    console.error('Error getting rejection reasons:', error);
+    console.error("Error getting rejection reasons:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to get rejection reasons'
+      error: error.message || "Failed to get rejection reasons",
     });
   }
 };
@@ -2051,77 +2202,79 @@ exports.exportRequests = async (req, res) => {
     const { status, storeId, userId } = req.query;
 
     const where = {};
-    if (status && status !== 'all') {
+    if (status && status !== "all") {
       where.status = status;
     }
 
-    if (storeId && storeId !== 'all') {
+    if (storeId && storeId !== "all") {
       where[Op.or] = [
         { askingStoreId: storeId },
-        { supplyingStoreId: storeId }
+        { supplyingStoreId: storeId },
       ];
     }
 
-    if (userId && userId !== 'all') {
+    if (userId && userId !== "all") {
       where.requestedById = userId;
     }
 
     const requests = await ItemRequest.findAll({
       where,
-      order: [['createdAt', 'DESC']],
+      order: [["createdAt", "DESC"]],
       include: [
         {
           model: ItemRequestDetail,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: Item,
-              as: 'item',
-              include: [
-                { model: UOM, as: 'uom' }
-              ]
-            }
-          ]
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
+            },
+          ],
         },
         {
           model: Store,
-          as: 'askingStore'
+          as: "askingStore",
         },
         {
           model: Store,
-          as: 'supplyingStore'
+          as: "supplyingStore",
         },
         {
           model: User,
-          as: 'requestedByUser',
-          attributes: ['userId', 'username', 'fullName', 'email']
+          as: "requestedByUser",
+          attributes: ["userId", "username", "fullName", "email"],
         },
       ],
     });
 
-    const exportData = requests.map(req => ({
-      'Request Code': req.requestCode,
-      'Asking Store': req.askingStore?.name || 'N/A',
-      'Supplying Store': req.supplyingStore?.name || 'N/A',
-      'Requested By': req.requestedByUser?.fullName || req.requestedByUser?.username || 'N/A',
-      'Requested By Email': req.requestedByUser?.email || 'N/A',
-      'Requested Date': req.requestedDate,
-      'Status': req.status,
-      'Items': req.items.map(item => 
-        `${item.item?.name || 'Unknown'} (${item.quantity} ${item.item?.uom?.code || 'Units'})`
-      ).join('; '),
-      'Remark': req.remark || ''
+    const exportData = requests.map((req) => ({
+      "Request Code": req.requestCode,
+      "Asking Store": req.askingStore?.name || "N/A",
+      "Supplying Store": req.supplyingStore?.name || "N/A",
+      "Requested By":
+        req.requestedByUser?.fullName || req.requestedByUser?.username || "N/A",
+      "Requested By Email": req.requestedByUser?.email || "N/A",
+      "Requested Date": req.requestedDate,
+      Status: req.status,
+      Items: req.items
+        .map(
+          (item) =>
+            `${item.item?.name || "Unknown"} (${item.quantity} ${item.item?.uom?.code || "Units"})`,
+        )
+        .join("; "),
+      Remark: req.remark || "",
     }));
 
     res.json({
       success: true,
-      data: exportData
+      data: exportData,
     });
   } catch (error) {
-    console.error('Export error:', error);
+    console.error("Export error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to export requests'
+      error: "Failed to export requests",
     });
   }
 };
@@ -2129,35 +2282,154 @@ exports.exportRequests = async (req, res) => {
 // ================================================================
 // 18. GET REQUEST STATISTICS
 // ================================================================
+
 exports.getStats = async (req, res) => {
   try {
-    const stats = await ItemRequest.findAll({
-      attributes: [
-        'status',
-        [db.sequelize.fn('COUNT', db.sequelize.col('id')), 'count'],
-      ],
-      group: ['status'],
+    // 🔥 Get the logged-in user
+    const currentUser = req.user;
+    const currentUserId = currentUser?.userId;
+    const currentUserRole = currentUser?.role;
+    const userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
+
+    console.log("🔍 Stats - Current user:", {
+      userId: currentUserId,
+      role: currentUserRole,
+      storeId: userStoreId,
     });
 
-    const total = await ItemRequest.count();
-    const pendingCount = await ItemRequest.count({ where: { status: 'pending' } });
-    const approvedCount = await ItemRequest.count({ where: { status: 'approved' } });
-    const rejectedCount = await ItemRequest.count({ where: { status: 'rejected' } });
-    const finalizedCount = await ItemRequest.count({ where: { status: 'finalized' } });
+    // ================================================================
+    // 🔥 BUILD WHERE CLAUSE - SAME AS getRequests
+    // ================================================================
+    let where = {};
 
+    // ================================================================
+    // ROLE-BASED FILTERS (EXACTLY like getRequests)
+    // ================================================================
+    
+    if (currentUserRole === "admin") {
+      console.log("👑 Admin user - showing all requests for stats");
+    } 
+    else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
+      if (userStoreId) {
+        where[Op.or] = [
+          { askingStoreId: userStoreId },
+          { supplyingStoreId: userStoreId },
+        ];
+        console.log(`📦 Store user (${currentUserRole}) - stats for store ${userStoreId}`);
+      } else {
+        if (currentUserId) {
+          where.requestedById = currentUserId;
+        }
+        console.log(`👤 Store user with no store - showing only their requests`);
+      }
+    } 
+    else if (currentUserRole === "checker" || currentUserRole === "finance") {
+      where.status = { [Op.in]: ["approved", "finalized"] };
+      if (userStoreId) {
+        where[Op.or] = [
+          { askingStoreId: userStoreId },
+          { supplyingStoreId: userStoreId },
+        ];
+      }
+      console.log(`📊 Checker/Finance user - showing approved/finalized requests`);
+    } 
+    else {
+      // 🔥 NON-STORE USER - shows only their own requests
+      if (currentUserId) {
+        where.requestedById = currentUserId;
+        console.log(`👤 Non-store user - showing only their requests (userId: ${currentUserId})`);
+      } else {
+        return res.json({
+          success: true,
+          data: {
+            total: 0,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            finalized: 0
+          }
+        });
+      }
+      
+      if (userStoreId) {
+        where[Op.or] = [
+          { requestedById: currentUserId },
+          { askingStoreId: userStoreId },
+          { supplyingStoreId: userStoreId },
+        ];
+        console.log(`📍 User also has store ${userStoreId} - showing store requests too`);
+      }
+    }
+
+    console.log("📋 Stats WHERE clause:", JSON.stringify(where, null, 2));
+
+    // ================================================================
+    // 🔥 COUNT REQUESTS BY STATUS
+    // ================================================================
+
+    const total = await ItemRequest.count({ where });
+
+    const pending = await ItemRequest.count({
+      where: { ...where, status: 'pending' }
+    });
+
+    const approved = await ItemRequest.count({
+      where: { ...where, status: 'approved' }
+    });
+
+    const rejected = await ItemRequest.count({
+      where: { ...where, status: 'rejected' }
+    });
+
+    const finalized = await ItemRequest.count({
+      where: { ...where, status: 'finalized' }
+    });
+
+    // ================================================================
+    // 🔥 DETAILED BREAKDOWN - FIXED: Use correct column name
+    // ================================================================
+    // 🔥 FIX: Use 'id' instead of 'requestId' (or use '*' for COUNT)
+    const statusBreakdown = await ItemRequest.findAll({
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']  // ✅ Use 'id' or '*' 
+      ],
+      where,
+      group: ['status']
+    });
+
+    console.log('📊 Stats result:', {
+      total,
+      pending,
+      approved,
+      rejected,
+      finalized,
+      breakdown: statusBreakdown.map(s => ({
+        status: s.status,
+        count: parseInt(s.dataValues.count)
+      }))
+    });
+
+    // ================================================================
+    // 🔥 RETURN RESPONSE
+    // ================================================================
     res.json({
       success: true,
       data: {
         total,
-        pending: pendingCount,
-        approved: approvedCount,
-        rejected: rejectedCount,
-        finalized: finalizedCount,
-        byStatus: stats
+        pending,
+        approved,
+        rejected,
+        finalized,
+        breakdown: statusBreakdown.map(s => ({
+          status: s.status,
+          count: parseInt(s.dataValues.count)
+        }))
       }
     });
+
   } catch (error) {
-    console.error('Get stats error:', error);
+    console.error('❌ Get stats error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to get statistics'
@@ -2171,20 +2443,20 @@ exports.getStats = async (req, res) => {
 exports.getActiveStores = async (req, res) => {
   try {
     const stores = await Store.findAll({
-      where: { status: 'Active' },
-      attributes: ['storeId', 'code', 'name', 'location', 'status'],
-      order: [['name', 'ASC']]
+      where: { status: "Active" },
+      attributes: ["storeId", "code", "name", "location", "status"],
+      order: [["name", "ASC"]],
     });
 
     res.json({
       success: true,
-      data: stores
+      data: stores,
     });
   } catch (error) {
-    console.error('Get active stores error:', error);
+    console.error("Get active stores error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch active stores'
+      error: "Failed to fetch active stores",
     });
   }
 };
@@ -2195,27 +2467,36 @@ exports.getActiveStores = async (req, res) => {
 exports.getActiveItems = async (req, res) => {
   try {
     const items = await Item.findAll({
-      where: { status: 'Active' },
-      attributes: ['itemId', 'code', 'name', 'standardName', 'brand', 'model', 'uomId', 'specText'],
+      where: { status: "Active" },
+      attributes: [
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "brand",
+        "model",
+        "uomId",
+        "specText",
+      ],
       include: [
         {
           model: UOM,
-          as: 'uom',
-          attributes: ['uomId', 'code', 'name']
-        }
+          as: "uom",
+          attributes: ["uomId", "code", "name"],
+        },
       ],
-      order: [['name', 'ASC']]
+      order: [["name", "ASC"]],
     });
 
     res.json({
       success: true,
-      data: items
+      data: items,
     });
   } catch (error) {
-    console.error('Get active items error:', error);
+    console.error("Get active items error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch active items'
+      error: "Failed to fetch active items",
     });
   }
 };
@@ -2236,7 +2517,7 @@ exports.getGroupNotifications = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: 'User not authenticated'
+        error: "User not authenticated",
       });
     }
 
@@ -2251,7 +2532,7 @@ exports.getGroupNotifications = async (req, res) => {
     if (!storeGroupRelation) {
       return res.status(404).json({
         success: false,
-        error: 'Group not found in this store'
+        error: "Group not found in this store",
       });
     }
 
@@ -2261,7 +2542,7 @@ exports.getGroupNotifications = async (req, res) => {
       store_id: parseInt(storeId),
     };
 
-    if (status && status !== 'all') {
+    if (status && status !== "all") {
       whereClause.status = status;
     }
 
@@ -2276,55 +2557,53 @@ exports.getGroupNotifications = async (req, res) => {
       include: [
         {
           model: ItemRequest,
-          as: 'request',
+          as: "request",
           include: [
-            { 
-              model: Store, 
-              as: 'askingStore',
-              attributes: ['storeId', 'name', 'code', 'location']
+            {
+              model: Store,
+              as: "askingStore",
+              attributes: ["storeId", "name", "code", "location"],
             },
-            { 
-              model: Store, 
-              as: 'supplyingStore',
-              attributes: ['storeId', 'name', 'code', 'location']
+            {
+              model: Store,
+              as: "supplyingStore",
+              attributes: ["storeId", "name", "code", "location"],
             },
-            { 
-              model: User, 
-              as: 'requestedByUser',
-              attributes: ['userId', 'username', 'fullName', 'email']
+            {
+              model: User,
+              as: "requestedByUser",
+              attributes: ["userId", "username", "fullName", "email"],
             },
-            { 
-              model: ItemRequestDetail, 
-              as: 'items',
+            {
+              model: ItemRequestDetail,
+              as: "items",
               include: [
                 {
                   model: Item,
-                  as: 'item',
-                  include: [
-                    { model: UOM, as: 'uom' }
-                  ]
-                }
-              ]
-            }
-          ]
+                  as: "item",
+                  include: [{ model: UOM, as: "uom" }],
+                },
+              ],
+            },
+          ],
         },
-        { 
-          model: Group, 
-          as: 'group',
-          attributes: ['id', 'name', 'code']
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
         },
-        { 
-          model: Store, 
-          as: 'store',
-          attributes: ['storeId', 'name', 'code']
+        {
+          model: Store,
+          as: "store",
+          attributes: ["storeId", "name", "code"],
         },
-        { 
-          model: User, 
-          as: 'respondedByUser',
-          attributes: ['userId', 'username', 'fullName']
-        }
+        {
+          model: User,
+          as: "respondedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
       ],
-      order: [['created_at', 'DESC']],
+      order: [["created_at", "DESC"]],
       limit: parseInt(limit),
       offset: (parseInt(page) - 1) * parseInt(limit),
     });
@@ -2332,9 +2611,15 @@ exports.getGroupNotifications = async (req, res) => {
     // 🔥 Get summary counts (without pagination)
     const summary = {
       total: totalCount,
-      pending: await RequestNotification.count({ where: { ...whereClause, status: 'pending' } }),
-      accepted: await RequestNotification.count({ where: { ...whereClause, status: 'accepted' } }),
-      rejected: await RequestNotification.count({ where: { ...whereClause, status: 'rejected' } }),
+      pending: await RequestNotification.count({
+        where: { ...whereClause, status: "pending" },
+      }),
+      accepted: await RequestNotification.count({
+        where: { ...whereClause, status: "accepted" },
+      }),
+      rejected: await RequestNotification.count({
+        where: { ...whereClause, status: "rejected" },
+      }),
     };
 
     res.json({
@@ -2356,12 +2641,11 @@ exports.getGroupNotifications = async (req, res) => {
         },
       },
     });
-
   } catch (error) {
-    console.error('❌ Error getting group notifications:', error);
+    console.error("❌ Error getting group notifications:", error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to get notifications'
+      error: error.message || "Failed to get notifications",
     });
   }
 };

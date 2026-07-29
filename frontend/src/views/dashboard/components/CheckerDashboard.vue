@@ -1,514 +1,678 @@
+<!-- views/dashboard/AnalyticsDashboard.vue -->
 <template>
-  <div class="checker-dashboard">
-    <!-- Header -->
+  <div class="analytics-dashboard">
+    <!-- ==================== HEADER ==================== -->
     <header class="dashboard-header">
       <div class="header-left">
         <div class="logo-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
+            <path d="M12 2v20M17 7l-5-5-5 5M7 17l5 5 5-5" />
+            <rect x="2" y="7" width="20" height="10" rx="1" />
           </svg>
         </div>
         <div>
-          <h1>🔍 Checker Dashboard</h1>
-          <p>Inventory Data Quality & Balance Reconciliation</p>
+          <h1>📊 Analytics Dashboard</h1>
+          <p>Inventory & Audit Performance Overview</p>
         </div>
       </div>
       <div class="header-right">
         <div class="date-display">
           <span class="date-icon">📅</span>
-          <span class="date-text">{{ formatDate(new Date()) }}</span>
+          <span class="date-text">{{ currentDate }}</span>
         </div>
         <button class="refresh-btn" @click="refreshData" :disabled="loading">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
+          <span v-else class="spinner-small"></span>
+          <span class="btn-text">{{ loading ? 'Loading...' : 'Refresh' }}</span>
         </button>
       </div>
     </header>
 
-    <!-- Loading State -->
+    <!-- ==================== LOADING ==================== -->
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <p>Loading checker data...</p>
+      <p>Loading analytics data...</p>
     </div>
 
     <template v-else>
-      <!-- ==================== SECTION 1: DATA QUALITY ==================== -->
+      <!-- ============================================================ -->
+      <!-- SECTION 1: INVENTORY SUMMARY                                 -->
+      <!-- ============================================================ -->
       <div class="section-title">
-        <h2>📊 Inventory Data Quality</h2>
-        <span class="section-subtitle">Check for missing or incomplete item data</span>
+        <h2>📦 Inventory Analysis</h2>
+        <span class="section-subtitle">Item master data health check</span>
       </div>
 
-      <!-- Data Quality Summary Cards -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-value">{{ dataQuality.totalItems }}</div>
-          <div class="stat-label">Total Items</div>
+      <div class="stats-grid inventory-grid">
+        <div class="stat-card primary">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">📦</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.totalItems) }}</div>
+            <div class="stat-label">Total Items</div>
+            <div class="stat-sub">All items in system</div>
+          </div>
         </div>
         <div class="stat-card success">
-          <div class="stat-value">{{ dataQuality.completeItems }}</div>
-          <div class="stat-label">Complete Data</div>
-          <div class="stat-sub">✅ {{ dataQuality.completePercentage }}%</div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-value">{{ dataQuality.partialItems }}</div>
-          <div class="stat-label">Partial Data</div>
-          <div class="stat-sub">⚠️ {{ dataQuality.partialPercentage }}%</div>
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">✅</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.activeItems) }}</div>
+            <div class="stat-label">Active Items</div>
+            <div class="stat-sub">{{ getPercent(inventoryStats.activeItems, inventoryStats.totalItems) }}% of total</div>
+          </div>
         </div>
         <div class="stat-card danger">
-          <div class="stat-value">{{ dataQuality.missingItems }}</div>
-          <div class="stat-label">Missing Data</div>
-          <div class="stat-sub">❌ {{ dataQuality.missingPercentage }}%</div>
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">⏸️</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.inactiveItems) }}</div>
+            <div class="stat-label">Inactive Items</div>
+            <div class="stat-sub">{{ getPercent(inventoryStats.inactiveItems, inventoryStats.totalItems) }}% of total</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ dataQuality.dataCompleteness }}%</div>
-          <div class="stat-label">Data Completeness</div>
-          <div class="stat-sub">📈 Overall quality score</div>
+        <div class="stat-card warning">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">🔄</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.missingConversion) }}</div>
+            <div class="stat-label">Missing Conversion</div>
+            <div class="stat-sub">No conversion UOM or value</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ dataQuality.categoriesWithIssues }}</div>
-          <div class="stat-label">Categories with Issues</div>
+        <div class="stat-card danger">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">💰</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.missingCost) }}</div>
+            <div class="stat-label">Missing Cost</div>
+            <div class="stat-sub">Zero or null cost price</div>
+          </div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">📊</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(inventoryStats.healthyItems) }}</div>
+            <div class="stat-label">Healthy Items</div>
+            <div class="stat-sub">Complete data (Active + Cost + Conversion)</div>
+          </div>
         </div>
       </div>
 
-      <!-- Data Quality Breakdown -->
-      <div class="two-column-layout">
-        <div class="left-column">
-          <!-- Missing Fields Overview -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>🔍 Missing Fields Overview</h3>
-              <span class="badge danger">{{ totalMissingFields }}</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="field in missingFields" :key="field.name" class="missing-field-item">
-                  <div class="field-icon">{{ field.icon }}</div>
-                  <div class="field-info">
-                    <div class="field-name">{{ field.name }}</div>
-                    <div class="field-count">{{ field.count }} items missing</div>
-                  </div>
-                  <div class="field-bar">
-                    <div class="field-fill" :style="{ width: field.percentage + '%', background: field.color }"></div>
-                  </div>
-                  <div class="field-percent">{{ field.percentage }}%</div>
-                </div>
-              </div>
-            </div>
+      <!-- Inventory Charts -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-header-title">📊 Item Status Distribution</span>
           </div>
-
-          <!-- Items with Most Missing Fields -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>🚨 Items with Most Missing Fields</h3>
-              <span class="badge danger">{{ itemsWithMostIssues.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="(item, idx) in itemsWithMostIssues" :key="item.id" class="list-item issue-item">
-                  <div class="top-rank">{{ idx + 1 }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }} • {{ item.category }}</div>
-                    <div class="missing-fields-list">
-                      <span v-for="field in item.missingFields" :key="field" class="missing-tag">
-                        {{ field }}
-                      </span>
-                    </div>
+          <div class="chart-body">
+            <div class="bar-chart">
+              <div class="bar-item" v-for="item in statusChartData" :key="item.label">
+                <div class="bar-label">{{ item.label }}</div>
+                <div class="bar-track">
+                  <div class="bar-fill" :style="{ width: item.percent + '%', background: item.color }">
+                    <span class="bar-value">{{ item.value }}</span>
                   </div>
-                  <div class="missing-count">{{ item.missingCount }} missing</div>
                 </div>
+                <div class="bar-percent">{{ item.percent }}%</div>
               </div>
-              <div v-if="itemsWithMostIssues.length > 5" class="scroll-indicator">▼ Scroll for more</div>
             </div>
           </div>
         </div>
 
-        <div class="right-column">
-          <!-- Data Quality by Category -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>📂 Data Quality by Category</h3>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="cat in categoryQuality" :key="cat.name" class="category-quality-item">
-                  <div class="category-quality-name">{{ cat.name }}</div>
-                  <div class="category-quality-bar">
-                    <div class="category-quality-fill" :style="{ width: cat.completeness + '%', background: cat.color }"></div>
-                  </div>
-                  <div class="category-quality-stats">
-                    <span class="complete">{{ cat.complete }}</span>
-                    <span class="partial">{{ cat.partial }}</span>
-                    <span class="missing">{{ cat.missing }}</span>
-                  </div>
-                  <div class="category-quality-score">{{ cat.completeness }}%</div>
-                </div>
-              </div>
-            </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-header-title">📋 Data Completeness</span>
           </div>
-
-          <!-- Items with Missing Data List -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>📋 Items with Missing Data</h3>
-              <span class="badge warning">{{ itemsWithMissingData.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div v-if="itemsWithMissingData.length === 0" class="empty-state-small">✅ All items have complete data</div>
-              <div v-else class="item-list">
-                <div v-for="item in itemsWithMissingData" :key="item.id" class="list-item missing-item">
-                  <div class="list-avatar missing-avatar">{{ getInitials(item.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }}</div>
-                    <div class="missing-fields">
-                      <span v-for="field in item.missingFields" :key="field" class="missing-badge">
-                        ❌ {{ field }}
-                      </span>
-                    </div>
-                  </div>
-                  <button class="btn-small warning" @click="fixItem(item)">Fix</button>
+          <div class="chart-body">
+            <div class="donut-container">
+              <div class="donut-chart">
+                <svg viewBox="0 0 200 200" class="donut-svg">
+                  <circle cx="100" cy="100" r="80" fill="none" stroke="#e2e8f0" stroke-width="35" />
+                  <circle 
+                    v-for="(segment, index) in completenessSegments" 
+                    :key="index"
+                    cx="100" 
+                    cy="100" 
+                    r="80" 
+                    fill="none" 
+                    :stroke="segment.color" 
+                    stroke-width="35"
+                    :stroke-dasharray="`${segment.circumference} ${totalCircumference}`"
+                    :stroke-dashoffset="segment.offset"
+                    transform="rotate(-90 100 100)"
+                    class="donut-segment"
+                  />
+                  <text x="100" y="95" text-anchor="middle" font-size="18" font-weight="700" fill="#1e293b">
+                    {{ inventoryStats.healthyItems }}
+                  </text>
+                  <text x="100" y="115" text-anchor="middle" font-size="10" fill="#94a3b8">
+                    Healthy Items
+                  </text>
+                </svg>
+              </div>
+              <div class="donut-legend">
+                <div v-for="item in completenessLegend" :key="item.label" class="legend-item">
+                  <span class="legend-color" :style="{ background: item.color }"></span>
+                  <span class="legend-label">{{ item.label }}</span>
+                  <span class="legend-value">{{ item.value }}</span>
+                  <span class="legend-percent">{{ item.percent }}%</span>
                 </div>
               </div>
-              <div v-if="itemsWithMissingData.length > 5" class="scroll-indicator">▼ Scroll for more</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- ==================== SECTION 2: BALANCE RECONCILIATION ==================== -->
-      <div class="section-title">
-        <h2>⚖️ Balance Reconciliation</h2>
-        <span class="section-subtitle">Compare balances across stores and groups</span>
+      <!-- ============================================================ -->
+      <!-- SECTION 2: AUDIT SUMMARY                                     -->
+      <!-- ============================================================ -->
+      <div class="section-title" style="margin-top: 32px;">
+        <h2>🔍 Audit Analysis</h2>
+        <span class="section-subtitle">Store balance reconciliation status</span>
       </div>
 
-      <!-- Balance Summary Cards -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-value">{{ reconciliation.totalProducts }}</div>
-          <div class="stat-label">Total Products</div>
+      <div class="stats-grid audit-grid">
+        <div class="stat-card info">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">🏪</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.totalStores) }}</div>
+            <div class="stat-label">Total Stores</div>
+            <div class="stat-sub">Active stores</div>
+          </div>
         </div>
         <div class="stat-card success">
-          <div class="stat-value">{{ reconciliation.matched }}</div>
-          <div class="stat-label">✅ Matched</div>
-          <div class="stat-sub">{{ reconciliation.matchedPercentage }}% of total</div>
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">✅</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.matched) }}</div>
+            <div class="stat-label">Matched</div>
+            <div class="stat-sub">{{ getPercent(auditStats.matched, auditStats.totalItems) }}% of items</div>
+          </div>
         </div>
         <div class="stat-card warning">
-          <div class="stat-value">{{ reconciliation.outlier }}</div>
-          <div class="stat-label">⚠️ Outlier</div>
-          <div class="stat-sub">{{ reconciliation.outlierPercentage }}% of total</div>
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">⚠️</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.outliers) }}</div>
+            <div class="stat-label">Outliers</div>
+            <div class="stat-sub">{{ getPercent(auditStats.outliers, auditStats.totalItems) }}% of items</div>
+          </div>
         </div>
         <div class="stat-card danger">
-          <div class="stat-value">{{ reconciliation.conflict }}</div>
-          <div class="stat-label">🚨 Conflict</div>
-          <div class="stat-sub">{{ reconciliation.conflictPercentage }}% of total</div>
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">🚨</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.conflicts) }}</div>
+            <div class="stat-label">Conflicts</div>
+            <div class="stat-sub">{{ getPercent(auditStats.conflicts, auditStats.totalItems) }}% of items</div>
+          </div>
         </div>
-        <div class="stat-card critical">
-          <div class="stat-value">{{ reconciliation.dateDiff }}</div>
-          <div class="stat-label">📅 Date Diff</div>
-          <div class="stat-sub">Different last transaction dates</div>
+        <div class="stat-card purple">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">📅</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.dateDiffs) }}</div>
+            <div class="stat-label">Date Differences</div>
+            <div class="stat-sub">{{ getPercent(auditStats.dateDiffs, auditStats.totalItems) }}% of items</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ reconciliation.totalGroups }}</div>
-          <div class="stat-label">Total Groups</div>
-          <div class="stat-sub">{{ reconciliation.totalStores }} stores</div>
+        <div class="stat-card primary">
+          <div class="stat-icon-wrapper">
+            <span class="stat-icon">📊</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ formatNumber(auditStats.totalItems) }}</div>
+            <div class="stat-label">Total Items Audited</div>
+            <div class="stat-sub">Across all stores</div>
+          </div>
         </div>
       </div>
 
-      <!-- Balance Comparison Details -->
-      <div class="two-column-layout">
-        <div class="left-column">
-          <!-- Conflict Details -->
-          <div class="section-card conflict-card">
-            <div class="section-header">
-              <h3>🚨 Conflicts</h3>
-              <span class="badge danger">{{ conflictItems.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div v-if="conflictItems.length === 0" class="empty-state-small">✅ No conflicts detected</div>
-              <div v-else class="item-list">
-                <div v-for="item in conflictItems" :key="item.id" class="list-item conflict-item">
-                  <div class="list-avatar conflict-avatar">{{ getInitials(item.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }} • {{ item.category }}</div>
-                    <div class="conflict-details">
-                      <span v-for="(balance, group) in item.balances" :key="group" class="balance-diff">
-                        {{ group }}: {{ balance }}
-                      </span>
-                    </div>
-                  </div>
-                  <button class="btn-small warning" @click="viewConflict(item)">View</button>
-                </div>
-              </div>
-              <div v-if="conflictItems.length > 5" class="scroll-indicator">▼ Scroll for more</div>
-            </div>
+      <!-- Audit Charts -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-header-title">🏪 Store-wise Status</span>
           </div>
-
-          <!-- Date Diff Items -->
-          <div class="section-card date-diff-card">
-            <div class="section-header">
-              <h3>📅 Date Differences</h3>
-              <span class="badge critical">{{ dateDiffItems.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div v-if="dateDiffItems.length === 0" class="empty-state-small">✅ No date differences</div>
-              <div v-else class="item-list">
-                <div v-for="item in dateDiffItems" :key="item.id" class="list-item date-diff-item">
-                  <div class="list-avatar date-diff-avatar">{{ getInitials(item.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }} • {{ item.category }}</div>
-                    <div class="date-diff-details">
-                      <span v-for="(date, group) in item.dates" :key="group" class="date-group">
-                        {{ group }}: {{ formatDate(date) }}
-                      </span>
+          <div class="chart-body">
+            <div class="store-chart">
+              <div v-for="store in storeStatusData" :key="store.name" class="store-bar-row">
+                <div class="store-bar-info">
+                  <span class="store-name">{{ store.name }}</span>
+                  <span class="store-total">{{ store.total }} items</span>
+                </div>
+                <div class="store-bar-track">
+                  <div class="store-bar-fill" :style="{ width: store.percent + '%' }">
+                    <div class="store-bar-segments">
+                      <div 
+                        v-for="(seg, idx) in store.segments" 
+                        :key="idx"
+                        class="segment"
+                        :style="{ 
+                          width: seg.percent + '%', 
+                          background: seg.color 
+                        }"
+                        :title="seg.label + ': ' + seg.count"
+                      ></div>
                     </div>
                   </div>
-                  <div class="date-diff-badge">{{ item.diffDays }} days apart</div>
+                </div>
+                <div class="store-bar-legend">
+                  <span v-for="(seg, idx) in store.segments" :key="idx" class="legend-dot" :style="{ background: seg.color }">
+                    {{ seg.label }}
+                  </span>
                 </div>
               </div>
-              <div v-if="dateDiffItems.length > 5" class="scroll-indicator">▼ Scroll for more</div>
             </div>
           </div>
         </div>
 
-        <div class="right-column">
-          <!-- Outlier Items -->
-          <div class="section-card outlier-card">
-            <div class="section-header">
-              <h3>⚠️ Outliers</h3>
-              <span class="badge warning">{{ outlierItems.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div v-if="outlierItems.length === 0" class="empty-state-small">✅ No outliers detected</div>
-              <div v-else class="item-list">
-                <div v-for="item in outlierItems" :key="item.id" class="list-item outlier-item">
-                  <div class="list-avatar outlier-avatar">{{ getInitials(item.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }} • {{ item.category }}</div>
-                    <div class="outlier-details">
-                      <span v-for="(balance, group) in item.balances" :key="group" class="balance-outlier">
-                        {{ group }}: {{ balance }}
-                      </span>
-                    </div>
-                  </div>
-                  <button class="btn-small info" @click="viewOutlier(item)">View</button>
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="chart-header-title">📊 Audit Status Distribution</span>
+          </div>
+          <div class="chart-body">
+            <div class="audit-pie-container">
+              <div class="audit-pie">
+                <svg viewBox="0 0 200 200" class="pie-svg">
+                  <circle cx="100" cy="100" r="80" fill="none" stroke="#e2e8f0" stroke-width="35" />
+                  <circle 
+                    v-for="(segment, index) in auditPieSegments" 
+                    :key="index"
+                    cx="100" 
+                    cy="100" 
+                    r="80" 
+                    fill="none" 
+                    :stroke="segment.color" 
+                    stroke-width="35"
+                    :stroke-dasharray="`${segment.circumference} ${totalCircumference}`"
+                    :stroke-dashoffset="segment.offset"
+                    transform="rotate(-90 100 100)"
+                    class="pie-segment"
+                  />
+                  <text x="100" y="95" text-anchor="middle" font-size="16" font-weight="700" fill="#1e293b">
+                    {{ auditStats.totalItems }}
+                  </text>
+                  <text x="100" y="115" text-anchor="middle" font-size="10" fill="#94a3b8">
+                    Total Items
+                  </text>
+                </svg>
+              </div>
+              <div class="audit-pie-legend">
+                <div v-for="item in auditPieLegend" :key="item.label" class="legend-item">
+                  <span class="legend-color" :style="{ background: item.color }"></span>
+                  <span class="legend-label">{{ item.label }}</span>
+                  <span class="legend-value">{{ item.value }}</span>
+                  <span class="legend-percent">{{ item.percent }}%</span>
                 </div>
               </div>
-              <div v-if="outlierItems.length > 5" class="scroll-indicator">▼ Scroll for more</div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <!-- Matched Items Summary -->
-          <div class="section-card matched-card">
-            <div class="section-header">
-              <h3>✅ Matched Items</h3>
-              <span class="badge success">{{ matchedItems.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div v-if="matchedItems.length === 0" class="empty-state-small">No matched items</div>
-              <div v-else class="item-list">
-                <div v-for="item in matchedItems.slice(0, 10)" :key="item.id" class="list-item matched-item">
-                  <div class="list-avatar matched-avatar">{{ getInitials(item.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ item.name }}</div>
-                    <div class="list-detail">{{ item.code }} • {{ item.category }}</div>
-                    <div class="matched-balance">✅ All groups match: {{ item.commonBalance }}</div>
+      <!-- ============================================================ -->
+      <!-- SECTION 3: STORE COMPARISON TABLE                           -->
+      <!-- ============================================================ -->
+      <div class="section-title">
+        <div class="section-title-left">
+          <h2>📋 Store Comparison</h2>
+          <span class="section-subtitle">Detailed breakdown by store</span>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="table-container">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Store Name</th>
+                <th>Total Items</th>
+                <th>✅ Matched</th>
+                <th>⚠️ Outliers</th>
+                <th>🚨 Conflicts</th>
+                <th>📅 Date Diff</th>
+                <th>Health Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="store in storeComparison" :key="store.name">
+                <td class="store-cell">{{ store.name }}</td>
+                <td class="text-center">{{ formatNumber(store.total) }}</td>
+                <td class="text-center success-text">{{ formatNumber(store.matched) }}</td>
+                <td class="text-center warning-text">{{ formatNumber(store.outliers) }}</td>
+                <td class="text-center danger-text">{{ formatNumber(store.conflicts) }}</td>
+                <td class="text-center purple-text">{{ formatNumber(store.dateDiffs) }}</td>
+                <td>
+                  <div class="health-score">
+                    <div class="score-bar">
+                      <div class="score-fill" :style="{ width: store.health + '%', background: getHealthColor(store.health) }"></div>
+                    </div>
+                    <span class="score-value">{{ store.health }}%</span>
                   </div>
-                </div>
-              </div>
-              <div v-if="matchedItems.length > 10" class="scroll-indicator">▼ Scroll for more ({{ matchedItems.length - 10 }} more)</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- SECTION 4: TOP ISSUES                                        -->
+      <!-- ============================================================ -->
+      <div class="section-title">
+        <div class="section-title-left">
+          <h2>⚠️ Top Issues</h2>
+          <span class="section-subtitle">Items needing immediate attention</span>
+        </div>
+      </div>
+
+      <div class="issues-grid">
+        <div class="section-card">
+          <div class="section-header">
+            <h3>🚨 Top Conflicts</h3>
+            <span class="badge danger">{{ topConflicts.length }}</span>
+          </div>
+          <div class="issues-list">
+            <div v-if="topConflicts.length === 0" class="empty-state-small">✅ No conflicts</div>
+            <div v-for="(item, index) in topConflicts" :key="index" class="issue-item conflict">
+              <span class="issue-rank">{{ index + 1 }}</span>
+              <span class="issue-code">{{ item.code }}</span>
+              <span class="issue-name">{{ item.name }}</span>
+              <span class="issue-store">{{ item.store }}</span>
+              <span class="issue-value">Diff: {{ item.diff }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h3>⚠️ Top Outliers</h3>
+            <span class="badge warning">{{ topOutliers.length }}</span>
+          </div>
+          <div class="issues-list">
+            <div v-if="topOutliers.length === 0" class="empty-state-small">✅ No outliers</div>
+            <div v-for="(item, index) in topOutliers" :key="index" class="issue-item outlier">
+              <span class="issue-rank">{{ index + 1 }}</span>
+              <span class="issue-code">{{ item.code }}</span>
+              <span class="issue-name">{{ item.name }}</span>
+              <span class="issue-store">{{ item.store }}</span>
+              <span class="issue-value">Diff: {{ item.diff }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h3>📅 Date Differences</h3>
+            <span class="badge purple">{{ topDateDiffs.length }}</span>
+          </div>
+          <div class="issues-list">
+            <div v-if="topDateDiffs.length === 0" class="empty-state-small">✅ No date diffs</div>
+            <div v-for="(item, index) in topDateDiffs" :key="index" class="issue-item date-diff">
+              <span class="issue-rank">{{ index + 1 }}</span>
+              <span class="issue-code">{{ item.code }}</span>
+              <span class="issue-name">{{ item.name }}</span>
+              <span class="issue-store">{{ item.store }}</span>
+              <span class="issue-value">{{ item.days }} days</span>
             </div>
           </div>
         </div>
       </div>
     </template>
 
-    <!-- Toast -->
+    <!-- ==================== TOAST ==================== -->
     <div v-if="showToast" class="toast" :class="toastType">
-      <span class="toast-icon">{{ toastIcon }}</span>
-      <span class="toast-message">{{ toastMessage }}</span>
+      <span>{{ toastMessage }}</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
 
-const router = useRouter()
+// ================================================================
+// STATE
+// ================================================================
 
-// State
 const loading = ref(false)
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
-const toastIcon = ref('✅')
 
 // ================================================================
-// DATA QUALITY
+// DEMO DATA
 // ================================================================
 
-const dataQuality = ref({
-  totalItems: 284,
-  completeItems: 156,
-  completePercentage: 55,
-  partialItems: 89,
-  partialPercentage: 31,
-  missingItems: 39,
-  missingPercentage: 14,
-  dataCompleteness: 78,
-  categoriesWithIssues: 8
+// Inventory Stats
+const inventoryStats = ref({
+  totalItems: 2136,
+  activeItems: 1958,
+  inactiveItems: 178,
+  missingConversion: 171,
+  missingCost: 138,
+  healthyItems: 1649
 })
 
-const totalMissingFields = ref(142)
-
-const missingFields = ref([
-  { name: 'Brand', icon: '🏷️', count: 45, percentage: 16, color: '#ef4444' },
-  { name: 'Model', icon: '📱', count: 38, percentage: 13, color: '#f59e0b' },
-  { name: 'Spec Text', icon: '📝', count: 32, percentage: 11, color: '#8b5cf6' },
-  { name: 'Conversion Value', icon: '🔄', count: 28, percentage: 10, color: '#3b82f6' },
-  { name: 'Conversion UOM', icon: '📦', count: 24, percentage: 8, color: '#ec4899' },
-  { name: 'Cost Price', icon: '💰', count: 18, percentage: 6, color: '#10b981' },
-  { name: 'Barcode', icon: '📊', count: 12, percentage: 4, color: '#6366f1' }
-])
-
-const itemsWithMostIssues = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', category: 'Paint', missingFields: ['Brand', 'Model', 'Spec Text', 'Cost Price'], missingCount: 4 },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', category: 'Lubricants', missingFields: ['Brand', 'Conversion UOM', 'Barcode'], missingCount: 3 },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', category: 'Raw Materials', missingFields: ['Model', 'Spec Text', 'Conversion Value'], missingCount: 3 },
-  { id: 4, name: 'Welding Rods', code: 'SDT000045', category: 'Tools', missingFields: ['Brand', 'Cost Price'], missingCount: 2 },
-  { id: 5, name: 'Paint Brushes', code: 'SDT000067', category: 'Tools', missingFields: ['Model', 'Spec Text'], missingCount: 2 }
-])
-
-const categoryQuality = ref([
-  { name: 'Paint', complete: 45, partial: 12, missing: 3, completeness: 75, color: '#3b82f6' },
-  { name: 'Raw Materials', complete: 28, partial: 15, missing: 5, completeness: 58, color: '#10b981' },
-  { name: 'Tools', complete: 32, partial: 8, missing: 2, completeness: 76, color: '#f59e0b' },
-  { name: 'Lubricants', complete: 18, partial: 8, missing: 2, completeness: 64, color: '#8b5cf6' },
-  { name: 'Chemicals', complete: 12, partial: 6, missing: 6, completeness: 50, color: '#ef4444' },
-  { name: 'Supplies', complete: 21, partial: 1, missing: 0, completeness: 95, color: '#ec4899' }
-])
-
-const itemsWithMissingData = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', missingFields: ['Brand', 'Model', 'Spec Text', 'Cost Price'] },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', missingFields: ['Brand', 'Conversion UOM', 'Barcode'] },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', missingFields: ['Model', 'Spec Text', 'Conversion Value'] },
-  { id: 4, name: 'Welding Rods', code: 'SDT000045', missingFields: ['Brand', 'Cost Price'] },
-  { id: 5, name: 'Paint Brushes', code: 'SDT000067', missingFields: ['Model', 'Spec Text'] }
-])
-
-// ================================================================
-// BALANCE RECONCILIATION
-// ================================================================
-
-const reconciliation = ref({
-  totalProducts: 284,
-  matched: 156,
-  outlier: 89,
-  conflict: 24,
-  dateDiff: 15,
-  matchedPercentage: 55,
-  outlierPercentage: 31,
-  conflictPercentage: 8,
-  dateDiffPercentage: 5,
-  totalGroups: 8,
-  totalStores: 5
+// Audit Stats
+const auditStats = ref({
+  totalStores: 6,
+  totalItems: 2136,
+  matched: 1859,
+  outliers: 127,
+  conflicts: 4,
+  dateDiffs: 146
 })
 
-const conflictItems = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', category: 'Paint', balances: { 'IT': 5, 'Storekeeper': 20, 'Finance': 15 } },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', category: 'Lubricants', balances: { 'IT': 8, 'Storekeeper': 25, 'Operations': 10 } },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', category: 'Raw Materials', balances: { 'IT': 12, 'Storekeeper': 30, 'Sales': 5 } }
+// Store Comparison Data
+const storeComparison = ref([
+  { name: 'MainStore_1_yeshi', total: 1859, matched: 1723, outliers: 116, conflicts: 2, dateDiffs: 18 },
+  { name: 'MainStore_3', total: 116, matched: 89, outliers: 11, conflicts: 1, dateDiffs: 15 },
+  { name: 'Mainstore_2_DULENTY_store _1', total: 126, matched: 47, outliers: 0, conflicts: 1, dateDiffs: 78 },
+  { name: 'MainStore_1_Ground', total: 63, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 63 },
+  { name: 'MainStore_1_Dulenty', total: 2, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 2 },
+  { name: 'MainStore_1_Mekanisa', total: 3, matched: 0, outliers: 0, conflicts: 0, dateDiffs: 3 }
 ])
 
-const dateDiffItems = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', category: 'Paint', dates: { 'IT': '2026-07-18', 'Storekeeper': '2026-07-19' }, diffDays: 1 },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', category: 'Lubricants', dates: { 'IT': '2026-07-17', 'Storekeeper': '2026-07-19' }, diffDays: 2 },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', category: 'Raw Materials', dates: { 'IT': '2026-07-18', 'Storekeeper': '2026-07-20' }, diffDays: 2 }
+// Top Issues
+const topConflicts = ref([
+  { code: 'SDT001031', name: '10 Channel Mixer Pro', store: 'MainStore_1_yeshi', diff: 5 },
+  { code: 'SDT001032', name: 'HDMI Splitter 4K', store: 'MainStore_1_yeshi', diff: 3 },
+  { code: 'STORE3-003', name: 'Power Adapter 12V', store: 'MainStore_3', diff: 3 }
 ])
 
-const outlierItems = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', category: 'Paint', balances: { 'IT': 5, 'Storekeeper': 20, 'Finance': 15 } },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', category: 'Lubricants', balances: { 'IT': 8, 'Storekeeper': 25, 'Operations': 10 } },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', category: 'Raw Materials', balances: { 'IT': 12, 'Storekeeper': 30, 'Sales': 5 } },
-  { id: 4, name: 'Welding Rods', code: 'SDT000045', category: 'Tools', balances: { 'IT': 3, 'Storekeeper': 15 } },
-  { id: 5, name: 'Paint Brushes', code: 'SDT000067', category: 'Tools', balances: { 'IT': 7, 'Storekeeper': 20 } }
+const topOutliers = ref([
+  { code: 'SDT002599', name: 'Aluminium Paste 250kg', store: 'MainStore_1_yeshi', diff: 2 },
+  { code: 'SDT001543', name: 'ATS Cabinet 2500A', store: 'MainStore_1_yeshi', diff: 2 },
+  { code: 'STORE3-002', name: 'Network Switch 24 Port', store: 'MainStore_3', diff: 1 }
 ])
 
-const matchedItems = ref([
-  { id: 1, name: 'Lacquer Thinner', code: 'SDT000001', category: 'Paint', commonBalance: 165 },
-  { id: 2, name: 'Industrial Oil', code: 'SDT000015', category: 'Lubricants', commonBalance: 25 },
-  { id: 3, name: 'Steel Sheets', code: 'SDT000023', category: 'Raw Materials', commonBalance: 30 },
-  { id: 4, name: 'Welding Rods', code: 'SDT000045', category: 'Tools', commonBalance: 15 },
-  { id: 5, name: 'Paint Brushes', code: 'SDT000067', category: 'Tools', commonBalance: 20 },
-  { id: 6, name: 'Primer Paint', code: 'SDT000134', category: 'Paint', commonBalance: 10 },
-  { id: 7, name: 'Sandpaper Grit 80', code: 'SDT000089', category: 'Tools', commonBalance: 50 },
-  { id: 8, name: 'Thinner Solvent', code: 'SDT000102', category: 'Chemicals', commonBalance: 8 },
-  { id: 9, name: 'Masking Tape', code: 'SDT000118', category: 'Supplies', commonBalance: 100 },
-  { id: 10, name: 'Industrial Grease', code: 'SDT000156', category: 'Lubricants', commonBalance: 12 }
+const topDateDiffs = ref([
+  { code: 'SDT002600', name: 'Paint Thinner 1L', store: 'MainStore_1_yeshi', days: 14 },
+  { code: 'SDT002601', name: 'Primer Coating', store: 'MainStore_1_yeshi', days: 17 },
+  { code: 'SDT002602', name: 'Industrial Adhesive', store: 'MainStore_1_yeshi', days: 1 }
 ])
+
+// ================================================================
+// COMPUTED
+// ================================================================
+
+const currentDate = computed(() => {
+  const now = new Date()
+  return now.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  })
+})
+
+const statusChartData = computed(() => {
+  const total = inventoryStats.value.totalItems
+  return [
+    { label: 'Active', value: inventoryStats.value.activeItems, percent: Math.round((inventoryStats.value.activeItems / total) * 100), color: '#10b981' },
+    { label: 'Inactive', value: inventoryStats.value.inactiveItems, percent: Math.round((inventoryStats.value.inactiveItems / total) * 100), color: '#94a3b8' },
+    { label: 'Missing Conversion', value: inventoryStats.value.missingConversion, percent: Math.round((inventoryStats.value.missingConversion / total) * 100), color: '#f59e0b' },
+    { label: 'Missing Cost', value: inventoryStats.value.missingCost, percent: Math.round((inventoryStats.value.missingCost / total) * 100), color: '#ef4444' },
+    { label: 'Healthy', value: inventoryStats.value.healthyItems, percent: Math.round((inventoryStats.value.healthyItems / total) * 100), color: '#3b82f6' }
+  ]
+})
+
+const completenessSegments = computed(() => {
+  const total = inventoryStats.value.totalItems
+  const segments = [
+    { label: 'Healthy', value: inventoryStats.value.healthyItems, color: '#3b82f6' },
+    { label: 'Missing Conversion', value: inventoryStats.value.missingConversion, color: '#f59e0b' },
+    { label: 'Missing Cost', value: inventoryStats.value.missingCost, color: '#ef4444' },
+    { label: 'Inactive', value: inventoryStats.value.inactiveItems, color: '#94a3b8' }
+  ]
+  
+  const circumference = 2 * Math.PI * 80
+  let offset = 0
+  
+  return segments.map(seg => {
+    const percent = total > 0 ? seg.value / total : 0
+    const value = percent * circumference
+    const result = {
+      ...seg,
+      circumference: value,
+      offset: -offset,
+      percent: Math.round(percent * 100)
+    }
+    offset += value
+    return result
+  }).filter(s => s.value > 0)
+})
+
+const totalCircumference = computed(() => 2 * Math.PI * 80)
+
+const completenessLegend = computed(() => {
+  return completenessSegments.value.map(s => ({
+    label: s.label,
+    color: s.color,
+    value: s.value,
+    percent: s.percent
+  }))
+})
+
+const storeStatusData = computed(() => {
+  return storeComparison.value.map(store => {
+    const total = store.total
+    const segments = [
+      { label: 'Matched', count: store.matched, color: '#10b981' },
+      { label: 'Outliers', count: store.outliers, color: '#f59e0b' },
+      { label: 'Conflicts', count: store.conflicts, color: '#ef4444' },
+      { label: 'Date Diff', count: store.dateDiffs, color: '#8b5cf6' }
+    ]
+    
+    return {
+      ...store,
+      segments: segments.map(s => ({
+        ...s,
+        percent: total > 0 ? Math.round((s.count / total) * 100) : 0
+      })),
+      percent: total > 0 ? Math.round((store.matched / total) * 100) : 0
+    }
+  })
+})
+
+const auditPieSegments = computed(() => {
+  const total = auditStats.value.totalItems
+  const segments = [
+    { label: 'Matched', value: auditStats.value.matched, color: '#10b981' },
+    { label: 'Outliers', value: auditStats.value.outliers, color: '#f59e0b' },
+    { label: 'Conflicts', value: auditStats.value.conflicts, color: '#ef4444' },
+    { label: 'Date Diff', value: auditStats.value.dateDiffs, color: '#8b5cf6' }
+  ]
+  
+  const circumference = 2 * Math.PI * 80
+  let offset = 0
+  
+  return segments.map(seg => {
+    const percent = total > 0 ? seg.value / total : 0
+    const value = percent * circumference
+    const result = {
+      ...seg,
+      circumference: value,
+      offset: -offset,
+      percent: Math.round(percent * 100)
+    }
+    offset += value
+    return result
+  }).filter(s => s.value > 0)
+})
+
+const auditPieLegend = computed(() => {
+  return auditPieSegments.value.map(s => ({
+    label: s.label,
+    color: s.color,
+    value: s.value,
+    percent: s.percent
+  }))
+})
 
 // ================================================================
 // METHODS
 // ================================================================
 
-function formatDate(date) {
-  if (!date) return '-'
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+const formatNumber = (value) => {
+  if (!value && value !== 0) return '0'
+  return value.toLocaleString()
 }
 
-function getInitials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+const getPercent = (value, total) => {
+  if (total === 0) return 0
+  return Math.round((value / total) * 100)
 }
 
-function fixItem(item) {
-  showToastMessage(`Opening editor for ${item.name}...`, 'info')
+const getHealthColor = (score) => {
+  if (score >= 80) return '#10b981'
+  if (score >= 60) return '#f59e0b'
+  if (score >= 40) return '#f97316'
+  return '#ef4444'
 }
 
-function viewConflict(item) {
-  showToastMessage(`Viewing conflict details for ${item.name}...`, 'info')
-}
-
-function viewOutlier(item) {
-  showToastMessage(`Viewing outlier details for ${item.name}...`, 'info')
-}
-
-function refreshData() {
+const refreshData = () => {
   loading.value = true
   setTimeout(() => {
     loading.value = false
-    showToastMessage('Dashboard refreshed', 'success')
-  }, 1000)
+    showToastMessage('Data refreshed!', 'success')
+  }, 800)
 }
 
-function showToastMessage(message, type = 'success') {
-  toastMessage.value = message
+const showToastMessage = (msg, type = 'success') => {
+  toastMessage.value = msg
   toastType.value = type
-  toastIcon.value = type === 'success' ? '✅' : (type === 'error' ? '❌' : (type === 'warning' ? '⚠️' : 'ℹ️'))
   showToast.value = true
-  setTimeout(() => { showToast.value = false }, 3000)
-}
-
-onMounted(() => {
-  loading.value = true
   setTimeout(() => {
-    loading.value = false
-  }, 1000)
-})
+    showToast.value = false
+  }, 3000)
+}
 </script>
 
 <style scoped>
-.checker-dashboard {
+/* ================================================================
+   MAIN CONTAINER
+   ================================================================ */
+.analytics-dashboard {
   min-height: 100vh;
-  background: #f5f7fb;
+  background: #f0f2f5;
   padding: 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow-x: hidden;
@@ -516,7 +680,9 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
-/* Header */
+/* ================================================================
+   HEADER (same as before)
+   ================================================================ */
 .dashboard-header {
   background: white;
   padding: 20px 24px;
@@ -527,7 +693,7 @@ onMounted(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .header-left {
@@ -539,7 +705,7 @@ onMounted(() => {
 .logo-badge {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -568,7 +734,7 @@ onMounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
 }
 
 .date-display {
@@ -586,19 +752,46 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  padding: 8px 18px;
+  background: #3b82f6;
+  color: white;
+  border: none;
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
+  font-weight: 500;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
-.refresh-btn:hover {
-  background: #e2e8f0;
+.refresh-btn:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
 }
 
-/* Section Title */
+.refresh-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   SECTION TITLE
+   ================================================================ */
 .section-title {
   margin: 24px 0 16px;
   display: flex;
@@ -606,6 +799,12 @@ onMounted(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.section-title-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .section-title h2 {
@@ -620,7 +819,550 @@ onMounted(() => {
   color: #64748b;
 }
 
-/* Loading State */
+/* ================================================================
+   STATS GRID
+   ================================================================ */
+.stats-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.inventory-grid {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.audit-grid {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.stat-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  transition: all 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.stat-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-icon {
+  font-size: 24px;
+}
+
+.stat-card.primary .stat-icon-wrapper { background: #dbeafe; }
+.stat-card.success .stat-icon-wrapper { background: #dcfce7; }
+.stat-card.warning .stat-icon-wrapper { background: #fef3c7; }
+.stat-card.danger .stat-icon-wrapper { background: #fee2e2; }
+.stat-card.purple .stat-icon-wrapper { background: #ede9fe; }
+.stat-card.info .stat-icon-wrapper { background: #e0f2fe; }
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.stat-card.primary .stat-value { color: #2563eb; }
+.stat-card.success .stat-value { color: #16a34a; }
+.stat-card.warning .stat-value { color: #d97706; }
+.stat-card.danger .stat-value { color: #dc2626; }
+.stat-card.purple .stat-value { color: #7c3aed; }
+.stat-card.info .stat-value { color: #0891b2; }
+
+/* ================================================================
+   CHART ROW
+   ================================================================ */
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.chart-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.chart-header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.chart-body {
+  padding: 20px 24px;
+}
+
+/* ================================================================
+   BAR CHART
+   ================================================================ */
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bar-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  min-width: 120px;
+}
+
+.bar-track {
+  flex: 1;
+  height: 24px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 10px;
+  transition: width 0.8s ease;
+  min-width: 30px;
+}
+
+.bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+
+.bar-percent {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  min-width: 45px;
+  text-align: right;
+}
+
+/* ================================================================
+   DONUT CHART
+   ================================================================ */
+.donut-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.donut-chart {
+  width: 200px;
+  height: 200px;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-segment {
+  transition: stroke-dasharray 0.8s ease, stroke-dashoffset 0.8s ease;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  color: #1e293b;
+  min-width: 60px;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: #1e293b;
+  margin-left: auto;
+  min-width: 30px;
+  text-align: right;
+}
+
+.legend-percent {
+  font-size: 12px;
+  color: #94a3b8;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ================================================================
+   STORE CHART
+   ================================================================ */
+.store-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.store-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.store-bar-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+
+.store-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.store-total {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.store-bar-track {
+  flex: 1;
+  height: 20px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.store-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.8s ease;
+}
+
+.store-bar-segments {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segment {
+  height: 100%;
+  transition: width 0.8s ease;
+}
+
+.store-bar-legend {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: #64748b;
+  flex-wrap: wrap;
+  min-width: 80px;
+}
+
+.legend-dot {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 10px;
+  color: white;
+  font-weight: 500;
+}
+
+/* ================================================================
+   AUDIT PIE
+   ================================================================ */
+.audit-pie-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.audit-pie {
+  width: 200px;
+  height: 200px;
+}
+
+.pie-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pie-segment {
+  transition: stroke-dasharray 0.8s ease, stroke-dashoffset 0.8s ease;
+}
+
+.audit-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ================================================================
+   SECTION CARD
+   ================================================================ */
+.section-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+/* ================================================================
+   TABLE
+   ================================================================ */
+.table-container {
+  overflow-x: auto;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.comparison-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.store-cell {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.success-text { color: #16a34a; font-weight: 600; }
+.warning-text { color: #d97706; font-weight: 600; }
+.danger-text { color: #dc2626; font-weight: 600; }
+.purple-text { color: #7c3aed; font-weight: 600; }
+
+/* ================================================================
+   HEALTH SCORE
+   ================================================================ */
+.health-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.score-bar {
+  flex: 1;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.score-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  min-width: 40px;
+}
+
+/* ================================================================
+   ISSUES
+   ================================================================ */
+.issues-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.badge {
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.purple {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.issue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+.issue-item .issue-rank {
+  font-weight: 700;
+  color: #94a3b8;
+  min-width: 20px;
+  font-size: 11px;
+}
+
+.issue-item .issue-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 11px;
+  min-width: 70px;
+}
+
+.issue-item .issue-name {
+  flex: 1;
+  color: #1e293b;
+}
+
+.issue-item .issue-store {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.issue-item .issue-value {
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+}
+
+.issue-item.conflict { border-left: 3px solid #ef4444; }
+.issue-item.outlier { border-left: 3px solid #f59e0b; }
+.issue-item.date-diff { border-left: 3px solid #8b5cf6; }
+
+.empty-state-small {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+/* ================================================================
+   LOADING
+   ================================================================ */
 .loading-state {
   text-align: center;
   padding: 60px;
@@ -632,445 +1374,15 @@ onMounted(() => {
   width: 48px;
   height: 48px;
   border: 3px solid #e2e8f0;
-  border-top-color: #6366f1;
+  border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Stats Grid */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: white;
-  border-radius: 16px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  text-align: center;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 4px;
-}
-
-.stat-sub {
-  font-size: 10px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.stat-card.success .stat-value { color: #10b981; }
-.stat-card.warning .stat-value { color: #f59e0b; }
-.stat-card.danger .stat-value { color: #ef4444; }
-.stat-card.critical .stat-value { color: #8b5cf6; }
-
-/* Two Column Layout */
-.two-column-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.left-column, .right-column {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* Section Cards */
-.section-card {
-  background: white;
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eef2ff;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.section-header h3 {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
-  color: #1e293b;
-}
-
-.badge {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.badge.success { background: #dcfce7; color: #166534; }
-.badge.warning { background: #fef3c7; color: #92400e; }
-.badge.danger { background: #fee2e2; color: #991b1b; }
-.badge.critical { background: #ede9fe; color: #6d28d9; }
-.badge.info { background: #dbeafe; color: #1e40af; }
-
-/* Scroll Container */
-.scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 280px;
-}
-
-.scroll-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.scroll-container::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-
-.scroll-container::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-.scroll-indicator {
-  text-align: center;
-  font-size: 10px;
-  color: #94a3b8;
-  padding: 8px;
-  border-top: 1px solid #eef2ff;
-  margin-top: 8px;
-}
-
-/* Item List */
-.item-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.list-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.list-item:last-child {
-  border-bottom: none;
-}
-
-.list-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 12px;
-  color: white;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-}
-
-.list-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.list-name {
-  font-weight: 600;
-  font-size: 13px;
-  color: #1e293b;
-}
-
-.list-detail {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 2px;
-}
-
-.top-rank {
-  width: 28px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #3b82f6;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-/* Missing Fields */
-.missing-field-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.field-icon { font-size: 18px; width: 32px; text-align: center; }
-.field-info { flex: 1; }
-.field-name { font-size: 13px; font-weight: 500; color: #1e293b; }
-.field-count { font-size: 11px; color: #64748b; }
-
-.field-bar {
-  flex: 1;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-  max-width: 120px;
-}
-
-.field-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
-.field-percent {
-  width: 45px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #1e293b;
-  text-align: right;
-}
-
-/* Missing Tags */
-.missing-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  background: #fee2e2;
-  color: #991b1b;
-  border-radius: 12px;
-  font-size: 10px;
-  margin: 2px 4px 2px 0;
-}
-
-.missing-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background: #fef3c7;
-  color: #92400e;
-  border-radius: 12px;
-  font-size: 10px;
-  margin: 2px 4px 2px 0;
-}
-
-.missing-count {
-  font-size: 14px;
-  font-weight: 700;
-  color: #ef4444;
-}
-
-/* Category Quality */
-.category-quality-item {
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.category-quality-name {
-  font-weight: 500;
-  font-size: 13px;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-
-.category-quality-bar {
-  display: flex;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 4px;
-}
-
-.category-quality-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
-.category-quality-stats {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-}
-
-.category-quality-stats .complete { color: #10b981; }
-.category-quality-stats .partial { color: #f59e0b; }
-.category-quality-stats .missing { color: #ef4444; }
-
-.category-quality-score {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-top: 4px;
-}
-
-/* Conflict Items */
-.conflict-item {
-  background: #fef2f2;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 8px;
-}
-
-.conflict-avatar { background: #dc2626; }
-
-.conflict-details {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.balance-diff {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #fee2e2;
-  border-radius: 12px;
-  color: #991b1b;
-}
-
-/* Date Diff Items */
-.date-diff-item {
-  background: #f5f3ff;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 8px;
-}
-
-.date-diff-avatar { background: #8b5cf6; }
-
-.date-diff-details {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.date-group {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #ede9fe;
-  border-radius: 12px;
-  color: #6d28d9;
-}
-
-.date-diff-badge {
-  font-size: 12px;
-  font-weight: 600;
-  color: #8b5cf6;
-  padding: 4px 12px;
-  background: #ede9fe;
-  border-radius: 20px;
-}
-
-/* Outlier Items */
-.outlier-item {
-  background: #fffbeb;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 8px;
-}
-
-.outlier-avatar { background: #f59e0b; }
-
-.outlier-details {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.balance-outlier {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #fef3c7;
-  border-radius: 12px;
-  color: #92400e;
-}
-
-/* Matched Items */
-.matched-item {
-  padding: 8px 0;
-}
-
-.matched-avatar { background: #10b981; }
-
-.matched-balance {
-  font-size: 11px;
-  color: #10b981;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-/* Buttons */
-.btn-small {
-  padding: 4px 10px;
-  font-size: 11px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.btn-small.success { background: #10b981; color: white; }
-.btn-small.success:hover { background: #059669; }
-
-.btn-small.danger { background: #ef4444; color: white; }
-.btn-small.danger:hover { background: #dc2626; }
-
-.btn-small.warning { background: #f59e0b; color: white; }
-.btn-small.warning:hover { background: #d97706; }
-
-.btn-small.info { background: #3b82f6; color: white; }
-.btn-small.info:hover { background: #2563eb; }
-
-/* Empty State */
-.empty-state-small {
-  text-align: center;
-  padding: 30px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-/* Toast */
+/* ================================================================
+   TOAST
+   ================================================================ */
 .toast {
   position: fixed;
   bottom: 24px;
@@ -1079,34 +1391,84 @@ onMounted(() => {
   border-radius: 12px;
   background: white;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  display: flex;
-  align-items: center;
-  gap: 12px;
   z-index: 1100;
   animation: slideIn 0.3s ease;
   border-left: 4px solid #10b981;
+  font-size: 13px;
 }
 
 .toast.error { border-left-color: #ef4444; }
-.toast.warning { border-left-color: #f59e0b; }
 .toast.info { border-left-color: #3b82f6; }
+.toast.warning { border-left-color: #f59e0b; }
 
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(0%); opacity: 1; }
 }
 
-/* Responsive */
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
 @media (max-width: 1200px) {
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
-  .two-column-layout { grid-template-columns: 1fr; }
+  .inventory-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .audit-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .issues-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 992px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
-  .checker-dashboard { padding: 16px; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .analytics-dashboard { padding: 16px; }
   .dashboard-header { flex-direction: column; align-items: flex-start; }
-  .header-right { width: 100%; justify-content: space-between; }
-  .list-item { flex-wrap: wrap; }
+  .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+  .inventory-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .audit-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .issues-grid {
+    grid-template-columns: 1fr;
+  }
+  .store-bar-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .store-bar-info {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 480px) {
+  .inventory-grid {
+    grid-template-columns: 1fr;
+  }
+  .audit-grid {
+    grid-template-columns: 1fr;
+  }
+  .donut-container,
+  .audit-pie-container {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .bar-item {
+    flex-wrap: wrap;
+  }
+  .bar-label {
+    min-width: 80px;
+    font-size: 11px;
+  }
 }
 </style>

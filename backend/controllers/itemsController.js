@@ -10,7 +10,35 @@ const ExcelJS = require("exceljs");
 // ================================================================
 // ITEM CRUD OPERATIONS
 // ================================================================
+// controllers/itemsController.js - ADD THIS AT THE END
 
+// ================================================================
+// GENERATE ITEM CODE
+// ================================================================
+
+/**
+ * Generate next item code
+ * GET /api/items/generate-code
+ */
+exports.generateItemCode = async (req, res) => {
+  try {
+    const code = await Item.generateItemCode();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        code,
+      },
+    });
+  } catch (error) {
+    console.error("Error in generateItemCode:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate item code",
+      error: error.message,
+    });
+  }
+};
 /**
  * Get all items with pagination and filtering
  * GET /api/items
@@ -928,29 +956,7 @@ exports.permanentDeleteItem = async (req, res) => {
   }
 };
 
-/**
- * Generate next item code
- * GET /api/items/generate-code
- */
-exports.generateItemCode = async (req, res) => {
-  try {
-    const code = await Item.generateItemCode();
 
-    res.status(200).json({
-      success: true,
-      data: {
-        code,
-      },
-    });
-  } catch (error) {
-    console.error("Error in generateItemCode:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate item code",
-      error: error.message,
-    });
-  }
-};
 
 /**
  * Get items by category

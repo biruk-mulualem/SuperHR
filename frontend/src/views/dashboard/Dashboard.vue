@@ -26,6 +26,9 @@ const dashboardComponents = {
   store_manager: defineAsyncComponent(() => import('./components/StoreDashboard.vue')),
   
   checker: defineAsyncComponent(() => import('./components/CheckerDashboard.vue')),
+
+  cost: defineAsyncComponent(() => import('./components/CostDashboard.vue')),
+  employee: defineAsyncComponent(() => import('./components/NonStoreUserDashboard.vue')),
 }
 
 // Get the current dashboard component based on user role

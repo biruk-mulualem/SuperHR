@@ -21,6 +21,13 @@
           <span class="date-text">{{ currentDate }}</span>
         </div>
         <div class="header-actions">
+          <button class="btn-info" @click="goToRules" title="How costs are calculated">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+            <span>Rules</span>
+          </button>
           <button class="refresh-btn" @click="refreshData" :disabled="loading">
             <svg v-if="!loading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
               <path d="M23 4v6h-6M1 20v-6h6" />
@@ -48,14 +55,13 @@
 
       <div class="stats-grid">
         <div class="stat-card" @click="navigateTo('item-cost')" style="cursor:pointer">
-  
           <div class="stat-content">
             <div class="stat-value">{{ formatNumber(summary.totalItems) }}</div>
             <div class="stat-label">Total Items</div>
+            <div class="stat-sub">With active balances</div>
           </div>
         </div>
         <div class="stat-card danger" @click="scrollToZeroCost" style="cursor:pointer">
-        
           <div class="stat-content">
             <div class="stat-value">{{ formatNumber(summary.zeroCostItems) }}</div>
             <div class="stat-label">Items with Zero Cost</div>
@@ -63,26 +69,24 @@
           </div>
         </div>
         <div class="stat-card info" style="flex: 2;">
-       
           <div class="stat-content">
             <div class="stat-value">ETB {{ formatCurrency(summary.totalCost) }}</div>
             <div class="stat-label">Total Inventory Cost</div>
+            <div class="stat-sub">{{ formatNumber(summary.itemsWithCost || 0) }} items with cost</div>
           </div>
         </div>
         <div class="stat-card warning">
-         
           <div class="stat-content">
             <div class="stat-value">{{ formatNumber(summary.excludedByConflict) }}</div>
-            <div class="stat-label">Excluded (Store Conflict)</div>
-            <div class="stat-sub">Items with balance disagreements</div>
+            <div class="stat-label">Excluded (Conflict)</div>
+            <div class="stat-sub">Store balance disagreements</div>
           </div>
         </div>
         <div class="stat-card danger">
-        
           <div class="stat-content">
             <div class="stat-value">{{ formatNumber(summary.excludedByData) }}</div>
-            <div class="stat-label">Excluded (Incomplete Data)</div>
-            <div class="stat-sub">Items missing required info</div>
+            <div class="stat-label">Excluded (Incomplete)</div>
+            <div class="stat-sub">Missing conversion data</div>
           </div>
         </div>
       </div>
@@ -93,27 +97,35 @@
           <h2>🏪 Cost by Store</h2>
           <span class="section-subtitle">Inventory cost distribution across stores</span>
         </div>
+        <div class="section-title-right">
+          <span class="store-total-badge">
+            Total: ETB {{ formatCurrency(storeTotal) }}
+            <span class="store-count">({{ costByStore.length }} stores)</span>
+          </span>
+        </div>
       </div>
 
       <div class="chart-card full-width">
         <div class="chart-header">
           <span class="chart-header-title">Store Cost Distribution</span>
-          <button class="btn-export-icon" @click="exportStoreCost" :disabled="exportingStore" title="Export Store Cost Data">
-            <svg v-if="!exportingStore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span v-else class="spinner-small"></span>
-          </button>
+          <div class="chart-header-actions">
+            <button class="btn-export-icon" @click="handleExportCostByStore" :disabled="exportingStore" title="Export Store Cost Data">
+              <svg v-if="!exportingStore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span v-else class="spinner-small"></span>
+            </button>
+          </div>
         </div>
         <div class="chart-body">
-          <div v-if="storeCostData.length === 0" class="empty-state-small">
+          <div v-if="costByStore.length === 0" class="empty-state-small">
             No store data available
           </div>
           <div v-else class="chart-bars">
             <div 
-              v-for="(store, index) in storeCostData" 
+              v-for="(store, index) in costByStore" 
               :key="store.id" 
               class="chart-bar-row"
               :style="{ animationDelay: (index * 0.05) + 's' }"
@@ -128,7 +140,7 @@
                   class="chart-bar-fill store-fill" 
                   :style="{ 
                     width: getBarWidth(store.totalCost, maxStoreCost) + '%',
-                    background: store.color
+                    background: store.color || getStoreColor(store.id)
                   }"
                 >
                   <span class="chart-bar-value">
@@ -136,13 +148,13 @@
                   </span>
                 </div>
               </div>
-              <span class="chart-bar-percent">{{ store.percent }}%</span>
+              <span class="chart-bar-percent">{{ store.percent.toFixed(3) }}%</span>
             </div>
           </div>
         </div>
-        <div class="chart-footer" v-if="storeCostData.length > 0">
-          <span class="chart-total">Total Store Cost: ETB {{ formatCurrency(storeCostData.reduce((sum, s) => sum + s.totalCost, 0)) }}</span>
-          <span class="chart-stores">{{ storeCostData.length }} stores</span>
+        <div class="chart-footer" v-if="costByStore.length > 0">
+          <span class="chart-total">Total Store Cost: ETB {{ formatCurrency(storeTotal) }}</span>
+          <span class="chart-stores">{{ costByStore.length }} stores</span>
         </div>
       </div>
 
@@ -161,7 +173,7 @@
             <span class="header-subtitle">Items with the highest total cost</span>
           </div>
           <div class="section-header-right">
-            <button class="btn-export-icon" @click="exportTopCostItems" :disabled="exportingTop" title="Export Top Cost Items">
+            <button class="btn-export-icon" @click="handleExportTopCostItems" :disabled="exportingTop" title="Export Top Cost Items">
               <svg v-if="!exportingTop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
@@ -199,9 +211,9 @@
                 <td class="total-cell">ETB {{ formatCurrency(item.totalCost) }}</td>
                 <td>
                   <div class="percent-cell">
-                    <span class="percent-value">{{ item.percent }}%</span>
+                    <span class="percent-value">{{ item.percent.toFixed(3) }}%</span>
                     <div class="percent-bar-track">
-                      <div class="percent-bar-fill" :style="{ width: item.percent + '%', background: getPercentColor(item.percent) }"></div>
+                      <div class="percent-bar-fill" :style="{ width: Math.min(item.percent, 100) + '%', background: getPercentColor(item.percent) }"></div>
                     </div>
                   </div>
                 </td>
@@ -210,7 +222,7 @@
           </table>
         </div>
         <div class="table-footer" v-if="topCostItems.length > 0">
-          <span class="footer-total">Total: ETB {{ formatCurrency(topCostItems.reduce((sum, i) => sum + i.totalCost, 0)) }}</span>
+          <span class="footer-total">Total: ETB {{ formatCurrency(topItemsTotal) }}</span>
           <span class="footer-count">{{ topCostItems.length }} items</span>
         </div>
       </div>
@@ -229,7 +241,7 @@
           </div>
           <div class="section-header-right">
             <span class="badge warning">⚠️ {{ zeroCostPagination.total }} items</span>
-            <button class="btn-export-icon zero" @click="exportZeroCostItems" :disabled="exportingZero" title="Export Zero Cost Items">
+            <button class="btn-export-icon zero" @click="handleExportZeroCostItems" :disabled="exportingZero" title="Export Zero Cost Items">
               <svg v-if="!exportingZero" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
@@ -249,12 +261,15 @@
                 <th>Item Name</th>
                 <th>Category</th>
                 <th>UOM</th>
+                <th>Balance</th>
                 <th>Status</th>
+            
+             
               </tr>
             </thead>
             <tbody>
               <tr v-if="zeroCostItems.length === 0">
-                <td colspan="6" class="empty-state-small">
+                <td colspan="9" class="empty-state-small">
                   ✅ No zero cost items found
                 </td>
               </tr>
@@ -269,16 +284,14 @@
                 </td>
                 <td>{{ item.categoryName || 'Uncategorized' }}</td>
                 <td>{{ item.baseUOM || 'PCS' }}</td>
+                <td class="balance-cell">{{ formatNumber(item.balance) }}</td>
                 <td>
-                  <span :class="['status-badge', 
-                    item.status === 'Active' || item.status === 'Completed' ? 'status-active' : 
-                    item.status === 'Partial' ? 'status-partial' : 
-                    item.status === 'Incomplete' ? 'status-incomplete' : 
-                    'status-inactive'
-                  ]">
-                    {{ item.status }}
+                  <span class="status-badge status-zero-cost">
+                    ⚠️ Zero Cost
                   </span>
                 </td>
+               
+              
               </tr>
             </tbody>
           </table>
@@ -314,11 +327,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import itemCostService from '@/stores/itemCostService'
+import costDashboardService from '@/stores/costDashboardService'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // ================================================================
 // STATE
@@ -329,12 +344,19 @@ const exportingZero = ref(false)
 const exportingStore = ref(false)
 const exportingTop = ref(false)
 
-// Data
-const items = ref([])
-const stores = ref([])
-const totalItems = ref(0)
+// Dashboard Data
+const summary = ref({
+  totalItems: 0,
+  zeroCostItems: 0,
+  totalCost: 0,
+  excludedByConflict: 0,
+  excludedByData: 0,
+  itemsWithCost: 0
+})
 
-// Zero Cost Pagination
+const costByStore = ref([])
+const topCostItems = ref([])
+const zeroCostItems = ref([])
 const zeroCostPagination = ref({
   page: 1,
   limit: 10,
@@ -360,174 +382,43 @@ const currentDate = computed(() => {
   })
 })
 
-// ================================================================
-// SUMMARY STATS
-// ================================================================
-
-const summary = computed(() => {
-  if (!items.value || items.value.length === 0) {
-    return {
-      totalItems: 0,
-      zeroCostItems: 0,
-      totalCost: 0,
-      excludedByConflict: 0,
-      excludedByData: 0
-    }
-  }
-
-  const total = items.value.length
-  
-  const zeroCostItems = items.value
-    .filter(i => (i.unitCost === 0 || i.unitCost === null || i.unitCost === undefined) && i.status !== 'Inactive').length
-
-  const totalCost = items.value
-    .filter(i => i.status === 'Active' || i.status === 'Completed')
-    .reduce((sum, i) => sum + (i.totalCost || 0), 0)
-
-  const excludedByConflict = items.value
-    .filter(i => i.status === 'Partial').length
-
-  const excludedByData = items.value
-    .filter(i => i.status === 'Incomplete').length
-
-  return {
-    totalItems: total,
-    zeroCostItems: zeroCostItems,
-    totalCost: totalCost,
-    excludedByConflict: excludedByConflict,
-    excludedByData: excludedByData
-  }
-})
-
-// ================================================================
-// ZERO COST ITEMS (Paginated)
-// ================================================================
-
-const allZeroCostItems = computed(() => {
-  if (!items.value || items.value.length === 0) return []
-  
-  return items.value
-    .filter(i => (i.unitCost === 0 || i.unitCost === null || i.unitCost === undefined) && i.status !== 'Inactive')
-    .sort((a, b) => a.itemName.localeCompare(b.itemName))
-})
-
-const zeroCostItems = computed(() => {
-  const start = (zeroCostPagination.value.page - 1) * zeroCostPagination.value.limit
-  const end = start + zeroCostPagination.value.limit
-  return allZeroCostItems.value.slice(start, end)
-})
-
-// Update pagination total
-const updateZeroCostPagination = () => {
-  const total = allZeroCostItems.value.length
-  zeroCostPagination.value.total = total
-  zeroCostPagination.value.totalPages = Math.ceil(total / zeroCostPagination.value.limit)
-  
-  if (zeroCostPagination.value.page > zeroCostPagination.value.totalPages) {
-    zeroCostPagination.value.page = Math.max(1, zeroCostPagination.value.totalPages)
-  }
-}
-
-// ================================================================
-// STORE COST DATA
-// ================================================================
-
-const storeCostData = computed(() => {
-  if (!items.value || items.value.length === 0 || !stores.value.length) return []
-
-  const storeMap = new Map()
-  stores.value.forEach(store => {
-    storeMap.set(store.id, {
-      id: store.id,
-      name: store.name,
-      code: store.code,
-      totalCost: 0,
-      itemCount: 0,
-      color: getStoreColor(store.id)
-    })
-  })
-
-  items.value
-    .filter(i => i.status === 'Active' || i.status === 'Completed')
-    .forEach(item => {
-      if (item.storeBreakdown && item.storeBreakdown.length > 0) {
-        item.storeBreakdown.forEach(store => {
-          if (storeMap.has(store.storeId) && !store.isExcluded && !store.hasConflict) {
-            const s = storeMap.get(store.storeId)
-            const quantity = store.agreedQuantity || 0
-            const cost = quantity * (item.unitCost || 0)
-            s.totalCost += cost
-            s.itemCount += 1
-          }
-        })
-      }
-    })
-
-  const data = Array.from(storeMap.values())
-    .filter(s => s.totalCost > 0)
-    .sort((a, b) => b.totalCost - a.totalCost)
-
-  const total = data.reduce((sum, s) => sum + s.totalCost, 0)
-  
-  return data.map(s => ({
-    ...s,
-    percent: total > 0 ? Math.round((s.totalCost / total) * 100) : 0
-  }))
-})
-
 const maxStoreCost = computed(() => {
-  if (storeCostData.value.length === 0) return 1
-  return Math.max(...storeCostData.value.map(s => s.totalCost), 1)
+  if (costByStore.value.length === 0) return 1
+  return Math.max(...costByStore.value.map(s => s.totalCost), 1)
+})
+
+const storeTotal = computed(() => {
+  return costByStore.value.reduce((sum, s) => sum + s.totalCost, 0)
+})
+
+const topItemsTotal = computed(() => {
+  return topCostItems.value.reduce((sum, i) => sum + i.totalCost, 0)
 })
 
 // ================================================================
-// TOP COST ITEMS
-// ================================================================
-
-const topCostItems = computed(() => {
-  if (!items.value || items.value.length === 0) return []
-  
-  const filtered = items.value
-    .filter(i => (i.status === 'Active' || i.status === 'Completed') && (i.unitCost || 0) > 0)
-    .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-    .slice(0, 10)
-
-  const total = filtered.reduce((sum, i) => sum + i.totalCost, 0)
-  
-  return filtered.map(item => {
-    return {
-      ...item,
-      percent: total > 0 ? Math.round((item.totalCost / total) * 100) : 0
-    }
-  })
-})
-
-// ================================================================
-// HELPER METHODS
+// METHODS
 // ================================================================
 
 const getStoreColor = (storeId) => {
-  const colors = [
-    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
-    '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1',
-    '#84cc16', '#22d3ee', '#f472b6', '#34d399', '#fbbf24'
-  ]
-  return colors[storeId % colors.length]
+  return costDashboardService.getStoreColor(storeId)
+}
+
+const getPercentColor = (percent) => {
+  return costDashboardService.getPercentColor(percent)
 }
 
 const getBarWidth = (value, max) => {
   if (max === 0) return 0
-  return Math.max((value / max) * 100, 5)
+  const percent = (value / max) * 100
+  return Math.max(Math.min(percent, 100), 8)
 }
 
 const formatCurrency = (value) => {
-  if (value === null || value === undefined || isNaN(value)) return '0.00'
-  return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return costDashboardService.formatCurrency(value)
 }
 
 const formatNumber = (value) => {
-  if (value === null || value === undefined || isNaN(value)) return '0'
-  return Number(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return costDashboardService.formatNumber(value)
 }
 
 const navigateTo = (page) => {
@@ -541,150 +432,101 @@ const scrollToZeroCost = () => {
   }
 }
 
-// ================================================================
-// CATEGORY COLORS
-// ================================================================
-
-const getCategoryColor = (categoryName) => {
-  const colors = {
-    'Paint': '#f59e0b',
-    'Raw Materials': '#10b981',
-    'Raw Material': '#10b981',
-    'Tools': '#3b82f6',
-    'Lubricants': '#8b5cf6',
-    'Chemicals': '#ef4444',
-    'Supplies': '#06b6d4',
-    'Electronics': '#f59e0b',
-    'Hardware': '#64748b',
-    'Packaging': '#10b981',
-    'Safety Equipment': '#22c55e',
-    'Spare Parts': '#f97316',
-    'Consumables': '#ec4899',
-    'Office Supplies': '#8b5cf6',
-    'Equipment': '#6366f1',
-    'Furniture': '#d946ef',
-    'Vehicles': '#14b8a6',
-    'Maintenance': '#f43f5e',
-    'Cleaning': '#0ea5e9',
-    'Construction': '#f59e0b',
-    'Oil': '#8b5cf6'
-  }
-  return colors[categoryName] || '#94a3b8'
-}
-
-const getPercentColor = (percent) => {
-  if (percent >= 30) return '#ef4444'
-  if (percent >= 15) return '#f59e0b'
-  return '#3b82f6'
+const goToRules = () => {
+  router.push('/cost-calculation-rules')
 }
 
 // ================================================================
-// ZERO COST PAGINATION METHODS
+// 📤 EXPORT: Cost by Store (using new endpoint with pagination)
 // ================================================================
 
-const changeZeroCostPage = (page) => {
-  if (page >= 1 && page <= zeroCostPagination.value.totalPages) {
-    zeroCostPagination.value.page = page
-  }
-}
-
-const changeZeroCostPageSize = () => {
-  zeroCostPagination.value.page = 1
-  updateZeroCostPagination()
-}
-
-// ================================================================
-// EXPORT METHODS - FIXED
-// ================================================================
-
-const exportStoreCost = async () => {
+const handleExportCostByStore = async () => {
   exportingStore.value = true
   try {
-    const data = storeCostData.value.map(store => ({
-      'Store Name': store.name || 'N/A',
-      'Store Code': store.code || 'N/A',
-      'Total Items': store.itemCount || 0,
-      'Total Cost (ETB)': store.totalCost || 0
-    }))
-
-    if (data.length === 0) {
-      showToastMessage('No store cost data to export', 'warning')
-      return
+    const response = await costDashboardService.exportCostByStore(1, 100)
+    if (response.success && response.data && response.data.length > 0) {
+      const exportData = response.data
+      const headers = Object.keys(exportData[0])
+      
+      const metadata = [
+        `"Export Date","${new Date().toISOString()}"`,
+        `"Total Stores","${response.pagination?.total || exportData.length}"`,
+        `"Page","${response.pagination?.page || 1}"`,
+        `"Total Cost (ETB)","${response.totalCost || 'N/A'}"`,
+        ""
+      ]
+      
+      const rows = exportData.map(row => {
+        return headers.map(header => {
+          const value = row[header] ?? ''
+          const stringValue = String(value)
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`
+          }
+          return stringValue
+        })
+      })
+      
+      const csvContent = [
+        ...metadata,
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n')
+      
+      downloadCSV(csvContent, 'cost_by_store_export')
+      showToastMessage(`Exported ${exportData.length} stores!`, 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'warning')
     }
-
-    const headers = Object.keys(data[0])
-    const csv = [
-      headers.join(','),
-      ...data.map(row => 
-        headers.map(key => {
-          const value = row[key] ?? ''
-          return `"${String(value).replace(/"/g, '""')}"`
-        }).join(',')
-      )
-    ].join('\n')
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `store_cost_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    showToastMessage(`Exported ${data.length} stores!`, 'success')
   } catch (error) {
-    console.error('Error exporting store cost:', error)
+    console.error('Error exporting cost by store:', error)
     showToastMessage('Export failed', 'error')
   } finally {
     exportingStore.value = false
   }
 }
 
-const exportTopCostItems = async () => {
+// ================================================================
+// 📤 EXPORT: Top Cost Items (using new endpoint with pagination)
+// ================================================================
+
+const handleExportTopCostItems = async () => {
   exportingTop.value = true
   try {
-    const data = topCostItems.value.map((item, index) => ({
-      'Rank': index + 1,
-      'Item Code': item.itemCode || 'N/A',
-      'Item Name': item.itemName || 'Unknown',
-      'Standard Name': item.itemStandardName || '',
-      'Category': item.categoryName || 'Uncategorized',
-      'Total Quantity': item.totalQty || 0,
-      'Unit Cost (ETB)': item.unitCost || 0,
-      'Total Cost (ETB)': item.totalCost || 0,
-      'UOM': item.baseUOM || 'PCS',
-      'Status': item.status || 'Active'
-    }))
-
-    if (data.length === 0) {
-      showToastMessage('No top cost items to export', 'warning')
-      return
+    const response = await costDashboardService.exportTopCostItems(1, 10)
+    if (response.success && response.data && response.data.length > 0) {
+      const exportData = response.data
+      const headers = Object.keys(exportData[0])
+      
+      const metadata = [
+        `"Export Date","${new Date().toISOString()}"`,
+        `"Total Items","${response.pagination?.total || exportData.length}"`,
+        `"Total Inventory Cost (ETB)","${response.totalInventoryCost || 'N/A'}"`,
+        ""
+      ]
+      
+      const rows = exportData.map(row => {
+        return headers.map(header => {
+          const value = row[header] ?? ''
+          const stringValue = String(value)
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`
+          }
+          return stringValue
+        })
+      })
+      
+      const csvContent = [
+        ...metadata,
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n')
+      
+      downloadCSV(csvContent, 'top_cost_items_export')
+      showToastMessage(`Exported ${exportData.length} items!`, 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'warning')
     }
-
-    const headers = Object.keys(data[0])
-    const csv = [
-      headers.join(','),
-      ...data.map(row => 
-        headers.map(key => {
-          const value = row[key] ?? ''
-          return `"${String(value).replace(/"/g, '""')}"`
-        }).join(',')
-      )
-    ].join('\n')
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `top_cost_items_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    showToastMessage(`Exported ${data.length} top cost items!`, 'success')
   } catch (error) {
     console.error('Error exporting top cost items:', error)
     showToastMessage('Export failed', 'error')
@@ -693,45 +535,52 @@ const exportTopCostItems = async () => {
   }
 }
 
-const exportZeroCostItems = async () => {
+// ================================================================
+// 📤 EXPORT: Zero Cost Items (using new endpoint with pagination)
+// ================================================================
+
+const handleExportZeroCostItems = async () => {
   exportingZero.value = true
   try {
-    const data = allZeroCostItems.value.map(item => ({
-      'Item Code': item.itemCode || 'N/A',
-      'Item Name': item.itemName || 'Unknown',
-      'Standard Name': item.itemStandardName || '',
-      'Category': item.categoryName || 'Uncategorized',
-      'UOM': item.baseUOM || 'PCS',
-      'Status': item.status || 'Unknown'
-    }))
-
-    if (data.length === 0) {
-      showToastMessage('No zero cost items to export', 'warning')
-      return
+    const response = await costDashboardService.exportZeroCostItems(
+      zeroCostPagination.value.page,
+      zeroCostPagination.value.limit
+    )
+    if (response.success && response.data && response.data.length > 0) {
+      const exportData = response.data
+      const headers = Object.keys(exportData[0])
+      
+      const metadata = [
+        `"Export Date","${new Date().toISOString()}"`,
+        `"Page","${response.pagination?.page || zeroCostPagination.value.page}"`,
+        `"Items Per Page","${response.pagination?.limit || zeroCostPagination.value.limit}"`,
+        `"Total Items","${response.pagination?.total || zeroCostPagination.value.total}"`,
+        `"Total Pages","${response.pagination?.totalPages || zeroCostPagination.value.totalPages}"`,
+        ""
+      ]
+      
+      const rows = exportData.map(row => {
+        return headers.map(header => {
+          const value = row[header] ?? ''
+          const stringValue = String(value)
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`
+          }
+          return stringValue
+        })
+      })
+      
+      const csvContent = [
+        ...metadata,
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n')
+      
+      downloadCSV(csvContent, `zero_cost_items_page_${zeroCostPagination.value.page}`)
+      showToastMessage(`Exported ${exportData.length} zero-cost items from page ${zeroCostPagination.value.page}!`, 'success')
+    } else {
+      showToastMessage(response.error || 'No data to export', 'warning')
     }
-
-    const headers = Object.keys(data[0])
-    const csv = [
-      headers.join(','),
-      ...data.map(row => 
-        headers.map(key => {
-          const value = row[key] ?? ''
-          return `"${String(value).replace(/"/g, '""')}"`
-        }).join(',')
-      )
-    ].join('\n')
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `zero_cost_items_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-
-    showToastMessage(`Exported ${data.length} zero cost items!`, 'success')
   } catch (error) {
     console.error('Error exporting zero cost items:', error)
     showToastMessage('Export failed', 'error')
@@ -740,46 +589,66 @@ const exportZeroCostItems = async () => {
   }
 }
 
-const showToastMessage = (msg, type = 'success') => {
-  toastMessage.value = msg
-  toastType.value = type
-  showToast.value = true
-  setTimeout(() => {
-    showToast.value = false
-  }, 3000)
+// ================================================================
+// 🔥 Helper: Download CSV
+// ================================================================
+
+const downloadCSV = (csvContent, filename) => {
+  const blob = new Blob(['\uFEFF' + csvContent], { 
+    type: 'text/csv;charset=utf-8;' 
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 // ================================================================
-// API METHODS
+// LOAD DATA
 // ================================================================
-
-const loadStores = async () => {
-  try {
-    const response = await itemCostService.getStores()
-    if (response.success) {
-      stores.value = response.data
-    }
-  } catch (error) {
-    console.error('Error loading stores:', error)
-  }
-}
 
 const loadDashboardData = async () => {
   loading.value = true
   try {
-    const params = {
-      page: 1,
-      limit: 1000
+    const user = authStore.user
+    if (user) {
+      costDashboardService.setUserContext(
+        user.storeId || null,
+        user.groupId || null
+      )
     }
 
-    const response = await itemCostService.getItemsWithCost(params)
+    const response = await costDashboardService.getDashboardData()
     
-    if (response.success) {
-      items.value = response.data
-      totalItems.value = response.pagination.total
-      updateZeroCostPagination()
-      console.log('✅ Cost dashboard data loaded:', items.value.length, 'items')
-      console.log('✅ Zero cost items:', allZeroCostItems.value.length)
+    if (response.success && response.data) {
+      summary.value = {
+        ...response.data.summary,
+        itemsWithCost: response.data.summary.itemsWithCost || 0
+      }
+      
+      costByStore.value = [...response.data.costByStore]
+        .sort((a, b) => b.totalCost - a.totalCost)
+        .map((store, index) => ({
+          ...store,
+          color: store.color || getStoreColor(store.id)
+        }))
+      
+      topCostItems.value = response.data.topCostItems || []
+      zeroCostItems.value = response.data.zeroCostItems || []
+      zeroCostPagination.value = response.data.zeroCostPagination || {
+        total: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0
+      }
+      
+      console.log('✅ Cost dashboard data loaded successfully')
+    } else {
+      showToastMessage(response.error || 'Failed to load dashboard data', 'error')
     }
   } catch (error) {
     console.error('Error loading dashboard:', error)
@@ -796,13 +665,61 @@ const refreshData = async () => {
 }
 
 // ================================================================
+// ZERO COST PAGINATION
+// ================================================================
+
+const changeZeroCostPage = async (page) => {
+  if (page >= 1 && page <= zeroCostPagination.value.totalPages) {
+    zeroCostPagination.value.page = page
+    await loadZeroCostItems()
+  }
+}
+
+const changeZeroCostPageSize = async () => {
+  zeroCostPagination.value.page = 1
+  await loadZeroCostItems()
+}
+
+const loadZeroCostItems = async () => {
+  try {
+    const response = await costDashboardService.getZeroCostItems(
+      zeroCostPagination.value.page,
+      zeroCostPagination.value.limit
+    )
+    if (response.success) {
+      zeroCostItems.value = response.data
+      zeroCostPagination.value = response.pagination
+    }
+  } catch (error) {
+    console.error('Error loading zero cost items:', error)
+    showToastMessage('Failed to load zero cost items', 'error')
+  }
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+
+const showToastMessage = (msg, type = 'success') => {
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 3000)
+}
+
+// ================================================================
 // LIFECYCLE
 // ================================================================
 
-onMounted(async () => {
-  await loadStores()
-  await loadDashboardData()
+onMounted(() => {
+  loadDashboardData()
 })
+
+watch(() => authStore.user, () => {
+  loadDashboardData()
+}, { deep: true })
 </script>
 
 <style scoped>
@@ -893,6 +810,32 @@ onMounted(async () => {
   font-weight: 500;
 }
 
+.btn-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-info:hover {
+  background: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.btn-info svg {
+  stroke: currentColor;
+}
+
 .refresh-btn {
   display: flex;
   align-items: center;
@@ -952,6 +895,12 @@ onMounted(async () => {
   gap: 4px;
 }
 
+.section-title-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .section-title h2 {
   font-size: 18px;
   font-weight: 600;
@@ -962,6 +911,21 @@ onMounted(async () => {
 .section-subtitle {
   font-size: 13px;
   color: #64748b;
+}
+
+.store-total-badge {
+  background: #f1f5f9;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.store-total-badge .store-count {
+  font-weight: 400;
+  color: #64748b;
+  font-size: 12px;
 }
 
 /* ================================================================
@@ -980,6 +944,12 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.chart-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ================================================================
@@ -1077,18 +1047,6 @@ onMounted(async () => {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.stat-icon {
-  font-size: 28px;
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f8fafc;
-  border-radius: 12px;
-  flex-shrink: 0;
-}
-
 .stat-content {
   flex: 1;
 }
@@ -1152,17 +1110,18 @@ onMounted(async () => {
 .chart-bars {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
+  padding: 4px 0;
 }
 
 .chart-bar-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   animation: slideIn 0.4s ease forwards;
   opacity: 0;
-  min-height: 40px;
-  padding: 4px 0;
+  min-height: 44px;
+  padding: 6px 0;
 }
 
 @keyframes slideIn {
@@ -1179,9 +1138,9 @@ onMounted(async () => {
 .chart-bar-info {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 280px;
-  max-width: 280px;
+  gap: 12px;
+  min-width: 300px;
+  max-width: 320px;
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1190,14 +1149,14 @@ onMounted(async () => {
 .chart-bar-rank {
   font-weight: 700;
   color: #94a3b8;
-  font-size: 13px;
-  min-width: 28px;
+  font-size: 14px;
+  min-width: 32px;
   text-align: center;
   flex-shrink: 0;
 }
 
 .chart-bar-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #1e293b;
   white-space: nowrap;
@@ -1205,7 +1164,7 @@ onMounted(async () => {
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
-  max-width: 180px;
+  max-width: 200px;
 }
 
 .chart-bar-name:hover {
@@ -1219,32 +1178,33 @@ onMounted(async () => {
 }
 
 .chart-bar-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: #94a3b8;
   white-space: nowrap;
   flex-shrink: 0;
   margin-left: auto;
+  min-width: 60px;
 }
 
 .chart-bar-track {
   flex: 1;
-  height: 32px;
+  height: 36px;
   background: #f1f5f9;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
   position: relative;
-  min-width: 120px;
+  min-width: 150px;
 }
 
 .chart-bar-fill {
   height: 100%;
-  border-radius: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding-right: 12px;
+  padding-right: 16px;
   transition: width 0.8s ease;
-  min-width: 80px;
+  min-width: 130px;
   position: relative;
 }
 
@@ -1253,7 +1213,7 @@ onMounted(async () => {
 }
 
 .chart-bar-value {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: white;
   z-index: 2;
@@ -1455,6 +1415,51 @@ onMounted(async () => {
 }
 
 /* ================================================================
+   STATUS BADGES
+   ================================================================ */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge.status-active,
+.status-badge.status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.status-partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.status-incomplete {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-badge.status-inactive {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.status-badge.status-zero-cost {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.balance-cell {
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+}
+
+/* ================================================================
    TABLE
    ================================================================ */
 .table-container {
@@ -1503,36 +1508,6 @@ onMounted(async () => {
 
 .item-standard {
   font-size: 11px;
-  color: #94a3b8;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-badge.status-active,
-.status-badge.status-completed {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-badge.status-partial {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-badge.status-incomplete {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-badge.status-inactive {
-  background: #f1f5f9;
   color: #94a3b8;
 }
 
@@ -1631,11 +1606,14 @@ onMounted(async () => {
     grid-template-columns: 1fr 1fr 1fr; 
   }
   .chart-bar-info {
-    min-width: 220px;
-    max-width: 220px;
+    min-width: 240px;
+    max-width: 260px;
   }
   .chart-bar-name {
-    max-width: 130px;
+    max-width: 150px;
+  }
+  .chart-bar-track {
+    min-width: 120px;
   }
 }
 
@@ -1644,20 +1622,27 @@ onMounted(async () => {
     grid-template-columns: 1fr 1fr; 
   }
   .chart-bar-info {
-    min-width: 180px;
-    max-width: 180px;
+    min-width: 200px;
+    max-width: 220px;
   }
   .chart-bar-name {
-    max-width: 100px;
-    font-size: 12px;
+    max-width: 120px;
+    font-size: 13px;
   }
   .chart-bar-sub {
-    font-size: 10px;
+    font-size: 11px;
+    min-width: 50px;
   }
-  .chart-bar-percent {
-    min-width: 45px;
-    max-width: 45px;
-    font-size: 12px;
+  .chart-bar-track {
+    min-width: 100px;
+    height: 32px;
+  }
+  .chart-bar-fill {
+    min-width: 80px;
+    padding-right: 12px;
+  }
+  .chart-bar-value {
+    font-size: 11px;
   }
   .top-items-table {
     font-size: 12px;
@@ -1685,23 +1670,15 @@ onMounted(async () => {
   .dashboard-header { flex-direction: column; align-items: flex-start; }
   .header-right { width: 100%; justify-content: space-between; flex-wrap: wrap; }
   .chart-bar-info {
-    min-width: 150px;
-    max-width: 150px;
+    min-width: 160px;
+    max-width: 180px;
   }
   .chart-bar-name {
-    max-width: 80px;
-    font-size: 11px;
+    max-width: 90px;
+    font-size: 12px;
   }
   .chart-bar-sub { 
     display: none; 
-  }
-  .chart-bar-value { 
-    font-size: 10px; 
-  }
-  .chart-bar-percent { 
-    min-width: 38px; 
-    max-width: 38px; 
-    font-size: 11px; 
   }
   .chart-bar-track {
     min-width: 80px;
@@ -1710,6 +1687,14 @@ onMounted(async () => {
   .chart-bar-fill {
     min-width: 60px;
     padding-right: 8px;
+  }
+  .chart-bar-value { 
+    font-size: 10px; 
+  }
+  .chart-bar-percent { 
+    min-width: 38px; 
+    max-width: 38px; 
+    font-size: 11px; 
   }
   .top-items-table .rank-cell {
     width: 30px;
@@ -1767,22 +1752,17 @@ onMounted(async () => {
     justify-content: center; 
   }
   .chart-bar-info {
-    min-width: 100px;
-    max-width: 100px;
-    gap: 4px;
+    min-width: 120px;
+    max-width: 140px;
+    gap: 6px;
   }
   .chart-bar-name { 
-    max-width: 50px; 
-    font-size: 10px; 
+    max-width: 60px; 
+    font-size: 11px; 
   }
   .chart-bar-rank { 
-    min-width: 18px;
+    min-width: 20px;
     font-size: 11px;
-  }
-  .chart-bar-percent { 
-    min-width: 32px; 
-    max-width: 32px; 
-    font-size: 10px; 
   }
   .chart-bar-track { 
     min-width: 60px; 
@@ -1794,6 +1774,11 @@ onMounted(async () => {
   }
   .chart-bar-value { 
     font-size: 9px; 
+  }
+  .chart-bar-percent { 
+    min-width: 32px; 
+    max-width: 32px; 
+    font-size: 10px; 
   }
   .top-items-table {
     font-size: 11px;

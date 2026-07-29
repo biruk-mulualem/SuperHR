@@ -102,7 +102,7 @@
               <!-- Loading indicator at bottom -->
               <div v-if="loadingMore" class="loading-more">
                 <div class="spinner-small"></div>
-                <span>Loading more...</span>
+                <!-- <span>Loading more...</span> -->
               </div>
               
               <!-- No more notifications -->

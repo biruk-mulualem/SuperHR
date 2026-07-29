@@ -117,7 +117,16 @@ const router = createRouter({
 },
 
   
-
+{
+  path: '/cost-calculation-rules',
+  name: 'CostCalculationRules',
+  component: () => import('@/views/storemanagement/ItemCost/CostCalculationRules.vue'),
+  meta: { 
+    title: 'Cost Calculation Rules',
+    requiresAuth: true
+  }
+}
+,
 
 
 

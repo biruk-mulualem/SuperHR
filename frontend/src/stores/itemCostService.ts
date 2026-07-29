@@ -14,8 +14,8 @@ export interface ItemCostData {
   brand: string;
   model: string;
   baseUOM: string;
-  conversionUOM: string | null; // ← ADD THIS
-  conversionValue: number; // ← ADD THIS
+  conversionUOM: string | null;
+  conversionValue: number;
   unitCost: number;
   totalQty: number;
   totalCost: number;
@@ -34,6 +34,7 @@ export interface ItemCostData {
   isExcluded: boolean;
   exclusionReason: string | null;
 }
+
 export interface StoreBreakdown {
   storeId: number;
   storeName: string;
@@ -184,10 +185,6 @@ class ItemCostService {
   // 📊 DROPDOWN DATA
   // ================================================================
 
-  /**
-   * Get stores for dropdown filter
-   * GET /api/item-costs/stores
-   */
   async getStores(): Promise<{
     success: boolean;
     data: Store[];
@@ -206,10 +203,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Get groups for dropdown filter
-   * GET /api/item-costs/groups
-   */
   async getGroups(): Promise<{
     success: boolean;
     data: Group[];
@@ -232,10 +225,6 @@ class ItemCostService {
   // 📈 COST SUMMARY
   // ================================================================
 
-  /**
-   * Get cost summary statistics
-   * GET /api/item-costs/summary
-   */
   async getCostSummary(params?: {
     storeId?: number;
     groupId?: number;
@@ -264,10 +253,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Export cost report
-   * GET /api/item-costs/export
-   */
   async exportCostReport(params?: {
     storeId?: number;
     groupId?: number;
@@ -300,15 +285,146 @@ class ItemCostService {
   }
 
   // ================================================================
+  // 📥 EXPORT ALL ITEMS (Working endpoint)
+  // ================================================================
+
+  async exportAllItems(params: Record<string, any> = {}): Promise<{
+    success: boolean;
+    data: any[];
+    total: number;
+    error?: string;
+  }> {
+    try {
+      const queryString = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          queryString.append(key, value.toString());
+        }
+      });
+
+      const url = `/item-costs/export-all${queryString.toString() ? '?' + queryString.toString() : ''}`;
+      console.log('📤 Exporting all items from:', url);
+      
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error('Export all items error:', error);
+      return {
+        success: false,
+        data: [],
+        total: 0,
+        error: error?.response?.data?.error || 'Failed to export items'
+      };
+    }
+  }
+
+  // ================================================================
+  // 📥 EXPORT AS CSV (Using working exportAllItems)
+  // ================================================================
+
+  async exportAsCSV(params: Record<string, any> = {}): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Use the working exportAllItems endpoint
+      const response = await this.exportAllItems(params);
+      
+      if (!response.success || !response.data || response.data.length === 0) {
+        return { 
+          success: false, 
+          error: response.error || 'No data to export' 
+        };
+      }
+
+      const data = response.data;
+      
+      // Define columns for CSV
+      const columns = [
+        'Item Code', 'Item Name', 'Standard Name', 'Category', 'Brand', 'Model',
+        'Base UOM', 'Conversion UOM', 'Conversion Value', 'Unit Cost (ETB)',
+        'Total Quantity', 'Total Cost (ETB)', 'Status', 'Status Message',
+        'Included Stores', 'Excluded Stores', 'Is Excluded', 'Exclusion Reason',
+        'Has Missing Data', 'Missing Data'
+      ];
+
+      // Build CSV
+      const csvRows = [];
+      csvRows.push(columns.join(','));
+
+      for (const item of data) {
+        const row = columns.map(col => {
+          const keyMap: Record<string, string> = {
+            'Item Code': 'itemCode',
+            'Item Name': 'itemName',
+            'Standard Name': 'itemStandardName',
+            'Category': 'categoryName',
+            'Brand': 'brand',
+            'Model': 'model',
+            'Base UOM': 'baseUOM',
+            'Conversion UOM': 'conversionUOM',
+            'Conversion Value': 'conversionValue',
+            'Unit Cost (ETB)': 'unitCost',
+            'Total Quantity': 'totalQty',
+            'Total Cost (ETB)': 'totalCost',
+            'Status': 'status',
+            'Status Message': 'statusMessage',
+            'Included Stores': 'includedStoresCount',
+            'Excluded Stores': 'excludedStoresCount',
+            'Is Excluded': 'isExcluded',
+            'Exclusion Reason': 'exclusionReason',
+            'Has Missing Data': 'hasMissingData',
+            'Missing Data': 'missingData'
+          };
+          
+          const key = keyMap[col] || col;
+          let value = item[key];
+          
+          // Handle special cases
+          if (col === 'Is Excluded' || col === 'Has Missing Data') {
+            value = value ? 'Yes' : 'No';
+          }
+          if (col === 'Missing Data' && Array.isArray(value)) {
+            value = value.join(', ');
+          }
+          if (col === 'Unit Cost (ETB)' || col === 'Total Cost (ETB)') {
+            value = typeof value === 'number' ? value.toFixed(2) : value;
+          }
+          if (value === null || value === undefined) {
+            value = '';
+          }
+          
+          const stringValue = String(value);
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        });
+        csvRows.push(row.join(','));
+      }
+
+      const csv = csvRows.join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cost_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ Failed to export as CSV:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to export as CSV'
+      };
+    }
+  }
+
+  // ================================================================
   // 🔥 COST EXCLUSION
   // ================================================================
 
-  /**
-   * Toggle item cost exclusion
-   * PATCH /api/item-costs/:itemId/status
-   * Inactive → Excludes from cost calculations
-   * Active → Includes in cost calculations
-   */
   async toggleItemStatus(
     itemId: number,
     status: 'Active' | 'Inactive'
@@ -331,10 +447,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Get all excluded items
-   * GET /api/item-costs/excluded
-   */
   async getExcludedItems(): Promise<{
     success: boolean;
     data: ExcludedItem[];
@@ -355,10 +467,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Bulk exclude items from cost calculations
-   * POST /api/item-costs/bulk-exclude
-   */
   async bulkExcludeItems(
     itemIds: number[],
     reason: string = 'Bulk exclusion'
@@ -385,10 +493,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Bulk include items (remove from exclusion)
-   * POST /api/item-costs/bulk-include
-   */
   async bulkIncludeItems(itemIds: number[]): Promise<BulkExclusionResponse> {
     try {
       const response = await api.post('/item-costs/bulk-include', {
@@ -411,9 +515,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Check if an item is excluded from cost calculations
-   */
   async isItemExcluded(itemId: number): Promise<boolean> {
     try {
       const response = await this.getExcludedItems();
@@ -431,10 +532,6 @@ class ItemCostService {
   // 📦 MAIN CRUD
   // ================================================================
 
-  /**
-   * Get all items with cost calculations
-   * GET /api/item-costs
-   */
   async getItemsWithCost(params?: {
     storeId?: number;
     groupId?: number;
@@ -444,7 +541,6 @@ class ItemCostService {
     limit?: number;
   }): Promise<PaginatedResponse<ItemCostData>> {
     try {
-      // 🔥 Limit to 100 for performance
       const safeLimit = params?.limit ? Math.min(params.limit, 100) : 10;
       
       const queryParams = new URLSearchParams();
@@ -477,10 +573,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Get single item with cost calculation
-   * GET /api/item-costs/:itemId
-   */
   async getItemCost(
     itemId: number,
     params?: {
@@ -508,10 +600,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Get item cost history
-   * GET /api/item-costs/:itemId/history
-   */
   async getItemCostHistory(
     itemId: number,
     limit: number = 10
@@ -535,10 +623,6 @@ class ItemCostService {
     }
   }
 
-  /**
-   * Update item cost
-   * POST /api/item-costs/:itemId
-   */
   async updateItemCost(
     itemId: number,
     data: {
@@ -562,9 +646,6 @@ class ItemCostService {
   // 🛠️ HELPER METHODS
   // ================================================================
 
-  /**
-   * Get status badge color
-   */
   getStatusBadge(status: string): string {
     const badgeMap: Record<string, string> = {
       Active: 'success',
@@ -577,9 +658,6 @@ class ItemCostService {
     return badgeMap[status] || 'secondary';
   }
 
-  /**
-   * Get status icon
-   */
   getStatusIcon(status: string): string {
     const iconMap: Record<string, string> = {
       Active: '✅',
@@ -592,9 +670,6 @@ class ItemCostService {
     return iconMap[status] || '📦';
   }
 
-  /**
-   * Get status description
-   */
   getStatusDescription(status: string): string {
     const descMap: Record<string, string> = {
       Active: 'All data complete - included in total cost',
@@ -607,68 +682,41 @@ class ItemCostService {
     return descMap[status] || 'Unknown status';
   }
 
-  /**
-   * Format currency
-   */
   formatCurrency(value: number): string {
     if (value === null || value === undefined || isNaN(value)) return 'ETB 0.00';
     return `ETB ${Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   }
 
-  /**
-   * Format number
-   */
   formatNumber(value: number): string {
     if (value === null || value === undefined || isNaN(value)) return '0';
     return Number(value).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  /**
-   * Check if item has conflicts
-   */
   hasConflict(item: ItemCostData): boolean {
     return item.status === 'Conflict' || item.status === 'Partial';
   }
 
-  /**
-   * Get total quantity from store breakdown
-   */
   getTotalQuantity(item: ItemCostData): number {
     return item.storeBreakdown.reduce((sum, store) => sum + store.agreedQuantity, 0);
   }
 
-  /**
-   * Get total cost from store breakdown
-   */
   getTotalCost(item: ItemCostData): number {
     return this.getTotalQuantity(item) * item.unitCost;
   }
 
-  /**
-   * Get excluded stores count
-   */
   getExcludedStoresCount(item: ItemCostData): number {
     return item.storeBreakdown.filter(s => s.isExcluded).length;
   }
 
-  /**
-   * Get included stores count
-   */
   getIncludedStoresCount(item: ItemCostData): number {
     return item.storeBreakdown.filter(s => !s.isExcluded).length;
   }
 
-  /**
-   * Filter items by status
-   */
   filterByStatus(items: ItemCostData[], status: string): ItemCostData[] {
     if (!status) return items;
     return items.filter(item => item.status === status);
   }
 
-  /**
-   * Filter items by search query
-   */
   filterBySearch(items: ItemCostData[], query: string): ItemCostData[] {
     if (!query) return items;
     const q = query.toLowerCase();
@@ -681,9 +729,6 @@ class ItemCostService {
     );
   }
 
-  /**
-   * Filter items by store
-   */
   filterByStore(items: ItemCostData[], storeId: number): ItemCostData[] {
     if (!storeId) return items;
     return items.map(item => ({
@@ -693,32 +738,20 @@ class ItemCostService {
     }));
   }
 
-  /**
-   * Get excluded items count from a list
-   */
   getExcludedCount(items: ItemCostData[]): number {
     return items.filter(item => item.isExcluded).length;
   }
 
-  /**
-   * Get included items count from a list
-   */
   getIncludedCount(items: ItemCostData[]): number {
     return items.filter(item => !item.isExcluded).length;
   }
 
-  /**
-   * Calculate total value of included items
-   */
   getTotalInventoryValue(items: ItemCostData[]): number {
     return items
       .filter(item => !item.isExcluded && (item.status === 'Active' || item.status === 'Partial'))
       .reduce((sum, item) => sum + (item.totalCost || 0), 0);
   }
 
-  /**
-   * Get stores from item breakdown
-   */
   getStoresFromItems(items: ItemCostData[]): Store[] {
     const storeMap = new Map<number, Store>();
     items.forEach(item => {
@@ -733,6 +766,34 @@ class ItemCostService {
       });
     });
     return Array.from(storeMap.values());
+  }
+
+  downloadCSV(data: any[], filename: string = 'export'): void {
+    if (!data || data.length === 0) {
+      console.warn('No data to download');
+      return;
+    }
+
+    const headers = Object.keys(data[0]);
+    const csv = [
+      headers.join(','),
+      ...data.map(row => 
+        headers.map(key => {
+          const value = row[key] ?? '';
+          return `"${String(value).replace(/"/g, '""')}"`;
+        }).join(',')
+      )
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
 

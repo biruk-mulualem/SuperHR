@@ -28,12 +28,15 @@
             ✕
           </span>
         </div>
-        <button class="btn-export" @click="exportReport" :disabled="exporting">
+        
+        <!-- Export All Data Button -->
+        <button class="btn-export-all" @click="exportAllFilteredData" :disabled="exporting">
           <span v-if="exporting" class="spinner-small"></span>
           <span v-else>📊</span>
-          {{ exporting ? "Exporting..." : "Export Report" }}
+          {{ exporting ? 'Exporting...' : `Export All (${totalItems})` }}
         </button>
-        <button class="btn-print" @click="printReport">🖨️ Print</button>
+        
+        <!-- <button class="btn-print" @click="printReport">🖨️ Print</button> -->
       </div>
     </div>
 
@@ -123,17 +126,15 @@
                   <span class="item-standard">{{ item.itemStandardName }}</span>
                 </div>
               </td>
-              <td class="uom-code">{{ item.baseUOM }}</td>
+              <td class="uom-code">{{ item.conversionUOM }}</td>
               <td class="balance-cell">
                 <span class="balance-value">{{ formatNumber(item.totalQty) }}</span>
               </td>
-            <td class="cost-cell">
-  <div class="cost-details">
-    <span class="unit-cost">ETB {{ formatCurrency(item.unitCost) }}</span>
-    
-  
-  </div>
-</td>
+              <td class="cost-cell">
+                <div class="cost-details">
+                  <span class="unit-cost">ETB {{ formatCurrency(item.unitCost) }}</span>
+                </div>
+              </td>
               <td class="total-cell">
                 <span class="total-value" :class="{
                   'active-value': item.status === 'Active' || item.status === 'Completed',
@@ -328,12 +329,13 @@
                       }">
                         <div class="total-summary-item">
                           <span class="total-label">Total Quantity (Included Stores)</span>
-                       <span class="total-value-highlight">
-  {{ formatNumber(item.totalQty) }} {{ item.conversionUOM }}
-  <span class="total-value-sub">
-    ({{ formatNumber(item.totalQty / item.conversionValue) }} {{ item.baseUOM }})
-  </span>
-</span> </div>
+                          <span class="total-value-highlight">
+                            {{ formatNumber(item.totalQty) }} {{ item.conversionUOM }}
+                            <span class="total-value-sub">
+                              ({{ formatNumber(item.totalQty / item.conversionValue) }} {{ item.baseUOM }})
+                            </span>
+                          </span>
+                        </div>
                         <div class="total-summary-item">
                           <span class="total-label">Total Cost</span>
                           <span class="total-value-highlight">ETB {{ formatCurrency(item.totalCost) }}</span>
@@ -602,46 +604,113 @@ const loadAllData = async () => {
   await loadItems()
 }
 
-const exportReport = async () => {
-  exporting.value = true
-  try {
-    const response = await itemCostService.exportCostReport({
-      storeId: selectedStoreId.value ? Number(selectedStoreId.value) : undefined,
-    })
-
-    if (response.success && response.data.length > 0) {
-      const headers = Object.keys(response.data[0])
-      const csv = [
-        headers.join(','),
-        ...response.data.map(row => 
-          headers.map(key => `"${(row[key] ?? '').replace(/"/g, '""')}"`).join(',')
-        )
-      ].join('\n')
-
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `cost_report_${new Date().toISOString().split('T')[0]}.csv`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      showToastMessage(`Export completed! ${response.total} items exported`, 'success')
-    } else {
-      showToastMessage(response.error || 'No data to export', 'error')
-    }
-  } catch (error) {
-    console.error('Error exporting:', error)
-    showToastMessage('Failed to export report', 'error')
-  } finally {
-    exporting.value = false
-  }
-}
-
 const printReport = () => {
   window.print()
+}
+
+// ================================================================
+// 📥 DOWNLOAD CSV HELPER
+// ================================================================
+
+const downloadCSV = (data) => {
+  if (!data || data.length === 0) {
+    showToastMessage('No data to export', 'warning');
+    return;
+  }
+
+  // Get all columns from the first item
+  const columns = Object.keys(data[0]);
+  
+  // Build CSV header
+  const csvRows = [];
+  csvRows.push(columns.join(','));
+  
+  // Build CSV rows
+  for (const item of data) {
+    const row = columns.map(key => {
+      let value = item[key];
+      
+      // Handle special cases
+      if (value === null || value === undefined) {
+        value = '';
+      }
+      
+      // Handle arrays
+      if (Array.isArray(value)) {
+        value = value.join(', ');
+      }
+      
+      // Handle booleans
+      if (typeof value === 'boolean') {
+        value = value ? 'Yes' : 'No';
+      }
+      
+      // Handle numbers with decimals
+      if (typeof value === 'number' && !Number.isInteger(value)) {
+        value = value.toFixed(2);
+      }
+      
+      const stringValue = String(value);
+      // Escape special characters for CSV
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    });
+    csvRows.push(row.join(','));
+  }
+  
+  const csv = csvRows.join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { 
+    type: 'text/csv;charset=utf-8;' 
+  });
+  
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const fileName = `cost_export_${new Date().toISOString().split('T')[0]}.csv`;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  
+  showToastMessage(`Exported ${data.length} items to CSV!`, 'success');
+}
+
+// ================================================================
+// 📊 EXPORT ALL FILTERED DATA
+// ================================================================
+
+const exportAllFilteredData = async () => {
+  try {
+    exporting.value = true;
+    showToastMessage('Preparing export...', 'info');
+
+    const params = {};
+    if (selectedStoreId.value) params.storeId = Number(selectedStoreId.value);
+    if (filterStatus.value) params.status = filterStatus.value;
+    if (searchQuery.value) params.search = searchQuery.value;
+    
+    console.log('📤 Exporting with params:', params);
+    
+    // 🔥 Get data directly from exportAllItems
+    const response = await itemCostService.exportAllItems(params);
+    
+    if (response.success && response.data && response.data.length > 0) {
+      // 🔥 Use the downloadCSV function
+      downloadCSV(response.data);
+    } else if (response.success && response.data && response.data.length === 0) {
+      showToastMessage('No data to export for current filters', 'warning');
+    } else {
+      showToastMessage(response.error || 'Failed to fetch data for export', 'error');
+    }
+  } catch (error) {
+    console.error('Export error:', error);
+    showToastMessage('Failed to export data', 'error');
+  } finally {
+    exporting.value = false;
+  }
 }
 
 // ================================================================
@@ -737,6 +806,35 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ================================================================
+   EXPORT ALL BUTTON
+   ================================================================ */
+.btn-export-all {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-export-all:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-export-all:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ================================================================
    SEARCH BOX WITH CLEAR BUTTON
    ================================================================ */

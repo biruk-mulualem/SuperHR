@@ -9,7 +9,8 @@ const { authMiddleware } = require('../middleware/authMiddleware');
 router.get('/stores', itemCostController.getStores);
 router.get('/groups', itemCostController.getGroups);
 router.get('/export', itemCostController.exportCostReport);
-
+// Add this route
+router.get('/export-all', itemCostController.exportAllItems);
 // Protected routes
 router.get('/', itemCostController.getItemsWithCost);
 router.get('/:itemId', itemCostController.getItemCost);

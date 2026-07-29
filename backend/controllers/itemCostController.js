@@ -19,6 +19,10 @@ const costCache = new NodeCache({
 // 🔥 CALCULATE ITEM COST
 // Formula: Balance × Conversion Value × Unit Cost
 // ================================================================
+// ================================================================
+// 🔥 CALCULATE ITEM COST - FIXED VERSION
+// Formula: Balance × Conversion Value × Unit Cost
+// ================================================================
 
 function calculateItemCostOptimized(
   item, 
@@ -30,7 +34,9 @@ function calculateItemCostOptimized(
   exclusionReason = null
 ) {
   try {
-    // 1. If excluded
+    // ================================================================
+    // 1. CHECK IF EXCLUDED
+    // ================================================================
     if (isExcluded) {
       return {
         id: item.itemId,
@@ -63,13 +69,17 @@ function calculateItemCostOptimized(
       };
     }
 
-    // 2. Check required data
-    const hasUnitCost = unitCost !== undefined && unitCost !== null && unitCost >= 0;
+    // ================================================================
+    // 2. CHECK REQUIRED DATA - FIXED: unitCost MUST BE > 0
+    // ================================================================
+    const hasUnitCost = unitCost !== undefined && unitCost !== null && unitCost > 0;
     const hasConversionUom = item.conversionUomId !== undefined && item.conversionUomId !== null;
-    const hasConversionValue = item.conversionValue !== undefined && item.conversionValue !== null && parseFloat(item.conversionValue) > 0;
+    const hasConversionValue = item.conversionValue !== undefined && 
+                               item.conversionValue !== null && 
+                               parseFloat(item.conversionValue) > 0;
     
     const missingData = [];
-    if (!hasUnitCost && unitCost !== 0) {
+    if (!hasUnitCost) {
       missingData.push('Unit Cost');
     }
     if (!hasConversionUom) {
@@ -79,14 +89,24 @@ function calculateItemCostOptimized(
       missingData.push('Conversion Value');
     }
 
-    // 3. No balances
-    if (!balances || balances.length === 0) {
-      let status = 'Active';
-      let statusMessage = 'No balances found';
+    // ================================================================
+    // 3. CHECK FOR VALID BALANCES (quantity > 0)
+    // ================================================================
+    const hasValidBalance = balances && balances.some(b => parseFloat(b.balance) > 0);
+
+    // ================================================================
+    // 4. NO BALANCES OR ALL ZERO
+    // ================================================================
+    if (!balances || balances.length === 0 || !hasValidBalance) {
+      let status = 'Incomplete';
+      let statusMessage = 'No valid balances found';
       
       if (missingData.length > 0) {
         status = 'Incomplete';
         statusMessage = `Missing: ${missingData.join(', ')}`;
+      } else {
+        // If all data is complete but no balances
+        statusMessage = 'No inventory found (all balances are 0)';
       }
 
       return {
@@ -114,13 +134,15 @@ function calculateItemCostOptimized(
         isFiltered: !!storeId,
         hasMissingData: missingData.length > 0,
         missingData: missingData,
-        requiresSetup: missingData.length > 0,
+        requiresSetup: missingData.length > 0 || !hasValidBalance,
         isExcluded: false,
         exclusionReason: null,
       };
     }
 
-    // 4. Missing conversion data
+    // ================================================================
+    // 5. MISSING CONVERSION DATA
+    // ================================================================
     if (!hasConversionUom || !hasConversionValue) {
       const storeBreakdown = balances.map(balance => ({
         storeId: balance.storeId || balance.store_id,
@@ -171,13 +193,14 @@ function calculateItemCostOptimized(
       };
     }
 
-    // 5. ✅ GROUP BALANCES BY STORE (FIXED)
+    // ================================================================
+    // 6. GROUP BALANCES BY STORE
+    // ================================================================
     const storeMap = new Map();
     const baseUOM = item.uom?.code || 'Units';
     const conversionValue = parseFloat(item.conversionValue) || 1;
 
     for (const balance of balances) {
-      // 🔥 FIX: Get store ID correctly
       const storeIdKey = balance.storeId || balance.store_id;
       const groupIdKey = balance.groupId || balance.group_id;
       
@@ -186,7 +209,6 @@ function calculateItemCostOptimized(
         continue;
       }
 
-      // Initialize store if not exists
       if (!storeMap.has(storeIdKey)) {
         storeMap.set(storeIdKey, {
           storeId: storeIdKey,
@@ -201,7 +223,6 @@ function calculateItemCostOptimized(
       const originalQuantity = parseFloat(balance.balance) || 0;
       const convertedQuantity = originalQuantity * conversionValue;
 
-      // Add group to this store
       storeData.groups.push({
         groupId: groupIdKey,
         groupName: balance.group?.name || 'Unknown Group',
@@ -215,14 +236,13 @@ function calculateItemCostOptimized(
       storeData.totalQty += convertedQuantity;
     }
 
-    // 6. 🔥 CHECK CONFLICTS PER STORE
+    // ================================================================
+    // 7. CHECK CONFLICTS PER STORE
+    // ================================================================
     const storeBreakdown = [];
     for (const [storeIdKey, storeData] of storeMap) {
-      // Get all quantities from groups in THIS store
       const quantities = storeData.groups.map(g => g.quantity);
       const firstQty = quantities[0];
-      
-      // Check if all groups in THIS store have the same quantity
       const allSame = quantities.every(q => Math.abs(q - firstQty) < 0.0001);
 
       storeBreakdown.push({
@@ -244,7 +264,9 @@ function calculateItemCostOptimized(
       });
     }
 
-    // 7. Calculate totals from included stores only
+    // ================================================================
+    // 8. CALCULATE TOTALS FROM INCLUDED STORES ONLY
+    // ================================================================
     let includedStores = [];
     let totalQty = 0;
     let excludedStores = [];
@@ -260,37 +282,57 @@ function calculateItemCostOptimized(
         }
       }
     } else {
-      // Only include stores where groups agree
       includedStores = storeBreakdown.filter(s => !s.isExcluded);
       totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
       excludedStores = storeBreakdown.filter(s => s.isExcluded).map(s => s.storeName);
     }
 
-    // 8. Calculate total cost
+    // ================================================================
+    // 9. CALCULATE TOTAL COST
+    // ================================================================
     const totalCost = hasUnitCost ? totalQty * unitCost : 0;
     const userStatus = item.status || 'Active';
 
-    // 9. Determine status
+    // ================================================================
+    // 10. DETERMINE STATUS
+    // ================================================================
     let status = 'Active';
     let statusMessage = 'Complete data';
     
+    // Check if user status is inactive
     if (userStatus === 'Inactive') {
       status = 'Inactive';
       statusMessage = 'Item is inactive';
-    } else if (missingData.length > 0 || !hasUnitCost || !hasConversionValue) {
+    } 
+    // Check if missing data (unit cost or conversion)
+    else if (missingData.length > 0 || !hasUnitCost || !hasConversionValue) {
       status = 'Incomplete';
       statusMessage = `Missing: ${missingData.join(', ')}`;
-    } else if (excludedStores.length > 0 && includedStores.length > 0) {
+    } 
+    // Check if total quantity is 0 (no valid inventory)
+    else if (totalQty === 0) {
+      status = 'Incomplete';
+      statusMessage = 'No valid inventory (all stores have 0 quantity or conflicts)';
+    }
+    // Check if some stores have conflicts
+    else if (excludedStores.length > 0 && includedStores.length > 0) {
       status = 'Partial';
       statusMessage = `${excludedStores.length} store(s) excluded due to conflicts`;
-    } else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
+    } 
+    // Check if all stores have conflicts
+    else if (excludedStores.length === storeBreakdown.length && storeBreakdown.length > 0) {
       status = 'Conflict';
       statusMessage = 'All stores have conflicts';
-    } else {
+    } 
+    // All checks pass
+    else {
       status = 'Active';
       statusMessage = 'Complete data';
     }
 
+    // ================================================================
+    // 11. RETURN RESULT
+    // ================================================================
     return {
       id: item.itemId,
       itemCode: item.code,
@@ -316,7 +358,7 @@ function calculateItemCostOptimized(
       isFiltered: !!storeId,
       hasMissingData: missingData.length > 0 || !hasUnitCost || !hasConversionValue,
       missingData: missingData,
-      requiresSetup: missingData.length > 0 || !hasUnitCost || !hasConversionValue,
+      requiresSetup: missingData.length > 0 || !hasUnitCost || !hasConversionValue || totalQty === 0,
       isExcluded: false,
       exclusionReason: null,
     };
@@ -392,7 +434,7 @@ exports.getItemsWithCost = async (req, res) => {
   try {
     console.log('🚀 START: getItemsWithCost');
     const { storeId, groupId, status, search, page = 1, limit = 10 } = req.query;
-    const parsedLimit = Math.min(parseInt(limit) || 10, 100);
+    const parsedLimit = Math.min(parseInt(limit) || 10, 100000);
     const parsedPage = parseInt(page) || 1;
 
     const cacheKey = `items_${storeId || 'all'}_${groupId || 'all'}_${status || 'all'}_${search || 'all'}_${parsedPage}_${parsedLimit}`;
@@ -1149,30 +1191,42 @@ exports.getGroups = async (req, res) => {
 // ================================================================
 // 🔥 EXPORT COST REPORT
 // ================================================================
+// ================================================================
+// 🔥 EXPORT COST REPORT - FIXED TO INCLUDE ALL ITEMS WITH DATA
+// ================================================================
 
 exports.exportCostReport = async (req, res) => {
   try {
     const { storeId, groupId } = req.query;
+    
+    console.log('📊 Exporting cost report...');
+    console.log('📊 Store filter:', storeId || 'All');
+    console.log('📊 Group filter:', groupId || 'All');
 
+    // Get ALL items (not just Active) - we want to see everything
     const items = await Item.findAll({
       include: [
-        { model: UOM, as: 'uom' },
-        { model: Category, as: 'category' },
-        { model: UOM, as: 'conversionUom' },
+        { model: UOM, as: 'uom', attributes: ['code', 'name'] },
+        { model: Category, as: 'category', attributes: ['name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['code', 'name'] },
       ],
       order: [['name', 'ASC']],
-      limit: 5000,
     });
 
+    console.log(`📊 Found ${items.length} total items`);
+
     if (items.length === 0) {
-      return res.json({
+      return res.status(200).json({
         success: true,
         data: [],
         total: 0,
+        message: 'No items found in the system',
       });
     }
 
-    const itemIds = items.map(i => i.itemId);
+    const itemIds = items.map(i => i.id);
+    
+    // Get balances for these items
     const balanceWhere = {
       item_id: { [Op.in]: itemIds },
       status: 'Active',
@@ -1182,35 +1236,48 @@ exports.exportCostReport = async (req, res) => {
 
     const allBalances = await StoreBalance.findAll({
       where: balanceWhere,
-      attributes: ['item_id', 'store_id', 'group_id', 'balance', 'id'],
+      attributes: ['id', 'item_id', 'store_id', 'group_id', 'balance'],
       include: [
-        { model: Store, as: 'store', attributes: ['storeId', 'name'] },
-        { model: Group, as: 'group', attributes: ['id', 'name'] },
+        { model: Store, as: 'store', attributes: ['id', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+      ],
+      order: [
+        ['item_id', 'ASC'],
+        ['store_id', 'ASC'],
+        ['group_id', 'ASC']
       ],
     });
 
+    console.log(`📊 Found ${allBalances.length} balances`);
+
+    // Group balances by item
     const balancesByItem = {};
     for (const balance of allBalances) {
       if (!balancesByItem[balance.item_id]) {
         balancesByItem[balance.item_id] = [];
       }
-      balancesByItem[balance.item_id].push({
-        storeId: balance.store_id,
-        storeName: balance.store?.name || 'Unknown Store',
-        groupId: balance.group_id,
-        groupName: balance.group?.name || 'Unknown Group',
-        totalBalance: parseFloat(balance.balance) || 0,
-        balanceId: balance.id,
-      });
+      balancesByItem[balance.item_id].push(balance);
     }
 
+    // Get excluded items
+    const excludedItems = await ExcludeItemFromCost.findAll({
+      where: { is_active: true },
+      attributes: ['item_id', 'reason']
+    });
+    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
+    const exclusionReasons = {};
+    excludedItems.forEach(e => {
+      exclusionReasons[e.item_id] = e.reason || 'Manually excluded';
+    });
+
+    // Get latest costs
     const ItemCost = db.ItemCost;
     let latestCosts = {};
     if (ItemCost) {
       const costRecords = await ItemCost.findAll({
         where: { itemId: { [Op.in]: itemIds } },
         order: [['created_at', 'DESC']],
-        attributes: ['itemId', 'newCost'],
+        attributes: ['itemId', 'newCost']
       });
       for (const cost of costRecords) {
         if (!latestCosts[cost.itemId]) {
@@ -1219,56 +1286,230 @@ exports.exportCostReport = async (req, res) => {
       }
     }
 
-    const excludedItems = await ExcludeItemFromCost.findAll({
-      where: { is_active: true },
-      attributes: ['item_id', 'reason']
-    });
-    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
+    console.log('🔄 Processing items and building report...');
 
     const reportData = [];
+    let processedCount = 0;
+
     for (const item of items) {
-      const itemBalances = balancesByItem[item.itemId] || [];
-      const unitCost = latestCosts[item.itemId] || parseFloat(item.costPrice) || 0;
-      const isExcluded = excludedItemIds.has(item.itemId);
-
-      const costData = calculateItemCostOptimized(
-        item,
-        itemBalances,
-        unitCost,
-        storeId || null,
-        groupId || null,
-        isExcluded,
-        null
-      );
-
-      if (costData.status !== 'Inactive' && costData.status !== 'Incomplete' && costData.status !== 'Error') {
-        reportData.push({
-          'Item Code': costData.itemCode,
-          'Item Name': costData.itemName,
-          'Standard Name': costData.itemStandardName || '',
-          'Category': costData.categoryName || '',
-          'Brand': costData.brand || '',
-          'Model': costData.model || '',
-          'Base UOM': costData.baseUOM,
-          'Unit Cost': costData.unitCost.toFixed(2),
-          'Total Quantity': costData.totalQty,
-          'Total Cost': costData.totalCost.toFixed(2),
-          'Status': costData.status,
-          'Status Message': costData.statusMessage || '',
-          'Excluded Stores': costData.excludedStores.join(', '),
-          'Is Excluded': isExcluded ? 'Yes' : 'No',
-        });
+      processedCount++;
+      if (processedCount % 100 === 0) {
+        console.log(`📊 Processed ${processedCount}/${items.length} items`);
       }
+
+      const itemBalances = balancesByItem[item.id] || [];
+      const unitCost = latestCosts[item.id] || parseFloat(item.costPrice) || 0;
+      const isExcluded = excludedItemIds.has(item.id);
+
+      // Use a simpler calculation for export - just show the raw data
+      // Calculate total quantity from balances
+      let totalQty = 0;
+      let totalCost = 0;
+      let storeBreakdown = [];
+      let hasConflict = false;
+      
+      if (itemBalances.length > 0) {
+        // Group balances by store to detect conflicts
+        const storeMap = new Map();
+        for (const balance of itemBalances) {
+          const storeIdKey = balance.store_id;
+          const groupIdKey = balance.group_id;
+          const quantity = parseFloat(balance.balance) || 0;
+          
+          if (!storeMap.has(storeIdKey)) {
+            storeMap.set(storeIdKey, {
+              storeId: storeIdKey,
+              storeName: balance.store?.name || 'Unknown Store',
+              storeCode: balance.store?.code || '',
+              groups: [],
+              totalQty: 0,
+            });
+          }
+          
+          const storeData = storeMap.get(storeIdKey);
+          storeData.groups.push({
+            groupId: groupIdKey,
+            groupName: balance.group?.name || 'Unknown Group',
+            quantity: quantity,
+          });
+          storeData.totalQty += quantity;
+        }
+        
+        // Check for conflicts per store
+        for (const [storeIdKey, storeData] of storeMap) {
+          const quantities = storeData.groups.map(g => g.quantity);
+          const firstQty = quantities[0];
+          const allSame = quantities.every(q => Math.abs(q - firstQty) < 0.0001);
+          
+          storeBreakdown.push({
+            storeId: storeData.storeId,
+            storeName: storeData.storeName,
+            hasConflict: !allSame,
+            isExcluded: !allSame,
+            agreedQuantity: allSame ? firstQty : 0,
+            groups: storeData.groups,
+          });
+          
+          if (!allSame) {
+            hasConflict = true;
+          }
+        }
+        
+        // Calculate total quantity from stores without conflicts
+        const includedStores = storeBreakdown.filter(s => !s.isExcluded);
+        totalQty = includedStores.reduce((sum, s) => sum + s.agreedQuantity, 0);
+        totalCost = unitCost * totalQty;
+      }
+      
+      // Determine status
+      let status = 'No Data';
+      let statusMessage = '';
+      let hasMissingData = false;
+      let missingData = [];
+      
+      if (isExcluded) {
+        status = 'Inactive';
+        statusMessage = 'Excluded from cost calculations';
+      } else if (item.status === 'Inactive') {
+        status = 'Inactive';
+        statusMessage = 'Item is inactive';
+      } else if (unitCost <= 0) {
+        status = 'Incomplete';
+        statusMessage = 'Missing Unit Cost';
+        hasMissingData = true;
+        missingData.push('Unit Cost');
+      } else if (!item.conversion_uom_id) {
+        status = 'Incomplete';
+        statusMessage = 'Missing Conversion UOM';
+        hasMissingData = true;
+        missingData.push('Conversion UOM');
+      } else if (!item.conversion_value || item.conversion_value <= 0) {
+        status = 'Incomplete';
+        statusMessage = 'Missing Conversion Value';
+        hasMissingData = true;
+        missingData.push('Conversion Value');
+      } else if (itemBalances.length === 0) {
+        status = 'No Inventory';
+        statusMessage = 'No balances found';
+      } else if (hasConflict) {
+        status = 'Partial';
+        statusMessage = 'Store conflicts exist';
+      } else if (totalQty === 0) {
+        status = 'Zero Inventory';
+        statusMessage = 'All balances are 0';
+      } else {
+        status = 'Active';
+        statusMessage = 'Complete data';
+      }
+
+      // Build base row with essential info
+      const baseRow = {
+        'Item Code': item.code || 'N/A',
+        'Item Name': item.name || 'Unknown',
+        'Standard Name': item.standard_name || '',
+        'Category': item.category?.name || '',
+        'Brand': item.brand || '',
+        'Model': item.model || '',
+        'Base UOM': item.uom?.code || 'Units',
+        'Conversion UOM': item.conversionUom?.code || '',
+        'Conversion Value': item.conversion_value || 0,
+        'Unit Cost (ETB)': unitCost.toFixed(2),
+        'Total Quantity': totalQty,
+        'Total Cost (ETB)': totalCost.toFixed(2),
+        'Item Status': item.status || 'Unknown',
+        'Cost Status': status,
+        'Status Message': statusMessage,
+        'Has Missing Data': hasMissingData ? 'Yes' : 'No',
+        'Missing Data': missingData.join(', ') || '',
+        'Included Stores': storeBreakdown.filter(s => !s.isExcluded).length,
+        'Excluded Stores': storeBreakdown.filter(s => s.isExcluded).length,
+        'Is Excluded': isExcluded ? 'Yes' : 'No',
+        'Exclusion Reason': isExcluded ? (exclusionReasons[item.id] || 'Manually excluded') : '',
+        'Total Balances': itemBalances.length,
+        'Has Conflicts': hasConflict ? 'Yes' : 'No',
+      };
+
+      // Add store breakdown
+      if (storeBreakdown && storeBreakdown.length > 0) {
+        let storeIndex = 1;
+        for (const store of storeBreakdown) {
+          const prefix = `Store ${storeIndex}`;
+          baseRow[`${prefix} - Store Name`] = store.storeName || '';
+          baseRow[`${prefix} - Store ID`] = store.storeId || '';
+          baseRow[`${prefix} - Has Conflict`] = store.hasConflict ? 'Yes' : 'No';
+          baseRow[`${prefix} - Is Excluded`] = store.isExcluded ? 'Yes' : 'No';
+          baseRow[`${prefix} - Agreed Quantity`] = store.agreedQuantity || 0;
+          
+          // Add group details
+          if (store.groups && store.groups.length > 0) {
+            let groupIndex = 1;
+            for (const group of store.groups) {
+              const groupPrefix = `${prefix} - Group ${groupIndex}`;
+              baseRow[`${groupPrefix} - Group Name`] = group.groupName || '';
+              baseRow[`${groupPrefix} - Group ID`] = group.groupId || '';
+              baseRow[`${groupPrefix} - Quantity`] = group.quantity || 0;
+              groupIndex++;
+            }
+          }
+          storeIndex++;
+        }
+      }
+
+      // Always include the item, even if it has no data
+      reportData.push(baseRow);
     }
 
-    res.json({
-      success: true,
-      data: reportData,
-      total: reportData.length,
+    console.log(`✅ Report built with ${reportData.length} items`);
+
+    if (reportData.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        total: 0,
+        message: 'No items found',
+      });
+    }
+
+    // Get all headers for consistent CSV
+    const allHeaders = Object.keys(reportData[0]);
+    
+    // Build CSV with all columns
+    const csvRows = [];
+    csvRows.push(allHeaders.join(','));
+
+    for (const row of reportData) {
+      const values = allHeaders.map(header => {
+        const value = row[header] ?? '';
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      });
+      csvRows.push(values.join(','));
+    }
+
+    const csvString = csvRows.join('\n');
+
+    // Add BOM for UTF-8 encoding
+    const blob = new Blob(['\uFEFF' + csvString], { 
+      type: 'text/csv;charset=utf-8;' 
     });
 
+    const fileName = `cost_report_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    console.log(`📤 Sending export file with ${reportData.length} items`);
+    res.send(blob);
+
   } catch (error) {
-    console.error('Export report error:', error);
+    console.error('❌ Export report error:', error);
+    console.error('❌ Stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to export report',
@@ -1431,6 +1672,186 @@ exports.getCostSummary = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get cost summary',
+    });
+  }
+};
+
+
+/**
+ * 🔥 EXPORT ALL ITEMS - DEDICATED EXPORT ENDPOINT
+ * No pagination, no cache, returns all data
+ */
+exports.exportAllItems = async (req, res) => {
+  try {
+    console.log('🚀 START: exportAllItems');
+    const { storeId, groupId, status, search } = req.query;
+
+    // Build query (same filtering as getItemsWithCost)
+    const itemWhere = {};
+    
+    if (search && search.trim()) {
+      const term = search.trim().toLowerCase();
+      itemWhere[Op.or] = [
+        { code: { [Op.iLike]: `%${term}%` } },
+        { name: { [Op.iLike]: `%${term}%` } },
+        { standardName: { [Op.iLike]: `%${term}%` } },
+        { brand: { [Op.iLike]: `%${term}%` } },
+        { model: { [Op.iLike]: `%${term}%` } }
+      ];
+    }
+
+    // Store filter
+    let itemIdsWithBalance = null;
+    if (storeId) {
+      const balances = await StoreBalance.findAll({
+        where: { 
+          storeId: storeId,
+          status: 'Active' 
+        },
+        attributes: ['itemId'],
+        group: ['itemId'],
+        raw: true,
+      });
+      itemIdsWithBalance = balances.map(b => b.itemId);
+      if (itemIdsWithBalance.length === 0) {
+        return res.json({
+          success: true,
+          data: [],
+          total: 0,
+        });
+      }
+    }
+
+    if (itemIdsWithBalance) {
+      if (itemWhere[Op.or]) {
+        itemWhere[Op.and] = [
+          { [Op.or]: itemWhere[Op.or] },
+          { itemId: { [Op.in]: itemIdsWithBalance } }
+        ];
+        delete itemWhere[Op.or];
+      } else {
+        itemWhere.itemId = { [Op.in]: itemIdsWithBalance };
+      }
+    }
+
+    // Get ALL items - NO LIMIT
+    const allItems = await Item.findAll({
+      where: itemWhere,
+      attributes: ['itemId', 'code', 'name', 'standardName', 'brand', 'model', 'costPrice', 'status', 'uomId', 'conversionUomId', 'conversionValue'],
+      include: [
+        { model: UOM, as: 'uom', attributes: ['code', 'name'] },
+        { model: Category, as: 'category', attributes: ['name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['code', 'name'] },
+      ],
+      order: [['name', 'ASC']],
+    });
+
+    if (allItems.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        total: 0,
+      });
+    }
+
+    const itemIds = allItems.map(i => i.itemId);
+
+    // Get balances
+    const balanceWhere = { 
+      itemId: { [Op.in]: itemIds },
+      status: 'Active' 
+    };
+    if (storeId) balanceWhere.storeId = storeId;
+    if (groupId) balanceWhere.groupId = groupId;
+
+    const allBalances = await StoreBalance.findAll({
+      where: balanceWhere,
+      attributes: ['id', 'itemId', 'storeId', 'groupId', 'balance'],
+      include: [
+        { model: Store, as: 'store', attributes: ['storeId', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+      ],
+    });
+
+    // Group balances by item
+    const balancesByItem = {};
+    for (const balance of allBalances) {
+      if (!balancesByItem[balance.itemId]) {
+        balancesByItem[balance.itemId] = [];
+      }
+      balancesByItem[balance.itemId].push(balance);
+    }
+
+    // Get excluded items
+    const excludedItems = await ExcludeItemFromCost.findAll({
+      where: { is_active: true },
+      attributes: ['item_id', 'reason'],
+      raw: true,
+    });
+    const excludedItemIds = new Set(excludedItems.map(e => e.item_id));
+    const exclusionReasons = {};
+    excludedItems.forEach(e => { exclusionReasons[e.item_id] = e.reason || 'Manually excluded'; });
+
+    // Process ALL items
+    const exportData = [];
+    for (const item of allItems) {
+      const itemBalances = balancesByItem[item.itemId] || [];
+      const unitCost = parseFloat(item.costPrice) || 0;
+      const isExcluded = excludedItemIds.has(item.itemId);
+      const exclusionReason = exclusionReasons[item.itemId] || null;
+
+      const costData = calculateItemCostOptimized(
+        item,
+        itemBalances,
+        unitCost,
+        storeId || null,
+        groupId || null,
+        isExcluded,
+        exclusionReason
+      );
+
+      // Apply status filter
+      if (status && costData.status !== status) continue;
+
+      // Build export row
+      exportData.push({
+        'Item Code': costData.itemCode,
+        'Item Name': costData.itemName,
+        'Standard Name': costData.itemStandardName || '',
+        'Category': costData.categoryName || '',
+        'Brand': costData.brand || '',
+        'Model': costData.model || '',
+        'Base UOM': costData.baseUOM,
+        'Conversion UOM': costData.conversionUOM || '',
+        'Conversion Value': costData.conversionValue,
+        'Unit Cost (ETB)': costData.unitCost.toFixed(2),
+        'Total Quantity': costData.totalQty,
+        'Total Cost (ETB)': costData.totalCost.toFixed(2),
+        'Status': costData.status,
+        'Status Message': costData.statusMessage,
+        'Included Stores': costData.includedStoresCount,
+        'Excluded Stores': costData.excludedStoresCount,
+        'Is Excluded': costData.isExcluded ? 'Yes' : 'No',
+        'Exclusion Reason': costData.exclusionReason || '',
+        'Has Missing Data': costData.hasMissingData ? 'Yes' : 'No',
+        'Missing Data': costData.missingData.join(', ') || '',
+        'Requires Setup': costData.requiresSetup ? 'Yes' : 'No'
+      });
+    }
+
+    console.log(`✅ Export ready: ${exportData.length} items`);
+
+    res.json({
+      success: true,
+      data: exportData,
+      total: exportData.length,
+    });
+
+  } catch (error) {
+    console.error('❌ Export error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to export items',
     });
   }
 };

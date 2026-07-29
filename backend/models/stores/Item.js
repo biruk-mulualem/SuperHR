@@ -1,6 +1,9 @@
 'use strict';
 const { Model } = require('sequelize');
 
+// 🔥 Import Op for operators
+const { Op } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
   class Item extends Model {
     static associate(models) {
@@ -212,7 +215,7 @@ module.exports = (sequelize, DataTypes) => {
       modelName: 'Item',
       tableName: 'items',
       // ================================================================
-      // 🔥 ADD THESE FOR UTF-8 SUPPORT
+      // 🔥 UTF-8 SUPPORT
       // ================================================================
       charset: 'utf8mb4',
       collate: 'utf8mb4_unicode_ci',
@@ -220,11 +223,10 @@ module.exports = (sequelize, DataTypes) => {
       createdAt: 'created_at',
       updatedAt: 'updated_at',
       hooks: {
-        beforeCreate: (item) => {
+        beforeCreate: async (item) => {
           if (!item.code) {
-            // Generate code if not provided
-            const timestamp = Date.now().toString().slice(-6);
-            item.code = 'SDT' + timestamp.padStart(6, '0');
+            // 🔥 Use the static method to generate code
+            item.code = await Item.generateItemCode();
           }
         },
         beforeUpdate: (item) => {
@@ -234,24 +236,60 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  // Static method to generate next item code
+  // ================================================================
+  // 🔥 FIXED: generateItemCode - Checks for existing codes
+  // ================================================================
+  
   Item.generateItemCode = async function() {
+    const prefix = 'SDT';
+    const paddingLength = 6;
+    
+    // Get the highest existing code
     const lastItem = await this.findOne({
-      order: [['itemId', 'DESC']],
-      attributes: ['code'],
+      order: [['code', 'DESC']],
+      where: {
+        code: {
+          [Op.startsWith]: prefix
+        }
+      }
     });
 
-    if (!lastItem) {
-      return 'SDT000001';
+    let nextNumber = 1;
+    
+    if (lastItem && lastItem.code) {
+      const codeStr = lastItem.code.replace(prefix, '');
+      const parsedNum = parseInt(codeStr, 10);
+      if (!isNaN(parsedNum)) {
+        nextNumber = parsedNum + 1;
+      }
     }
 
-    const lastCode = lastItem.code;
-    const lastNumber = parseInt(lastCode.replace('SDT', ''));
-    const nextNumber = lastNumber + 1;
-    return 'SDT' + String(nextNumber).padStart(6, '0');
+    // 🔥 Check if the generated code already exists
+    let code = `${prefix}${String(nextNumber).padStart(paddingLength, '0')}`;
+    let exists = await this.findOne({ where: { code } });
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    // 🔥 Keep incrementing until we find a unique code
+    while (exists && attempts < maxAttempts) {
+      nextNumber++;
+      code = `${prefix}${String(nextNumber).padStart(paddingLength, '0')}`;
+      exists = await this.findOne({ where: { code } });
+      attempts++;
+    }
+
+    if (exists) {
+      throw new Error('Unable to generate unique item code after ' + maxAttempts + ' attempts');
+    }
+
+    console.log('📝 Generated unique item code:', code);
+    return code;
   };
 
-  // Static method to get active items
+  // ================================================================
+  // STATIC METHODS
+  // ================================================================
+
   Item.getActiveItems = function() {
     return this.findAll({
       where: { status: 'Active' },
@@ -264,9 +302,8 @@ module.exports = (sequelize, DataTypes) => {
     });
   };
 
-  // Static method to search items
+  // 🔥 FIXED: searchItems - Uses Op from import
   Item.searchItems = function(searchTerm) {
-    const { Op } = require('sequelize');
     return this.findAll({
       where: {
         [Op.or]: [
@@ -274,16 +311,18 @@ module.exports = (sequelize, DataTypes) => {
           { code: { [Op.iLike]: `%${searchTerm}%` } },
           { standardName: { [Op.iLike]: `%${searchTerm}%` } },
           { brand: { [Op.iLike]: `%${searchTerm}%` } },
+          { model: { [Op.iLike]: `%${searchTerm}%` } },
         ],
       },
       include: [
         { model: sequelize.models.Category, as: 'category' },
         { model: sequelize.models.UOM, as: 'uom' },
+        { model: sequelize.models.UOM, as: 'conversionUom' },
       ],
+      order: [['name', 'ASC']],
     });
   };
 
-  // Static method to get items by category
   Item.getItemsByCategory = function(categoryId) {
     return this.findAll({
       where: { categoryId, status: 'Active' },
@@ -295,7 +334,6 @@ module.exports = (sequelize, DataTypes) => {
     });
   };
 
-  // Static method to deactivate item
   Item.deactivateItem = async function(itemId) {
     const item = await this.findByPk(itemId);
     if (!item) {
@@ -306,7 +344,6 @@ module.exports = (sequelize, DataTypes) => {
     return item;
   };
 
-  // Static method to activate item
   Item.activateItem = async function(itemId) {
     const item = await this.findByPk(itemId);
     if (!item) {
