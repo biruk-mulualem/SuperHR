@@ -11,6 +11,8 @@ module.exports = (sequelize, DataTypes) => {
       Employee.hasMany(models.Employee, { foreignKey: 'managerId', as: 'subordinates' });
       Employee.hasMany(models.EmployeeDocument, { foreignKey: 'employeeId' });
       Employee.hasMany(models.AttendanceRecord, { foreignKey: 'employee_id', as: 'attendance_records' });
+      // models/Employee.js - Add this association
+      Employee.hasMany(models.TerminationHistory, {foreignKey: 'employeeId',as: 'terminationHistories'});
     }
 
     // Helper method to calculate total allowances

@@ -6,6 +6,7 @@ const { authMiddleware } = require("../middleware/authMiddleware");
 const {
   uploadSingleProfile,
   uploadDynamicDocument,
+  uploadSingleBalance,
 } = require("../middleware/uploadMiddleware");
 
 // ============================================================================
@@ -16,6 +17,27 @@ router.use(authMiddleware());
 // ============================================================================
 // EMPLOYEE CRUD
 // ============================================================================
+
+// ========== TERMINATE & REACTIVATE ROUTES ==========
+/**
+ * @route   POST /api/employees/:id/terminate
+ * @desc    Terminate an employee (sets status to 'terminated' and adds termination dates)
+ * @access  Private (HR/Admin only)
+ */
+router.post('/:id/terminate', authMiddleware("admin", "hr", "finance", "attendance"), 
+employeeController.terminateEmployee);
+
+/**
+ * @route   POST /api/employees/:id/reactivate
+ * @desc    Reactivate a terminated employee (sets status to 'active' and clears termination dates)
+ * @access  Private (HR/Admin only)
+ */
+router.post('/:id/reactivate', authMiddleware("admin", "hr", "finance", "attendance"), 
+employeeController.reactivateEmployee);
+
+router.get('/:id/termination-history', employeeController.getTerminationHistory);
+
+
 router.get(
   "/",
   authMiddleware("admin", "hr", "finance", "attendance"),
@@ -37,6 +59,11 @@ router.delete(
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.deleteEmployee,
 );
+
+
+
+
+
 
 // ============================================================================
 // ANALYTICS STATS ENDPOINTS
@@ -134,6 +161,7 @@ router.delete(
 router.post(
   "/import",
   authMiddleware("admin", "hr", "finance", "attendance"),
+    uploadSingleBalance, // ✅ 2. Added Multer Middleware here
   employeeController.importEmployees,
 );
 router.get(

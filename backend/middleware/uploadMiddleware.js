@@ -73,14 +73,25 @@ const balanceStorage = multer.diskStorage({
 // ============================================================================
 // STORE BALANCE - FILE FILTER
 // ============================================================================
+// ============================================================================
+// STORE BALANCE - FILE FILTER (FIXED: Relies purely on extension)
+// ============================================================================
 const balanceFileFilter = (req, file, cb) => {
-  const allowedTypes = /csv|xlsx|xls/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-  
-  if (mimetype && extname) {
+  // Get the file extension in lowercase
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  console.log(`📄 File upload attempt: ${file.originalname}`);
+  console.log(`🔍 Extension: ${ext}`);
+  console.log(`🔍 Browser MIME Type: ${file.mimetype}`);
+
+  // List of allowed extensions
+  const allowedExtensions = ['.csv', '.xlsx', '.xls'];
+
+  if (allowedExtensions.includes(ext)) {
+    console.log('✅ Allowed: Extension matched.');
     cb(null, true);
   } else {
+    console.error('❌ Rejected: Extension not allowed.');
     cb(new Error('Only CSV and Excel files are allowed (.csv, .xlsx, .xls)'));
   }
 };

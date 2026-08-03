@@ -1,10 +1,10 @@
-const { Employee, Department, Position, User, EmployeeDocument,CompensationHistory, Role ,sequelize } = require('../models');
+const { Employee, Department, Position, User, EmployeeDocument,CompensationHistory, Role ,TerminationHistory ,sequelize } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { getDocumentFolder } = require('../middleware/uploadMiddleware');
-
+const XLSX = require('xlsx');
 const {
   isValidEthiopianDate,
   convertEthiopianToGregorian
@@ -759,6 +759,7 @@ exports.createEmployee = async (req, res) => {
     });
   }
 };
+
 // ============================================================================
 // UPDATE EMPLOYEE (WITH ALLOWANCES & COMPENSATION HISTORY + nationalIdDocument)
 // ============================================================================
@@ -776,6 +777,47 @@ exports.updateEmployee = async (req, res) => {
     }
 
     const updates = req.body;
+
+    // ========== HANDLE STATUS CHANGE WITH AUTO DATES ==========
+    if (updates.status !== undefined) {
+      // If status is 'terminated', automatically set termination dates
+      if (updates.status === 'terminated' && employee.employmentStatus !== 'terminated') {
+        const today = new Date();
+        const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+        
+        // Set GC date (YYYY-MM-DD)
+        const gcDate = today.toISOString().split('T')[0];
+        
+        // Set EC date (DD/MM/YYYY)
+        const ecDate = convertGregorianToEthiopian(today);
+        const ecDateStr = ecDate ? `${String(ecDate.day).padStart(2, '0')}/${String(ecDate.month).padStart(2, '0')}/${ecDate.year}` : null;
+        
+        // Set termination dates (only if not already provided in request)
+        if (!updates.terminationDateGC) {
+          updates.terminationDateGC = gcDate;
+        }
+        if (!updates.terminationDateEC) {
+          updates.terminationDateEC = ecDateStr;
+        }
+        if (!updates.terminationDate) {
+          updates.terminationDate = gcDate;
+        }
+        
+        console.log('📅 Auto-set termination dates:', { 
+          terminationDateGC: updates.terminationDateGC, 
+          terminationDateEC: updates.terminationDateEC 
+        });
+      } 
+      // If status is 'active' and was previously terminated, optionally clear termination dates
+      else if (updates.status === 'active' && employee.employmentStatus === 'terminated') {
+        // Clear termination dates when reactivating (unless explicitly told not to)
+        if (updates.clearTerminationDate !== false) {
+          updates.terminationDateGC = null;
+          updates.terminationDateEC = null;
+          updates.terminationDate = null;
+        }
+      }
+    }
 
     // Store old values for compensation tracking
     const oldValues = {
@@ -972,7 +1014,7 @@ exports.updateEmployee = async (req, res) => {
       }
     }
 
-    let nationalIdDocument = employee.nationalIdDocument;  // ← ADDED
+    let nationalIdDocument = employee.nationalIdDocument;
     if (updates.nationalIdDocument) {
       if (typeof updates.nationalIdDocument === 'string') {
         try { nationalIdDocument = JSON.parse(updates.nationalIdDocument); } catch (e) { nationalIdDocument = {}; }
@@ -986,8 +1028,7 @@ exports.updateEmployee = async (req, res) => {
     
     // Basic info
     if (updates.firstName !== undefined) updateData.firstName = updates.firstName;
-    
-if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.fullNameEnglish;
+    if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.fullNameEnglish;
     if (updates.lastName !== undefined) updateData.lastName = updates.lastName;
     if (updates.middleName !== undefined) updateData.middleName = updates.middleName;
     if (updates.email !== undefined) updateData.workEmail = updates.email;
@@ -1004,10 +1045,19 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
     if (updates.positionId !== undefined) updateData.positionId = parseInt(updates.positionId);
     if (updates.managerId !== undefined) updateData.managerId = updates.managerId ? parseInt(updates.managerId) : null;
     if (updates.employmentType !== undefined) updateData.employmentType = updates.employmentType;
-    if (updates.status !== undefined) updateData.employmentStatus = updates.status;
+    
+    // ========== STATUS WITH AUTO DATES ==========
+    if (updates.status !== undefined) {
+      updateData.employmentStatus = updates.status;
+    }
+    
+    // ========== TERMINATION DATES ==========
+    if (updates.terminationDateGC !== undefined) updateData.terminationDateGC = updates.terminationDateGC;
+    if (updates.terminationDateEC !== undefined) updateData.terminationDateEC = updates.terminationDateEC;
+    if (updates.terminationDate !== undefined) updateData.terminationDate = updates.terminationDate;
+    
     if (updates.hireDate !== undefined) updateData.hireDate = updates.hireDate;
     if (updates.confirmationDate !== undefined) updateData.confirmationDate = updates.confirmationDate || null;
-    if (updates.terminationDate !== undefined) updateData.terminationDate = updates.terminationDate || null;
     if (updates.workLocation !== undefined) updateData.workLocation = updates.workLocation;
     
     // Addresses
@@ -1031,7 +1081,7 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
     updateData.emergencyContactAddress = emergencyContactAddress;
     updateData.currentCompany = currentCompany;
     updateData.permanentAddress = permanentAddress;
-    updateData.nationalIdDocument = nationalIdDocument;  // ← ADDED
+    updateData.nationalIdDocument = nationalIdDocument;
     
     // ========== COMPENSATION & ALLOWANCES ==========
     let newBasicSalary = oldValues.basicSalary;
@@ -1177,9 +1227,10 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
       }
     }
 
+    // ✅ COMMIT THE TRANSACTION
     await transaction.commit();
 
-    // Fetch updated employee data
+    // ✅ FETCH UPDATED EMPLOYEE DATA (outside transaction)
     const updatedEmployee = await Employee.findByPk(id, {
       include: [
         { model: Department, attributes: ['name'] },
@@ -1195,6 +1246,11 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
     const totalAllowances = housing + position + transport + mobile;
 
     let message = 'Employee updated successfully';
+    if (updates.status === 'terminated' && employee.employmentStatus !== 'terminated') {
+      message = 'Employee terminated successfully';
+    } else if (updates.status === 'active' && employee.employmentStatus === 'terminated') {
+      message = 'Employee reactivated successfully';
+    }
     if (changes.length > 0) {
       message += ` and ${changes.join(', ')} change(s) logged to compensation history`;
     }
@@ -1208,6 +1264,9 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
         fullName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
         profilePicture: profilePictureUrl,
         basicSalary: updatedEmployee.basicSalary,
+        status: updatedEmployee.employmentStatus,
+        terminationDateGC: updatedEmployee.terminationDateGC,
+        terminationDateEC: updatedEmployee.terminationDateEC,
         allowances: {
           housing: housing,
           position: position,
@@ -1220,15 +1279,382 @@ if (updates.fullNameEnglish !== undefined) updateData.fullNameEnglish = updates.
     });
     
   } catch (error) {
-    await transaction.rollback();
+    // ✅ ONLY ROLLBACK IF TRANSACTION IS STILL ACTIVE
+    if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+      await transaction.rollback();
+    }
     if (req.file) deleteFile(req.file.path);
-    console.error('Update employee error:', error);
+    console.error('❌ Update employee error:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message
     });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================================
+// TERMINATE EMPLOYEE - NO COMPENSATION HISTORY LOGGING
+// ============================================================================
+exports.terminateEmployee = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const { reason, notes } = req.body;
+    
+    // Find the employee
+    const employee = await Employee.findByPk(id);
+    if (!employee) {
+      await transaction.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Employee not found' 
+      });
+    }
+
+    // Check if already terminated
+    if (employee.employmentStatus === 'terminated') {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Employee is already terminated' 
+      });
+    }
+
+    // Check if employee is an admin
+    if (employee.user) {
+      const user = await User.findByPk(employee.userId, { transaction });
+      if (user && user.roleId === 1) {
+        await transaction.rollback();
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Cannot terminate an admin user.' 
+        });
+      }
+    }
+
+    // Prevent self-termination
+    if (employee.userId === req.user.userId) {
+      await transaction.rollback();
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Cannot terminate your own account.' 
+      });
+    }
+
+    // ========== SET TERMINATION DATES ==========
+    const today = new Date();
+    const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+    
+    const gcDate = today.toISOString().split('T')[0];
+    const ecDate = convertGregorianToEthiopian(today);
+    const ecDateStr = ecDate ? 
+      `${String(ecDate.day).padStart(2, '0')}/${String(ecDate.month).padStart(2, '0')}/${ecDate.year}` : 
+      null;
+
+    // Update employee
+    await employee.update({
+      employmentStatus: 'terminated',
+      isActive: false,
+      terminationDateGC: gcDate,
+      terminationDateEC: ecDateStr,
+      terminationDate: gcDate,
+    }, { transaction });
+
+    // ========== CREATE TERMINATION HISTORY ==========
+    await TerminationHistory.create({
+      employeeId: employee.employeeId,
+      terminationDateEC: ecDateStr,
+      terminationDateGC: gcDate,
+      terminationReason: reason || 'Not specified',
+      terminationNotes: notes || null,
+      isRehired: false,
+      createdBy: req.user?.userId || null
+    }, { transaction });
+
+    await transaction.commit();
+
+    // Fetch updated employee with history
+    const updatedEmployee = await Employee.findByPk(id, {
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] },
+        { 
+          model: TerminationHistory,
+          as: 'terminationHistories',
+          order: [['terminationDateEC', 'DESC']]
+        }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Employee terminated successfully',
+      data: {
+        id: updatedEmployee.employeeId,
+        employeeId: updatedEmployee.employeeCode,
+        fullName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
+        status: updatedEmployee.employmentStatus,
+        terminationDateGC: updatedEmployee.terminationDateGC,
+        terminationDateEC: updatedEmployee.terminationDateEC,
+        isActive: updatedEmployee.isActive,
+        terminationHistory: updatedEmployee.terminationHistories || []
+      }
+    });
+    
+  } catch (error) {
+    if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+      await transaction.rollback();
+    }
+    console.error('❌ Terminate employee error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
+// ============================================================================
+// REACTIVATE EMPLOYEE - NO COMPENSATION HISTORY LOGGING
+// ============================================================================
+exports.reactivateEmployee = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    const { reason, notes } = req.body;
+    
+    // Find the employee
+    const employee = await Employee.findByPk(id);
+    if (!employee) {
+      await transaction.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Employee not found' 
+      });
+    }
+
+    // Check if already active
+    if (employee.employmentStatus === 'active') {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Employee is already active' 
+      });
+    }
+
+    // Check if terminated (only terminated can be reactivated)
+    if (employee.employmentStatus !== 'terminated') {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Only terminated employees can be reactivated' 
+      });
+    }
+
+    const today = new Date();
+    const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+    
+    const gcDate = today.toISOString().split('T')[0];
+    const ecDate = convertGregorianToEthiopian(today);
+    const ecDateStr = ecDate ? 
+      `${String(ecDate.day).padStart(2, '0')}/${String(ecDate.month).padStart(2, '0')}/${ecDate.year}` : 
+      null;
+
+    // ========== FIND THE LATEST TERMINATION RECORD ==========
+    const latestTermination = await TerminationHistory.findOne({
+      where: { 
+        employeeId: employee.employeeId,
+        isRehired: false 
+      },
+      order: [['terminationDateGC', 'DESC']],
+      transaction
+    });
+
+    if (!latestTermination) {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No termination record found for this employee' 
+      });
+    }
+
+    // ========== UPDATE TERMINATION HISTORY ==========
+    await latestTermination.update({
+      rehireDateEC: ecDateStr,
+      rehireDateGC: gcDate,
+      rehireReason: reason || 'Reactivated',
+      rehireNotes: notes || null,
+      isRehired: true
+    }, { transaction });
+
+    // ========== UPDATE EMPLOYEE - SET NEW HIRE DATE ==========
+    await employee.update({
+      employmentStatus: 'active',
+      isActive: true,
+      
+      // ✅ UPDATE HIRE DATE TO REACTIVATION DATE
+      hireDateGC: gcDate,
+      hireDateEC: ecDateStr,
+      hireDate: gcDate,
+      
+      // Clear termination dates
+      terminationDateGC: null,
+      terminationDateEC: null,
+      terminationDate: null,
+    }, { transaction });
+
+    await transaction.commit();
+
+    // Fetch updated employee with history
+    const updatedEmployee = await Employee.findByPk(id, {
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] },
+        { 
+          model: TerminationHistory,
+          as: 'terminationHistories',
+          order: [['terminationDateEC', 'DESC']]
+        }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Employee reactivated successfully',
+      data: {
+        id: updatedEmployee.employeeId,
+        employeeId: updatedEmployee.employeeCode,
+        fullName: `${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
+        status: updatedEmployee.employmentStatus,
+        isActive: updatedEmployee.isActive,
+        
+        // New hire date (updated to reactivation date)
+        hireDateGC: updatedEmployee.hireDateGC,
+        hireDateEC: updatedEmployee.hireDateEC,
+        
+        terminationDateGC: updatedEmployee.terminationDateGC,
+        terminationDateEC: updatedEmployee.terminationDateEC,
+        terminationHistory: updatedEmployee.terminationHistories || []
+      }
+    });
+    
+  } catch (error) {
+    if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+      await transaction.rollback();
+    }
+    console.error('❌ Reactivate employee error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
+
+// ============================================================================
+// GET EMPLOYEE TERMINATION HISTORY
+// ============================================================================
+exports.getTerminationHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    // Check if employee exists
+    const employee = await Employee.findByPk(id, {
+      attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName']
+    });
+
+    if (!employee) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Employee not found' 
+      });
+    }
+
+    // Get termination history
+    const { count, rows } = await TerminationHistory.findAndCountAll({
+      where: { employeeId: id },
+      include: [
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['userId', 'fullName']
+        }
+      ],
+      order: [['terminationDateGC', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    // Format response
+    const history = rows.map(record => ({
+      id: record.terminationHistoryId,
+      terminationDateEC: record.terminationDateEC,
+      terminationDateGC: record.terminationDateGC,
+      terminationReason: record.terminationReason,
+      terminationNotes: record.terminationNotes,
+      isRehired: record.isRehired,
+      rehireDateEC: record.rehireDateEC,
+      rehireDateGC: record.rehireDateGC,
+      rehireReason: record.rehireReason,
+      rehireNotes: record.rehireNotes,
+      createdBy: record.creator?.fullName || 'System',
+      createdAt: record.createdAt
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        employee: {
+          id: employee.employeeId,
+          employeeId: employee.employeeCode,
+          fullName: `${employee.firstName} ${employee.lastName}`
+        },
+        history: history,
+        summary: {
+          totalTerminations: count,
+          currentStatus: history.length > 0 && !history[0].isRehired ? 'terminated' : 'active',
+          lastTermination: history.length > 0 ? history[0] : null
+        }
+      },
+      pagination: {
+        total: count,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        totalPages: Math.ceil(count / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get termination history error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
 
 // ============================================================================
 // GET ALL EMPLOYEES WITH PAGINATION, FILTERS, AND SEARCH
@@ -2283,14 +2709,14 @@ exports.getKpiStats = async (req, res) => {
 // ============================================================================
 // 2. HIRING TRENDS
 // ============================================================================
-
+// ============================================================================
+// 2. HIRING TRENDS - USING EC DATES
+// ============================================================================
 exports.getHiringTrends = async (req, res) => {
   try {
-   
-
     const { departmentId, months } = req.query;
     
-    console.log('📊 Hiring Trends Request:', { departmentId, months });
+    console.log('📊 Hiring Trends Request (EC dates):', { departmentId, months });
     
     // Build department filter
     let deptFilter = '';
@@ -2313,94 +2739,126 @@ exports.getHiringTrends = async (req, res) => {
     
     console.log('📊 Is All Time:', isAllTime);
     console.log('📊 Months value:', monthsValue);
-    console.log('📊 Department filter:', deptFilter);
 
     // ============================================================
-    // QUERY FOR HIRES
+    // QUERY FOR HIRES - Using EC date (DD/MM/YYYY)
     // ============================================================
     let hiresQuery = '';
     
     if (isAllTime) {
-      // All time - show all hires
       hiresQuery = `
         SELECT 
-          TO_CHAR(hire_date, 'YYYY-MM') as month,
+          SUBSTRING(hire_date_ec FROM 7 FOR 4) || '-' || 
+          SUBSTRING(hire_date_ec FROM 4 FOR 2) as month,
           COUNT(*) as hired
         FROM employees
-        WHERE hire_date IS NOT NULL ${deptFilter}
-        GROUP BY TO_CHAR(hire_date, 'YYYY-MM')
+        WHERE hire_date_ec IS NOT NULL ${deptFilter}
+        GROUP BY SUBSTRING(hire_date_ec FROM 7 FOR 4) || '-' || SUBSTRING(hire_date_ec FROM 4 FOR 2)
         ORDER BY month ASC
       `;
     } else {
-      // Filtered by months - only show hires within the selected time range
-      hiresQuery = `
-        SELECT 
-          TO_CHAR(hire_date, 'YYYY-MM') as month,
-          COUNT(*) as hired
-        FROM employees
-        WHERE hire_date IS NOT NULL ${deptFilter}
-          AND hire_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'
-        GROUP BY TO_CHAR(hire_date, 'YYYY-MM')
-        ORDER BY month ASC
-      `;
+      // Get current EC date for filtering
+      const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+      const today = new Date();
+      const ecToday = convertGregorianToEthiopian(today);
+      
+      if (ecToday) {
+        let targetECYear = ecToday.year;
+        let targetECMonth = ecToday.month - monthsValue;
+        
+        while (targetECMonth <= 0) {
+          targetECMonth += 13;
+          targetECYear--;
+        }
+        
+        const targetDateStr = `01/${String(targetECMonth).padStart(2, '0')}/${targetECYear}`;
+        
+        hiresQuery = `
+          SELECT 
+            SUBSTRING(hire_date_ec FROM 7 FOR 4) || '-' || 
+            SUBSTRING(hire_date_ec FROM 4 FOR 2) as month,
+            COUNT(*) as hired
+          FROM employees
+          WHERE hire_date_ec IS NOT NULL ${deptFilter}
+            AND hire_date_ec >= '${targetDateStr}'
+          GROUP BY SUBSTRING(hire_date_ec FROM 7 FOR 4) || '-' || SUBSTRING(hire_date_ec FROM 4 FOR 2)
+          ORDER BY month ASC
+        `;
+      }
     }
     
+    console.log('📊 Hires Query (EC):', hiresQuery);
+    
     const hiresByMonth = await sequelize.query(hiresQuery, { type: sequelize.QueryTypes.SELECT });
+    console.log('📊 Hires result:', JSON.stringify(hiresByMonth, null, 2));
 
     // ============================================================
-    // QUERY FOR TERMINATIONS
+    // QUERY FOR TERMINATIONS - Using EC date
     // ============================================================
     let terminationsQuery = '';
     
     if (isAllTime) {
-      // All time - show all terminations
       terminationsQuery = `
         SELECT 
-          TO_CHAR(termination_date, 'YYYY-MM') as month,
+          SUBSTRING(termination_date_ec FROM 7 FOR 4) || '-' || 
+          SUBSTRING(termination_date_ec FROM 4 FOR 2) as month,
           COUNT(*) as terminated
         FROM employees
-        WHERE termination_date IS NOT NULL ${deptFilter}
-        GROUP BY TO_CHAR(termination_date, 'YYYY-MM')
+        WHERE termination_date_ec IS NOT NULL ${deptFilter}
+        GROUP BY SUBSTRING(termination_date_ec FROM 7 FOR 4) || '-' || SUBSTRING(termination_date_ec FROM 4 FOR 2)
         ORDER BY month ASC
       `;
     } else {
-      // Filtered by months - only show terminations within the selected time range
-      terminationsQuery = `
-        SELECT 
-          TO_CHAR(termination_date, 'YYYY-MM') as month,
-          COUNT(*) as terminated
-        FROM employees
-        WHERE termination_date IS NOT NULL ${deptFilter}
-          AND termination_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'
-        GROUP BY TO_CHAR(termination_date, 'YYYY-MM')
-        ORDER BY month ASC
-      `;
+      const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+      const today = new Date();
+      const ecToday = convertGregorianToEthiopian(today);
+      
+      if (ecToday) {
+        let targetECYear = ecToday.year;
+        let targetECMonth = ecToday.month - monthsValue;
+        
+        while (targetECMonth <= 0) {
+          targetECMonth += 13;
+          targetECYear--;
+        }
+        
+        const targetDateStr = `01/${String(targetECMonth).padStart(2, '0')}/${targetECYear}`;
+        
+        terminationsQuery = `
+          SELECT 
+            SUBSTRING(termination_date_ec FROM 7 FOR 4) || '-' || 
+            SUBSTRING(termination_date_ec FROM 4 FOR 2) as month,
+            COUNT(*) as terminated
+          FROM employees
+          WHERE termination_date_ec IS NOT NULL ${deptFilter}
+            AND termination_date_ec >= '${targetDateStr}'
+          GROUP BY SUBSTRING(termination_date_ec FROM 7 FOR 4) || '-' || SUBSTRING(termination_date_ec FROM 4 FOR 2)
+          ORDER BY month ASC
+        `;
+      }
     }
     
+    console.log('📊 Terminations Query (EC):', terminationsQuery);
+    
     const terminationsByMonth = await sequelize.query(terminationsQuery, { type: sequelize.QueryTypes.SELECT });
-
-    console.log('📊 Hires result:', JSON.stringify(hiresByMonth, null, 2));
     console.log('📊 Terminations result:', JSON.stringify(terminationsByMonth, null, 2));
 
     // ============================================================
     // COMBINE RESULTS
     // ============================================================
     
-    // Combine all months from both results
     const monthsSet = new Set();
     hiresByMonth.forEach(h => monthsSet.add(h.month));
     terminationsByMonth.forEach(t => monthsSet.add(t.month));
     
     const allMonths = Array.from(monthsSet).sort();
 
-    // Create maps for quick lookup
     const hiresMap = {};
     hiresByMonth.forEach(h => { hiresMap[h.month] = parseInt(h.hired); });
 
     const terminationsMap = {};
     terminationsByMonth.forEach(t => { terminationsMap[t.month] = parseInt(t.terminated); });
 
-    // Build final data array
     const formattedData = allMonths.map(month => ({
       month: month,
       hired: hiresMap[month] || 0,
@@ -2425,7 +2883,7 @@ exports.getHiringTrends = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get hiring trends error:', error);
+    console.error('❌ Get hiring trends error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -2996,183 +3454,375 @@ function calculateMonthsOld(date) {
 
 
 // ============================================================================
-// IMPORT EMPLOYEES (BULK CREATE WITH USER ACCOUNTS & ALLOWANCES)
+// IMPORT EMPLOYEES FROM EXCEL (ALL DATES ARE ALREADY EC)
 // ============================================================================
 exports.importEmployees = async (req, res) => {
   try {
-    const { employees } = req.body;
-    
-    if (!employees || !Array.isArray(employees) || employees.length === 0) {
+    // Check if file was uploaded
+    if (!req.file) {
       return res.status(400).json({ 
         success: false, 
-        error: 'No employee data provided' 
+        error: 'No Excel file uploaded. Please upload a .xlsx or .xls file.' 
       });
     }
+
+    // 1. Read the Excel file using xlsx library
+    const workbook = XLSX.readFile(req.file.path);
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    // 2. Convert to JSON with raw: true to keep dates as numbers
+    const employeesData = XLSX.utils.sheet_to_json(worksheet, { 
+      defval: '',
+      raw: true,  // Keep raw values (numbers for dates)
+      dateNF: 'dd/mm/yyyy'  // Format hint
+    });
+
+    // 3. Delete the temp file from server disk
+    const fs = require('fs');
+    fs.unlinkSync(req.file.path);
+
+    // 4. Validate data
+    if (!employeesData || employeesData.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'The Excel file is empty or invalid' 
+      });
+    }
+
+    // Filter out empty rows
+    const validRows = employeesData.filter(row => {
+      return row['ስም'] || row['firstName'] || row['ኢሜይል'] || row['email'];
+    });
+
+    if (validRows.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No valid data rows found. Please ensure your first row has headers and you have data below.' 
+      });
+    }
+
+    // ============================================================
+    // HELPER: Convert date value to string safely
+    // ============================================================
+    const getDateString = (value) => {
+      if (!value) return '';
+      
+      // If it's already a string, return it
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+      
+      // If it's a number (Excel serial), convert to string
+      if (typeof value === 'number') {
+        // Excel serial dates are usually whole numbers
+        // Just convert to string - user will see the serial number
+        // They need to format their Excel properly
+        return String(value);
+      }
+      
+      // If it's a Date object
+      if (value instanceof Date) {
+        // Format as DD/MM/YYYY
+        const day = String(value.getDate()).padStart(2, '0');
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const year = value.getFullYear();
+        return `${day}/${month}/${year}`;
+      }
+      
+      return String(value);
+    };
+
+    // ============================================================
+    // HELPER: Validate EC date (handles strings and numbers)
+    // ============================================================
+    const validateECDate = (value) => {
+      if (!value) return null;
+      
+      // Convert to string if it's a number
+      const dateStr = String(value).trim();
+      
+      // If it's a number like "43101", it's an Excel serial
+      // We'll validate it as-is since the user should format as DD/MM/YYYY
+      if (/^\d+$/.test(dateStr) && dateStr.length >= 5) {
+        // This is likely an Excel serial number
+        // The user should format the Excel column as text
+        return dateStr;
+      }
+      
+      // Check if it's in DD/MM/YYYY format
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        // Validate EC date
+        const { isValidEthiopianDate } = require('../utils/dateConverter');
+        if (isValidEthiopianDate(dateStr)) {
+          return dateStr;
+        }
+        return null;
+      }
+      
+      // If it's in YYYY-MM-DD format, convert to DD/MM/YYYY
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const parts = dateStr.split('-');
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      
+      // If it's in YYYY/MM/DD format, convert to DD/MM/YYYY
+      if (/^\d{4}\/\d{2}\/\d{2}$/.test(dateStr)) {
+        const parts = dateStr.split('/');
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      
+      return dateStr;
+    };
 
     const results = {
       success: [],
       failed: [],
-      total: employees.length,
+      total: validRows.length,
       successCount: 0,
       failedCount: 0
     };
 
-    for (const empData of employees) {
+    // 5. Iterate over VALID Excel rows and create employees
+    for (const row of validRows) {
       try {
+        // ========== GET EC DATES AND CONVERT TO STRING SAFELY ==========
+        const rawHireDate = row['የተቀጠረበት ቀን'] || row['hireDateEC'] || row['hireDate'] || '';
+        const rawDOB = row['የትውልድ ቀን'] || row['dateOfBirthEC'] || row['dob'] || '';
+        const rawConfirmation = row['የማረጋገጫ ቀን'] || row['confirmationDateEC'] || '';
+        const rawTermination = row['የማቋረጫ ቀን'] || row['terminationDateEC'] || '';
+
+        // Convert to proper EC date strings
+        const hireDateEC = validateECDate(rawHireDate);
+        const dateOfBirthEC = validateECDate(rawDOB);
+        const confirmationDateEC = validateECDate(rawConfirmation);
+        const terminationDateEC = validateECDate(rawTermination);
+
+        // ========== DEBUG LOG ==========
+        console.log('📅 Date debug:', {
+          rawHireDate: rawHireDate,
+          rawType: typeof rawHireDate,
+          hireDateEC: hireDateEC,
+          rawDOB: rawDOB,
+          dateOfBirthEC: dateOfBirthEC
+        });
+
+        // ========== VALIDATE EC DATES ==========
+        const { isValidEthiopianDate } = require('../utils/dateConverter');
+        
+        // Only validate if it's a string in DD/MM/YYYY format
+        if (hireDateEC && typeof hireDateEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(hireDateEC)) {
+          if (!isValidEthiopianDate(hireDateEC)) {
+            results.failed.push({ 
+              data: row, 
+              error: `Invalid Ethiopian hire date: ${hireDateEC}. Use format DD/MM/YYYY` 
+            });
+            results.failedCount++;
+            continue;
+          }
+        } else if (hireDateEC && typeof hireDateEC === 'string' && !/^\d{2}\/\d{2}\/\d{4}$/.test(hireDateEC)) {
+          // If it's not in DD/MM/YYYY format, it might be an Excel serial
+          // We'll store it as-is and let the user fix it
+          console.warn(`⚠️ Date not in DD/MM/YYYY format: ${hireDateEC}`);
+        }
+        
+        if (dateOfBirthEC && typeof dateOfBirthEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirthEC)) {
+          if (!isValidEthiopianDate(dateOfBirthEC)) {
+            results.failed.push({ 
+              data: row, 
+              error: `Invalid Ethiopian date of birth: ${dateOfBirthEC}. Use format DD/MM/YYYY` 
+            });
+            results.failedCount++;
+            continue;
+          }
+        }
+
+        // ========== MAP EXCEL HEADERS TO INTERNAL FIELDS ==========
+        const empData = {
+          // Basic Info - Ethiopian Names
+          firstName: row['ስም'] || row['firstName'] || '',
+          lastName: row['የአባት ስም'] || row['lastName'] || '',
+          middleName: row['የአያት ስም'] || row['middleName'] || null,
+          
+          // English Full Name
+          fullNameEnglish: row['የእንግሊዝኛ ሙሉ ስም'] || row['fullNameEnglish'] || null,
+          
+          // Contact Info
+          email: row['ኢሜይል'] || row['email'] || '',
+          personalEmail: row['የግል ኢሜይል'] || row['personalEmail'] || null,
+          phone: row['ስልክ'] || row['phone'] || '',
+          
+          // ========== EC DATES (AS-IS FROM EXCEL) ==========
+          hireDateEC: hireDateEC,
+          dateOfBirthEC: dateOfBirthEC,
+          confirmationDateEC: confirmationDateEC,
+          terminationDateEC: terminationDateEC,
+          
+          // Employment
+          departmentId: parseInt(String(row['ክፍል መለያ'] || row['departmentId'] || '0'), 10),
+          positionId: parseInt(String(row['ሹመት መለያ'] || row['positionId'] || '0'), 10),
+          employmentType: row['የሥራ ዓይነት'] || row['employmentType'] || 'full-time',
+          
+          // Personal Details
+          gender: row['ፆታ'] || row['gender'] || null,
+          maritalStatus: row['የጋብቻ ሁኔታ'] || row['maritalStatus'] || null,
+          nationality: row['ዜግነት'] || row['nationality'] || null,
+          nationalId: row['ብሄራዊ መታወቂያ'] || row['nationalId'] || null,
+          
+          // Management
+          managerId: row['ሥራ አስኪያጅ መለያ'] ? parseInt(String(row['managerId']), 10) : null,
+          
+          // Salary & Allowances
+          basicSalary: parseFloat(row['መሰረታዊ ደሞዝ'] || row['salary'] || 0),
+          housingAllowance: parseFloat(row['የቤት አበል'] || row['housingAllowance'] || 0),
+          positionAllowance: parseFloat(row['የሹመት አበል'] || row['positionAllowance'] || 0),
+          transportAllowance: parseFloat(row['የትራንስፖርት አበል'] || row['transportAllowance'] || 0),
+          mobileAllowance: parseFloat(row['የሞባይል አበል'] || row['mobileAllowance'] || 0),
+          
+          // Address
+          address: row['አድራሻ'] || row['address'] || null,
+          workLocation: row['የሥራ ቦታ'] || row['workLocation'] || null
+        };
+
         // Validate required fields
         if (!empData.firstName || !empData.lastName || !empData.email || !empData.phone || 
-            !empData.departmentId || !empData.positionId || !empData.employmentType || !empData.hireDate) {
-          results.failed.push({
-            data: empData,
-            error: 'Missing required fields'
+            !empData.departmentId || !empData.positionId || !empData.employmentType || !empData.hireDateEC) {
+          results.failed.push({ 
+            data: empData, 
+            error: `Missing required fields: firstName=${empData.firstName}, lastName=${empData.lastName}, email=${empData.email}, phone=${empData.phone}, departmentId=${empData.departmentId}, positionId=${empData.positionId}, employmentType=${empData.employmentType}, hireDateEC=${empData.hireDateEC}` 
           });
           results.failedCount++;
           continue;
         }
 
         // Check for duplicate email
-        const existingEmployee = await Employee.findOne({ 
-          where: { workEmail: empData.email } 
-        });
-        
+        const existingEmployee = await Employee.findOne({ where: { workEmail: empData.email } });
         if (existingEmployee) {
-          results.failed.push({
-            data: empData,
-            error: `Employee with email "${empData.email}" already exists`
-          });
+          results.failed.push({ data: empData, error: `Employee with email "${empData.email}" already exists` });
           results.failedCount++;
           continue;
         }
 
-        // Check if user already exists
+        // ========== AUTO-CREATE USER ACCOUNT ==========
         let user = await User.findOne({ where: { email: empData.email } });
         let isNewUser = false;
         let temporaryPassword = null;
 
         if (!user) {
           isNewUser = true;
-          
-          // Generate unique username
           const username = await generateUniqueUsername(empData.email, empData.firstName, empData.lastName);
-          
-          // Generate random temporary password
           temporaryPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
           const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-          
-          // Get role ID for 'employee'
           const employeeRole = await Role.findOne({ where: { name: 'employee' } });
           const employeeRoleId = employeeRole ? employeeRole.roleId : 3;
           
-          // Create new user
           user = await User.create({
-            username: username,
+            username,
             email: empData.email,
             fullName: `${empData.firstName} ${empData.lastName}`,
             passwordHash: hashedPassword,
             roleId: employeeRoleId,
             departmentId: empData.departmentId || null,
             isActive: true,
-            createdBy: req.user.userId
+            createdBy: req.user?.userId || null
           });
         }
 
         // Generate employee code
         const employeeCode = await generateEmployeeCode();
 
-        // Parse basic salary
-        const basicSalary = empData.salary ? parseFloat(empData.salary) : 0;
+        // ========== CONVERT EC TO GC FOR BACKEND STORAGE ==========
+        const { convertEthiopianToGregorian } = require('../utils/dateConverter');
         
-        // ========== FIXED: Use provided allowance values (default to 0) ==========
-        // NO auto-calculation - use values from import or default to 0
-        const housingAllowance = empData.housingAllowance !== undefined && empData.housingAllowance !== '' 
-          ? parseFloat(empData.housingAllowance) 
-          : 0;
-        const positionAllowance = empData.positionAllowance !== undefined && empData.positionAllowance !== '' 
-          ? parseFloat(empData.positionAllowance) 
-          : 0;
-        const transportAllowance = empData.transportAllowance !== undefined && empData.transportAllowance !== '' 
-          ? parseFloat(empData.transportAllowance) 
-          : 0;
+        // Only convert if the date is in DD/MM/YYYY format
+        const hireDateGC = (hireDateEC && typeof hireDateEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(hireDateEC)) 
+          ? convertEthiopianToGregorian(hireDateEC) 
+          : null;
+          
+        const dobGC = (dateOfBirthEC && typeof dateOfBirthEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirthEC)) 
+          ? convertEthiopianToGregorian(dateOfBirthEC) 
+          : null;
+          
+        const confirmationGC = (confirmationDateEC && typeof confirmationDateEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(confirmationDateEC)) 
+          ? convertEthiopianToGregorian(confirmationDateEC) 
+          : null;
+          
+        const terminationGC = (terminationDateEC && typeof terminationDateEC === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(terminationDateEC)) 
+          ? convertEthiopianToGregorian(terminationDateEC) 
+          : null;
 
-        const mobileAllowance = empData.mobileAllowance !== undefined && empData.mobileAllowance !== ''  
-          ? parseFloat(empData.mobileAllowance) 
-          : 0;
-
-        // Parse optional JSON fields
-        let emergencyContact = {};
-        let bankAccount = {};
-        
-        if (empData.emergencyContact) {
-          try {
-            emergencyContact = typeof empData.emergencyContact === 'string' 
-              ? JSON.parse(empData.emergencyContact) 
-              : empData.emergencyContact;
-          } catch (e) {
-            emergencyContact = {};
-          }
-        }
-        
-        if (empData.bankAccount) {
-          try {
-            bankAccount = typeof empData.bankAccount === 'string' 
-              ? JSON.parse(empData.bankAccount) 
-              : empData.bankAccount;
-          } catch (e) {
-            bankAccount = {};
-          }
-        }
-
-        // Create employee with allowances
+        // ========== CREATE EMPLOYEE ==========
         const employee = await Employee.create({
           employeeCode,
           userId: user.userId,
           firstName: empData.firstName,
           lastName: empData.lastName,
           middleName: empData.middleName || null,
-            fullNameEnglish: empData.fullNameEnglish || null,
+          fullNameEnglish: empData.fullNameEnglish || `${empData.firstName} ${empData.lastName}`,
           workEmail: empData.email,
           personalEmail: empData.personalEmail || null,
           phoneNumber: empData.phone,
-          dateOfBirth: empData.dob || null,
+          
+          // ========== EC DATES (PRIMARY - STORED AS-IS) ==========
+          hireDateEC: hireDateEC,
+          dateOfBirthEC: dateOfBirthEC,
+          confirmationDateEC: confirmationDateEC,
+          terminationDateEC: terminationDateEC,
+          
+          // ========== GC DATES (SECONDARY - CONVERTED FOR BACKEND) ==========
+          hireDateGC: hireDateGC,
+          dateOfBirthGC: dobGC,
+          confirmationDateGC: confirmationGC,
+          terminationDateGC: terminationGC,
+          
+          // Backward compatibility
+          hireDate: hireDateGC,
+          dateOfBirth: dobGC,
+          confirmationDate: confirmationGC,
+          terminationDate: terminationGC,
+          
           gender: empData.gender || null,
           maritalStatus: empData.maritalStatus || null,
           nationality: empData.nationality || null,
-          departmentId: parseInt(empData.departmentId),
-          positionId: parseInt(empData.positionId),
-          managerId: empData.managerId ? parseInt(empData.managerId) : null,
+          nationalId: empData.nationalId || null,
+          departmentId: empData.departmentId,
+          positionId: empData.positionId,
+          managerId: empData.managerId,
           employmentType: empData.employmentType,
           employmentStatus: 'active',
-          hireDate: empData.hireDate,
-          basicSalary: basicSalary,
-          housingAllowance: housingAllowance,
-          positionAllowance: positionAllowance,
-          transportAllowance: transportAllowance,
-          mobileAllowance: mobileAllowance,
-          currentAddress: empData.address ? { street: empData.address } : {},
           workLocation: empData.workLocation || null,
-          emergencyContact: emergencyContact,
-          bankAccount: bankAccount,
-          profilePictureUrl: null,
+          basicSalary: empData.basicSalary || 0,
+          housingAllowance: empData.housingAllowance || 0,
+          positionAllowance: empData.positionAllowance || 0,
+          transportAllowance: empData.transportAllowance || 0,
+          mobileAllowance: empData.mobileAllowance || 0,
+          currentAddress: empData.address ? { street: empData.address } : {},
           isActive: true
         });
 
-        // Calculate total allowances for response
-        const totalAllowances = housingAllowance + positionAllowance + transportAllowance + mobileAllowance;
+        // Calculate totals
+        const totalAllowances = (empData.housingAllowance || 0) + 
+                               (empData.positionAllowance || 0) + 
+                               (empData.transportAllowance || 0) + 
+                               (empData.mobileAllowance || 0);
 
         results.success.push({
           id: employee.employeeId,
           employeeId: employee.employeeCode,
           fullName: `${employee.firstName} ${employee.lastName}`,
+          fullNameEnglish: employee.fullNameEnglish,
           email: employee.workEmail,
-          basicSalary: basicSalary,
+          hireDateEC: employee.hireDateEC,
+          dateOfBirthEC: employee.dateOfBirthEC,
+          basicSalary: empData.basicSalary || 0,
           allowances: {
-            housing: housingAllowance,
-            position: positionAllowance,
-            transport: transportAllowance,
-              mobile: mobileAllowance,
+            housing: empData.housingAllowance || 0,
+            position: empData.positionAllowance || 0,
+            transport: empData.transportAllowance || 0,
+            mobile: empData.mobileAllowance || 0,
             total: totalAllowances
           },
-          grossPay: basicSalary + totalAllowances,
+          grossPay: (empData.basicSalary || 0) + totalAllowances,
           temporaryPassword: isNewUser ? temporaryPassword : null
         });
         
@@ -3180,9 +3830,9 @@ exports.importEmployees = async (req, res) => {
 
       } catch (error) {
         console.error('Error importing employee:', error);
-        results.failed.push({
-          data: empData,
-          error: error.message
+        results.failed.push({ 
+          data: row, 
+          error: error.message 
         });
         results.failedCount++;
       }
@@ -3191,15 +3841,31 @@ exports.importEmployees = async (req, res) => {
     res.status(200).json({
       success: true,
       message: `Import completed: ${results.successCount} successful, ${results.failedCount} failed`,
-      data: results
+      data: results,
+      summary: {
+        total: results.total,
+        success: results.successCount,
+        failed: results.failedCount,
+        successRate: results.total > 0 ? ((results.successCount / results.total) * 100).toFixed(1) : '0'
+      }
     });
 
   } catch (error) {
     console.error('Import employees error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    if (req.file) {
+      try {
+        const fs = require('fs');
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        console.error('Error deleting file:', e);
+      }
+    }
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 };
-
 
 
 
@@ -3312,106 +3978,155 @@ exports.getEmployeeCompensationHistory = async (req, res) => {
 
 
 // ============================================================================
-// 8. GET HIRING DETAILS (HIRED & TERMINATED EMPLOYEES)
+// 8. GET HIRING DETAILS - FIXED (Checks status AND dates)
+// ============================================================================
+// ============================================================================
+// 8. GET HIRING DETAILS - USING EC DATES
 // ============================================================================
 exports.getHiringDetails = async (req, res) => {
   try {
     const { departmentId, months } = req.query;
     
-    console.log('📊 Hiring Details Request:', { departmentId, months });
+    console.log('📊 Hiring Details Request (EC dates):', { departmentId, months });
     
-    // Build department filter
-    let deptCondition = '';
-    let deptWhere = {};
+    // Build where conditions for HIRED - use hireDateEC
+    let hireWhere = {
+      hireDateEC: { [Op.ne]: null }
+    };
+    
+    // Build where conditions for TERMINATED - Check status OR EC date
+    let terminationWhere = {
+      [Op.or]: [
+        { employmentStatus: 'terminated' },
+        { terminationDateEC: { [Op.ne]: null } }
+      ]
+    };
+    
+    // Add department filter
     if (departmentId && departmentId !== 'all' && departmentId !== 'null' && departmentId !== 'undefined') {
       const deptId = parseInt(departmentId);
-      deptCondition = `AND e.department_id = ${deptId}`;
-      deptWhere.departmentId = deptId;
+      hireWhere.departmentId = deptId;
+      terminationWhere.departmentId = deptId;
     }
-
-    // Determine date range
-    let dateConditionHired = '';
-    let dateConditionTerminated = '';
-    let isAllTime = false;
     
+    // ============================================================
+    // EC DATE FILTER - Convert months to EC years/months
+    // ============================================================
     if (months && months !== 'all' && months !== 'undefined' && months !== 'null') {
       const monthsValue = parseInt(months);
-      if (!isNaN(monthsValue)) {
-        dateConditionHired = `AND e.hire_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'`;
-        dateConditionTerminated = `AND e.termination_date >= CURRENT_DATE - INTERVAL '${monthsValue} months'`;
-      } else {
-        isAllTime = true;
+      if (!isNaN(monthsValue) && monthsValue > 0) {
+        // Get current EC date
+        const { convertGregorianToEthiopian } = require('../utils/dateConverter');
+        const today = new Date();
+        const ecToday = convertGregorianToEthiopian(today);
+        
+        if (ecToday) {
+          // Calculate EC date months ago
+          let targetECYear = ecToday.year;
+          let targetECMonth = ecToday.month - monthsValue;
+          
+          while (targetECMonth <= 0) {
+            targetECMonth += 13; // Ethiopian has 13 months
+            targetECYear--;
+          }
+          
+          // Create the date string for filtering (DD/MM/YYYY)
+          const targetDateStr = `01/${String(targetECMonth).padStart(2, '0')}/${targetECYear}`;
+          
+          console.log(`📊 Filtering EC dates from: ${targetDateStr}`);
+          
+          // For hired employees: hireDateEC >= target date
+          hireWhere.hireDateEC = { [Op.gte]: targetDateStr };
+          
+          // For terminated: we keep the OR condition with status check
+          // Don't filter by date for terminated since we check status
+        }
       }
-    } else {
-      isAllTime = true;
     }
     
-    console.log('📊 Is All Time:', isAllTime);
-    console.log('📊 Department condition:', deptCondition);
+    console.log('📊 Hire Where (EC):', JSON.stringify(hireWhere, null, 2));
+    console.log('📊 Termination Where (EC):', JSON.stringify(terminationWhere, null, 2));
     
-    // Get hired employees
-    let hiredQuery = `
-      SELECT 
-        e.employee_id as id,
-        e.employee_code,
-        CONCAT(e.first_name, ' ', e.last_name) as full_name,
-        COALESCE(d.name, 'Unknown') as department,
-        COALESCE(p.title, 'Unknown') as position,
-        e.hire_date as hireDate,
-        e.work_email as email,
-        e.basic_salary as salary
-      FROM employees e
-      LEFT JOIN departments d ON e.department_id = d.department_id
-      LEFT JOIN positions p ON e.position_id = p.position_id
-      WHERE e.hire_date IS NOT NULL
-        ${deptCondition}
-        ${dateConditionHired}
-      ORDER BY e.hire_date DESC
-    `;
-    
-    // Get terminated employees
-    let terminatedQuery = `
-      SELECT 
-        e.employee_id as id,
-        e.employee_code,
-        CONCAT(e.first_name, ' ', e.last_name) as full_name,
-        COALESCE(d.name, 'Unknown') as department,
-        COALESCE(p.title, 'Unknown') as position,
-        e.termination_date as terminationDate,
-        e.work_email as email,
-        e.basic_salary as salary
-      FROM employees e
-      LEFT JOIN departments d ON e.department_id = d.department_id
-      LEFT JOIN positions p ON e.position_id = p.position_id
-      WHERE e.termination_date IS NOT NULL
-        ${deptCondition}
-        ${dateConditionTerminated}
-      ORDER BY e.termination_date DESC
-    `;
-    
-    console.log('📊 Hired Query:', hiredQuery);
-    console.log('📊 Terminated Query:', terminatedQuery);
-    
-    const hiredEmployees = await sequelize.query(hiredQuery, { 
-      type: sequelize.QueryTypes.SELECT 
+    // Get hired employees (sorted by EC date)
+    const hiredEmployees = await Employee.findAll({
+      where: hireWhere,
+      attributes: [
+        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 
+        'fullNameEnglish', 'workEmail', 'phoneNumber', 'basicSalary', 
+        'profilePictureUrl', 'hireDateEC', 'hireDateGC'
+      ],
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] }
+      ],
+      order: [['hireDateEC', 'DESC']]
     });
     
-    const terminatedEmployees = await sequelize.query(terminatedQuery, { 
-      type: sequelize.QueryTypes.SELECT 
+    // Get terminated employees (sorted by EC date)
+    const terminatedEmployees = await Employee.findAll({
+      where: terminationWhere,
+      attributes: [
+        'employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName',
+        'fullNameEnglish', 'workEmail', 'phoneNumber', 'basicSalary',
+        'profilePictureUrl', 'terminationDateEC', 'terminationDateGC', 'employmentStatus'
+      ],
+      include: [
+        { model: Department, attributes: ['name'] },
+        { model: Position, attributes: ['title'] }
+      ],
+      order: [['terminationDateEC', 'DESC']]
     });
     
-    console.log(`📊 Found ${hiredEmployees.length} hired employees`);
-    console.log(`📊 Found ${terminatedEmployees.length} terminated employees`);
+    // Format the response with EC dates
+    const formattedHired = hiredEmployees.map(emp => ({
+      id: emp.employeeId,
+      employeeId: emp.employeeCode,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      middleName: emp.middleName,
+      fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+      fullNameEnglish: emp.fullNameEnglish,
+      email: emp.workEmail,
+      phone: emp.phoneNumber,
+      department: emp.Department?.name || 'Unknown',
+      position: emp.Position?.title || 'Unknown',
+      hireDate: emp.hireDateEC,  // EC date
+      hireDateGC: emp.hireDateGC, // GC date for reference
+      salary: emp.basicSalary,
+      profilePictureUrl: emp.profilePictureUrl
+    }));
+    
+    const formattedTerminated = terminatedEmployees.map(emp => ({
+      id: emp.employeeId,
+      employeeId: emp.employeeCode,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      middleName: emp.middleName,
+      fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+      fullNameEnglish: emp.fullNameEnglish,
+      email: emp.workEmail,
+      phone: emp.phoneNumber,
+      department: emp.Department?.name || 'Unknown',
+      position: emp.Position?.title || 'Unknown',
+      terminationDate: emp.terminationDateEC,  // EC date
+      terminationDateGC: emp.terminationDateGC, // GC date for reference
+      salary: emp.basicSalary,
+      profilePictureUrl: emp.profilePictureUrl,
+      status: emp.employmentStatus
+    }));
+    
+    console.log(`📊 Found ${formattedHired.length} hired employees (EC)`);
+    console.log(`📊 Found ${formattedTerminated.length} terminated employees (EC)`);
     
     res.json({
       success: true,
       data: {
-        hired: hiredEmployees,
-        terminated: terminatedEmployees,
+        hired: formattedHired,
+        terminated: formattedTerminated,
         summary: {
-          totalHired: hiredEmployees.length,
-          totalTerminated: terminatedEmployees.length,
-          netGrowth: hiredEmployees.length - terminatedEmployees.length
+          totalHired: formattedHired.length,
+          totalTerminated: formattedTerminated.length,
+          netGrowth: formattedHired.length - formattedTerminated.length
         }
       }
     });
@@ -3536,3 +4251,24 @@ exports.uploadEmployeeDocument = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

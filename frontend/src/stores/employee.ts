@@ -240,9 +240,6 @@ export interface Employee {
   currentCompany?: CurrentCompany
 }
 
-
-
-
 // ============================================================================
 // SEPARATE STATS TYPES
 // ============================================================================
@@ -501,6 +498,33 @@ interface HiringDetailsParams {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================================
 // EMPLOYEE SERVICE
 // ============================================================================
@@ -557,6 +581,42 @@ async uploadEmployeeDocument(
       success: false,
       error: error.response?.data?.error || 'Failed to upload document'
     }
+  }
+}
+
+
+
+
+
+
+// ============================================================================
+// TERMINATION HISTORY METHODS
+// ============================================================================
+
+/**
+ * Get termination history for an employee
+ */
+async getTerminationHistory(employeeId: number) {
+  try {
+    const response = await api.get(`/employees/${employeeId}/termination-history`);
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Get termination history error:', error);
+    return {
+      success: false,
+      data: {
+        history: [],
+        summary: {
+          totalTerminations: 0,
+          currentStatus: 'active',
+          lastTermination: null
+        }
+      },
+      error: error.response?.data?.error || 'Failed to fetch termination history'
+    };
   }
 }
 
@@ -918,6 +978,130 @@ async updateEmployee(id: number, employeeData: any) {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================================
+// TERMINATE & REACTIVATE EMPLOYEE - NO REASON
+// ============================================================================
+
+/**
+ * Terminate an employee
+ * Sets status to 'terminated', adds termination dates, and sets isActive to false
+ */
+async terminateEmployee(id: number) {
+  try {
+    const response = await api.post(`/employees/${id}/terminate`);
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Terminate employee error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to terminate employee'
+    };
+  }
+}
+
+/**
+ * Reactivate a terminated employee
+ * Sets status to 'active', clears termination dates, and sets isActive to true
+ */
+async reactivateEmployee(id: number) {
+  try {
+    const response = await api.post(`/employees/${id}/reactivate`);
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Reactivate employee error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to reactivate employee'
+    };
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   /**
    * Delete employee (soft delete - terminate)
    */
@@ -977,6 +1161,32 @@ async importEmployees(employees: any[]): Promise<{
     }
   }
 }
+
+  // 👇 ADD THIS NEW METHOD TO SUPPORT EXCEL UPLOAD
+  /**
+   * Import employees from an Excel (.xlsx) file
+   * The backend parses the file and returns results
+   */
+  async importEmployeesFromExcel(formData: FormData) {
+    try {
+      const response = await api.post('/employees/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      }
+    } catch (error: any) {
+      console.error('Excel import error:', error)
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to import employees'
+      }
+    }
+  }
+  // 👆 END OF NEW METHOD
+
   // ============================================================================
   // SEPARATE ANALYTICS STATS METHODS
   // ============================================================================
@@ -1389,8 +1599,43 @@ async getEmployeeCompensationHistory(employeeId: number, params?: {
 }
 
 
-getHiringDetails(params: HiringDetailsParams) {
-  return api.get('/employees/stats/hiring-details', { params })
+// ============================================================================
+// HIRING DETAILS
+// ============================================================================
+
+/**
+ * Get hiring details (hired & terminated employees)
+ */
+async getHiringDetails(params?: { departmentId?: string | null; months?: string | number }) {
+  try {
+    // Build query parameters
+    const queryParams: any = {};
+    if (params?.departmentId && params.departmentId !== 'all' && params.departmentId !== 'null') {
+      queryParams.departmentId = params.departmentId;
+    }
+    if (params?.months && params.months !== 'all' && params.months !== 'null') {
+      queryParams.months = params.months;
+    }
+    
+    const response = await api.get('/employees/stats/hiring-details', { params: queryParams })
+    
+    // Return in the same format as other methods
+    return {
+      success: true,
+      data: response.data.data // This should contain { hired: [], terminated: [], summary: {} }
+    }
+  } catch (error: any) {
+    console.error('Get hiring details error:', error)
+    return {
+      success: false,
+      data: {
+        hired: [],
+        terminated: [],
+        summary: { totalHired: 0, totalTerminated: 0, netGrowth: 0 }
+      },
+      error: error.response?.data?.error || 'Failed to fetch hiring details'
+    }
+  }
 }
 
   // ============================================================================

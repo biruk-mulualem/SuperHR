@@ -49,7 +49,7 @@
             <div class="online-status" :class="employee.status"></div>
           </div>
           <div class="employee-basic">
-            <h1>{{ employee.fullName }}</h1>
+            <h1>{{ employee.fullName || employee.fullNameEnglish  }}</h1>
             <div class="employee-tags">
               <span class="tag">{{ employee.position || "N/A" }}</span>
               <span class="tag">{{ employee.departmentName || "N/A" }}</span>
@@ -86,8 +86,8 @@
           <div class="stat-card-info">
             <span class="stat-label">{{
               $t("employee.department") || "Department"
-            }}</span
-            ><span class="stat-number">{{
+            }}</span>
+            <span class="stat-number">{{
               employee.departmentName || "N/A"
             }}</span>
           </div>
@@ -107,8 +107,8 @@
           <div class="stat-card-info">
             <span class="stat-label">{{
               $t("employee.hireDate") || "Hire Date"
-            }}</span
-            ><span class="stat-number">{{
+            }}</span>
+            <span class="stat-number">{{
               formatDate(employee.hireDateEC)
             }} {{ $t('calendar.ec') || 'E.C' }}</span>
           </div>
@@ -129,8 +129,8 @@
           <div class="stat-card-info">
             <span class="stat-label">{{
               $t("employee.employmentType") || "Employment Type"
-            }}</span
-            ><span class="stat-number">{{
+            }}</span>
+            <span class="stat-number">{{
               getEmploymentTypeLabel(employee.employmentType)
             }}</span>
           </div>
@@ -152,8 +152,8 @@
           <div class="stat-card-info">
             <span class="stat-label">{{
               $t("employee.basicSalary") || "Basic Salary"
-            }}</span
-            ><span class="stat-number">{{
+            }}</span>
+            <span class="stat-number">{{
               formatCurrency(employee.basicSalary)
             }}</span>
           </div>
@@ -186,7 +186,7 @@
                 <span class="info-label">{{
                   $t("employee.fullName") || "Full Name"
                 }}</span>
-                <span class="info-value">{{ employee.fullName }}</span>
+                <span class="info-value">{{employee.fullName || employee.fullNameEnglish  }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
@@ -217,7 +217,7 @@
                   $t("employee.dateOfBirth") || "Date of Birth"
                 }}</span>
                 <span class="info-value">{{
-                  formatDate(employee.dob || employee.dateOfBirth) || "—"
+                  formatDate(employee.dateOfBirthEC) || "—"
                 }}</span>
               </div>
               <div class="info-item">
@@ -288,32 +288,32 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.region") || "Region"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.birthPlace.region || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.city") || "City"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.birthPlace.city || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.subcity") || "Subcity"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.birthPlace.subcity || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.district") || "District"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.birthPlace.district || "—"
                 }}</span>
               </div>
@@ -346,56 +346,56 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.name") || "Company Name"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.companyName || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.tin") || "TIN Number"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.companyTin || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.phone") || "Phone"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.companyPhone || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.email") || "Email"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.companyEmail || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.address") || "Address"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.companyAddress || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.poBox") || "PO Box"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.poBox || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("company.website") || "Website"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentCompany.website || "—"
                 }}</span>
               </div>
@@ -430,48 +430,48 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.region") || "Region"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.region || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.subcity") || "Subcity"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.subcity || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.kebele") || "Kebele"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.kebele || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.district") || "District"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.district || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.poBox") || "PO Box"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.poBox || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.houseNumber") || "House Number"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.currentAddress.houseNumber || "—"
                 }}</span>
               </div>
@@ -508,48 +508,48 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.region") || "Region"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.region || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.subcity") || "Subcity"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.subcity || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.kebele") || "Kebele"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.kebele || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.district") || "District"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.district || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.poBox") || "PO Box"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.poBox || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.houseNumber") || "House Number"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.permanentAddress.houseNumber || "—"
                 }}</span>
               </div>
@@ -584,8 +584,8 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("family.contactName") || "Contact Name"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContact.name || "—"
                 }}</span>
               </div>
@@ -600,16 +600,16 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("family.phoneNumber") || "Phone"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContact.phone || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("family.alternatePhone") || "Alternate Phone"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContact.alternatePhone || "—"
                 }}</span>
               </div>
@@ -648,32 +648,32 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.city") || "City"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContactAddress.city || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.subcity") || "Subcity"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContactAddress.subcity || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.district") || "District"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContactAddress.district || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("address.kebele") || "Kebele"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.emergencyContactAddress.kebele || "—"
                 }}</span>
               </div>
@@ -710,20 +710,20 @@
                 class="education-item"
               >
                 <div class="edu-header">
-                  <strong>{{ edu.level }}</strong> - {{ edu.institutionName }}
+                  <strong>{{ getEducationLevelLabel(edu.level) }}</strong> - {{ edu.institutionName }}
                 </div>
                 <div class="edu-details">
-                  {{ edu.startDate }} to
-                  {{ edu.isCurrent ? "Present" : edu.endDate }}
+                  {{ formatDate(edu.startDateEC) }} {{ $t("common.to") || "to" }}
+                  {{ edu.isCurrent ? "Present" : formatDate(edu.endDateEC) }}
                 </div>
                 <div class="edu-address">{{ edu.institutionAddress }}</div>
                 <a
-                  v-if="getDocumentUrl('education_certificate')"
-                  :href="getDocumentUrl('education_certificate')"
+                  v-if="getDocumentWithIndex('education_certificate', idx) || getDocumentUrl('education_certificate')"
+                  :href="getDocumentWithIndex('education_certificate', idx) || getDocumentUrl('education_certificate')"
                   target="_blank"
                   class="file-link"
-                  >📄 {{ $t("common.view") || "View" }} </a
-                >
+                  >📄 {{ $t("common.view") || "View" }}
+                </a>
               </div>
             </div>
           </div>
@@ -761,19 +761,19 @@
                   <strong>{{ train.trainingName }}</strong>
                 </div>
                 <div class="training-details">
-                  {{ train.institutionName }} | {{ train.startDate }} to
-                  {{ train.endDate }}
+                  {{ train.institutionName }} | {{ formatDate(train.startDateEC) }} {{ $t("common.to") || "to" }}
+                  {{ formatDate(train.endDateEC) }}
                 </div>
                 <div class="training-address">
                   {{ train.institutionAddress }}
                 </div>
                 <a
-                  v-if="getDocumentUrl('training_certificate')"
-                  :href="getDocumentUrl('training_certificate')"
+                  v-if="getDocumentWithIndex('training_certificate', idx) || getDocumentUrl('training_certificate')"
+                  :href="getDocumentWithIndex('training_certificate', idx) || getDocumentUrl('training_certificate')"
                   target="_blank"
                   class="file-link"
-                  >📄 {{ $t("common.view") || "View" }} </a
-                >
+                  >📄 {{ $t("common.view") || "View" }}
+                </a>
               </div>
             </div>
           </div>
@@ -804,32 +804,32 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("bank.bankName") || "Bank Name"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.bankAccount.bankName || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("bank.accountNumber") || "Account Number"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.bankAccount.accountNumber || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("bank.accountHolderName") || "Account Holder"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.bankAccount.accountHolderName || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("bank.branch") || "Branch"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.bankAccount.branch || "—"
                 }}</span>
               </div>
@@ -857,8 +857,8 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("nationality.type") || "Type"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   getNationalityTypeLabel(employee.nationalityAcquisition.type)
                 }}</span>
               </div>
@@ -868,117 +868,117 @@
               >
                 <span class="info-label">{{
                   $t("nationality.certificate") || "Certificate"
-                }}</span
-                ><span class="info-value"
-                  ><a
+                }}</span>
+                <span class="info-value">
+                  <a
                     :href="getDocumentUrl('naturalization_certificate')"
                     target="_blank"
                     class="file-link"
                     >📄 {{ $t("common.view") || "View" }}</a
-                  ></span
-                >
+                  >
+                </span>
               </div>
             </div>
           </div>
 
           <!-- Health & Legal Card -->
           <div
-    class="info-card"
-    v-if="employee.healthInfo || employee.legalInfo"
-  >
-    <div class="card-header">
-      <div class="card-header-icon">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path
-            d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-          />
-          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
-        </svg>
-      </div>
-      <h3>{{ $t("healthLegal.title") || "Health & Legal" }}</h3>
-    </div>
-    <div class="health-legal-content">
-      <div class="health-section" v-if="employee.healthInfo">
-        <h4>
-          {{ $t("healthLegal.healthTitle") || "Health Information" }}
-        </h4>
-        <div>
-          {{
-            $t("healthLegal.physicalInjury") ||
-            "Physical Injury/Disability"
-          }}: {{ employee.healthInfo.hasPhysicalInjury ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-        </div>
-        <div v-if="employee.healthInfo.injuryDescription">
-          {{ employee.healthInfo.injuryDescription }}
-        </div>
-        <a
-          v-if="getDocumentUrl('health_document')"
-          :href="getDocumentUrl('health_document')"
-          target="_blank"
-          class="file-link"
-          >📄 {{ $t("common.view") || "View" }}</a
-        >
-      </div>
-      <div class="legal-section" v-if="employee.legalInfo">
-        <h4>
-          {{ $t("healthLegal.legalTitle") || "Legal Information" }}
-        </h4>
-        <div>
-          {{ $t("healthLegal.criminalRecord") || "Criminal Record" }}:
-          {{ employee.legalInfo.hasCriminalRecord ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-        </div>
-        <div v-if="employee.legalInfo.criminalRecordDescription">
-          {{ employee.legalInfo.criminalRecordDescription }}
-        </div>
-        <a
-          v-if="getDocumentUrl('legal_document')"
-          :href="getDocumentUrl('legal_document')"
-          target="_blank"
-          class="file-link"
-          >📄 {{ $t("common.view") || "View" }}</a
-        >
-      </div>
-    </div>
-  </div>
+            class="info-card"
+            v-if="employee.healthInfo || employee.legalInfo"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                  />
+                  <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
+                </svg>
+              </div>
+              <h3>{{ $t("healthLegal.title") || "Health & Legal" }}</h3>
+            </div>
+            <div class="health-legal-content">
+              <div class="health-section" v-if="employee.healthInfo">
+                <h4>
+                  {{ $t("healthLegal.healthTitle") || "Health Information" }}
+                </h4>
+                <div>
+                  {{
+                    $t("healthLegal.physicalInjury") ||
+                    "Physical Injury/Disability"
+                  }}: {{ employee.healthInfo.hasPhysicalInjury ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+                </div>
+                <div v-if="employee.healthInfo.injuryDescription">
+                  {{ employee.healthInfo.injuryDescription }}
+                </div>
+                <a
+                  v-if="getDocumentUrl('health_document')"
+                  :href="getDocumentUrl('health_document')"
+                  target="_blank"
+                  class="file-link"
+                  >📄 {{ $t("common.view") || "View" }}</a
+                >
+              </div>
+              <div class="legal-section" v-if="employee.legalInfo">
+                <h4>
+                  {{ $t("healthLegal.legalTitle") || "Legal Information" }}
+                </h4>
+                <div>
+                  {{ $t("healthLegal.criminalRecord") || "Criminal Record" }}:
+                  {{ employee.legalInfo.hasCriminalRecord ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+                </div>
+                <div v-if="employee.legalInfo.criminalRecordDescription">
+                  {{ employee.legalInfo.criminalRecordDescription }}
+                </div>
+                <a
+                  v-if="getDocumentUrl('legal_document')"
+                  :href="getDocumentUrl('legal_document')"
+                  target="_blank"
+                  class="file-link"
+                  >📄 {{ $t("common.view") || "View" }}</a
+                >
+              </div>
+            </div>
+          </div>
 
           <!-- Language Skills Card -->
-       <div
-  class="info-card"
-  v-if="employee.languageSkills && employee.languageSkills.length"
->
-  <div class="card-header">
-    <div class="card-header-icon">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="M5 8h10M9 4v4M11 12h8M15 8v4" />
-        <path d="M2 2h20v20H2z" />
-      </svg>
-    </div>
-    <h3>{{ $t("skills.title") || "Language Skills" }}</h3>
-  </div>
-  <div class="skills-list">
-    <div
-      v-for="(lang, idx) in employee.languageSkills"
-      :key="idx"
-      class="skill-tag"
-    >
-      {{ getLanguageLabel(lang.language) }} - {{ getProficiencyLabel(lang.proficiency) }}
-    </div>
-  </div>
-  <div v-if="employee.otherSkills" class="other-skills">
-    <strong>{{ $t("skills.otherTitle") || "Other Skills" }}:</strong>
-    {{ employee.otherSkills }}
-  </div>
-</div>
+          <div
+            class="info-card"
+            v-if="employee.languageSkills && employee.languageSkills.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M5 8h10M9 4v4M11 12h8M15 8v4" />
+                  <path d="M2 2h20v20H2z" />
+                </svg>
+              </div>
+              <h3>{{ $t("skills.title") || "Language Skills" }}</h3>
+            </div>
+            <div class="skills-list">
+              <div
+                v-for="(lang, idx) in employee.languageSkills"
+                :key="idx"
+                class="skill-tag"
+              >
+                {{ getLanguageLabel(lang.language) }} - {{ getProficiencyLabel(lang.proficiency) }}
+              </div>
+            </div>
+            <div v-if="employee.otherSkills" class="other-skills">
+              <strong>{{ $t("skills.otherTitle") || "Other Skills" }}:</strong>
+              {{ employee.otherSkills }}
+            </div>
+          </div>
         </div>
 
         <div class="right-column">
@@ -1004,48 +1004,48 @@
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.department") || "Department"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.departmentName || "N/A"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.position") || "Position"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.position || "N/A"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.employmentType") || "Employment Type"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   getEmploymentTypeLabel(employee.employmentType)
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.hireDate") || "Hire Date"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   formatDate(employee.hireDateEC)
                 }} {{ $t('calendar.ec') || 'E.C' }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.manager") || "Manager"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.managerName || "—"
                 }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
                   $t("employee.workLocation") || "Work Location"
-                }}</span
-                ><span class="info-value">{{
+                }}</span>
+                <span class="info-value">{{
                   employee.workLocation || "—"
                 }}</span>
               </div>
@@ -1201,12 +1201,12 @@
                   <span
                     >{{ $t("family.dateOfBirth") || "Date of Birth" }}:</span
                   >
-                  {{ formatDate(employee.spouseInfo.dateOfBirth) || "—" }}
+                  {{ formatDate(employee.spouseInfo.dateOfBirthEC) || "—" }} E.C
                 </div>
-               <div class="spouse-detail">
-  <span>{{ $t("family.jobStatus") || "Job Status" }}:</span>
-  {{ getJobStatusLabel(employee.spouseInfo.jobStatus) }}
-</div>
+                <div class="spouse-detail">
+                  <span>{{ $t("family.jobStatus") || "Job Status" }}:</span>
+                  {{ getJobStatusLabel(employee.spouseInfo.jobStatus) }}
+                </div>
                 <div class="spouse-detail">
                   <span>{{ $t("family.companyName") || "Company Name" }}:</span>
                   {{ employee.spouseInfo.companyName || "—" }}
@@ -1283,88 +1283,88 @@
                 </div>
                 <div class="child-info">
                   <div class="child-header">
-                    <span class="child-name">{{ child.name }}</span
-                    ><span class="child-age"
-                      >{{ calculateAge(child.dateOfBirth) }}
-                      {{ $t("family.years") || "years" }}</span
-                    >
+                    <span class="child-name">{{ child.name }}</span>
+                    <span class="child-age">
+                      {{ calculateAgeFromEC(child.dateOfBirthEC) }}
+                      {{ $t("family.years") || "years" }}
+                    </span>
                   </div>
-                 <div class="child-details">
-  <div>
-    <span class="child-label"
-      >{{
-        $t("family.dateOfBirth") || "Date of Birth"
-      }}:</span
-    >
-    {{ formatDate(child.dateOfBirth) }}
-  </div>
-  <div>
-    <span class="child-label"
-      >{{
-        $t("family.medicalCondition") || "Medical Condition"
-      }}:</span
-    >
-    {{ child.hasMedicalCondition ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-  </div>
-  <div v-if="child.medicalConditionNotes">
-    <span class="child-label"
-      >{{ $t("family.notes") || "Notes" }}:</span
-    >
-    {{ child.medicalConditionNotes }}
-  </div>
-  <div>
-    <span class="child-label"
-      >{{ $t("family.adopted") || "Adopted" }}:</span
-    >
-    {{ child.isAdopted ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-  </div>
-  <div class="child-documents">
-    <a
-      v-if="
-        getDocumentWithIndex('child_birth_certificate', idx)
-      "
-      :href="
-        getDocumentWithIndex('child_birth_certificate', idx)
-      "
-      target="_blank"
-      class="file-link"
-      >📄 {{ $t("common.viewBirthCertificate") || "" }}</a
-    >
-    <a
-      v-if="
-        getDocumentWithIndex(
-          'child_adoption_certificate',
-          idx,
-        )
-      "
-      :href="
-        getDocumentWithIndex(
-          'child_adoption_certificate',
-          idx,
-        )
-      "
-      target="_blank"
-      class="file-link"
-      >📄
-      {{
-        $t("common.viewAdoptionCertificate") ||
-        "Adoption Certificate"
-      }}</a
-    >
-    <a
-      v-if="getDocumentWithIndex('child_medical_report', idx)"
-      :href="
-        getDocumentWithIndex('child_medical_report', idx)
-      "
-      target="_blank"
-      class="file-link"
-      >📄
-      {{
-        $t("common.viewMedicalReport") || "Medical Report"
-      }}</a
-    >
-  </div>
-</div>
+                  <div class="child-details">
+                    <div>
+                      <span class="child-label"
+                        >{{
+                          $t("family.dateOfBirth") || "Date of Birth"
+                        }}:</span
+                      >
+                      {{ formatDate(child.dateOfBirthEC) }}
+                    </div>
+                    <div>
+                      <span class="child-label"
+                        >{{
+                          $t("family.medicalCondition") || "Medical Condition"
+                        }}:</span
+                      >
+                      {{ child.hasMedicalCondition ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+                    </div>
+                    <div v-if="child.medicalConditionNotes">
+                      <span class="child-label"
+                        >{{ $t("family.notes") || "Notes" }}:</span
+                      >
+                      {{ child.medicalConditionNotes }}
+                    </div>
+                    <div>
+                      <span class="child-label"
+                        >{{ $t("family.adopted") || "Adopted" }}:</span
+                      >
+                      {{ child.isAdopted ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+                    </div>
+                    <div class="child-documents">
+                      <a
+                        v-if="
+                          getDocumentWithIndex('child_birth_certificate', idx)
+                        "
+                        :href="
+                          getDocumentWithIndex('child_birth_certificate', idx)
+                        "
+                        target="_blank"
+                        class="file-link"
+                        >📄 {{ $t("common.viewBirthCertificate") || "" }}</a
+                      >
+                      <a
+                        v-if="
+                          getDocumentWithIndex(
+                            'child_adoption_certificate',
+                            idx,
+                          )
+                        "
+                        :href="
+                          getDocumentWithIndex(
+                            'child_adoption_certificate',
+                            idx,
+                          )
+                        "
+                        target="_blank"
+                        class="file-link"
+                        >📄
+                        {{
+                          $t("common.viewAdoptionCertificate") ||
+                          "Adoption Certificate"
+                        }}</a
+                      >
+                      <a
+                        v-if="getDocumentWithIndex('child_medical_report', idx)"
+                        :href="
+                          getDocumentWithIndex('child_medical_report', idx)
+                        "
+                        target="_blank"
+                        class="file-link"
+                        >📄
+                        {{
+                          $t("common.viewMedicalReport") || "Medical Report"
+                        }}</a
+                      >
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1402,8 +1402,8 @@
                   <div class="parent-meta">
                     <span class="parent-job">{{
                       employee.parentsInfo.father?.job || "—"
-                    }}</span
-                    ><span class="parent-income"
+                    }}</span>
+                    <span class="parent-income"
                       >{{ $t("family.monthlyIncome") || "Monthly Income" }}:
                       {{
                         formatCurrency(
@@ -1423,8 +1423,8 @@
                   <div class="parent-meta">
                     <span class="parent-job">{{
                       employee.parentsInfo.mother?.job || "—"
-                    }}</span
-                    ><span class="parent-income"
+                    }}</span>
+                    <span class="parent-income"
                       >{{ $t("family.monthlyIncome") || "Monthly Income" }}:
                       {{
                         formatCurrency(
@@ -1463,8 +1463,8 @@
                   "
                   class="support-row"
                 >
-                  <span class="support-icon">💰</span
-                  ><span class="support-text"
+                  <span class="support-icon">💰</span>
+                  <span class="support-text"
                     >{{ $t("family.financialSupport") || "Financial Support" }}:
                     {{ employee.parentsInfo.financialSupport }}</span
                   >
@@ -1476,8 +1476,8 @@
                   "
                   class="support-row"
                 >
-                  <span class="support-icon">🎁</span
-                  ><span class="support-text"
+                  <span class="support-icon">🎁</span>
+                  <span class="support-text"
                     >{{ $t("family.otherSupport") || "Other Support" }}:
                     {{ employee.parentsInfo.otherSupport }}</span
                   >
@@ -1516,10 +1516,10 @@
                 class="work-item"
               >
                 <div class="work-header">
-                  <strong>{{ work.position }}</strong> at {{ work.companyName }}
+                  <strong>{{ work.position }}</strong> {{ $t("common.at")}} {{ work.companyName }}
                 </div>
                 <div class="work-dates">
-                  {{ work.startDate }} to {{ work.endDate }}
+                  {{ formatDate(work.startDateEC) }} {{ $t("common.to")}} {{ formatDate(work.endDateEC) }}
                 </div>
                 <div class="work-details">
                   <div>
@@ -1528,9 +1528,9 @@
                     {{ formatCurrency(work.salaryWhenLeft) }}
                   </div>
                   <div>
-  {{ $t("employee.providentFund") || "Provident Fund" }}:
-  {{ work.providentFundSubmitted === "yes" ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-</div>
+                    {{ $t("employee.providentFund") || "Provident Fund" }}:
+                    {{ work.providentFundSubmitted === "yes" ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
+                  </div>
                   <div v-if="work.terminationReason">
                     {{
                       $t("employee.reasonForLeaving") || "Reason for leaving"
@@ -1542,8 +1542,8 @@
                   :href="getDocumentWithIndex('experience_letter', idx)"
                   target="_blank"
                   class="file-link"
-                  >📄 {{ $t("common.view") || "View" }} Experience Letter</a
-                >
+                  >📄 {{ $t("common.view-Experience-Letter") || "View" }}
+                </a>
               </div>
             </div>
           </div>
@@ -1595,12 +1595,12 @@
                     {{ $t("guarantee.letterNumber") || "Guarantee Letter" }}:
                     {{ guarantor.guaranteeLetterNo }} ({{
                       formatDate(guarantor.guaranteeLetterDateEC)
-                    }}){{ $t('calendar.ec') || 'E.C' }}
+                    }}) {{ $t('calendar.ec') || 'E.C' }}
                   </div>
                   <div>
                     {{ $t("guarantee.sdtLetterNumber") || "SDT Letter" }}:
                     {{ guarantor.sdtLetterNo }} ({{
-                      formatDate(guarantor.sdtLetterDateEC) }}){{ $t('calendar.ec') || 'E.C' }}
+                      formatDate(guarantor.sdtLetterDateEC) }}) {{ $t('calendar.ec') || 'E.C' }}
                   </div>
                   <div class="guarantor-documents">
                     <a
@@ -1637,128 +1637,244 @@
       </div>
 
       <!-- Compensation History Card -->
-   <!-- Compensation History Card -->
-<div class="info-card history-card full-width">
+      <div class="info-card history-card full-width">
+        <div class="card-header">
+          <div class="card-header-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />
+            </svg>
+          </div>
+          <h3>
+            {{ $t("compensation.history") || "Compensation Change History" }}
+          </h3>
+          <span class="history-count" v-if="compensationHistories.length > 0"
+            >{{ compensationHistories.length }}
+            {{ $t("compensation.changes") || "changes" }}</span
+          >
+        </div>
+        <div class="history-content-full">
+          <div v-if="loadingHistory" class="history-loading-full">
+            <div class="spinner"></div>
+            <span>{{
+              $t("common.loading") || "Loading compensation history..."
+            }}</span>
+          </div>
+          <div
+            v-else-if="compensationHistories.length === 0"
+            class="history-empty-full"
+          >
+            <div class="empty-icon">📋</div>
+            <p>
+              {{
+                $t("compensation.noHistory") ||
+                "No compensation changes recorded"
+              }}
+            </p>
+            <span class="history-hint">{{
+              $t("compensation.historyHint") ||
+              "When salary or allowances are updated, changes will appear here"
+            }}</span>
+          </div>
+          <div v-else class="history-timeline-full">
+            <div
+              v-for="(history, index) in compensationHistories"
+              :key="history.id"
+              class="timeline-entry"
+            >
+              <div class="timeline-left">
+                <div class="timeline-date-badge">
+                  <div class="timeline-date-day">
+                    {{ history.changeDay || '--' }}
+                  </div>
+                  <div class="timeline-date-month">
+                    {{ history.changeMonth || '---' }}
+                  </div>
+                  <div class="timeline-date-year">
+                    {{ history.changeYear || '----' }}
+                  </div>
+                </div>
+                <div class="timeline-arrow" :class="history.changeType">
+                  <span class="arrow-icon">{{
+                    history.changeType === "increase" ? "↑" : "↓"
+                  }}</span>
+                </div>
+              </div>
+              <div class="timeline-body">
+                <div class="timeline-header-full">
+                  <div class="timeline-title">
+                    <span class="component-badge" :class="history.changeType">{{
+                      getComponentLabel(history.componentKey || history.component)
+                    }}</span>
+                    <span class="change-percent" :class="history.changeType"
+                      >{{ history.changeType === "increase" ? "+" : ""
+                      }}{{ formatPercentage(history.percentageChange) }}%</span
+                    >
+                  </div>
+                  <div class="timeline-submitted">
+                    <span class="submitted-icon">👤</span>
+                    <span>{{ history.submittedBy || $t("common.system") || "System" }}</span>
+                  </div>
+                </div>
+                <div class="timeline-values-full">
+                  <div class="value-card old">
+                    <div class="value-label">
+                      {{
+                        $t("compensation.previousAmount") || "Previous Amount"
+                      }}
+                    </div>
+                    <div class="value-amount">
+                      {{ formatCurrency(history.oldValue) }}
+                    </div>
+                  </div>
+                  <div class="value-arrow-full">→</div>
+                  <div class="value-card new" :class="history.changeType">
+                    <div class="value-label">
+                      {{ $t("compensation.newAmount") || "New Amount" }}
+                    </div>
+                    <div class="value-amount">
+                      {{ formatCurrency(history.newValue) }}
+                    </div>
+                  </div>
+                  <div class="value-diff" :class="history.changeType">
+                    <span class="diff-icon">{{
+                      history.changeType === "increase" ? "▲" : "▼"
+                    }}</span>
+                    <span class="diff-amount">{{
+                      formatCurrency(history.difference)
+                    }}</span>
+                  </div>
+                </div>
+                <div v-if="history.reason" class="timeline-reason-full">
+                  <span class="reason-icon">💬</span>
+                  <span class="reason-text">{{ history.reason }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+     <!-- EmployeeDetail.vue - Termination History Section -->
+
+<!-- Termination History Card -->
+<div class="info-card employment-history-card full-width">
   <div class="card-header">
     <div class="card-header-icon">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />
       </svg>
     </div>
-    <h3>
-      {{ $t("compensation.history") || "Compensation Change History" }}
-    </h3>
-    <span class="history-count" v-if="compensationHistories.length > 0"
-      >{{ compensationHistories.length }}
-      {{ $t("compensation.changes") || "changes" }}</span
-    >
+    <h3>Employment History Timeline</h3>
+    <span class="history-count" v-if="employmentHistory.length > 0">
+      {{ employmentHistory.length }} {{ $t("compensation.changes") || "periods" }}
+    </span>
   </div>
+  
   <div class="history-content-full">
-    <div v-if="loadingHistory" class="history-loading-full">
+    <div v-if="loadingTerminationHistory" class="history-loading-full">
       <div class="spinner"></div>
-      <span>{{
-        $t("common.loading") || "Loading compensation history..."
-      }}</span>
+      <span>Loading employment history...</span>
     </div>
-    <div
-      v-else-if="compensationHistories.length === 0"
-      class="history-empty-full"
-    >
+
+    <div v-else-if="employmentHistory.length === 0" class="history-empty-full">
       <div class="empty-icon">📋</div>
-      <p>
-        {{
-          $t("compensation.noHistory") ||
-          "No compensation changes recorded"
-        }}
-      </p>
-      <span class="history-hint">{{
-        $t("compensation.historyHint") ||
-        "When salary or allowances are updated, changes will appear here"
-      }}</span>
+      <p>No employment history records found</p>
+      <span class="history-hint">Employee has been continuously employed since {{ employee.hireDateEC }} E.C</span>
     </div>
-    <div v-else class="history-timeline-full">
-      <div
-        v-for="(history, index) in compensationHistories"
-        :key="history.id"
-        class="timeline-entry"
+
+    <div v-else class="employment-timeline">
+      <!-- Timeline Items -->
+      <div 
+        v-for="(event, index) in employmentHistory" 
+        :key="index"
+        class="timeline-item-wrapper"
       >
-        <div class="timeline-left">
-          <div class="timeline-date-badge">
-            <div class="timeline-date-day">
-              {{ history.changeDay || '--' }}
-            </div>
-            <div class="timeline-date-month">
-              {{ history.changeMonth || '---' }}
-            </div>
-            <div class="timeline-date-year">
-              {{ history.changeYear || '----' }}
+        <!-- Connector Line -->
+        <div class="timeline-connector-line" v-if="index > 0"></div>
+        
+        <div class="timeline-item" :class="event.type">
+          <!-- Left Side - Period Badge -->
+          <div class="timeline-period">
+            <div class="period-badge" :class="event.type">
+              <span class="period-icon">{{ event.icon }}</span>
+              <span class="period-label">{{ event.label }}</span>
             </div>
           </div>
-          <div class="timeline-arrow" :class="history.changeType">
-            <span class="arrow-icon">{{
-              history.changeType === "increase" ? "↑" : "↓"
-            }}</span>
+
+          <!-- Middle - Timeline Node -->
+          <div class="timeline-node" :class="event.type">
+            <div class="node-dot"></div>
+            <div class="node-line" v-if="index < employmentHistory.length - 1"></div>
+          </div>
+
+          <!-- Right Side - Content -->
+          <div class="timeline-content-card" :class="event.type">
+            <div class="content-header">
+              <div class="title-section">
+                <h4 class="event-title">{{ event.title }}</h4>
+                <span class="event-subtitle">{{ event.subtitle }}</span>
+              </div>
+              <div class="date-section">
+                <span class="date-range">
+                  {{ event.startDate }} <span class="date-separator">→</span> {{ event.endDate || 'Present' }}
+                </span>
+                <span class="calendar-label">E.C</span>
+              </div>
+            </div>
+
+            <div class="content-body">
+              <!-- Employment Details -->
+              <div class="employment-details" v-if="event.details">
+                <div class="detail-row" v-if="event.details.department">
+                  <span class="detail-label">Department:</span>
+                  <span class="detail-value">{{ event.details.department }}</span>
+                </div>
+                <div class="detail-row" v-if="event.details.position">
+                  <span class="detail-label">Position:</span>
+                  <span class="detail-value">{{ event.details.position }}</span>
+                </div>
+                <div class="detail-row" v-if="event.details.salary">
+                  <span class="detail-label">Salary:</span>
+                  <span class="detail-value">{{ formatCurrency(event.details.salary) }}</span>
+                </div>
+                <div class="detail-row" v-if="event.details.reason">
+                  <span class="detail-label">Reason:</span>
+                  <span class="detail-value">{{ event.details.reason }}</span>
+                </div>
+                <div class="detail-row" v-if="event.details.notes">
+                  <span class="detail-label">Notes:</span>
+                  <span class="detail-value notes-text">{{ event.details.notes }}</span>
+                </div>
+              </div>
+
+              <!-- Duration Badge -->
+              <div class="duration-badge" :class="event.type">
+                <span class="duration-icon">⏱</span>
+                <span class="duration-text">{{ event.duration || 'Ongoing' }}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="timeline-body">
-          <div class="timeline-header-full">
-            <div class="timeline-title">
-              <span class="component-badge" :class="history.changeType">{{
-                getComponentLabel(history.componentKey || history.component)
-              }}</span>
-              <span class="change-percent" :class="history.changeType"
-                >{{ history.changeType === "increase" ? "+" : ""
-                }}{{ formatPercentage(history.percentageChange) }}%</span
-              >
-            </div>
-            <div class="timeline-submitted">
-              <span class="submitted-icon">👤</span>
-              <span>{{ history.submittedBy || $t("common.system") || "System" }}</span>
-            </div>
-          </div>
-          <div class="timeline-values-full">
-            <div class="value-card old">
-              <div class="value-label">
-                {{
-                  $t("compensation.previousAmount") || "Previous Amount"
-                }}
-              </div>
-              <div class="value-amount">
-                {{ formatCurrency(history.oldValue) }}
-              </div>
-            </div>
-            <div class="value-arrow-full">→</div>
-            <div class="value-card new" :class="history.changeType">
-              <div class="value-label">
-                {{ $t("compensation.newAmount") || "New Amount" }}
-              </div>
-              <div class="value-amount">
-                {{ formatCurrency(history.newValue) }}
-              </div>
-            </div>
-            <div class="value-diff" :class="history.changeType">
-              <span class="diff-icon">{{
-                history.changeType === "increase" ? "▲" : "▼"
-              }}</span>
-              <span class="diff-amount">{{
-                formatCurrency(history.difference)
-              }}</span>
-            </div>
-          </div>
-          <div v-if="history.reason" class="timeline-reason-full">
-            <span class="reason-icon">💬</span>
-            <span class="reason-text">{{ history.reason }}</span>
-          </div>
+      </div>
+
+      <!-- Current Status (if active) -->
+      <div v-if="employee.status === 'active'" class="current-status-banner">
+        <div class="status-indicator">
+          <span class="status-dot"></span>
+          <span class="status-text">Currently Employed</span>
+          <span class="status-date">Since {{ employee.hireDateEC }} E.C</span>
         </div>
       </div>
     </div>
   </div>
 </div>
+
     </div>
 
     <div v-else class="empty-state">
@@ -1794,6 +1910,199 @@ const loading = ref(true);
 const loadingHistory = ref(false);
 const employeeId = route.params.id;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const employmentHistory = ref([]);
+const loadingTerminationHistory = ref(false);
+
+// Helper function to calculate duration
+const calculateDuration = (startEC, endEC) => {
+  if (!startEC) return 'Unknown';
+  
+  const startParts = startEC.split('/');
+  const startYear = parseInt(startParts[2]);
+  const startMonth = parseInt(startParts[1]);
+  
+  let endYear, endMonth;
+  let isPresent = false;
+  
+  if (!endEC || endEC === 'Present') {
+    // Calculate from current date
+    const now = new Date();
+    const ecYear = now.getFullYear() - 8;
+    const ecMonth = now.getMonth() + 1;
+    endYear = ecYear;
+    endMonth = ecMonth;
+    isPresent = true;
+  } else {
+    const endParts = endEC.split('/');
+    endYear = parseInt(endParts[2]);
+    endMonth = parseInt(endParts[1]);
+  }
+  
+  let years = endYear - startYear;
+  let months = endMonth - startMonth;
+  
+  if (months < 0) {
+    years--;
+    months += 13; // Ethiopian has 13 months
+  }
+  
+  if (years < 0) {
+    years = 0;
+    months = 0;
+  }
+  
+  if (isPresent) {
+    return `${years} yrs ${months} mos (ongoing)`;
+  }
+  
+  if (years === 0 && months === 0) return 'Less than 1 month';
+  if (years === 0) return `${months} months`;
+  if (months === 0) return `${years} years`;
+  return `${years} yrs ${months} mos`;
+};
+
+// Build employment history from termination data
+const buildEmploymentHistory = (employee, terminationRecords) => {
+  const history = [];
+  
+  // 1. Initial Hire
+  const hireDate = employee.originalHireDateEC || employee.hireDateEC;
+  
+  // Find first termination
+  const firstTermination = terminationRecords.length > 0 ? terminationRecords[terminationRecords.length - 1] : null;
+  
+  // Initial employment period
+  history.push({
+    type: 'hired',
+    icon: '📋',
+    label: 'Hired',
+    title: 'First Employment',
+    subtitle: 'Initial Hire',
+    startDate: hireDate,
+    endDate: firstTermination ? firstTermination.terminationDateEC : 'Present',
+    duration: firstTermination ? calculateDuration(hireDate, firstTermination.terminationDateEC) : calculateDuration(hireDate, null),
+    details: {
+      department: employee.departmentName || 'N/A',
+      position: employee.position || 'N/A',
+      salary: employee.basicSalary || 0
+    }
+  });
+  
+  // Process each termination
+  let currentStartDate = hireDate;
+  
+  terminationRecords.forEach((record, index) => {
+    const isLast = index === 0; // Most recent first
+    const nextRecord = index < terminationRecords.length - 1 ? terminationRecords[index + 1] : null;
+    
+    // Termination period (end of employment)
+    history.push({
+      type: 'terminated',
+      icon: '❌',
+      label: 'Terminated',
+      title: 'Employment Ended',
+      subtitle: record.terminationReason || 'Not specified',
+      startDate: record.terminationDateEC,
+      endDate: record.rehireDateEC || 'Present',
+      duration: record.rehireDateEC ? calculateDuration(record.terminationDateEC, record.rehireDateEC) : 'Terminated',
+      details: {
+        department: employee.departmentName || 'N/A',
+        position: employee.position || 'N/A',
+        reason: record.terminationReason || 'Not specified',
+        notes: record.terminationNotes || null
+      }
+    });
+    
+    // If rehired, add rehire period
+    if (record.isRehired && record.rehireDateEC) {
+      // Next termination (if any)
+      const nextTermination = index > 0 ? terminationRecords[index - 1] : null;
+      const endDate = nextTermination ? nextTermination.terminationDateEC : 'Present';
+      
+      history.push({
+        type: 'rehired',
+        icon: '✅',
+        label: 'Rehired',
+        title: 'Re-employment',
+        subtitle: record.rehireReason || 'Rehired',
+        startDate: record.rehireDateEC,
+        endDate: endDate,
+        duration: calculateDuration(record.rehireDateEC, endDate),
+        details: {
+          department: employee.departmentName || 'N/A',
+          position: employee.position || 'N/A',
+          salary: employee.basicSalary || 0,
+          reason: record.rehireReason || 'Rehired',
+          notes: record.rehireNotes || null
+        }
+      });
+      
+      currentStartDate = record.rehireDateEC;
+    }
+  });
+  
+  // Sort by start date (most recent first)
+  return history.sort((a, b) => {
+    const aDate = a.startDate.split('/').reverse().join('');
+    const bDate = b.startDate.split('/').reverse().join('');
+    return bDate.localeCompare(aDate);
+  });
+};
+
+// Load termination history
+const loadTerminationHistory = async () => {
+  loadingTerminationHistory.value = true;
+  try {
+    const response = await EmployeesService.getTerminationHistory(employeeId);
+    if (response.success) {
+      const terminationData = response.data?.history || [];
+      // Build employment history timeline
+      employmentHistory.value = buildEmploymentHistory(employee.value, terminationData);
+    }
+  } catch (error) {
+    console.error('Failed to load termination history:', error);
+    employmentHistory.value = [];
+  } finally {
+    loadingTerminationHistory.value = false;
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Helper method to get document URL by type (for single documents or first of indexed)
 const getDocumentUrl = (type) => {
   const docs = employee.value?.documents;
@@ -1823,7 +2132,6 @@ const getComponentLabel = (componentKey) => {
     mobileAllowance: t("employee.mobileAllowance") || "Mobile Allowance",
     totalAllowances: t("employee.totalAllowances") || "Total Allowances",
     grossPay: t("employee.grossPay") || "Gross Monthly Pay",
-    // Fallback for any other component names
     basicsalary: t("employee.basicSalary") || "Basic Salary",
     housingallowance: t("employee.housingAllowance") || "Housing Allowance",
     positionallowance: t("employee.positionAllowance") || "Position Allowance",
@@ -1868,10 +2176,8 @@ const getDocumentWithIndex = (type, index) => {
   return null;
 };
 
-
 const getLanguageLabel = (language) => {
   const labels = {
-    // Ethiopian Languages
     amharic: t("skills.amharic") || "Amharic",
     oromo: t("skills.oromo") || "Oromo",
     tigrinya: t("skills.tigrinya") || "Tigrinya",
@@ -1884,19 +2190,16 @@ const getLanguageLabel = (language) => {
     gurage: t("skills.gurage") || "Gurage",
     kembata: t("skills.kembata") || "Kembata",
     silte: t("skills.silte") || "Silt'e",
-    // African Languages
     swahili: t("skills.swahili") || "Swahili",
     hausa: t("skills.hausa") || "Hausa",
     yoruba: t("skills.yoruba") || "Yoruba",
     zulu: t("skills.zulu") || "Zulu",
-    // European Languages
     english: t("skills.english") || "English",
     french: t("skills.french") || "French",
     spanish: t("skills.spanish") || "Spanish",
     german: t("skills.german") || "German",
     italian: t("skills.italian") || "Italian",
     russian: t("skills.russian") || "Russian",
-    // Asian Languages
     chinese: t("skills.chinese") || "Chinese",
     japanese: t("skills.japanese") || "Japanese",
     korean: t("skills.korean") || "Korean",
@@ -1993,12 +2296,6 @@ const getNationalityTypeLabel = (type) => {
   return labels[type] || type || "—";
 };
 
-
-
-const getYesNoLabel = (value) => {
-  return value ? t("common.yes") || "Yes" : t("common.no") || "No";
-};
-
 const getEducationLevelLabel = (level) => {
   const labels = {
     primary: t("education.primary") || "Primary School",
@@ -2010,6 +2307,18 @@ const getEducationLevelLabel = (level) => {
     certificate: t("education.certificate") || "Certificate",
   };
   return labels[level] || level || "—";
+};
+
+const getRelationshipLabel = (relationship) => {
+  const labels = {
+    Spouse: t("family.spouse") || "Spouse",
+    Parent: t("family.parent") || "Parent",
+    Child: t("family.child") || "Child",
+    Sibling: t("family.sibling") || "Sibling",
+    Relative: t("family.relative") || "Relative",
+    Friend: t("family.friend") || "Friend",
+  };
+  return labels[relationship] || relationship || "—";
 };
 
 // ========== COMPUTED PROPERTIES ==========
@@ -2041,44 +2350,7 @@ const formatPercentage = (value) => {
   return Number(value).toFixed(1);
 };
 
-const formatDateDay = (date) => {
-  if (!date) return "--";
-  // If date is a string in DD/MM/YYYY format, extract day
-  if (typeof date === 'string' && date.includes('/')) {
-    return date.split('/')[0];
-  }
-  // Fallback for Gregorian dates
-  return new Date(date).getDate();
-};
-const formatDateMonth = (date) => {
-  if (!date) return "---";
-  // If date is a string in DD/MM/YYYY format, extract month and get name
-  if (typeof date === 'string' && date.includes('/')) {
-    const monthNum = parseInt(date.split('/')[1]);
-    // Get month name based on current language
-    const monthNames = {
-      am: ['መስከረም', 'ጥቅምት', 'ህዳር', 'ታህሳስ', 'ጥር', 'የካቲት', 
-           'መጋቢት', 'ሚያዝያ', 'ግንቦት', 'ሰኔ', 'ሐምሌ', 'ነሀሴ', 'ጳጉሜ'],
-      en: ['Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tir', 'Yekatit',
-           'Megabit', 'Miazia', 'Genbot', 'Sene', 'Hamle', 'Nehase', 'Pagume']
-    };
-    const lang = $i18n?.locale || 'en';
-    const names = monthNames[lang] || monthNames.en;
-    return names[monthNum - 1] || '---';
-  }
-  // Fallback for Gregorian dates
-  return new Date(date).toLocaleString("default", { month: "short" });
-};
-
-const formatDateYear = (date) => {
-  if (!date) return "----";
-  // If date is a string in DD/MM/YYYY format, extract year
-  if (typeof date === 'string' && date.includes('/')) {
-    return date.split('/')[2];
-  }
-  // Fallback for Gregorian dates
-  return new Date(date).getFullYear();
-};
+// EC Date format: DD/MM/YYYY
 const formatDate = (date) => {
   if (!date) return "—";
   
@@ -2114,29 +2386,40 @@ const formatDate = (date) => {
   return date;
 };
 
+// Calculate age from EC date (DD/MM/YYYY)
+const calculateAgeFromEC = (dateOfBirthEC) => {
+  if (!dateOfBirthEC) return "?";
+  
+  // Parse EC date: DD/MM/YYYY
+  const parts = dateOfBirthEC.split('/');
+  if (parts.length !== 3) return "?";
+  
+  const day = parseInt(parts[0]);
+  const month = parseInt(parts[1]);
+  const year = parseInt(parts[2]);
+  
+  // Get current EC date (approximate using GC conversion)
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  
+  // Simple approximation: GC year - EC year (since EC is ~8 years behind)
+  // This is approximate but works for age calculation
+  let age = currentYear - year - 8;
+  
+  // Adjust for month/day
+  if (month > currentMonth || (month === currentMonth && day > currentDay)) {
+    age--;
+  }
+  
+  return age < 0 ? "?" : age;
+};
+
 const getAvatarUrl = (name) => {
   if (!name)
     return "https://ui-avatars.com/api/?background=6366f1&color=fff&bold=true&size=120&name=User";
   return `https://ui-avatars.com/api/?background=6366f1&color=fff&bold=true&size=120&name=${encodeURIComponent(name)}`;
-};
-
-const calculateAge = (dateOfBirth) => {
-  if (!dateOfBirth) return "?";
-  const birthDate = new Date(dateOfBirth);
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
-  )
-    age--;
-  return age;
-};
-
-const capitalize = (str) => {
-  if (!str) return "—";
-  return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
 const handleImageError = (e) => {
@@ -2149,7 +2432,6 @@ const loadCompensationHistory = async () => {
   try {
     const response = await EmployeesService.getEmployeeCompensationHistory(employeeId);
     if (response.success) {
-      // The backend now sends EC dates directly
       compensationHistories.value = response.data || [];
     }
   } catch (error) {
@@ -2158,17 +2440,6 @@ const loadCompensationHistory = async () => {
   } finally {
     loadingHistory.value = false;
   }
-};
-const getRelationshipLabel = (relationship) => {
-  const labels = {
-    Spouse: t("family.spouse") || "Spouse",
-    Parent: t("family.parent") || "Parent",
-    Child: t("family.child") || "Child",
-    Sibling: t("family.sibling") || "Sibling",
-    Relative: t("family.relative") || "Relative",
-    Friend: t("family.friend") || "Friend",
-  };
-  return labels[relationship] || relationship || "—";
 };
 
 const loadEmployeeData = async () => {
@@ -2186,10 +2457,488 @@ const loadEmployeeData = async () => {
 onMounted(() => {
   loadEmployeeData();
   loadCompensationHistory();
+    loadTerminationHistory();
 });
 </script>
 
+
 <style scoped>
+
+/* ============================================
+   EMPLOYMENT HISTORY TIMELINE
+   ============================================ */
+
+.employment-history-card {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.history-content-full {
+  padding: 24px;
+}
+
+/* ============================================
+   TIMELINE WRAPPER
+   ============================================ */
+
+.employment-timeline {
+  position: relative;
+  padding: 10px 0;
+}
+
+.timeline-item-wrapper {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.timeline-connector-line {
+  position: absolute;
+  left: 60px;
+  top: -20px;
+  width: 2px;
+  height: 40px;
+  background: linear-gradient(180deg, #e2e8f0 0%, #e2e8f0 70%, transparent 100%);
+}
+
+/* ============================================
+   TIMELINE ITEMS
+   ============================================ */
+
+.timeline-item {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  position: relative;
+}
+
+/* Left - Period Badge */
+.timeline-period {
+  min-width: 120px;
+  padding-top: 8px;
+}
+
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.period-badge.hired {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.period-badge.terminated {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.period-badge.rehired {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.period-icon {
+  font-size: 16px;
+}
+
+.period-label {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+}
+
+/* Middle - Timeline Node */
+.timeline-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  padding-top: 8px;
+}
+
+.node-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid #cbd5e1;
+  background: white;
+  transition: all 0.3s;
+  position: relative;
+  z-index: 2;
+}
+
+.timeline-node.hired .node-dot {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.timeline-node.terminated .node-dot {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.timeline-node.rehired .node-dot {
+  border-color: #10b981;
+  background: #d1fae5;
+}
+
+.node-line {
+  flex: 1;
+  width: 2px;
+  min-height: 40px;
+  background: #e2e8f0;
+  margin-top: 4px;
+}
+
+/* Right - Content Card */
+.timeline-content-card {
+  flex: 1;
+  background: #f8fafc;
+  border-radius: 16px;
+  padding: 20px 24px;
+  border: 1px solid #eef2ff;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.timeline-content-card:hover {
+  background: white;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+}
+
+.timeline-content-card.hired {
+  border-left: 4px solid #6366f1;
+}
+
+.timeline-content-card.terminated {
+  border-left: 4px solid #ef4444;
+}
+
+.timeline-content-card.rehired {
+  border-left: 4px solid #10b981;
+}
+
+/* Content Header */
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.title-section {
+  flex: 1;
+}
+
+.event-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.event-subtitle {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.date-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 4px 14px;
+  border-radius: 30px;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.date-range {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.date-separator {
+  color: #94a3b8;
+  margin: 0 4px;
+}
+
+.calendar-label {
+  font-size: 10px;
+  color: #94a3b8;
+  background: #f1f5f9;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+/* Content Body */
+.content-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.employment-details {
+  flex: 1;
+}
+
+.detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: #475569;
+  padding: 2px 0;
+}
+
+.detail-label {
+  min-width: 100px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.detail-value {
+  color: #1e293b;
+}
+
+.notes-text {
+  color: #64748b;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Duration Badge */
+.duration-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.duration-badge.hired {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.duration-badge.terminated {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.duration-badge.rehired {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.duration-icon {
+  font-size: 14px;
+}
+
+.duration-text {
+  font-size: 12px;
+}
+
+/* ============================================
+   CURRENT STATUS BANNER
+   ============================================ */
+
+.current-status-banner {
+  margin-top: 24px;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 16px;
+  border: 1px solid #bbf7d0;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+  }
+}
+
+.status-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #065f46;
+}
+
+.status-date {
+  font-size: 13px;
+  color: #059669;
+  margin-left: auto;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .timeline-item {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .timeline-period {
+    min-width: auto;
+    padding-top: 0;
+  }
+
+  .timeline-node {
+    display: none;
+  }
+
+  .timeline-connector-line {
+    display: none;
+  }
+
+  .content-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .date-section {
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+
+  .content-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .duration-badge {
+    align-self: flex-start;
+  }
+
+  .detail-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detail-label {
+    min-width: auto;
+  }
+
+  .status-indicator {
+    flex-wrap: wrap;
+  }
+
+  .status-date {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* ============================================
+   LOADING & EMPTY STATES
+   ============================================ */
+
+.history-loading-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px;
+  color: #94a3b8;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.history-empty-full {
+  text-align: center;
+  padding: 60px;
+  color: #94a3b8;
+}
+
+.empty-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.history-empty-full p {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #64748b;
+}
+
+.history-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .history-card.full-width {
   background: white;
   border-radius: 20px;

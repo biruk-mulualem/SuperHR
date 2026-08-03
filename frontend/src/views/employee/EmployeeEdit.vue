@@ -2,54 +2,33 @@
   <div class="employee-edit">
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
-      <p>Loading employee information...</p>
+      <p>{{ $t('common.loading') }}</p>
     </div>
 
     <div v-else-if="employee" class="detail-wrapper">
       <!-- Header Actions -->
       <div class="action-bar">
         <router-link to="/employees" class="action-btn">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          Back to List
+          {{ $t('common.backToList') }}
         </router-link>
         <div class="action-buttons">
           <button @click="cancelEdit" class="action-btn">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
-            Cancel
+            {{ $t('common.cancel') }}
           </button>
-          <button
-            @click="saveEmployee"
-            class="action-btn primary"
-            :disabled="saving"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-              />
+          <button @click="saveEmployee" class="action-btn primary" :disabled="saving">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
             </svg>
-            {{ saving ? "Saving..." : "Save Changes" }}
+            {{ saving ? $t('common.saving') : $t('common.saveEmployee') }}
           </button>
         </div>
       </div>
@@ -59,21 +38,12 @@
         <div class="hero-left">
           <div class="employee-avatar-large" @click="triggerProfileInput">
             <img
-              :src="
-                profilePreview ||
-                employee.profilePictureUrl ||
-                getAvatarUrl(employee.fullName)
-              "
-              :alt="employee.fullName"
+              :src="profilePreview || employee?.profilePictureUrl || getAvatarUrl(employee?.fullName?.trim() || employee?.fullNameEnglish?.trim() || 'Employee')"
+              :alt="employee?.fullName?.trim() || 'Employee'"
               @error="handleImageError"
             />
             <div class="avatar-overlay">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
@@ -92,23 +62,23 @@
               <input
                 type="text"
                 v-model="form.firstName"
-                placeholder="First Name"
+                :placeholder="$t('employee.firstName')"
                 class="name-input"
-                title="First Name"
+                :title="$t('employee.firstName')"
               />
               <input
                 type="text"
                 v-model="form.middleName"
-                placeholder="Middle Name"
+                :placeholder="$t('employee.middleName')"
                 class="name-input"
-                title="Middle Name"
+                :title="$t('employee.middleName')"
               />
               <input
                 type="text"
                 v-model="form.lastName"
-                placeholder="Last Name"
+                :placeholder="$t('employee.lastName')"
                 class="name-input"
-                title="Last Name"
+                :title="$t('employee.lastName')"
               />
             </div>
             <div class="employee-tags">
@@ -119,17 +89,13 @@
         </div>
         <div class="hero-right">
           <div class="employee-code">
-            <span class="code-label">Employee ID</span>
+            <span class="code-label">{{ $t('common.employeeId') }}</span>
             <strong class="code-value">{{ employee.employeeId }}</strong>
           </div>
-          <select
-            v-model="form.status"
-            class="status-select"
-            :class="form.status"
-          >
-            <option value="active">Active</option>
-            <option value="on-leave">On Leave</option>
-            <option value="terminated">Terminated</option>
+          <select v-model="form.status" class="status-select" :class="form.status">
+            <option value="active">{{ $t('employee.active') }}</option>
+            <option value="on-leave">{{ $t('employee.onLeave') }}</option>
+            <option value="terminated">{{ $t('employee.terminated') }}</option>
           </select>
         </div>
       </div>
@@ -138,77 +104,51 @@
       <div class="stats-cards">
         <div class="stat-card">
           <div class="stat-card-icon">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
               <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
             </svg>
           </div>
           <div class="stat-card-info">
-            <span class="stat-label">Department</span
-            ><span class="stat-number">{{ getDepartmentName }}</span>
+            <span class="stat-label">{{ $t('employee.department') }}</span>
+            <span class="stat-number">{{ getDepartmentName }}</span>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
           <div class="stat-card-info">
-            <span class="stat-label">Hire Date</span
-            ><span class="stat-number">{{ formatDate(form.hireDate) }}</span>
+            <span class="stat-label">{{ $t('employee.hireDate') }}</span>
+            <span class="stat-number">{{ form.hireDateEC || '—' }}</span>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-              />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
             </svg>
           </div>
           <div class="stat-card-info">
-            <span class="stat-label">Employment Type</span
-            ><span class="stat-number">{{
-              getEmploymentTypeLabel(form.employmentType)
-            }}</span>
+            <span class="stat-label">{{ $t('employee.employmentType') }}</span>
+            <span class="stat-number">{{ getEmploymentTypeLabel(form.employmentType) }}</span>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z"
-              />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 8c-3.31 0-6 2.69-6 6 0 3.31 2.69 6 6 6 3.31 0 6-2.69 6-6 0-3.31-2.69-6-6-6z" />
               <path d="M12 2v2M22 12h-2M4 12H2M12 22v2" />
             </svg>
           </div>
           <div class="stat-card-info">
-            <span class="stat-label">Basic Salary</span
-            ><span class="stat-number">{{
+            <span class="stat-label">{{ $t('employee.basicSalary') }}</span>
+            <span class="stat-number">{{
               form.basicSalary
-                ? `ETB ${Number(form.basicSalary).toLocaleString()}`
+                ? `${$t('payroll.basicSalary')} ${Number(form.basicSalary).toLocaleString()}`
                 : "—"
             }}</span>
           </div>
@@ -223,139 +163,106 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
               </div>
-              <h3>Personal Information</h3>
+              <h3>{{ $t('employee.personalInfo') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Full Name</span
-                ><span class="info-value">{{ employee.fullName }}</span>
+                <span class="info-label">{{ $t('employee.fullName') }}</span>
+                <span class="info-value">{{ employee.fullNameEnglish || employee.fullName }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">Work Email</span>
+                <span class="info-label">{{ $t('employee.workEmail') }}</span>
+                <div class="info-value">
+                  <input type="email" v-model="form.email" :placeholder="$t('employee.workEmail')" :title="$t('employee.workEmail')" />
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ $t('employee.personalEmail') }}</span>
+                <div class="info-value">
+                  <input type="email" v-model="form.personalEmail" :placeholder="$t('employee.personalEmail')" :title="$t('employee.personalEmail')" />
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ $t('employee.phone') }}</span>
+                <div class="info-value">
+                  <input type="tel" v-model="form.phone" :placeholder="$t('employee.phone')" :title="$t('employee.phone')" />
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ $t('employee.dateOfBirth') }}</span>
                 <div class="info-value">
                   <input
-                    type="email"
-                    v-model="form.email"
-                    placeholder="work@company.com"
-                    title="Work Email"
+                    type="text"
+                    v-model="form.dateOfBirthEC"
+                    placeholder="DD/MM/YYYY"
+                    class="ec-date-input"
+                    :title="$t('employee.dateOfBirth')"
                   />
+                  <small class="ec-hint">Ethiopian Calendar (DD/MM/YYYY)</small>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Personal Email</span>
+                <span class="info-label">{{ $t('employee.gender') }}</span>
                 <div class="info-value">
-                  <input
-                    type="email"
-                    v-model="form.personalEmail"
-                    placeholder="personal@email.com"
-                    title="Personal Email"
-                  />
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Phone Number</span>
-                <div class="info-value">
-                  <input
-                    type="tel"
-                    v-model="form.phone"
-                    placeholder="+251 9XX XXX XXX"
-                    title="Phone Number"
-                  />
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Date of Birth</span>
-                <div class="info-value">
-                  <input type="date" v-model="form.dob" title="Date of Birth" />
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Gender</span>
-                <div class="info-value">
-                  <select v-model="form.gender" title="Gender">
-                    <option value="">Select Gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
+                  <select v-model="form.gender" :title="$t('employee.gender')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="male">{{ $t('employee.male') }}</option>
+                    <option value="female">{{ $t('employee.female') }}</option>
+                    <option value="other">{{ $t('employee.other') }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Marital Status</span>
+                <span class="info-label">{{ $t('employee.maritalStatus') }}</span>
                 <div class="info-value">
-                  <select v-model="form.maritalStatus" title="Marital Status">
-                    <option value="">Select Marital Status</option>
-                    <option value="single">Single</option>
-                    <option value="married">Married</option>
-                    <option value="divorced">Divorced</option>
-                    <option value="widowed">Widowed</option>
+                  <select v-model="form.maritalStatus" :title="$t('employee.maritalStatus')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="single">{{ $t('employee.single') }}</option>
+                    <option value="married">{{ $t('employee.married') }}</option>
+                    <option value="divorced">{{ $t('employee.divorced') }}</option>
+                    <option value="widowed">{{ $t('employee.widowed') }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Nationality</span>
+                <span class="info-label">{{ $t('employee.nationality') }}</span>
                 <div class="info-value">
-                  <select v-model="form.nationality" title="Nationality">
-                    <option value="">Select Nationality</option>
-                    <option value="Ethiopian">Ethiopian</option>
-                    <option value="American">American</option>
-                    <option value="British">British</option>
-                    <option value="Canadian">Canadian</option>
-                    <option value="Australian">Australian</option>
-                    <option value="German">German</option>
-                    <option value="French">French</option>
-                    <option value="Italian">Italian</option>
-                    <option value="Spanish">Spanish</option>
+                  <select v-model="form.nationality" :title="$t('employee.nationality')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="Ethiopian">{{ $t('nationality.ethiopian') }}</option>
+                    <option value="American">{{ $t('nationality.american') }}</option>
+                    <option value="British">{{ $t('nationality.british') }}</option>
+                    <option value="Canadian">{{ $t('nationality.canadian') }}</option>
+                    <option value="Australian">{{ $t('nationality.australian') }}</option>
+                    <option value="German">{{ $t('nationality.german') }}</option>
+                    <option value="French">{{ $t('nationality.french') }}</option>
+                    <option value="Italian">{{ $t('nationality.italian') }}</option>
+                    <option value="Spanish">{{ $t('nationality.spanish') }}</option>
+                    <option value="Kenyan">{{ $t('nationality.kenyan') }}</option>
+                    <option value="Eritrean">{{ $t('nationality.eritrean') }}</option>
+                    <option value="Somali">{{ $t('nationality.somali') }}</option>
+                    <option value="Sudanese">{{ $t('nationality.sudanese') }}</option>
+                    <option value="Other">{{ $t('nationality.other') }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">National ID (FAN)</span>
+                <span class="info-label">{{ $t('employee.nationalId') }}</span>
                 <div class="info-value">
                   <div style="display: flex; gap: 8px; align-items: center">
-                    <input
-                      type="text"
-                      v-model="form.nationalId"
-                      placeholder="Enter National ID Number"
-                      title="National ID Number"
-                      style="flex: 2"
-                    />
-                    <button
-                      type="button"
-                      class="upload-small-btn"
-                      @click="triggerNationalIdUpload"
-                      title="Upload National ID Document"
-                    >
-                      {{ nationalIdFile ? "Change File" : "Upload Document" }}
+                    <input type="text" v-model="form.nationalId" :placeholder="$t('employee.nationalId')" :title="$t('employee.nationalId')" style="flex: 2" />
+                    <button type="button" class="upload-small-btn" @click="triggerNationalIdUpload" :title="$t('upload.title')">
+                      {{ nationalIdFile ? $t('common.edit') : $t('common.upload') }}
                     </button>
-                    <a
-                      v-if="getDocumentUrl('national_id')"
-                      :href="getDocumentUrl('national_id')"
-                      target="_blank"
-                      class="file-link-inline"
-                      >📄 View</a
-                    >
+                    <a v-if="getDocumentUrl('national_id')" :href="getDocumentUrl('national_id')" target="_blank" class="file-link-inline">📄 {{ $t('common.view') }}</a>
                   </div>
-                  <input
-                    type="file"
-                    ref="nationalIdInput"
-                    @change="handleNationalIdSelect"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    style="display: none"
-                  />
-                  <small v-if="nationalIdFile" class="field-hint success"
-                    >File selected: {{ nationalIdFile.name }}</small
-                  >
+                  <input type="file" ref="nationalIdInput" @change="handleNationalIdSelect" accept=".pdf,.jpg,.jpeg,.png" style="display: none" />
+                  <small v-if="nationalIdFile" class="field-hint success">{{ $t('employee.fileSelected') }}: {{ nationalIdFile.name }}</small>
                 </div>
               </div>
             </div>
@@ -365,61 +272,36 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
               </div>
-              <h3>Birth Place</h3>
+              <h3>{{ $t('employee.birthPlace') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Region/State</span>
+                <span class="info-label">{{ $t('address.region') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.birthPlace.region"
-                    placeholder="e.g., Addis Ababa, Oromia"
-                    title="Birth Region"
-                  />
+                  <input type="text" v-model="form.birthPlace.region" :placeholder="$t('address.region')" :title="$t('address.region')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">City/Town</span>
+                <span class="info-label">{{ $t('address.city') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.birthPlace.city"
-                    placeholder="e.g., Addis Ababa"
-                    title="Birth City"
-                  />
+                  <input type="text" v-model="form.birthPlace.city" :placeholder="$t('address.city')" :title="$t('address.city')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Subcity</span>
+                <span class="info-label">{{ $t('address.subcity') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.birthPlace.subcity"
-                    placeholder="e.g., Bole, Kirkos"
-                    title="Birth Subcity"
-                  />
+                  <input type="text" v-model="form.birthPlace.subcity" :placeholder="$t('address.subcity')" :title="$t('address.subcity')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">District/Woreda</span>
+                <span class="info-label">{{ $t('address.district') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.birthPlace.district"
-                    placeholder="e.g., Woreda 03"
-                    title="Birth District"
-                  />
+                  <input type="text" v-model="form.birthPlace.district" :placeholder="$t('address.district')" :title="$t('address.district')" />
                 </div>
               </div>
             </div>
@@ -429,94 +311,54 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
               </div>
-              <h3>Current Company</h3>
+              <h3>{{ $t('company.currentCompany') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Company Name</span>
+                <span class="info-label">{{ $t('company.name') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentCompany.companyName"
-                    placeholder="Company Name"
-                    title="Company Name"
-                  />
+                  <input type="text" v-model="form.currentCompany.companyName" :placeholder="$t('company.namePlaceholder')" :title="$t('company.name')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">TIN Number</span>
+                <span class="info-label">{{ $t('company.tin') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentCompany.companyTin"
-                    placeholder="Tax Identification Number"
-                    title="TIN Number"
-                  />
+                  <input type="text" v-model="form.currentCompany.companyTin" :placeholder="$t('company.tinPlaceholder')" :title="$t('company.tin')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Company Phone</span>
+                <span class="info-label">{{ $t('company.phone') }}</span>
                 <div class="info-value">
-                  <input
-                    type="tel"
-                    v-model="form.currentCompany.companyPhone"
-                    placeholder="Company Phone"
-                    title="Company Phone"
-                  />
+                  <input type="tel" v-model="form.currentCompany.companyPhone" :placeholder="$t('company.phone')" :title="$t('company.phone')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Company Email</span>
+                <span class="info-label">{{ $t('company.email') }}</span>
                 <div class="info-value">
-                  <input
-                    type="email"
-                    v-model="form.currentCompany.companyEmail"
-                    placeholder="company@email.com"
-                    title="Company Email"
-                  />
+                  <input type="email" v-model="form.currentCompany.companyEmail" :placeholder="$t('company.email')" :title="$t('company.email')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Company Address</span>
+                <span class="info-label">{{ $t('company.address') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentCompany.companyAddress"
-                    placeholder="Street Address"
-                    title="Company Address"
-                  />
+                  <input type="text" v-model="form.currentCompany.companyAddress" :placeholder="$t('company.addressPlaceholder')" :title="$t('company.address')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">PO Box</span>
+                <span class="info-label">{{ $t('company.poBox') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentCompany.poBox"
-                    placeholder="PO Box Number"
-                    title="PO Box"
-                  />
+                  <input type="text" v-model="form.currentCompany.poBox" :placeholder="$t('company.poBoxPlaceholder')" :title="$t('company.poBox')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Website</span>
+                <span class="info-label">{{ $t('company.website') }}</span>
                 <div class="info-value">
-                  <input
-                    type="url"
-                    v-model="form.currentCompany.website"
-                    placeholder="https://www.company.com"
-                    title="Company Website"
-                  />
+                  <input type="url" v-model="form.currentCompany.website" placeholder="https://www.company.com" :title="$t('company.website')" />
                 </div>
               </div>
             </div>
@@ -526,85 +368,48 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
-                  />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
               </div>
-              <h3>Current Address</h3>
+              <h3>{{ $t('address.currentAddress') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Region/State</span>
+                <span class="info-label">{{ $t('address.region') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.region"
-                    placeholder="e.g., Addis Ababa"
-                    title="Region"
-                  />
+                  <input type="text" v-model="form.currentAddress.region" :placeholder="$t('address.region')" :title="$t('address.region')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Subcity</span>
+                <span class="info-label">{{ $t('address.subcity') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.subcity"
-                    placeholder="e.g., Bole"
-                    title="Subcity"
-                  />
+                  <input type="text" v-model="form.currentAddress.subcity" :placeholder="$t('address.subcity')" :title="$t('address.subcity')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Kebele</span>
+                <span class="info-label">{{ $t('address.kebele') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.kebele"
-                    placeholder="Kebele Number"
-                    title="Kebele"
-                  />
+                  <input type="text" v-model="form.currentAddress.kebele" :placeholder="$t('address.kebele')" :title="$t('address.kebele')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">District/Woreda</span>
+                <span class="info-label">{{ $t('address.district') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.district"
-                    placeholder="District Name"
-                    title="District"
-                  />
+                  <input type="text" v-model="form.currentAddress.district" :placeholder="$t('address.district')" :title="$t('address.district')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">PO Box</span>
+                <span class="info-label">{{ $t('address.poBox') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.poBox"
-                    placeholder="PO Box Number"
-                    title="PO Box"
-                  />
+                  <input type="text" v-model="form.currentAddress.poBox" :placeholder="$t('address.poBox')" :title="$t('address.poBox')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">House Number</span>
+                <span class="info-label">{{ $t('address.houseNumber') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.currentAddress.houseNumber"
-                    placeholder="House/Apartment Number"
-                    title="House Number"
-                  />
+                  <input type="text" v-model="form.currentAddress.houseNumber" :placeholder="$t('address.houseNumber')" :title="$t('address.houseNumber')" />
                 </div>
               </div>
             </div>
@@ -614,85 +419,48 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
-                  />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
               </div>
-              <h3>Permanent Address</h3>
+              <h3>{{ $t('address.permanentAddress') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Region/State</span>
+                <span class="info-label">{{ $t('address.region') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.region"
-                    placeholder="e.g., Addis Ababa"
-                    title="Region"
-                  />
+                  <input type="text" v-model="form.permanentAddress.region" :placeholder="$t('address.region')" :title="$t('address.region')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Subcity</span>
+                <span class="info-label">{{ $t('address.subcity') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.subcity"
-                    placeholder="e.g., Bole"
-                    title="Subcity"
-                  />
+                  <input type="text" v-model="form.permanentAddress.subcity" :placeholder="$t('address.subcity')" :title="$t('address.subcity')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Kebele</span>
+                <span class="info-label">{{ $t('address.kebele') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.kebele"
-                    placeholder="Kebele Number"
-                    title="Kebele"
-                  />
+                  <input type="text" v-model="form.permanentAddress.kebele" :placeholder="$t('address.kebele')" :title="$t('address.kebele')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">District/Woreda</span>
+                <span class="info-label">{{ $t('address.district') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.district"
-                    placeholder="District Name"
-                    title="District"
-                  />
+                  <input type="text" v-model="form.permanentAddress.district" :placeholder="$t('address.district')" :title="$t('address.district')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">PO Box</span>
+                <span class="info-label">{{ $t('address.poBox') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.poBox"
-                    placeholder="PO Box Number"
-                    title="PO Box"
-                  />
+                  <input type="text" v-model="form.permanentAddress.poBox" :placeholder="$t('address.poBox')" :title="$t('address.poBox')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">House Number</span>
+                <span class="info-label">{{ $t('address.houseNumber') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.permanentAddress.houseNumber"
-                    placeholder="House/Apartment Number"
-                    title="House Number"
-                  />
+                  <input type="text" v-model="form.permanentAddress.houseNumber" :placeholder="$t('address.houseNumber')" :title="$t('address.houseNumber')" />
                 </div>
               </div>
             </div>
@@ -702,67 +470,44 @@
           <div class="info-card emergency-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
               </div>
-              <h3>Emergency Contact</h3>
+              <h3>{{ $t('family.emergencyContact') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Contact Name</span>
+                <span class="info-label">{{ $t('family.contactName') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.emergencyContact.name"
-                    placeholder="Full Name of Emergency Contact"
-                    title="Emergency Contact Name"
-                  />
+                  <input type="text" v-model="form.emergencyContact.name" :placeholder="$t('family.contactNamePlaceholder')" :title="$t('family.contactName')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Relationship</span>
+                <span class="info-label">{{ $t('family.relationship') }}</span>
                 <div class="info-value">
-                  <select
-                    v-model="form.emergencyContact.relationship"
-                    title="Relationship"
-                  >
-                    <option value="">Select Relationship</option>
-                    <option value="Spouse">Spouse</option>
-                    <option value="Parent">Parent</option>
-                    <option value="Child">Child</option>
-                    <option value="Sibling">Sibling</option>
-                    <option value="Relative">Relative</option>
-                    <option value="Friend">Friend</option>
+                  <select v-model="form.emergencyContact.relationship" :title="$t('family.relationship')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="Spouse">{{ $t('family.spouse') }}</option>
+                    <option value="Parent">{{ $t('family.parent') }}</option>
+                    <option value="Child">{{ $t('family.child') }}</option>
+                    <option value="Sibling">{{ $t('family.sibling') }}</option>
+                    <option value="Relative">{{ $t('family.relative') }}</option>
+                    <option value="Friend">{{ $t('family.friend') }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Phone Number</span>
+                <span class="info-label">{{ $t('family.phoneNumber') }}</span>
                 <div class="info-value">
-                  <input
-                    type="tel"
-                    v-model="form.emergencyContact.phone"
-                    placeholder="Primary Contact Number"
-                    title="Emergency Phone"
-                  />
+                  <input type="tel" v-model="form.emergencyContact.phone" :placeholder="$t('family.phoneNumber')" :title="$t('family.phoneNumber')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Alternate Phone</span>
+                <span class="info-label">{{ $t('family.alternatePhone') }}</span>
                 <div class="info-value">
-                  <input
-                    type="tel"
-                    v-model="form.emergencyContact.alternatePhone"
-                    placeholder="Secondary Contact Number"
-                    title="Alternate Phone"
-                  />
+                  <input type="tel" v-model="form.emergencyContact.alternatePhone" :placeholder="$t('family.alternatePhonePlaceholder')" :title="$t('family.alternatePhone')" />
                 </div>
               </div>
             </div>
@@ -772,63 +517,36 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z"
-                  />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2c-4.42 0-8 3.58-8 8 0 5.5 8 12 8 12s8-6.5 8-12c0-4.42-3.58-8-8-8z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
               </div>
-              <h3>Emergency Contact Address</h3>
+              <h3>{{ $t('family.emergencyAddress') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">City/Town</span>
+                <span class="info-label">{{ $t('address.city') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.emergencyContactAddress.city"
-                    placeholder="City Name"
-                    title="City"
-                  />
+                  <input type="text" v-model="form.emergencyContactAddress.city" :placeholder="$t('address.city')" :title="$t('address.city')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Subcity</span>
+                <span class="info-label">{{ $t('address.subcity') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.emergencyContactAddress.subcity"
-                    placeholder="Subcity Name"
-                    title="Subcity"
-                  />
+                  <input type="text" v-model="form.emergencyContactAddress.subcity" :placeholder="$t('address.subcity')" :title="$t('address.subcity')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">District/Woreda</span>
+                <span class="info-label">{{ $t('address.district') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.emergencyContactAddress.district"
-                    placeholder="District Name"
-                    title="District"
-                  />
+                  <input type="text" v-model="form.emergencyContactAddress.district" :placeholder="$t('address.district')" :title="$t('address.district')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Kebele</span>
+                <span class="info-label">{{ $t('address.kebele') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.emergencyContactAddress.kebele"
-                    placeholder="Kebele Number"
-                    title="Kebele"
-                  />
+                  <input type="text" v-model="form.emergencyContactAddress.kebele" :placeholder="$t('address.kebele')" :title="$t('address.kebele')" />
                 </div>
               </div>
             </div>
@@ -838,84 +556,46 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 10v6M2 10l10-5 10-5-10 5z" />
                   <path d="M6 12v5c3 3 9 3 12 0v-5" />
                 </svg>
               </div>
-              <h3>Education ({{ form.education.length }})</h3>
+              <h3>{{ $t('education.title') }} ({{ form.education.length }})</h3>
             </div>
             <div class="education-list-edit">
-              <div
-                v-for="(edu, idx) in form.education"
-                :key="idx"
-                class="education-edit-item"
-              >
+              <div v-for="(edu, idx) in form.education" :key="idx" class="education-edit-item">
                 <div class="edit-header">
-                  <strong>Education {{ idx + 1 }}</strong
-                  ><button class="remove-btn" @click="removeEducation(idx)">
-                    Remove
-                  </button>
+                  <strong>{{ $t('education.education') }} {{ idx + 1 }}</strong>
+                  <button class="remove-btn" @click="removeEducation(idx)">{{ $t('common.remove') }}</button>
                 </div>
                 <div class="edit-fields">
-                  <select v-model="edu.level" title="Education Level">
-                    <option value="">Select Level</option>
-                    <option value="primary">Primary School</option>
-                    <option value="secondary">Secondary School</option>
-                    <option value="diploma">Diploma</option>
-                    <option value="bachelor">Bachelor's Degree</option>
-                    <option value="master">Master's Degree</option>
-                    <option value="phd">PhD/Doctorate</option>
-                    <option value="certificate">Certificate</option>
+                  <select v-model="edu.level" :title="$t('education.level')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="primary">{{ $t('education.primary') }}</option>
+                    <option value="secondary">{{ $t('education.secondary') }}</option>
+                    <option value="diploma">{{ $t('education.diploma') }}</option>
+                    <option value="bachelor">{{ $t('education.bachelor') }}</option>
+                    <option value="master">{{ $t('education.master') }}</option>
+                    <option value="phd">{{ $t('education.phd') }}</option>
+                    <option value="certificate">{{ $t('education.certificate') }}</option>
                   </select>
-                  <input
-                    type="text"
-                    v-model="edu.institutionName"
-                    placeholder="Institution/University Name"
-                    title="Institution Name"
-                  />
-                  <input
-                    type="text"
-                    v-model="edu.institutionAddress"
-                    placeholder="Institution Address"
-                    title="Institution Address"
-                  />
+                  <input type="text" v-model="edu.institutionName" :placeholder="$t('education.institutionPlaceholder')" :title="$t('education.institutionName')" />
+                  <input type="text" v-model="edu.institutionAddress" :placeholder="$t('education.institutionAddress')" :title="$t('education.institutionAddress')" />
                   <div class="date-group">
-                    <input
-                      type="date"
-                      v-model="edu.startDate"
-                      placeholder="Start Date"
-                      title="Start Date"
-                    /><input
-                      type="date"
-                      v-model="edu.endDate"
-                      placeholder="End Date"
-                      title="End Date"
-                    />
+                    <input type="text" v-model="edu.startDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('education.startDate')" />
+                    <input type="text" v-model="edu.endDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('education.endDate')" />
                   </div>
-                  <label
-                    ><input type="checkbox" v-model="edu.isCurrent" /> Currently
-                    Studying</label
-                  >
+                  <label>
+                    <input type="checkbox" v-model="edu.isCurrent" />
+                    {{ $t('education.currentlyStudying') }}
+                  </label>
                 </div>
                 <div class="edit-actions">
-                  <button
-                    class="upload-small-btn"
-                    @click="triggerEducationUpload(idx)"
-                    title="Upload Certificate"
-                  >
-                    📄 Upload Certificate
-                  </button>
+                  <button class="upload-small-btn" @click="triggerEducationUpload(idx)" :title="$t('upload.title')">📄 {{ $t('common.upload') }}</button>
                 </div>
               </div>
-              <button class="add-btn" @click="addEducation">
-                + Add Education
-              </button>
+              <button class="add-btn" @click="addEducation">+ {{ $t('common.add') }} {{ $t('education.education') }}</button>
             </div>
           </div>
 
@@ -923,76 +603,33 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
               </div>
-              <h3>Training ({{ form.training.length }})</h3>
+              <h3>{{ $t('training.title') }} ({{ form.training.length }})</h3>
             </div>
             <div class="training-list-edit">
-              <div
-                v-for="(train, idx) in form.training"
-                :key="idx"
-                class="training-edit-item"
-              >
+              <div v-for="(train, idx) in form.training" :key="idx" class="training-edit-item">
                 <div class="edit-header">
-                  <strong>Training {{ idx + 1 }}</strong
-                  ><button class="remove-btn" @click="removeTraining(idx)">
-                    Remove
-                  </button>
+                  <strong>{{ $t('training.training') }} {{ idx + 1 }}</strong>
+                  <button class="remove-btn" @click="removeTraining(idx)">{{ $t('common.remove') }}</button>
                 </div>
                 <div class="edit-fields">
-                  <input
-                    type="text"
-                    v-model="train.trainingName"
-                    placeholder="Training/Course Name"
-                    title="Training Name"
-                  />
-                  <input
-                    type="text"
-                    v-model="train.institutionName"
-                    placeholder="Training Institution"
-                    title="Institution Name"
-                  />
-                  <input
-                    type="text"
-                    v-model="train.institutionAddress"
-                    placeholder="Institution Address"
-                    title="Institution Address"
-                  />
+                  <input type="text" v-model="train.trainingName" :placeholder="$t('training.trainingNamePlaceholder')" :title="$t('training.trainingName')" />
+                  <input type="text" v-model="train.institutionName" :placeholder="$t('training.institutionPlaceholder')" :title="$t('training.institution')" />
+                  <input type="text" v-model="train.institutionAddress" :placeholder="$t('training.institutionAddress')" :title="$t('training.institutionAddress')" />
                   <div class="date-group">
-                    <input
-                      type="date"
-                      v-model="train.startDate"
-                      placeholder="Start Date"
-                      title="Start Date"
-                    /><input
-                      type="date"
-                      v-model="train.endDate"
-                      placeholder="End Date"
-                      title="End Date"
-                    />
+                    <input type="text" v-model="train.startDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('training.startDate')" />
+                    <input type="text" v-model="train.endDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('training.endDate')" />
                   </div>
                 </div>
                 <div class="edit-actions">
-                  <button
-                    class="upload-small-btn"
-                    @click="triggerTrainingUpload(idx)"
-                    title="Upload Certificate"
-                  >
-                    📄 Upload Certificate
-                  </button>
+                  <button class="upload-small-btn" @click="triggerTrainingUpload(idx)" :title="$t('upload.title')">📄 {{ $t('common.upload') }}</button>
                 </div>
               </div>
-              <button class="add-btn" @click="addTraining">
-                + Add Training
-              </button>
+              <button class="add-btn" @click="addTraining">+ {{ $t('common.add') }} {{ $t('training.training') }}</button>
             </div>
           </div>
 
@@ -1000,70 +637,44 @@
           <div class="info-card bank-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
-                  />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v20M17 7H7M17 17H7M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
                 </svg>
               </div>
-              <h3>Bank Account</h3>
+              <h3>{{ $t('bank.title') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Bank Name</span>
+                <span class="info-label">{{ $t('bank.bankName') }}</span>
                 <div class="info-value">
-                  <select v-model="form.bankAccount.bankName" title="Bank Name">
-                    <option value="">Select Bank</option>
-                    <option value="Commercial Bank of Ethiopia">
-                      Commercial Bank of Ethiopia (CBE)
-                    </option>
+                  <select v-model="form.bankAccount.bankName" :title="$t('bank.bankName')">
+                    <option value="">{{ $t('common.selectBank') }}</option>
+                    <option value="Commercial Bank of Ethiopia">Commercial Bank of Ethiopia (CBE)</option>
                     <option value="Awash Bank">Awash Bank</option>
                     <option value="Dashen Bank">Dashen Bank</option>
                     <option value="United Bank">United Bank</option>
-                    <option value="Nib International Bank">
-                      Nib International Bank
-                    </option>
+                    <option value="Nib International Bank">Nib International Bank</option>
                     <option value="Hibret Bank">Hibret Bank</option>
                     <option value="Wegagen Bank">Wegagen Bank</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Account Number</span>
+                <span class="info-label">{{ $t('bank.accountNumber') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.bankAccount.accountNumber"
-                    placeholder="Bank Account Number"
-                    title="Account Number"
-                  />
+                  <input type="text" v-model="form.bankAccount.accountNumber" :placeholder="$t('bank.accountNumber')" :title="$t('bank.accountNumber')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Account Holder Name</span>
+                <span class="info-label">{{ $t('bank.accountHolderName') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.bankAccount.accountHolderName"
-                    placeholder="Full Name as on Account"
-                    title="Account Holder Name"
-                  />
+                  <input type="text" v-model="form.bankAccount.accountHolderName" :placeholder="$t('bank.accountHolderPlaceholder')" :title="$t('bank.accountHolderName')" />
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Branch</span>
+                <span class="info-label">{{ $t('bank.branch') }}</span>
                 <div class="info-value">
-                  <input
-                    type="text"
-                    v-model="form.bankAccount.branch"
-                    placeholder="Bank Branch Name/Location"
-                    title="Branch"
-                  />
+                  <input type="text" v-model="form.bankAccount.branch" :placeholder="$t('bank.branchPlaceholder')" :title="$t('bank.branch')" />
                 </div>
               </div>
             </div>
@@ -1073,68 +684,34 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M3 21h18M3 10h18M5 6h14M8 3l-2 3h12l-2-3" />
                 </svg>
               </div>
-              <h3>Nationality Acquisition</h3>
+              <h3>{{ $t('nationality.title') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Acquisition Type</span>
+                <span class="info-label">{{ $t('nationality.type') }}</span>
                 <div class="info-value">
-                  <select
-                    v-model="form.nationalityAcquisition.type"
-                    title="Acquisition Type"
-                  >
-                    <option value="by_birth">By Birth (Natural Born)</option>
-                    <option value="by_law">By Law (Naturalization)</option>
-                    <option value="ethiopian_birth">Ethiopian by Birth</option>
+                  <select v-model="form.nationalityAcquisition.type" :title="$t('nationality.type')">
+                    <option value="by_birth">{{ $t('nationality.byBirth') }}</option>
+                    <option value="by_law">{{ $t('nationality.byLaw') }}</option>
+                    <option value="ethiopian_birth">{{ $t('nationality.ethiopianBirth') }}</option>
                   </select>
                 </div>
               </div>
-              <div
-                class="info-item"
-                v-if="form.nationalityAcquisition.type === 'by_law'"
-              >
-                <span class="info-label">Naturalization Certificate</span>
+              <div class="info-item" v-if="form.nationalityAcquisition.type === 'by_law'">
+                <span class="info-label">{{ $t('nationality.naturalizationCert') }}</span>
                 <div class="info-value">
                   <div style="display: flex; gap: 8px">
-                    <button
-                      type="button"
-                      class="upload-small-btn"
-                      @click="triggerNaturalizationUpload"
-                      title="Upload Naturalization Certificate"
-                    >
-                      {{
-                        nationalityDocFile
-                          ? "Change File"
-                          : "Upload Certificate"
-                      }}
+                    <button type="button" class="upload-small-btn" @click="triggerNaturalizationUpload" :title="$t('upload.title')">
+                      {{ nationalityDocFile ? $t('common.edit') : $t('common.upload') }}
                     </button>
-                    <a
-                      v-if="getDocumentUrl('naturalization_certificate')"
-                      :href="getDocumentUrl('naturalization_certificate')"
-                      target="_blank"
-                      class="file-link-inline"
-                      >📄 View</a
-                    >
+                    <a v-if="getDocumentUrl('naturalization_certificate')" :href="getDocumentUrl('naturalization_certificate')" target="_blank" class="file-link-inline">📄 {{ $t('common.view') }}</a>
                   </div>
-                  <input
-                    type="file"
-                    ref="naturalizationInput"
-                    @change="handleNaturalizationSelect"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    style="display: none"
-                  />
-                  <small v-if="nationalityDocFile" class="field-hint success"
-                    >File selected: {{ nationalityDocFile.name }}</small
-                  >
+                  <input type="file" ref="naturalizationInput" @change="handleNaturalizationSelect" accept=".pdf,.jpg,.jpeg,.png" style="display: none" />
+                  <small v-if="nationalityDocFile" class="field-hint success">{{ $t('employee.fileSelected') }}: {{ nationalityDocFile.name }}</small>
                 </div>
               </div>
             </div>
@@ -1144,52 +721,29 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-                  />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                   <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />
                 </svg>
               </div>
-              <h3>Health & Legal Information</h3>
+              <h3>{{ $t('healthLegal.title') }}</h3>
             </div>
             <div class="health-legal-content">
               <div class="health-section">
-                <h4>Health Information</h4>
-                <label
-                  ><input
-                    type="checkbox"
-                    v-model="form.healthInfo.hasPhysicalInjury"
-                  />
-                  Has Physical Injury or Disability</label
-                ><textarea
-                  v-if="form.healthInfo.hasPhysicalInjury"
-                  v-model="form.healthInfo.injuryDescription"
-                  placeholder="Please describe the injury or disability"
-                  rows="2"
-                  title="Injury/Disability Description"
-                ></textarea>
+                <h4>{{ $t('healthLegal.healthTitle') }}</h4>
+                <label>
+                  <input type="checkbox" v-model="form.healthInfo.hasPhysicalInjury" />
+                  {{ $t('healthLegal.hasInjury') }}
+                </label>
+                <textarea v-if="form.healthInfo.hasPhysicalInjury" v-model="form.healthInfo.injuryDescription" :placeholder="$t('healthLegal.injuryPlaceholder')" rows="2" :title="$t('healthLegal.injuryDescription')"></textarea>
               </div>
               <div class="legal-section">
-                <h4>Legal Information</h4>
-                <label
-                  ><input
-                    type="checkbox"
-                    v-model="form.legalInfo.hasCriminalRecord"
-                  />
-                  Has Criminal Record</label
-                ><textarea
-                  v-if="form.legalInfo.hasCriminalRecord"
-                  v-model="form.legalInfo.criminalRecordDescription"
-                  placeholder="Please provide details of criminal record"
-                  rows="2"
-                  title="Criminal Record Details"
-                ></textarea>
+                <h4>{{ $t('healthLegal.legalTitle') }}</h4>
+                <label>
+                  <input type="checkbox" v-model="form.legalInfo.hasCriminalRecord" />
+                  {{ $t('healthLegal.hasCriminalRecord') }}
+                </label>
+                <textarea v-if="form.legalInfo.hasCriminalRecord" v-model="form.legalInfo.criminalRecordDescription" :placeholder="$t('healthLegal.criminalPlaceholder')" rows="2" :title="$t('healthLegal.criminalDescription')"></textarea>
               </div>
             </div>
           </div>
@@ -1198,104 +752,68 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 8h10M9 4v4M11 12h8M15 8v4" />
                   <path d="M2 2h20v20H2z" />
                 </svg>
               </div>
-              <h3>Language Skills</h3>
+              <h3>{{ $t('skills.languageTitle') }}</h3>
             </div>
             <div class="skills-list">
-              <div
-                v-for="(lang, idx) in form.languageSkills"
-                :key="idx"
-                class="skill-tag"
-                style="
-                  display: flex;
-                  gap: 8px;
-                  align-items: center;
-                  flex-wrap: wrap;
-                "
-              >
-                <select
-                  v-model="lang.language"
-                  style="width: 160px"
-                  title="Language"
-                >
-                  <option value="">Select Language</option>
-                  <optgroup label="🇪🇹 Ethiopian Languages">
-                    <option value="Amharic">Amharic</option>
-                    <option value="Oromo">Oromo</option>
-                    <option value="Tigrinya">Tigrinya</option>
-                    <option value="Somali">Somali</option>
-                    <option value="Sidamo">Sidamo</option>
-                    <option value="Wolaytta">Wolaytta</option>
-                    <option value="Afar">Afar</option>
-                    <option value="Hadiyya">Hadiyya</option>
-                    <option value="Gamo">Gamo</option>
-                    <option value="Gurage">Gurage</option>
-                    <option value="Kembata">Kembata</option>
-                    <option value="Silt'e">Silt'e</option>
+              <div v-for="(lang, idx) in form.languageSkills" :key="idx" class="skill-tag" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select v-model="lang.language" style="width: 160px" :title="$t('skills.selectLanguage')">
+                  <option value="">{{ $t('skills.selectLanguage') }}</option>
+                  <optgroup :label="$t('skills.ethiopianLanguages')">
+                    <option value="Amharic">{{ $t('skills.amharic') }}</option>
+                    <option value="Oromo">{{ $t('skills.oromo') }}</option>
+                    <option value="Tigrinya">{{ $t('skills.tigrinya') }}</option>
+                    <option value="Somali">{{ $t('skills.somali') }}</option>
+                    <option value="Sidamo">{{ $t('skills.sidamo') }}</option>
+                    <option value="Wolaytta">{{ $t('skills.wolaytta') }}</option>
+                    <option value="Afar">{{ $t('skills.afar') }}</option>
+                    <option value="Hadiyya">{{ $t('skills.hadiyya') }}</option>
+                    <option value="Gamo">{{ $t('skills.gamo') }}</option>
+                    <option value="Gurage">{{ $t('skills.gurage') }}</option>
+                    <option value="Kembata">{{ $t('skills.kembata') }}</option>
+                    <option value="Silt'e">{{ $t('skills.silte') }}</option>
                   </optgroup>
-                  <optgroup label="🌍 African Languages">
-                    <option value="Swahili">Swahili</option>
-                    <option value="Hausa">Hausa</option>
-                    <option value="Yoruba">Yoruba</option>
-                    <option value="Zulu">Zulu</option>
+                  <optgroup :label="$t('skills.africanLanguages')">
+                    <option value="Swahili">{{ $t('skills.swahili') }}</option>
+                    <option value="Hausa">{{ $t('skills.hausa') }}</option>
+                    <option value="Yoruba">{{ $t('skills.yoruba') }}</option>
+                    <option value="Zulu">{{ $t('skills.zulu') }}</option>
                   </optgroup>
-                  <optgroup label="🌎 European Languages">
-                    <option value="English">English</option>
-                    <option value="French">French</option>
-                    <option value="Spanish">Spanish</option>
-                    <option value="German">German</option>
-                    <option value="Italian">Italian</option>
-                    <option value="Russian">Russian</option>
+                  <optgroup :label="$t('skills.europeanLanguages')">
+                    <option value="English">{{ $t('skills.english') }}</option>
+                    <option value="French">{{ $t('skills.french') }}</option>
+                    <option value="Spanish">{{ $t('skills.spanish') }}</option>
+                    <option value="German">{{ $t('skills.german') }}</option>
+                    <option value="Italian">{{ $t('skills.italian') }}</option>
+                    <option value="Russian">{{ $t('skills.russian') }}</option>
                   </optgroup>
-                  <optgroup label="🌏 Asian Languages">
-                    <option value="Chinese">Chinese</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Korean">Korean</option>
-                    <option value="Arabic">Arabic</option>
-                    <option value="Hindi">Hindi</option>
+                  <optgroup :label="$t('skills.asianLanguages')">
+                    <option value="Chinese">{{ $t('skills.chinese') }}</option>
+                    <option value="Japanese">{{ $t('skills.japanese') }}</option>
+                    <option value="Korean">{{ $t('skills.korean') }}</option>
+                    <option value="Arabic">{{ $t('skills.arabic') }}</option>
+                    <option value="Hindi">{{ $t('skills.hindi') }}</option>
                   </optgroup>
                 </select>
-                <select
-                  v-model="lang.proficiency"
-                  style="width: 120px"
-                  title="Proficiency Level"
-                >
-                  <option value="">Select Level</option>
-                  <option value="basic">Basic</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
-                  <option value="fluent">Fluent</option>
-                  <option value="native">Native</option>
+                <select v-model="lang.proficiency" style="width: 120px" :title="$t('skills.selectLevel')">
+                  <option value="">{{ $t('skills.selectLevel') }}</option>
+                  <option value="basic">{{ $t('skills.basic') }}</option>
+                  <option value="intermediate">{{ $t('skills.intermediate') }}</option>
+                  <option value="advanced">{{ $t('skills.advanced') }}</option>
+                  <option value="fluent">{{ $t('skills.fluent') }}</option>
+                  <option value="native">{{ $t('skills.native') }}</option>
                 </select>
-                <button
-                  class="remove-small-btn"
-                  @click="removeLanguage(idx)"
-                  title="Remove Language"
-                >
-                  ×
-                </button>
+                <button class="remove-small-btn" @click="removeLanguage(idx)" :title="$t('common.remove')">×</button>
               </div>
-              <button class="add-btn" @click="addLanguage">
-                + Add Language
-              </button>
+              <button class="add-btn" @click="addLanguage">+ {{ $t('common.add') }} {{ $t('skills.languageTitle') }}</button>
             </div>
             <div class="other-skills">
-              <strong>Other Skills:</strong>
-              <textarea
-                v-model="form.otherSkills"
-                placeholder="List any other relevant skills, certifications, or qualifications"
-                rows="3"
-                title="Other Skills"
-              ></textarea>
+              <strong>{{ $t('skills.otherTitle') }}:</strong>
+              <textarea v-model="form.otherSkills" :placeholder="$t('skills.otherPlaceholder')" rows="3" :title="$t('skills.otherTitle')"></textarea>
             </div>
           </div>
         </div>
@@ -1306,102 +824,77 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
               </div>
-              <h3>Employment Information</h3>
+              <h3>{{ $t('employee.employmentInfo') }}</h3>
             </div>
             <div class="info-list">
               <div class="info-item">
-                <span class="info-label">Department</span>
+                <span class="info-label">{{ $t('employee.department') }}</span>
                 <div class="info-value">
-                  <select v-model="form.departmentId" title="Department">
-                    <option :value="null">Select Department</option>
-                    <option
-                      v-for="dept in departments"
-                      :key="dept.departmentId"
-                      :value="dept.departmentId"
-                    >
-                      {{ dept.name }}
-                    </option>
+                  <select v-model="form.departmentId" :title="$t('employee.department')">
+                    <option :value="null">{{ $t('common.select') }}</option>
+                    <option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">{{ dept.name }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Position/Job Title</span>
+                <span class="info-label">{{ $t('employee.position') }}</span>
                 <div class="info-value">
-                  <select v-model="form.positionId" title="Position">
-                    <option :value="null">Select Position</option>
-                    <option
-                      v-for="pos in positions"
-                      :key="pos.positionId"
-                      :value="pos.positionId"
-                    >
-                      {{ pos.title }}
-                    </option>
+                  <select v-model="form.positionId" :title="$t('employee.position')">
+                    <option :value="null">{{ $t('common.select') }}</option>
+                    <option v-for="pos in positions" :key="pos.positionId" :value="pos.positionId">{{ pos.title }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Employment Type</span>
+                <span class="info-label">{{ $t('employee.employmentType') }}</span>
                 <div class="info-value">
-                  <select v-model="form.employmentType" title="Employment Type">
-                    <option value="full-time">Full Time</option>
-                    <option value="part-time">Part Time</option>
-                    <option value="contract">Contract</option>
-                    <option value="intern">Intern</option>
+                  <select v-model="form.employmentType" :title="$t('employee.employmentType')">
+                    <option value="full-time">{{ $t('employee.fullTime') }}</option>
+                    <option value="part-time">{{ $t('employee.partTime') }}</option>
+                    <option value="contract">{{ $t('employee.contract') }}</option>
+                    <option value="intern">{{ $t('employee.intern') }}</option>
                   </select>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Hire Date</span>
-                <div class="info-value">
-                  <input
-                    type="date"
-                    v-model="form.hireDate"
-                    title="Date of Hire"
-                  />
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Manager/Supervisor</span>
-                <div class="info-value">
-                  <select v-model="form.managerId" title="Manager">
-                    <option :value="null">No Manager Assigned</option>
-                    <option
-                      v-for="mgr in managers"
-                      :key="mgr.id"
-                      :value="mgr.id"
-                    >
-                      {{ mgr.fullName }} ({{ mgr.employeeId }})
-                    </option>
-                  </select>
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Work Location</span>
+                <span class="info-label">{{ $t('employee.hireDate') }}</span>
                 <div class="info-value">
                   <input
                     type="text"
-                    v-model="form.workLocation"
-                    placeholder="Office/Branch Location"
-                    title="Work Location"
+                    v-model="form.hireDateEC"
+                    placeholder="DD/MM/YYYY"
+                    class="ec-date-input"
+                    :title="$t('employee.hireDate')"
                   />
+                  <small class="ec-hint">Ethiopian Calendar (DD/MM/YYYY)</small>
                 </div>
               </div>
               <div class="info-item">
-                <span class="info-label">Shift Type</span>
+                <span class="info-label">{{ $t('employee.manager') }}</span>
                 <div class="info-value">
-                  <select v-model="form.shiftType" title="Shift Type">
-                    <option value="day">Day Shift</option>
-                    <option value="night">Night Shift</option>
+                  <select v-model="form.managerId" :title="$t('employee.manager')">
+                    <option :value="null">{{ $t('common.select') }}</option>
+                    <option v-for="mgr in managers" :key="mgr.id" :value="mgr.id">{{ mgr.fullName }} ({{ mgr.employeeId }})</option>
+                  </select>
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ $t('employee.workLocation') }}</span>
+                <div class="info-value">
+                  <input type="text" v-model="form.workLocation" :placeholder="$t('employee.workLocationPlaceholder')" :title="$t('employee.workLocation')" />
+                </div>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ $t('employee.shiftType') }}</span>
+                <div class="info-value">
+                  <select v-model="form.shiftType" :title="$t('employee.shiftType')">
+                    <option value="day">{{ $t('employee.dayShift') }}</option>
+                    <option value="night">{{ $t('employee.nightShift') }}</option>
                   </select>
                 </div>
               </div>
@@ -1412,383 +905,219 @@
           <div class="info-card allowances-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 6v6l4 2" />
                 </svg>
               </div>
-              <h3>Compensation & Allowances</h3>
+              <h3>{{ $t('employee.compensationAllowances') }}</h3>
             </div>
             <div class="allowances-content">
               <div class="allowance-item basic">
-                <div class="allowance-label">Basic Salary (ETB)</div>
+                <div class="allowance-label">{{ $t('employee.basicSalary') }}</div>
                 <div class="allowance-value">
-                  <input
-                    type="number"
-                    v-model="form.basicSalary"
-                    step="100"
-                    placeholder="Monthly Basic Salary"
-                    title="Basic Salary"
-                  />
+                  <input type="number" v-model="form.basicSalary" step="100" :placeholder="$t('employee.basicSalary')" :title="$t('employee.basicSalary')" />
                 </div>
               </div>
               <div class="allowance-divider"></div>
               <div class="allowance-item">
-                <div class="allowance-label">Housing Allowance (ETB)</div>
+                <div class="allowance-label">{{ $t('employee.housingAllowance') }}</div>
                 <div class="allowance-value">
-                  <input
-                    type="number"
-                    v-model="form.housingAllowance"
-                    step="100"
-                    placeholder="Housing Allowance"
-                    title="Housing Allowance"
-                  />
+                  <input type="number" v-model="form.housingAllowance" step="100" :placeholder="$t('employee.housingAllowance')" :title="$t('employee.housingAllowance')" />
                 </div>
               </div>
               <div class="allowance-item">
-                <div class="allowance-label">Position Allowance (ETB)</div>
+                <div class="allowance-label">{{ $t('employee.positionAllowance') }}</div>
                 <div class="allowance-value">
-                  <input
-                    type="number"
-                    v-model="form.positionAllowance"
-                    step="100"
-                    placeholder="Position Allowance"
-                    title="Position Allowance"
-                  />
+                  <input type="number" v-model="form.positionAllowance" step="100" :placeholder="$t('employee.positionAllowance')" :title="$t('employee.positionAllowance')" />
                 </div>
               </div>
               <div class="allowance-item">
-                <div class="allowance-label">Transport Allowance (ETB)</div>
+                <div class="allowance-label">{{ $t('employee.transportAllowance') }}</div>
                 <div class="allowance-value">
-                  <input
-                    type="number"
-                    v-model="form.transportAllowance"
-                    step="100"
-                    placeholder="Transport Allowance"
-                    title="Transport Allowance"
-                  />
+                  <input type="number" v-model="form.transportAllowance" step="100" :placeholder="$t('employee.transportAllowance')" :title="$t('employee.transportAllowance')" />
                 </div>
               </div>
               <div class="allowance-item">
-                <div class="allowance-label">Mobile Allowance (ETB)</div>
+                <div class="allowance-label">{{ $t('employee.mobileAllowance') }}</div>
                 <div class="allowance-value">
-                  <input
-                    type="number"
-                    v-model="form.mobileAllowance"
-                    step="100"
-                    placeholder="Mobile/Communication Allowance"
-                    title="Mobile Allowance"
-                  />
+                  <input type="number" v-model="form.mobileAllowance" step="100" :placeholder="$t('employee.mobileAllowance')" :title="$t('employee.mobileAllowance')" />
                 </div>
               </div>
               <div class="allowance-divider"></div>
               <div class="allowance-item total">
-                <div class="allowance-label">Total Allowances</div>
-                <div class="allowance-value">
-                  {{ formatCurrency(totalAllowances) }}
-                </div>
+                <div class="allowance-label">{{ $t('employee.totalAllowances') }}</div>
+                <div class="allowance-value">{{ formatCurrency(totalAllowances) }}</div>
               </div>
               <div class="allowance-item gross">
-                <div class="allowance-label">Gross Monthly Pay</div>
-                <div class="allowance-value gross-amount">
-                  {{ formatCurrency(grossPay) }}
-                </div>
+                <div class="allowance-label">{{ $t('employee.grossPay') }}</div>
+                <div class="allowance-value gross-amount">{{ formatCurrency(grossPay) }}</div>
               </div>
             </div>
           </div>
 
           <!-- Spouse Information Card -->
-         <!-- Spouse Information Card -->
-<div class="info-card">
-  <div class="card-header">
-    <div class="card-header-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    </div>
-    <h3>Spouse Information</h3>
-  </div>
-  <div class="spouse-layout">
-    <div
-      class="spouse-avatar"
-      @click="triggerSpouseProfileInput"
-      title="Upload Spouse Photo"
-    >
-      <img
-        v-if="spouseProfilePreview || getDocumentWithIndex('spouse_profile', 0)"
-        :src="spouseProfilePreview || getDocumentWithIndex('spouse_profile', 0)"
-        :alt="form.spouseInfo.fullName"
-        @error="(e) => { e.target.src = getAvatarUrl(form.spouseInfo.fullName || 'Spouse') }"
-      />
-      <div v-else class="spouse-avatar-placeholder">
-        {{ form.spouseInfo.fullName?.charAt(0) || "S" }}
-      </div>
-      <div class="avatar-upload-icon">📷</div>
-    </div>
-    <input
-      type="file"
-      ref="spouseProfileInput"
-      @change="handleSpouseProfileUpload"
-      style="display: none"
-      accept="image/*"
-    />
-    <!-- Rest of spouse info remains the same -->
-    <div class="spouse-info">
-      <div class="spouse-name">
-        <input
-          type="text"
-          v-model="form.spouseInfo.fullName"
-          placeholder="Spouse Full Name"
-          title="Spouse Full Name"
-        />
-      </div>
-      <div class="spouse-detail">
-        <span>TIN Number:</span>
-        <input
-          type="text"
-          v-model="form.spouseInfo.tinNumber"
-          placeholder="Tax Identification Number"
-          title="Spouse TIN"
-        />
-      </div>
-      <div class="spouse-detail">
-        <span>Date of Birth:</span>
-        <input
-          type="date"
-          v-model="form.spouseInfo.dateOfBirth"
-          title="Spouse Date of Birth"
-        />
-      </div>
-      <div class="spouse-detail">
-        <span>Employment Status:</span>
-        <select
-          v-model="form.spouseInfo.jobStatus"
-          title="Spouse Job Status"
-        >
-          <option value="">Select Status</option>
-          <option value="government">Government Employee</option>
-          <option value="private">Private Sector</option>
-          <option value="self-employed">Self Employed</option>
-          <option value="unemployed">Unemployed</option>
-        </select>
-      </div>
-      <div class="spouse-detail">
-        <span>Company Name:</span>
-        <input
-          type="text"
-          v-model="form.spouseInfo.companyName"
-          placeholder="Employer Company Name"
-          title="Spouse Company"
-        />
-      </div>
-      <div class="spouse-detail">
-        <span>Company Address:</span>
-        <input
-          type="text"
-          v-model="form.spouseInfo.companyAddress"
-          placeholder="Employer Address"
-          title="Spouse Company Address"
-        />
-      </div>
-      <div class="spouse-document">
-        <button
-          class="upload-small-btn"
-          @click="triggerMarriageCertUpload"
-          title="Upload Marriage Certificate"
-        >
-          📄 Marriage Certificate
-        </button>
-        <a
-          v-if="getDocumentWithIndex('marriage_certificate', 0)"
-          :href="getDocumentWithIndex('marriage_certificate', 0)"
-          target="_blank"
-          class="file-link-inline"
-        >View</a>
-        <input
-          type="file"
-          ref="marriageCertInput"
-          @change="handleMarriageCertUpload"
-          style="display: none"
-        />
-      </div>
-    </div>
-  </div>
-</div>
+          <div class="info-card">
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <h3>{{ $t('family.spouseTitle') }}</h3>
+            </div>
+            <div class="spouse-layout">
+              <div class="spouse-avatar" @click="triggerSpouseProfileInput" :title="$t('family.profilePicture')">
+                <img v-if="spouseProfilePreview || getDocumentWithIndex('spouse_profile', 0)" :src="spouseProfilePreview || getDocumentWithIndex('spouse_profile', 0)" :alt="form.spouseInfo.fullName" @error="(e) => { e.target.src = getAvatarUrl(form.spouseInfo.fullName || 'Spouse') }" />
+                <div v-else class="spouse-avatar-placeholder">{{ form.spouseInfo.fullName?.charAt(0) || "S" }}</div>
+                <div class="avatar-upload-icon">📷</div>
+              </div>
+              <input type="file" ref="spouseProfileInput" @change="handleSpouseProfileUpload" style="display: none" accept="image/*" />
+              <div class="spouse-info">
+                <div class="spouse-name">
+                  <input type="text" v-model="form.spouseInfo.fullName" :placeholder="$t('family.spouseNamePlaceholder')" :title="$t('family.spouseFullName')" />
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t('family.tinNumber') }}:</span>
+                  <input type="text" v-model="form.spouseInfo.tinNumber" :placeholder="$t('family.tinPlaceholder')" :title="$t('family.tinNumber')" />
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t('family.dateOfBirth') }}:</span>
+                  <input type="text" v-model="form.spouseInfo.dateOfBirthEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('family.dateOfBirth')" />
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t('family.jobStatus') }}:</span>
+                  <select v-model="form.spouseInfo.jobStatus" :title="$t('family.jobStatus')">
+                    <option value="">{{ $t('common.select') }}</option>
+                    <option value="government">{{ $t('family.government') }}</option>
+                    <option value="private">{{ $t('family.private') }}</option>
+                    <option value="self-employed">{{ $t('family.business') }}</option>
+                    <option value="unemployed">{{ $t('family.unemployed') }}</option>
+                  </select>
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t('family.companyName') }}:</span>
+                  <input type="text" v-model="form.spouseInfo.companyName" :placeholder="$t('family.companyName')" :title="$t('family.companyName')" />
+                </div>
+                <div class="spouse-detail">
+                  <span>{{ $t('family.companyAddress') }}:</span>
+                  <input type="text" v-model="form.spouseInfo.companyAddress" :placeholder="$t('family.companyAddress')" :title="$t('family.companyAddress')" />
+                </div>
+                <div class="spouse-document">
+                  <button class="upload-small-btn" @click="triggerMarriageCertUpload" :title="$t('common.upload')">📄 {{ $t('family.marriageCertificate') }}</button>
+                  <a v-if="getDocumentWithIndex('marriage_certificate', 0)" :href="getDocumentWithIndex('marriage_certificate', 0)" target="_blank" class="file-link-inline">{{ $t('common.view') }}</a>
+                  <input type="file" ref="marriageCertInput" @change="handleMarriageCertUpload" style="display: none" />
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Children Information Card -->
-         <!-- Children Information Card -->
-<div class="info-card">
-  <div class="card-header">
-    <div class="card-header-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-      </svg>
-    </div>
-    <h3>Children ({{ form.children.length }})</h3>
-  </div>
-  <div class="children-list-edit">
-    <div v-for="(child, idx) in form.children" :key="idx" class="child-edit-item">
-      <div class="edit-header">
-        <strong>Child {{ idx + 1 }}: {{ child.name || 'Unnamed' }}</strong>
-        <button class="remove-btn" @click="removeChild(idx)">Remove</button>
-      </div>
-      <div class="child-edit-content">
-        <!-- Child Avatar - Click to upload -->
-        <div class="child-avatar-edit" @click="triggerChildProfileUpload(idx)" title="Click to upload/change photo">
-          <img 
-            v-if="childProfilePreviews[idx] || getDocumentWithIndex('child_profile', idx)" 
-            :src="childProfilePreviews[idx] || getDocumentWithIndex('child_profile', idx)" 
-            :alt="child.name || 'Child'"
-            @error="(e) => { e.target.src = getAvatarUrl(child.name || 'Child') }"
-          >
-          <div v-else class="child-avatar-placeholder-edit">
-            {{ child.name?.charAt(0) || '👶' }}
-          </div>
-          <div class="avatar-upload-overlay">
-            <span>📷</span>
-          </div>
-        </div>
-        
-        <div class="child-info-edit">
-          <div class="child-name-row">
-            <input type="text" v-model="child.name" placeholder="Child's Full Name" class="child-name-input" title="Child Name">
-            <input type="date" v-model="child.dateOfBirth" placeholder="Date of Birth" class="child-dob-input" title="Child Date of Birth">
-          </div>
-          <div class="checkbox-group">
-            <label><input type="checkbox" v-model="child.hasMedicalCondition"> Has Medical Condition</label>
-            <label><input type="checkbox" v-model="child.isAdopted"> Is Adopted</label>
-          </div>
-          <textarea v-if="child.hasMedicalCondition" v-model="child.medicalConditionNotes" placeholder="Describe medical condition or special needs" rows="2" class="child-notes" title="Medical Condition Details"></textarea>
-          
-          <!-- Document Status and Upload Buttons -->
-          <div class="child-documents-section">
-            <div class="documents-status">
-              <div class="doc-status-item">
-                <span class="status-label">Birth Certificate:</span>
-                <span v-if="getDocumentWithIndex('child_birth_certificate', idx)" class="status-uploaded">✅ Uploaded</span>
-                <span v-else class="status-missing">❌ Not uploaded</span>
+          <div class="info-card">
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                </svg>
               </div>
-              <div v-if="child.hasMedicalCondition" class="doc-status-item">
-                <span class="status-label">Medical Report:</span>
-                <span v-if="getDocumentWithIndex('child_medical_report', idx)" class="status-uploaded">✅ Uploaded</span>
-                <span v-else class="status-missing">❌ Not uploaded</span>
-              </div>
-              <div v-if="child.isAdopted" class="doc-status-item">
-                <span class="status-label">Adoption Certificate:</span>
-                <span v-if="getDocumentWithIndex('child_adoption_certificate', idx)" class="status-uploaded">✅ Uploaded</span>
-                <span v-else class="status-missing">❌ Not uploaded</span>
-              </div>
+              <h3>{{ $t('family.childrenTitle') }} ({{ form.children.length }})</h3>
             </div>
-            
-            <div class="child-documents-buttons">
-              <button class="upload-small-btn" @click="triggerChildDocUpload(idx, 'birth')" title="Upload Birth Certificate">
-                📄 {{ getDocumentWithIndex('child_birth_certificate', idx) ? 'Change' : 'Upload' }} Birth Certificate
-              </button>
-              <button v-if="child.hasMedicalCondition" class="upload-small-btn" @click="triggerChildDocUpload(idx, 'medical')" title="Upload Medical Report">
-                📋 {{ getDocumentWithIndex('child_medical_report', idx) ? 'Change' : 'Upload' }} Medical Report
-              </button>
-              <button v-if="child.isAdopted" class="upload-small-btn" @click="triggerChildDocUpload(idx, 'adoption')" title="Upload Adoption Certificate">
-                📜 {{ getDocumentWithIndex('child_adoption_certificate', idx) ? 'Change' : 'Upload' }} Adoption Certificate
-              </button>
-            </div>
-            
-            <!-- View uploaded documents -->
-            <div class="view-documents" v-if="getDocumentWithIndex('child_birth_certificate', idx) || getDocumentWithIndex('child_medical_report', idx) || getDocumentWithIndex('child_adoption_certificate', idx) || getDocumentWithIndex('child_profile', idx)">
-              <span class="view-label">View Documents:</span>
-              <a v-if="getDocumentWithIndex('child_birth_certificate', idx)" :href="getDocumentWithIndex('child_birth_certificate', idx)" target="_blank" class="file-link">Birth Certificate</a>
-              <a v-if="getDocumentWithIndex('child_medical_report', idx)" :href="getDocumentWithIndex('child_medical_report', idx)" target="_blank" class="file-link">Medical Report</a>
-              <a v-if="getDocumentWithIndex('child_adoption_certificate', idx)" :href="getDocumentWithIndex('child_adoption_certificate', idx)" target="_blank" class="file-link">Adoption Certificate</a>
-              <a v-if="getDocumentWithIndex('child_profile', idx)" :href="getDocumentWithIndex('child_profile', idx)" target="_blank" class="file-link">Profile Picture</a>
+            <div class="children-list-edit">
+              <div v-for="(child, idx) in form.children" :key="idx" class="child-edit-item">
+                <div class="edit-header">
+                  <strong>{{ $t('family.child') }} {{ idx + 1 }}: {{ child.name || $t('family.child') }}</strong>
+                  <button class="remove-btn" @click="removeChild(idx)">{{ $t('common.remove') }}</button>
+                </div>
+                <div class="child-edit-content">
+                  <div class="child-avatar-edit" @click="triggerChildProfileUpload(idx)" :title="$t('common.upload')">
+                    <img v-if="childProfilePreviews[idx] || getDocumentWithIndex('child_profile', idx)" :src="childProfilePreviews[idx] || getDocumentWithIndex('child_profile', idx)" :alt="child.name || $t('family.child')" @error="(e) => { e.target.src = getAvatarUrl(child.name || $t('family.child')) }" />
+                    <div v-else class="child-avatar-placeholder-edit">{{ child.name?.charAt(0) || '👶' }}</div>
+                    <div class="avatar-upload-overlay"><span>📷</span></div>
+                  </div>
+                  <div class="child-info-edit">
+                    <div class="child-name-row">
+                      <input type="text" v-model="child.name" :placeholder="$t('family.childNamePlaceholder')" class="child-name-input" :title="$t('family.childFullName')" />
+                      <input type="text" v-model="child.dateOfBirthEC" placeholder="DD/MM/YYYY" class="child-dob-input ec-date-input" :title="$t('family.dateOfBirth')" />
+                    </div>
+                    <div class="checkbox-group">
+                      <label><input type="checkbox" v-model="child.hasMedicalCondition" /> {{ $t('family.hasMedicalCondition') }}</label>
+                      <label><input type="checkbox" v-model="child.isAdopted" /> {{ $t('family.isAdopted') }}</label>
+                    </div>
+                    <textarea v-if="child.hasMedicalCondition" v-model="child.medicalConditionNotes" :placeholder="$t('family.medicalNotesPlaceholder')" rows="2" class="child-notes" :title="$t('family.medicalConditionNotes')"></textarea>
+                    <div class="child-documents-section">
+                      <div class="documents-status">
+                        <div class="doc-status-item">
+                          <span class="status-label">{{ $t('family.birthCertificate') }}:</span>
+                          <span v-if="getDocumentWithIndex('child_birth_certificate', idx)" class="status-uploaded">✅ {{ $t('common.uploaded') }}</span>
+                          <span v-else class="status-missing">❌ {{ $t('common.missing') }}</span>
+                        </div>
+                        <div v-if="child.hasMedicalCondition" class="doc-status-item">
+                          <span class="status-label">{{ $t('family.medicalReport') }}:</span>
+                          <span v-if="getDocumentWithIndex('child_medical_report', idx)" class="status-uploaded">✅ {{ $t('common.uploaded') }}</span>
+                          <span v-else class="status-missing">❌ {{ $t('common.missing') }}</span>
+                        </div>
+                        <div v-if="child.isAdopted" class="doc-status-item">
+                          <span class="status-label">{{ $t('family.adoptionCertificate') }}:</span>
+                          <span v-if="getDocumentWithIndex('child_adoption_certificate', idx)" class="status-uploaded">✅ {{ $t('common.uploaded') }}</span>
+                          <span v-else class="status-missing">❌ {{ $t('common.missing') }}</span>
+                        </div>
+                      </div>
+                      <div class="child-documents-buttons">
+                        <button class="upload-small-btn" @click="triggerChildDocUpload(idx, 'birth')" :title="$t('common.upload')">
+                          📄 {{ getDocumentWithIndex('child_birth_certificate', idx) ? $t('common.edit') : $t('common.upload') }} {{ $t('family.birthCertificate') }}
+                        </button>
+                        <button v-if="child.hasMedicalCondition" class="upload-small-btn" @click="triggerChildDocUpload(idx, 'medical')" :title="$t('common.upload')">
+                          📋 {{ getDocumentWithIndex('child_medical_report', idx) ? $t('common.edit') : $t('common.upload') }} {{ $t('family.medicalReport') }}
+                        </button>
+                        <button v-if="child.isAdopted" class="upload-small-btn" @click="triggerChildDocUpload(idx, 'adoption')" :title="$t('common.upload')">
+                          📜 {{ getDocumentWithIndex('child_adoption_certificate', idx) ? $t('common.edit') : $t('common.upload') }} {{ $t('family.adoptionCertificate') }}
+                        </button>
+                      </div>
+                      <div class="view-documents" v-if="getDocumentWithIndex('child_birth_certificate', idx) || getDocumentWithIndex('child_medical_report', idx) || getDocumentWithIndex('child_adoption_certificate', idx) || getDocumentWithIndex('child_profile', idx)">
+                        <span class="view-label">{{ $t('common.view') }}:</span>
+                        <a v-if="getDocumentWithIndex('child_birth_certificate', idx)" :href="getDocumentWithIndex('child_birth_certificate', idx)" target="_blank" class="file-link">{{ $t('common.viewBirthCertificate') }}</a>
+                        <a v-if="getDocumentWithIndex('child_medical_report', idx)" :href="getDocumentWithIndex('child_medical_report', idx)" target="_blank" class="file-link">{{ $t('common.viewMedicalReport') }}</a>
+                        <a v-if="getDocumentWithIndex('child_adoption_certificate', idx)" :href="getDocumentWithIndex('child_adoption_certificate', idx)" target="_blank" class="file-link">{{ $t('common.viewAdoptionCertificate') }}</a>
+                        <a v-if="getDocumentWithIndex('child_profile', idx)" :href="getDocumentWithIndex('child_profile', idx)" target="_blank" class="file-link">{{ $t('family.profilePicture') }}</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button class="add-btn" @click="addChild">+ {{ $t('common.add') }} {{ $t('family.child') }}</button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-    <button class="add-btn" @click="addChild">+ Add Child</button>
-  </div>
-</div>
 
           <!-- Parents Information Card -->
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
               </div>
-              <h3>Parents Information</h3>
+              <h3>{{ $t('family.parentsTitle') }}</h3>
             </div>
             <div class="parents-edit-grid">
               <div class="parent-edit-section">
-                <h4>👨 Father's Information</h4>
-                <input
-                  type="text"
-                  v-model="form.parentsInfo.father.fullName"
-                  placeholder="Father's Full Name"
-                  title="Father's Name"
-                />
-                <input
-                  type="text"
-                  v-model="form.parentsInfo.father.job"
-                  placeholder="Occupation/Job Title"
-                  title="Father's Occupation"
-                />
-                <input
-                  type="number"
-                  v-model="form.parentsInfo.father.monthlyIncome"
-                  placeholder="Monthly Income (ETB)"
-                  title="Father's Monthly Income"
-                />
+                <h4>{{ $t('family.fatherInfo') }}</h4>
+                <input type="text" v-model="form.parentsInfo.father.fullName" :placeholder="$t('family.fatherNamePlaceholder')" :title="$t('family.fatherName')" />
+                <input type="text" v-model="form.parentsInfo.father.job" :placeholder="$t('family.jobPlaceholder')" :title="$t('family.jobOccupation')" />
+                <input type="number" v-model="form.parentsInfo.father.monthlyIncome" :placeholder="$t('family.monthlyIncome')" :title="$t('family.monthlyIncome')" />
               </div>
               <div class="parent-edit-section">
-                <h4>👩 Mother's Information</h4>
-                <input
-                  type="text"
-                  v-model="form.parentsInfo.mother.fullName"
-                  placeholder="Mother's Full Name"
-                  title="Mother's Name"
-                />
-                <input
-                  type="text"
-                  v-model="form.parentsInfo.mother.job"
-                  placeholder="Occupation/Job Title"
-                  title="Mother's Occupation"
-                />
-                <input
-                  type="number"
-                  v-model="form.parentsInfo.mother.monthlyIncome"
-                  placeholder="Monthly Income (ETB)"
-                  title="Mother's Monthly Income"
-                />
+                <h4>{{ $t('family.motherInfo') }}</h4>
+                <input type="text" v-model="form.parentsInfo.mother.fullName" :placeholder="$t('family.motherNamePlaceholder')" :title="$t('family.motherName')" />
+                <input type="text" v-model="form.parentsInfo.mother.job" :placeholder="$t('family.jobPlaceholder')" :title="$t('family.jobOccupation')" />
+                <input type="number" v-model="form.parentsInfo.mother.monthlyIncome" :placeholder="$t('family.monthlyIncome')" :title="$t('family.monthlyIncome')" />
               </div>
             </div>
             <div class="support-section">
-              <div class="support-title">💝 Support Provided to Parents</div>
-              <input
-                type="text"
-                v-model="form.parentsInfo.financialSupport"
-                placeholder="Financial Support (e.g., Monthly 5000 ETB)"
-                style="width: 100%; margin-bottom: 8px"
-                title="Financial Support"
-              /><input
-                type="text"
-                v-model="form.parentsInfo.otherSupport"
-                placeholder="Other Support (e.g., Medical insurance, Housing, Transportation)"
-                style="width: 100%"
-                title="Other Support"
-              />
+              <div class="support-title">{{ $t('family.supportTitle') }}</div>
+              <input type="text" v-model="form.parentsInfo.financialSupport" :placeholder="$t('family.financialPlaceholder')" style="width: 100%; margin-bottom: 8px" :title="$t('family.financialSupport')" />
+              <input type="text" v-model="form.parentsInfo.otherSupport" :placeholder="$t('family.otherPlaceholder')" style="width: 100%" :title="$t('family.otherSupport')" />
             </div>
           </div>
 
@@ -1796,112 +1125,45 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
               </div>
-              <h3>Work Experience ({{ form.workExperience.length }})</h3>
+              <h3>{{ $t('employee.workExperience') }} ({{ form.workExperience.length }})</h3>
             </div>
             <div class="work-list-edit">
-              <div
-                v-for="(work, idx) in form.workExperience"
-                :key="idx"
-                class="work-edit-item"
-              >
+              <div v-for="(work, idx) in form.workExperience" :key="idx" class="work-edit-item">
                 <div class="edit-header">
-                  <strong>Experience {{ idx + 1 }}</strong
-                  ><button class="remove-btn" @click="removeWork(idx)">
-                    Remove
-                  </button>
+                  <strong>{{ $t('employee.experience') }} {{ idx + 1 }}</strong>
+                  <button class="remove-btn" @click="removeWork(idx)">{{ $t('common.remove') }}</button>
                 </div>
                 <div class="edit-fields">
-                  <input
-                    type="text"
-                    v-model="work.position"
-                    placeholder="Job Title/Position"
-                    title="Position"
-                  />
-                  <input
-                    type="text"
-                    v-model="work.companyName"
-                    placeholder="Company/Organization Name"
-                    title="Company Name"
-                  />
-                  <input
-                    type="text"
-                    v-model="work.companyAddress"
-                    placeholder="Company Address"
-                    title="Company Address"
-                  />
+                  <input type="text" v-model="work.position" :placeholder="$t('employee.positionPlaceholder')" :title="$t('employee.positionTitle')" />
+                  <input type="text" v-model="work.companyName" :placeholder="$t('employee.companyNamePlaceholder')" :title="$t('employee.companyName')" />
+                  <input type="text" v-model="work.companyAddress" :placeholder="$t('employee.companyAddressPlaceholder')" :title="$t('company.address')" />
                   <div class="date-group">
-                    <input
-                      type="date"
-                      v-model="work.startDate"
-                      placeholder="Start Date"
-                      title="Start Date"
-                    /><input
-                      type="date"
-                      v-model="work.endDate"
-                      placeholder="End Date"
-                      title="End Date"
-                    />
+                    <input type="text" v-model="work.startDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('employee.startDate')" />
+                    <input type="text" v-model="work.endDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('employee.endDate')" />
                   </div>
                   <div class="salary-group">
-                    <input
-                      type="number"
-                      v-model="work.monthlySalary"
-                      placeholder="Monthly Salary (ETB)"
-                      title="Monthly Salary"
-                    /><input
-                      type="number"
-                      v-model="work.salaryWhenLeft"
-                      placeholder="Final Salary (ETB)"
-                      title="Salary When Left"
-                    />
+                    <input type="number" v-model="work.monthlySalary" :placeholder="$t('employee.monthlySalary')" :title="$t('employee.monthlySalary')" />
+                    <input type="number" v-model="work.salaryWhenLeft" :placeholder="$t('employee.salaryWhenLeft')" :title="$t('employee.salaryWhenLeft')" />
                   </div>
-                  <textarea
-                    v-model="work.terminationReason"
-                    placeholder="Reason for leaving the position"
-                    rows="2"
-                    title="Termination/Exit Reason"
-                  ></textarea>
+                  <textarea v-model="work.terminationReason" :placeholder="$t('employee.terminationPlaceholder')" rows="2" :title="$t('employee.reasonForLeaving')"></textarea>
                   <div class="provident-group">
-                    <label
-                      ><input
-                        type="checkbox"
-                        v-model="work.providentFundSubmitted"
-                        true-value="yes"
-                        false-value="no"
-                      />
-                      Provident Fund Submitted</label
-                    ><input
-                      v-if="work.providentFundSubmitted === 'yes'"
-                      type="date"
-                      v-model="work.providentFundStartDate"
-                      placeholder="Provident Fund Start Date"
-                      title="Provident Fund Start Date"
-                    />
+                    <label>
+                      <input type="checkbox" v-model="work.providentFundSubmitted" true-value="yes" false-value="no" />
+                      {{ $t('employee.providentFundSubmitted') }}
+                    </label>
+                    <input v-if="work.providentFundSubmitted === 'yes'" type="text" v-model="work.providentFundStartDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('employee.providentFundStartDate')" />
                   </div>
                 </div>
                 <div class="edit-actions">
-                  <button
-                    class="upload-small-btn"
-                    @click="triggerWorkUpload(idx)"
-                    title="Upload Experience Letter"
-                  >
-                    📄 Upload Experience Letter
-                  </button>
+                  <button class="upload-small-btn" @click="triggerWorkUpload(idx)" :title="$t('common.upload')">📄 {{ $t('employee.experienceLetter') }}</button>
                 </div>
               </div>
-              <button class="add-btn" @click="addWork">
-                + Add Work Experience
-              </button>
+              <button class="add-btn" @click="addWork">+ {{ $t('common.add') }} {{ $t('employee.experience') }}</button>
             </div>
           </div>
 
@@ -1909,110 +1171,41 @@
           <div class="info-card">
             <div class="card-header">
               <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <h3>Guarantors ({{ form.guaranteeInfo.length }})</h3>
+              <h3>{{ $t('guarantee.title') }} ({{ form.guaranteeInfo.length }})</h3>
             </div>
             <div class="guarantee-list-edit">
-              <div
-                v-for="(guarantor, idx) in form.guaranteeInfo"
-                :key="idx"
-                class="guarantor-edit-item"
-              >
+              <div v-for="(guarantor, idx) in form.guaranteeInfo" :key="idx" class="guarantor-edit-item">
                 <div class="edit-header">
-                  <strong>Guarantor {{ idx + 1 }}</strong
-                  ><button class="remove-btn" @click="removeGuarantor(idx)">
-                    Remove
-                  </button>
+                  <strong>{{ $t('guarantee.guarantor') }} {{ idx + 1 }}</strong>
+                  <button class="remove-btn" @click="removeGuarantor(idx)">{{ $t('common.remove') }}</button>
                 </div>
                 <div class="edit-fields">
                   <div class="form-row-two">
-                    <input
-                      type="text"
-                      v-model="guarantor.guarantorName"
-                      placeholder="Guarantor Full Name"
-                      title="Guarantor Name"
-                    /><input
-                      type="text"
-                      v-model="guarantor.guarantorJob"
-                      placeholder="Guarantor Job/Position"
-                      title="Guarantor Job"
-                    />
+                    <input type="text" v-model="guarantor.guarantorName" :placeholder="$t('guarantee.guarantorNamePlaceholder')" :title="$t('guarantee.guarantorName')" />
+                    <input type="text" v-model="guarantor.guarantorJob" :placeholder="$t('guarantee.jobPlaceholder')" :title="$t('guarantee.guarantorJob')" />
                   </div>
                   <div class="form-row-two">
-                    <input
-                      type="text"
-                      v-model="guarantor.guarantorOfficeName"
-                      placeholder="Office/Company Name"
-                      title="Office Name"
-                    /><input
-                      type="text"
-                      v-model="guarantor.guarantorOfficeAddress"
-                      placeholder="Office Address"
-                      title="Office Address"
-                    />
+                    <input type="text" v-model="guarantor.guarantorOfficeName" :placeholder="$t('guarantee.officeNamePlaceholder')" :title="$t('guarantee.guarantorOfficeName')" />
+                    <input type="text" v-model="guarantor.guarantorOfficeAddress" :placeholder="$t('guarantee.addressPlaceholder')" :title="$t('guarantee.guarantorOfficeAddress')" />
                   </div>
                   <div class="form-row-two">
-                    <input
-                      type="text"
-                      v-model="guarantor.guaranteeLetterNo"
-                      placeholder="Guarantee Letter Number"
-                      title="Guarantee Letter No"
-                    /><input
-                      type="date"
-                      v-model="guarantor.guaranteeLetterDate"
-                      placeholder="Letter Date"
-                      title="Letter Date"
-                    />
+                    <input type="text" v-model="guarantor.guaranteeLetterDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.letterDate')" />
+                    <input type="text" v-model="guarantor.sdtLetterDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.sdtLetterDate')" />
                   </div>
-                  <div class="form-row-two">
-                    <input
-                      type="text"
-                      v-model="guarantor.sdtLetterNo"
-                      placeholder="SDT Letter Number"
-                      title="SDT Letter No"
-                    /><input
-                      type="date"
-                      v-model="guarantor.sdtLetterDate"
-                      placeholder="SDT Date"
-                      title="SDT Date"
-                    />
-                  </div>
-                  <input
-                    type="date"
-                    v-model="guarantor.confirmedDate"
-                    placeholder="Confirmation Date"
-                    title="Confirmed Date"
-                  />
+                  <input type="text" v-model="guarantor.confirmedDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.letterDate')" />
                 </div>
                 <div class="edit-actions">
-                  <button
-                    class="upload-small-btn"
-                    @click="triggerGuaranteeUpload(idx, 'guarantee')"
-                    title="Upload Guarantee Letter"
-                  >
-                    📄 Guarantee Letter</button
-                  ><button
-                    class="upload-small-btn"
-                    @click="triggerGuaranteeUpload(idx, 'sdt')"
-                    title="Upload SDT Letter"
-                  >
-                    📄 SDT Letter
-                  </button>
+                  <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'guarantee')" :title="$t('common.upload')">📄 {{ $t('guarantee.guaranteeLetter') }}</button>
+                  <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'sdt')" :title="$t('common.upload')">📄 {{ $t('guarantee.sdtLetter') }}</button>
                 </div>
               </div>
-              <button class="add-btn" @click="addGuarantor">
-                + Add Guarantor
-              </button>
+              <button class="add-btn" @click="addGuarantor">+ {{ $t('common.add') }} {{ $t('guarantee.guarantor') }}</button>
             </div>
           </div>
         </div>
@@ -2020,73 +1213,28 @@
     </div>
 
     <div v-else class="empty-state">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <circle cx="12" cy="16" r="0.5" />
       </svg>
-      <h3>Employee Not Found</h3>
-      <router-link to="/employees">Return to Employees</router-link>
+      <h3>{{ $t('messages.noData') }}</h3>
+      <router-link to="/employees">{{ $t('common.returnToEmployees') }}</router-link>
     </div>
 
     <!-- Hidden File Inputs -->
-    <input
-      type="file"
-      ref="educationInput"
-      @change="handleEducationUpload"
-      style="display: none"
-      accept=".pdf,.jpg,.jpeg,.png"
-    />
-    <input
-      type="file"
-      ref="trainingInput"
-      @change="handleTrainingUpload"
-      style="display: none"
-      accept=".pdf,.jpg,.jpeg,.png"
-    />
-    <input
-      type="file"
-      ref="workInput"
-      @change="handleWorkUpload"
-      style="display: none"
-      accept=".pdf,.jpg,.jpeg,.png"
-    />
-    <input
-      type="file"
-      ref="guaranteeInput"
-      @change="handleGuaranteeDocUpload"
-      style="display: none"
-      accept=".pdf,.jpg,.jpeg,.png"
-    />
-    <input
-      type="file"
-      ref="childDocInput"
-      @change="handleChildDocUpload"
-      style="display: none"
-      accept=".pdf,.jpg,.jpeg,.png"
-    />
-    <input
-      type="file"
-      ref="childProfileInput"
-      @change="handleChildProfileUpload"
-      style="display: none"
-      accept="image/*"
-    />
+    <input type="file" ref="educationInput" @change="handleEducationUpload" style="display: none" accept=".pdf,.jpg,.jpeg,.png" />
+    <input type="file" ref="trainingInput" @change="handleTrainingUpload" style="display: none" accept=".pdf,.jpg,.jpeg,.png" />
+    <input type="file" ref="workInput" @change="handleWorkUpload" style="display: none" accept=".pdf,.jpg,.jpeg,.png" />
+    <input type="file" ref="guaranteeInput" @change="handleGuaranteeDocUpload" style="display: none" accept=".pdf,.jpg,.jpeg,.png" />
+    <input type="file" ref="childDocInput" @change="handleChildDocUpload" style="display: none" accept=".pdf,.jpg,.jpeg,.png" />
+    <input type="file" ref="childProfileInput" @change="handleChildProfileUpload" style="display: none" accept="image/*" />
 
     <!-- Toast Notifications -->
     <div class="toast-container">
-      <div
-        v-for="toast in toasts"
-        :key="toast.id"
-        :class="`toast toast-${toast.type}`"
-      >
-        <span>{{ toast.message }}</span
-        ><button @click="removeToast(toast.id)">×</button>
+      <div v-for="toast in toasts" :key="toast.id" :class="`toast toast-${toast.type}`">
+        <span>{{ toast.message }}</span>
+        <button @click="removeToast(toast.id)">×</button>
       </div>
     </div>
   </div>
@@ -2095,8 +1243,10 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from 'vue-i18n';
 import EmployeesService from "@/stores/employee";
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const employeeId = route.params.id;
@@ -2130,7 +1280,13 @@ const form = ref({
   email: "",
   personalEmail: "",
   phone: "",
-  dob: "",
+  
+  // EC dates (for display and editing)
+  hireDateEC: "",
+  dateOfBirthEC: "",
+  confirmationDateEC: "",
+  terminationDateEC: "",
+  
   gender: "",
   maritalStatus: "",
   nationality: "",
@@ -2140,9 +1296,6 @@ const form = ref({
   managerId: null,
   employmentType: "",
   status: "active",
-  hireDate: "",
-  confirmationDate: "",
-  terminationDate: "",
   workLocation: "",
   shiftType: "day",
   basicSalary: null,
@@ -2192,7 +1345,7 @@ const form = ref({
   spouseInfo: {
     fullName: "",
     tinNumber: "",
-    dateOfBirth: "",
+    dateOfBirthEC: "",
     jobStatus: "",
     companyName: "",
     companyAddress: "",
@@ -2238,13 +1391,15 @@ const getPositionName = computed(() => {
   );
   return pos?.title || employee.value?.position || "—";
 });
-const getEmploymentTypeLabel = (type) =>
-  ({
-    "full-time": "Full Time",
-    "part-time": "Part Time",
-    contract: "Contract",
-    intern: "Intern",
-  })[type] || type;
+const getEmploymentTypeLabel = (type) => {
+  const labels = {
+    "full-time": t('employee.fullTime'),
+    "part-time": t('employee.partTime'),
+    contract: t('employee.contract'),
+    intern: t('employee.intern'),
+  };
+  return labels[type] || type;
+};
 const getAvatarUrl = (name) =>
   `https://ui-avatars.com/api/?background=6366f1&color=fff&bold=true&size=120&name=${encodeURIComponent(name || "User")}`;
 const formatDate = (date) => (date ? new Date(date).toLocaleDateString() : "—");
@@ -2254,23 +1409,19 @@ const formatCurrency = (val) =>
 const getDocumentUrl = (type) =>
   employee.value?.documents?.[type]?.fileUrl || null;
 
-// Replace the existing getDocumentWithIndex function
 const getDocumentWithIndex = (type, index) => {
   const docs = employee.value?.documents;
   if (!docs) return null;
 
-  // Check for indexed key format (e.g., 'child_profile_0', 'child_birth_certificate_0')
   const indexedKey = `${type}_${index}`;
   if (docs[indexedKey]) {
     return docs[indexedKey]?.fileUrl || null;
   }
 
-  // For non-indexed documents (like national_id, cv, degree)
   if (docs[type] && !Array.isArray(docs[type])) {
     return docs[type]?.fileUrl || null;
   }
 
-  // For array documents (like guarantee_letters)
   if (docs[type] && Array.isArray(docs[type])) {
     const doc = docs[type].find((d) => d.index === index);
     return doc?.fileUrl || null;
@@ -2300,123 +1451,379 @@ const loadEmployeeData = async () => {
     if (result.success && result.data) {
       employee.value = result.data;
       const emp = result.data;
+      
+      // Helper function to safely get parentsInfo
+      const getParentsInfo = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            father: { fullName: "", monthlyIncome: null, job: "" },
+            mother: { fullName: "", monthlyIncome: null, job: "" },
+            financialSupport: "",
+            otherSupport: ""
+          };
+        }
+        return {
+          father: {
+            fullName: data.father?.fullName || "",
+            monthlyIncome: data.father?.monthlyIncome || null,
+            job: data.father?.job || ""
+          },
+          mother: {
+            fullName: data.mother?.fullName || "",
+            monthlyIncome: data.mother?.monthlyIncome || null,
+            job: data.mother?.job || ""
+          },
+          financialSupport: data.financialSupport || "",
+          otherSupport: data.otherSupport || ""
+        };
+      };
+      
+      // Helper function for spouseInfo
+      const getSpouseInfo = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            fullName: "",
+            tinNumber: "",
+            dateOfBirthEC: "",
+            jobStatus: "",
+            companyName: "",
+            companyAddress: "",
+          };
+        }
+        return {
+          fullName: data.fullName || "",
+          tinNumber: data.tinNumber || "",
+          dateOfBirthEC: data.dateOfBirthEC || "",
+          jobStatus: data.jobStatus || "",
+          companyName: data.companyName || "",
+          companyAddress: data.companyAddress || "",
+        };
+      };
+      
+      // Helper function for bankAccount
+      const getBankAccount = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            bankName: "",
+            accountNumber: "",
+            accountHolderName: "",
+            branch: "",
+          };
+        }
+        return {
+          bankName: data.bankName || "",
+          accountNumber: data.accountNumber || "",
+          accountHolderName: data.accountHolderName || "",
+          branch: data.branch || "",
+        };
+      };
+      
+      // Helper function for emergencyContact
+      const getEmergencyContact = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            name: "",
+            relationship: "",
+            phone: "",
+            alternatePhone: "",
+          };
+        }
+        return {
+          name: data.name || "",
+          relationship: data.relationship || "",
+          phone: data.phone || "",
+          alternatePhone: data.alternatePhone || "",
+        };
+      };
+      
+      // Helper function for emergencyContactAddress
+      const getEmergencyContactAddress = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            city: "",
+            subcity: "",
+            district: "",
+            kebele: "",
+          };
+        }
+        return {
+          city: data.city || "",
+          subcity: data.subcity || "",
+          district: data.district || "",
+          kebele: data.kebele || "",
+        };
+      };
+      
+      // Helper function for currentAddress
+      const getCurrentAddress = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            region: "",
+            subcity: "",
+            kebele: "",
+            district: "",
+            poBox: "",
+            houseNumber: "",
+          };
+        }
+        return {
+          region: data.region || "",
+          subcity: data.subcity || "",
+          kebele: data.kebele || "",
+          district: data.district || "",
+          poBox: data.poBox || "",
+          houseNumber: data.houseNumber || "",
+        };
+      };
+      
+      // Helper function for permanentAddress
+      const getPermanentAddress = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            region: "",
+            subcity: "",
+            kebele: "",
+            district: "",
+            poBox: "",
+            houseNumber: "",
+          };
+        }
+        return {
+          region: data.region || "",
+          subcity: data.subcity || "",
+          kebele: data.kebele || "",
+          district: data.district || "",
+          poBox: data.poBox || "",
+          houseNumber: data.houseNumber || "",
+        };
+      };
+      
+      // Helper function for birthPlace
+      const getBirthPlace = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            region: "",
+            city: "",
+            subcity: "",
+            district: "",
+          };
+        }
+        return {
+          region: data.region || "",
+          city: data.city || "",
+          subcity: data.subcity || "",
+          district: data.district || "",
+        };
+      };
+      
+      // Helper function for currentCompany
+      const getCurrentCompany = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return {
+            companyName: "",
+            companyTin: "",
+            companyPhone: "",
+            companyEmail: "",
+            companyAddress: "",
+            poBox: "",
+            website: "",
+          };
+        }
+        return {
+          companyName: data.companyName || "",
+          companyTin: data.companyTin || "",
+          companyPhone: data.companyPhone || "",
+          companyEmail: data.companyEmail || "",
+          companyAddress: data.companyAddress || "",
+          poBox: data.poBox || "",
+          website: data.website || "",
+        };
+      };
+      
+      // Helper function for nationalityAcquisition
+      const getNationalityAcquisition = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return { type: "by_birth" };
+        }
+        return {
+          type: data.type || "by_birth",
+        };
+      };
+      
+      // Helper function for healthInfo
+      const getHealthInfo = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return { hasPhysicalInjury: false, injuryDescription: "" };
+        }
+        return {
+          hasPhysicalInjury: data.hasPhysicalInjury || false,
+          injuryDescription: data.injuryDescription || "",
+        };
+      };
+      
+      // Helper function for legalInfo
+      const getLegalInfo = (data) => {
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+          return { hasCriminalRecord: false, criminalRecordDescription: "" };
+        }
+        return {
+          hasCriminalRecord: data.hasCriminalRecord || false,
+          criminalRecordDescription: data.criminalRecordDescription || "",
+        };
+      };
+      
+      // Helper function for children
+      const getChildren = (data) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return [];
+        }
+        return data.map(child => ({
+          name: child.name || "",
+          dateOfBirthEC: child.dateOfBirthEC || "",
+          hasMedicalCondition: child.hasMedicalCondition || false,
+          isAdopted: child.isAdopted || false,
+          medicalConditionNotes: child.medicalConditionNotes || "",
+        }));
+      };
+      
+      // Helper function for education
+      const getEducation = (data) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return [];
+        }
+        return data.map(edu => ({
+          level: edu.level || "",
+          institutionName: edu.institutionName || "",
+          institutionAddress: edu.institutionAddress || "",
+          startDateEC: edu.startDateEC || "",
+          endDateEC: edu.endDateEC || "",
+          isCurrent: edu.isCurrent || false,
+        }));
+      };
+      
+      // Helper function for training
+      const getTraining = (data) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return [];
+        }
+        return data.map(train => ({
+          trainingName: train.trainingName || "",
+          institutionName: train.institutionName || "",
+          institutionAddress: train.institutionAddress || "",
+          startDateEC: train.startDateEC || "",
+          endDateEC: train.endDateEC || "",
+        }));
+      };
+      
+      // Helper function for workExperience
+      const getWorkExperience = (data) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return [];
+        }
+        return data.map(work => ({
+          position: work.position || "",
+          companyName: work.companyName || "",
+          companyAddress: work.companyAddress || "",
+          startDateEC: work.startDateEC || "",
+          endDateEC: work.endDateEC || "",
+          monthlySalary: work.monthlySalary || "",
+          salaryWhenLeft: work.salaryWhenLeft || "",
+          terminationReason: work.terminationReason || "",
+          providentFundSubmitted: work.providentFundSubmitted || "no",
+          providentFundStartDateEC: work.providentFundStartDateEC || "",
+        }));
+      };
+      
+      // Helper function for guaranteeInfo
+      const getGuaranteeInfo = (data) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          return [];
+        }
+        return data.map(guar => ({
+          guarantorName: guar.guarantorName || "",
+          guarantorJob: guar.guarantorJob || "",
+          guarantorOfficeName: guar.guarantorOfficeName || "",
+          guarantorOfficeAddress: guar.guarantorOfficeAddress || "",
+          guaranteeLetterNo: guar.guaranteeLetterNo || "",
+          guaranteeLetterDateEC: guar.guaranteeLetterDateEC || "",
+          sdtLetterNo: guar.sdtLetterNo || "",
+          sdtLetterDateEC: guar.sdtLetterDateEC || "",
+          confirmedDateEC: guar.confirmedDateEC || "",
+        }));
+      };
+
       form.value = {
+        // Basic Info
         firstName: emp.firstName || "",
         lastName: emp.lastName || "",
         middleName: emp.middleName || "",
-        email: emp.email || "",
+        email: emp.email || emp.workEmail || "",
         personalEmail: emp.personalEmail || "",
-        phone: emp.phone || "",
-        dob: emp.dob ? emp.dob.split("T")[0] : "",
+        phone: emp.phone || emp.phoneNumber || "",
+        
+        // ========== EC DATES ONLY ==========
+        hireDateEC: emp.hireDateEC || "",
+        dateOfBirthEC: emp.dateOfBirthEC || "",
+        confirmationDateEC: emp.confirmationDateEC || "",
+        terminationDateEC: emp.terminationDateEC || "",
+        
+        // Personal Details
         gender: emp.gender || "",
         maritalStatus: emp.maritalStatus || "",
         nationality: emp.nationality || "",
         nationalId: emp.nationalId || "",
+        
+        // Employment
         departmentId: emp.departmentId || null,
         positionId: emp.positionId || null,
         managerId: emp.managerId || null,
         employmentType: emp.employmentType || "",
         status: emp.status || "active",
-        hireDate: emp.hireDate ? emp.hireDate.split("T")[0] : "",
-        confirmationDate: emp.confirmationDate
-          ? emp.confirmationDate.split("T")[0]
-          : "",
-        terminationDate: emp.terminationDate
-          ? emp.terminationDate.split("T")[0]
-          : "",
         workLocation: emp.workLocation || "",
         shiftType: emp.shiftType || "day",
-        basicSalary: emp.basicSalary || null,
+        
+        // Salary & Allowances
+        basicSalary: emp.basicSalary || emp.salary || null,
         housingAllowance: emp.housingAllowance || 0,
         positionAllowance: emp.positionAllowance || 0,
         transportAllowance: emp.transportAllowance || 0,
         mobileAllowance: emp.mobileAllowance || 0,
-        birthPlace: emp.birthPlace || {
-          region: "",
-          city: "",
-          subcity: "",
-          district: "",
-        },
-        currentCompany: emp.currentCompany || {
-          companyName: "",
-          companyTin: "",
-          companyPhone: "",
-          companyEmail: "",
-          companyAddress: "",
-          poBox: "",
-          website: "",
-        },
-        currentAddress: emp.currentAddress || {
-          region: "",
-          subcity: "",
-          kebele: "",
-          district: "",
-          poBox: "",
-          houseNumber: "",
-        },
-        permanentAddress: emp.permanentAddress || {
-          region: "",
-          subcity: "",
-          kebele: "",
-          district: "",
-          poBox: "",
-          houseNumber: "",
-        },
-        emergencyContact: emp.emergencyContact || {
-          name: "",
-          relationship: "",
-          phone: "",
-          alternatePhone: "",
-        },
-        emergencyContactAddress: emp.emergencyContactAddress || {
-          city: "",
-          subcity: "",
-          district: "",
-          kebele: "",
-        },
-        bankAccount: emp.bankAccount || {
-          bankName: "",
-          accountNumber: "",
-          accountHolderName: "",
-          branch: "",
-        },
-        spouseInfo: emp.spouseInfo || {
-          fullName: "",
-          tinNumber: "",
-          dateOfBirth: "",
-          jobStatus: "",
-          companyName: "",
-          companyAddress: "",
-        },
-        children: emp.children || [],
-        parentsInfo: emp.parentsInfo || {
-          father: { fullName: "", monthlyIncome: null, job: "" },
-          mother: { fullName: "", monthlyIncome: null, job: "" },
-          financialSupport: "",
-          otherSupport: "",
-        },
-        education: emp.education || [],
-        training: emp.training || [],
-        workExperience: emp.workExperience || [],
-        guaranteeInfo: emp.guaranteeInfo || [],
+        
+        // Addresses
+        birthPlace: getBirthPlace(emp.birthPlace),
+        currentCompany: getCurrentCompany(emp.currentCompany),
+        currentAddress: getCurrentAddress(emp.currentAddress),
+        permanentAddress: getPermanentAddress(emp.permanentAddress),
+        emergencyContact: getEmergencyContact(emp.emergencyContact),
+        emergencyContactAddress: getEmergencyContactAddress(emp.emergencyContactAddress),
+        bankAccount: getBankAccount(emp.bankAccount),
+        
+        // Family
+        spouseInfo: getSpouseInfo(emp.spouseInfo),
+        children: getChildren(emp.children),
+        parentsInfo: getParentsInfo(emp.parentsInfo),
+        
+        // Education & Training
+        education: getEducation(emp.education),
+        training: getTraining(emp.training),
+        workExperience: getWorkExperience(emp.workExperience),
+        guaranteeInfo: getGuaranteeInfo(emp.guaranteeInfo),
+        
+        // Skills
         languageSkills: emp.languageSkills || [],
         otherSkills: emp.otherSkills || "",
-        nationalityAcquisition: emp.nationalityAcquisition || {
-          type: "by_birth",
-        },
-        healthInfo: emp.healthInfo || {
-          hasPhysicalInjury: false,
-          injuryDescription: "",
-        },
-        legalInfo: emp.legalInfo || {
-          hasCriminalRecord: false,
-          criminalRecordDescription: "",
-        },
+        
+        // Other
+        nationalityAcquisition: getNationalityAcquisition(emp.nationalityAcquisition),
+        healthInfo: getHealthInfo(emp.healthInfo),
+        legalInfo: getLegalInfo(emp.legalInfo),
       };
+    } else {
+      addToast(t('messages.loadError'), "error");
     }
   } catch (error) {
-    console.error(error);
-    addToast("Failed to load employee", "error");
+    console.error('Error loading employee:', error);
+    addToast(t('messages.loadError'), "error");
   } finally {
     loading.value = false;
   }
@@ -2446,8 +1853,8 @@ const handleProfileUpload = async (e) => {
   reader.onload = (ev) => (profilePreview.value = ev.target.result);
   reader.readAsDataURL(file);
   const res = await EmployeesService.uploadProfilePicture(employeeId, file);
-  if (res.success) addToast("Profile picture updated", "success");
-  else addToast("Upload failed", "error");
+  if (res.success) addToast(t('messages.uploadSuccess'), "success");
+  else addToast(t('messages.uploadError'), "error");
 };
 
 // National ID
@@ -2457,7 +1864,7 @@ const handleNationalIdSelect = (e) => {
   const file = e.target.files[0];
   if (file) {
     nationalIdFile.value = file;
-    addToast(`National ID file selected: ${file.name}`, "success");
+    addToast(t('employee.fileSelected') + `: ${file.name}`, "success");
   }
 };
 
@@ -2468,7 +1875,7 @@ const handleNaturalizationSelect = (e) => {
   const file = e.target.files[0];
   if (file) {
     nationalityDocFile.value = file;
-    addToast(`Naturalization certificate selected: ${file.name}`, "success");
+    addToast(t('employee.fileSelected') + `: ${file.name}`, "success");
   }
 };
 
@@ -2482,16 +1889,15 @@ const handleSpouseProfileUpload = async (e) => {
   const reader = new FileReader();
   reader.onload = (ev) => (spouseProfilePreview.value = ev.target.result);
   reader.readAsDataURL(file);
-  // Upload with index 0 for spouse profile
   const res = await EmployeesService.uploadEmployeeDocument(
     employeeId,
     file,
     "spouse_profile",
-    { index: 0 }  // Add index parameter
+    { index: 0 }
   );
   if (res.success) {
-    addToast("Spouse profile updated", "success");
-    await refreshEmployeeData(); // Refresh to get the new URL
+    addToast(t('messages.uploadSuccess'), "success");
+    await refreshEmployeeData();
   }
 };
 const triggerMarriageCertUpload = () => marriageCertInput.value.click();
@@ -2502,10 +1908,10 @@ const handleMarriageCertUpload = async (e) => {
     employeeId,
     file,
     "marriage_certificate",
-    { index: 0 }  // Add index parameter
+    { index: 0 }
   );
   if (res.success) {
-    addToast("Marriage certificate uploaded", "success");
+    addToast(t('messages.uploadSuccess'), "success");
     await refreshEmployeeData();
   }
 };
@@ -2514,15 +1920,13 @@ const handleMarriageCertUpload = async (e) => {
 const addChild = () =>
   form.value.children.push({
     name: "",
-    dateOfBirth: "",
+    dateOfBirthEC: "",
     hasMedicalCondition: false,
     isAdopted: false,
     medicalConditionNotes: "",
   });
 const removeChild = (idx) => form.value.children.splice(idx, 1);
-const childDocInput = ref(null);
-const childProfileInput = ref(null);
-// Update triggerChildProfileUpload
+
 const triggerChildProfileUpload = (idx) => {
   const inputId = `child-profile-input-${idx}`
   let input = document.getElementById(inputId)
@@ -2540,49 +1944,41 @@ const triggerChildProfileUpload = (idx) => {
   input.click()
 }
 
-// Update handleChildProfileUpload
 const handleChildProfileUpload = async (e, idx) => {
   const file = e.target.files[0]
   if (!file) return
   
-  // Validate file type
   if (!file.type.startsWith('image/')) {
-    addToast('Please select an image file (JPEG, PNG, GIF, WEBP)', 'error')
+    addToast(t('upload.error'), 'error')
     return
   }
   
-  // Validate file size (max 5MB)
   if (file.size > 5 * 1024 * 1024) {
-    addToast('Image size should be less than 5MB', 'error')
+    addToast(t('upload.error'), 'error')
     return
   }
   
-  // Show preview immediately
   const reader = new FileReader()
   reader.onload = (ev) => {
     childProfilePreviews.value[idx] = ev.target.result
   }
   reader.readAsDataURL(file)
   
-  // Upload with index - this will create child_profile_0, child_profile_1, etc.
   const res = await EmployeesService.uploadEmployeeDocument(employeeId, file, 'child_profile', { index: idx })
   if (res.success) {
-    addToast(`Profile picture for ${form.value.children[idx]?.name || `Child ${idx + 1}`} updated`, 'success')
-    // Refresh to get the new document URL
+    addToast(t('messages.uploadSuccess'), 'success')
     await refreshEmployeeData()
-    // Update the preview with the new URL from the refreshed data
     const newUrl = getDocumentWithIndex('child_profile', idx)
     if (newUrl) {
       childProfilePreviews.value[idx] = newUrl
     }
-    e.target.value = '' // Clear the file input
+    e.target.value = ''
   } else {
-    addToast('Upload failed', 'error')
+    addToast(t('messages.uploadError'), 'error')
     delete childProfilePreviews.value[idx]
   }
 }
 
-// Update triggerChildDocUpload
 const triggerChildDocUpload = (idx, type) => {
   currentChildData = { idx, type }
   const inputId = `child-doc-input-${idx}-${type}`
@@ -2601,7 +1997,6 @@ const triggerChildDocUpload = (idx, type) => {
   input.click()
 }
 
-// Update handleChildDocUpload
 const handleChildDocUpload = async (e) => {
   const file = e.target.files[0]
   if (!file || !currentChildData) return
@@ -2623,32 +2018,22 @@ const handleChildDocUpload = async (e) => {
       return
   }
   
-  // Upload with index to create indexed documents
   const res = await EmployeesService.uploadEmployeeDocument(employeeId, file, documentType, { index: idx })
   if (res.success) {
-    const childName = form.value.children[idx]?.name || `Child ${idx + 1}`
-    addToast(`${documentType.replace(/_/g, ' ')} for ${childName} uploaded`, 'success')
+    addToast(t('messages.uploadSuccess'), 'success')
     await refreshEmployeeData()
   } else {
-    addToast('Upload failed', 'error')
+    addToast(t('messages.uploadError'), 'error')
   }
   e.target.value = ''
   currentChildData = null
 }
 
-// Add refreshEmployeeData function
 const refreshEmployeeData = async () => {
   try {
     const result = await EmployeesService.getEmployeeById(employeeId)
     if (result.success && result.data) {
       employee.value = result.data
-      // Clear previews that are now loaded from the refreshed data
-      Object.keys(childProfilePreviews.value).forEach(key => {
-        const newUrl = getDocumentWithIndex('child_profile', parseInt(key))
-        if (newUrl && childProfilePreviews.value[key] !== newUrl) {
-          // Preview will be updated when needed
-        }
-      })
     }
   } catch (error) {
     console.error('Error refreshing employee data:', error)
@@ -2662,8 +2047,8 @@ const addEducation = () =>
     level: "",
     institutionName: "",
     institutionAddress: "",
-    startDate: "",
-    endDate: "",
+    startDateEC: "",
+    endDateEC: "",
     isCurrent: false,
   });
 const removeEducation = (idx) => form.value.education.splice(idx, 1);
@@ -2680,7 +2065,7 @@ const handleEducationUpload = async (e) => {
     "education_certificate",
     { index: currentEducationIndex },
   );
-  if (res.success) addToast("Education certificate uploaded", "success");
+  if (res.success) addToast(t('messages.uploadSuccess'), "success");
   currentEducationIndex = null;
 };
 
@@ -2691,8 +2076,8 @@ const addTraining = () =>
     trainingName: "",
     institutionName: "",
     institutionAddress: "",
-    startDate: "",
-    endDate: "",
+    startDateEC: "",
+    endDateEC: "",
   });
 const removeTraining = (idx) => form.value.training.splice(idx, 1);
 const triggerTrainingUpload = (idx) => {
@@ -2708,7 +2093,7 @@ const handleTrainingUpload = async (e) => {
     "training_certificate",
     { index: currentTrainingIndex },
   );
-  if (res.success) addToast("Training certificate uploaded", "success");
+  if (res.success) addToast(t('messages.uploadSuccess'), "success");
   currentTrainingIndex = null;
 };
 
@@ -2719,13 +2104,13 @@ const addWork = () =>
     position: "",
     companyName: "",
     companyAddress: "",
-    startDate: "",
-    endDate: "",
+    startDateEC: "",
+    endDateEC: "",
     monthlySalary: "",
     salaryWhenLeft: "",
     terminationReason: "",
     providentFundSubmitted: "no",
-    providentFundStartDate: "",
+    providentFundStartDateEC: "",
   });
 const removeWork = (idx) => form.value.workExperience.splice(idx, 1);
 const triggerWorkUpload = (idx) => {
@@ -2741,7 +2126,7 @@ const handleWorkUpload = async (e) => {
     "experience_letter",
     { index: currentWorkIndex },
   );
-  if (res.success) addToast("Experience letter uploaded", "success");
+  if (res.success) addToast(t('messages.uploadSuccess'), "success");
   currentWorkIndex = null;
 };
 
@@ -2754,10 +2139,10 @@ const addGuarantor = () =>
     guarantorOfficeName: "",
     guarantorOfficeAddress: "",
     guaranteeLetterNo: "",
-    guaranteeLetterDate: "",
+    guaranteeLetterDateEC: "",
     sdtLetterNo: "",
-    sdtLetterDate: "",
-    confirmedDate: "",
+    sdtLetterDateEC: "",
+    confirmedDateEC: "",
   });
 const removeGuarantor = (idx) => form.value.guaranteeInfo.splice(idx, 1);
 const triggerGuaranteeUpload = (idx, type) => {
@@ -2774,7 +2159,7 @@ const handleGuaranteeDocUpload = async (e) => {
     types[currentGuaranteeData.type],
     { index: currentGuaranteeData.idx },
   );
-  if (res.success) addToast("Guarantee document uploaded", "success");
+  if (res.success) addToast(t('messages.uploadSuccess'), "success");
   currentGuaranteeData = null;
 };
 
@@ -2783,7 +2168,7 @@ const addLanguage = () =>
   form.value.languageSkills.push({ language: "", proficiency: "" });
 const removeLanguage = (idx) => form.value.languageSkills.splice(idx, 1);
 
-// Clean data function - removes empty strings and nulls
+// Clean data function
 const cleanData = (data) => {
   if (data === null || data === undefined) return null;
   if (typeof data === "string") {
@@ -2798,7 +2183,6 @@ const cleanData = (data) => {
     for (const [key, value] of Object.entries(data)) {
       const cleanedValue = cleanData(value);
       if (cleanedValue !== null && cleanedValue !== undefined) {
-        // Don't include empty objects
         if (
           typeof cleanedValue === "object" &&
           Object.keys(cleanedValue).length === 0
@@ -2816,7 +2200,6 @@ const cleanData = (data) => {
 const saveEmployee = async () => {
   saving.value = true;
   try {
-    // Upload files first if any
     if (nationalIdFile.value) {
       await EmployeesService.uploadEmployeeDocument(
         employeeId,
@@ -2832,7 +2215,6 @@ const saveEmployee = async () => {
       );
     }
 
-    // Prepare update data - only include fields that have values
     const updateData = {
       firstName: form.value.firstName || undefined,
       lastName: form.value.lastName || undefined,
@@ -2840,7 +2222,6 @@ const saveEmployee = async () => {
       email: form.value.email || undefined,
       personalEmail: form.value.personalEmail || undefined,
       phone: form.value.phone || undefined,
-      dob: form.value.dob || undefined,
       gender: form.value.gender || undefined,
       maritalStatus: form.value.maritalStatus || undefined,
       nationality: form.value.nationality || undefined,
@@ -2850,9 +2231,6 @@ const saveEmployee = async () => {
       managerId: form.value.managerId,
       employmentType: form.value.employmentType || undefined,
       status: form.value.status,
-      hireDate: form.value.hireDate || undefined,
-      confirmationDate: form.value.confirmationDate || undefined,
-      terminationDate: form.value.terminationDate || undefined,
       workLocation: form.value.workLocation || undefined,
       shiftType: form.value.shiftType,
       basicSalary: form.value.basicSalary
@@ -2870,9 +2248,14 @@ const saveEmployee = async () => {
       mobileAllowance: form.value.mobileAllowance
         ? Number(form.value.mobileAllowance)
         : 0,
+      
+      // ========== EC DATES ==========
+      hireDateEC: form.value.hireDateEC || undefined,
+      dateOfBirthEC: form.value.dateOfBirthEC || undefined,
+      confirmationDateEC: form.value.confirmationDateEC || undefined,
+      terminationDateEC: form.value.terminationDateEC || undefined,
     };
 
-    // Add nested objects only if they have content
     if (
       form.value.birthPlace &&
       Object.values(form.value.birthPlace).some((v) => v)
@@ -2924,7 +2307,6 @@ const saveEmployee = async () => {
       updateData.spouseInfo = cleanData(form.value.spouseInfo);
     }
 
-    // Arrays - only include if they have items
     if (form.value.children && form.value.children.length > 0) {
       updateData.children = form.value.children
         .map((child) => cleanData(child))
@@ -2978,29 +2360,26 @@ const saveEmployee = async () => {
       updateData.legalInfo = cleanData(form.value.legalInfo);
     }
 
-    // Remove undefined values
     Object.keys(updateData).forEach((key) => {
       if (updateData[key] === undefined || updateData[key] === null) {
         delete updateData[key];
       }
     });
 
-    console.log("Sending update data:", updateData);
-
     const response = await EmployeesService.updateEmployee(
       employeeId,
       updateData,
     );
     if (response.success) {
-      addToast("Employee updated successfully!", "success");
+      addToast(t('messages.saveSuccess'), "success");
       setTimeout(() => router.push(`/employees/${employeeId}`), 1500);
     } else {
-      addToast(response.error || "Update failed", "error");
+      addToast(response.error || t('messages.saveError'), "error");
     }
   } catch (error) {
     console.error("Save error:", error);
     const errorMessage =
-      error.response?.data?.message || error.message || "Update failed";
+      error.response?.data?.message || error.message || t('messages.saveError');
     addToast(errorMessage, "error");
   } finally {
     saving.value = false;
@@ -3479,6 +2858,41 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* EC Date Input Styles */
+.ec-date-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.2s;
+  background: white;
+}
+
+.ec-date-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.ec-hint {
+  display: block;
+  color: #6366f1;
+  font-size: 11px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+/* For child date inputs */
+.child-dob-input.ec-date-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
 }
 
 /* Main container styles */

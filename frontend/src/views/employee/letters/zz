@@ -1,0 +1,1136 @@
+<template>
+  <div class="form-container">
+    <!-- Floating Action Buttons -->
+    <div class="action-buttons">
+      <button class="btn-print" @click="printForm" title="ማተም">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+      </button>
+      <button class="btn-settings" @click="showSettings = true" title="ቅንብሮች">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Main Form -->
+    <div class="form-paper" v-if="selectedEmployee">
+      <!-- HEADER SECTION -->
+      <div class="form-header">
+        <div class="company-name">ሱፐር ደብል ‹‹ቲ›› ጄኔራል ትሬዲንግ ኃ/የተ/የግ/ማህበር</div>
+        <div class="header-line"></div>
+        <div class="form-title">የሰራተኛ የህይወት ታሪክ ቅፅ</div>
+      </div>
+
+      <!-- PHOTO SECTION -->
+      <div class="photo-section">
+        <div class="photo-box">
+          <img :src="selectedEmployee.profilePictureUrl" :alt="selectedEmployee.fullName" @error="handleImageError" />
+        </div>
+        <div class="photo-label">የሰራተኛ ፎቶ</div>
+      </div>
+
+      <!-- BASIC INFO SECTION -->
+      <div class="form-section">
+        <div class="form-row-three">
+          <div class="form-field">
+            <span class="field-label">የሰራተኛው/ዋ ስም</span>
+            <div class="field-value">{{ selectedEmployee.fullName }}</div>
+          </div>
+          <div class="form-field">
+            <span class="field-label">የአባት ስም</span>
+            <div class="field-value">—</div>
+          </div>
+          <div class="form-field">
+            <span class="field-label">የአያት ስም</span>
+            <div class="field-value">—</div>
+          </div>
+        </div>
+
+        <!-- Birth Place -->
+        <div class="form-title-small">የትውልድ ስፍራ፡-</div>
+        <div class="form-row-four">
+          <div class="form-field-small">
+            <span class="field-label-small">ክልል</span>
+            <div class="field-value">{{ selectedEmployee.birthPlace?.region || '—' }}</div>
+          </div>
+          <div class="form-field-small">
+            <span class="field-label-small">ከተማ</span>
+            <div class="field-value">{{ selectedEmployee.birthPlace?.city || '—' }}</div>
+          </div>
+          <div class="form-field-small">
+            <span class="field-label-small">ቀበሌ/ወረዳ</span>
+            <div class="field-value">{{ selectedEmployee.birthPlace?.district || '—' }}</div>
+          </div>
+        </div>
+
+        <!-- Birth Date -->
+        <div class="form-title-small">የትውልድ ቀን</div>
+        <div class="form-row-three">
+          <div class="form-field-date">
+            <span class="field-label-small">ቀን</span>
+            <div class="field-value">—</div>
+          </div>
+          <div class="form-field-date">
+            <span class="field-label-small">ወር</span>
+            <div class="field-value">—</div>
+          </div>
+          <div class="form-field-date">
+            <span class="field-label-small">ዓ.ም</span>
+            <div class="field-value">{{ extractYearEC(selectedEmployee.dateOfBirthEC) }}</div>
+          </div>
+        </div>
+
+        <!-- Residential Address -->
+        <div class="form-title-small">የመኖሪያ አድራሻ፡-</div>
+        <div class="form-row-four">
+          <div class="form-field-small">
+            <span class="field-label-small">ክልል</span>
+            <div class="field-value">{{ selectedEmployee.currentAddress?.region || '—' }}</div>
+          </div>
+          <div class="form-field-small">
+            <span class="field-label-small">ከተማ</span>
+            <div class="field-value">{{ selectedEmployee.currentAddress?.subcity || '—' }}</div>
+          </div>
+          <div class="form-field-small">
+            <span class="field-label-small">ወረዳ</span>
+            <div class="field-value">{{ selectedEmployee.currentAddress?.district || '—' }}</div>
+          </div>
+          <div class="form-field-small">
+            <span class="field-label-small">ቤት ቁ</span>
+            <div class="field-value">{{ selectedEmployee.currentAddress?.houseNumber || '—' }}</div>
+          </div>
+        </div>
+
+        <!-- Contact Info -->
+        <div class="form-title-small">ስልክ ቁጥር፡-</div>
+        <div class="form-row-two">
+          <div class="form-field">
+            <span class="field-label">1) ተንሳፋፊ</span>
+            <div class="field-value">{{ selectedEmployee.phone || '—' }}</div>
+          </div>
+          <div class="form-field">
+            <span class="field-label">2) ሌላ</span>
+            <div class="field-value">—</div>
+          </div>
+        </div>
+
+        <div class="form-title-small">ኢሜይል</div>
+        <div class="field-line">{{ selectedEmployee.workEmail || selectedEmployee.email || '—' }}</div>
+
+        <!-- Mother's Name -->
+        <div class="form-title-small">የእናት ሙሉ ስም፡-</div>
+        <div class="field-line">—</div>
+        <div class="note-small">* የመታወቂያዎትን ኮፒ ከዚህ ቅጽ ጋር ያያይዙ</div>
+
+        <!-- Marital Status -->
+        <div class="form-title-small">የጋብቻ ሁኔታ፡-</div>
+        <div class="checkbox-group">
+          <label class="checkbox-item">
+            <input type="radio" name="marital" value="married" />
+            <span>ያገባ/ች</span>
+          </label>
+          <label class="checkbox-item">
+            <input type="radio" name="marital" value="unmarried" />
+            <span>ያላገባ/ች</span>
+          </label>
+        </div>
+
+        <!-- Spouse Info -->
+        <div v-if="selectedEmployee.spouseInfo" class="form-title-small">
+          የሚስት/ባል ሙሉ ስም፡-
+        </div>
+        <div v-if="selectedEmployee.spouseInfo" class="field-line">
+          {{ selectedEmployee.spouseInfo.fullName || '—' }}
+        </div>
+
+        <!-- Children -->
+        <div class="form-title-small">ልጆች ካሉ ስም፡-</div>
+        <div v-if="selectedEmployee.children && selectedEmployee.children.length">
+          <div v-for="(child, idx) in selectedEmployee.children" :key="idx" class="field-line">
+            {{ idx + 1 }}. {{ child.name }}
+          </div>
+        </div>
+        <div v-else class="field-line">—</div>
+
+        <!-- Emergency Contact -->
+        <div class="form-title-small">በአደጋ ጊዜ ተጠሪ፡-</div>
+        <div v-if="selectedEmployee.emergencyContact">
+          <div class="form-row-two">
+            <div class="form-field">
+              <span class="field-label">ሙሉ ስም</span>
+              <div class="field-value">{{ selectedEmployee.emergencyContact.name || '—' }}</div>
+            </div>
+            <div class="form-field">
+              <span class="field-label">ስልክ</span>
+              <div class="field-value">{{ selectedEmployee.emergencyContact.phone || '—' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EDUCATION TABLE -->
+      <div class="table-section" v-if="selectedEmployee.education && selectedEmployee.education.length">
+        <div class="table-title">
+          የትምህርት ደረጃ (ከዚህ ቀደም ማስረጃዎትን ያላቀረቡ ከሆነ ኮፒውን ከዚህ ቅጽ ጋር ያያይዙ)
+        </div>
+        <table class="bio-table">
+          <thead>
+            <tr>
+              <th>ደረጃ</th>
+              <th>የተቋሙ ስም</th>
+              <th>ከ ዓ.ም - እስከ ዓ.ም</th>
+              <th>ቦታ</th>
+              <th>የተገኘ ማስረጃ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(edu, idx) in selectedEmployee.education" :key="idx">
+              <td>{{ edu.level }}</td>
+              <td>{{ edu.institutionName }}</td>
+              <td>{{ edu.startDate }} - {{ edu.endDate }}</td>
+              <td>{{ edu.field || '—' }}</td>
+              <td>{{ edu.level }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- WORK EXPERIENCE TABLE -->
+      <div class="table-section" v-if="selectedEmployee.workExperience && selectedEmployee.workExperience.length">
+        <div class="table-title">
+          ከዚህ ቀደም ያለ የስራ ልምድ (ከዚህ ቀደም ማስረጃዎትን ያላቀረቡ ከሆነ ኮፒውን ከዚህ ቅጽ ጋር ያያይዙ)
+        </div>
+        <table class="bio-table">
+          <thead>
+            <tr>
+              <th>የስራ መደብ</th>
+              <th>የመስሪያ ቤቱ ስም</th>
+              <th>ከ ዓ.ም - እስከ ዓ.ም</th>
+              <th>ቦታ</th>
+              <th>ደሞዝ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(work, idx) in selectedEmployee.workExperience" :key="idx">
+              <td>{{ work.position }}</td>
+              <td>{{ work.companyName }}</td>
+              <td>{{ work.startDate }} - {{ work.endDate }}</td>
+              <td>—</td>
+              <td>{{ work.monthlySalary }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- LANGUAGE SKILLS TABLE -->
+      <div class="table-section" v-if="selectedEmployee.languageSkills && selectedEmployee.languageSkills.length">
+        <div class="table-title">
+          የቋንቋ ክህሎት/የቋንቋውን ዓይነት በመፃፍ ምልክት ያድርጉ
+        </div>
+        <table class="bio-table language-table">
+          <thead>
+            <tr>
+              <th>ቋንቋዉ</th>
+              <th colspan="3">ማንበብ</th>
+              <th colspan="3">መፃፍ</th>
+              <th colspan="3">መናገር</th>
+              <th colspan="3">መስማት</th>
+            </tr>
+            <tr>
+              <th></th>
+              <th>በጥሩ</th>
+              <th>ጥሩ</th>
+              <th>መጠነኛ</th>
+              <th>በጥሩ</th>
+              <th>ጥሩ</th>
+              <th>መጠነኛ</th>
+              <th>በጥሩ</th>
+              <th>ጥሩ</th>
+              <th>መጠነኛ</th>
+              <th>በጥሩ</th>
+              <th>ጥሩ</th>
+              <th>መጠነኛ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(lang, idx) in selectedEmployee.languageSkills" :key="idx">
+              <td>{{ lang.language }}</td>
+              <td>{{ lang.proficiency === 'fluent' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'advanced' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'intermediate' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'fluent' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'advanced' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'intermediate' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'fluent' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'advanced' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'intermediate' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'fluent' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'advanced' ? '✓' : '' }}</td>
+              <td>{{ lang.proficiency === 'intermediate' ? '✓' : '' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="form-title-small">ተጨማሪ ክህሎቶችን በዝርዝር ይግለፁ</div>
+        <div class="field-line-long">{{ selectedEmployee.otherSkills || '—' }}</div>
+      </div>
+
+      <!-- DECLARATION SECTION -->
+      <div class="declaration-section">
+        <div class="section-header">ማረጋገጫ</div>
+
+        <div class="checkbox-question">
+          <span class="question-text">የአካል ጉዳት አለብዎት?</span>
+          <div class="checkbox-group-inline">
+            <label class="checkbox-small">
+              <input type="radio" name="disability" />
+              <span>አዎን</span>
+            </label>
+            <label class="checkbox-small">
+              <input type="radio" name="disability" checked />
+              <span>የለም</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="question-line">
+          <span class="question-text">ካለ ምን ዓይነት?</span>
+          <div class="answer-line"></div>
+        </div>
+
+        <div class="checkbox-question">
+          <span class="question-text">በማንኛውም ዓይነት ወንጀል ተቀጥተው ያውቃሉ?</span>
+          <div class="checkbox-group-inline">
+            <label class="checkbox-small">
+              <input type="radio" name="crime" />
+              <span>አዎን</span>
+            </label>
+            <label class="checkbox-small">
+              <input type="radio" name="crime" checked />
+              <span>የለም</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Signature Block -->
+        <div class="signature-block">
+          <p class="declaration-text">
+            እኔ ስሜ ከዚህ በታች የተገለጸው በዚህ የሰራተኛ መረጃ መጠየቂያ ቅጽ ላይ ያስፈረኩት መረጃ በሙሉ እውነትና ትክክለኛ መሆኑን እንዲሁም በድርጅቱ ወስጥ ለመቀጠር የመቀጠሪያ የትምህርት ማስረጃ፣ የስራ ልምድ ማስረጃና ሌሎች ማስረጃዎች ትክክለኛ መሆናቸውን ነገር ግን ስህተት ሆነው ቢገኙ በህግ የምንቀጣ መሆኔን በፊርሜ አረጋግጣለሁ።
+          </p>
+
+          <div class="sig-line-group">
+            <div class="sig-line-item">
+              <span class="sig-label">የሰራተኛው ሙሉ ስም</span>
+              <div class="sig-line">{{ selectedEmployee.fullName }}</div>
+            </div>
+            <div class="sig-line-item">
+              <span class="sig-label">ፊርማ</span>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-line-item">
+              <span class="sig-label">ቀን</span>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN SECTION -->
+      <div class="admin-section">
+        <div class="admin-header">በለውሀብት የሚሞላ</div>
+
+        <div class="admin-content">
+          <div class="admin-row">
+            <span class="admin-label">ሰራተኛው/ዋ በድርጅቱ የተቀጠረበት/ችበት ቀን :-</span>
+            <div class="admin-date">
+              <span class="date-box">25</span> ቀን
+              <span class="date-box">04</span> ወር
+              <span class="date-box">2018</span> ዓ.ም
+            </div>
+          </div>
+
+          <div class="admin-fields">
+            <div class="admin-field">
+              <span class="admin-label">የቅጥር ሁኔታ</span>
+              <div class="admin-value">{{ selectedEmployee.employmentType === 'full-time' ? 'ሙሉ ጊዜ' : '—' }}</div>
+            </div>
+            <div class="admin-field">
+              <span class="admin-label">የስራ መደብ</span>
+              <div class="admin-value">{{ selectedEmployee.position }}</div>
+            </div>
+            <div class="admin-field">
+              <span class="admin-label">ወርሃዊ ደሞዝ</span>
+              <div class="admin-value">{{ selectedEmployee.basicSalary }}</div>
+            </div>
+          </div>
+
+          <div class="admin-signature">
+            <div class="admin-sig-line">
+              <span class="admin-label">የሀላፊ ስምና ፊርማ</span>
+              <div class="sig-line-long"></div>
+            </div>
+            <div class="admin-sig-line">
+              <span class="admin-label">ቀን</span>
+              <div class="sig-line-long"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div v-if="showSettings" class="modal-overlay" @click.self="showSettings = false">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2>ሰራተኛ ምረጥ</h2>
+          <button class="modal-close" @click="showSettings = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="search-box">
+            <input
+              v-model="searchTerm"
+              @input="filterEmployees"
+              type="text"
+              placeholder="ሰራተኛ ፈልግ..."
+              class="search-input"
+            />
+          </div>
+          <div class="employee-list">
+            <div
+              v-for="emp in filteredEmployees"
+              :key="emp.id"
+              class="employee-item"
+              @click="selectEmployee(emp)"
+            >
+              <span class="emp-name">{{ emp.fullName }}</span>
+              <span class="emp-id">{{ emp.employeeId }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showSettings = false">ሰርዝ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+
+// Demo data
+const employees = ref([
+  {
+    id: 1,
+    fullName: 'አሸናፊ ንጉሱ ብዙአለም',
+    employeeId: 'SDT-0012',
+    position: 'ኬሚስት',
+    departmentName: 'ላቦራቶሪ',
+    basicSalary: 12000,
+    hireDateEC: '25/04/2018',
+    dateOfBirthEC: '12/10/1978',
+    phone: '0911689799',
+    workEmail: 'ashenafi@superdoublet.com',
+    email: 'ashenafi@superdoublet.com',
+    employmentType: 'full-time',
+    profilePictureUrl: 'https://ui-avatars.com/api/?background=6366f1&color=fff&bold=true&size=200&name=አሸናፊ+ንጉሱ',
+    birthPlace: {
+      region: 'አዲስ አበባ',
+      city: 'አዲስ አበባ',
+      district: 'ወረዳ 08'
+    },
+    currentAddress: {
+      region: 'አዲስ አበባ',
+      subcity: 'ንፋስ ስልክ ላፍቶ',
+      district: 'ወረዳ 12',
+      houseNumber: '1052'
+    },
+    spouseInfo: {
+      fullName: 'ሰላም አሸናፊ',
+      phone: '0912345678'
+    },
+    children: [
+      { name: 'ሳምራ አሸናፊ', dateOfBirth: '10/03/2010' },
+      { name: 'ሳሙኤል አሸናፊ', dateOfBirth: '22/07/2013' }
+    ],
+    emergencyContact: {
+      name: 'ሰላም አሸናፊ',
+      phone: '0912345678'
+    },
+    education: [
+      {
+        level: 'ዲግሪ',
+        institutionName: 'ጂማ ዩንቨርስቲ',
+        startDate: '2016',
+        endDate: '2019',
+        field: 'ኬሚስትሪ'
+      }
+    ],
+    workExperience: [
+      {
+        position: 'ከፍተኛ ኬሚስት',
+        companyName: 'ኢትዮጵያ ፋርማሲ',
+        startDate: '2015',
+        endDate: '2018',
+        monthlySalary: 8000
+      }
+    ],
+    languageSkills: [
+      { language: 'አማርኛ', proficiency: 'native' },
+      { language: 'እንግሊዝኛ', proficiency: 'fluent' },
+      { language: 'ኦሮምኛ', proficiency: 'intermediate' }
+    ],
+    otherSkills: 'ፕሮጀክት አስተዳደር፣ ላቦራቶሪ አስተዳደር'
+  }
+])
+
+const selectedEmployee = ref(employees.value[0])
+const showSettings = ref(false)
+const searchTerm = ref('')
+const filteredEmployees = ref([])
+
+const filterEmployees = () => {
+  const term = searchTerm.value.toLowerCase()
+  if (!term) {
+    filteredEmployees.value = []
+    return
+  }
+  filteredEmployees.value = employees.value.filter(emp =>
+    emp.fullName.toLowerCase().includes(term) || emp.employeeId.toLowerCase().includes(term)
+  )
+}
+
+const selectEmployee = (emp) => {
+  selectedEmployee.value = emp
+  searchTerm.value = ''
+  filteredEmployees.value = []
+  showSettings.value = false
+}
+
+const extractYearEC = (date) => {
+  if (!date) return '—'
+  const parts = date.split('/')
+  return parts[2] || '—'
+}
+
+const handleImageError = (e) => {
+  e.target.src = 'https://ui-avatars.com/api/?background=ccc&color=fff&bold=true&size=200&name=Photo'
+}
+
+const printForm = () => {
+  window.print()
+}
+</script>
+
+<style scoped>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.form-container {
+  font-family: 'Nyala', 'Abyssinica SIL', serif;
+  background: #f5f5f5;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.action-buttons {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 100;
+}
+
+.action-buttons button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s;
+}
+
+.action-buttons button:hover {
+  transform: scale(1.1);
+}
+
+.btn-print {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-settings {
+  background: #f59e0b;
+  color: white;
+}
+
+.form-paper {
+  max-width: 900px;
+  margin: 0 auto;
+  background: white;
+  padding: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* HEADER */
+.form-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #333;
+}
+
+.company-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.header-line {
+  height: 1px;
+  background: #ccc;
+  margin: 8px 0;
+}
+
+.form-title {
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* PHOTO SECTION */
+.photo-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 30px;
+  flex-direction: column;
+  align-items: center;
+}
+
+.photo-box {
+  width: 140px;
+  height: 180px;
+  border: 2px solid #333;
+  overflow: hidden;
+  background: #f0f0f0;
+  margin-bottom: 8px;
+}
+
+.photo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-label {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* FORM SECTIONS */
+.form-section {
+  margin-bottom: 30px;
+}
+
+.form-title-small {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  color: #222;
+}
+
+.form-row-three {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.form-row-four {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-row-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-field-small {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-field-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 80px;
+}
+
+.field-label {
+  font-size: 11px;
+  color: #666;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.field-label-small {
+  font-size: 10px;
+  color: #666;
+  font-weight: 600;
+}
+
+.field-value {
+  font-size: 13px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #999;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.field-line {
+  border-bottom: 1px solid #999;
+  padding: 8px 4px;
+  margin-bottom: 12px;
+  min-height: 22px;
+  font-size: 13px;
+}
+
+.field-line-long {
+  border-bottom: 1px solid #999;
+  padding: 8px 4px;
+  margin-bottom: 16px;
+  min-height: 40px;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.note-small {
+  font-size: 10px;
+  color: #888;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* CHECKBOXES */
+.checkbox-group {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.checkbox-group-inline {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.checkbox-item,
+.checkbox-small {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkbox-item input,
+.checkbox-small input {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-question {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 16px;
+}
+
+.question-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.question-line {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.answer-line {
+  flex: 1;
+  border-bottom: 1px solid #999;
+  min-height: 20px;
+}
+
+/* TABLES */
+.table-section {
+  margin-bottom: 30px;
+  page-break-inside: avoid;
+}
+
+.table-title {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #222;
+}
+
+.bio-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  border: 1px solid #999;
+}
+
+.bio-table th,
+.bio-table td {
+  border: 1px solid #999;
+  padding: 8px;
+  text-align: left;
+}
+
+.bio-table th {
+  background: #e8e8e8;
+  font-weight: bold;
+  text-align: center;
+}
+
+.bio-table td {
+  text-align: center;
+}
+
+.bio-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.language-table th {
+  font-size: 11px;
+  padding: 6px;
+}
+
+/* DECLARATION SECTION */
+.declaration-section {
+  margin-top: 40px;
+  page-break-inside: avoid;
+}
+
+.section-header {
+  font-size: 14px;
+  font-weight: bold;
+  text-decoration: underline;
+  margin-bottom: 16px;
+}
+
+.declaration-text {
+  font-size: 12px;
+  line-height: 1.8;
+  text-align: justify;
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid #999;
+}
+
+.signature-block {
+  margin-top: 20px;
+}
+
+.sig-line-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sig-line-item {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.sig-label {
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 140px;
+}
+
+.sig-line {
+  flex: 1;
+  border-bottom: 1px solid #000;
+  min-height: 24px;
+  padding: 4px 8px;
+}
+
+.sig-line-long {
+  flex: 1;
+  border-bottom: 1px solid #000;
+  min-height: 24px;
+}
+
+/* ADMIN SECTION */
+.admin-section {
+  margin-top: 40px;
+  border: 2px solid #999;
+  page-break-inside: avoid;
+}
+
+.admin-header {
+  background: #a0a080;
+  color: #000;
+  font-weight: bold;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.admin-content {
+  padding: 16px;
+}
+
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+.admin-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.date-box {
+  border-bottom: 1px solid #000;
+  padding: 0 6px;
+  min-width: 30px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.admin-label {
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 140px;
+}
+
+.admin-value {
+  flex: 1;
+  font-size: 12px;
+  border-bottom: 1px solid #999;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.admin-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-signature {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #ccc;
+}
+
+.admin-sig-line {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+/* MODAL */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal-dialog {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+  font-size: 16px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.search-box {
+  margin-bottom: 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.employee-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.employee-item {
+  padding: 10px;
+  border: 1px solid #eee;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  transition: background 0.2s;
+}
+
+.employee-item:hover {
+  background: #f5f5f5;
+}
+
+.emp-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.emp-id {
+  font-size: 11px;
+  color: #999;
+}
+
+.modal-footer {
+  padding: 12px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-cancel {
+  padding: 8px 16px;
+  background: #e0e0e0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-cancel:hover {
+  background: #d0d0d0;
+}
+
+/* PRINT */
+@media print {
+  .form-container {
+    background: white;
+    padding: 0;
+  }
+
+  .action-buttons {
+    display: none;
+  }
+
+  .form-paper {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .form-paper {
+    padding: 20px;
+  }
+
+  .form-row-three,
+  .form-row-four {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-fields {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

@@ -27,36 +27,188 @@
       </div>
     </div>
 
-    <!-- Toast Notifications -->
-    <div class="toast-container">
-      <div v-for="toast in toasts" :key="toast.id" :class="`toast toast-${toast.type}`">
-        <svg v-if="toast.type === 'success'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-        <svg v-else-if="toast.type === 'error'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="18" y1="6" x2="6" y2="18" />
-        </svg>
-        <span>{{ toast.message }}</span>
-        <button @click="$emit('remove-toast', toast.id)">×</button>
+    <!-- Terminate Confirmation Modal (NO REASON) -->
+    <div v-if="showTerminateModal" class="modal-overlay" @click="$emit('close-terminate-modal')">
+      <div class="modal-content terminate-modal" @click.stop>
+        <div class="modal-header">
+          <h2>{{ $t('common.terminateEmployee') || 'Terminate Employee' }}</h2>
+          <button class="close-btn" @click="$emit('close-terminate-modal')">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="terminate-warning">
+            <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="8" y1="8" x2="16" y2="16" />
+              <line x1="16" y1="8" x2="8" y2="16" />
+            </svg>
+            <p class="terminate-title">{{ $t('messages.terminateConfirm') || 'Are you sure you want to terminate' }} <strong>{{ employeeToTerminate?.fullName }}</strong>?</p>
+            <div class="terminate-details">
+              <p>{{ $t('messages.terminateWarning') || 'This action will:' }}</p>
+              <ul>
+                <li>{{ $t('messages.terminateStatus') || 'Set status to "Terminated"' }}</li>
+                <li>{{ $t('messages.terminateDate') || 'Record termination date' }}</li>
+                <li>{{ $t('messages.terminateAccount') || 'Deactivate the account' }}</li>
+                <li class="text-danger">{{ $t('messages.terminateIrreversible') || '⚠️ This action cannot be undone!' }}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="$emit('close-terminate-modal')">{{ $t('common.cancel') || 'Cancel' }}</button>
+          <button class="btn-terminate" @click="$emit('confirm-terminate')" :disabled="terminating">
+            {{ terminating ? ($t('common.terminating') || 'Terminating...') : ($t('common.terminate') || 'Terminate') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reactivate Confirmation Modal -->
+    <div v-if="showReactivateModal" class="modal-overlay" @click="$emit('close-reactivate-modal')">
+      <div class="modal-content reactivate-modal" @click.stop>
+        <div class="modal-header">
+          <h2>{{ $t('common.reactivateEmployee') || 'Reactivate Employee' }}</h2>
+          <button class="close-btn" @click="$emit('close-reactivate-modal')">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="reactivate-warning">
+            <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <polyline points="12 8 12 12 15 14" />
+            </svg>
+            <p class="reactivate-title">{{ $t('messages.reactivateConfirm') || 'Reactivate' }} <strong>{{ employeeToReactivate?.fullName }}</strong>?</p>
+            <div class="reactivate-details">
+              <p>{{ $t('messages.reactivateInfo') || 'This action will:' }}</p>
+              <ul>
+                <li>{{ $t('messages.reactivateStatus') || 'Set status back to "Active"' }}</li>
+                <li>{{ $t('messages.reactivateDate') || 'Clear termination dates' }}</li>
+                <li>{{ $t('messages.reactivateAccount') || 'Reactivate the account' }}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="$emit('close-reactivate-modal')">{{ $t('common.cancel') || 'Cancel' }}</button>
+          <button class="btn-reactivate" @click="$emit('confirm-reactivate')" :disabled="reactivating">
+            {{ reactivating ? ($t('common.reactivating') || 'Reactivating...') : ($t('common.reactivate') || 'Reactivate') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Modal -->
+    <div v-if="showToastModal" class="modal-overlay toast-modal-overlay" @click="closeToastModal">
+      <div class="modal-content toast-modal" @click.stop>
+        <div class="modal-header toast-header" :class="toastModalType">
+          <h2>{{ toastModalTitle }}</h2>
+          <button class="close-btn" @click="closeToastModal">×</button>
+        </div>
+        <div class="modal-body toast-body">
+          <div class="toast-icon-wrapper">
+            <svg v-if="toastModalType === 'success'" class="toast-icon success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M8 12l3 3 5-6" />
+            </svg>
+            <svg v-else-if="toastModalType === 'error'" class="toast-icon error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+            <svg v-else-if="toastModalType === 'warning'" class="toast-icon warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <circle cx="12" cy="16" r="0.5" fill="currentColor" />
+            </svg>
+            <svg v-else class="toast-icon info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="12" x2="12" y2="16" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </div>
+          <p class="toast-message">{{ toastModalMessage }}</p>
+          <button class="toast-action-btn" @click="closeToastModal">
+            {{ $t('common.ok') || 'OK' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { ref, watch } from 'vue'
+
+const props = defineProps({
   showDeleteModal: Boolean,
   employeeToDelete: Object,
   deleting: Boolean,
+  showTerminateModal: Boolean,
+  employeeToTerminate: Object,
+  terminating: Boolean,
+  showReactivateModal: Boolean,
+  employeeToReactivate: Object,
+  reactivating: Boolean,
   toasts: Array
 })
 
-defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
+const emit = defineEmits([
+  'close-delete-modal', 
+  'delete-employee', 
+  'remove-toast',
+  'close-terminate-modal',
+  'confirm-terminate',
+  'close-reactivate-modal',
+  'confirm-reactivate'
+])
+
+// Toast Modal state
+const showToastModal = ref(false)
+const toastModalMessage = ref('')
+const toastModalType = ref('success')
+const toastModalTitle = ref('')
+let toastTimeout = null
+
+// Watch for toasts and show as modal
+watch(() => props.toasts, (newToasts) => {
+  if (newToasts && newToasts.length > 0) {
+    const latestToast = newToasts[newToasts.length - 1]
+    
+    showToastModal.value = true
+    toastModalMessage.value = latestToast.message
+    toastModalType.value = latestToast.type || 'success'
+    
+    const titles = {
+      success: '✅ Success',
+      error: '❌ Error',
+      warning: '⚠️ Warning',
+      info: 'ℹ️ Information'
+    }
+    toastModalTitle.value = titles[latestToast.type] || 'ℹ️ Information'
+    
+    if (toastTimeout) {
+      clearTimeout(toastTimeout)
+    }
+    
+    toastTimeout = setTimeout(() => {
+      closeToastModal()
+    }, 4000)
+  }
+}, { deep: true })
+
+const closeToastModal = () => {
+  showToastModal.value = false
+  if (toastTimeout) {
+    clearTimeout(toastTimeout)
+    toastTimeout = null
+  }
+  if (props.toasts && props.toasts.length > 0) {
+    const lastToast = props.toasts[props.toasts.length - 1]
+    emit('remove-toast', lastToast.id)
+  }
+}
 </script>
 
 <style scoped>
-/* Modal */
+/* Modal Overlay */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -72,11 +224,28 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   padding: 16px;
 }
 
+.toast-modal-overlay {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+}
+
 .modal-content {
   background: white;
   border-radius: 20px;
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 
 .modal-header {
@@ -91,6 +260,7 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   font-size: 18px;
   font-weight: 600;
   color: #1e293b;
+  margin: 0;
 }
 
 .close-btn {
@@ -105,6 +275,7 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   align-items: center;
   justify-content: center;
   border-radius: 8px;
+  transition: all 0.2s;
 }
 
 .close-btn:hover {
@@ -124,6 +295,65 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   border-top: 1px solid #e2e8f0;
 }
 
+/* Toast Modal */
+.toast-modal {
+  max-width: 420px;
+}
+
+.toast-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.toast-header.success h2 { color: #10b981; }
+.toast-header.error h2 { color: #ef4444; }
+.toast-header.warning h2 { color: #f59e0b; }
+.toast-header.info h2 { color: #3b82f6; }
+
+.toast-body {
+  text-align: center;
+  padding: 24px 24px 32px;
+}
+
+.toast-icon-wrapper {
+  margin-bottom: 16px;
+}
+
+.toast-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.toast-icon.success { color: #10b981; stroke-width: 2; }
+.toast-icon.error { color: #ef4444; stroke-width: 2; }
+.toast-icon.warning { color: #f59e0b; stroke-width: 2; }
+.toast-icon.info { color: #3b82f6; stroke-width: 2; }
+
+.toast-message {
+  font-size: 16px;
+  color: #1e293b;
+  margin: 0 0 24px 0;
+  line-height: 1.6;
+}
+
+.toast-action-btn {
+  padding: 10px 40px;
+  background: linear-gradient(135deg, #6a11cb, #7c3aed);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toast-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(106, 17, 203, 0.3);
+}
+
+/* Delete Modal */
 .delete-warning {
   text-align: center;
   padding: 12px;
@@ -141,19 +371,148 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   color: #64748b;
 }
 
-.btn-cancel,
-.btn-delete {
+/* Terminate Modal */
+.terminate-warning {
+  padding: 4px;
+}
+
+.terminate-title {
+  font-size: 15px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.terminate-details {
+  background: #fef2f2;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #fee2e2;
+}
+
+.terminate-details p {
+  font-size: 13px;
+  font-weight: 600;
+  color: #991b1b;
+  margin: 0 0 8px 0;
+}
+
+.terminate-details ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #7f1d1d;
+}
+
+.terminate-details ul li {
+  margin-bottom: 4px;
+}
+
+.text-danger {
+  color: #dc2626 !important;
+  font-weight: 600 !important;
+}
+
+.btn-terminate {
+  background: #ef4444;
+  border: none;
+  color: white;
   padding: 8px 20px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s;
 }
 
+.btn-terminate:hover:not(:disabled) {
+  background: #dc2626;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-terminate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Reactivate Modal */
+.reactivate-warning {
+  text-align: center;
+  padding: 12px;
+}
+
+.success-icon {
+  width: 48px;
+  height: 48px;
+  color: #10b981;
+  margin-bottom: 12px;
+}
+
+.reactivate-title {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.reactivate-details {
+  background: #f0fdf4;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #dcfce7;
+  text-align: left;
+}
+
+.reactivate-details p {
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+  margin: 0 0 8px 0;
+}
+
+.reactivate-details ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #065f46;
+}
+
+.reactivate-details ul li {
+  margin-bottom: 4px;
+}
+
+.btn-reactivate {
+  background: #10b981;
+  border: none;
+  color: white;
+  padding: 8px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reactivate:hover:not(:disabled) {
+  background: #059669;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-reactivate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Common Buttons */
 .btn-cancel {
   background: white;
   border: 1px solid #e2e8f0;
   color: #64748b;
+  padding: 8px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .btn-cancel:hover {
@@ -164,9 +523,15 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   background: #ef4444;
   border: none;
   color: white;
+  padding: 8px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.btn-delete:hover {
+.btn-delete:hover:not(:disabled) {
   background: #dc2626;
 }
 
@@ -175,80 +540,15 @@ defineEmits(['close-delete-modal', 'delete-employee', 'remove-toast'])
   cursor: not-allowed;
 }
 
-/* Toast */
-.toast-container {
-  position: fixed;
-  top: 70px;
-  right: 16px;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.toast {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 240px;
-  animation: slideIn 0.3s ease;
-}
-
-.toast svg {
-  width: 18px;
-  height: 18px;
-}
-
-.toast-success {
-  border-left: 3px solid #10b981;
-  background: #f0fdf4;
-}
-
-.toast-success svg {
-  color: #10b981;
-}
-
-.toast-error {
-  border-left: 3px solid #ef4444;
-  background: #fef2f2;
-}
-
-.toast-error svg {
-  color: #ef4444;
-}
-
-.toast button {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: #64748b;
-  margin-left: auto;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
 @media (max-width: 768px) {
-  .toast-container {
-    top: 60px;
-    right: 12px;
-    left: 12px;
+  .modal-content {
+    max-width: 100%;
   }
-  .toast {
-    width: auto;
+  .toast-modal {
+    max-width: 90%;
+  }
+  .toast-message {
+    font-size: 14px;
   }
 }
 </style>

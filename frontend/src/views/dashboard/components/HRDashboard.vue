@@ -1,10 +1,17 @@
 <template>
-  <div class="hr-dashboard">
+  <div class="hr-analytics">
+    <div class="bg-gradient"></div>
+
     <!-- Header -->
-    <header class="dashboard-header">
+    <div class="analytics-header">
       <div class="header-left">
         <div class="logo-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M12 2L2 7l10 5 10-5-10-5z" />
             <path d="M2 17l10 5 10-5" />
             <path d="M2 12l10 5 10-5" />
@@ -12,749 +19,1319 @@
         </div>
         <div>
           <h1>HR Dashboard</h1>
-          <p>Workforce Analytics & Employee Management</p>
+          <p>Real-time workforce analytics & document compliance</p>
         </div>
       </div>
       <div class="header-right">
-        <div class="date-display">
-          <span class="date-icon">📅</span>
-          <span class="date-text">{{ formatDate(new Date()) }}</span>
-        </div>
-        <select v-model="selectedMonth" class="month-selector" @change="refreshData">
-          <option v-for="m in availableMonths" :key="m.value" :value="m.value">{{ m.name }}</option>
-        </select>
         <button class="refresh-btn" @click="refreshData" :disabled="loading">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M23 4v6h-6M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            <path
+              d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+            />
           </svg>
+          Refresh
         </button>
       </div>
-    </header>
+    </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <p>Loading dashboard data...</p>
+      <p>Loading analytics data...</p>
     </div>
 
+    <!-- Content -->
     <template v-else>
-      <!-- Stats Cards Row 1 - Employee Overview -->
-      <div class="stats-grid">
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.total }}</div>
-            <div class="stat-label">Total Employees</div>
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card" v-for="kpi in kpiList" :key="kpi.label">
+          <div class="kpi-icon" :style="{ background: kpi.gradient }">
+            <component :is="kpi.icon" />
           </div>
-        </div>
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.active }}</div>
-            <div class="stat-label">Active Employees</div>
-          </div>
-        </div>
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.inactive }}</div>
-            <div class="stat-label">Inactive</div>
-          </div>
-        </div>
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.terminated }}</div>
-            <div class="stat-label">Terminated</div>
-          </div>
-        </div>
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.newHires }}</div>
-            <div class="stat-label">New Hires</div>
-          </div>
-        </div>
-        <div class="stat-card" @click="goToEmployees">
-          <div class="stat-info">
-            <div class="stat-value">{{ employeeStats.turnoverRate }}%</div>
-            <div class="stat-label">Turnover Rate</div>
+          <div class="kpi-content">
+            <span class="kpi-value">{{ kpi.value }}</span>
+            <span class="kpi-label">{{ kpi.label }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Summary Cards Row 2 -->
-      <div class="summary-grid">
-        <div class="summary-card">
-          <div class="summary-icon green">📊</div>
-          <div class="summary-content">
-            <div class="summary-value">{{ employeeStats.genderRatio.male }}%</div>
-            <div class="summary-label">Male / Female</div>
-            <div class="summary-trend">{{ employeeStats.genderRatio.female }}% Female</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-icon orange">📅</div>
-          <div class="summary-content">
-            <div class="summary-value">{{ employeeStats.avgTenure }}</div>
-            <div class="summary-label">Avg Tenure</div>
-            <div class="summary-trend">{{ employeeStats.tenureDistribution['5+'] }}% over 5 years</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-icon purple">👥</div>
-          <div class="summary-content">
-            <div class="summary-value">{{ employeeStats.departmentsWithStaff }}</div>
-            <div class="summary-label">Departments</div>
-            <div class="summary-trend">{{ employeeStats.averageDeptSize }} avg per dept</div>
-          </div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-icon blue">📄</div>
-          <div class="summary-content">
-            <div class="summary-value">{{ employeeStats.docComplianceRate }}%</div>
-            <div class="summary-label">Doc Compliance</div>
-            <div class="summary-trend warning">{{ employeeStats.missingDocsCount }} missing</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Department Analytics Grid - 2x2 Equal Height Cards -->
-      <div class="dept-analytics-full">
-        <h3 class="section-title">📊 Department Analytics</h3>
-        <div class="analytics-full-grid">
-          <!-- Card 1: Active Employees by Department -->
-          <div class="analytics-full-card">
-            <div class="analytics-full-header">
-              <span class="analytics-full-icon">👥</span>
-              <span>Active Employees by Department</span>
-            </div>
-            <div class="analytics-full-list hover-scroll">
-              <div v-for="dept in activeEmployeesByDept" :key="dept.name" class="analytics-full-item">
-                <div class="analytics-full-rank">{{ dept.rank }}</div>
-                <div class="analytics-full-name">{{ dept.name }}</div>
-                <div class="analytics-full-bar">
-                  <div class="analytics-full-fill" :style="{ width: dept.percentage + '%', background: '#10b981' }"></div>
-                </div>
-                <div class="analytics-full-value">{{ dept.count }} emp</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 2: Inactive & Terminated by Department -->
-          <div class="analytics-full-card">
-            <div class="analytics-full-header">
-              <span class="analytics-full-icon">⚠️</span>
-              <span>Inactive & Terminated</span>
-            </div>
-            <div class="analytics-full-list hover-scroll">
-              <div v-for="dept in inactiveEmployeesByDept" :key="dept.name" class="analytics-full-item">
-                <div class="analytics-full-rank">{{ dept.rank }}</div>
-                <div class="analytics-full-name">{{ dept.name }}</div>
-                <div class="analytics-full-bar">
-                  <div class="analytics-full-fill" :style="{ width: dept.percentage + '%', background: '#ef4444' }"></div>
-                </div>
-                <div class="analytics-full-value">{{ dept.inactive }} / {{ dept.terminated }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 3: New Hires vs Terminations -->
-          <div class="analytics-full-card">
-            <div class="analytics-full-header">
-              <span class="analytics-full-icon">📈</span>
-              <span>Hiring vs Terminations</span>
-            </div>
-            <div class="analytics-full-list hover-scroll">
-              <div class="comparison-stats-vertical">
-                <div class="comparison-item">
-                  <span class="comparison-label">New Hires (YTD)</span>
-                  <span class="comparison-value positive">{{ hiringComparison.newHires }}</span>
-                  <div class="mini-bar">
-                    <div class="mini-fill green" :style="{ width: hiringComparison.newHiresPercent + '%' }"></div>
-                  </div>
-                </div>
-                <div class="comparison-item">
-                  <span class="comparison-label">Terminations (YTD)</span>
-                  <span class="comparison-value negative">{{ hiringComparison.terminations }}</span>
-                  <div class="mini-bar">
-                    <div class="mini-fill red" :style="{ width: hiringComparison.terminationsPercent + '%' }"></div>
-                  </div>
-                </div>
-                <div class="comparison-divider"></div>
-                <div class="comparison-item">
-                  <span class="comparison-label">Net Growth</span>
-                  <span class="comparison-value positive">+{{ hiringComparison.netGrowth }}</span>
-                </div>
-                <div class="comparison-item">
-                  <span class="comparison-label">Turnover Rate</span>
-                  <span class="comparison-value">{{ employeeStats.turnoverRate }}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4: Tenure Distribution -->
-          <div class="analytics-full-card">
-            <div class="analytics-full-header">
-              <span class="analytics-full-icon">⏰</span>
-              <span>Tenure Distribution</span>
-            </div>
-            <div class="analytics-full-list hover-scroll">
-              <div v-for="tenure in tenureDistribution" :key="tenure.range" class="tenure-item">
-                <div class="tenure-label">{{ tenure.range }}</div>
-                <div class="tenure-bar">
-                  <div class="tenure-fill" :style="{ width: tenure.percentage + '%', background: '#8b5cf6' }"></div>
-                </div>
-                <div class="tenure-value">{{ tenure.count }} ({{ tenure.percentage }}%)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Employment Type Distribution - Equal Cards -->
-      <div class="employment-type-section">
-        <div class="distribution-header">
-          <h3>📋 Employment Type Distribution</h3>
-          <router-link to="/employees" class="view-link">View Details →</router-link>
-        </div>
-        <div class="employment-grid">
-          <div v-for="type in employmentTypes" :key="type.name" class="employment-card">
-            <div class="employment-icon" :style="{ background: type.color }">
-              <span>{{ type.icon }}</span>
-            </div>
-            <div class="employment-info">
-              <div class="employment-name">{{ type.name }}</div>
-              <div class="employment-count">{{ type.count }} employees</div>
-              <div class="employment-bar">
-                <div class="employment-fill" :style="{ width: type.percentage + '%', background: type.color }"></div>
-              </div>
-              <div class="employment-percent">{{ type.percentage }}% of workforce</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Two Column Layout - Equal Number of Cards (5 on each side) -->
-      <div class="two-column-layout">
-        <!-- Left Column - 5 Cards -->
-        <div class="left-column">
-          <!-- Card 1: Pending Leave Requests -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>⏳ Pending Leave Requests</h3>
-              <span class="badge info">{{ pendingLeaves.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="request in pendingLeaves" :key="request.leaveRequestId" class="list-item">
-                  <div class="list-avatar">{{ getInitials(request.employeeName) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ request.employeeName }}</div>
-                    <div class="list-detail">{{ request.leaveType }} • {{ request.totalDays }} days</div>
-                    <div class="list-date">Requested: {{ formatDate(request.requestedDate) }}</div>
-                  </div>
-                  <div class="list-actions">
-                    <button class="btn-small success" @click="quickApprove(request)">Approve</button>
-                    <button class="btn-small danger" @click="quickReject(request)">Reject</button>
-                  </div>
-                </div>
-              </div>
-              <div v-if="pendingLeaves.length === 0" class="empty-state-small">No pending requests</div>
-              <div v-if="pendingLeaves.length > 4" class="scroll-indicator">▼ Scroll for more ({{ pendingLeaves.length - 4 }} more)</div>
-            </div>
-          </div>
-
-          <!-- Card 2: Today's Leave Schedule -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>📋 Today's Leave Schedule</h3>
-              <span class="badge info">{{ todayLeaves.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="leave in todayLeaves" :key="leave.leaveRequestId" class="list-item">
-                  <div class="list-avatar">{{ getInitials(leave.employeeName) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ leave.employeeName }}</div>
-                    <div class="list-detail">{{ leave.leaveType }} • Returns {{ formatDate(leave.returnDate) }}</div>
-                  </div>
-                  <div class="list-status">
-                    <span class="status-badge on-leave">On Leave</span>
-                  </div>
-                </div>
-              </div>
-              <div v-if="todayLeaves.length === 0" class="empty-state-small">No leaves today</div>
-              <div v-if="todayLeaves.length > 4" class="scroll-indicator">▼ Scroll for more ({{ todayLeaves.length - 4 }} more)</div>
-            </div>
-          </div>
-
-          <!-- Card 3: Document Compliance Overview -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>📄 Document Compliance</h3>
-              <router-link to="/employees" class="view-link">Manage →</router-link>
-            </div>
-            <div class="compliance-summary">
-              <div class="compliance-ring-small">
-                <svg viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" stroke-width="8"/>
-                  <circle cx="50" cy="50" r="45" fill="none" stroke="#10b981" stroke-width="8" 
-                    :stroke-dasharray="283" :stroke-dashoffset="283 - (283 * employeeStats.docComplianceRate / 100)" 
-                    transform="rotate(-90 50 50)"/>
+      <!-- Main Analytics Grid -->
+      <div class="analytics-grid">
+        <!-- Hiring Trends Chart -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="header-title" style="width: 100%">
+              <div class="title-icon blue">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
-                <span class="ring-value">{{ employeeStats.docComplianceRate }}%</span>
               </div>
-              <div class="compliance-stats">
-                <div class="doc-stat"><span>Fully Compliant:</span><strong>{{ employeeStats.fullyCompliant }}/{{ employeeStats.active }}</strong></div>
-                <div class="doc-stat warning"><span>Missing Docs:</span><strong>{{ employeeStats.missingDocsCount }}</strong></div>
-              </div>
+              <h3>Hiring & Termination Trends</h3>
             </div>
-            <div class="doc-types-list scroll-container">
-              <div class="item-list">
-                <div v-for="doc in documentTypeStats" :key="doc.name" class="doc-type-row">
-                  <span class="doc-type-name">{{ doc.name }}</span>
-                  <div class="doc-type-bar"><div class="doc-type-fill" :style="{ width: doc.rate + '%', background: doc.color }"></div></div>
-                  <span class="doc-type-rate">{{ doc.rate }}%</span>
-                </div>
-              </div>
+            <div class="filter-group-small">
+              <select
+                v-model="hiringFilters.departmentId"
+                @change="loadHiringTrends"
+                class="filter-select-small"
+              >
+                <option value="all">All Departments</option>
+                <option
+                  v-for="dept in allDepartments"
+                  :key="dept.departmentId"
+                  :value="dept.departmentId"
+                >
+                  {{ dept.departmentName }}
+                </option>
+              </select>
+              <select
+                v-model="hiringFilters.timeRange"
+                @change="loadHiringTrends"
+                class="filter-select-small"
+              >
+                <option value="1">Last 1 Month</option>
+                <option value="3">Last 3 Months</option>
+                <option value="6">Last 6 Months</option>
+                <option value="12">Last 12 Months</option>
+                <option value="24">Last 24 Months</option>
+                <option value="36">Last 36 Months</option>
+                <option value="all">All Time</option>
+              </select>
+              <router-link to="/dashboard/hiring-details" class="expand-btn">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  style="width: 14px; height: 14px; margin-right: 4px"
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                View
+              </router-link>
             </div>
           </div>
-
-          <!-- Card 4: Employment Type Distribution Summary -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>👔 Employment Type Summary</h3>
-              <router-link to="/employees" class="view-link">View →</router-link>
+          <div class="chart-container">
+            <canvas ref="hiringChartCanvas"></canvas>
+          </div>
+          <div
+            class="chart-stats"
+            v-if="hiringStats.totalHired > 0 || hiringStats.totalTerminated > 0"
+          >
+            <div class="stat">
+              <span>Total Hired</span
+              ><strong>{{ hiringStats.totalHired || 0 }}</strong>
             </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="type in employmentTypes" :key="type.name" class="employment-summary-item">
-                  <div class="emp-type-icon" :style="{ background: type.color }">{{ type.icon }}</div>
-                  <div class="emp-type-info">
-                    <div class="emp-type-name">{{ type.name }}</div>
-                    <div class="emp-type-count">{{ type.count }} employees</div>
-                  </div>
-                  <div class="emp-type-percent">{{ type.percentage }}%</div>
-                </div>
-              </div>
+            <div class="stat">
+              <span>Total Terminated</span
+              ><strong>{{ hiringStats.totalTerminated || 0 }}</strong>
+            </div>
+            <div class="stat">
+              <span>Net Growth</span
+              ><strong
+                :class="hiringStats.netGrowth >= 0 ? 'positive' : 'negative'"
+                >{{ hiringStats.netGrowth >= 0 ? "+" : ""
+                }}{{ hiringStats.netGrowth || 0 }}</strong
+              >
             </div>
           </div>
+          <div
+            v-if="
+              (!hiringChartData || hiringChartData.length === 0) && !loading
+            "
+            class="no-data-message"
+          >
+            No hiring/termination data available
+          </div>
+        </div>
 
-          <!-- Card 5: Department Headcount Summary -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>🏢 Department Headcount</h3>
-              <router-link to="/employees" class="view-link">View All →</router-link>
+        <!-- Department Distribution -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="header-title">
+              <div class="title-icon purple">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h3>Department Distribution</h3>
             </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="dept in departmentHeadcount" :key="dept.name" class="dept-summary-item">
-                  <div class="dept-summary-name">{{ dept.name }}</div>
-                  <div class="dept-summary-stats">
-                    <span class="active-count">{{ dept.active }}</span>
-                    <span class="inactive-count" v-if="dept.inactive > 0"> ({{ dept.inactive }} inc)</span>
-                  </div>
-                  <div class="dept-summary-bar"><div class="dept-summary-fill" :style="{ width: dept.percentage + '%', background: '#3b82f6' }"></div></div>
+            <router-link to="/dashboard/department-distribution" class="expand-btn">
+              View Details
+            </router-link>
+          </div>
+          <div class="dept-list">
+            <div
+              v-for="dept in departments"
+              :key="dept.departmentId"
+              class="dept-row"
+            >
+              <div class="dept-info">
+                <span class="dept-name">{{ dept.departmentName }}</span>
+                <span class="dept-count">{{ dept.count }} employees</span>
+              </div>
+              <div class="dept-metrics">
+                <div class="metric">
+                  <div
+                    class="metric-bar"
+                    :style="{
+                      width: dept.percentage + '%',
+                      background: '#6366f1',
+                    }"
+                  ></div>
+                  <span>{{ dept.percentage }}%</span>
                 </div>
               </div>
-              <div v-if="departmentHeadcount.length > 4" class="scroll-indicator">▼ Scroll for more ({{ departmentHeadcount.length - 4 }} more)</div>
             </div>
           </div>
         </div>
 
-        <!-- Right Column - 5 Cards -->
-        <div class="right-column">
-          <!-- Card 1: SALES DEPT - Missing Guarantee Letters (Priority Card) -->
-          <div class="section-card sales-critical-card">
-            <div class="section-header">
-              <h3>⚠️ SALES DEPT - Missing Guarantee Letters</h3>
-              <span class="badge critical">{{ salesMissingGuarantee.length }} employees</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="emp in salesMissingGuarantee" :key="emp.id" class="list-item critical-item">
-                  <div class="list-avatar critical-avatar">{{ getInitials(emp.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ emp.name }}</div>
-                    <div class="list-detail">{{ emp.position }} • {{ emp.department }}</div>
-                    <div class="warning-text">⚠️ {{ emp.guaranteeCount }} guarantee letter(s)</div>
-                  </div>
-                  <button class="btn-small warning" @click="remindGuarantee(emp)">Remind</button>
-                </div>
+        <!-- Salary Distribution -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="header-title">
+              <div class="title-icon green">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                  />
+                </svg>
               </div>
-              <div v-if="salesMissingGuarantee.length === 0" class="empty-state-small">✅ All Sales employees have guarantee letters</div>
-              <div v-if="salesMissingGuarantee.length > 4" class="scroll-indicator">▼ Scroll for more ({{ salesMissingGuarantee.length - 4 }} more)</div>
+              <h3>Salary Distribution</h3>
+            </div>
+            <router-link to="/dashboard/salary-distribution" class="expand-btn">
+              Show Details
+            </router-link>
+          </div>
+          <div class="chart-container small">
+            <canvas ref="salaryChartCanvas"></canvas>
+          </div>
+          <div class="salary-stats" v-if="salaryStats.avgSalary > 0">
+            <div class="stat">
+              <span>Average Salary</span
+              ><strong>ETB {{ formatNumber(salaryStats.avgSalary) }}</strong>
+            </div>
+            <div class="stat">
+              <span>Highest Dept</span
+              ><strong>{{ salaryStats.highestDept }}</strong>
+            </div>
+            <div class="stat">
+              <span>Total Pool</span
+              ><strong>ETB {{ formatNumber(salaryStats.totalPool) }}</strong>
+            </div>
+          </div>
+          <div
+            v-if="
+              (!salaryChartData || salaryChartData.length === 0) && !loading
+            "
+            class="no-data-message"
+          >
+            No salary data available
+          </div>
+        </div>
+
+        <!-- Employment Type Distribution -->
+        <div class="analytics-card">
+          <div class="card-header">
+            <div class="header-title">
+              <div class="title-icon pink">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </div>
+              <h3>Employment Type</h3>
+            </div>
+            <router-link to="/dashboard/employment-distribution" class="expand-btn">
+              Show Details
+            </router-link>
+          </div>
+          <div class="employment-types">
+            <div
+              v-for="type in employmentTypes"
+              :key="type.type"
+              class="type-row"
+            >
+              <div class="type-label">
+                <span>{{ getEmploymentTypeLabel(type.type) }}</span>
+                <span>{{ type.count }}</span>
+              </div>
+              <div class="type-bar">
+                <div
+                  class="type-fill"
+                  :style="{
+                    width: type.percentage + '%',
+                    background: getTypeColor(type.type),
+                  }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Document Compliance Section - Simplified -->
+      <div class="compliance-section">
+        <div class="section-header">
+          <div>
+            <h2>Document Compliance Status</h2>
+            <p>Overview of employee document submission status</p>
+          </div>
+          <div class="header-actions">
+            <router-link to="/dashboard/document-compliance" class="view-full-btn">
+              📄 View Full Details
+            </router-link>
+            <div class="overall-compliance">
+              <div class="compliance-ring">
+                <svg viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke="#e2e8f0"
+                    stroke-width="8"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke="#6366f1"
+                    stroke-width="8"
+                    :stroke-dasharray="283"
+                    :stroke-dashoffset="283 - (283 * docComplianceRate) / 100"
+                    transform="rotate(-90 50 50)"
+                  />
+                </svg>
+                <span class="ring-value">{{ docComplianceRate }}%</span>
+              </div>
+              <span class="ring-label">Overall Compliance</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Department Filter -->
+        <div class="global-filters">
+          <div class="filter-card">
+            <div class="filter-icon">🏢</div>
+            <div class="filter-content">
+              <label>Department</label>
+              <select
+                v-model="complianceFilters.departmentId"
+                @change="loadDocumentCompliance"
+                class="filter-select-modern"
+              >
+                <option value="all">All Departments</option>
+                <option
+                  v-for="dept in departments"
+                  :key="dept.departmentId"
+                  :value="dept.departmentId"
+                >
+                  {{ dept.departmentName }} ({{ dept.count }})
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Document Status Cards -->
+        <div class="compliance-status-grid">
+          <!-- ID Card Status -->
+          <div class="status-card">
+            <div class="status-card-header">
+              <span class="status-icon">🪪</span>
+              <span class="status-title">ID Card</span>
+            </div>
+            <div class="status-stats">
+              <div class="stat-item">
+                <span class="stat-label">Submitted</span>
+                <span class="stat-value success">{{ idCardData.submitted?.length || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Missing</span>
+                <span class="stat-value danger">{{ idCardData.missing?.length || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Compliance</span>
+                <span class="stat-value">{{ idCardComplianceRate }}%</span>
+              </div>
+            </div>
+            <div class="status-progress">
+              <div
+                class="status-progress-bar"
+                :style="{
+                  width: idCardComplianceRate + '%',
+                  background: idCardComplianceRate >= 80 ? '#10b981' : idCardComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
+                }"
+              ></div>
             </div>
           </div>
 
-          <!-- Card 2: Employees Missing Documents (All Depts) -->
-          <div class="section-card warning-card">
-            <div class="section-header">
-              <h3>⚠️ Missing Documents (All Depts)</h3>
-              <span class="badge warning">{{ employeesMissingDocs.length }}</span>
+          <!-- CV Status -->
+          <div class="status-card">
+            <div class="status-card-header">
+              <span class="status-icon">📄</span>
+              <span class="status-title">CV / Resume</span>
             </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="emp in employeesMissingDocs" :key="emp.id" class="list-item missing-doc-item">
-                  <div class="list-avatar warning-avatar">{{ getInitials(emp.fullName) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ emp.fullName }}</div>
-                    <div class="list-detail">{{ emp.department }}</div>
-                    <div class="missing-docs-list">{{ emp.missingList }}</div>
-                  </div>
-                  <button class="btn-small warning" @click="remindEmployee(emp)">Remind</button>
-                </div>
+            <div class="status-stats">
+              <div class="stat-item">
+                <span class="stat-label">Submitted</span>
+                <span class="stat-value success">{{ cvData.submitted?.length || 0 }}</span>
               </div>
-              <div v-if="employeesMissingDocs.length === 0" class="empty-state-small">All documents complete</div>
-              <div v-if="employeesMissingDocs.length > 4" class="scroll-indicator">▼ Scroll for more ({{ employeesMissingDocs.length - 4 }} more)</div>
+              <div class="stat-item">
+                <span class="stat-label">Missing</span>
+                <span class="stat-value danger">{{ cvData.missing?.length || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Compliance</span>
+                <span class="stat-value">{{ cvComplianceRate }}%</span>
+              </div>
+            </div>
+            <div class="status-progress">
+              <div
+                class="status-progress-bar"
+                :style="{
+                  width: cvComplianceRate + '%',
+                  background: cvComplianceRate >= 80 ? '#10b981' : cvComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
+                }"
+              ></div>
             </div>
           </div>
 
-          <!-- Card 3: Upcoming Contract Endings -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>📅 Upcoming Contract Endings</h3>
-              <span class="badge info">{{ upcomingContractEndings.length }}</span>
+          <!-- Degree Status -->
+          <div class="status-card">
+            <div class="status-card-header">
+              <span class="status-icon">🎓</span>
+              <span class="status-title">Degree / Certificate</span>
             </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="contract in upcomingContractEndings" :key="contract.id" class="list-item">
-                  <div class="list-avatar">{{ getInitials(contract.employeeName) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ contract.employeeName }}</div>
-                    <div class="list-detail">{{ contract.position }} • {{ contract.department }}</div>
-                    <div class="list-date">Ends: {{ formatDate(contract.endDate) }}</div>
-                  </div>
-                  <div class="contract-status" :class="contract.status">{{ contract.daysLeft }} days</div>
-                </div>
+            <div class="status-stats">
+              <div class="stat-item">
+                <span class="stat-label">Submitted</span>
+                <span class="stat-value success">{{ degreeData.submitted?.length || 0 }}</span>
               </div>
-              <div v-if="upcomingContractEndings.length === 0" class="empty-state-small">No upcoming contract endings</div>
-              <div v-if="upcomingContractEndings.length > 4" class="scroll-indicator">▼ Scroll for more ({{ upcomingContractEndings.length - 4 }} more)</div>
+              <div class="stat-item">
+                <span class="stat-label">Missing</span>
+                <span class="stat-value danger">{{ degreeData.missing?.length || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Compliance</span>
+                <span class="stat-value">{{ degreeComplianceRate }}%</span>
+              </div>
+            </div>
+            <div class="status-progress">
+              <div
+                class="status-progress-bar"
+                :style="{
+                  width: degreeComplianceRate + '%',
+                  background: degreeComplianceRate >= 80 ? '#10b981' : degreeComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
+                }"
+              ></div>
             </div>
           </div>
 
-          <!-- Card 4: Top Late Employees -->
-          <div class="section-card">
-            <div class="section-header">
-              <h3>⏰ Top Late Employees</h3>
-              <router-link to="/attendance" class="view-link">View All →</router-link>
+          <!-- Guarantee Letter Status -->
+          <div class="status-card">
+            <div class="status-card-header">
+              <span class="status-icon">📋</span>
+              <span class="status-title">Guarantee Letter</span>
             </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="(emp, idx) in topLateEmployees" :key="emp.id" class="list-item">
-                  <div class="top-rank">{{ idx + 1 }}</div>
-                  <div class="list-avatar">{{ getInitials(emp.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ emp.name }}</div>
-                    <div class="list-detail">{{ emp.department }}</div>
-                  </div>
-                  <div class="top-value">
-                    <div class="late-count">{{ emp.lateCount }} times</div>
-                    <div class="late-minutes">{{ emp.totalLateMinutes }} min</div>
-                  </div>
-                </div>
+            <div class="status-stats">
+              <div class="stat-item">
+                <span class="stat-label">Has 2+</span>
+                <span class="stat-value success">{{ guaranteeData.withTwo?.length || 0 }}</span>
               </div>
-              <div v-if="topLateEmployees.length > 4" class="scroll-indicator">▼ Scroll for more ({{ topLateEmployees.length - 4 }} more)</div>
+              <div class="stat-item">
+                <span class="stat-label">Has 1</span>
+                <span class="stat-value warning">{{ guaranteeData.needSecond?.length || 0 }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">None</span>
+                <span class="stat-value danger">{{ guaranteeData.missing?.length || 0 }}</span>
+              </div>
+            </div>
+            <div class="status-progress">
+              <div
+                class="status-progress-bar"
+                :style="{
+                  width: guaranteeComplianceRate + '%',
+                  background: guaranteeComplianceRate >= 80 ? '#10b981' : guaranteeComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
+                }"
+              ></div>
             </div>
           </div>
+        </div>
 
-          <!-- Card 5: Recent Terminations -->
-          <div class="section-card termination-card">
-            <div class="section-header">
-              <h3>📋 Recent Terminations</h3>
-              <span class="badge danger">{{ recentTerminations.length }}</span>
-            </div>
-            <div class="scroll-container">
-              <div class="item-list">
-                <div v-for="emp in recentTerminations" :key="emp.id" class="list-item termination-item">
-                  <div class="list-avatar termination-avatar">{{ getInitials(emp.name) }}</div>
-                  <div class="list-info">
-                    <div class="list-name">{{ emp.name }}</div>
-                    <div class="list-detail">{{ emp.position }} • {{ emp.department }}</div>
-                    <div class="list-date">Terminated: {{ formatDate(emp.terminationDate) }}</div>
-                  </div>
-                  <div class="termination-reason">{{ emp.reason }}</div>
-                </div>
-              </div>
-              <div v-if="recentTerminations.length === 0" class="empty-state-small">No recent terminations</div>
-              <div v-if="recentTerminations.length > 4" class="scroll-indicator">▼ Scroll for more ({{ recentTerminations.length - 4 }} more)</div>
-            </div>
+        <!-- Quick Summary Footer -->
+        <div class="compliance-summary-footer">
+          <div class="summary-item">
+            <span class="summary-label">✅ Fully Compliant</span>
+            <span class="summary-value">{{ fullyCompliantCount }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">⚠️ Partially Compliant</span>
+            <span class="summary-value">{{ partiallyCompliantCount }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">❌ Missing Documents</span>
+            <span class="summary-value">{{ missingDocsCount }}</span>
           </div>
         </div>
       </div>
     </template>
-
-    <!-- Toast -->
-    <div v-if="showToast" class="toast" :class="toastType">
-      <span class="toast-icon">{{ toastIcon }}</span>
-      <span class="toast-message">{{ toastMessage }}</span>
-    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import employeeService from '@/stores/employee'
+import { ref, reactive, onMounted, computed, nextTick, watch } from "vue";
+import { useRouter } from "vue-router";
+import { Chart, registerables } from "chart.js";
+import employeeService from "@/stores/employee";
 
-const router = useRouter()
+Chart.register(...registerables);
 
-// State
-const loading = ref(false)
-const showToast = ref(false)
-const toastMessage = ref('')
-const toastType = ref('success')
-const toastIcon = ref('✅')
-const selectedMonth = ref('2026-05')
+const router = useRouter();
+const loading = ref(false);
 
-const availableMonths = ref([
-  { value: '2026-01', name: 'January 2026' },
-  { value: '2026-02', name: 'February 2026' },
-  { value: '2026-03', name: 'March 2026' },
-  { value: '2026-04', name: 'April 2026' },
-  { value: '2026-05', name: 'May 2026' },
-  { value: '2026-06', name: 'June 2026' }
-])
+// Chart refs
+const hiringChartCanvas = ref(null);
+const salaryChartCanvas = ref(null);
 
-// Employee Stats
-const employeeStats = ref({
-  total: 180,
-  active: 156,
-  inactive: 8,
-  terminated: 16,
-  newHires: 5,
-  turnoverRate: 8.9,
-  genderRatio: { male: 58, female: 42 },
-  avgTenure: '3.2 years',
-  tenureDistribution: { '0-1': 28, '1-3': 42, '3-5': 18, '5+': 12 },
-  departmentsWithStaff: 6,
-  averageDeptSize: 26,
-  docComplianceRate: 78,
-  fullyCompliant: 112,
-  missingDocsCount: 32
-})
+// Chart instances
+let hiringChart = null;
+let salaryChart = null;
+let searchTimeout = null;
 
-// Department Data
-const activeEmployeesByDept = ref([
-  { rank: 1, name: 'IT', count: 45, percentage: 100 },
-  { rank: 2, name: 'Operations', count: 38, percentage: 84 },
-  { rank: 3, name: 'Finance', count: 32, percentage: 71 },
-  { rank: 4, name: 'Sales', count: 26, percentage: 58 },
-  { rank: 5, name: 'HR', count: 15, percentage: 33 },
-  { rank: 6, name: 'Marketing', count: 18, percentage: 40 }
-])
+// Filter states
+const hiringFilters = reactive({ departmentId: "all", timeRange: "all" });
+const complianceFilters = reactive({
+  documentType: "all",
+  guaranteeMonths: 6,
+  departmentId: "all",
+});
 
-const inactiveEmployeesByDept = ref([
-  { rank: 1, name: 'Operations', inactive: 4, terminated: 6, percentage: 100 },
-  { rank: 2, name: 'IT', inactive: 2, terminated: 4, percentage: 75 },
-  { rank: 3, name: 'Sales', inactive: 1, terminated: 3, percentage: 50 },
-  { rank: 4, name: 'Finance', inactive: 1, terminated: 2, percentage: 38 },
-  { rank: 5, name: 'Marketing', inactive: 0, terminated: 1, percentage: 13 },
-  { rank: 6, name: 'HR', inactive: 0, terminated: 0, percentage: 0 }
-])
+// Data stores
+const kpiData = ref({
+  total: 0,
+  active: 0,
+  onLeave: 0,
+  terminated: 0,
+  fullyCompliant: 0,
+  missingDocs: 0,
+  complianceRate: "0",
+});
+const departments = ref([]);
+const allDepartments = ref([]);
+const employmentTypes = ref([]);
+const employeesByDepartment = ref({});
+const employeesByType = ref({});
+const salaryByDepartment = ref([]);
 
-const departmentHeadcount = ref([
-  { name: 'IT', active: 45, inactive: 2, total: 47, percentage: 100 },
-  { name: 'Operations', active: 38, inactive: 4, total: 42, percentage: 89 },
-  { name: 'Finance', active: 32, inactive: 1, total: 33, percentage: 70 },
-  { name: 'Sales', active: 26, inactive: 1, total: 27, percentage: 57 },
-  { name: 'Marketing', active: 18, inactive: 0, total: 18, percentage: 38 },
-  { name: 'HR', active: 15, inactive: 0, total: 15, percentage: 32 }
-])
+// Chart data
+const hiringChartData = ref([]);
+const salaryChartData = ref([]);
+const hiringStats = ref({ totalHired: 0, totalTerminated: 0, netGrowth: 0 });
+const salaryStats = ref({ avgSalary: 0, highestDept: "-", totalPool: 0 });
+const docComplianceRate = ref(0);
 
-// Sales Department - Employees Missing Guarantee Letters
-const salesMissingGuarantee = ref([
-  { id: 1, name: 'Abebech Demisse', position: 'Sales Manager', department: 'Sales', guaranteeCount: 0 },
-  { id: 2, name: 'Getachew Mulu', position: 'Sales Representative', department: 'Sales', guaranteeCount: 0 },
-  { id: 3, name: 'Tigist Mekonnen', position: 'Sales Coordinator', department: 'Sales', guaranteeCount: 1 },
-  { id: 4, name: 'Dawit Assefa', position: 'Account Executive', department: 'Sales', guaranteeCount: 0 },
-  { id: 5, name: 'Meseret Alemu', position: 'Sales Associate', department: 'Sales', guaranteeCount: 1 },
-  { id: 6, name: 'Henok Tesfaye', position: 'Business Developer', department: 'Sales', guaranteeCount: 0 }
-])
+// Document Compliance Data - Simplified
+const idCardData = ref({ submitted: [], missing: [] });
+const cvData = ref({ submitted: [], missing: [] });
+const degreeData = ref({ submitted: [], missing: [] });
+const guaranteeData = ref({
+  all: [],
+  missing: [],
+  needSecond: [],
+  withTwo: [],
+});
 
-// Hiring Comparison
-const hiringComparison = ref({
-  newHires: 24,
-  terminations: 16,
-  netGrowth: 8,
-  newHiresPercent: 60,
-  terminationsPercent: 40
-})
+// ID Card State
+const idCardView = ref("missing");
+const idCardAgeFilter = ref("all");
+const idCardSearch = ref("");
+const idCardMissingList = ref([]);
+const idCardSubmittedList = ref([]);
 
-// Tenure Distribution
-const tenureDistribution = ref([
-  { range: '0-1 year', count: 28, percentage: 28 },
-  { range: '1-3 years', count: 42, percentage: 42 },
-  { range: '3-5 years', count: 18, percentage: 18 },
-  { range: '5+ years', count: 12, percentage: 12 }
-])
+// CV State
+const cvView = ref("missing");
+const cvAgeFilter = ref("all");
+const cvSearch = ref("");
+const cvMissingList = ref([]);
+const cvSubmittedList = ref([]);
 
-// Employment Types
-const employmentTypes = ref([
-  { name: 'Full Time', count: 112, percentage: 62, color: '#10b981', icon: '👔' },
-  { name: 'Part Time', count: 24, percentage: 13, color: '#f59e0b', icon: '⏰' },
-  { name: 'Contract', count: 28, percentage: 16, color: '#8b5cf6', icon: '📄' },
-  { name: 'Intern', count: 16, percentage: 9, color: '#3b82f6', icon: '🎓' }
-])
+// Degree State
+const degreeView = ref("missing");
+const degreeAgeFilter = ref("all");
+const degreeSearch = ref("");
+const degreeMissingList = ref([]);
+const degreeSubmittedList = ref([]);
 
-// Document Type Stats
-const documentTypeStats = ref([
-  { name: 'ID Card', rate: 85, color: '#3b82f6' },
-  { name: 'CV/Resume', rate: 92, color: '#10b981' },
-  { name: 'Degree', rate: 78, color: '#8b5cf6' },
-  { name: 'Guarantee Letter', rate: 65, color: '#f59e0b' }
-])
+// Guarantee State
+const guaranteeFilter = ref("missing");
+const guaranteeAgeFilter = ref("all");
+const guaranteeSearch = ref("");
+const guaranteeList = ref([]);
 
-// Pending Leaves
-const pendingLeaves = ref([
-  { leaveRequestId: 10, employeeName: 'Tamrat Zerihun', leaveType: 'Annual Leave', totalDays: 3, requestedDate: '2026-05-20' },
-  { leaveRequestId: 11, employeeName: 'Nuru Seid', leaveType: 'Sick Leave', totalDays: 2, requestedDate: '2026-05-21' },
-  { leaveRequestId: 12, employeeName: 'Eshete Worke', leaveType: 'Annual Leave', totalDays: 4, requestedDate: '2026-05-19' },
-  { leaveRequestId: 13, employeeName: 'Dagmawi Hadgu', leaveType: 'Sick Leave', totalDays: 1, requestedDate: '2026-05-22' },
-  { leaveRequestId: 14, employeeName: 'Melaku Tewodros', leaveType: 'Annual Leave', totalDays: 5, requestedDate: '2026-05-18' }
-])
+// ========== COMPUTED ==========
 
-// Today's Leaves
-const todayLeaves = ref([
-  { leaveRequestId: 1, employeeName: 'Biruk Mulualem', leaveType: 'Annual Leave', returnDate: '2026-05-25' },
-  { leaveRequestId: 2, employeeName: 'Melkamu Zewdu', leaveType: 'Maternity Leave', returnDate: '2026-07-20' },
-  { leaveRequestId: 3, employeeName: 'Dagmawi Hadgu', leaveType: 'Sick Leave', returnDate: '2026-05-22' },
-  { leaveRequestId: 4, employeeName: 'Nuru Seid', leaveType: 'Annual Leave', returnDate: '2026-05-28' },
-  { leaveRequestId: 5, employeeName: 'Eshete Worke', leaveType: 'Sick Leave', returnDate: '2026-05-23' }
-])
+// Document Compliance Rates
+const idCardComplianceRate = computed(() => {
+  const total = (idCardData.value.submitted?.length || 0) + (idCardData.value.missing?.length || 0);
+  if (total === 0) return 0;
+  return Math.round(((idCardData.value.submitted?.length || 0) / total) * 100);
+});
 
-// Employees Missing Documents (All Depts)
-const employeesMissingDocs = ref([
-  { id: 1, fullName: 'Biruk Mulualem', department: 'IT', missingList: 'ID Card, Guarantee Letter' },
-  { id: 2, fullName: 'Dagmawi Hadgu', department: 'Finance', missingList: 'Degree Certificate' },
-  { id: 3, fullName: 'Eshete Worke', department: 'Operations', missingList: 'Guarantee Letter' },
-  { id: 4, fullName: 'Melaku Tewodros', department: 'Sales', missingList: 'ID Card, Degree' },
-  { id: 5, fullName: 'Tigist Mulugeta', department: 'HR', missingList: 'CV/Resume' },
-  { id: 6, fullName: 'Haymanot Abebaw', department: 'IT', missingList: 'Guarantee Letter' }
-])
+const cvComplianceRate = computed(() => {
+  const total = (cvData.value.submitted?.length || 0) + (cvData.value.missing?.length || 0);
+  if (total === 0) return 0;
+  return Math.round(((cvData.value.submitted?.length || 0) / total) * 100);
+});
 
-// Upcoming Contract Endings
-const upcomingContractEndings = ref([
-  { id: 1, employeeName: 'Melaku Tewodros', position: 'Sales Manager', department: 'Sales', endDate: '2026-06-15', daysLeft: 25, status: 'warning' },
-  { id: 2, employeeName: 'Tigist Mulugeta', position: 'HR Coordinator', department: 'HR', endDate: '2026-07-01', daysLeft: 41, status: 'info' },
-  { id: 3, employeeName: 'Haymanot Abebaw', position: 'Software Engineer', department: 'IT', endDate: '2026-05-30', daysLeft: 9, status: 'critical' },
-  { id: 4, employeeName: 'Abebech Demisse', position: 'Accountant', department: 'Finance', endDate: '2026-06-10', daysLeft: 20, status: 'warning' }
-])
+const degreeComplianceRate = computed(() => {
+  const total = (degreeData.value.submitted?.length || 0) + (degreeData.value.missing?.length || 0);
+  if (total === 0) return 0;
+  return Math.round(((degreeData.value.submitted?.length || 0) / total) * 100);
+});
 
-// Top Late Employees
-const topLateEmployees = ref([
-  { id: 1, name: 'Tamrat Zerihun', department: 'IT', lateCount: 12, totalLateMinutes: 245 },
-  { id: 2, name: 'Nuru Seid', department: 'Finance', lateCount: 10, totalLateMinutes: 189 },
-  { id: 3, name: 'Tadese Jemberu', department: 'Operations', lateCount: 9, totalLateMinutes: 156 },
-  { id: 4, name: 'Eshete Worke', department: 'IT', lateCount: 8, totalLateMinutes: 142 },
-  { id: 5, name: 'Haymanot Abebaw', department: 'HR', lateCount: 7, totalLateMinutes: 98 },
-  { id: 6, name: 'Melaku Tewodros', department: 'Sales', lateCount: 6, totalLateMinutes: 87 }
-])
+const guaranteeComplianceRate = computed(() => {
+  const total = (guaranteeData.value.withTwo?.length || 0) + 
+                (guaranteeData.value.needSecond?.length || 0) + 
+                (guaranteeData.value.missing?.length || 0);
+  if (total === 0) return 0;
+  return Math.round(((guaranteeData.value.withTwo?.length || 0) / total) * 100);
+});
 
-// Recent Terminations
-const recentTerminations = ref([
-  { id: 1, name: 'Abebech Demisse', position: 'Accountant', department: 'Finance', terminationDate: '2026-05-10', reason: 'Resignation' },
-  { id: 2, name: 'Getachew Mulu', position: 'Sales Rep', department: 'Sales', terminationDate: '2026-05-05', reason: 'Contract Ended' },
-  { id: 3, name: 'Wondimu Ayele', position: 'Support Specialist', department: 'Operations', terminationDate: '2026-04-28', reason: 'Resignation' },
-  { id: 4, name: 'Tigist Mekonnen', position: 'Marketing Lead', department: 'Marketing', terminationDate: '2026-04-15', reason: 'Resignation' }
-])
+const fullyCompliantCount = computed(() => {
+  // Employee is fully compliant if they have: ID Card, CV, Degree, and 2+ Guarantee Letters
+  const idCardSubmitted = idCardData.value.submitted?.length || 0;
+  const cvSubmitted = cvData.value.submitted?.length || 0;
+  const degreeSubmitted = degreeData.value.submitted?.length || 0;
+  const hasTwoGuarantees = guaranteeData.value.withTwo?.length || 0;
+  
+  // Find the minimum count (assuming each employee needs all 4)
+  return Math.min(idCardSubmitted, cvSubmitted, degreeSubmitted, hasTwoGuarantees);
+});
 
-// Helper Functions
-function formatDate(date) {
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
+const partiallyCompliantCount = computed(() => {
+  const total = idCardData.value.submitted?.length || 0;
+  return total - fullyCompliantCount.value;
+});
 
-function getInitials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-}
+const missingDocsCount = computed(() => {
+  return (idCardData.value.missing?.length || 0) + 
+         (cvData.value.missing?.length || 0) + 
+         (degreeData.value.missing?.length || 0) + 
+         (guaranteeData.value.missing?.length || 0);
+});
 
-function goToEmployees() { router.push('/employees') }
+const documentTabs = computed(() => [
+  {
+    id: "id_card",
+    name: "ID Card",
+    count: idCardData.missing?.length || 0,
+    status: idCardData.missing?.length > 0 ? "warning" : "success",
+  },
+  {
+    id: "cv",
+    name: "CV / Resume",
+    count: cvData.missing?.length || 0,
+    status: cvData.missing?.length > 0 ? "warning" : "success",
+  },
+  {
+    id: "degree",
+    name: "Degree",
+    count: degreeData.missing?.length || 0,
+    status: degreeData.missing?.length > 0 ? "warning" : "success",
+  },
+  {
+    id: "guarantee_letter",
+    name: "Guarantee Letter",
+    count: guaranteeData.missing?.length || 0,
+    status: guaranteeData.missing?.length > 0 ? "critical" : "success",
+  },
+]);
 
-function quickApprove(request) {
-  showToastMessage(`Leave approved for ${request.employeeName}`, 'success')
-  pendingLeaves.value = pendingLeaves.value.filter(r => r.leaveRequestId !== request.leaveRequestId)
-}
+const kpiList = computed(() => [
+  {
+    label: "Total Headcount",
+    value: kpiData.value.total || "0",
+    icon: "UsersIcon",
+    gradient: "linear-gradient(135deg, #3b82f6, #2563eb)",
+  },
+  {
+    label: "Active Employees",
+    value: kpiData.value.active || "0",
+    icon: "ActivityIcon",
+    gradient: "linear-gradient(135deg, #10b981, #059669)",
+  },
+  {
+    label: "On Leave",
+    value: kpiData.value.onLeave || "0",
+    icon: "CalendarIcon",
+    gradient: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+  },
+  {
+    label: "Fully Compliant",
+    value: kpiData.value.complianceRate || "0%",
+    icon: "CheckIcon",
+    gradient: "linear-gradient(135deg, #10b981, #059669)",
+  },
+  {
+    label: "Missing Docs",
+    value: kpiData.value.missingDocs || "0",
+    icon: "AlertIcon",
+    gradient: "linear-gradient(135deg, #ef4444, #dc2626)",
+  },
+]);
 
-function quickReject(request) {
-  showToastMessage(`Leave rejected for ${request.employeeName}`, 'warning')
-  pendingLeaves.value = pendingLeaves.value.filter(r => r.leaveRequestId !== request.leaveRequestId)
-}
+// ========== HELPER FUNCTIONS ==========
+const formatNumber = (num) => (!num ? "0" : num.toLocaleString());
+const formatDate = (date) =>
+  !date ? "N/A" : new Date(date).toLocaleDateString();
+const getEmploymentTypeLabel = (type) =>
+  ({
+    "full-time": "Full Time",
+    "part-time": "Part Time",
+    contract: "Contract",
+    intern: "Intern",
+  })[type] || type;
+const getTypeColor = (type) =>
+  ({
+    "full-time": "#10b981",
+    "part-time": "#f59e0b",
+    contract: "#8b5cf6",
+    intern: "#ef4444",
+  })[type] || "#6366f1";
+const getAgeClass = (months) => {
+  if (!months) return "";
+  if (months > 12) return "age-critical";
+  if (months > 6) return "age-warning";
+  if (months > 3) return "age-attention";
+  return "age-ok";
+};
+const getStatusClass = (status) =>
+  ({
+    valid: "status-ok",
+    recent: "status-attention",
+    expiring_soon: "status-warning",
+    expired: "status-critical",
+    missing: "status-critical",
+    no_guarantee: "status-critical",
+    need_second: "status-warning",
+    compliant: "status-ok",
+  })[status] || "status-ok";
+const getStatusLabel = (status) =>
+  ({
+    valid: "✅ Valid",
+    recent: "📄 Recent",
+    expiring_soon: "⚠️ Expiring Soon",
+    expired: "🔴 Expired",
+    missing: "❌ Missing",
+    no_guarantee: "⚠️ No Guarantee",
+    need_second: "🟡 Need 1 more",
+    compliant: "✅ Compliant",
+  })[status] || status;
 
-function remindEmployee(employee) {
-  showToastMessage(`Reminder sent to ${employee.fullName} for missing: ${employee.missingList}`, 'info')
-}
+const viewEmployee = (id) => {
+  router.push(`/employees/${id}`);
+};
 
-function remindGuarantee(employee) {
-  showToastMessage(`Guarantee letter reminder sent to ${employee.name} (Sales Dept)`, 'warning')
-}
+// ========== DATA LOADING FUNCTIONS ==========
 
-async function loadDashboardData() {
-  loading.value = true
+const loadIdCardData = async () => {
   try {
-    const kpiResult = await employeeService.getKpiStats()
-    if (kpiResult.success && kpiResult.data) {
-      employeeStats.value.total = kpiResult.data.total || 0
-      employeeStats.value.active = kpiResult.data.active || 0
-      employeeStats.value.fullyCompliant = kpiResult.data.fullyCompliant || 0
-      employeeStats.value.missingDocsCount = kpiResult.data.missingDocs || 0
-      employeeStats.value.docComplianceRate = parseFloat(kpiResult.data.complianceRate || '0')
+    const response = await employeeService.getDocumentCompliance({
+      documentType: "id_card",
+      departmentId: complianceFilters.departmentId,
+      guaranteeMonths: 6,
+    });
+    if (response.success && response.data) {
+      const data = response.data;
+      idCardData.value = {
+        submitted: data.id_card?.submitted || [],
+        missing: data.id_card?.missing || [],
+      };
+      if (idCardView.value === "missing") {
+        let list = [...idCardData.value.missing];
+        if (idCardSearch.value) {
+          const search = idCardSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        idCardMissingList.value = list;
+      } else {
+        let list = [...idCardData.value.submitted];
+        if (idCardAgeFilter.value !== "all") {
+          list = list.filter((emp) => {
+            const months = emp.monthsOld || 0;
+            switch (idCardAgeFilter.value) {
+              case "0-3":
+                return months < 3;
+              case "3-6":
+                return months >= 3 && months < 6;
+              case "6-12":
+                return months >= 6 && months < 12;
+              case "12+":
+                return months >= 12;
+              default:
+                return true;
+            }
+          });
+        }
+        if (idCardSearch.value) {
+          const search = idCardSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        idCardSubmittedList.value = list;
+      }
     }
   } catch (error) {
-    console.error('Error loading dashboard data:', error)
-  } finally {
-    loading.value = false
+    console.error("Error loading ID card data:", error);
   }
-}
+};
 
-function refreshData() {
-  loadDashboardData()
-  showToastMessage(`Dashboard refreshed`, 'success')
-}
+const loadCvData = async () => {
+  try {
+    const response = await employeeService.getDocumentCompliance({
+      documentType: "cv",
+      departmentId: complianceFilters.departmentId,
+      guaranteeMonths: 6,
+    });
+    if (response.success && response.data) {
+      const data = response.data;
+      cvData.value = {
+        submitted: data.cv?.submitted || [],
+        missing: data.cv?.missing || [],
+      };
+      if (cvView.value === "missing") {
+        let list = [...cvData.value.missing];
+        if (cvSearch.value) {
+          const search = cvSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        cvMissingList.value = list;
+      } else {
+        let list = [...cvData.value.submitted];
+        if (cvAgeFilter.value !== "all") {
+          list = list.filter((emp) => {
+            const months = emp.monthsOld || 0;
+            switch (cvAgeFilter.value) {
+              case "0-3":
+                return months < 3;
+              case "3-6":
+                return months >= 3 && months < 6;
+              case "6-12":
+                return months >= 6 && months < 12;
+              case "12+":
+                return months >= 12;
+              default:
+                return true;
+            }
+          });
+        }
+        if (cvSearch.value) {
+          const search = cvSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        cvSubmittedList.value = list;
+      }
+    }
+  } catch (error) {
+    console.error("Error loading CV data:", error);
+  }
+};
 
-function showToastMessage(message, type = 'success') {
-  toastMessage.value = message
-  toastType.value = type
-  toastIcon.value = type === 'success' ? '✅' : (type === 'error' ? '❌' : (type === 'warning' ? '⚠️' : 'ℹ️'))
-  showToast.value = true
-  setTimeout(() => { showToast.value = false }, 3000)
-}
+const loadDegreeData = async () => {
+  try {
+    const response = await employeeService.getDocumentCompliance({
+      documentType: "degree",
+      departmentId: complianceFilters.departmentId,
+      guaranteeMonths: 6,
+    });
+    if (response.success && response.data) {
+      const data = response.data;
+      degreeData.value = {
+        submitted: data.degree?.submitted || [],
+        missing: data.degree?.missing || [],
+      };
+      if (degreeView.value === "missing") {
+        let list = [...degreeData.value.missing];
+        if (degreeSearch.value) {
+          const search = degreeSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        degreeMissingList.value = list;
+      } else {
+        let list = [...degreeData.value.submitted];
+        if (degreeAgeFilter.value !== "all") {
+          list = list.filter((emp) => {
+            const months = emp.monthsOld || 0;
+            switch (degreeAgeFilter.value) {
+              case "0-3":
+                return months < 3;
+              case "3-6":
+                return months >= 3 && months < 6;
+              case "6-12":
+                return months >= 6 && months < 12;
+              case "12+":
+                return months >= 12;
+              default:
+                return true;
+            }
+          });
+        }
+        if (degreeSearch.value) {
+          const search = degreeSearch.value.toLowerCase();
+          list = list.filter(
+            (emp) =>
+              emp.fullName.toLowerCase().includes(search) ||
+              emp.department?.toLowerCase().includes(search),
+          );
+        }
+        degreeSubmittedList.value = list;
+      }
+    }
+  } catch (error) {
+    console.error("Error loading degree data:", error);
+  }
+};
 
+const loadGuaranteeData = async () => {
+  try {
+    const response = await employeeService.getDocumentCompliance({
+      documentType: "guarantee_letter",
+      departmentId: complianceFilters.departmentId,
+      guaranteeMonths: 6,
+    });
+    if (response.success && response.data) {
+      const data = response.data;
+      guaranteeData.value = {
+        all: data.guarantee_letter?.all || [],
+        missing: data.guarantee_letter?.missing || [],
+        needSecond: data.guarantee_letter?.needSecond || [],
+        withTwo: data.guarantee_letter?.withTwo || [],
+      };
+      applyGuaranteeFilters();
+    }
+  } catch (error) {
+    console.error("Error loading guarantee data:", error);
+  }
+};
+
+const applyGuaranteeFilters = () => {
+  let sourceList = [];
+  switch (guaranteeFilter.value) {
+    case "missing":
+      sourceList = [...guaranteeData.value.missing];
+      break;
+    case "one":
+      sourceList = [...guaranteeData.value.needSecond];
+      break;
+    case "two":
+      sourceList = [...guaranteeData.value.withTwo];
+      break;
+    default:
+      sourceList = [...guaranteeData.value.all];
+  }
+  if (guaranteeAgeFilter.value !== "all") {
+    sourceList = sourceList.filter((emp) => {
+      const age = emp.latestAge || 0;
+      switch (guaranteeAgeFilter.value) {
+        case "0-3":
+          return age < 3;
+        case "3-6":
+          return age >= 3 && age < 6;
+        case "6-12":
+          return age >= 6 && age < 12;
+        case "12+":
+          return age >= 12;
+        default:
+          return true;
+      }
+    });
+  }
+  if (guaranteeSearch.value) {
+    const search = guaranteeSearch.value.toLowerCase();
+    sourceList = sourceList.filter(
+      (emp) =>
+        emp.fullName.toLowerCase().includes(search) ||
+        emp.department?.toLowerCase().includes(search),
+    );
+  }
+  guaranteeList.value = sourceList;
+};
+
+const loadDocumentCompliance = async () => {
+  try {
+    await Promise.all([
+      loadIdCardData(),
+      loadCvData(),
+      loadDegreeData(),
+      loadGuaranteeData(),
+    ]);
+    const result = await employeeService.getDocumentCompliance({
+      documentType: "all",
+      departmentId: complianceFilters.departmentId,
+      guaranteeMonths: 6,
+    });
+    if (result.success && result.data)
+      docComplianceRate.value = parseFloat(
+        result.data.summary?.complianceRate || "0",
+      );
+  } catch (error) {
+    console.error("Error loading document compliance:", error);
+  }
+};
+
+// Other Data Loading Functions
+const loadKpiStats = async () => {
+  try {
+    const result = await employeeService.getKpiStats();
+    if (result.success && result.data) kpiData.value = result.data;
+  } catch (error) {
+    console.error("Error loading KPI stats:", error);
+  }
+};
+
+const loadHiringTrends = async () => {
+  try {
+    const result = await employeeService.getHiringTrends({
+      departmentId: hiringFilters.departmentId,
+      months:
+        hiringFilters.timeRange === "all" ? "all" : hiringFilters.timeRange,
+    });
+    if (result.success && result.data && result.data.trends) {
+      hiringChartData.value = [...result.data.trends];
+      hiringStats.value = {
+        totalHired: result.data.totalHired || 0,
+        totalTerminated: result.data.totalTerminated || 0,
+        netGrowth: result.data.netGrowth || 0,
+      };
+      await nextTick();
+      setTimeout(() => initHiringChart(), 100);
+    }
+  } catch (error) {
+    console.error("Error loading hiring trends:", error);
+  }
+};
+
+const loadDepartmentDistribution = async () => {
+  try {
+    const result = await employeeService.getDepartmentDistribution();
+    if (result.success && result.data) {
+      departments.value = result.data.departments || [];
+      allDepartments.value = result.data.departments || [];
+      employeesByDepartment.value = result.data.employeesByDepartment || {};
+    }
+  } catch (error) {
+    console.error("Error loading department distribution:", error);
+  }
+};
+
+const loadEmploymentTypeDistribution = async () => {
+  try {
+    const result = await employeeService.getEmploymentTypeDistribution();
+    if (result.success && result.data) {
+      employmentTypes.value = result.data.types || [];
+      employeesByType.value = result.data.employeesByType || {};
+    }
+  } catch (error) {
+    console.error("Error loading employment type distribution:", error);
+  }
+};
+
+const loadSalaryAnalysis = async () => {
+  try {
+    const result = await employeeService.getSalaryAnalysis();
+    if (result.success && result.data) {
+      salaryChartData.value = result.data.distribution || [];
+      salaryStats.value = {
+        avgSalary: result.data.overview?.avg_salary || 0,
+        highestDept: result.data.byDepartment?.[0]?.department_name || "-",
+        totalPool: result.data.overview?.total_salary_pool || 0,
+      };
+      salaryByDepartment.value = result.data.byDepartment || [];
+      await nextTick();
+      setTimeout(() => initSalaryChart(), 100);
+    }
+  } catch (error) {
+    console.error("Error loading salary analysis:", error);
+  }
+};
+
+const loadAllData = async () => {
+  loading.value = true;
+  try {
+    await Promise.all([
+      loadKpiStats(),
+      loadHiringTrends(),
+      loadDepartmentDistribution(),
+      loadEmploymentTypeDistribution(),
+      loadSalaryAnalysis(),
+      loadDocumentCompliance(),
+    ]);
+    await nextTick();
+    setTimeout(() => {
+      if (hiringChartData.value?.length > 0) initHiringChart();
+      if (salaryChartData.value?.length > 0) initSalaryChart();
+    }, 200);
+  } catch (error) {
+    console.error("Error loading analytics data:", error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const refreshData = () => {
+  hiringFilters.departmentId = "all";
+  hiringFilters.timeRange = "all";
+  complianceFilters.documentType = "all";
+  complianceFilters.guaranteeMonths = 6;
+  complianceFilters.departmentId = "all";
+  loadAllData();
+};
+
+// ========== CHART FUNCTIONS ==========
+
+const initHiringChart = () => {
+  if (!hiringChartCanvas.value) {
+    setTimeout(() => {
+      if (hiringChartData.value?.length > 0) initHiringChart();
+    }, 100);
+    return false;
+  }
+  const ctx = hiringChartCanvas.value.getContext("2d");
+  if (!ctx) return false;
+  if (hiringChart) {
+    hiringChart.destroy();
+    hiringChart = null;
+  }
+  if (!hiringChartData.value?.length) return false;
+  const labels = hiringChartData.value.map((m) => {
+    const [year, month] = m.month.split("-");
+    return (
+      [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ][parseInt(month) - 1] +
+      " " +
+      year
+    );
+  });
+  hiringChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Hires",
+          data: hiringChartData.value.map((m) => m.hired || 0),
+          backgroundColor: "#10b981",
+          borderRadius: 8,
+          barPercentage: 0.7,
+        },
+        {
+          label: "Terminations",
+          data: hiringChartData.value.map((m) => m.terminated || 0),
+          backgroundColor: "#ef4444",
+          borderRadius: 8,
+          barPercentage: 0.7,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "top" },
+        tooltip: {
+          callbacks: {
+            label: (ctx) =>
+              `${ctx.dataset.label}: ${ctx.raw} employee${ctx.raw !== 1 ? "s" : ""}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Number of Employees" },
+          grid: { color: "#e2e8f0" },
+          ticks: { precision: 0, stepSize: 1 },
+        },
+        x: {
+          title: { display: true, text: "Month" },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+  return true;
+};
+
+const initSalaryChart = () => {
+  if (!salaryChartCanvas.value) return false;
+  const ctx = salaryChartCanvas.value.getContext("2d");
+  if (!ctx) return false;
+  if (salaryChart) {
+    salaryChart.destroy();
+    salaryChart = null;
+  }
+  if (!salaryChartData.value?.length) return false;
+  salaryChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: salaryChartData.value.map((s) => s.salary_range),
+      datasets: [
+        {
+          label: "Number of Employees",
+          data: salaryChartData.value.map((s) => s.employee_count),
+          backgroundColor: "#10b981",
+          borderRadius: 8,
+          barPercentage: 0.7,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.raw} employee${ctx.raw !== 1 ? "s" : ""}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Number of Employees" },
+          grid: { color: "#e2e8f0" },
+          ticks: { precision: 0 },
+        },
+        x: {
+          title: { display: true, text: "Salary Range (ETB)" },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+  return true;
+};
+
+// Icons
+const UsersIcon = {
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+};
+const ActivityIcon = {
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+};
+const CalendarIcon = {
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+};
+const CheckIcon = {
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+};
+const AlertIcon = {
+  template:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="currentColor"/></svg>',
+};
+
+// ========== LIFECYCLE ==========
 onMounted(() => {
-  loadDashboardData()
-})
+  loadAllData();
+});
 </script>
 
 <style scoped>
-.hr-dashboard {
-  min-height: 100vh;
-  background: #f5f7fb;
+/* ========== MAIN CONTAINER ========== */
+.hr-analytics {
   padding: 24px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  overflow-x: hidden;
-  width: 100%;
-  box-sizing: border-box;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fb 0%, #f0f4f8 100%);
+}
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 
-/* Header */
-.dashboard-header {
-  background: white;
-  padding: 20px 24px;
-  border-radius: 16px;
-  margin-bottom: 24px;
+/* ========== HEADER ========== */
+.analytics-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 28px;
   flex-wrap: wrap;
-  gap: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  gap: 20px;
 }
-
 .header-left {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-
 .logo-badge {
   width: 48px;
   height: 48px;
@@ -764,76 +1341,55 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
 }
-
 .logo-badge svg {
   width: 28px;
   height: 28px;
   color: white;
 }
-
 .header-left h1 {
   font-size: 24px;
   font-weight: 700;
-  margin: 0;
-  color: #1e293b;
+  color: #0f172a;
+  margin: 0 0 4px 0;
 }
-
 .header-left p {
   font-size: 13px;
   color: #64748b;
-  margin: 4px 0 0;
+  margin: 0;
 }
-
 .header-right {
   display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
 }
-
-.date-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: #f1f5f9;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.month-selector {
-  padding: 8px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 13px;
-  background: #f8fafc;
-  cursor: pointer;
-}
-
 .refresh-btn {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #f1f5f9;
+  background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .refresh-btn:hover {
-  background: #e2e8f0;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
 }
 
-/* Loading State */
+/* ========== LOADING STATE ========== */
 .loading-state {
   text-align: center;
   padding: 60px;
   background: white;
   border-radius: 20px;
 }
-
 .spinner {
   width: 48px;
   height: 48px;
@@ -843,729 +1399,396 @@ onMounted(() => {
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;
 }
-
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* Stats Grid */
-.stats-grid {
+/* ========== KPI GRID ========== */
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 20px;
+  margin-bottom: 28px;
 }
-
-.stat-card {
+@media (max-width: 1200px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+.kpi-card {
   background: white;
-  border-radius: 16px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  text-align: center;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 4px;
-}
-
-/* Summary Grid */
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.summary-card {
-  background: white;
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 20px;
+  padding: 20px;
   display: flex;
-  gap: 16px;
   align-items: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
 }
-
-.summary-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+.kpi-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  flex-shrink: 0;
 }
-
-.summary-icon.green { background: #d1fae5; }
-.summary-icon.orange { background: #fed7aa; }
-.summary-icon.purple { background: #e0e7ff; }
-.summary-icon.blue { background: #dbeafe; }
-
-.summary-content {
+.kpi-icon svg {
+  width: 28px;
+  height: 28px;
+  color: white;
+}
+.kpi-content {
   flex: 1;
-  min-width: 0;
 }
-
-.summary-value {
-  font-size: 24px;
+.kpi-value {
+  font-size: 28px;
   font-weight: 700;
-  color: #1e293b;
+  color: #0f172a;
+  display: block;
+  line-height: 1.2;
 }
-
-.summary-label {
-  font-size: 11px;
+.kpi-label {
+  font-size: 13px;
   color: #64748b;
-  margin-top: 2px;
-}
-
-.summary-trend {
-  font-size: 10px;
+  display: block;
   margin-top: 4px;
 }
 
-.summary-trend.positive { color: #10b981; }
-.summary-trend.warning { color: #f59e0b; }
-
-/* Department Analytics */
-.dept-analytics-full {
-  margin-bottom: 24px;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 16px;
-  color: #1e293b;
-}
-
-.analytics-full-grid {
+/* ========== ANALYTICS GRID ========== */
+.analytics-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 24px;
+  margin-bottom: 32px;
 }
-
-.analytics-full-card {
+@media (max-width: 1200px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.analytics-card {
   background: white;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  height: 320px;
-}
-
-.analytics-full-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eef2ff;
-  font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-  flex-shrink: 0;
-}
-
-.analytics-full-icon {
-  font-size: 18px;
-}
-
-.analytics-full-list {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-/* Custom scrollbar for all scrollable containers */
-.scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 280px;
-  position: relative;
-}
-
-.scroll-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.scroll-container::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-
-.scroll-container::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-.scroll-container::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Item list styling */
-.item-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.scroll-indicator {
-  text-align: center;
-  font-size: 10px;
-  color: #94a3b8;
-  padding: 8px;
-  border-top: 1px solid #eef2ff;
-  margin-top: 8px;
-}
-
-/* Analytics items */
-.analytics-full-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-}
-
-.analytics-full-rank {
-  width: 28px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #3b82f6;
-}
-
-.analytics-full-name {
-  width: 100px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.analytics-full-bar {
-  flex: 1;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
+  border-radius: 20px;
   overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
 }
-
-.analytics-full-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
+.analytics-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
-
-.analytics-full-value {
-  width: 70px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  text-align: right;
-}
-
-/* Comparison Stats Vertical */
-.comparison-stats-vertical {
-  padding: 8px 0;
-}
-
-.comparison-item {
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.comparison-label {
-  font-size: 12px;
-  color: #64748b;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.comparison-value {
-  font-size: 18px;
-  font-weight: 700;
-  display: block;
-  margin-bottom: 6px;
-}
-
-.comparison-value.positive { color: #10b981; }
-.comparison-value.negative { color: #ef4444; }
-
-.mini-bar {
-  height: 4px;
-  background: #e2e8f0;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.mini-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-
-.mini-fill.green { background: #10b981; }
-.mini-fill.red { background: #ef4444; }
-
-.comparison-divider {
-  height: 1px;
-  background: #e2e8f0;
-  margin: 8px 0;
-}
-
-/* Tenure Items */
-.tenure-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.tenure-label {
-  width: 75px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-}
-
-.tenure-bar {
-  flex: 1;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.tenure-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
-.tenure-value {
-  width: 95px;
-  font-size: 11px;
-  color: #64748b;
-  text-align: right;
-}
-
-/* Employment Type Section */
-.employment-type-section {
-  background: white;
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.distribution-header {
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eef2ff;
+  padding: 16px 20px;
+  background: #fafcfc;
+  border-bottom: 1px solid #e9edf2;
 }
-
-.distribution-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-  color: #1e293b;
-}
-
-.employment-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-.employment-card {
+.header-title {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-  transition: all 0.2s;
+  gap: 10px;
 }
-
-.employment-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-
-.employment-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+.title-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+}
+.title-icon.blue {
+  background: #dbeafe;
+}
+.title-icon.blue svg {
+  color: #3b82f6;
+}
+.title-icon.purple {
+  background: #f3e8ff;
+}
+.title-icon.purple svg {
+  color: #8b5cf6;
+}
+.title-icon.green {
+  background: #dcfce7;
+}
+.title-icon.green svg {
+  color: #10b981;
+}
+.title-icon.pink {
+  background: #fce7f3;
+}
+.title-icon.pink svg {
+  color: #ec4899;
+}
+.title-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.card-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
 }
 
-.employment-info {
+/* ========== FILTERS ========== */
+.filter-group-small {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.filter-select-small,
+.filter-input-small {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+}
+.filter-input-small {
+  width: 70px;
+}
+.expand-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #4f46e5;
+  text-decoration: none;
+}
+.expand-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+.expand-btn svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}
+
+/* ========== CHARTS ========== */
+.chart-container {
+  padding: 20px;
+  height: 300px;
+  position: relative;
+  width: 100%;
+}
+.chart-container.small {
+  height: 250px;
+}
+.chart-stats,
+.salary-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 20px 20px;
+  border-top: 1px solid #e9edf2;
+  background: #fafcfc;
+}
+.stat {
+  text-align: center;
+}
+.stat span {
+  font-size: 11px;
+  color: #64748b;
+  display: block;
+  margin-bottom: 4px;
+}
+.stat strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.stat strong.positive {
+  color: #10b981;
+}
+.stat strong.negative {
+  color: #ef4444;
+}
+.no-data-message {
+  text-align: center;
+  padding: 40px;
+  color: #64748b;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.no-data-message.small {
+  padding: 20px;
+}
+
+/* ========== DEPARTMENT LIST ========== */
+.dept-list {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dept-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dept-info {
   flex: 1;
 }
-
-.employment-name {
-  font-weight: 600;
+.dept-name {
   font-size: 14px;
+  font-weight: 500;
   color: #1e293b;
-  margin-bottom: 4px;
 }
-
-.employment-count {
+.dept-count {
   font-size: 12px;
   color: #64748b;
-  margin-bottom: 8px;
+  margin-left: 8px;
 }
-
-.employment-bar {
-  height: 4px;
+.dept-metrics {
+  width: 200px;
+}
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.metric-bar {
+  flex: 1;
+  height: 6px;
   background: #e2e8f0;
-  border-radius: 2px;
+  border-radius: 3px;
   overflow: hidden;
-  margin-bottom: 4px;
+}
+.metric span {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1e293b;
+  min-width: 40px;
 }
 
-.employment-fill {
+/* ========== EMPLOYMENT TYPES ========== */
+.employment-types {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.type-label {
+  width: 100px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #1e293b;
+}
+.type-bar {
+  flex: 1;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.type-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 4px;
   transition: width 0.3s;
 }
 
-.employment-percent {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.view-link {
-  font-size: 12px;
-  color: #3b82f6;
-  text-decoration: none;
-}
-
-.view-link:hover {
-  text-decoration: underline;
-}
-
-/* Two Column Layout */
-.two-column-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.left-column, .right-column {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* Section Cards */
-.section-card {
+/* ========== DOCUMENT COMPLIANCE ========== */
+.compliance-section {
   background: white;
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 380px;
-  height: auto;
+  border-radius: 24px;
+  padding: 24px;
+  margin-top: 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #eef2ff;
+  margin-bottom: 24px;
   flex-wrap: wrap;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 20px;
 }
 
-.section-header h3 {
-  font-size: 15px;
+.section-header h2 {
+  font-size: 18px;
   font-weight: 600;
-  margin: 0;
-  color: #1e293b;
+  color: #0f172a;
+  margin: 0 0 4px 0;
 }
 
-.badge {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.badge.info { background: #dbeafe; color: #2563eb; }
-.badge.warning { background: #fed7aa; color: #f59e0b; }
-.badge.danger { background: #fee2e2; color: #dc2626; }
-.badge.critical { background: #dc2626; color: white; }
-
-/* List Items */
-.list-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 10px;
-  transition: background 0.2s;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.list-item:last-child {
-  border-bottom: none;
-}
-
-.list-item:hover {
-  background: #f8fafc;
-}
-
-.list-avatar {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 14px;
-  color: white;
-  flex-shrink: 0;
-}
-
-.critical-avatar, .warning-avatar, .termination-avatar {
-  background: #dc2626;
-}
-
-.list-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.list-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.list-detail {
-  font-size: 11px;
+.section-header p {
+  font-size: 13px;
   color: #64748b;
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin: 0;
 }
 
-.list-date {
-  font-size: 10px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.list-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* Critical Items */
-.critical-item {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  margin-bottom: 8px;
-  border-radius: 10px;
-}
-
-.missing-doc-item {
-  background: #fef2f2;
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-
-.termination-item {
-  background: #fef2f2;
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-
-.warning-text {
-  font-size: 10px;
-  color: #dc2626;
-  margin-top: 2px;
-}
-
-.missing-docs-list {
-  font-size: 10px;
-  color: #ef4444;
-  margin-top: 2px;
-}
-
-.termination-reason {
-  font-size: 10px;
-  padding: 4px 8px;
-  background: #fee2e2;
-  border-radius: 12px;
-  color: #dc2626;
-}
-
-/* Sales Critical Card */
-.sales-critical-card {
-  border-left: 4px solid #dc2626;
-}
-
-/* Status Badges */
-.status-badge {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.status-badge.on-leave {
-  background: #dbeafe;
-  color: #2563eb;
-}
-
-.contract-status {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-weight: 500;
-}
-
-.contract-status.critical {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.contract-status.warning {
-  background: #fed7aa;
-  color: #f59e0b;
-}
-
-.contract-status.info {
-  background: #dbeafe;
-  color: #3b82f6;
-}
-
-/* Top Lists */
-.top-rank {
-  width: 28px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #3b82f6;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.top-value {
-  text-align: right;
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.late-count {
-  font-size: 14px;
-  font-weight: 600;
-  color: #ef4444;
-}
-
-.late-minutes {
-  font-size: 10px;
-  color: #f59e0b;
-  margin-top: 2px;
-}
-
-/* Buttons */
-.btn-small {
-  padding: 4px 10px;
-  font-size: 11px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-}
-
-.btn-small.success {
-  background: #10b981;
-  color: white;
-}
-
-.btn-small.success:hover {
-  background: #059669;
-}
-
-.btn-small.danger {
-  background: #ef4444;
-  color: white;
-}
-
-.btn-small.danger:hover {
-  background: #dc2626;
-}
-
-.btn-small.warning {
-  background: #f59e0b;
-  color: white;
-}
-
-.btn-small.warning:hover {
-  background: #d97706;
-}
-
-/* Document Compliance */
-.compliance-summary {
+.header-actions {
   display: flex;
   align-items: center;
   gap: 20px;
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
 }
 
-.compliance-ring-small {
+.view-full-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.view-full-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  color: #6366f1;
+}
+
+.overall-compliance {
+  text-align: center;
+}
+
+.compliance-ring {
   position: relative;
   width: 80px;
   height: 80px;
-  flex-shrink: 0;
 }
 
-.compliance-ring-small svg {
+.compliance-ring svg {
   width: 100%;
   height: 100%;
   transform: rotate(-90deg);
 }
 
-.compliance-ring-small .ring-value {
+.ring-value {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1575,235 +1798,233 @@ onMounted(() => {
   color: #0f172a;
 }
 
-.compliance-stats {
+.ring-label {
+  font-size: 11px;
+  color: #64748b;
+  display: block;
+  margin-top: 8px;
+}
+
+/* Global Filters */
+.global-filters {
+  margin-bottom: 24px;
+}
+
+.filter-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.filter-icon {
+  font-size: 28px;
+}
+
+.filter-content {
   flex: 1;
 }
 
-.doc-stat {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.doc-stat.warning {
-  color: #ef4444;
-}
-
-.doc-stat strong {
+.filter-content label {
+  display: block;
+  font-size: 12px;
   font-weight: 600;
+  color: #64748b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.doc-types-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.filter-select-modern {
+  width: 100%;
+  max-width: 300px;
+  padding: 10px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.doc-type-row {
+.filter-select-modern:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Compliance Status Grid */
+.compliance-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.status-card {
+  background: white;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.status-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.status-card-header {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 12px;
 }
 
-.doc-type-name {
-  width: 100px;
-  font-size: 12px;
-  color: #475569;
+.status-icon {
+  font-size: 22px;
 }
 
-.doc-type-bar {
+.status-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.status-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stat-item {
+  text-align: center;
   flex: 1;
-  height: 6px;
+}
+
+.stat-label {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.stat-value.success {
+  color: #10b981;
+}
+
+.stat-value.warning {
+  color: #f59e0b;
+}
+
+.stat-value.danger {
+  color: #ef4444;
+}
+
+.status-progress {
+  height: 4px;
   background: #e2e8f0;
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.doc-type-fill {
+.status-progress-bar {
   height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
+  border-radius: 2px;
+  transition: width 0.6s ease;
 }
 
-.doc-type-rate {
-  width: 40px;
+/* Compliance Summary Footer */
+.compliance-summary-footer {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.summary-item {
+  text-align: center;
+}
+
+.summary-label {
+  display: block;
   font-size: 12px;
-  font-weight: 500;
-  color: #1e293b;
-  text-align: right;
-}
-
-/* Employment Summary Items */
-.employment-summary-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.emp-type-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-}
-
-.emp-type-info {
-  flex: 1;
-}
-
-.emp-type-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.emp-type-count {
-  font-size: 11px;
   color: #64748b;
 }
 
-.emp-type-percent {
-  font-size: 14px;
+.summary-value {
+  display: block;
+  font-size: 24px;
   font-weight: 700;
-  color: #10b981;
+  color: #0f172a;
 }
 
-/* Department Summary */
-.dept-summary-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dept-summary-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.dept-summary-name {
-  width: 100px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.dept-summary-stats {
-  width: 90px;
-  font-size: 12px;
-}
-
-.active-count {
-  color: #10b981;
-  font-weight: 600;
-}
-
-.inactive-count {
-  color: #f59e0b;
-  font-size: 11px;
-}
-
-.dept-summary-bar {
-  flex: 1;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.dept-summary-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-
-/* Empty State */
-.empty-state-small {
-  text-align: center;
-  padding: 30px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-/* Toast */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 12px 20px;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 4px solid #10b981;
-}
-
-.toast.error { border-left-color: #ef4444; }
-.toast.warning { border-left-color: #f59e0b; }
-.toast.info { border-left-color: #3b82f6; }
-
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-  .stats-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .summary-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .employment-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .two-column-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* ========== RESPONSIVE ========== */
 @media (max-width: 768px) {
-  .hr-dashboard {
+  .hr-analytics {
     padding: 16px;
   }
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-  .analytics-full-grid {
-    grid-template-columns: 1fr;
-  }
-  .employment-grid {
-    grid-template-columns: 1fr;
-  }
-  .dashboard-header {
+  .analytics-header {
     flex-direction: column;
     align-items: flex-start;
   }
   .header-right {
     width: 100%;
+  }
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+  .dept-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .dept-metrics {
+    width: 100%;
+  }
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .header-actions {
+    flex-wrap: wrap;
     justify-content: space-between;
   }
-  .list-item {
-    flex-wrap: wrap;
+  .compliance-status-grid {
+    grid-template-columns: 1fr 1fr;
   }
-  .top-value {
-    min-width: auto;
+  .compliance-summary-footer {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .compliance-status-grid {
+    grid-template-columns: 1fr;
+  }
+  .status-stats {
+    flex-direction: row;
   }
 }
 </style>

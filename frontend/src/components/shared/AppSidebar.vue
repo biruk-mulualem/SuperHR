@@ -82,7 +82,8 @@ const roleTitle = computed(() => {
     storekeeper: 'StoreKeeper',
     store_it:'Store IT',
     checker: 'checker',
-    cost:"Cost analyst"
+    cost:"Cost analyst",
+    nebret: 'Asset Manager'
   }
   return titles[userRole.value] || 'User'
 })
@@ -105,6 +106,7 @@ const roleMenus = {
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
     { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
+        { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
   ],
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
@@ -167,6 +169,12 @@ const roleMenus = {
   cost: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
+  ],
+    nebret: [
+    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
+    { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },  // ← Added for reference
+    { name: 'Inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },  // ← Added for reference
   ]
 }
 

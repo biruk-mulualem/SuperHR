@@ -1,24 +1,24 @@
 <template>
   <div class="employees-page">
     <!-- Language Switcher -->
-   <div class="language-switcher-container">
-  <div class="lang-toggle">
-    <button 
-      @click="setLanguage('en')" 
-      class="lang-option"
-      :class="{ active: currentLanguage === 'en' }"
-    >
-      EN
-    </button>
-    <button 
-      @click="setLanguage('am')" 
-      class="lang-option"
-      :class="{ active: currentLanguage === 'am' }"
-    >
-      አማ
-    </button>
-  </div>
-</div>
+    <div class="language-switcher-container">
+      <div class="lang-toggle">
+        <button 
+          @click="setLanguage('en')" 
+          class="lang-option"
+          :class="{ active: currentLanguage === 'en' }"
+        >
+          EN
+        </button>
+        <button 
+          @click="setLanguage('am')" 
+          class="lang-option"
+          :class="{ active: currentLanguage === 'am' }"
+        >
+          አማ
+        </button>
+      </div>
+    </div>
 
     <!-- Page Header -->
     <div class="page-header">
@@ -27,7 +27,6 @@
         <p class="page-subtitle">{{ $t('employee.subtitle') || 'Manage system employees, roles, and permissions' }}</p>
       </div>
       <div class="header-buttons">
-           <!-- New Guarantee & Letters Button -->
         <router-link to="/documents-letters" class="btn-guarantee">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 4h16v16H4z" stroke="currentColor" fill="none"/>
@@ -38,15 +37,6 @@
           {{ $t('common.guaranteeLetters') || 'Guarantee & Letters' }}
         </router-link>
         
-        <router-link to="/analytics" class="btn-analytics">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4-3-9s1.34-9 3-9" />
-            <path d="M12 3v18" />
-          </svg>
-          {{ $t('common.analytics') || 'Analytics' }}
-        </router-link>
-        
-     
         <router-link to="/employees/create" class="btn-primary">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14" />
@@ -87,6 +77,8 @@
         @view-employee="viewEmployee"
         @delete-employee="confirmDelete"
         @toggle-status="toggleStatus"
+        @terminate-employee="handleTerminate"
+        @reactivate-employee="handleReactivation"
         @go-to-page="goToPage"
         @clear-filters="clearFilters"
       />
@@ -97,9 +89,19 @@
       :show-delete-modal="showDeleteModal"
       :employee-to-delete="employeeToDelete"
       :deleting="deleting"
+      :show-terminate-modal="showTerminateModal"
+      :employee-to-terminate="employeeToTerminate"
+      :terminating="terminating"
+      :show-reactivate-modal="showReactivateModal"
+      :employee-to-reactivate="employeeToReactivate"
+      :reactivating="reactivating"
       :toasts="toasts"
       @close-delete-modal="closeDeleteModal"
       @delete-employee="deleteEmployee"
+      @close-terminate-modal="closeTerminateModal"
+      @confirm-terminate="confirmTerminate"
+      @close-reactivate-modal="closeReactivateModal"
+      @confirm-reactivate="confirmReactivate"
       @remove-toast="removeToast"
     />
   </div>
@@ -130,7 +132,9 @@ const setLanguage = (lang) => {
   addToast(lang === 'en' ? 'Switched to English' : 'ወደ አማርኛ ተቀይሯል', 'success')
 }
 
-// State
+// ============================================================================
+// STATE
+// ============================================================================
 const employees = ref([])
 const departments = ref([])
 const kpiStats = ref({
@@ -144,6 +148,8 @@ const kpiStats = ref({
 })
 const loading = ref(false)
 const deleting = ref(false)
+const terminating = ref(false)
+const reactivating = ref(false)
 
 // Pagination
 const pagination = ref({
@@ -161,9 +167,18 @@ const filters = ref({
   employmentType: ''
 })
 
+// ========== MODAL STATES ==========
 // Delete Modal
 const showDeleteModal = ref(false)
 const employeeToDelete = ref(null)
+
+// Terminate Modal
+const showTerminateModal = ref(false)
+const employeeToTerminate = ref(null)
+
+// Reactivate Modal
+const showReactivateModal = ref(false)
+const employeeToReactivate = ref(null)
 
 // Toast
 const toasts = ref([])
@@ -172,31 +187,137 @@ const toasts = ref([])
 let searchTimeout = null
 
 // ============================================================================
-// METHODS
+// MODAL HANDLERS
 // ============================================================================
 
-// Navigate to analytics page
+// ========== DELETE MODAL ==========
+const confirmDelete = (employee) => {
+  if (employee.status === 'terminated') {
+    addToast(`${employee.fullName} is already terminated`, 'warning')
+    return
+  }
+  employeeToDelete.value = employee
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  employeeToDelete.value = null
+}
+
+const deleteEmployee = async () => {
+  deleting.value = true
+  try {
+    const result = await EmployeesService.deleteEmployee(employeeToDelete.value.id)
+    if (result.success) {
+      addToast(result.message, 'success')
+      closeDeleteModal()
+      loadEmployees()
+      loadKpiStats()
+    } else {
+      addToast(result.error || t('messages.error') || 'Delete failed', 'error')
+    }
+  } catch (error) {
+    console.error('Delete employee error:', error)
+    addToast(t('messages.error') || 'Delete failed', 'error')
+  } finally {
+    deleting.value = false
+  }
+}
+
+// ========== TERMINATE MODAL ==========
+const handleTerminate = (employee) => {
+  console.log('🔴 Terminate clicked for:', employee.fullName)
+  employeeToTerminate.value = employee
+  showTerminateModal.value = true
+}
+
+const closeTerminateModal = () => {
+  showTerminateModal.value = false
+  employeeToTerminate.value = null
+}
+
+const confirmTerminate = async () => {
+  console.log('🔴 Confirming terminate for:', employeeToTerminate.value?.fullName)
+  terminating.value = true
+  try {
+    const result = await EmployeesService.terminateEmployee(
+      employeeToTerminate.value.id
+    )
+    if (result.success) {
+      addToast(`${employeeToTerminate.value.fullName} has been terminated successfully`, 'success')
+      closeTerminateModal()
+      loadKpiStats()
+      loadEmployees()
+    } else {
+      addToast(result.error || 'Failed to terminate employee', 'error')
+    }
+  } catch (error) {
+    console.error('Terminate error:', error)
+    addToast('Failed to terminate employee', 'error')
+  } finally {
+    terminating.value = false
+  }
+}
+
+// ========== REACTIVATE MODAL ==========
+const handleReactivation = (employee) => {
+  console.log('🟢 Reactivate clicked for:', employee.fullName)
+  employeeToReactivate.value = employee
+  showReactivateModal.value = true
+}
+
+const closeReactivateModal = () => {
+  showReactivateModal.value = false
+  employeeToReactivate.value = null
+}
+
+const confirmReactivate = async () => {
+  console.log('🟢 Confirming reactivate for:', employeeToReactivate.value?.fullName)
+  reactivating.value = true
+  try {
+    const result = await EmployeesService.reactivateEmployee(
+      employeeToReactivate.value.id
+    )
+    if (result.success) {
+      addToast(`${employeeToReactivate.value.fullName} has been reactivated successfully`, 'success')
+      closeReactivateModal()
+      loadKpiStats()
+      loadEmployees()
+    } else {
+      addToast(result.error || 'Failed to reactivate employee', 'error')
+    }
+  } catch (error) {
+    console.error('Reactivation error:', error)
+    addToast('Failed to reactivate employee', 'error')
+  } finally {
+    reactivating.value = false
+  }
+}
+
+// ============================================================================
+// NAVIGATION
+// ============================================================================
 const navigateToAnalytics = () => {
   router.push('/analytics')
 }
 
-// Navigate to guarantee and letters page
-const navigateToGuaranteeLetters = () => {
-  router.push('/documents-letters')
-}
-
-// Toast functions
+// ============================================================================
+// TOAST
+// ============================================================================
 const addToast = (message, type = 'success') => {
   const id = Date.now()
   toasts.value.push({ id, message, type })
-  setTimeout(() => removeToast(id), 3000)
+  setTimeout(() => removeToast(id), 4000)
 }
 
 const removeToast = (id) => {
   toasts.value = toasts.value.filter(t => t.id !== id)
 }
 
-// Load departments
+// ============================================================================
+// DATA LOADING
+// ============================================================================
 const loadDepartments = async () => {
   try {
     const result = await UsersService.getDepartments()
@@ -208,7 +329,6 @@ const loadDepartments = async () => {
   }
 }
 
-// Load KPI Stats
 const loadKpiStats = async () => {
   try {
     const result = await EmployeesService.getKpiStats()
@@ -220,7 +340,6 @@ const loadKpiStats = async () => {
   }
 }
 
-// Load employees
 const loadEmployees = async () => {
   loading.value = true
   try {
@@ -249,16 +368,26 @@ const loadEmployees = async () => {
   }
 }
 
-// Toggle employee status
+// ============================================================================
+// EMPLOYEE ACTIONS
+// ============================================================================
 const toggleStatus = async (employee) => {
+  console.log('🔄 Toggle status for:', employee.fullName, 'Current:', employee.status)
+  
+  if (employee.status === 'terminated') {
+    addToast('Cannot toggle terminated employees', 'warning')
+    return
+  }
+  
   const newStatus = employee.status === 'active' ? 'on-leave' : 'active'
   try {
     const result = await EmployeesService.updateEmployee(employee.id, { status: newStatus })
     
     if (result.success) {
       employee.status = newStatus
-      addToast(`${employee.fullName} ${t('employee.statusChanged') || 'status changed to'} ${getStatusLabel(newStatus)}`, 'success')
+      addToast(`${employee.fullName} status changed to ${getStatusLabel(newStatus)}`, 'success')
       loadKpiStats()
+      loadEmployees()
     } else {
       addToast(result.error || t('messages.error') || 'Status update failed', 'error')
     }
@@ -268,44 +397,20 @@ const toggleStatus = async (employee) => {
   }
 }
 
-// Delete employee
-const confirmDelete = (employee) => {
-  employeeToDelete.value = employee
-  showDeleteModal.value = true
-}
-
-const deleteEmployee = async () => {
-  deleting.value = true
-  try {
-    const result = await EmployeesService.deleteEmployee(employeeToDelete.value.id)
-    
-    if (result.success) {
-      addToast(result.message, 'success')
-      closeDeleteModal()
-      loadEmployees()
-      loadKpiStats()
-    } else {
-      addToast(result.error || t('messages.error') || 'Delete failed', 'error')
-    }
-  } catch (error) {
-    console.error('Delete employee error:', error)
-    addToast(t('messages.error') || 'Delete failed', 'error')
-  } finally {
-    deleting.value = false
-  }
-}
-
-// Edit employee
+// ============================================================================
+// NAVIGATION ACTIONS
+// ============================================================================
 const editEmployee = (employee) => {
   router.push(`/employees/${employee.id}/edit`)
 }
 
-// View employee
 const viewEmployee = (employee) => {
   router.push(`/employees/${employee.id}`)
 }
 
-// Clear filters
+// ============================================================================
+// FILTERS & PAGINATION
+// ============================================================================
 const clearFilters = () => {
   filters.value = {
     search: '',
@@ -317,24 +422,18 @@ const clearFilters = () => {
   loadEmployees()
 }
 
-// Update filters
 const updateFilters = (newFilters) => {
   filters.value = { ...filters.value, ...newFilters }
 }
 
-// Pagination
 const goToPage = (page) => {
   pagination.value.page = page
   loadEmployees()
 }
 
-// Close delete modal
-const closeDeleteModal = () => {
-  showDeleteModal.value = false
-  employeeToDelete.value = null
-}
-
-// Utility functions
+// ============================================================================
+// UTILITY
+// ============================================================================
 const getStatusLabel = (status) => {
   const labels = { 
     active: t('employee.active') || 'Active', 
@@ -344,7 +443,9 @@ const getStatusLabel = (status) => {
   return labels[status] || status
 }
 
-// Watch for search with debounce
+// ============================================================================
+// WATCHERS
+// ============================================================================
 watch(() => filters.value.search, () => {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
@@ -353,7 +454,6 @@ watch(() => filters.value.search, () => {
   }, 500)
 })
 
-// Watch for filter changes
 watch([() => filters.value.departmentId, () => filters.value.employmentStatus, () => filters.value.employmentType], () => {
   pagination.value.page = 1
   loadEmployees()
@@ -372,7 +472,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-
 /* Language Toggle - Modern Switch Style */
 .language-switcher-container {
   display: flex;
@@ -410,40 +509,15 @@ onMounted(async () => {
   color: #ededee;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
-* { box-sizing: border-box; }
+
+* { 
+  box-sizing: border-box; 
+}
 
 .employees-page {
   padding: 16px;
   min-height: 100vh;
   background: #f5f7fb;
-}
-
-/* Language Switcher */
-.language-switcher-container {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 20px;
-}
-
-.lang-toggle-btn {
-  background: linear-gradient(135deg, #6a11cb, #7c3aed);
-  border: none;
-  border-radius: 30px;
-  padding: 8px 20px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: white;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 2px 4px rgba(106, 17, 203, 0.2);
-}
-
-.lang-toggle-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(106, 17, 203, 0.3);
 }
 
 /* Header */
@@ -468,7 +542,7 @@ onMounted(async () => {
   color: #64748b;
 }
 
-.btn-primary, .btn-analytics, .btn-guarantee {
+.btn-primary, .btn-guarantee {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -487,11 +561,6 @@ onMounted(async () => {
   border: none;
 }
 
-.btn-analytics {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-}
-
 .btn-guarantee {
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
@@ -502,17 +571,13 @@ onMounted(async () => {
   height: 18px;
 }
 
-.btn-primary:hover, .btn-analytics:hover, .btn-guarantee:hover {
+.btn-primary:hover, .btn-guarantee:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn-primary:hover {
   background: linear-gradient(135deg, #7c3aed, #6a11cb);
-}
-
-.btn-analytics:hover {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
 }
 
 .btn-guarantee:hover {
@@ -548,10 +613,17 @@ onMounted(async () => {
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
-  .employees-page { padding: 12px; }
-  .page-title { font-size: 20px; }
-  .btn-primary, .btn-analytics, .btn-guarantee { padding: 8px 16px; font-size: 13px; }
-  .btn-guarantee svg, .btn-analytics svg, .btn-primary svg {
+  .employees-page { 
+    padding: 12px; 
+  }
+  .page-title { 
+    font-size: 20px; 
+  }
+  .btn-primary, .btn-guarantee { 
+    padding: 8px 16px; 
+    font-size: 13px; 
+  }
+  .btn-guarantee svg, .btn-primary svg {
     width: 16px;
     height: 16px;
   }
@@ -562,7 +634,7 @@ onMounted(async () => {
     flex-wrap: wrap;
   }
   
-  .btn-primary, .btn-analytics, .btn-guarantee {
+  .btn-primary, .btn-guarantee {
     width: 100%;
     justify-content: center;
   }
