@@ -3257,200 +3257,6 @@ exports.getSalaryAnalysis = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-// ============================================================================
-// 7. DOCUMENT COMPLIANCE - REDESIGNED VERSION
-// ============================================================================
-exports.getDocumentCompliance = async (req, res) => {
-  try {
-    const { documentType, departmentId, guaranteeMonths } = req.query;
-
-    let deptWhere = {};
-    if (departmentId && departmentId !== 'all') {
-      deptWhere.departmentId = parseInt(departmentId);
-    }
-
-    const activeEmployees = await Employee.findAll({
-      where: { employmentStatus: 'active', ...deptWhere },
-      attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'workEmail', 'departmentId'],
-      include: [
-        { model: Department, attributes: ['name'] },
-        { model: Position, attributes: ['title'] },
-        { 
-          model: EmployeeDocument,
-          as: 'EmployeeDocuments',
-          required: false,
-          separate: true
-        }
-      ]
-    });
-
-    const result = {
-      id_card: { submitted: [], missing: [] },
-      cv: { submitted: [], missing: [] },
-      degree: { submitted: [], missing: [] },
-      guarantee_letter: { all: [], missing: [], needSecond: [], withTwo: [] },
-      summary: {
-        activeEmployees: activeEmployees.length,
-        fullyCompliant: 0,
-        missingDocuments: 0,
-        complianceRate: '0'
-      }
-    };
-
-    let fullyCompliantCount = 0;
-
-    activeEmployees.forEach(emp => {
-      const employeeData = {
-        id: emp.employeeId,
-        employeeId: emp.employeeCode,
-        fullName: `${emp.firstName} ${emp.lastName}`,
-        department: emp.Department?.name || 'Unknown',
-        position: emp.Position?.title || 'Unknown',
-        email: emp.workEmail
-      };
-
-      const allDocs = emp.EmployeeDocuments || [];
-      
-      // Process ID Card
-      const idCard = allDocs.find(d => d.documentType === 'id_card');
-      if (idCard) {
-        const monthsOld = calculateMonthsOld(idCard.created_at);
-        result.id_card.submitted.push({
-          ...employeeData,
-          submittedDate: idCard.created_at,
-          monthsOld: monthsOld,
-          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
-        });
-      } else {
-        result.id_card.missing.push({
-          ...employeeData,
-          status: 'missing'  // ✅ ADD STATUS
-        });
-      }
-
-      // Process CV
-      const cv = allDocs.find(d => d.documentType === 'cv');
-      if (cv) {
-        const monthsOld = calculateMonthsOld(cv.created_at);
-        result.cv.submitted.push({
-          ...employeeData,
-          submittedDate: cv.created_at,
-          monthsOld: monthsOld,
-          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
-        });
-      } else {
-        result.cv.missing.push({
-          ...employeeData,
-          status: 'missing'  // ✅ ADD STATUS
-        });
-      }
-
-      // Process Degree
-      const degree = allDocs.find(d => d.documentType === 'degree');
-      if (degree) {
-        const monthsOld = calculateMonthsOld(degree.created_at);
-        result.degree.submitted.push({
-          ...employeeData,
-          submittedDate: degree.created_at,
-          monthsOld: monthsOld,
-          status: getDocumentStatus(monthsOld)  // ✅ ADD STATUS
-        });
-      } else {
-        result.degree.missing.push({
-          ...employeeData,
-          status: 'missing'  // ✅ ADD STATUS
-        });
-      }
-
-      // Process Guarantee Letters
-      const guarantees = allDocs.filter(d => d.documentType === 'guarantee_letter');
-      const guaranteeCount = guarantees.length;
-      const latestGuarantee = guarantees[0];
-      const latestAge = latestGuarantee ? calculateMonthsOld(latestGuarantee.created_at) : null;
-      
-      const guaranteeData = {
-        ...employeeData,
-        guaranteeCount: guaranteeCount,
-        latestDate: latestGuarantee?.created_at || null,
-        latestAge: latestAge,
-        status: getGuaranteeStatus(guaranteeCount, latestAge),  // ✅ ADD STATUS
-        guarantees: guarantees.map(g => ({
-          id: g.documentId,
-          submittedDate: g.created_at,
-          monthsOld: calculateMonthsOld(g.created_at)
-        }))
-      };
-
-      result.guarantee_letter.all.push(guaranteeData);
-      
-      if (guaranteeCount === 0) {
-        result.guarantee_letter.missing.push(guaranteeData);
-      }
-      if (guaranteeCount === 1) {
-        result.guarantee_letter.needSecond.push(guaranteeData);
-      }
-      if (guaranteeCount >= 2) {
-        result.guarantee_letter.withTwo.push(guaranteeData);
-      }
-
-      // Check if fully compliant
-      const hasAllDocuments = idCard && cv && degree && guaranteeCount >= 2;
-      if (hasAllDocuments) {
-        fullyCompliantCount++;
-      }
-    });
-
-    const complianceRate = activeEmployees.length > 0 
-      ? ((fullyCompliantCount / activeEmployees.length) * 100).toFixed(1) 
-      : '0';
-
-    result.summary = {
-      activeEmployees: activeEmployees.length,
-      fullyCompliant: fullyCompliantCount,
-      missingDocuments: activeEmployees.length - fullyCompliantCount,
-      complianceRate: complianceRate
-    };
-
-    res.json({
-      success: true,
-      data: result
-    });
-
-  } catch (error) {
-    console.error('Get document compliance error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// Helper function for document status
-function getDocumentStatus(monthsOld) {
-  if (!monthsOld && monthsOld !== 0) return 'missing';
-  if (monthsOld > 12) return 'expired';
-  if (monthsOld > 6) return 'expiring_soon';
-  if (monthsOld > 3) return 'recent';
-  return 'valid';
-}
-
-// Helper function for guarantee status
-function getGuaranteeStatus(guaranteeCount, latestAge) {
-  if (guaranteeCount === 0) return 'no_guarantee';
-  if (guaranteeCount === 1) return 'need_second';
-  if (guaranteeCount >= 2) {
-    if (latestAge > 12) return 'expired';
-    if (latestAge > 6) return 'expiring_soon';
-    return 'compliant';
-  }
-  return 'unknown';
-}
-
-
-
-function calculateMonthsOld(date) {
-  const diff = new Date() - new Date(date);
-  return Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
-}
-
-
 
 
 // ============================================================================
@@ -3867,11 +3673,6 @@ exports.importEmployees = async (req, res) => {
   }
 };
 
-
-
-
-
-// ==================== GET EMPLOYEE COMPENSATION HISTORY ====================
 // ==================== GET EMPLOYEE COMPENSATION HISTORY ====================
 exports.getEmployeeCompensationHistory = async (req, res) => {
   try {
@@ -3980,9 +3781,7 @@ exports.getEmployeeCompensationHistory = async (req, res) => {
 // ============================================================================
 // 8. GET HIRING DETAILS - FIXED (Checks status AND dates)
 // ============================================================================
-// ============================================================================
-// 8. GET HIRING DETAILS - USING EC DATES
-// ============================================================================
+
 exports.getHiringDetails = async (req, res) => {
   try {
     const { departmentId, months } = req.query;
@@ -4254,13 +4053,916 @@ exports.uploadEmployeeDocument = async (req, res) => {
 
 
 
+// ====================new endpoint for document compliance summary in the dashboard========================================
+
+// ============================================================================
+// 7e. COMPLIANCE SUMMARY (For Dashboard Cards)
+// ============================================================================
+
+exports.getComplianceSummary = async (req, res) => {
+  try {
+    const { departmentId } = req.query;
+
+    let deptWhere = {};
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined') {
+      deptWhere.departmentId = parseInt(departmentId);
+    }
+
+    // Get all active employees with their documents
+    const activeEmployees = await Employee.findAll({
+      where: { employmentStatus: 'active', ...deptWhere },
+      attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName'],
+      include: [
+        { 
+          model: EmployeeDocument,
+          as: 'EmployeeDocuments',
+          required: false,
+          attributes: ['documentType', 'documentId', 'created_at']
+        }
+      ]
+    });
+
+    const totalEmployees = activeEmployees.length;
+
+    // Initialize counters
+    let idCardSubmitted = 0;
+    let degreeSubmitted = 0;
+    let guaranteeWithTwo = 0;
+    let guaranteeWithOne = 0;
+    let guaranteeWithZero = 0;
+    let fullyCompliant = 0;
+
+    // Process each employee
+    activeEmployees.forEach(emp => {
+      const docs = emp.EmployeeDocuments || [];
+      
+      let hasIdCard = false;
+      let hasDegree = false;
+      let guaranteeCount = 0;
+
+      docs.forEach(doc => {
+        switch(doc.documentType) {
+          case 'id_card':
+          case 'national_id':
+            hasIdCard = true;
+            break;
+          case 'degree':
+          case 'certificate':
+          case 'education_certificate':
+            hasDegree = true;
+            break;
+          case 'guarantee_letter':
+            guaranteeCount++;
+            break;
+        }
+      });
+
+      if (hasIdCard) idCardSubmitted++;
+      if (hasDegree) degreeSubmitted++;
+
+      if (guaranteeCount >= 2) guaranteeWithTwo++;
+      else if (guaranteeCount === 1) guaranteeWithOne++;
+      else guaranteeWithZero++;
+
+      if (hasIdCard && hasDegree && guaranteeCount >= 2) {
+        fullyCompliant++;
+      }
+    });
+
+    // ✅ Calculate rates with 2 decimal places (NO ROUNDING)
+    const idCardRate = totalEmployees > 0 ? parseFloat(((idCardSubmitted / totalEmployees) * 100).toFixed(2)) : 0;
+    const degreeRate = totalEmployees > 0 ? parseFloat(((degreeSubmitted / totalEmployees) * 100).toFixed(2)) : 0;
+    const guaranteeRate = totalEmployees > 0 ? parseFloat(((guaranteeWithTwo / totalEmployees) * 100).toFixed(2)) : 0;
+    const overallRate = totalEmployees > 0 ? parseFloat(((fullyCompliant / totalEmployees) * 100).toFixed(2)) : 0;
+    const missingDocuments = totalEmployees - fullyCompliant;
+
+    res.json({
+      success: true,
+      data: {
+        totalEmployees,
+        fullyCompliant,
+        missingDocuments,
+        overallRate,  // ✅ 2 decimal places, e.g., 38.46
+        idCard: {
+          submitted: idCardSubmitted,
+          missing: totalEmployees - idCardSubmitted,
+          rate: idCardRate  // ✅ 2 decimal places
+        },
+        degree: {
+          submitted: degreeSubmitted,
+          missing: totalEmployees - degreeSubmitted,
+          rate: degreeRate  // ✅ 2 decimal places
+        },
+        guarantee: {
+          withTwo: guaranteeWithTwo,
+          needSecond: guaranteeWithOne,
+          missing: guaranteeWithZero,
+          rate: guaranteeRate  // ✅ 2 decimal places
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get compliance summary error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================================================
+// GET EMPLOYEES WITHOUT NATIONAL ID - SEQUELIZE VERSION
+// ============================================================================
+
+exports.getEmployeesWithoutNationalId = async (req, res) => {
+  try {
+    const { 
+      departmentId, 
+      search = '',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    console.log('🔍 Search query:', search);
+
+    let deptFilter = '';
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined') {
+      deptFilter = `AND e.department_id = ${parseInt(departmentId)}`;
+    }
+
+    let searchFilter = '';
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      // ✅ Use correct table aliases: e for employees, d for departments, p for positions
+      searchFilter = `
+        AND (
+          e.first_name ILIKE '%${searchTerm}%' OR
+          e.last_name ILIKE '%${searchTerm}%' OR
+          e.middle_name ILIKE '%${searchTerm}%' OR
+          e.full_name_english ILIKE '%${searchTerm}%' OR
+          e.employee_code ILIKE '%${searchTerm}%' OR
+          e.work_email ILIKE '%${searchTerm}%' OR
+          d.name ILIKE '%${searchTerm}%' OR
+          p.title ILIKE '%${searchTerm}%'
+        )
+      `;
+    }
+
+    // Count total
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM employees e
+      LEFT JOIN departments d ON e.department_id = d.department_id
+      LEFT JOIN positions p ON e.position_id = p.position_id
+      WHERE e.employment_status = 'active'
+        AND (e.national_id IS NULL OR e.national_id = '')
+        ${deptFilter}
+        ${searchFilter}
+    `;
+    
+    const countResult = await sequelize.query(countQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+    const total = parseInt(countResult[0]?.total || 0);
+
+    console.log(`📊 Total employees matching search: ${total}`);
+
+    // Pagination (10 per page)
+    const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
+
+    // Get employees
+    const employeesQuery = `
+      SELECT 
+        e.employee_id,
+        e.employee_code,
+        e.first_name,
+        e.last_name,
+        e.middle_name,
+        e.full_name_english,
+        e.work_email,
+        e.phone_number,
+        e.national_id,
+        e.national_id_document,
+        e.profile_picture_url,
+        d.name as department_name,
+        d.code as department_code,
+        p.title as position_title
+      FROM employees e
+      LEFT JOIN departments d ON e.department_id = d.department_id
+      LEFT JOIN positions p ON e.position_id = p.position_id
+      WHERE e.employment_status = 'active'
+        AND (e.national_id IS NULL OR e.national_id = '')
+        ${deptFilter}
+        ${searchFilter}
+      ORDER BY e.first_name ASC
+      LIMIT ${queryLimit} OFFSET ${offset}
+    `;
+    
+    const employees = await sequelize.query(employeesQuery, { 
+      type: sequelize.QueryTypes.SELECT 
+    });
+
+    // Format response
+    const formattedEmployees = employees.map(emp => ({
+      id: emp.employee_id,
+      employeeId: emp.employee_code,
+      employeeCode: emp.employee_code,
+      fullName: `${emp.first_name} ${emp.middle_name ? emp.middle_name + ' ' : ''}${emp.last_name}`,
+      fullNameEnglish: emp.full_name_english || `${emp.first_name} ${emp.last_name}`,
+      firstName: emp.first_name,
+      lastName: emp.last_name,
+      middleName: emp.middle_name,
+      email: emp.work_email,
+      phone: emp.phone_number,
+      department: emp.department_name || 'Unknown',
+      departmentCode: emp.department_code,
+      position: emp.position_title || 'Unknown',
+      hasNationalId: !!(emp.national_id && emp.national_id.trim() !== ''),
+      hasDocument: !!(emp.national_id_document && Object.keys(emp.national_id_document).length > 0),
+      profilePictureUrl: emp.profile_picture_url || null
+    }));
+
+    const totalPages = Math.ceil(total / queryLimit);
+    const currentPage = parseInt(page);
+
+    res.json({
+      success: true,
+      data: {
+        employees: formattedEmployees,
+        summary: {
+          total: total,
+          withoutNationalId: formattedEmployees.filter(e => !e.hasNationalId).length,
+          withDocument: formattedEmployees.filter(e => e.hasDocument).length,
+          withoutDocument: formattedEmployees.filter(e => !e.hasDocument).length
+        },
+        pagination: {
+          total,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get employees without national ID error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================================================
+// GET EMPLOYEES MISSING DEGREE - SEQUELIZE VERSION
+// ============================================================================
+exports.getDegreeMissing = async (req, res) => {
+  try {
+    const { 
+      departmentId, 
+      search = '',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    console.log('🔍 Degree Missing - Search query:', search);
+    console.log('📊 Department filter:', departmentId);
+
+    let deptWhere = {};
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined') {
+      deptWhere.departmentId = parseInt(departmentId);
+    }
+
+    // ✅ Get all active employees
+    const allActiveEmployees = await Employee.findAll({
+      where: { employmentStatus: 'active', ...deptWhere },
+      attributes: ['employeeId']
+    });
+    const allIds = allActiveEmployees.map(emp => emp.employeeId);
+
+    // ✅ Get employees WITH degree documents (including education_certificate)
+    const employeesWithDegree = await EmployeeDocument.findAll({
+      where: { 
+        documentType: ['degree', 'certificate', 'education_certificate'],
+        employeeId: { [Op.in]: allIds.length ? allIds : [0] }
+      },
+      attributes: ['employeeId'],
+      group: ['employeeId']
+    });
+
+    const employeeIdsWithDegree = employeesWithDegree.map(doc => doc.employeeId);
+
+    // ✅ Get employees WITHOUT degree
+    let employeeIds = allIds.filter(id => !employeeIdsWithDegree.includes(id));
+
+    // ✅ Build search condition for Amharic name, English name, and Employee Code
+    let searchCondition = {};
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      
+      // Get employees matching search from the filtered list
+      const searchEmployees = await Employee.findAll({
+        where: {
+          employeeId: { [Op.in]: employeeIds.length ? employeeIds : [0] },
+          [Op.or]: [
+            { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+            { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+            { middleName: { [Op.iLike]: `%${searchTerm}%` } },
+            { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },
+            { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
+            { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
+            { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
+          ]
+        },
+        attributes: ['employeeId'],
+        include: [
+          { model: Department, attributes: ['name'] },
+          { model: Position, attributes: ['title'] }
+        ]
+      });
+
+      employeeIds = searchEmployees.map(emp => emp.employeeId);
+    }
+
+    // Get total count for pagination
+    const total = employeeIds.length;
+
+    // Pagination (10 per page)
+    const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
+    const paginatedIds = employeeIds.slice(offset, offset + queryLimit);
+
+    // Get paginated employees
+    const employees = await Employee.findAll({
+      where: {
+        employeeId: { [Op.in]: paginatedIds.length ? paginatedIds : [0] },
+        ...deptWhere
+      },
+      attributes: [
+        'employeeId', 
+        'employeeCode', 
+        'firstName', 
+        'lastName', 
+        'middleName',
+        'fullNameEnglish',
+        'workEmail', 
+        'phoneNumber', 
+        'nationalId', 
+        'nationalIdDocument',
+        'profilePictureUrl', 
+        'departmentId', 
+        'positionId'
+      ],
+      include: [
+        { 
+          model: Department, 
+          attributes: ['departmentId', 'name', 'code'] 
+        },
+        { 
+          model: Position, 
+          attributes: ['positionId', 'title'] 
+        }
+      ],
+      order: [['firstName', 'ASC']]
+    });
+
+    // Format response
+    const formattedEmployees = employees.map(emp => ({
+      id: emp.employeeId,
+      employeeId: emp.employeeCode,
+      employeeCode: emp.employeeCode,
+      fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+      fullNameEnglish: emp.fullNameEnglish || `${emp.firstName} ${emp.lastName}`,
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      middleName: emp.middleName,
+      email: emp.workEmail,
+      phone: emp.phoneNumber,
+      department: emp.Department?.name || 'Unknown',
+      departmentCode: emp.Department?.code || null,
+      position: emp.Position?.title || 'Unknown',
+      profilePictureUrl: emp.profilePictureUrl || null
+    }));
+
+    const totalPages = Math.ceil(total / queryLimit);
+    const currentPage = parseInt(page);
+
+    res.json({
+      success: true,
+      data: {
+        employees: formattedEmployees,
+        summary: {
+          total: total,
+          withDocument: allIds.length - total,
+          withoutDocument: total
+        },
+        pagination: {
+          total,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get employees missing degree error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================================================
+// GET EMPLOYEES BY GUARANTEE STATUS - SEQUELIZE VERSION
+// ============================================================================
+exports.getGuaranteeStatus = async (req, res) => {
+  try {
+    const { 
+      departmentId, 
+      search = '',
+      filter = 'missing', // 'missing', 'one', 'two', 'all'
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    console.log('🔍 Guarantee Status - Search:', search);
+    console.log('📊 Filter:', filter);
+    console.log('📊 Department:', departmentId);
+
+    let deptWhere = {};
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined') {
+      deptWhere.departmentId = parseInt(departmentId);
+    }
+
+    // ✅ Get all active employees with their documents
+    const whereCondition = {
+      employmentStatus: 'active',
+      ...deptWhere
+    };
+
+    // ✅ Build search condition
+    let searchCondition = {};
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      searchCondition = {
+        [Op.or]: [
+          { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+          { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+          { middleName: { [Op.iLike]: `%${searchTerm}%` } },
+          { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },
+          { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
+          { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
+          { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
+          { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
+        ]
+      };
+    }
+
+    const finalWhere = search && search.trim() 
+      ? { [Op.and]: [whereCondition, searchCondition] }
+      : whereCondition;
+
+    // ✅ Get all active employees with their documents
+    const activeEmployees = await Employee.findAll({
+      where: finalWhere,
+      attributes: [
+        'employeeId', 
+        'employeeCode', 
+        'firstName', 
+        'lastName', 
+        'middleName',
+        'fullNameEnglish',
+        'workEmail', 
+        'phoneNumber', 
+        'nationalId', 
+        'departmentId', 
+        'positionId'
+      ],
+      include: [
+        { 
+          model: Department, 
+          attributes: ['departmentId', 'name', 'code'] 
+        },
+        { 
+          model: Position, 
+          attributes: ['positionId', 'title'] 
+        },
+        {
+          model: EmployeeDocument,
+          as: 'EmployeeDocuments',
+          required: false,
+          where: { documentType: 'guarantee_letter' },
+          attributes: ['documentId', 'documentType', 'created_at']
+        }
+      ],
+      order: [['firstName', 'ASC']]
+    });
+
+    // ✅ Process each employee to get guarantee count
+    const processedEmployees = activeEmployees.map(emp => {
+      const employeeData = {
+        id: emp.employeeId,
+        employeeId: emp.employeeCode,
+        employeeCode: emp.employeeCode,
+        fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+        fullNameEnglish: emp.fullNameEnglish || `${emp.firstName} ${emp.lastName}`,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        middleName: emp.middleName,
+        email: emp.workEmail,
+        phone: emp.phoneNumber,
+        department: emp.Department?.name || 'Unknown',
+        departmentCode: emp.Department?.code || null,
+        position: emp.Position?.title || 'Unknown',
+        profilePictureUrl: emp.profilePictureUrl || null
+      };
+
+      const guarantees = emp.EmployeeDocuments || [];
+      const guaranteeCount = guarantees.length;
+
+      return {
+        ...employeeData,
+        guaranteeCount: guaranteeCount,
+        guarantees: guarantees.map(g => ({
+          id: g.documentId,
+          submittedDate: g.created_at
+        }))
+      };
+    });
+
+    // ✅ Filter by guarantee count
+    let filteredEmployees = [];
+    switch (filter) {
+      case 'missing':
+        filteredEmployees = processedEmployees.filter(e => e.guaranteeCount === 0);
+        break;
+      case 'one':
+        filteredEmployees = processedEmployees.filter(e => e.guaranteeCount === 1);
+        break;
+      case 'two':
+        filteredEmployees = processedEmployees.filter(e => e.guaranteeCount >= 2);
+        break;
+      default:
+        filteredEmployees = processedEmployees;
+    }
+
+    // ✅ Pagination
+    const total = filteredEmployees.length;
+    const { limit: queryLimit, offset } = getPagination(page, limit, 10, 100);
+    const paginatedEmployees = filteredEmployees.slice(offset, offset + queryLimit);
+
+    const totalPages = Math.ceil(total / queryLimit);
+    const currentPage = parseInt(page);
+
+    res.json({
+      success: true,
+      data: {
+        employees: paginatedEmployees,
+        all: processedEmployees,
+        missing: processedEmployees.filter(e => e.guaranteeCount === 0),
+        needSecond: processedEmployees.filter(e => e.guaranteeCount === 1),
+        withTwo: processedEmployees.filter(e => e.guaranteeCount >= 2),
+        summary: {
+          total: total,
+          missing: processedEmployees.filter(e => e.guaranteeCount === 0).length,
+          needSecond: processedEmployees.filter(e => e.guaranteeCount === 1).length,
+          withTwo: processedEmployees.filter(e => e.guaranteeCount >= 2).length
+        },
+        pagination: {
+          total,
+          page: currentPage,
+          limit: queryLimit,
+          totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPrevPage: currentPage > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get guarantee status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 
 
 
+exports.getGuaranteeAgeDistribution = async (req, res) => {
+  try {
+    const { 
+      departmentId, 
+      search = '',
+      includeDetails = 'false'
+    } = req.query;
 
+    console.log('📊 Guarantee Age Distribution - Department:', departmentId);
+    console.log('🔍 Search:', search);
 
+    // Build where clause
+    let deptWhere = {};
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined') {
+      deptWhere.departmentId = parseInt(departmentId);
+    }
 
+    const whereCondition = {
+      employmentStatus: 'active',
+      ...deptWhere
+    };
+
+    // Build search condition
+    let searchCondition = {};
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      searchCondition = {
+        [Op.or]: [
+          { firstName: { [Op.iLike]: `%${searchTerm}%` } },
+          { lastName: { [Op.iLike]: `%${searchTerm}%` } },
+          { middleName: { [Op.iLike]: `%${searchTerm}%` } },
+          { fullNameEnglish: { [Op.iLike]: `%${searchTerm}%` } },
+          { employeeCode: { [Op.iLike]: `%${searchTerm}%` } },
+          { workEmail: { [Op.iLike]: `%${searchTerm}%` } },
+          { '$Department.name$': { [Op.iLike]: `%${searchTerm}%` } },
+          { '$Position.title$': { [Op.iLike]: `%${searchTerm}%` } }
+        ]
+      };
+    }
+
+    const finalWhere = search && search.trim() 
+      ? { [Op.and]: [whereCondition, searchCondition] }
+      : whereCondition;
+
+    // Get all active employees with their documents
+    const activeEmployees = await Employee.findAll({
+      where: finalWhere,
+      attributes: [
+        'employeeId', 
+        'employeeCode', 
+        'firstName', 
+        'lastName', 
+        'middleName',
+        'fullNameEnglish',
+        'workEmail',
+        'departmentId',
+        'positionId',
+        'guaranteeInfo'
+      ],
+      include: [
+        { 
+          model: Department, 
+          attributes: ['departmentId', 'name', 'code'] 
+        },
+        { 
+          model: Position, 
+          attributes: ['positionId', 'title'] 
+        }
+      ],
+      order: [['firstName', 'ASC']]
+    });
+
+    console.log(`📊 Found ${activeEmployees.length} active employees`);
+
+    // ========== CURRENT EC DATE ==========
+    const currentECDate = "28/11/2018";
+    console.log(`📅 Current EC Date: ${currentECDate}`);
+
+    // ========== DEFINE THE AGE CATEGORIES (in months) ==========
+    const ageCategories = {
+      '1 Month': { min: 0, max: 1, count: 0 },
+      '3 Months': { min: 1.01, max: 3, count: 0 },
+      '6 Months': { min: 3.01, max: 6, count: 0 },
+      '9 Months': { min: 6.01, max: 9, count: 0 },
+      '12 Months': { min: 9.01, max: 12, count: 0 },
+      '> 12 Months': { min: 12.01, max: Infinity, count: 0 }
+    };
+
+    let totalAge = 0;
+    let totalGuaranteeCount = 0;
+    let oldest = 0;
+    let youngest = Infinity;
+    const allGuarantees = [];
+
+    // ========== PROCESS EACH EMPLOYEE'S GUARANTEES ==========
+    activeEmployees.forEach(emp => {
+      const guaranteeInfo = emp.guaranteeInfo || [];
+      
+      // ✅ FILTER GUARANTEES THAT HAVE A VALID GUARANTEE LETTER DATE
+      const validGuarantees = guaranteeInfo.filter(g => 
+        g.guaranteeLetterDateEC && 
+        g.guaranteeLetterDateEC.trim() !== '' &&
+        g.guaranteeLetterDateEC !== 'undefined' &&
+        g.guaranteeLetterDateEC !== 'null'
+      );
+      
+      console.log(`👤 Employee ${emp.employeeCode}: ${validGuarantees.length} valid guarantee letter dates`);
+      
+      // ✅ PROCESS EACH GUARANTEE SEPARATELY
+      validGuarantees.forEach((guarantee, index) => {
+        const guaranteeDateEC = guarantee.guaranteeLetterDateEC;
+        
+        console.log(`  📅 Guarantee Letter ${index + 1}: Date = ${guaranteeDateEC}`);
+        
+        // Calculate age for this specific guarantee letter
+        const ageInMonths = calculateAgeInMonthsEC(guaranteeDateEC, currentECDate);
+        
+        console.log(`  📊 Age in months: ${ageInMonths}`);
+        
+        if (ageInMonths !== null && ageInMonths >= 0) {
+          const guaranteeObj = {
+            employeeId: emp.employeeId,
+            employeeCode: emp.employeeCode,
+            fullName: `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`,
+            fullNameEnglish: emp.fullNameEnglish || `${emp.firstName} ${emp.lastName}`,
+            email: emp.workEmail,
+            department: emp.Department?.name || 'Unknown',
+            position: emp.Position?.title || 'Unknown',
+            guaranteeIndex: index + 1,
+            totalGuarantees: validGuarantees.length,
+            guaranteeLetterDateEC: guaranteeDateEC,
+            ageInMonths: Math.round(ageInMonths)
+          };
+
+          allGuarantees.push(guaranteeObj);
+
+          // ✅ Categorize EACH guarantee separately
+          let categorized = false;
+          for (const [category, data] of Object.entries(ageCategories)) {
+            if (ageInMonths >= data.min && ageInMonths <= data.max) {
+              data.count++;
+              categorized = true;
+              console.log(`  ✅ Categorized as: ${category}`);
+              break;
+            }
+          }
+          
+          if (!categorized) {
+            console.log(`  ⚠️ Age ${ageInMonths} not categorized! Defaulting to > 12 Months`);
+            ageCategories['> 12 Months'].count++;
+          }
+
+          totalAge += ageInMonths;
+          totalGuaranteeCount++;
+          if (ageInMonths > oldest) oldest = ageInMonths;
+          if (ageInMonths < youngest) youngest = ageInMonths;
+        } else {
+          console.log(`  ⚠️ Invalid age calculation for guarantee letter ${index + 1}`);
+        }
+      });
+    });
+
+    console.log(`📊 Total guarantees processed: ${totalGuaranteeCount}`);
+    console.log(`📊 Age categories:`, ageCategories);
+
+    // ========== CREATE THE DISTRIBUTION ARRAY ==========
+    const distribution = Object.entries(ageCategories).map(([label, data]) => ({
+      label: label,
+      months: getCategoryMonths(label),
+      count: data.count,
+      percentage: totalGuaranteeCount > 0 ? Math.round((data.count / totalGuaranteeCount) * 100) : 0
+    }));
+
+    // Sort by months
+    distribution.sort((a, b) => a.months - b.months);
+
+    console.log('📊 Final distribution:', JSON.stringify(distribution, null, 2));
+
+    // ========== PREPARE RESPONSE ==========
+    const response = {
+      success: true,
+      data: {
+        distribution: distribution,
+        summary: {
+          totalGuarantees: totalGuaranteeCount,
+          totalEmployeesWithGuarantees: activeEmployees.filter(e => 
+            (e.guaranteeInfo || []).filter(g => 
+              g.guaranteeLetterDateEC && 
+              g.guaranteeLetterDateEC.trim() !== ''
+            ).length > 0
+          ).length,
+          averageAgeMonths: totalGuaranteeCount > 0 ? Math.round(totalAge / totalGuaranteeCount) : 0,
+          oldestAgeMonths: oldest,
+          youngestAgeMonths: youngest === Infinity ? 0 : youngest,
+          totalEmployees: activeEmployees.length,
+          employeesWithoutGuarantees: activeEmployees.filter(e => 
+            (e.guaranteeInfo || []).filter(g => 
+              g.guaranteeLetterDateEC && 
+              g.guaranteeLetterDateEC.trim() !== ''
+            ).length === 0
+          ).length,
+          currentECDate: currentECDate
+        },
+        filters: {
+          departmentId: departmentId || 'all',
+          search: search || ''
+        }
+      }
+    };
+
+    // Include detailed guarantee list if requested
+    if (includeDetails === 'true') {
+      response.data.guarantees = allGuarantees;
+    }
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('❌ Get guarantee age distribution error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
+// ========== HELPER FUNCTIONS ==========
+
+/**
+ * Parse EC date string (DD/MM/YY or DD/MM/YYYY) to a number for comparison
+ */
+function parseECDateToNumber(dateStr) {
+  if (!dateStr) return 0;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return 0;
+  
+  let day = parseInt(parts[0]);
+  let month = parseInt(parts[1]);
+  let year = parseInt(parts[2]);
+  
+  if (isNaN(day) || isNaN(month) || isNaN(year)) return 0;
+  
+  // Handle 2-digit years (convert to 4-digit)
+  if (year < 100) {
+    year = 2000 + year;
+  }
+  
+  return year * 10000 + month * 100 + day;
+}
+
+/**
+ * Calculate age in months between two EC dates (DD/MM/YY or DD/MM/YYYY)
+ * Ethiopian calendar has 13 months
+ */
+function calculateAgeInMonthsEC(fromDateEC, toDateEC) {
+  if (!fromDateEC || !toDateEC) return null;
+  
+  // Parse the EC dates
+  const fromParts = fromDateEC.split('/');
+  const toParts = toDateEC.split('/');
+  
+  if (fromParts.length !== 3 || toParts.length !== 3) return null;
+  
+  let fromDay = parseInt(fromParts[0]);
+  let fromMonth = parseInt(fromParts[1]);
+  let fromYear = parseInt(fromParts[2]);
+  
+  let toDay = parseInt(toParts[0]);
+  let toMonth = parseInt(toParts[1]);
+  let toYear = parseInt(toParts[2]);
+  
+  if (isNaN(fromDay) || isNaN(fromMonth) || isNaN(fromYear) ||
+      isNaN(toDay) || isNaN(toMonth) || isNaN(toYear)) {
+    return null;
+  }
+  
+  // Handle 2-digit years
+  if (fromYear < 100) fromYear = 2000 + fromYear;
+  if (toYear < 100) toYear = 2000 + toYear;
+  
+  // Validate dates
+  if (fromMonth < 1 || fromMonth > 13 || toMonth < 1 || toMonth > 13) {
+    return null;
+  }
+  if (fromDay < 1 || fromDay > 30 || toDay < 1 || toDay > 30) {
+    return null;
+  }
+  
+  // Calculate total months difference
+  // Ethiopian calendar: 13 months in a year
+  let months = (toYear - fromYear) * 13 + (toMonth - fromMonth);
+  
+  // Adjust for days
+  if (toDay < fromDay) {
+    months--;
+  }
+  
+  // Handle negative months (if date is in the future)
+  if (months < 0) months = 0;
+  
+  return months;
+}
+
+/**
+ * Get numeric month value for a category label
+ */
+function getCategoryMonths(label) {
+  const map = {
+    '1 Month': 1,
+    '3 Months': 3,
+    '6 Months': 6,
+    '9 Months': 9,
+    '12 Months': 12,
+    '> 12 Months': 13
+  };
+  return map[label] || 0;
+}
 
 
 

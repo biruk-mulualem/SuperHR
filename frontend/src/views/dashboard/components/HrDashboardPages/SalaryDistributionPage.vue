@@ -7,7 +7,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
-          Back to Dashboard
+          Back
         </button>
         <div class="header-title">
           <h1>Salary Distribution</h1>
@@ -99,21 +99,8 @@
           </option>
         </select>
       </div>
-      <div class="filter-group">
-        <label>Salary Range</label>
-        <select v-model="salaryRangeFilter" @change="applyFilters" class="filter-select">
-          <option value="all">All Ranges</option>
-          <option value="0-5000">Under 5K</option>
-          <option value="5000-10000">5K - 10K</option>
-          <option value="10000-20000">10K - 20K</option>
-          <option value="20000-30000">20K - 30K</option>
-          <option value="30000-50000">30K - 50K</option>
-          <option value="50000-75000">50K - 75K</option>
-          <option value="75000+">75K+</option>
-        </select>
-      </div>
       <div class="filter-group search-group">
-        <label>Search Employee</label>
+        <label>Search Department</label>
         <div class="search-wrapper">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/>
@@ -122,7 +109,7 @@
           <input
             type="text"
             v-model="searchQuery"
-            placeholder="Search by name or department..."
+            placeholder="Search by department name..."
             class="search-input"
             @input="debounceSearch"
           />
@@ -139,43 +126,36 @@
 
     <!-- Content -->
     <template v-else>
-      <!-- Salary Chart -->
-      <div class="chart-section">
-        <div class="chart-header">
-          <h3>📊 Salary Distribution</h3>
-          <span class="chart-info">{{ salaryDistribution.length }} salary ranges</span>
-        </div>
-        <div class="chart-container">
-          <canvas ref="salaryChartCanvas"></canvas>
-        </div>
-      </div>
-
       <!-- Department Salary Table -->
       <div class="table-section">
         <div class="table-header">
           <h3>🏢 Salary by Department</h3>
-          <span class="table-info">{{ salaryByDepartment.length }} departments</span>
+          <div class="table-actions">
+            <span class="table-info">{{ salaryByDepartment.length }} departments</span>
+            <button class="export-table-btn" @click="exportDepartmentTable">
+              📊 Export
+            </button>
+          </div>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
+                <th>#</th>
                 <th>Department</th>
                 <th>Employees</th>
                 <th>Avg Salary</th>
                 <th>Min Salary</th>
                 <th>Max Salary</th>
                 <th>Total Pool</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="dept in paginatedSalaryByDept"
+                v-for="(dept, index) in paginatedSalaryByDept"
                 :key="dept.department_name"
-                @click="viewDepartment(dept.department_name)"
-                class="clickable-row"
               >
+                <td class="text-center">{{ getDeptRowIndex(index) }}</td>
                 <td>
                   <span class="dept-name">{{ dept.department_name }}</span>
                 </td>
@@ -184,11 +164,6 @@
                 <td class="salary-cell">ETB {{ formatNumber(dept.min_salary) }}</td>
                 <td class="salary-cell">ETB {{ formatNumber(dept.max_salary) }}</td>
                 <td class="salary-cell">ETB {{ formatNumber(dept.avg_salary * dept.employee_count) }}</td>
-                <td>
-                  <button class="btn-view" @click.stop="viewDepartment(dept.department_name)">
-                    👁 View
-                  </button>
-                </td>
               </tr>
               <tr v-if="paginatedSalaryByDept.length === 0">
                 <td colspan="7" class="empty-state">
@@ -200,7 +175,7 @@
           </table>
         </div>
 
-        <!-- Pagination for Department Table -->
+        <!-- Pagination -->
         <div class="pagination" v-if="deptPagination.totalPages > 1">
           <button
             @click="changeDeptPage(deptPagination.page - 1)"
@@ -232,96 +207,6 @@
           </span>
         </div>
       </div>
-
-      <!-- Highest Paid Employees -->
-      <div class="highest-paid-section">
-        <div class="section-header">
-          <h3>🏆 Highest Paid Employees</h3>
-          <span class="section-info">Top {{ highestPaid.length }} earners</span>
-        </div>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Salary</th>
-                <th>Rank</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(emp, index) in paginatedHighestPaid"
-                :key="emp.employee_id"
-                @click="viewEmployee(emp.employee_id)"
-                class="clickable-row"
-              >
-                <td class="text-center">{{ index + 1 + (highestPaidPagination.page - 1) * highestPaidPagination.limit }}</td>
-                <td>
-                  <div class="employee-cell">
-                    <div class="avatar" :style="{ background: getAvatarColor(emp.full_name) }">
-                      {{ getInitials(emp.full_name) }}
-                    </div>
-                    <span class="employee-name">{{ emp.full_name }}</span>
-                  </div>
-                </td>
-                <td><span class="dept-badge">{{ emp.department_name || 'N/A' }}</span></td>
-                <td class="salary-cell">ETB {{ formatNumber(emp.basic_salary) }}</td>
-                <td>
-                  <span class="rank-badge" :class="getRankClass(index)">
-                    #{{ index + 1 + (highestPaidPagination.page - 1) * highestPaidPagination.limit }}
-                  </span>
-                </td>
-                <td>
-                  <button class="btn-view" @click.stop="viewEmployee(emp.employee_id)">
-                    👁 View
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="paginatedHighestPaid.length === 0">
-                <td colspan="6" class="empty-state">
-                  <div class="empty-icon">📭</div>
-                  <p>No employee data available</p>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination for Highest Paid -->
-        <div class="pagination" v-if="highestPaidPagination.totalPages > 1">
-          <button
-            @click="changeHighestPaidPage(highestPaidPagination.page - 1)"
-            :disabled="!highestPaidPagination.hasPrevPage || loading"
-            class="pagination-btn"
-          >
-            ← Previous
-          </button>
-          <div class="pagination-pages">
-            <button
-              v-for="page in highestPaidVisiblePages"
-              :key="page"
-              @click="changeHighestPaidPage(page)"
-              :class="['page-btn', { active: page === highestPaidPagination.page }]"
-            >
-              {{ page }}
-            </button>
-          </div>
-          <button
-            @click="changeHighestPaidPage(highestPaidPagination.page + 1)"
-            :disabled="!highestPaidPagination.hasNextPage || loading"
-            class="pagination-btn"
-          >
-            Next →
-          </button>
-          <span class="pagination-info">
-            Page {{ highestPaidPagination.page }} of {{ highestPaidPagination.totalPages }}
-            ({{ highestPaidPagination.total }} employees)
-          </span>
-        </div>
-      </div>
     </template>
 
     <!-- Page Footer -->
@@ -340,26 +225,17 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
-import { useRouter, useRoute } from "vue-router";
-import { Chart, registerables } from "chart.js";
+import { ref, reactive, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
-Chart.register(...registerables);
-
 const router = useRouter();
-const route = useRoute();
 
 // ========== STATE ==========
 const loading = ref(false);
 const searchQuery = ref('');
 const departmentFilter = ref('all');
-const salaryRangeFilter = ref('all');
 const lastUpdated = ref(new Date().toLocaleString());
-
-// Chart ref
-const salaryChartCanvas = ref(null);
-let salaryChart = null;
 
 // Data
 const departments = ref([]);
@@ -368,22 +244,10 @@ const totalSalaryPool = ref(0);
 const maxSalary = ref(0);
 const minSalary = ref(0);
 const highestPaidDept = ref('');
-const salaryDistribution = ref([]);
 const salaryByDepartment = ref([]);
-const highestPaid = ref([]);
 
-// Pagination for Department Table
+// Pagination
 const deptPagination = reactive({
-  page: 1,
-  limit: 10,
-  total: 0,
-  totalPages: 1,
-  hasNextPage: false,
-  hasPrevPage: false
-});
-
-// Pagination for Highest Paid
-const highestPaidPagination = reactive({
   page: 1,
   limit: 10,
   total: 0,
@@ -415,67 +279,15 @@ const filteredSalaryByDept = computed(() => {
   return list;
 });
 
-const filteredHighestPaid = computed(() => {
-  let list = [...highestPaid.value];
-  
-  if (departmentFilter.value !== 'all') {
-    const dept = departments.value.find(d => d.departmentId === parseInt(departmentFilter.value));
-    if (dept) {
-      list = list.filter(emp => emp.department_name === dept.departmentName);
-    }
-  }
-  
-  if (salaryRangeFilter.value !== 'all') {
-    const [min, max] = salaryRangeFilter.value.split('-').map(Number);
-    list = list.filter(emp => {
-      const salary = emp.basic_salary || 0;
-      if (salaryRangeFilter.value === '75000+') return salary >= 75000;
-      return salary >= min && salary <= max;
-    });
-  }
-  
-  if (searchQuery.value) {
-    const s = searchQuery.value.toLowerCase();
-    list = list.filter(emp =>
-      emp.full_name.toLowerCase().includes(s) ||
-      emp.department_name?.toLowerCase().includes(s)
-    );
-  }
-  
-  return list;
-});
-
 const paginatedSalaryByDept = computed(() => {
   const start = (deptPagination.page - 1) * deptPagination.limit;
   const end = start + deptPagination.limit;
   return filteredSalaryByDept.value.slice(start, end);
 });
 
-const paginatedHighestPaid = computed(() => {
-  const start = (highestPaidPagination.page - 1) * highestPaidPagination.limit;
-  const end = start + highestPaidPagination.limit;
-  return filteredHighestPaid.value.slice(start, end);
-});
-
 const deptVisiblePages = computed(() => {
   const total = deptPagination.totalPages;
   const current = deptPagination.page;
-  const pages = [];
-  const delta = 2;
-  
-  for (let i = 1; i <= total; i++) {
-    if (i === 1 || i === total || Math.abs(i - current) <= delta) {
-      pages.push(i);
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...');
-    }
-  }
-  return pages;
-});
-
-const highestPaidVisiblePages = computed(() => {
-  const total = highestPaidPagination.totalPages;
-  const current = highestPaidPagination.page;
   const pages = [];
   const delta = 2;
   
@@ -503,57 +315,14 @@ const formatNumber = (num) => {
   return num.toLocaleString();
 };
 
-const getInitials = (name) => {
-  if (!name) return '?';
-  return name.split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-};
-
-const getAvatarColor = (name) => {
-  const colors = [
-    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b',
-    '#10b981', '#3b82f6', '#06b6d4', '#8b5cf6', '#d946ef'
-  ];
-  let hash = 0;
-  if (name) {
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-  }
-  return colors[Math.abs(hash) % colors.length];
-};
-
-const getRankClass = (index) => {
-  if (index === 0) return 'rank-gold';
-  if (index === 1) return 'rank-silver';
-  if (index === 2) return 'rank-bronze';
-  return 'rank-normal';
-};
-
-const viewEmployee = (id) => {
-  if (id) {
-    router.push(`/employees/${id}`);
-  }
-};
-
-const viewDepartment = (deptName) => {
-  // Filter by department
-  departmentFilter.value = 'all';
-  const dept = departments.value.find(d => d.departmentName === deptName);
-  if (dept) {
-    departmentFilter.value = String(dept.departmentId);
-    applyFilters();
-  }
+const getDeptRowIndex = (index) => {
+  return index + 1 + (deptPagination.page - 1) * deptPagination.limit;
 };
 
 const debounceSearch = () => {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     deptPagination.page = 1;
-    highestPaidPagination.page = 1;
     updatePagination();
   }, 300);
 };
@@ -561,13 +330,11 @@ const debounceSearch = () => {
 const clearSearch = () => {
   searchQuery.value = '';
   deptPagination.page = 1;
-  highestPaidPagination.page = 1;
   updatePagination();
 };
 
 const applyFilters = () => {
   deptPagination.page = 1;
-  highestPaidPagination.page = 1;
   updatePagination();
 };
 
@@ -578,14 +345,7 @@ const changeDeptPage = (page) => {
   }
 };
 
-const changeHighestPaidPage = (page) => {
-  if (page >= 1 && page <= highestPaidPagination.totalPages) {
-    highestPaidPagination.page = page;
-  }
-};
-
 const updatePagination = () => {
-  // Update department pagination
   const deptTotal = filteredSalaryByDept.value.length;
   deptPagination.total = deptTotal;
   deptPagination.totalPages = Math.max(1, Math.ceil(deptTotal / deptPagination.limit));
@@ -594,74 +354,43 @@ const updatePagination = () => {
   if (deptPagination.page > deptPagination.totalPages) {
     deptPagination.page = deptPagination.totalPages;
   }
-  
-  // Update highest paid pagination
-  const highestTotal = filteredHighestPaid.value.length;
-  highestPaidPagination.total = highestTotal;
-  highestPaidPagination.totalPages = Math.max(1, Math.ceil(highestTotal / highestPaidPagination.limit));
-  highestPaidPagination.hasNextPage = highestPaidPagination.page < highestPaidPagination.totalPages;
-  highestPaidPagination.hasPrevPage = highestPaidPagination.page > 1;
-  if (highestPaidPagination.page > highestPaidPagination.totalPages) {
-    highestPaidPagination.page = highestPaidPagination.totalPages;
-  }
 };
 
-// ========== CHART FUNCTIONS ==========
-const initSalaryChart = () => {
-  if (!salaryChartCanvas.value) return false;
+// ========== EXPORT FUNCTIONS ==========
+const exportDepartmentTable = () => {
+  let csv = 'Department Salary Report\n';
+  csv += `Generated: ${new Date().toLocaleString()}\n`;
+  csv += `Total Departments: ${salaryByDepartment.value.length}\n`;
+  csv += `Total Employees: ${totalEmployees.value}\n`;
+  csv += `Total Salary Pool: ETB ${formatNumber(totalSalaryPool.value)}\n\n`;
+  csv += 'Department,Employees,Avg Salary,Min Salary,Max Salary,Total Pool\n';
   
-  const ctx = salaryChartCanvas.value.getContext('2d');
-  if (!ctx) return false;
-  
-  if (salaryChart) {
-    salaryChart.destroy();
-    salaryChart = null;
-  }
-  
-  if (!salaryDistribution.value || salaryDistribution.value.length === 0) return false;
-  
-  salaryChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: salaryDistribution.value.map(s => s.salary_range),
-      datasets: [{
-        label: 'Number of Employees',
-        data: salaryDistribution.value.map(s => s.employee_count),
-        backgroundColor: [
-          '#10b981', '#34d399', '#6ee7b7', '#a7f3d0',
-          '#059669', '#047857', '#065f46'
-        ],
-        borderRadius: 8,
-        barPercentage: 0.7,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => `${ctx.raw} employee${ctx.raw !== 1 ? 's' : ''}`
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: { display: true, text: 'Number of Employees', font: { size: 12 } },
-          grid: { color: '#e2e8f0' },
-          ticks: { precision: 0 }
-        },
-        x: {
-          title: { display: true, text: 'Salary Range (ETB)', font: { size: 12 } },
-          grid: { display: false }
-        }
-      }
-    }
+  salaryByDepartment.value.forEach(dept => {
+    const total = dept.avg_salary * dept.employee_count;
+    csv += `"${dept.department_name}",${dept.employee_count},${dept.avg_salary},${dept.min_salary},${dept.max_salary},${total}\n`;
   });
   
-  return true;
+  downloadCSV(csv, 'Department_Salary_Report');
+};
+
+const downloadCSV = (csvContent, filename) => {
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+const printPage = () => {
+  window.print();
+};
+
+const exportCSV = () => {
+  exportDepartmentTable();
 };
 
 // ========== DATA LOADING ==========
@@ -681,12 +410,6 @@ const loadSalaryData = async () => {
       // Department data
       salaryByDepartment.value = result.data.byDepartment || [];
       
-      // Distribution
-      salaryDistribution.value = result.data.distribution || [];
-      
-      // Highest paid
-      highestPaid.value = result.data.highestPaid || [];
-      
       // Get departments for filter
       const deptResult = await employeeService.getDepartmentDistribution();
       if (deptResult.success && deptResult.data) {
@@ -701,10 +424,6 @@ const loadSalaryData = async () => {
       
       lastUpdated.value = new Date().toLocaleString();
       updatePagination();
-      
-      // Initialize chart
-      await nextTick();
-      setTimeout(() => initSalaryChart(), 200);
     }
   } catch (error) {
     console.error('Error loading salary data:', error);
@@ -717,38 +436,8 @@ const refreshData = () => {
   loadSalaryData();
 };
 
-// ========== EXPORT FUNCTIONS ==========
-const printPage = () => {
-  window.print();
-};
-
-const exportCSV = () => {
-  let csvContent = 'Department,Employees,Avg Salary,Min Salary,Max Salary,Total Pool\n';
-  
-  salaryByDepartment.value.forEach(dept => {
-    const total = dept.avg_salary * dept.employee_count;
-    csvContent += `"${dept.department_name}",${dept.employee_count},${dept.avg_salary},${dept.min_salary},${dept.max_salary},${total}\n`;
-  });
-  
-  csvContent += '\nHighest Paid Employees\n';
-  csvContent += 'Rank,Employee,Department,Salary\n';
-  highestPaid.value.forEach((emp, index) => {
-    csvContent += `#${index + 1},"${emp.full_name}","${emp.department_name || 'N/A'}",${emp.basic_salary}\n`;
-  });
-  
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `salary_distribution_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
-
 // ========== WATCHERS ==========
-watch([() => deptPagination.page, () => highestPaidPagination.page], () => {
+watch(() => deptPagination.page, () => {
   updatePagination();
 });
 
@@ -1019,42 +708,6 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-/* ========== CHART SECTION ========== */
-.chart-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.chart-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.chart-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-
-.chart-info {
-  font-size: 12px;
-  color: #94a3b8;
-  background: #f1f5f9;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-.chart-container {
-  height: 300px;
-  position: relative;
-}
-
 /* ========== TABLE SECTION ========== */
 .table-section {
   background: white;
@@ -1078,12 +731,35 @@ onMounted(() => {
   margin: 0;
 }
 
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .table-info {
   font-size: 12px;
   color: #94a3b8;
   background: #f1f5f9;
   padding: 2px 12px;
   border-radius: 12px;
+}
+
+.export-table-btn {
+  padding: 4px 12px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-table-btn:hover {
+  background: #059669;
+  transform: scale(1.05);
 }
 
 .table-wrapper {
@@ -1122,16 +798,8 @@ onMounted(() => {
   vertical-align: middle;
 }
 
-.data-table tbody tr {
-  transition: background 0.15s;
-}
-
 .data-table tbody tr:hover {
   background: #f8fafc;
-}
-
-.clickable-row {
-  cursor: pointer;
 }
 
 .text-center {
@@ -1146,119 +814,6 @@ onMounted(() => {
 .salary-cell {
   font-weight: 500;
   color: #0f172a;
-}
-
-.dept-badge {
-  background: #e2e8f0;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  display: inline-block;
-}
-
-/* ========== HIGHEST PAID SECTION ========== */
-.highest-paid-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.section-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-
-.section-info {
-  font-size: 12px;
-  color: #94a3b8;
-  background: #f1f5f9;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-/* ========== EMPLOYEE CELL ========== */
-.employee-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.employee-name {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-/* ========== RANK BADGES ========== */
-.rank-badge {
-  display: inline-block;
-  padding: 2px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.rank-gold {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.rank-silver {
-  background: #e2e8f0;
-  color: #64748b;
-}
-
-.rank-bronze {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.rank-normal {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-/* ========== BUTTONS ========== */
-.btn-view {
-  padding: 4px 12px;
-  background: #6366f1;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-view:hover {
-  background: #4f46e5;
-  transform: scale(1.05);
 }
 
 /* ========== EMPTY STATE ========== */
@@ -1392,7 +947,7 @@ onMounted(() => {
   .filters-bar,
   .pagination,
   .page-footer .separator,
-  .btn-view {
+  .export-table-btn {
     display: none !important;
   }
   
@@ -1412,13 +967,7 @@ onMounted(() => {
     break-inside: avoid;
   }
   
-  .chart-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  
-  .table-section,
-  .highest-paid-section {
+  .table-section {
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -1474,10 +1023,6 @@ onMounted(() => {
   
   .summary-stats {
     grid-template-columns: 1fr 1fr;
-  }
-  
-  .chart-container {
-    height: 200px;
   }
   
   .data-table th,

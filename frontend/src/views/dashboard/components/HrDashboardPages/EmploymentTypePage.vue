@@ -1,161 +1,117 @@
 <template>
-  <div class="employment-type-page">
+  <div class="employment-page">
     <!-- Page Header -->
     <div class="page-header">
       <div class="header-left">
         <button class="back-btn" @click="goBack">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 10H5M10 15l-5-5 5-5"/>
           </svg>
-          Back to Dashboard
+          Back
         </button>
-        <div class="header-title">
-          <h1>Employment Type Distribution</h1>
+        <div>
+          <h1>Employment Types</h1>
           <p class="subtitle">
-            {{ totalEmployees }} total employees • {{ employmentTypes.length }} employment types
-            <span v-if="loading" class="loading-badge">⏳ Loading...</span>
+            {{ totalEmployees }} employees • {{ employmentTypes.length }} types
+            <span v-if="loading" class="loading-badge">Loading...</span>
           </p>
         </div>
       </div>
       <div class="header-actions">
-        <button class="action-btn" @click="printPage" title="Print">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 6 2 18 2 18 9"/>
-            <path d="M18 9H6"/>
-            <rect x="6" y="14" width="12" height="8"/>
-            <polyline points="6 18 4 18 4 12 20 12 20 18 18 18"/>
-          </svg>
-          Print
-        </button>
-        <button class="action-btn" @click="exportCSV" title="Export CSV">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export CSV
-        </button>
         <button class="action-btn" @click="refreshData" :disabled="loading">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 4v6h-6M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 4v6h-6M1 16v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L19 10M1 14l4.64 4.36A9 9 0 0 0 18.49 15"/>
           </svg>
           Refresh
         </button>
       </div>
     </div>
 
-    <!-- Summary Stats -->
-    <div class="summary-stats">
+    <!-- Stats Cards -->
+    <div class="stats-cards">
       <div class="stat-card">
-        <div class="stat-icon blue">👥</div>
-        <div class="stat-info">
-          <span class="stat-label">Total Employees</span>
-          <span class="stat-value">{{ totalEmployees }}</span>
+        <div class="stat-card-icon blue">👥</div>
+        <div class="stat-card-content">
+          <span class="stat-card-value">{{ totalEmployees }}</span>
+          <span class="stat-card-label">Total Employees</span>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon purple">📋</div>
-        <div class="stat-info">
-          <span class="stat-label">Employment Types</span>
-          <span class="stat-value">{{ employmentTypes.length }}</span>
+        <div class="stat-card-icon purple">📋</div>
+        <div class="stat-card-content">
+          <span class="stat-card-value">{{ employmentTypes.length }}</span>
+          <span class="stat-card-label">Employment Types</span>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon green">🏆</div>
-        <div class="stat-info">
-          <span class="stat-label">Most Common</span>
-          <span class="stat-value">{{ mostCommonType }}</span>
+        <div class="stat-card-icon green">🏆</div>
+        <div class="stat-card-content">
+          <span class="stat-card-value">{{ mostCommonType }}</span>
+          <span class="stat-card-label">Most Common</span>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon orange">📊</div>
-        <div class="stat-info">
-          <span class="stat-label">Diversity Index</span>
-          <span class="stat-value">{{ diversityIndex }}%</span>
+        <div class="stat-card-icon orange">📊</div>
+        <div class="stat-card-content">
+          <span class="stat-card-value">{{ diversityIndex }}%</span>
+          <span class="stat-card-label">Diversity Index</span>
         </div>
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="filters-bar">
-      <div class="filter-group search-group">
-        <label>Search</label>
-        <div class="search-wrapper">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <input
-            type="text"
-            v-model="searchQuery"
-            placeholder="Search by employee name, type, or department..."
-            class="search-input"
-            @input="debounceSearch"
-          />
-          <button v-if="searchQuery" class="clear-search" @click="clearSearch">✕</button>
-        </div>
-      </div>
-      <div class="filter-group">
-        <label>Employment Type</label>
-        <select v-model="typeFilter" @change="applyFilters" class="filter-select">
-          <option value="all">All Types</option>
-          <option
-            v-for="type in employmentTypes"
-            :key="type.type"
-            :value="type.type"
-          >
-            {{ getEmploymentTypeLabel(type.type) }} ({{ type.count }})
-          </option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label>Department</label>
-        <select v-model="departmentFilter" @change="applyFilters" class="filter-select">
-          <option value="all">All Departments</option>
-          <option
-            v-for="dept in departments"
-            :key="dept.departmentId"
-            :value="dept.departmentId"
-          >
-            {{ dept.departmentName }} ({{ dept.count }})
-          </option>
-        </select>
-      </div>
+    <!-- Global Search -->
+    <div class="global-search">
+      <svg class="global-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="9" cy="9" r="7"/>
+        <path d="M19 19l-4.35-4.35"/>
+      </svg>
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="Search by type name or employee..."
+        class="global-search-input"
+        @input="debounceSearch"
+      />
+      <button v-if="searchQuery" class="global-search-clear" @click="clearSearch">✕</button>
     </div>
 
-    <!-- Loading State -->
+    <!-- Loading -->
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <p>Loading employment type data...</p>
+      <p>Loading data...</p>
     </div>
 
     <!-- Content -->
     <template v-else>
-      <!-- Employment Type Cards -->
-      <div class="type-cards">
+      <div class="type-grid">
         <div
           v-for="type in filteredTypes"
           :key="type.type"
           class="type-card"
-          :class="{ expanded: expandedType === type.type }"
-          @click="toggleType(type.type)"
         >
-          <div class="type-header">
-            <div class="type-icon" :style="{ background: getTypeColor(type.type) + '20' }">
-              <span style="font-size: 24px;">{{ getTypeIcon(type.type) }}</span>
+          <!-- Card Header -->
+          <div class="type-card-header" @click="toggleType(type.type)">
+            <div class="type-badge" :style="{ background: getTypeColor(type.type) }">
+              {{ getTypeIcon(type.type) }}
             </div>
             <div class="type-info">
               <div class="type-name">{{ getEmploymentTypeLabel(type.type) }}</div>
-              <div class="type-meta">
-                <span class="type-count">{{ type.count }} employees</span>
-                <span class="type-percentage">{{ type.percentage }}%</span>
+              <div class="type-stats">
+                <span>{{ type.count }} employees</span>
+                <span class="type-dot">•</span>
+                <span class="type-percent">{{ type.percentage }}%</span>
               </div>
             </div>
             <div class="type-actions">
-              <span class="expand-icon">{{ expandedType === type.type ? '−' : '+' }}</span>
+              <button class="type-export-btn" @click.stop="exportType(type)" title="Export to Excel">
+                📊
+              </button>
+              <span class="type-toggle">{{ expandedType === type.type ? '−' : '+' }}</span>
             </div>
           </div>
+
+          <!-- Progress -->
           <div class="type-progress">
             <div
               class="type-progress-bar"
@@ -166,229 +122,129 @@
             ></div>
           </div>
 
-          <!-- Expanded Employee List -->
+          <!-- Expanded Content -->
           <div v-if="expandedType === type.type" class="type-expand">
-            <div class="employee-list-header">
-              <span class="employee-count">{{ getTypeEmployees(type.type).length }} employees</span>
-              <input
-                type="text"
-                v-model="typeEmployeeSearch[type.type]"
-                placeholder="Filter employees..."
-                class="employee-search"
-                @input="debounceTypeSearch(type.type)"
-              />
-            </div>
-            <div class="employee-list">
-              <div
-                v-for="emp in getFilteredTypeEmployees(type.type)"
-                :key="emp.id"
-                class="employee-item"
-                @click="viewEmployee(emp.id)"
+            <!-- Department Filter inside type -->
+            <div class="type-dept-filter">
+              <svg class="type-dept-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="1" y="5" width="18" height="14" rx="2"/>
+                <path d="M12 3v2M8 3v2M1 9h18"/>
+              </svg>
+              <select
+                v-model="typeDeptFilter[type.type]"
+                @change="applyTypeFilter(type.type)"
+                class="type-dept-select"
               >
-                <div class="employee-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
-                  {{ getInitials(emp.fullName) }}
-                </div>
-                <div class="employee-info">
-                  <span class="employee-name">{{ emp.fullName }}</span>
-                  <span class="employee-detail">{{ emp.department }} • {{ emp.email }}</span>
-                </div>
-                <button class="btn-view" @click.stop="viewEmployee(emp.id)">
-                  View →
-                </button>
-              </div>
-              <div v-if="getFilteredTypeEmployees(type.type).length === 0" class="empty-employees">
-                <span>No employees found</span>
-              </div>
+                <option value="all">All Departments</option>
+                <option
+                  v-for="dept in departments"
+                  :key="dept.departmentId"
+                  :value="dept.departmentId"
+                >
+                  {{ dept.departmentName }} ({{ dept.count }})
+                </option>
+              </select>
+              <span class="type-dept-count">{{ getTypeEmployees(type.type).length }} employees</span>
             </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Empty State -->
-      <div v-if="filteredTypes.length === 0" class="empty-state">
-        <div class="empty-icon">📭</div>
-        <p>No employment types found</p>
-        <span class="empty-hint">Try adjusting your search or filter criteria</span>
-      </div>
-
-      <!-- All Employees Table -->
-      <div class="table-section">
-        <div class="table-header">
-          <h3>📋 All Employees by Employment Type</h3>
-          <div class="table-actions">
-            <span class="table-info">{{ paginatedEmployees.length }} employees shown</span>
-            <span class="table-total">{{ filteredEmployees.length }} total</span>
-          </div>
-        </div>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Employee</th>
-                <th>Employment Type</th>
-                <th>Department</th>
-                <th>Email</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(emp, index) in paginatedEmployees"
-                :key="emp.id"
-                @click="viewEmployee(emp.id)"
-                class="clickable-row"
-              >
-                <td class="text-center">{{ getEmployeeRowIndex(index) }}</td>
-                <td>
-                  <div class="employee-cell">
-                    <div class="avatar" :style="{ background: getAvatarColor(emp.fullName) }">
-                      {{ getInitials(emp.fullName) }}
-                    </div>
-                    <span class="employee-name">{{ emp.fullName }}</span>
+            <!-- Employee List -->
+            <div class="type-employees">
+              <div class="type-employee-search">
+                <input
+                  type="text"
+                  v-model="typeEmployeeSearch[type.type]"
+                  placeholder="Filter employees..."
+                  class="type-employee-input"
+                  @click.stop
+                />
+              </div>
+              <div class="type-employee-list">
+                <div
+                  v-for="emp in getFilteredTypeEmployees(type.type)"
+                  :key="emp.id"
+                  class="type-employee"
+                >
+                  <div class="type-employee-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
+                    {{ getInitials(emp.fullName) }}
                   </div>
-                </td>
-                <td>
-                  <span
-                    class="type-badge"
-                    :style="{
-                      background: getTypeColor(emp.type) + '20',
-                      color: getTypeColor(emp.type)
-                    }"
-                  >
-                    {{ getEmploymentTypeLabel(emp.type) }}
-                  </span>
-                </td>
-                <td><span class="dept-badge">{{ emp.department || 'N/A' }}</span></td>
-                <td>{{ emp.email || 'N/A' }}</td>
-                <td>
-                  <button class="btn-view" @click.stop="viewEmployee(emp.id)">
-                    👁 View
+                  <div class="type-employee-info">
+                    <span class="type-employee-name">{{ emp.fullName }}</span>
+                    <span class="type-employee-dept">{{ emp.department || 'N/A' }}</span>
+                  </div>
+                  <button class="type-employee-view" @click.stop="viewEmployee(emp.id)">
+                    View →
                   </button>
-                </td>
-              </tr>
-              <tr v-if="paginatedEmployees.length === 0">
-                <td colspan="6" class="empty-state">
-                  <div class="empty-icon">📭</div>
-                  <p>No employees found</p>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination -->
-        <div class="pagination" v-if="employeePagination.totalPages > 1">
-          <button
-            @click="changeEmployeePage(employeePagination.page - 1)"
-            :disabled="!employeePagination.hasPrevPage || loading"
-            class="pagination-btn"
-          >
-            ← Previous
-          </button>
-          <div class="pagination-pages">
-            <button
-              v-for="page in employeeVisiblePages"
-              :key="page"
-              @click="changeEmployeePage(page)"
-              :class="['page-btn', { active: page === employeePagination.page }]"
-            >
-              {{ page }}
-            </button>
+                </div>
+                <div v-if="getFilteredTypeEmployees(type.type).length === 0" class="type-employee-empty">
+                  No employees found
+                </div>
+              </div>
+            </div>
           </div>
-          <button
-            @click="changeEmployeePage(employeePagination.page + 1)"
-            :disabled="!employeePagination.hasNextPage || loading"
-            class="pagination-btn"
-          >
-            Next →
-          </button>
-          <span class="pagination-info">
-            Page {{ employeePagination.page }} of {{ employeePagination.totalPages }}
-            ({{ employeePagination.total }} employees)
-          </span>
         </div>
+      </div>
+
+      <!-- Empty -->
+      <div v-if="filteredTypes.length === 0" class="empty-state">
+        <span class="empty-icon">📭</span>
+        <p>No employment types found</p>
+        <span>Try adjusting your search</span>
       </div>
     </template>
 
-    <!-- Page Footer -->
+    <!-- Footer -->
     <div class="page-footer">
-      <div class="footer-info">
-        <span>Last updated: {{ lastUpdated }}</span>
-        <span class="separator">•</span>
-        <span>{{ totalEmployees }} total employees</span>
-        <span class="separator">•</span>
-        <span>{{ employmentTypes.length }} employment types</span>
-        <span class="separator">•</span>
-        <span>Most common: {{ mostCommonType }}</span>
-      </div>
+      <span>Updated: {{ lastUpdated }}</span>
+      <span>•</span>
+      <span>{{ totalEmployees }} employees</span>
+      <span>•</span>
+      <span>{{ employmentTypes.length }} types</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
 const router = useRouter();
-const route = useRoute();
 
-// ========== STATE ==========
+// State
 const loading = ref(false);
 const searchQuery = ref('');
-const typeFilter = ref('all');
-const departmentFilter = ref('all');
 const expandedType = ref(null);
 const typeEmployeeSearch = ref({});
+const typeDeptFilter = ref({});
 const lastUpdated = ref(new Date().toLocaleString());
 
-// Data
 const employmentTypes = ref([]);
 const employeesByType = ref({});
 const departments = ref([]);
-const allEmployees = ref([]);
-
-// Pagination
-const employeePagination = reactive({
-  page: 1,
-  limit: 20,
-  total: 0,
-  totalPages: 1,
-  hasNextPage: false,
-  hasPrevPage: false
-});
 
 let searchTimeout = null;
-let typeSearchTimeouts = {};
 
-// ========== COMPUTED ==========
+// Computed
 const totalEmployees = computed(() => {
-  let total = 0;
-  employmentTypes.value.forEach(type => total += type.count);
-  return total;
+  return employmentTypes.value.reduce((sum, t) => sum + t.count, 0);
 });
 
 const mostCommonType = computed(() => {
-  if (employmentTypes.value.length === 0) return 'N/A';
+  if (!employmentTypes.value.length) return 'N/A';
   const sorted = [...employmentTypes.value].sort((a, b) => b.count - a.count);
   return getEmploymentTypeLabel(sorted[0]?.type);
 });
 
 const diversityIndex = computed(() => {
-  if (employmentTypes.value.length === 0) return '0';
+  if (!employmentTypes.value.length) return '0';
   const total = totalEmployees.value;
-  if (total === 0) return '0';
-  
-  // Calculate Shannon diversity index
+  if (!total) return '0';
   let sum = 0;
-  employmentTypes.value.forEach(type => {
-    const p = type.count / total;
+  employmentTypes.value.forEach(t => {
+    const p = t.count / total;
     sum += p * Math.log(p);
   });
   const shannon = -sum;
-  
-  // Normalize to percentage (max diversity is ln(n))
   const maxDiversity = Math.log(employmentTypes.value.length);
   return maxDiversity > 0 ? ((shannon / maxDiversity) * 100).toFixed(1) : '0';
 });
@@ -396,18 +252,15 @@ const diversityIndex = computed(() => {
 const filteredTypes = computed(() => {
   let list = [...employmentTypes.value];
   
-  if (typeFilter.value !== 'all') {
-    list = list.filter(t => t.type === typeFilter.value);
-  }
-  
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase();
-    list = list.filter(type => {
-      const employees = getTypeEmployees(type.type);
-      return getEmploymentTypeLabel(type.type).toLowerCase().includes(s) ||
-             employees.some(emp => 
-               emp.fullName.toLowerCase().includes(s) ||
-               emp.department?.toLowerCase().includes(s)
+    list = list.filter(t => {
+      const label = getEmploymentTypeLabel(t.type).toLowerCase();
+      const employees = getTypeEmployees(t.type);
+      return label.includes(s) || 
+             employees.some(e => 
+               e.fullName.toLowerCase().includes(s) || 
+               e.department?.toLowerCase().includes(s)
              );
     });
   }
@@ -415,104 +268,37 @@ const filteredTypes = computed(() => {
   return list;
 });
 
-const filteredEmployees = computed(() => {
-  let list = [...allEmployees.value];
-  
-  if (typeFilter.value !== 'all') {
-    list = list.filter(emp => emp.type === typeFilter.value);
-  }
-  
-  if (departmentFilter.value !== 'all') {
-    const dept = departments.value.find(d => d.departmentId === parseInt(departmentFilter.value));
-    if (dept) {
-      list = list.filter(emp => emp.department === dept.departmentName);
-    }
-  }
-  
-  if (searchQuery.value) {
-    const s = searchQuery.value.toLowerCase();
-    list = list.filter(emp =>
-      emp.fullName.toLowerCase().includes(s) ||
-      emp.department?.toLowerCase().includes(s) ||
-      getEmploymentTypeLabel(emp.type).toLowerCase().includes(s) ||
-      emp.email?.toLowerCase().includes(s)
-    );
-  }
-  
-  return list;
-});
+// Methods
+const goBack = () => router.push({ name: 'dashboard' });
 
-const paginatedEmployees = computed(() => {
-  const start = (employeePagination.page - 1) * employeePagination.limit;
-  const end = start + employeePagination.limit;
-  return filteredEmployees.value.slice(start, end);
-});
+const getEmploymentTypeLabel = (type) => ({
+  'full-time': 'Full Time',
+  'part-time': 'Part Time',
+  'contract': 'Contract',
+  'intern': 'Intern'
+})[type] || type;
 
-const employeeVisiblePages = computed(() => {
-  const total = employeePagination.totalPages;
-  const current = employeePagination.page;
-  const pages = [];
-  const delta = 2;
-  
-  for (let i = 1; i <= total; i++) {
-    if (i === 1 || i === total || Math.abs(i - current) <= delta) {
-      pages.push(i);
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...');
-    }
-  }
-  return pages;
-});
+const getTypeColor = (type) => ({
+  'full-time': '#10b981',
+  'part-time': '#f59e0b',
+  'contract': '#8b5cf6',
+  'intern': '#ef4444'
+})[type] || '#6366f1';
 
-// ========== METHODS ==========
-const goBack = () => {
-  router.push({ name: 'dashboard' });
-};
-
-const getEmploymentTypeLabel = (type) => {
-  const labels = {
-    'full-time': 'Full Time',
-    'part-time': 'Part Time',
-    'contract': 'Contract',
-    'intern': 'Intern'
-  };
-  return labels[type] || type;
-};
-
-const getTypeColor = (type) => {
-  const colors = {
-    'full-time': '#10b981',
-    'part-time': '#f59e0b',
-    'contract': '#8b5cf6',
-    'intern': '#ef4444'
-  };
-  return colors[type] || '#6366f1';
-};
-
-const getTypeIcon = (type) => {
-  const icons = {
-    'full-time': '💼',
-    'part-time': '⏰',
-    'contract': '📄',
-    'intern': '🎓'
-  };
-  return icons[type] || '👤';
-};
+const getTypeIcon = (type) => ({
+  'full-time': '💼',
+  'part-time': '⏰',
+  'contract': '📄',
+  'intern': '🎓'
+})[type] || '👤';
 
 const getInitials = (name) => {
   if (!name) return '?';
-  return name.split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
 const getAvatarColor = (name) => {
-  const colors = [
-    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b',
-    '#10b981', '#3b82f6', '#06b6d4', '#8b5cf6', '#d946ef'
-  ];
+  const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#06b6d4'];
   let hash = 0;
   if (name) {
     for (let i = 0; i < name.length; i++) {
@@ -523,118 +309,113 @@ const getAvatarColor = (name) => {
 };
 
 const getTypeEmployees = (type) => {
-  return employeesByType.value[type] || [];
+  let employees = employeesByType.value[type] || [];
+  
+  const deptFilter = typeDeptFilter.value[type];
+  if (deptFilter && deptFilter !== 'all') {
+    const dept = departments.value.find(d => d.departmentId === parseInt(deptFilter));
+    if (dept) {
+      employees = employees.filter(e => e.department === dept.departmentName);
+    }
+  }
+  
+  return employees;
 };
 
 const getFilteredTypeEmployees = (type) => {
   const employees = getTypeEmployees(type);
   const search = typeEmployeeSearch.value[type] || '';
   if (!search) return employees;
-  
   const s = search.toLowerCase();
-  return employees.filter(emp =>
-    emp.fullName.toLowerCase().includes(s) ||
-    emp.department?.toLowerCase().includes(s) ||
-    emp.email?.toLowerCase().includes(s)
+  return employees.filter(e =>
+    e.fullName.toLowerCase().includes(s) ||
+    e.department?.toLowerCase().includes(s) ||
+    e.email?.toLowerCase().includes(s)
   );
 };
 
-const getEmployeeRowIndex = (index) => {
-  return index + 1 + (employeePagination.page - 1) * employeePagination.limit;
+const toggleType = (type) => {
+  expandedType.value = expandedType.value === type ? null : type;
+  if (expandedType.value === type) {
+    if (!employeesByType.value[type]?.length) loadTypeEmployees(type);
+  }
 };
 
-const toggleType = (type) => {
-  if (expandedType.value === type) {
-    expandedType.value = null;
-  } else {
-    expandedType.value = type;
-    // Load employees if not already loaded
-    if (!employeesByType.value[type] || employeesByType.value[type].length === 0) {
-      loadTypeEmployees(type);
-    }
-  }
+const applyTypeFilter = (type) => {
+  // Just trigger re-render
 };
 
 const viewEmployee = (id) => {
-  if (id) {
-    router.push(`/employees/${id}`);
-  }
+  if (id) router.push(`/employees/${id}`);
 };
 
 const debounceSearch = () => {
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    employeePagination.page = 1;
-    updatePagination();
-  }, 300);
-};
-
-const debounceTypeSearch = (type) => {
-  clearTimeout(typeSearchTimeouts[type]);
-  typeSearchTimeouts[type] = setTimeout(() => {
-    // Just trigger re-render via computed
-  }, 300);
+  searchTimeout = setTimeout(() => {}, 300);
 };
 
 const clearSearch = () => {
   searchQuery.value = '';
-  employeePagination.page = 1;
-  updatePagination();
 };
 
-const applyFilters = () => {
-  employeePagination.page = 1;
-  updatePagination();
-};
-
-const changeEmployeePage = (page) => {
-  if (page >= 1 && page <= employeePagination.totalPages) {
-    employeePagination.page = page;
-    window.scrollTo({ top: 500, behavior: 'smooth' });
-  }
-};
-
-const updatePagination = () => {
-  const total = filteredEmployees.value.length;
-  employeePagination.total = total;
-  employeePagination.totalPages = Math.max(1, Math.ceil(total / employeePagination.limit));
-  employeePagination.hasNextPage = employeePagination.page < employeePagination.totalPages;
-  employeePagination.hasPrevPage = employeePagination.page > 1;
+// Export single type
+const exportType = (type) => {
+  if (!type) return;
   
-  if (employeePagination.page > employeePagination.totalPages) {
-    employeePagination.page = employeePagination.totalPages;
+  const employees = getTypeEmployees(type.type);
+  const typeLabel = getEmploymentTypeLabel(type.type);
+  
+  let csv = `Employment Type: ${typeLabel}\n`;
+  csv += `Total Employees: ${type.count}\n`;
+  csv += `Percentage: ${type.percentage}%\n`;
+  csv += `Generated: ${new Date().toLocaleString()}\n\n`;
+  csv += 'Employee ID,Full Name,Department,Email,Position\n';
+  
+  if (employees.length > 0) {
+    employees.forEach(emp => {
+      csv += `"${emp.employeeId || 'N/A'}"`;
+      csv += `,"${emp.fullName}"`;
+      csv += `,"${emp.department || 'N/A'}"`;
+      csv += `,"${emp.email || 'N/A'}"`;
+      csv += `,"${emp.position || 'N/A'}"\n`;
+    });
+  } else {
+    csv += 'No employees found\n';
   }
+  
+  downloadCSV(csv, `${typeLabel}_Employees`);
 };
 
-// ========== DATA LOADING ==========
+const downloadCSV = (content, name) => {
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${name}_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+// Data Loading
 const loadEmploymentTypes = async () => {
   loading.value = true;
   try {
     const result = await employeeService.getEmploymentTypeDistribution();
-    
     if (result.success && result.data) {
       employmentTypes.value = result.data.types || [];
       employeesByType.value = result.data.employeesByType || {};
       
-      // Build all employees list
-      allEmployees.value = [];
-      Object.entries(employeesByType.value).forEach(([type, employees]) => {
-        employees.forEach(emp => {
-          allEmployees.value.push({ ...emp, type });
-        });
-      });
-      
-      // Load departments
       const deptResult = await employeeService.getDepartmentDistribution();
       if (deptResult.success && deptResult.data) {
         departments.value = deptResult.data.departments || [];
       }
       
       lastUpdated.value = new Date().toLocaleString();
-      updatePagination();
     }
   } catch (error) {
-    console.error('Error loading employment types:', error);
+    console.error('Error:', error);
   } finally {
     loading.value = false;
   }
@@ -642,96 +423,49 @@ const loadEmploymentTypes = async () => {
 
 const loadTypeEmployees = async (type) => {
   try {
-    // If we already have employees, skip
-    if (employeesByType.value[type] && employeesByType.value[type].length > 0) return;
-    
+    if (employeesByType.value[type]?.length) return;
     const result = await employeeService.getEmploymentTypeDistributionPaginated({
       employmentTypeFilter: type,
       page: 1,
       limit: 100
     });
-    
     if (result.success && result.data) {
       const employees = result.data.employeesByType?.[type] || [];
-      employeesByType.value = {
-        ...employeesByType.value,
-        [type]: employees
-      };
+      employeesByType.value = { ...employeesByType.value, [type]: employees };
     }
   } catch (error) {
     console.error('Error loading type employees:', error);
   }
 };
 
-const refreshData = () => {
-  loadEmploymentTypes();
-};
+const refreshData = () => loadEmploymentTypes();
 
-// ========== EXPORT FUNCTIONS ==========
-const printPage = () => {
-  window.print();
-};
-
-const exportCSV = () => {
-  let csvContent = 'Employment Type,Count,Percentage\n';
-  employmentTypes.value.forEach(type => {
-    csvContent += `"${getEmploymentTypeLabel(type.type)}",${type.count},${type.percentage}%\n`;
-  });
-  
-  csvContent += '\nEmployee,Employment Type,Department,Email\n';
-  allEmployees.value.forEach(emp => {
-    csvContent += `"${emp.fullName}","${getEmploymentTypeLabel(emp.type)}","${emp.department || 'N/A'}","${emp.email || 'N/A'}"\n`;
-  });
-  
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `employment_type_distribution_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
-
-// ========== WATCHERS ==========
-watch([() => employeePagination.page, () => employeePagination.limit], () => {
-  updatePagination();
-});
-
-// ========== LIFECYCLE ==========
-onMounted(() => {
-  loadEmploymentTypes();
-});
+onMounted(loadEmploymentTypes);
 </script>
 
 <style scoped>
-/* ========== PAGE CONTAINER ========== */
-.employment-type-page {
+/* ===== PAGE ===== */
+.employment-page {
   padding: 24px;
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: #f5f7fb;
 }
 
-/* ========== HEADER ========== */
+/* ===== HEADER ===== */
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 24px;
-  padding: 20px 24px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   flex-wrap: wrap;
   gap: 16px;
 }
 
 .header-left {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
@@ -740,41 +474,36 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #f1f5f9;
-  border: none;
-  border-radius: 8px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   font-size: 13px;
-  font-weight: 500;
   color: #475569;
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 4px;
 }
 
 .back-btn:hover {
-  background: #e2e8f0;
+  background: #f1f5f9;
   transform: translateX(-2px);
 }
 
 .back-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
-.header-title h1 {
-  font-size: 24px;
+.header-left h1 {
+  font-size: 22px;
   font-weight: 700;
   color: #0f172a;
-  margin: 0 0 4px 0;
+  margin: 0;
 }
 
 .subtitle {
   font-size: 14px;
   color: #64748b;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin: 2px 0 0;
 }
 
 .loading-badge {
@@ -783,12 +512,12 @@ onMounted(() => {
   background: #e0e7ff;
   padding: 2px 10px;
   border-radius: 12px;
+  margin-left: 8px;
 }
 
 .header-actions {
   display: flex;
   gap: 8px;
-  flex-shrink: 0;
 }
 
 .action-btn {
@@ -798,18 +527,15 @@ onMounted(() => {
   padding: 8px 16px;
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
-  font-weight: 500;
   color: #475569;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  transform: translateY(-1px);
+  background: #f1f5f9;
 }
 
 .action-btn svg {
@@ -822,119 +548,121 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* ========== SUMMARY STATS ========== */
-.summary-stats {
+/* ===== STATS CARDS ===== */
+.stats-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
 
 .stat-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px 20px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e2e8f0;
   transition: all 0.2s;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-.stat-icon {
-  font-size: 28px;
+.stat-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
 }
 
-.stat-info {
+.stat-card-icon.blue {
+  background: #dbeafe;
+}
+
+.stat-card-icon.purple {
+  background: #ede9fe;
+}
+
+.stat-card-icon.green {
+  background: #dcfce7;
+}
+
+.stat-card-icon.orange {
+  background: #fef3c7;
+}
+
+.stat-card-content {
   flex: 1;
 }
 
-.stat-label {
+.stat-card-value {
   display: block;
-  font-size: 11px;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-value {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: #0f172a;
+  line-height: 1.2;
 }
 
-/* ========== FILTERS ========== */
-.filters-bar {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  padding: 16px 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  flex-wrap: wrap;
-  align-items: flex-end;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 140px;
-}
-
-.filter-group label {
-  font-size: 11px;
-  font-weight: 600;
+.stat-card-label {
+  font-size: 12px;
   color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-.search-group {
-  flex: 2;
-  min-width: 200px;
+@media (max-width: 1024px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-.search-wrapper {
+@media (max-width: 480px) {
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== GLOBAL SEARCH ===== */
+.global-search {
   position: relative;
+  margin-bottom: 20px;
 }
 
-.search-icon {
+.global-search-icon {
   position: absolute;
-  left: 12px;
+  left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   color: #94a3b8;
 }
 
-.search-input {
+.global-search-input {
   width: 100%;
-  padding: 8px 36px 8px 36px;
+  padding: 10px 44px 10px 40px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  min-height: 40px;
+  border-radius: 12px;
+  font-size: 14px;
+  background: white;
   transition: all 0.2s;
 }
 
-.search-input:focus {
+.global-search-input:focus {
   outline: none;
   border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
 }
 
-.clear-search {
+.global-search-clear {
   position: absolute;
-  right: 12px;
+  right: 14px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -945,71 +673,50 @@ onMounted(() => {
   padding: 4px;
 }
 
-.clear-search:hover {
+.global-search-clear:hover {
   color: #ef4444;
 }
 
-.filter-select {
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  background: white;
-  cursor: pointer;
-  min-height: 40px;
-  transition: all 0.2s;
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-/* ========== TYPE CARDS ========== */
-.type-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+/* ===== TYPE GRID ===== */
+.type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .type-card {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  transition: all 0.3s ease;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
+  transition: all 0.2s;
 }
 
 .type-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
 }
 
-.type-card.expanded {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-}
-
-.type-header {
+.type-card-header {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   padding: 16px 20px;
   cursor: pointer;
   transition: background 0.2s;
 }
 
-.type-header:hover {
-  background: #f8fafc;
+.type-card-header:hover {
+  background: #fafafa;
 }
 
-.type-icon {
-  width: 48px;
-  height: 48px;
+.type-badge {
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 22px;
   flex-shrink: 0;
 }
 
@@ -1023,154 +730,203 @@ onMounted(() => {
   color: #0f172a;
 }
 
-.type-meta {
+.type-stats {
+  font-size: 13px;
+  color: #64748b;
   display: flex;
-  gap: 16px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 6px;
 }
 
-.type-count {
-  font-size: 13px;
-  color: #475569;
+.type-dot {
+  color: #cbd5e1;
 }
 
-.type-percentage {
-  font-size: 13px;
-  font-weight: 600;
+.type-percent {
   color: #6366f1;
+  font-weight: 600;
 }
 
 .type-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
-.expand-icon {
-  width: 28px;
-  height: 28px;
+.type-export-btn {
+  padding: 6px 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.type-export-btn:hover {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.type-toggle {
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f1f5f9;
   border-radius: 50%;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #475569;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
-.type-header:hover .expand-icon {
+.type-card-header:hover .type-toggle {
   background: #e2e8f0;
 }
 
+/* ===== PROGRESS ===== */
 .type-progress {
-  height: 4px;
-  background: #e2e8f0;
+  height: 3px;
+  background: #f1f5f9;
 }
 
 .type-progress-bar {
   height: 100%;
-  border-radius: 0 2px 2px 0;
   transition: width 0.6s ease;
 }
 
-/* ========== EXPANDED EMPLOYEE LIST ========== */
+/* ===== EXPAND ===== */
 .type-expand {
   padding: 0 20px 20px;
-  animation: slideDown 0.3s ease;
+  animation: slideDown 0.25s ease;
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.employee-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.employee-count {
-  font-size: 12px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.employee-search {
-  padding: 4px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  width: 200px;
-}
-
-.employee-search:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.employee-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.employee-item {
+.type-dept-filter {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: background 0.2s;
-  cursor: pointer;
+  padding: 12px 0;
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
 }
 
-.employee-item:hover {
+.type-dept-icon {
+  width: 18px;
+  height: 18px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.type-dept-select {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #f8fafc;
+  cursor: pointer;
+  flex: 1;
+  min-width: 150px;
+  transition: all 0.2s;
+}
+
+.type-dept-select:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: white;
+}
+
+.type-dept-count {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 4px 12px;
+  background: #f1f5f9;
+  border-radius: 20px;
+}
+
+.type-employees {
+  margin-top: 8px;
+}
+
+.type-employee-search {
+  margin-bottom: 10px;
+}
+
+.type-employee-input {
+  width: 100%;
+  padding: 6px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.type-employee-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: white;
+}
+
+.type-employee-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.type-employee {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.type-employee:hover {
   background: #f8fafc;
 }
 
-.employee-avatar {
-  width: 32px;
-  height: 32px;
+.type-employee-avatar {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
-.employee-info {
+.type-employee-info {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-.employee-name {
+.type-employee-name {
   font-size: 13px;
   font-weight: 500;
-  color: #1e293b;
+  color: #0f172a;
 }
 
-.employee-detail {
-  font-size: 12px;
-  color: #64748b;
+.type-employee-dept {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
-.btn-view {
-  padding: 4px 12px;
+.type-employee-view {
+  padding: 3px 12px;
   background: #6366f1;
   color: white;
   border: none;
@@ -1182,162 +938,22 @@ onMounted(() => {
   opacity: 0;
 }
 
-.employee-item:hover .btn-view {
+.type-employee:hover .type-employee-view {
   opacity: 1;
 }
 
-.btn-view:hover {
+.type-employee-view:hover {
   background: #4f46e5;
-  transform: scale(1.05);
 }
 
-.empty-employees {
+.type-employee-empty {
   text-align: center;
   padding: 20px;
   color: #94a3b8;
   font-size: 13px;
 }
 
-/* ========== TABLE SECTION ========== */
-.table-section {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.table-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-
-.table-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.table-info {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.table-total {
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  background: #f1f5f9;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-.table-wrapper {
-  overflow-x: auto;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.data-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.data-table th {
-  padding: 12px 16px;
-  text-align: left;
-  background: #f8fafc;
-  font-weight: 600;
-  font-size: 11px;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #e2e8f0;
-}
-
-.data-table td {
-  padding: 10px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-}
-
-.data-table tbody tr {
-  transition: background 0.15s;
-}
-
-.data-table tbody tr:hover {
-  background: #f8fafc;
-}
-
-.clickable-row {
-  cursor: pointer;
-}
-
-.text-center {
-  text-align: center;
-}
-
-/* ========== EMPLOYEE CELL ========== */
-.employee-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.employee-name {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-/* ========== BADGES ========== */
-.type-badge {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.dept-badge {
-  background: #e2e8f0;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  display: inline-block;
-}
-
-/* ========== EMPTY STATE ========== */
+/* ===== EMPTY ===== */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -1347,25 +963,26 @@ onMounted(() => {
 
 .empty-icon {
   font-size: 48px;
+  display: block;
   margin-bottom: 12px;
 }
 
 .empty-state p {
-  margin: 0 0 4px 0;
   font-size: 16px;
   font-weight: 500;
   color: #64748b;
+  margin: 0;
 }
 
-.empty-hint {
+.empty-state span {
   font-size: 13px;
   color: #94a3b8;
 }
 
-/* ========== LOADING ========== */
+/* ===== LOADING ===== */
 .loading-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 60px;
   background: white;
   border-radius: 12px;
 }
@@ -1384,259 +1001,36 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* ========== PAGINATION ========== */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-  flex-wrap: wrap;
-}
-
-.pagination-btn {
-  padding: 6px 16px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-.pagination-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pagination-pages {
-  display: flex;
-  gap: 4px;
-}
-
-.page-btn {
-  padding: 6px 12px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 36px;
-  text-align: center;
-}
-
-.page-btn:hover:not(.active) {
-  background: #f1f5f9;
-}
-
-.page-btn.active {
-  background: #6366f1;
-  color: white;
-  border-color: #6366f1;
-}
-
-.pagination-info {
-  font-size: 13px;
-  color: #64748b;
-}
-
-/* ========== FOOTER ========== */
+/* ===== FOOTER ===== */
 .page-footer {
   margin-top: 24px;
-  padding: 16px 24px;
+  padding: 12px 20px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.footer-info {
+  border: 1px solid #e2e8f0;
   font-size: 12px;
   color: #94a3b8;
   display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 4px;
 }
 
-.separator {
-  margin: 0 4px;
-}
-
-/* ========== PRINT STYLES ========== */
-@media print {
-  .back-btn,
-  .header-actions,
-  .filters-bar,
-  .pagination,
-  .page-footer .separator,
-  .btn-view,
-  .expand-icon,
-  .employee-search {
-    display: none !important;
-  }
-  
-  .employment-type-page {
-    padding: 0;
-    background: white;
-  }
-  
-  .page-header {
-    box-shadow: none;
-    border-bottom: 2px solid #e2e8f0;
-    border-radius: 0;
-    padding: 16px 0;
-  }
-  
-  .summary-stats {
-    break-inside: avoid;
-  }
-  
-  .type-card {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    box-shadow: none;
-    border: 1px solid #e2e8f0;
-  }
-  
-  .type-expand {
-    display: block !important;
-  }
-  
-  .employee-list {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-  
-  .employee-item {
-    break-inside: avoid;
-  }
-  
-  .table-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-  
-  .data-table th {
-    background: #f1f5f9 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-}
-
-/* ========== RESPONSIVE ========== */
-@media (max-width: 1024px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .header-left {
-    flex-wrap: wrap;
-  }
-  
-  .header-actions {
-    justify-content: flex-start;
-  }
-}
-
+/* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
-  .employment-type-page {
-    padding: 12px;
-  }
-  
-  .page-header {
-    padding: 16px;
-  }
-  
-  .header-title h1 {
-    font-size: 20px;
-  }
-  
-  .filters-bar {
-    flex-direction: column;
-    padding: 12px 16px;
-  }
-  
-  .filter-group {
-    min-width: 100%;
-  }
-  
-  .summary-stats {
-    grid-template-columns: 1fr 1fr;
-  }
-  
-  .type-cards {
-    grid-template-columns: 1fr;
-  }
-  
-  .type-header {
-    padding: 12px 16px;
-  }
-  
-  .data-table th,
-  .data-table td {
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-  
-  .employee-list-header {
-    flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
-  }
-  
-  .employee-search {
-    width: 100%;
-  }
-  
-  .btn-view {
-    opacity: 1;
-  }
-  
-  .pagination {
-    gap: 8px;
-  }
-  
-  .pagination-btn {
-    padding: 4px 12px;
-    font-size: 12px;
-  }
-  
-  .page-btn {
-    padding: 4px 8px;
-    font-size: 12px;
-    min-width: 30px;
-  }
-  
-  .pagination-info {
-    font-size: 12px;
-  }
+  .employment-page { padding: 16px; }
+  .page-header { flex-direction: column; align-items: stretch; }
+  .header-left { flex-wrap: wrap; }
+  .header-actions { justify-content: flex-start; }
+  .type-card-header { flex-wrap: wrap; gap: 8px; }
+  .type-actions { margin-left: auto; }
+  .type-dept-filter { flex-direction: column; align-items: stretch; }
+  .type-dept-select { width: 100%; }
 }
 
 @media (max-width: 480px) {
-  .summary-stats {
-    grid-template-columns: 1fr;
-  }
-  
-  .header-actions {
-    flex-wrap: wrap;
-  }
-  
-  .action-btn {
-    flex: 1;
-    justify-content: center;
-  }
-  
-  .table-actions {
-    flex-direction: column;
-    align-items: flex-end;
-  }
+  .header-left h1 { font-size: 18px; }
+  .stats-cards { grid-template-columns: 1fr; }
+  .type-badge { width: 36px; height: 36px; font-size: 18px; }
+  .type-name { font-size: 14px; }
 }
 </style>

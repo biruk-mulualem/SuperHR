@@ -183,8 +183,8 @@
                 <th class="col-department">Department</th>
                 <th class="col-position">Position</th>
                 <th class="col-date">Hire Date</th>
-                <th class="col-email">Email</th>
-                <th class="col-salary">Salary</th>
+              
+               
                 <th class="col-action">Action</th>
               </tr>
             </thead>
@@ -213,11 +213,11 @@
                   <span class="date-badge">{{ emp.hireDate || 'N/A' }}</span>
                   <span class="date-label">EC</span>
                 </td>
-                <td><a :href="'mailto:' + emp.email" class="email-link" @click.stop>{{ emp.email || 'N/A' }}</a></td>
-                <td class="salary-cell">ETB {{ formatNumber(emp.salary) }}</td>
+              
+                
                 <td>
                   <button class="btn-view" @click.stop="viewEmployee(emp.id)">
-                    👁 View
+                    View
                   </button>
                 </td>
               </tr>
@@ -285,8 +285,8 @@
                 <th class="col-department">Department</th>
                 <th class="col-position">Position</th>
                 <th class="col-date">Termination Date</th>
-                <th class="col-email">Email</th>
-                <th class="col-salary">Last Salary</th>
+          
+            
                 <th class="col-status">Status</th>
                 <th class="col-action">Action</th>
               </tr>
@@ -316,14 +316,14 @@
                   <span class="date-badge terminated">{{ emp.terminationDate || 'N/A' }}</span>
                   <span class="date-label">EC</span>
                 </td>
-                <td><a :href="'mailto:' + emp.email" class="email-link" @click.stop>{{ emp.email || 'N/A' }}</a></td>
-                <td class="salary-cell">ETB {{ formatNumber(emp.salary) }}</td>
+               
+               
                 <td>
                   <span class="status-badge terminated">Terminated</span>
                 </td>
                 <td>
                   <button class="btn-view" @click.stop="viewEmployee(emp.id)">
-                    👁 View
+                     View
                   </button>
                 </td>
               </tr>

@@ -18,6 +18,66 @@ router.use(authMiddleware());
 // EMPLOYEE CRUD
 // ============================================================================
 
+
+
+
+
+// new route for the new design ========================================
+
+// Summary endpoint (for dashboard cards)
+router.get('/stats/compliance/summary', employeeController.getComplianceSummary);
+// new route for the new design ========================================
+router.get('/without-national-id', employeeController.getEmployeesWithoutNationalId);
+router.get("/degree-missing", employeeController.getDegreeMissing);
+
+router.get("/guarantee-status", employeeController.getGuaranteeStatus);
+
+// routes/employeeRoutes.js or similar
+router.get('/guarantee-age-distribution', employeeController.getGuaranteeAgeDistribution);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ========== TERMINATE & REACTIVATE ROUTES ==========
 /**
  * @route   POST /api/employees/:id/terminate
@@ -61,10 +121,6 @@ router.delete(
 );
 
 
-
-
-
-
 // ============================================================================
 // ANALYTICS STATS ENDPOINTS
 // ============================================================================
@@ -98,11 +154,7 @@ router.get(
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getSalaryAnalysis,
 );
-router.get(
-  "/stats/compliance",
-  authMiddleware("admin", "hr", "finance", "attendance"),
-  employeeController.getDocumentCompliance,
-);
+
 router.get(
   "/stats/hiring-details",
   authMiddleware("admin", "hr", "finance", "attendance"),

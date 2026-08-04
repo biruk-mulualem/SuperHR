@@ -999,6 +999,146 @@ async updateEmployee(id: number, employeeData: any) {
 
 
 
+// ============================================================================
+// DOCUMENT COMPLIANCE SUMMARY (NEW)
+// ============================================================================
+async getComplianceSummary(params?: { departmentId?: string }): Promise<{ 
+  success: boolean; 
+  data?: {
+    totalEmployees: number;
+    fullyCompliant: number;
+    missingDocuments: number;
+    overallRate: number;
+    idCard: { submitted: number; missing: number; rate: number };
+    cv: { submitted: number; missing: number; rate: number };
+    degree: { submitted: number; missing: number; rate: number };
+    guarantee: { withTwo: number; needSecond: number; missing: number; rate: number };
+  }; 
+  error?: string 
+}> {
+  try {
+    const response = await api.get('/employees/stats/compliance/summary', { params })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get compliance summary error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch compliance summary'
+    }
+  }
+}
+
+
+// In employeeService.js
+async getEmployeesWithoutNationalId(params?: {
+  departmentId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  try {
+    const response = await api.get('/employees/without-national-id', { params });
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Get employees without national ID error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch employees without national ID'
+    };
+  }
+}
+
+
+
+// ============================================================================
+// GET EMPLOYEES MISSING DEGREE
+// ============================================================================
+async getDegreeMissing(params?: {
+  departmentId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  try {
+    const response = await api.get('/employees/degree-missing', { params });
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Get employees missing degree error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch employees missing degree'
+    };
+  }
+}
+
+// ============================================================================
+// GET EMPLOYEES BY GUARANTEE STATUS
+// ============================================================================
+async getGuaranteeStatus(params?: {
+  departmentId?: string;
+  search?: string;
+  filter?: string; // 'missing', 'one', 'two', 'all'
+  page?: number;
+  limit?: number;
+}) {
+  try {
+    const response = await api.get('/employees/guarantee-status', { params });
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Get guarantee status error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch guarantee status'
+    };
+  }
+}
+
+
+
+// In employee.ts
+
+/**
+ * Get guarantee age distribution
+ */
+getGuaranteeAgeDistribution(params: { 
+  departmentId?: string; 
+  search?: string; 
+  includeDetails?: string | boolean;
+} = {}): Promise<any> {
+  return api.get('/employees/guarantee-age-distribution', { 
+    params: {
+      departmentId: params.departmentId || 'all',
+      search: params.search || '',
+      includeDetails: params.includeDetails ? 'true' : 'false'
+    }
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1080,25 +1220,6 @@ async reactivateEmployee(id: number) {
     };
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1306,28 +1427,6 @@ async getHiringTrends(params?: { departmentId?: string; months?: string }) {
     }
   }
 
-  /**
-   * 7. Get Document Compliance
-   */
-  async getDocumentCompliance(params?: { documentType?: string; departmentId?: string; guaranteeMonths?: number }): Promise<{ success: boolean; data?: DocumentComplianceData; error?: string }> {
-    try {
-      const response = await api.get('/employees/stats/compliance', { params })
-      return {
-        success: true,
-        data: response.data.data
-      }
-    } catch (error: any) {
-      console.error('Get document compliance error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Failed to fetch document compliance'
-      }
-    }
-  }
-
-// ============================================================================
-// PAGINATED STATS METHODS (ADD THESE - DON'T DELETE THE OLD ONES)
-// ============================================================================
 
 /**
  * Get Department Distribution with pagination (FOR MODALS)

@@ -6,12 +6,7 @@
     <div class="analytics-header">
       <div class="header-left">
         <div class="logo-badge">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2L2 7l10 5 10-5-10-5z" />
             <path d="M2 17l10 5 10-5" />
             <path d="M2 12l10 5 10-5" />
@@ -24,16 +19,9 @@
       </div>
       <div class="header-right">
         <button class="refresh-btn" @click="refreshData" :disabled="loading">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6" />
-            <path
-              d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-            />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
           Refresh
         </button>
@@ -68,12 +56,7 @@
           <div class="card-header">
             <div class="header-title" style="width: 100%">
               <div class="title-icon blue">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                   <circle cx="9" cy="7" r="4" />
                   <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
@@ -83,25 +66,13 @@
               <h3>Hiring & Termination Trends</h3>
             </div>
             <div class="filter-group-small">
-              <select
-                v-model="hiringFilters.departmentId"
-                @change="loadHiringTrends"
-                class="filter-select-small"
-              >
+              <select v-model="hiringFilters.departmentId" @change="loadHiringTrends" class="filter-select-small">
                 <option value="all">All Departments</option>
-                <option
-                  v-for="dept in allDepartments"
-                  :key="dept.departmentId"
-                  :value="dept.departmentId"
-                >
+                <option v-for="dept in allDepartments" :key="dept.departmentId" :value="dept.departmentId">
                   {{ dept.departmentName }}
                 </option>
               </select>
-              <select
-                v-model="hiringFilters.timeRange"
-                @change="loadHiringTrends"
-                class="filter-select-small"
-              >
+              <select v-model="hiringFilters.timeRange" @change="loadHiringTrends" class="filter-select-small">
                 <option value="1">Last 1 Month</option>
                 <option value="3">Last 3 Months</option>
                 <option value="6">Last 6 Months</option>
@@ -111,13 +82,8 @@
                 <option value="all">All Time</option>
               </select>
               <router-link to="/dashboard/hiring-details" class="expand-btn">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  style="width: 14px; height: 14px; margin-right: 4px"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  style="width: 14px; height: 14px; margin-right: 4px">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
@@ -128,33 +94,22 @@
           <div class="chart-container">
             <canvas ref="hiringChartCanvas"></canvas>
           </div>
-          <div
-            class="chart-stats"
-            v-if="hiringStats.totalHired > 0 || hiringStats.totalTerminated > 0"
-          >
+          <div class="chart-stats" v-if="hiringStats.totalHired > 0 || hiringStats.totalTerminated > 0">
             <div class="stat">
-              <span>Total Hired</span
-              ><strong>{{ hiringStats.totalHired || 0 }}</strong>
+              <span>Total Hired</span><strong>{{ hiringStats.totalHired || 0 }}</strong>
             </div>
             <div class="stat">
-              <span>Total Terminated</span
-              ><strong>{{ hiringStats.totalTerminated || 0 }}</strong>
+              <span>Total Terminated</span><strong>{{ hiringStats.totalTerminated || 0 }}</strong>
             </div>
             <div class="stat">
-              <span>Net Growth</span
-              ><strong
-                :class="hiringStats.netGrowth >= 0 ? 'positive' : 'negative'"
-                >{{ hiringStats.netGrowth >= 0 ? "+" : ""
-                }}{{ hiringStats.netGrowth || 0 }}</strong
-              >
+              <span>Net Growth</span><strong :class="hiringStats.netGrowth >= 0 ? 'positive' : 'negative'">{{
+                hiringStats.netGrowth >= 0 ? "+" : ""
+                }}{{ hiringStats.netGrowth || 0 }}</strong>
             </div>
           </div>
-          <div
-            v-if="
-              (!hiringChartData || hiringChartData.length === 0) && !loading
-            "
-            class="no-data-message"
-          >
+          <div v-if="
+            (!hiringChartData || hiringChartData.length === 0) && !loading
+          " class="no-data-message">
             No hiring/termination data available
           </div>
         </div>
@@ -164,12 +119,7 @@
           <div class="card-header">
             <div class="header-title">
               <div class="title-icon purple">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
@@ -181,24 +131,17 @@
             </router-link>
           </div>
           <div class="dept-list">
-            <div
-              v-for="dept in departments"
-              :key="dept.departmentId"
-              class="dept-row"
-            >
+            <div v-for="dept in departments" :key="dept.departmentId" class="dept-row">
               <div class="dept-info">
                 <span class="dept-name">{{ dept.departmentName }}</span>
                 <span class="dept-count">{{ dept.count }} employees</span>
               </div>
               <div class="dept-metrics">
                 <div class="metric">
-                  <div
-                    class="metric-bar"
-                    :style="{
-                      width: dept.percentage + '%',
-                      background: '#6366f1',
-                    }"
-                  ></div>
+                  <div class="metric-bar" :style="{
+                    width: dept.percentage + '%',
+                    background: '#6366f1',
+                  }"></div>
                   <span>{{ dept.percentage }}%</span>
                 </div>
               </div>
@@ -211,15 +154,9 @@
           <div class="card-header">
             <div class="header-title">
               <div class="title-icon green">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path
-                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-                  />
+                    d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                 </svg>
               </div>
               <h3>Salary Distribution</h3>
@@ -233,24 +170,18 @@
           </div>
           <div class="salary-stats" v-if="salaryStats.avgSalary > 0">
             <div class="stat">
-              <span>Average Salary</span
-              ><strong>ETB {{ formatNumber(salaryStats.avgSalary) }}</strong>
+              <span>Average Salary</span><strong>ETB {{ formatNumber(salaryStats.avgSalary) }}</strong>
             </div>
             <div class="stat">
-              <span>Highest Dept</span
-              ><strong>{{ salaryStats.highestDept }}</strong>
+              <span>Highest Dept</span><strong>{{ salaryStats.highestDept }}</strong>
             </div>
             <div class="stat">
-              <span>Total Pool</span
-              ><strong>ETB {{ formatNumber(salaryStats.totalPool) }}</strong>
+              <span>Total Pool</span><strong>ETB {{ formatNumber(salaryStats.totalPool) }}</strong>
             </div>
           </div>
-          <div
-            v-if="
-              (!salaryChartData || salaryChartData.length === 0) && !loading
-            "
-            class="no-data-message"
-          >
+          <div v-if="
+            (!salaryChartData || salaryChartData.length === 0) && !loading
+          " class="no-data-message">
             No salary data available
           </div>
         </div>
@@ -260,12 +191,7 @@
           <div class="card-header">
             <div class="header-title">
               <div class="title-icon pink">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
@@ -277,30 +203,23 @@
             </router-link>
           </div>
           <div class="employment-types">
-            <div
-              v-for="type in employmentTypes"
-              :key="type.type"
-              class="type-row"
-            >
+            <div v-for="type in employmentTypes" :key="type.type" class="type-row">
               <div class="type-label">
                 <span>{{ getEmploymentTypeLabel(type.type) }}</span>
                 <span>{{ type.count }}</span>
               </div>
               <div class="type-bar">
-                <div
-                  class="type-fill"
-                  :style="{
-                    width: type.percentage + '%',
-                    background: getTypeColor(type.type),
-                  }"
-                ></div>
+                <div class="type-fill" :style="{
+                  width: type.percentage + '%',
+                  background: getTypeColor(type.type),
+                }"></div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Document Compliance Section - Simplified -->
+      <!-- Document Compliance Section - CV/Resume Removed -->
       <div class="compliance-section">
         <div class="section-header">
           <div>
@@ -314,29 +233,13 @@
             <div class="overall-compliance">
               <div class="compliance-ring">
                 <svg viewBox="0 0 100 100">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="45"
-                    fill="none"
-                    stroke="#e2e8f0"
-                    stroke-width="8"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="45"
-                    fill="none"
-                    stroke="#6366f1"
-                    stroke-width="8"
-                    :stroke-dasharray="283"
-                    :stroke-dashoffset="283 - (283 * docComplianceRate) / 100"
-                    transform="rotate(-90 50 50)"
-                  />
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" stroke-width="8" />
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="#6366f1" stroke-width="8" :stroke-dasharray="283"
+                    :stroke-dashoffset="283 - (283 * docComplianceRate) / 100" transform="rotate(-90 50 50)" />
                 </svg>
                 <span class="ring-value">{{ docComplianceRate }}%</span>
               </div>
-              <span class="ring-label">Overall Compliance</span>
+              <span class="ring-label">Fully Compliant</span>
             </div>
           </div>
         </div>
@@ -347,17 +250,10 @@
             <div class="filter-icon">🏢</div>
             <div class="filter-content">
               <label>Department</label>
-              <select
-                v-model="complianceFilters.departmentId"
-                @change="loadDocumentCompliance"
-                class="filter-select-modern"
-              >
+              <select v-model="complianceFilters.departmentId" @change="loadComplianceSummary"
+                class="filter-select-modern">
                 <option value="all">All Departments</option>
-                <option
-                  v-for="dept in departments"
-                  :key="dept.departmentId"
-                  :value="dept.departmentId"
-                >
+                <option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">
                   {{ dept.departmentName }} ({{ dept.count }})
                 </option>
               </select>
@@ -365,7 +261,7 @@
           </div>
         </div>
 
-        <!-- Document Status Cards -->
+        <!-- Document Status Cards (3 Cards - CV Removed) -->
         <div class="compliance-status-grid">
           <!-- ID Card Status -->
           <div class="status-card">
@@ -376,56 +272,22 @@
             <div class="status-stats">
               <div class="stat-item">
                 <span class="stat-label">Submitted</span>
-                <span class="stat-value success">{{ idCardData.submitted?.length || 0 }}</span>
+                <span class="stat-value success">{{ complianceSummary.idCard?.submitted || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Missing</span>
-                <span class="stat-value danger">{{ idCardData.missing?.length || 0 }}</span>
+                <span class="stat-value danger">{{ complianceSummary.idCard?.missing || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Compliance</span>
-                <span class="stat-value">{{ idCardComplianceRate }}%</span>
+                <span class="stat-value">{{ complianceSummary.idCard?.rate || 0 }}%</span>
               </div>
             </div>
             <div class="status-progress">
-              <div
-                class="status-progress-bar"
-                :style="{
-                  width: idCardComplianceRate + '%',
-                  background: idCardComplianceRate >= 80 ? '#10b981' : idCardComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
-                }"
-              ></div>
-            </div>
-          </div>
-
-          <!-- CV Status -->
-          <div class="status-card">
-            <div class="status-card-header">
-              <span class="status-icon">📄</span>
-              <span class="status-title">CV / Resume</span>
-            </div>
-            <div class="status-stats">
-              <div class="stat-item">
-                <span class="stat-label">Submitted</span>
-                <span class="stat-value success">{{ cvData.submitted?.length || 0 }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Missing</span>
-                <span class="stat-value danger">{{ cvData.missing?.length || 0 }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Compliance</span>
-                <span class="stat-value">{{ cvComplianceRate }}%</span>
-              </div>
-            </div>
-            <div class="status-progress">
-              <div
-                class="status-progress-bar"
-                :style="{
-                  width: cvComplianceRate + '%',
-                  background: cvComplianceRate >= 80 ? '#10b981' : cvComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
-                }"
-              ></div>
+              <div class="status-progress-bar" :style="{
+                width: (complianceSummary.idCard?.rate || 0) + '%',
+                background: (complianceSummary.idCard?.rate || 0) >= 80 ? '#10b981' : (complianceSummary.idCard?.rate || 0) >= 50 ? '#f59e0b' : '#ef4444'
+              }"></div>
             </div>
           </div>
 
@@ -438,25 +300,22 @@
             <div class="status-stats">
               <div class="stat-item">
                 <span class="stat-label">Submitted</span>
-                <span class="stat-value success">{{ degreeData.submitted?.length || 0 }}</span>
+                <span class="stat-value success">{{ complianceSummary.degree?.submitted || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Missing</span>
-                <span class="stat-value danger">{{ degreeData.missing?.length || 0 }}</span>
+                <span class="stat-value danger">{{ complianceSummary.degree?.missing || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Compliance</span>
-                <span class="stat-value">{{ degreeComplianceRate }}%</span>
+                <span class="stat-value">{{ complianceSummary.degree?.rate || 0 }}%</span>
               </div>
             </div>
             <div class="status-progress">
-              <div
-                class="status-progress-bar"
-                :style="{
-                  width: degreeComplianceRate + '%',
-                  background: degreeComplianceRate >= 80 ? '#10b981' : degreeComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
-                }"
-              ></div>
+              <div class="status-progress-bar" :style="{
+                width: (complianceSummary.degree?.rate || 0) + '%',
+                background: (complianceSummary.degree?.rate || 0) >= 80 ? '#10b981' : (complianceSummary.degree?.rate || 0) >= 50 ? '#f59e0b' : '#ef4444'
+              }"></div>
             </div>
           </div>
 
@@ -469,25 +328,22 @@
             <div class="status-stats">
               <div class="stat-item">
                 <span class="stat-label">Has 2+</span>
-                <span class="stat-value success">{{ guaranteeData.withTwo?.length || 0 }}</span>
+                <span class="stat-value success">{{ complianceSummary.guarantee?.withTwo || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Has 1</span>
-                <span class="stat-value warning">{{ guaranteeData.needSecond?.length || 0 }}</span>
+                <span class="stat-value warning">{{ complianceSummary.guarantee?.needSecond || 0 }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">None</span>
-                <span class="stat-value danger">{{ guaranteeData.missing?.length || 0 }}</span>
+                <span class="stat-value danger">{{ complianceSummary.guarantee?.missing || 0 }}</span>
               </div>
             </div>
             <div class="status-progress">
-              <div
-                class="status-progress-bar"
-                :style="{
-                  width: guaranteeComplianceRate + '%',
-                  background: guaranteeComplianceRate >= 80 ? '#10b981' : guaranteeComplianceRate >= 50 ? '#f59e0b' : '#ef4444'
-                }"
-              ></div>
+              <div class="status-progress-bar" :style="{
+                width: (complianceSummary.guarantee?.rate || 0) + '%',
+                background: (complianceSummary.guarantee?.rate || 0) >= 80 ? '#10b981' : (complianceSummary.guarantee?.rate || 0) >= 50 ? '#f59e0b' : '#ef4444'
+              }"></div>
             </div>
           </div>
         </div>
@@ -496,18 +352,154 @@
         <div class="compliance-summary-footer">
           <div class="summary-item">
             <span class="summary-label">✅ Fully Compliant</span>
-            <span class="summary-value">{{ fullyCompliantCount }}</span>
+            <span class="summary-value">{{ complianceSummary.fullyCompliant || 0 }}</span>
           </div>
           <div class="summary-item">
             <span class="summary-label">⚠️ Partially Compliant</span>
-            <span class="summary-value">{{ partiallyCompliantCount }}</span>
+            <span class="summary-value">{{ (complianceSummary.totalEmployees || 0) - (complianceSummary.fullyCompliant
+              || 0) - (complianceSummary.missingDocuments || 0) }}</span>
           </div>
           <div class="summary-item">
             <span class="summary-label">❌ Missing Documents</span>
-            <span class="summary-value">{{ missingDocsCount }}</span>
+            <span class="summary-value">{{ complianceSummary.missingDocuments || 0 }}</span>
           </div>
         </div>
       </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <br></br>
+
+
+      <!-- Guarantee Age Distribution Chart -->
+      <div class="guarantee-age-section">
+        <div class="section-header">
+          <div>
+            <h2>📊 Guarantee Letter Age Distribution</h2>
+            <p>How long since employees submitted their guarantee letters</p>
+          </div>
+          <div class="header-actions">
+            <div class="age-stats-summary">
+              <span class="stat-badge">
+                <span class="stat-label">Total Guarantees:</span>
+                <span class="stat-number">{{ guaranteeAgeStats.total }}</span>
+              </span>
+              <span class="stat-badge">
+                <span class="stat-label">Average Age:</span>
+                <span class="stat-number">{{ guaranteeAgeStats.averageAge }} months</span>
+              </span>
+              <span class="stat-badge">
+                <span class="stat-label">Oldest:</span>
+                <span class="stat-number">{{ guaranteeAgeStats.oldest }} months</span>
+              </span>
+              <span class="stat-badge">
+                <span class="stat-label">Newest:</span>
+                <span class="stat-number">{{ guaranteeAgeStats.youngest }} months</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Department Filter for Age Chart -->
+        <div class="global-filters" style="margin-bottom: 16px;">
+          <div class="filter-card">
+            <div class="filter-icon">🏢</div>
+            <div class="filter-content">
+              <label>Filter by Department</label>
+              <select v-model="ageDepartmentFilter" @change="loadGuaranteeAgeData" class="filter-select-modern">
+                <option value="all">All Departments</option>
+                <option v-for="dept in departments" :key="dept.departmentId" :value="dept.departmentId">
+                  {{ dept.departmentName }} ({{ dept.count }})
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart Container -->
+        <div class="age-chart-container" v-if="guaranteeAgeData.length > 0">
+          <!-- Y-Axis Label -->
+          <div class="chart-with-labels">
+            <div class="y-axis-label">
+              <span>Number of Employees</span>
+            </div>
+            <div class="chart-area">
+              <!-- Y-Axis Grid Lines -->
+              <div class="y-axis-grid">
+                <div v-for="i in 5" :key="i" class="grid-line">
+                  <span class="grid-label">{{ getYAxisLabel(i, guaranteeAgeData) }}</span>
+                </div>
+              </div>
+              <!-- Bars -->
+              <div class="age-bars">
+                <div v-for="(item, index) in guaranteeAgeData" :key="index" class="age-bar-group">
+                  <div class="age-bar-wrapper">
+                    <div class="age-bar" :style="{
+                      height: getBarHeight(item.count, guaranteeAgeData),
+                      background: getAgeBarColor(item.months)
+                    }" :title="`${item.label}: ${item.count} employees (${item.percentage}%)`">
+                      <span class="age-bar-count" v-if="item.count > 0">{{ item.count }}</span>
+                    </div>
+                  </div>
+                  <span class="age-bar-label">{{ item.label }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- X-Axis Label -->
+          <div class="x-axis-label">
+            <span>Months Since Submission</span>
+          </div>
+        </div>
+
+        <div v-else class="no-data-message small">
+          No guarantee data available
+        </div>
+
+        <!-- Age Distribution Legend -->
+        <div class="age-legend" v-if="guaranteeAgeData.length > 0">
+          <div class="legend-item" v-for="item in guaranteeAgeData" :key="item.label">
+            <span class="legend-dot" :style="{ background: getAgeBarColor(item.months) }"></span>
+            <span>{{ item.label }} ({{ item.count }} employees - {{ item.percentage }}%)</span>
+          </div>
+        </div>
+
+        <!-- Quick Stats Cards -->
+        <div class="age-stats-grid" v-if="guaranteeAgeData.length > 0">
+          <div class="age-stat-card" v-for="item in guaranteeAgeData" :key="item.label">
+            <span class="age-stat-icon">📊</span>
+            <div>
+              <span class="age-stat-value">{{ item.count }}</span>
+              <span class="age-stat-label">{{ item.label }}</span>
+              <span class="age-stat-percent">{{ item.percentage }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     </template>
   </div>
 </template>
@@ -557,6 +549,220 @@ const employeesByDepartment = ref({});
 const employeesByType = ref({});
 const salaryByDepartment = ref([]);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ========== GUARANTEE AGE STATE ==========
+const ageDepartmentFilter = ref('all');
+const guaranteeAgeData = ref([]);
+const guaranteeAgeStats = ref({
+  total: 0,
+  averageAge: 0,
+  oldest: 0,
+  youngest: 0
+});
+
+// ========== GUARANTEE AGE FUNCTIONS ==========
+const calculateGuaranteeAge = (submittedDate) => {
+  if (!submittedDate) return null;
+  const submitted = new Date(submittedDate);
+  const now = new Date();
+  const diffTime = Math.abs(now - submitted);
+  const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
+  return diffMonths;
+};
+
+// ========== GUARANTEE AGE FUNCTIONS ==========
+const getAgeCategory = (months) => {
+  if (months === null || months === undefined) return 'Unknown';
+  if (months <= 1) return '1 Month';
+  if (months <= 3) return '3 Months';
+  if (months <= 6) return '6 Months';
+  if (months <= 9) return '9 Months';
+  if (months <= 12) return '12 Months';
+  return '> 12 Months';
+};
+
+const getAgeBarColor = (months) => {
+  if (months <= 1) return '#10b981';
+  if (months <= 3) return '#34d399';
+  if (months <= 6) return '#fbbf24';
+  if (months <= 9) return '#f59e0b';
+  if (months <= 12) return '#ef4444';
+  return '#dc2626';
+};
+
+// ========== FIXED: Get bar height as percentage ==========
+const getBarHeight = (count, data) => {
+  if (!data || data.length === 0) return '5%';
+
+  // Find the maximum count
+  const max = Math.max(...data.map(d => d.count));
+
+  // If max is 0, all bars should be minimal
+  if (max === 0) return '5%';
+
+  // Calculate height as percentage of max
+  const height = (count / max) * 100;
+
+  // For count = 0, show a tiny bar
+  if (count === 0) return '5%';
+
+  // Minimum height for visibility when count > 0
+  return Math.max(height, 10) + '%';
+};
+
+// ========== FIXED: Get Y-axis label ==========
+const getYAxisLabel = (index, data) => {
+  if (!data || data.length === 0) return '0';
+
+  // Find the maximum count
+  const max = Math.max(...data.map(d => d.count));
+
+  // If max is 0, all labels are 0
+  if (max === 0) return '0';
+
+  // Calculate label value - round to nearest integer
+  const value = Math.ceil((max / 5) * index);
+  return value.toString();
+};
+
+// ========== LOAD GUARANTEE AGE DATA ==========
+const loadGuaranteeAgeData = async () => {
+  try {
+    console.log('📤 Fetching guarantee age data...');
+
+    const response = await employeeService.getGuaranteeAgeDistribution({
+      departmentId: ageDepartmentFilter.value === 'all' ? 'all' : ageDepartmentFilter.value,
+      search: '',
+      includeDetails: false
+    });
+
+    console.log('📥 API Response:', response);
+
+    if (response && response.success && response.data) {
+      // ✅ Get distribution from response
+      let distribution = response.data.distribution || [];
+
+      console.log('📊 Distribution from API:', distribution);
+
+      // If distribution is empty, create default categories with zeros
+      if (distribution.length === 0) {
+        console.warn('⚠️ Distribution empty, using default data');
+        distribution = [
+          { label: "1 Month", months: 1, count: 0, percentage: 0 },
+          { label: "3 Months", months: 3, count: 0, percentage: 0 },
+          { label: "6 Months", months: 6, count: 0, percentage: 0 },
+          { label: "9 Months", months: 9, count: 0, percentage: 0 },
+          { label: "12 Months", months: 12, count: 0, percentage: 0 },
+          { label: "> 12 Months", months: 13, count: 0, percentage: 0 }
+        ];
+      }
+
+      // ✅ Update chart data
+      guaranteeAgeData.value = distribution;
+
+      // ✅ Update stats - FIX: Use correct field names from backend
+      const summary = response.data.summary || {};
+      guaranteeAgeStats.value = {
+        total: summary.totalGuarantees || 0,  // ✅ Changed from totalEmployeesWithGuarantees
+        averageAge: summary.averageAgeMonths || 0,
+        oldest: summary.oldestAgeMonths || 0,
+        youngest: summary.youngestAgeMonths || 0
+      };
+
+      console.log('✅ Chart data updated:', {
+        distribution: guaranteeAgeData.value,
+        stats: guaranteeAgeStats.value
+      });
+
+      // Force a re-render if needed
+      await nextTick();
+
+    } else {
+      console.warn('⚠️ No data received from API, using default empty data');
+      // Set empty data with all zeros
+      guaranteeAgeData.value = [
+        { label: "1 Month", months: 1, count: 0, percentage: 0 },
+        { label: "3 Months", months: 3, count: 0, percentage: 0 },
+        { label: "6 Months", months: 6, count: 0, percentage: 0 },
+        { label: "9 Months", months: 9, count: 0, percentage: 0 },
+        { label: "12 Months", months: 12, count: 0, percentage: 0 },
+        { label: "> 12 Months", months: 13, count: 0, percentage: 0 }
+      ];
+      guaranteeAgeStats.value = {
+        total: 0,
+        averageAge: 0,
+        oldest: 0,
+        youngest: 0
+      };
+    }
+  } catch (error) {
+    console.error('❌ Error loading guarantee age data:', error);
+    // Set empty data on error
+    guaranteeAgeData.value = [
+      { label: "1 Month", months: 1, count: 0, percentage: 0 },
+      { label: "3 Months", months: 3, count: 0, percentage: 0 },
+      { label: "6 Months", months: 6, count: 0, percentage: 0 },
+      { label: "9 Months", months: 9, count: 0, percentage: 0 },
+      { label: "12 Months", months: 12, count: 0, percentage: 0 },
+      { label: "> 12 Months", months: 13, count: 0, percentage: 0 }
+    ];
+    guaranteeAgeStats.value = {
+      total: 0,
+      averageAge: 0,
+      oldest: 0,
+      youngest: 0
+    };
+  }
+};
+
+
+
+
+
+
+
+
+
+// Watch for department filter changes
+watch(ageDepartmentFilter, () => {
+  loadGuaranteeAgeData();
+});
+
+
+
+
+
+
+
+
+
+
+
 // Chart data
 const hiringChartData = ref([]);
 const salaryChartData = ref([]);
@@ -564,123 +770,18 @@ const hiringStats = ref({ totalHired: 0, totalTerminated: 0, netGrowth: 0 });
 const salaryStats = ref({ avgSalary: 0, highestDept: "-", totalPool: 0 });
 const docComplianceRate = ref(0);
 
-// Document Compliance Data - Simplified
-const idCardData = ref({ submitted: [], missing: [] });
-const cvData = ref({ submitted: [], missing: [] });
-const degreeData = ref({ submitted: [], missing: [] });
-const guaranteeData = ref({
-  all: [],
-  missing: [],
-  needSecond: [],
-  withTwo: [],
+// ========== COMPLIANCE SUMMARY (CV Removed) ==========
+const complianceSummary = ref({
+  totalEmployees: 0,
+  fullyCompliant: 0,
+  missingDocuments: 0,
+  overallRate: 0,
+  idCard: { submitted: 0, missing: 0, rate: 0 },
+  degree: { submitted: 0, missing: 0, rate: 0 },
+  guarantee: { withTwo: 0, needSecond: 0, missing: 0, rate: 0 }
 });
 
-// ID Card State
-const idCardView = ref("missing");
-const idCardAgeFilter = ref("all");
-const idCardSearch = ref("");
-const idCardMissingList = ref([]);
-const idCardSubmittedList = ref([]);
-
-// CV State
-const cvView = ref("missing");
-const cvAgeFilter = ref("all");
-const cvSearch = ref("");
-const cvMissingList = ref([]);
-const cvSubmittedList = ref([]);
-
-// Degree State
-const degreeView = ref("missing");
-const degreeAgeFilter = ref("all");
-const degreeSearch = ref("");
-const degreeMissingList = ref([]);
-const degreeSubmittedList = ref([]);
-
-// Guarantee State
-const guaranteeFilter = ref("missing");
-const guaranteeAgeFilter = ref("all");
-const guaranteeSearch = ref("");
-const guaranteeList = ref([]);
-
-// ========== COMPUTED ==========
-
-// Document Compliance Rates
-const idCardComplianceRate = computed(() => {
-  const total = (idCardData.value.submitted?.length || 0) + (idCardData.value.missing?.length || 0);
-  if (total === 0) return 0;
-  return Math.round(((idCardData.value.submitted?.length || 0) / total) * 100);
-});
-
-const cvComplianceRate = computed(() => {
-  const total = (cvData.value.submitted?.length || 0) + (cvData.value.missing?.length || 0);
-  if (total === 0) return 0;
-  return Math.round(((cvData.value.submitted?.length || 0) / total) * 100);
-});
-
-const degreeComplianceRate = computed(() => {
-  const total = (degreeData.value.submitted?.length || 0) + (degreeData.value.missing?.length || 0);
-  if (total === 0) return 0;
-  return Math.round(((degreeData.value.submitted?.length || 0) / total) * 100);
-});
-
-const guaranteeComplianceRate = computed(() => {
-  const total = (guaranteeData.value.withTwo?.length || 0) + 
-                (guaranteeData.value.needSecond?.length || 0) + 
-                (guaranteeData.value.missing?.length || 0);
-  if (total === 0) return 0;
-  return Math.round(((guaranteeData.value.withTwo?.length || 0) / total) * 100);
-});
-
-const fullyCompliantCount = computed(() => {
-  // Employee is fully compliant if they have: ID Card, CV, Degree, and 2+ Guarantee Letters
-  const idCardSubmitted = idCardData.value.submitted?.length || 0;
-  const cvSubmitted = cvData.value.submitted?.length || 0;
-  const degreeSubmitted = degreeData.value.submitted?.length || 0;
-  const hasTwoGuarantees = guaranteeData.value.withTwo?.length || 0;
-  
-  // Find the minimum count (assuming each employee needs all 4)
-  return Math.min(idCardSubmitted, cvSubmitted, degreeSubmitted, hasTwoGuarantees);
-});
-
-const partiallyCompliantCount = computed(() => {
-  const total = idCardData.value.submitted?.length || 0;
-  return total - fullyCompliantCount.value;
-});
-
-const missingDocsCount = computed(() => {
-  return (idCardData.value.missing?.length || 0) + 
-         (cvData.value.missing?.length || 0) + 
-         (degreeData.value.missing?.length || 0) + 
-         (guaranteeData.value.missing?.length || 0);
-});
-
-const documentTabs = computed(() => [
-  {
-    id: "id_card",
-    name: "ID Card",
-    count: idCardData.missing?.length || 0,
-    status: idCardData.missing?.length > 0 ? "warning" : "success",
-  },
-  {
-    id: "cv",
-    name: "CV / Resume",
-    count: cvData.missing?.length || 0,
-    status: cvData.missing?.length > 0 ? "warning" : "success",
-  },
-  {
-    id: "degree",
-    name: "Degree",
-    count: degreeData.missing?.length || 0,
-    status: degreeData.missing?.length > 0 ? "warning" : "success",
-  },
-  {
-    id: "guarantee_letter",
-    name: "Guarantee Letter",
-    count: guaranteeData.missing?.length || 0,
-    status: guaranteeData.missing?.length > 0 ? "critical" : "success",
-  },
-]);
-
+// KPI List
 const kpiList = computed(() => [
   {
     label: "Total Headcount",
@@ -732,307 +833,23 @@ const getTypeColor = (type) =>
     contract: "#8b5cf6",
     intern: "#ef4444",
   })[type] || "#6366f1";
-const getAgeClass = (months) => {
-  if (!months) return "";
-  if (months > 12) return "age-critical";
-  if (months > 6) return "age-warning";
-  if (months > 3) return "age-attention";
-  return "age-ok";
-};
-const getStatusClass = (status) =>
-  ({
-    valid: "status-ok",
-    recent: "status-attention",
-    expiring_soon: "status-warning",
-    expired: "status-critical",
-    missing: "status-critical",
-    no_guarantee: "status-critical",
-    need_second: "status-warning",
-    compliant: "status-ok",
-  })[status] || "status-ok";
-const getStatusLabel = (status) =>
-  ({
-    valid: "✅ Valid",
-    recent: "📄 Recent",
-    expiring_soon: "⚠️ Expiring Soon",
-    expired: "🔴 Expired",
-    missing: "❌ Missing",
-    no_guarantee: "⚠️ No Guarantee",
-    need_second: "🟡 Need 1 more",
-    compliant: "✅ Compliant",
-  })[status] || status;
 
-const viewEmployee = (id) => {
-  router.push(`/employees/${id}`);
-};
-
-// ========== DATA LOADING FUNCTIONS ==========
-
-const loadIdCardData = async () => {
+// ========== COMPLIANCE SUMMARY LOADING ==========
+const loadComplianceSummary = async () => {
   try {
-    const response = await employeeService.getDocumentCompliance({
-      documentType: "id_card",
-      departmentId: complianceFilters.departmentId,
-      guaranteeMonths: 6,
+    const result = await employeeService.getComplianceSummary({
+      departmentId: complianceFilters.departmentId
     });
-    if (response.success && response.data) {
-      const data = response.data;
-      idCardData.value = {
-        submitted: data.id_card?.submitted || [],
-        missing: data.id_card?.missing || [],
-      };
-      if (idCardView.value === "missing") {
-        let list = [...idCardData.value.missing];
-        if (idCardSearch.value) {
-          const search = idCardSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        idCardMissingList.value = list;
-      } else {
-        let list = [...idCardData.value.submitted];
-        if (idCardAgeFilter.value !== "all") {
-          list = list.filter((emp) => {
-            const months = emp.monthsOld || 0;
-            switch (idCardAgeFilter.value) {
-              case "0-3":
-                return months < 3;
-              case "3-6":
-                return months >= 3 && months < 6;
-              case "6-12":
-                return months >= 6 && months < 12;
-              case "12+":
-                return months >= 12;
-              default:
-                return true;
-            }
-          });
-        }
-        if (idCardSearch.value) {
-          const search = idCardSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        idCardSubmittedList.value = list;
-      }
+    if (result.success && result.data) {
+      complianceSummary.value = result.data;
+      docComplianceRate.value = result.data.overallRate || 0;
     }
   } catch (error) {
-    console.error("Error loading ID card data:", error);
+    console.error("Error loading compliance summary:", error);
   }
 };
 
-const loadCvData = async () => {
-  try {
-    const response = await employeeService.getDocumentCompliance({
-      documentType: "cv",
-      departmentId: complianceFilters.departmentId,
-      guaranteeMonths: 6,
-    });
-    if (response.success && response.data) {
-      const data = response.data;
-      cvData.value = {
-        submitted: data.cv?.submitted || [],
-        missing: data.cv?.missing || [],
-      };
-      if (cvView.value === "missing") {
-        let list = [...cvData.value.missing];
-        if (cvSearch.value) {
-          const search = cvSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        cvMissingList.value = list;
-      } else {
-        let list = [...cvData.value.submitted];
-        if (cvAgeFilter.value !== "all") {
-          list = list.filter((emp) => {
-            const months = emp.monthsOld || 0;
-            switch (cvAgeFilter.value) {
-              case "0-3":
-                return months < 3;
-              case "3-6":
-                return months >= 3 && months < 6;
-              case "6-12":
-                return months >= 6 && months < 12;
-              case "12+":
-                return months >= 12;
-              default:
-                return true;
-            }
-          });
-        }
-        if (cvSearch.value) {
-          const search = cvSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        cvSubmittedList.value = list;
-      }
-    }
-  } catch (error) {
-    console.error("Error loading CV data:", error);
-  }
-};
-
-const loadDegreeData = async () => {
-  try {
-    const response = await employeeService.getDocumentCompliance({
-      documentType: "degree",
-      departmentId: complianceFilters.departmentId,
-      guaranteeMonths: 6,
-    });
-    if (response.success && response.data) {
-      const data = response.data;
-      degreeData.value = {
-        submitted: data.degree?.submitted || [],
-        missing: data.degree?.missing || [],
-      };
-      if (degreeView.value === "missing") {
-        let list = [...degreeData.value.missing];
-        if (degreeSearch.value) {
-          const search = degreeSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        degreeMissingList.value = list;
-      } else {
-        let list = [...degreeData.value.submitted];
-        if (degreeAgeFilter.value !== "all") {
-          list = list.filter((emp) => {
-            const months = emp.monthsOld || 0;
-            switch (degreeAgeFilter.value) {
-              case "0-3":
-                return months < 3;
-              case "3-6":
-                return months >= 3 && months < 6;
-              case "6-12":
-                return months >= 6 && months < 12;
-              case "12+":
-                return months >= 12;
-              default:
-                return true;
-            }
-          });
-        }
-        if (degreeSearch.value) {
-          const search = degreeSearch.value.toLowerCase();
-          list = list.filter(
-            (emp) =>
-              emp.fullName.toLowerCase().includes(search) ||
-              emp.department?.toLowerCase().includes(search),
-          );
-        }
-        degreeSubmittedList.value = list;
-      }
-    }
-  } catch (error) {
-    console.error("Error loading degree data:", error);
-  }
-};
-
-const loadGuaranteeData = async () => {
-  try {
-    const response = await employeeService.getDocumentCompliance({
-      documentType: "guarantee_letter",
-      departmentId: complianceFilters.departmentId,
-      guaranteeMonths: 6,
-    });
-    if (response.success && response.data) {
-      const data = response.data;
-      guaranteeData.value = {
-        all: data.guarantee_letter?.all || [],
-        missing: data.guarantee_letter?.missing || [],
-        needSecond: data.guarantee_letter?.needSecond || [],
-        withTwo: data.guarantee_letter?.withTwo || [],
-      };
-      applyGuaranteeFilters();
-    }
-  } catch (error) {
-    console.error("Error loading guarantee data:", error);
-  }
-};
-
-const applyGuaranteeFilters = () => {
-  let sourceList = [];
-  switch (guaranteeFilter.value) {
-    case "missing":
-      sourceList = [...guaranteeData.value.missing];
-      break;
-    case "one":
-      sourceList = [...guaranteeData.value.needSecond];
-      break;
-    case "two":
-      sourceList = [...guaranteeData.value.withTwo];
-      break;
-    default:
-      sourceList = [...guaranteeData.value.all];
-  }
-  if (guaranteeAgeFilter.value !== "all") {
-    sourceList = sourceList.filter((emp) => {
-      const age = emp.latestAge || 0;
-      switch (guaranteeAgeFilter.value) {
-        case "0-3":
-          return age < 3;
-        case "3-6":
-          return age >= 3 && age < 6;
-        case "6-12":
-          return age >= 6 && age < 12;
-        case "12+":
-          return age >= 12;
-        default:
-          return true;
-      }
-    });
-  }
-  if (guaranteeSearch.value) {
-    const search = guaranteeSearch.value.toLowerCase();
-    sourceList = sourceList.filter(
-      (emp) =>
-        emp.fullName.toLowerCase().includes(search) ||
-        emp.department?.toLowerCase().includes(search),
-    );
-  }
-  guaranteeList.value = sourceList;
-};
-
-const loadDocumentCompliance = async () => {
-  try {
-    await Promise.all([
-      loadIdCardData(),
-      loadCvData(),
-      loadDegreeData(),
-      loadGuaranteeData(),
-    ]);
-    const result = await employeeService.getDocumentCompliance({
-      documentType: "all",
-      departmentId: complianceFilters.departmentId,
-      guaranteeMonths: 6,
-    });
-    if (result.success && result.data)
-      docComplianceRate.value = parseFloat(
-        result.data.summary?.complianceRate || "0",
-      );
-  } catch (error) {
-    console.error("Error loading document compliance:", error);
-  }
-};
-
-// Other Data Loading Functions
+// ========== OTHER DATA LOADING FUNCTIONS ==========
 const loadKpiStats = async () => {
   try {
     const result = await employeeService.getKpiStats();
@@ -1117,7 +934,8 @@ const loadAllData = async () => {
       loadDepartmentDistribution(),
       loadEmploymentTypeDistribution(),
       loadSalaryAnalysis(),
-      loadDocumentCompliance(),
+      loadComplianceSummary(),
+      loadGuaranteeAgeData(), // Add this line
     ]);
     await nextTick();
     setTimeout(() => {
@@ -1141,7 +959,6 @@ const refreshData = () => {
 };
 
 // ========== CHART FUNCTIONS ==========
-
 const initHiringChart = () => {
   if (!hiringChartCanvas.value) {
     setTimeout(() => {
@@ -1300,6 +1117,20 @@ const AlertIcon = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="currentColor"/></svg>',
 };
 
+// Watchers
+watch(
+  () => hiringFilters.departmentId,
+  () => loadHiringTrends(),
+);
+watch(
+  () => hiringFilters.timeRange,
+  () => loadHiringTrends(),
+);
+watch(
+  () => complianceFilters.departmentId,
+  () => loadComplianceSummary(),
+);
+
 // ========== LIFECYCLE ==========
 onMounted(() => {
   loadAllData();
@@ -1307,12 +1138,374 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ========== GUARANTEE AGE SECTION ========== */
+.guarantee-age-section {
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.age-chart-container {
+  padding: 20px 0;
+}
+
+.chart-with-labels {
+  display: flex;
+  gap: 12px;
+  height: 320px;
+}
+
+.y-axis-label {
+  display: flex;
+  align-items: center;
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  width: 30px;
+  text-orientation: mixed;
+  letter-spacing: 1px;
+}
+
+.y-axis-label span {
+  transform: rotate(180deg);
+}
+
+.chart-area {
+  flex: 1;
+  display: flex;
+  position: relative;
+  height: 100%;
+}
+
+.y-axis-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  padding-bottom: 30px;
+  pointer-events: none;
+}
+
+.grid-line {
+  border-top: 1px dashed #e2e8f0;
+  height: 0;
+  position: relative;
+}
+
+.grid-label {
+  position: absolute;
+  right: 100%;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  transform: translateY(-50%);
+}
+
+.age-bars {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  flex: 1;
+  height: 100%;
+  gap: 12px;
+  padding: 0 12px 30px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.age-bar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+}
+
+.age-bar-wrapper {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  width: 100%;
+  padding-bottom: 4px;
+}
+
+.age-bar {
+  width: 100%;
+  max-width: 60px;
+  min-height: 8px;
+  border-radius: 6px 6px 2px 2px;
+  transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  position: relative;
+  cursor: pointer;
+}
+
+.age-bar:hover {
+  opacity: 0.8;
+  transform: scale(1.02);
+}
+
+.age-bar-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.age-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.x-axis-label {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  margin-top: 8px;
+  letter-spacing: 1px;
+}
+
+.age-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.age-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.age-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.age-stat-card:hover {
+  background: #f1f5f9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.age-stat-icon {
+  font-size: 20px;
+}
+
+.age-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.age-stat-label {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.age-stat-percent {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.age-stats-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.stat-badge .stat-label {
+  color: #64748b;
+}
+
+.stat-badge .stat-number {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .chart-with-labels {
+    height: 250px;
+  }
+
+  .age-bars {
+    gap: 6px;
+    padding: 0 4px 30px 0;
+  }
+
+  .age-bar {
+    max-width: 40px;
+  }
+
+  .age-bar-count {
+    font-size: 9px;
+  }
+
+  .age-bar-label {
+    font-size: 10px;
+  }
+
+  .age-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .age-stats-summary {
+    flex-wrap: wrap;
+  }
+
+  .age-legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .age-chart-container {
+    padding: 10px 0;
+  }
+
+  .chart-with-labels {
+    height: 200px;
+  }
+
+  .age-bars {
+    gap: 4px;
+  }
+
+  .age-bar {
+    max-width: 30px;
+    min-height: 4px;
+  }
+
+  .age-bar-count {
+    font-size: 8px;
+    padding-top: 2px;
+  }
+
+  .age-bar-label {
+    font-size: 9px;
+    margin-top: 4px;
+  }
+
+  .age-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .y-axis-label {
+    width: 20px;
+    font-size: 10px;
+  }
+
+  .grid-label {
+    font-size: 9px;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ========== MAIN CONTAINER ========== */
 .hr-analytics {
   padding: 24px;
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fb 0%, #f0f4f8 100%);
 }
+
 .chart-container canvas {
   width: 100% !important;
   height: 100% !important;
@@ -1327,11 +1520,13 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 20px;
 }
+
 .header-left {
   display: flex;
   align-items: center;
   gap: 16px;
 }
+
 .logo-badge {
   width: 48px;
   height: 48px;
@@ -1341,28 +1536,33 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
 }
+
 .logo-badge svg {
   width: 28px;
   height: 28px;
   color: white;
 }
+
 .header-left h1 {
   font-size: 24px;
   font-weight: 700;
   color: #0f172a;
   margin: 0 0 4px 0;
 }
+
 .header-left p {
   font-size: 13px;
   color: #64748b;
   margin: 0;
 }
+
 .header-right {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
 }
+
 .refresh-btn {
   display: flex;
   align-items: center;
@@ -1377,6 +1577,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.2s;
 }
+
 .refresh-btn:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
@@ -1390,6 +1591,7 @@ onMounted(() => {
   background: white;
   border-radius: 20px;
 }
+
 .spinner {
   width: 48px;
   height: 48px;
@@ -1399,6 +1601,7 @@ onMounted(() => {
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;
 }
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1412,11 +1615,13 @@ onMounted(() => {
   gap: 20px;
   margin-bottom: 28px;
 }
+
 @media (max-width: 1200px) {
   .kpi-grid {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
+
 .kpi-card {
   background: white;
   border-radius: 20px;
@@ -1427,10 +1632,12 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
+
 .kpi-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
+
 .kpi-icon {
   width: 56px;
   height: 56px;
@@ -1439,14 +1646,17 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
 }
+
 .kpi-icon svg {
   width: 28px;
   height: 28px;
   color: white;
 }
+
 .kpi-content {
   flex: 1;
 }
+
 .kpi-value {
   font-size: 28px;
   font-weight: 700;
@@ -1454,6 +1664,7 @@ onMounted(() => {
   display: block;
   line-height: 1.2;
 }
+
 .kpi-label {
   font-size: 13px;
   color: #64748b;
@@ -1468,11 +1679,13 @@ onMounted(() => {
   gap: 24px;
   margin-bottom: 32px;
 }
+
 @media (max-width: 1200px) {
   .analytics-grid {
     grid-template-columns: 1fr;
   }
 }
+
 .analytics-card {
   background: white;
   border-radius: 20px;
@@ -1480,9 +1693,11 @@ onMounted(() => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
+
 .analytics-card:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -1491,11 +1706,13 @@ onMounted(() => {
   background: #fafcfc;
   border-bottom: 1px solid #e9edf2;
 }
+
 .header-title {
   display: flex;
   align-items: center;
   gap: 10px;
 }
+
 .title-icon {
   width: 32px;
   height: 32px;
@@ -1504,34 +1721,44 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
 }
+
 .title-icon.blue {
   background: #dbeafe;
 }
+
 .title-icon.blue svg {
   color: #3b82f6;
 }
+
 .title-icon.purple {
   background: #f3e8ff;
 }
+
 .title-icon.purple svg {
   color: #8b5cf6;
 }
+
 .title-icon.green {
   background: #dcfce7;
 }
+
 .title-icon.green svg {
   color: #10b981;
 }
+
 .title-icon.pink {
   background: #fce7f3;
 }
+
 .title-icon.pink svg {
   color: #ec4899;
 }
+
 .title-icon svg {
   width: 16px;
   height: 16px;
 }
+
 .card-header h3 {
   font-size: 15px;
   font-weight: 600;
@@ -1545,6 +1772,7 @@ onMounted(() => {
   gap: 4px;
   align-items: center;
 }
+
 .filter-select-small,
 .filter-input-small {
   padding: 4px 8px;
@@ -1553,9 +1781,11 @@ onMounted(() => {
   font-size: 12px;
   background: white;
 }
+
 .filter-input-small {
   width: 70px;
 }
+
 .expand-btn {
   display: inline-flex;
   align-items: center;
@@ -1570,11 +1800,13 @@ onMounted(() => {
   color: #4f46e5;
   text-decoration: none;
 }
+
 .expand-btn:hover {
   background: #f1f5f9;
   border-color: #cbd5e1;
   transform: translateY(-1px);
 }
+
 .expand-btn svg {
   width: 14px;
   height: 14px;
@@ -1588,9 +1820,11 @@ onMounted(() => {
   position: relative;
   width: 100%;
 }
+
 .chart-container.small {
   height: 250px;
 }
+
 .chart-stats,
 .salary-stats {
   display: flex;
@@ -1599,26 +1833,32 @@ onMounted(() => {
   border-top: 1px solid #e9edf2;
   background: #fafcfc;
 }
+
 .stat {
   text-align: center;
 }
+
 .stat span {
   font-size: 11px;
   color: #64748b;
   display: block;
   margin-bottom: 4px;
 }
+
 .stat strong {
   font-size: 14px;
   font-weight: 600;
   color: #1e293b;
 }
+
 .stat strong.positive {
   color: #10b981;
 }
+
 .stat strong.negative {
   color: #ef4444;
 }
+
 .no-data-message {
   text-align: center;
   padding: 40px;
@@ -1629,6 +1869,7 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
 }
+
 .no-data-message.small {
   padding: 20px;
 }
@@ -1640,33 +1881,40 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
+
 .dept-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
+
 .dept-info {
   flex: 1;
 }
+
 .dept-name {
   font-size: 14px;
   font-weight: 500;
   color: #1e293b;
 }
+
 .dept-count {
   font-size: 12px;
   color: #64748b;
   margin-left: 8px;
 }
+
 .dept-metrics {
   width: 200px;
 }
+
 .metric {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .metric-bar {
   flex: 1;
   height: 6px;
@@ -1674,6 +1922,7 @@ onMounted(() => {
   border-radius: 3px;
   overflow: hidden;
 }
+
 .metric span {
   font-size: 12px;
   font-weight: 500;
@@ -1688,11 +1937,13 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
+
 .type-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .type-label {
   width: 100px;
   display: flex;
@@ -1700,6 +1951,7 @@ onMounted(() => {
   font-size: 13px;
   color: #1e293b;
 }
+
 .type-bar {
   flex: 1;
   height: 8px;
@@ -1707,6 +1959,7 @@ onMounted(() => {
   border-radius: 4px;
   overflow: hidden;
 }
+
 .type-fill {
   height: 100%;
   border-radius: 4px;
@@ -1856,12 +2109,24 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-/* Compliance Status Grid */
+/* Compliance Status Grid - 3 columns */
 .compliance-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .compliance-status-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .compliance-status-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .status-card {
@@ -1982,37 +2247,47 @@ onMounted(() => {
   .hr-analytics {
     padding: 16px;
   }
+
   .analytics-header {
     flex-direction: column;
     align-items: flex-start;
   }
+
   .header-right {
     width: 100%;
   }
+
   .kpi-grid {
     grid-template-columns: 1fr;
   }
+
   .analytics-grid {
     grid-template-columns: 1fr;
   }
+
   .dept-row {
     flex-direction: column;
     align-items: flex-start;
   }
+
   .dept-metrics {
     width: 100%;
   }
+
   .section-header {
     flex-direction: column;
     align-items: stretch;
   }
+
   .header-actions {
     flex-wrap: wrap;
     justify-content: space-between;
   }
+
   .compliance-status-grid {
     grid-template-columns: 1fr 1fr;
   }
+
   .compliance-summary-footer {
     flex-direction: column;
     align-items: center;
@@ -2023,6 +2298,7 @@ onMounted(() => {
   .compliance-status-grid {
     grid-template-columns: 1fr;
   }
+
   .status-stats {
     flex-direction: row;
   }
