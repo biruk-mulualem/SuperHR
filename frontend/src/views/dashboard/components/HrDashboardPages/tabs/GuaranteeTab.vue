@@ -123,10 +123,10 @@
               </td>
               <td>
                 <button
-                  class="btn-view"
-                  @click.stop="$emit('view-employee', emp.id || emp.employeeId)"
+                  class="btn-edit"
+                  @click.stop="goToEdit(emp.id || emp.employeeId)"
                 >
-                  👁 View
+                  ✏️ Edit
                 </button>
               </td>
             </tr>
@@ -178,9 +178,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
-const emit = defineEmits(['update-count', 'view-employee']);
+const router = useRouter();
+
+const emit = defineEmits(['update-count']);
 
 // ========== STATE ==========
 const loading = ref(false);
@@ -282,6 +285,10 @@ const getPageNumbers = computed(() => {
 // ========== METHODS ==========
 const getRowIndex = (idx) => {
   return idx + 1 + (pagination.value.page - 1) * pagination.value.limit;
+};
+
+const goToEdit = (id) => {
+  router.push(`/employees/${id}/edit`);
 };
 
 const changeFilter = (newFilter) => {
@@ -859,19 +866,19 @@ onMounted(() => {
 .count-warning { background: #fef3c7; color: #f59e0b; }
 .count-critical { background: #fef2f2; color: #ef4444; }
 
-.btn-view {
-  padding: 4px 12px;
+.btn-edit {
+  padding: 4px 14px;
   background: #6366f1;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-view:hover {
+.btn-edit:hover {
   background: #4f46e5;
   transform: scale(1.05);
 }

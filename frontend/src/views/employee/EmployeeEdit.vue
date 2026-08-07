@@ -1195,11 +1195,10 @@
                     <input type="text" v-model="guarantor.guarantorOfficeAddress" :placeholder="$t('guarantee.addressPlaceholder')" :title="$t('guarantee.guarantorOfficeAddress')" />
                   </div>
                   <div class="form-row-two">
-                    <input type="text" v-model="guarantor.guaranteeLetterDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.letterDate')" />
-                    <input type="text" v-model="guarantor.sdtLetterDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.sdtLetterDate')" />
+                    <input type="text" v-model="guarantor.guaranteeLetterDateEC" placeholder="Guarantee Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.letterDate')" />
+                    <input type="text" v-model="guarantor.sdtLetterDateEC" placeholder="SDT Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.sdtLetterDate')" />
                   </div>
-                  <input type="text" v-model="guarantor.confirmedDateEC" placeholder="DD/MM/YYYY" class="ec-date-input" :title="$t('guarantee.letterDate')" />
-                </div>
+                 </div>
                 <div class="edit-actions">
                   <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'guarantee')" :title="$t('common.upload')">📄 {{ $t('guarantee.guaranteeLetter') }}</button>
                   <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'sdt')" :title="$t('common.upload')">📄 {{ $t('guarantee.sdtLetter') }}</button>

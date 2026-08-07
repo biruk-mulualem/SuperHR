@@ -1130,7 +1130,28 @@ getGuaranteeAgeDistribution(params: {
 
 
 
-
+/**
+ * Get guarantee age details with employee list
+ */
+getGuaranteeAgeDetails(params: { 
+  departmentId?: string; 
+  search?: string; 
+  ageRange?: string;
+  includeDetails?: string | boolean;
+  page?: number;
+  limit?: number;
+} = {}): Promise<any> {
+  return api.get('/employees/guarantee-age-details', { 
+    params: {
+      departmentId: params.departmentId || 'all',
+      search: params.search || '',
+      ageRange: params.ageRange || 'all',
+      includeDetails: params.includeDetails ? 'true' : 'false',
+      page: params.page || 1,
+      limit: params.limit || 10
+    }
+  });
+}
 
 
 
@@ -1506,26 +1527,91 @@ async getSalaryAnalysisPaginated(params: {
  * Get Department Employees (alias for getDepartmentDistributionPaginated)
  * Used in department modal
  */
+/**
+ * Get department employees (lazy loading - only when expanded)
+ */
 async getDepartmentEmployees(params: {
+  departmentId: string | number;
   page?: number;
   limit?: number;
-  departmentId?: string;
   search?: string;
 }) {
   try {
-    const response = await api.get('/employees/stats/departments', { params })
+    const response = await api.get(`/employees/departments/${params.departmentId}/employees`, {
+      params: {
+        page: params.page || 1,
+        limit: params.limit || 20,
+        search: params.search || ''
+      }
+    });
     return {
       success: true,
       data: response.data.data
-    }
+    };
   } catch (error: any) {
-    console.error('Get department employees error:', error)
+    console.error('Get department employees error:', error);
     return {
       success: false,
       error: error.response?.data?.error || 'Failed to fetch department employees'
-    }
+    };
   }
 }
+
+
+// In employee.ts
+
+/**
+ * Get employment type employees (lazy loading - only when expanded)
+ */
+async getTypeEmployees(params: {
+  type: string;
+  search?: string;
+  departmentId?: string;
+}) {
+  try {
+    const response = await api.get(`/employees/employment-types/${params.type}/employees`, {
+      params: {
+        search: params.search || '',
+        departmentId: params.departmentId || 'all'
+      }
+    });
+    return {
+      success: true,
+      data: response.data.data
+    };
+  } catch (error: any) {
+    console.error('Get type employees error:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch type employees'
+    };
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
   // ============================================================================

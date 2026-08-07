@@ -122,64 +122,79 @@
             ></div>
           </div>
 
-          <!-- Expanded Content -->
+          <!-- Expanded Content - Lazy Loaded -->
           <div v-if="expandedType === type.type" class="type-expand">
-            <!-- Department Filter inside type -->
-            <div class="type-dept-filter">
-              <svg class="type-dept-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="1" y="5" width="18" height="14" rx="2"/>
-                <path d="M12 3v2M8 3v2M1 9h18"/>
-              </svg>
-              <select
-                v-model="typeDeptFilter[type.type]"
-                @change="applyTypeFilter(type.type)"
-                class="type-dept-select"
-              >
-                <option value="all">All Departments</option>
-                <option
-                  v-for="dept in departments"
-                  :key="dept.departmentId"
-                  :value="dept.departmentId"
-                >
-                  {{ dept.departmentName }} ({{ dept.count }})
-                </option>
-              </select>
-              <span class="type-dept-count">{{ getTypeEmployees(type.type).length }} employees</span>
+            <!-- Loading state -->
+            <div v-if="typeEmployeeLoading[type.type]" class="type-loading">
+              <div class="spinner-small"></div>
+              <span>Loading employees...</span>
             </div>
 
             <!-- Employee List -->
-            <div class="type-employees">
-              <div class="type-employee-search">
-                <input
-                  type="text"
-                  v-model="typeEmployeeSearch[type.type]"
-                  placeholder="Filter employees..."
-                  class="type-employee-input"
-                  @click.stop
-                />
-              </div>
-              <div class="type-employee-list">
-                <div
-                  v-for="emp in getFilteredTypeEmployees(type.type)"
-                  :key="emp.id"
-                  class="type-employee"
+            <template v-else>
+              <div class="type-dept-filter">
+                <svg class="type-dept-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="1" y="5" width="18" height="14" rx="2"/>
+                  <path d="M12 3v2M8 3v2M1 9h18"/>
+                </svg>
+                <select
+                  v-model="typeDeptFilter[type.type]"
+                  @change="applyTypeFilter(type.type)"
+                  class="type-dept-select"
                 >
-                  <div class="type-employee-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
-                    {{ getInitials(emp.fullName) }}
-                  </div>
-                  <div class="type-employee-info">
-                    <span class="type-employee-name">{{ emp.fullName }}</span>
-                    <span class="type-employee-dept">{{ emp.department || 'N/A' }}</span>
-                  </div>
-                  <button class="type-employee-view" @click.stop="viewEmployee(emp.id)">
-                    View →
-                  </button>
+                  <option value="all">All Departments</option>
+                  <option
+                    v-for="dept in departments"
+                    :key="dept.departmentId"
+                    :value="dept.departmentId"
+                  >
+                    {{ dept.departmentName }} ({{ dept.count }})
+                  </option>
+                </select>
+                <span class="type-dept-count">{{ getTypeEmployees(type.type).length }} employees</span>
+              </div>
+
+              <div class="type-employees">
+                <div class="type-employee-search">
+                  <input
+                    type="text"
+                    v-model="typeEmployeeSearch[type.type]"
+                    placeholder="Filter employees..."
+                    class="type-employee-input"
+                    @input="searchTypeEmployees(type.type)"
+                    @click.stop
+                  />
                 </div>
-                <div v-if="getFilteredTypeEmployees(type.type).length === 0" class="type-employee-empty">
-                  No employees found
+                <div class="type-employee-list-scroll">
+                  <div
+                    v-for="emp in getFilteredTypeEmployees(type.type)"
+                    :key="emp.id"
+                    class="type-employee"
+                  >
+                    <div class="type-employee-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
+                      {{ getInitials(emp.fullName) }}
+                    </div>
+                    <div class="type-employee-info">
+                      <span class="type-employee-name">{{ emp.fullName || 'N/A' }}</span>
+                      <span class="type-employee-name-en" v-if="emp.fullNameEnglish">{{ emp.fullNameEnglish }}</span>
+                      <span class="type-employee-dept">{{ emp.department || 'N/A' }}</span>
+                    </div>
+                    <span class="type-employee-id">ID: {{ emp.employeeId || emp.id }}</span>
+                    <button class="type-employee-view" @click.stop="viewEmployee(emp.id)">
+                      View →
+                    </button>
+                  </div>
+                  <div v-if="getFilteredTypeEmployees(type.type).length === 0" class="type-employee-empty">
+                    No employees found
+                  </div>
+                </div>
+                <div class="type-employee-footer">
+                  <span class="type-employee-total">
+                    Showing {{ getFilteredTypeEmployees(type.type).length }} of {{ getTypeEmployees(type.type).length }} employees
+                  </span>
                 </div>
               </div>
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -216,10 +231,11 @@ const searchQuery = ref('');
 const expandedType = ref(null);
 const typeEmployeeSearch = ref({});
 const typeDeptFilter = ref({});
+const typeEmployeeData = ref({});
+const typeEmployeeLoading = ref({});
 const lastUpdated = ref(new Date().toLocaleString());
 
 const employmentTypes = ref([]);
-const employeesByType = ref({});
 const departments = ref([]);
 
 let searchTimeout = null;
@@ -256,12 +272,7 @@ const filteredTypes = computed(() => {
     const s = searchQuery.value.toLowerCase();
     list = list.filter(t => {
       const label = getEmploymentTypeLabel(t.type).toLowerCase();
-      const employees = getTypeEmployees(t.type);
-      return label.includes(s) || 
-             employees.some(e => 
-               e.fullName.toLowerCase().includes(s) || 
-               e.department?.toLowerCase().includes(s)
-             );
+      return label.includes(s);
     });
   }
   
@@ -308,18 +319,10 @@ const getAvatarColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+// ========== TYPE EMPLOYEE METHODS ==========
+
 const getTypeEmployees = (type) => {
-  let employees = employeesByType.value[type] || [];
-  
-  const deptFilter = typeDeptFilter.value[type];
-  if (deptFilter && deptFilter !== 'all') {
-    const dept = departments.value.find(d => d.departmentId === parseInt(deptFilter));
-    if (dept) {
-      employees = employees.filter(e => e.department === dept.departmentName);
-    }
-  }
-  
-  return employees;
+  return typeEmployeeData.value[type] || [];
 };
 
 const getFilteredTypeEmployees = (type) => {
@@ -328,21 +331,70 @@ const getFilteredTypeEmployees = (type) => {
   if (!search) return employees;
   const s = search.toLowerCase();
   return employees.filter(e =>
-    e.fullName.toLowerCase().includes(s) ||
+    e.fullName?.toLowerCase().includes(s) ||
+    e.fullNameEnglish?.toLowerCase().includes(s) ||
+    e.employeeId?.toLowerCase().includes(s) ||
     e.department?.toLowerCase().includes(s) ||
     e.email?.toLowerCase().includes(s)
   );
 };
 
-const toggleType = (type) => {
-  expandedType.value = expandedType.value === type ? null : type;
+// ✅ Load ALL employees for a type (lazy loading)
+const loadTypeEmployees = async (type) => {
+  if (typeEmployeeLoading.value[type]) return;
+  
+  typeEmployeeLoading.value[type] = true;
+  
+  try {
+    const deptFilter = typeDeptFilter.value[type] || 'all';
+    const search = typeEmployeeSearch.value[type] || '';
+    
+    console.log(`📊 Loading employees for type: ${type}, Dept: ${deptFilter}, Search: "${search}"`);
+    
+    const response = await employeeService.getTypeEmployees({
+      type: type,
+      search: search,
+      departmentId: deptFilter
+    });
+    
+    if (response.success && response.data) {
+      const data = response.data;
+      typeEmployeeData.value[type] = data.employees || [];
+      console.log(`✅ Loaded ${data.employees?.length || 0} employees for ${type}`);
+    }
+  } catch (error) {
+    console.error('Error loading type employees:', error);
+  } finally {
+    typeEmployeeLoading.value[type] = false;
+  }
+};
+
+const toggleType = async (type) => {
+  // If clicking the same type, collapse it
   if (expandedType.value === type) {
-    if (!employeesByType.value[type]?.length) loadTypeEmployees(type);
+    expandedType.value = null;
+    return;
+  }
+  
+  // Expand the type
+  expandedType.value = type;
+  
+  // ✅ Load employees ONLY for this type (lazy loading)
+  if (!typeEmployeeData.value[type] || typeEmployeeData.value[type].length === 0) {
+    await loadTypeEmployees(type);
   }
 };
 
 const applyTypeFilter = (type) => {
-  // Just trigger re-render
+  // Reload employees with new department filter
+  loadTypeEmployees(type);
+};
+
+const searchTypeEmployees = (type) => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    loadTypeEmployees(type);
+  }, 300);
 };
 
 const viewEmployee = (id) => {
@@ -358,32 +410,37 @@ const clearSearch = () => {
   searchQuery.value = '';
 };
 
-// Export single type
+// ========== EXPORT FUNCTIONS ==========
+
 const exportType = (type) => {
   if (!type) return;
   
   const employees = getTypeEmployees(type.type);
   const typeLabel = getEmploymentTypeLabel(type.type);
   
-  let csv = `Employment Type: ${typeLabel}\n`;
-  csv += `Total Employees: ${type.count}\n`;
-  csv += `Percentage: ${type.percentage}%\n`;
-  csv += `Generated: ${new Date().toLocaleString()}\n\n`;
-  csv += 'Employee ID,Full Name,Department,Email,Position\n';
-  
-  if (employees.length > 0) {
-    employees.forEach(emp => {
-      csv += `"${emp.employeeId || 'N/A'}"`;
-      csv += `,"${emp.fullName}"`;
-      csv += `,"${emp.department || 'N/A'}"`;
-      csv += `,"${emp.email || 'N/A'}"`;
-      csv += `,"${emp.position || 'N/A'}"\n`;
-    });
-  } else {
-    csv += 'No employees found\n';
+  if (employees.length === 0) {
+    alert(`No employees found in ${typeLabel}`);
+    return;
   }
   
-  downloadCSV(csv, `${typeLabel}_Employees`);
+  let csv = `Employment Type: ${typeLabel}\n`;
+  csv += `Total Employees: ${employees.length}\n`;
+  csv += `Percentage: ${type.percentage}%\n`;
+  csv += `Generated: ${new Date().toLocaleString()}\n\n`;
+  csv += 'Employee ID,Full Name,English Name,Department,Email,Position\n';
+  
+  employees.forEach(emp => {
+    csv += `"${emp.employeeId || emp.id || 'N/A'}"`;
+    csv += `,"${emp.fullName || 'N/A'}"`;
+    csv += `,"${emp.fullNameEnglish || ''}"`;
+    csv += `,"${emp.department || 'N/A'}"`;
+    csv += `,"${emp.email || 'N/A'}"`;
+    csv += `,"${emp.position || 'N/A'}"\n`;
+  });
+
+  csv += `\nTotal Employees Exported: ${employees.length}`;
+
+  downloadCSV(csv, `${typeLabel}_Employees_All`);
 };
 
 const downloadCSV = (content, name) => {
@@ -398,14 +455,14 @@ const downloadCSV = (content, name) => {
   URL.revokeObjectURL(url);
 };
 
-// Data Loading
+// ========== DATA LOADING ==========
+
 const loadEmploymentTypes = async () => {
   loading.value = true;
   try {
     const result = await employeeService.getEmploymentTypeDistribution();
     if (result.success && result.data) {
       employmentTypes.value = result.data.types || [];
-      employeesByType.value = result.data.employeesByType || {};
       
       const deptResult = await employeeService.getDepartmentDistribution();
       if (deptResult.success && deptResult.data) {
@@ -421,24 +478,15 @@ const loadEmploymentTypes = async () => {
   }
 };
 
-const loadTypeEmployees = async (type) => {
-  try {
-    if (employeesByType.value[type]?.length) return;
-    const result = await employeeService.getEmploymentTypeDistributionPaginated({
-      employmentTypeFilter: type,
-      page: 1,
-      limit: 100
-    });
-    if (result.success && result.data) {
-      const employees = result.data.employeesByType?.[type] || [];
-      employeesByType.value = { ...employeesByType.value, [type]: employees };
-    }
-  } catch (error) {
-    console.error('Error loading type employees:', error);
-  }
+const refreshData = () => {
+  // Clear cached employee data
+  typeEmployeeData.value = {};
+  typeEmployeeLoading.value = {};
+  typeEmployeeSearch.value = {};
+  typeDeptFilter.value = {};
+  expandedType.value = null;
+  loadEmploymentTypes();
 };
-
-const refreshData = () => loadEmploymentTypes();
 
 onMounted(loadEmploymentTypes);
 </script>
@@ -583,25 +631,12 @@ onMounted(loadEmploymentTypes);
   flex-shrink: 0;
 }
 
-.stat-card-icon.blue {
-  background: #dbeafe;
-}
+.stat-card-icon.blue { background: #dbeafe; }
+.stat-card-icon.purple { background: #ede9fe; }
+.stat-card-icon.green { background: #dcfce7; }
+.stat-card-icon.orange { background: #fef3c7; }
 
-.stat-card-icon.purple {
-  background: #ede9fe;
-}
-
-.stat-card-icon.green {
-  background: #dcfce7;
-}
-
-.stat-card-icon.orange {
-  background: #fef3c7;
-}
-
-.stat-card-content {
-  flex: 1;
-}
+.stat-card-content { flex: 1; }
 
 .stat-card-value {
   display: block;
@@ -617,15 +652,11 @@ onMounted(loadEmploymentTypes);
 }
 
 @media (max-width: 1024px) {
-  .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .stats-cards { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 480px) {
-  .stats-cards {
-    grid-template-columns: 1fr;
-  }
+  .stats-cards { grid-template-columns: 1fr; }
 }
 
 /* ===== GLOBAL SEARCH ===== */
@@ -720,9 +751,7 @@ onMounted(loadEmploymentTypes);
   flex-shrink: 0;
 }
 
-.type-info {
-  flex: 1;
-}
+.type-info { flex: 1; }
 
 .type-name {
   font-size: 15px;
@@ -738,10 +767,7 @@ onMounted(loadEmploymentTypes);
   gap: 6px;
 }
 
-.type-dot {
-  color: #cbd5e1;
-}
-
+.type-dot { color: #cbd5e1; }
 .type-percent {
   color: #6366f1;
   font-weight: 600;
@@ -811,6 +837,26 @@ onMounted(loadEmploymentTypes);
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ===== TYPE LOADING ===== */
+.type-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 30px;
+  color: #64748b;
+}
+
+.spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ===== TYPE DEPT FILTER ===== */
 .type-dept-filter {
   display: flex;
   align-items: center;
@@ -853,6 +899,7 @@ onMounted(loadEmploymentTypes);
   border-radius: 20px;
 }
 
+/* ===== EMPLOYEES ===== */
 .type-employees {
   margin-top: 8px;
 }
@@ -877,18 +924,43 @@ onMounted(loadEmploymentTypes);
   background: white;
 }
 
-.type-employee-list {
-  max-height: 280px;
+/* ✅ Scrollable employee list */
+.type-employee-list-scroll {
+  max-height: 350px;
   overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.type-employee-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.type-employee-list-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.type-employee-list-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.type-employee-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .type-employee {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
   transition: background 0.15s;
+}
+
+.type-employee:last-child {
+  border-bottom: none;
 }
 
 .type-employee:hover {
@@ -896,22 +968,21 @@ onMounted(loadEmploymentTypes);
 }
 
 .type-employee-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
 .type-employee-info {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
 }
 
 .type-employee-name {
@@ -920,13 +991,24 @@ onMounted(loadEmploymentTypes);
   color: #0f172a;
 }
 
+.type-employee-name-en {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 .type-employee-dept {
   font-size: 11px;
   color: #94a3b8;
 }
 
+.type-employee-id {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+}
+
 .type-employee-view {
-  padding: 3px 12px;
+  padding: 4px 12px;
   background: #6366f1;
   color: white;
   border: none;
@@ -935,15 +1017,12 @@ onMounted(loadEmploymentTypes);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  opacity: 0;
-}
-
-.type-employee:hover .type-employee-view {
-  opacity: 1;
+  flex-shrink: 0;
 }
 
 .type-employee-view:hover {
   background: #4f46e5;
+  transform: scale(1.05);
 }
 
 .type-employee-empty {
@@ -951,6 +1030,19 @@ onMounted(loadEmploymentTypes);
   padding: 20px;
   color: #94a3b8;
   font-size: 13px;
+}
+
+/* Employee footer */
+.type-employee-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 4px 0;
+  margin-top: 8px;
+}
+
+.type-employee-total {
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 /* ===== EMPTY ===== */
@@ -1025,6 +1117,7 @@ onMounted(loadEmploymentTypes);
   .type-actions { margin-left: auto; }
   .type-dept-filter { flex-direction: column; align-items: stretch; }
   .type-dept-select { width: 100%; }
+  .type-employee-list-scroll { max-height: 250px; }
 }
 
 @media (max-width: 480px) {
@@ -1032,5 +1125,7 @@ onMounted(loadEmploymentTypes);
   .stats-cards { grid-template-columns: 1fr; }
   .type-badge { width: 36px; height: 36px; font-size: 18px; }
   .type-name { font-size: 14px; }
+  .type-employee-id { display: none; }
+  .type-employee-list-scroll { max-height: 200px; }
 }
 </style>

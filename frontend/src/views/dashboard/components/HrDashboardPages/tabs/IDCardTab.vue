@@ -67,7 +67,6 @@
               <th>Employee ID</th>
               <th>Department</th>
               <th>Position</th>
-            
               <th>Action</th>
             </tr>
           </thead>
@@ -92,10 +91,9 @@
               <td><span class="employee-id-badge">{{ emp.employeeId || 'N/A' }}</span></td>
               <td><span class="dept-badge">{{ emp.department || 'N/A' }}</span></td>
               <td>{{ emp.position || 'N/A' }}</td>
-            
               <td>
-                <button class="btn-view" @click.stop="$emit('view-employee', emp.id)">
-                  👁 View
+                <button class="btn-edit" @click.stop="goToEdit(emp.id)">
+                  ✏️ Edit
                 </button>
               </td>
             </tr>
@@ -149,9 +147,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
-const emit = defineEmits(['update-count', 'view-employee']);
+const router = useRouter();
+
+const emit = defineEmits(['update-count']);
 
 // ========== STATE ==========
 const loading = ref(false);
@@ -174,7 +175,6 @@ const missingPagination = ref({
 let searchTimeout = null;
 
 // ========== COMPUTED ==========
-// Data comes pre-filtered and paginated from backend
 const paginatedMissing = computed(() => {
   return missingData.value;
 });
@@ -200,10 +200,14 @@ const getMissingRowIndex = (idx) => {
   return idx + 1 + (missingPagination.value.page - 1) * missingPagination.value.limit;
 };
 
+const goToEdit = (id) => {
+  router.push(`/employees/${id}/edit`);
+};
+
 const changeMissingPage = (page) => {
   if (page >= 1 && page <= missingPagination.value.totalPages) {
     missingPagination.value.page = page;
-    loadData(); // Fetch new page from backend
+    loadData();
     const table = document.querySelector('.table-container');
     if (table) {
       table.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -247,7 +251,7 @@ const loadData = async () => {
   try {
     const response = await employeeService.getEmployeesWithoutNationalId({
       departmentId: departmentFilter.value,
-      search: searchQuery.value, // ✅ Search sent to backend
+      search: searchQuery.value,
       page: missingPagination.value.page,
       limit: missingPagination.value.limit
     });
@@ -653,19 +657,19 @@ onMounted(() => {
   display: inline-block;
 }
 
-.btn-view {
-  padding: 4px 12px;
+.btn-edit {
+  padding: 4px 14px;
   background: #6366f1;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-view:hover {
+.btn-edit:hover {
   background: #4f46e5;
   transform: scale(1.05);
 }

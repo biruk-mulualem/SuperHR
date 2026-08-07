@@ -507,7 +507,7 @@ const hiringStats = ref({ totalHired: 0, totalTerminated: 0, netGrowth: 0 });
 // Pagination
 const pagination = reactive({
   page: 1,
-  limit: 20,
+  limit: 10,
   total: 0,
   totalPages: 1,
   hasNextPage: false,

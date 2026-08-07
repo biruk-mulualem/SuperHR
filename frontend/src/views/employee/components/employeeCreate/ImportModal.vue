@@ -11,13 +11,20 @@
         <!-- Instructions Block -->
         <div class="excel-info">
           <strong>{{ t('import.requiredColumns') || 'Required columns:' }}</strong><br>
-          ስም (firstName), የአባት ስም (lastName), ኢሜይል (email), ስልክ (phone), ክፍል መለያ (departmentId), ሹመት መለያ (positionId),
-           የሥራ ዓይነት (employmentType), የተቀጠረበት ቀን (hireDate)<br>
+          ስም (firstName), የአባት ስም (lastName), ኢሜይል (email), ስልክ (phone), ክፍል መለያ (departmentId),
+          የሥራ ዓይነት (employmentType), የተቀጠረበት ቀን (hireDate)<br>
+          
           <strong>{{ t('import.optionalColumns') || 'Optional columns:' }}</strong><br>
-          የአያት ስም (middleName), <span class="highlight">የእንግሊዝኛ ሙሉ ስም (fullNameEnglish)</span>, <span class="highlight"> የግል ኢሜይል (personalEmail), የትውልድ ቀን (dob), ፆታ (gender),
-           የጋብቻ ሁኔታ (maritalStatus), 
-          ዜግነት (nationality), ሥራ አስኪያጅ መለያ (managerId), መሰረታዊ ደሞዝ (salary), አድራሻ (address), የስራ ቦታ (workLocation), 
-          የቤት አበል (housingAllowance), የሹመት አበል (positionAllowance), የትራንስፖርት አበል (transportAllowance) </span>
+          የአያት ስም (middleName), የእንግሊዝኛ ሙሉ ስም (fullNameEnglish), የግል ኢሜይል (personalEmail), 
+          <span class="highlight">የትውልድ ቀን (dateOfBirthEC)</span>, ፆታ (gender),
+          የጋብቻ ሁኔታ (maritalStatus), ዜግነት (nationality), 
+          <span class="highlight">ሹመት መለያ (positionId)</span>, መሰረታዊ ደሞዝ (salary), አድራሻ (address), የስራ ቦታ (workLocation), 
+          የቤት አበል (housingAllowance), የሹመት አበል (positionAllowance), የትራንስፖርት አበል (transportAllowance)<br>
+          
+          <strong style="color: #dc2626;">⚠️ Important:</strong> 
+          All dates must be in <strong>Ethiopian Calendar format (DD/MM/YYYY)</strong>, e.g., 25/05/2001<br>
+          <strong style="color: #2563eb;">📌 Tip:</strong> 
+          Use the <strong>"References"</strong> sheet in the template to find the correct IDs for departments, positions, and employment types.
         </div>
         
         <!-- Upload Zone -->
@@ -63,7 +70,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n' 
-import * as XLSX from 'xlsx' // ✅ Import true Excel library
+import * as XLSX from 'xlsx'
 import EmployeesService from '@/stores/employee'
 
 const { t } = useI18n()
@@ -127,45 +134,161 @@ const importEmployees = async () => {
   }
 }
 
-// ✅ Generate a true .xlsx Excel file with Amharic headers
-const downloadTemplate = () => {
-  // 1. Define 22 Headers (Including English Full Name)
-  const headers = [
-    ['ስም', 'የአባት ስም', 'የአያት ስም', 'የእንግሊዝኛ ሙሉ ስም', 'ኢሜይል', 'የግል ኢሜይል', 'ስልክ', 
-     'የትውልድ ቀን', 'ፆታ', 'የጋብቻ ሁኔታ', 'ዜግነት', 'ክፍል መለያ', 
-     'ሹመት መለያ', 'ሥራ አስኪያጅ መለያ', 'የሥራ ዓይነት', 'የተቀጠረበት ቀን', 
-     'መሰረታዊ ደሞዝ', 'የቤት አበል', 'የሹመት አበል', 'የትራንስፖርት አበል', 
-     'አድራሻ', 'የሥራ ቦታ']
-  ]
+// ✅ Generate Excel file with data and reference sheets
+const downloadTemplate = async () => {
+  try {
+    // ========== FETCH REFERENCE DATA ==========
+    // Fetch departments
+    const deptResponse = await EmployeesService.getDepartments()
+    const departments = deptResponse?.data?.data || deptResponse?.data || []
+    
+    // Fetch positions
+    const posResponse = await EmployeesService.getPositions()
+    const positions = posResponse?.data?.data || posResponse?.data || []
+    
+    // Employment types
+    const employmentTypes = [
+      { id: 'full-time', nameAm: 'ሙሉ ጊዜ', nameEn: 'Full Time' },
+      { id: 'part-time', nameAm: 'የትርፍ ጊዜ', nameEn: 'Part Time' },
+      { id: 'contract', nameAm: 'ውል', nameEn: 'Contract' },
+      { id: 'intern', nameAm: 'ተለማማጅ', nameEn: 'Intern' }
+    ]
 
-  // 2. Sample Data Row with English Full Name filled in
-  const sampleData = [
-    ['ብሩክ', 'ታደሰ', 'አድማሱ', 'Biruk Tadese Admasu', 'biruk@email.com', '', '+251911000001', 
-     '1990-01-01', 'male', 'single', 'ኢትዮጵያዊ', '1', '1', '', 'full-time', 
-     '2024-01-01', '15000', '3000', '2250', '1500', 'አዲስ አበባ, ኢትዮጵያ', 'ዋና መሥሪያ ቤት']
-  ]
+    // ========== SHEET 1: EMPLOYEES (Data Entry) ==========
+    // Headers - includes positionId but NOT managerId
+    const headers = [
+      ['ስም', 'የአባት ስም', 'የአያት ስም', 'የእንግሊዝኛ ሙሉ ስም', 'ኢሜይል', 'የግል ኢሜይል', 'ስልክ', 
+       'የትውልድ ቀን', 'ፆታ', 'የጋብቻ ሁኔታ', 'ዜግነት', 'ክፍል መለያ', 
+       'ሹመት መለያ', 'የሥራ ዓይነት', 'የተቀጠረበት ቀን', 
+       'መሰረታዊ ደሞዝ', 'የቤት አበል', 'የሹመት አበል', 'የትራንስፖርት አበል', 
+       'አድራሻ', 'የሥራ ቦታ']
+    ]
 
-  // 3. Create the Excel Worksheet
-  const ws = XLSX.utils.aoa_to_sheet([...headers, ...sampleData]);
-  ws['!cols'] = headers[0].map(() => ({ wch: 22 }));
+    // Sample data with ETHIOPIAN dates (DD/MM/YYYY)
+    const sampleData = [
+      ['ብሩክ', 'ታደሰ', 'አድማሱ', 'Biruk Tadese Admasu', 'biruk@email.com', '', '+251911000001', 
+       '15/02/1992', 'male', 'single', 'ኢትዮጵያዊ', 
+       departments.length > 0 ? departments[0]?.departmentId || 1 : 1, 
+       positions.length > 0 ? positions[0]?.positionId || 1 : 1, 
+       'full-time', 
+       '25/05/2001', '15000', '3000', '2250', '1500', 'አዲስ አበባ, ኢትዮጵያ', 'ዋና መሥሪያ ቤት'],
+      
+      ['ሰላም', 'አለሙ', 'ተስፋዬ', 'Selam Alemu Tesfaye', 'selam@email.com', '', '+251911000002',
+       '23/03/1988', 'female', 'married', 'ኢትዮጵያዊ', 
+       departments.length > 1 ? departments[1]?.departmentId || 2 : 2, 
+       positions.length > 1 ? positions[1]?.positionId || 2 : 2, 
+       'contract',
+       '08/09/2001', '20000', '4000', '3000', '2000', 'ባህር ዳር, ኢትዮጵያ', 'ቅርንጫፍ ቢሮ']
+    ]
 
-  // 4. Create Workbook
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+    // Create Data Entry worksheet
+    const wsData = XLSX.utils.aoa_to_sheet([...headers, ...sampleData])
+    wsData['!cols'] = headers[0].map(() => ({ wch: 22 }))
 
-  // 5. Generate Buffer
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    // ========== SHEET 2: REFERENCES ==========
+    const refData = []
 
-  // 6. Trigger Download
-  const blob = new Blob([wbout], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'employee_import_template.xlsx';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+    // --- Departments Section ---
+    refData.push(['=== ዲፓርትመንቶች / DEPARTMENTS ==='])
+    refData.push([])
+    refData.push(['መለያ (ID)', 'ስም (Amharic)', 'ስም (English)', 'ኮድ (Code)'])
+    if (departments.length > 0) {
+      departments.forEach(d => {
+        refData.push([
+          d.departmentId || d.id || '',
+          d.nameAm || d.name_am || d.name || '',
+          d.name || '',
+          d.code || ''
+        ])
+      })
+    } else {
+      refData.push(['1', 'ሰብአዊ ሀብት', 'Human Resources', 'HR'])
+      refData.push(['2', 'የአይቲ', 'IT', 'IT'])
+      refData.push(['3', 'ፋይናንስ', 'Finance', 'FIN'])
+    }
+    refData.push([])
+    refData.push([])
+
+    // --- Positions Section ---
+    refData.push(['=== ሹመቶች / POSITIONS ==='])
+    refData.push([])
+    refData.push(['መለያ (ID)', 'ሹመት (Amharic)', 'ሹመት (English)', 'ደረጃ (Level)'])
+    if (positions.length > 0) {
+      positions.forEach(p => {
+        refData.push([
+          p.positionId || p.id || '',
+          p.titleAm || p.title_am || p.title || '',
+          p.title || '',
+          p.level || ''
+        ])
+      })
+    } else {
+      refData.push(['1', 'ሥራ አስኪያጅ', 'Manager', 'Senior'])
+      refData.push(['2', 'ባለሙያ', 'Specialist', 'Mid'])
+      refData.push(['3', 'ጁኒየር', 'Junior', 'Junior'])
+    }
+    refData.push([])
+    refData.push([])
+
+    // --- Employment Types Section ---
+    refData.push(['=== የሥራ ዓይነቶች / EMPLOYMENT TYPES ==='])
+    refData.push([])
+    refData.push(['መለያ (ID)', 'ዓይነት (Amharic)', 'ዓይነት (English)'])
+    employmentTypes.forEach(e => {
+      refData.push([e.id, e.nameAm, e.nameEn])
+    })
+    refData.push([])
+    refData.push([])
+
+    // --- Gender Section ---
+    refData.push(['=== ፆታ / GENDER ==='])
+    refData.push([])
+    refData.push(['መለያ (ID)', 'ፆታ (Amharic)', 'ፆታ (English)'])
+    refData.push(['male', 'ወንድ', 'Male'])
+    refData.push(['female', 'ሴት', 'Female'])
+    refData.push(['other', 'ሌላ', 'Other'])
+    refData.push([])
+    refData.push([])
+
+    // --- Marital Status Section ---
+    refData.push(['=== የጋብቻ ሁኔታ / MARITAL STATUS ==='])
+    refData.push([])
+    refData.push(['መለያ (ID)', 'ሁኔታ (Amharic)', 'ሁኔታ (English)'])
+    refData.push(['single', 'ያላገባ', 'Single'])
+    refData.push(['married', 'ያገባ', 'Married'])
+    refData.push(['divorced', 'የተፋታ', 'Divorced'])
+    refData.push(['widowed', 'የባለትዳር ሞት', 'Widowed'])
+
+    // Create References worksheet
+    const wsRef = XLSX.utils.aoa_to_sheet(refData)
+    wsRef['!cols'] = [
+      { wch: 20 },
+      { wch: 30 },
+      { wch: 30 },
+      { wch: 15 }
+    ]
+
+    // ========== CREATE WORKBOOK ==========
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, wsData, 'Employees')
+    XLSX.utils.book_append_sheet(wb, wsRef, 'References')
+
+    // ========== GENERATE AND DOWNLOAD ==========
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([wbout], { type: 'application/octet-stream' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'employee_import_template.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    
+  } catch (error) {
+    console.error('Error generating template:', error)
+    emit('toast', 'Failed to generate template. Please try again.', 'error')
+  }
 }
 </script>
 
@@ -186,7 +309,7 @@ const downloadTemplate = () => {
 .modal-container {
   background: white;
   border-radius: 16px;
-  width: 600px;
+  width: 650px;
   max-width: 95%;
   max-height: 80vh;
   overflow: auto;
@@ -239,21 +362,66 @@ const downloadTemplate = () => {
 .upload-zone span { display: block; font-size: 14px; color: #475569; margin-bottom: 4px; }
 .upload-zone small { font-size: 12px; color: #94a3b8; }
 
-.template-link { background: none; border: none; color: #6366f1; cursor: pointer; font-size: 13px; margin-top: 12px; text-decoration: underline; }
+.template-link { 
+  background: none; 
+  border: none; 
+  color: #6366f1; 
+  cursor: pointer; 
+  font-size: 13px; 
+  margin-top: 12px; 
+  text-decoration: underline; 
+}
 
-.import-results { margin-top: 15px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
-.result-row { font-weight: 600; margin-bottom: 5px; }
+.import-results { 
+  margin-top: 15px; 
+  padding: 12px; 
+  background: #f8fafc; 
+  border-radius: 8px; 
+  border: 1px solid #e2e8f0; 
+}
+
+.result-row { 
+  font-weight: 600; 
+  margin-bottom: 5px; 
+}
+
 .result-row.success { color: #10b981; }
 .result-row.fail { color: #ef4444; }
-.failed-list { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
-.fail-item { font-size: 12px; color: #ef4444; margin-bottom: 2px; }
+
+.failed-list { 
+  margin-top: 8px; 
+  padding-top: 8px; 
+  border-top: 1px solid #e2e8f0; 
+}
+
+.fail-item { 
+  font-size: 12px; 
+  color: #ef4444; 
+  margin-bottom: 2px; 
+}
 
 .btn-primary, .btn-secondary {
-  padding: 8px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer;
+  padding: 8px 20px; 
+  border-radius: 10px; 
+  font-size: 13px; 
+  font-weight: 500; 
+  cursor: pointer;
 }
-.btn-primary { background: #6366f1; border: none; color: white; }
+
+.btn-primary { 
+  background: #6366f1; 
+  border: none; 
+  color: white; 
+}
+
 .btn-primary:hover:not(:disabled) { background: #4f46e5; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: white; border: 1px solid #e2e8f0; color: #475569; }
+
+.btn-secondary { 
+  background: white; 
+  border: 1px solid #e2e8f0; 
+  color: #475569; 
+}
+
 .btn-secondary:hover { background: #f8fafc; }
 </style>

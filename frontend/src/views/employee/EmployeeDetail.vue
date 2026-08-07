@@ -1636,7 +1636,7 @@
         </div>
       </div>
 
-      <!-- Compensation History Card -->
+      <!-- Compensation History Card - NO SCROLL -->
       <div class="info-card history-card full-width">
         <div class="card-header">
           <div class="card-header-icon">
@@ -1657,7 +1657,7 @@
             {{ $t("compensation.changes") || "changes" }}</span
           >
         </div>
-        <div class="history-content-full">
+        <div class="history-content-full no-scroll">
           <div v-if="loadingHistory" class="history-loading-full">
             <div class="spinner"></div>
             <span>{{
@@ -1680,200 +1680,163 @@
               "When salary or allowances are updated, changes will appear here"
             }}</span>
           </div>
-          <div v-else class="history-timeline-full">
-            <div
-              v-for="(history, index) in compensationHistories"
-              :key="history.id"
-              class="timeline-entry"
-            >
-              <div class="timeline-left">
-                <div class="timeline-date-badge">
-                  <div class="timeline-date-day">
-                    {{ history.changeDay || '--' }}
-                  </div>
-                  <div class="timeline-date-month">
-                    {{ history.changeMonth || '---' }}
-                  </div>
-                  <div class="timeline-date-year">
-                    {{ history.changeYear || '----' }}
-                  </div>
-                </div>
-                <div class="timeline-arrow" :class="history.changeType">
-                  <span class="arrow-icon">{{
-                    history.changeType === "increase" ? "↑" : "↓"
-                  }}</span>
-                </div>
-              </div>
-              <div class="timeline-body">
-                <div class="timeline-header-full">
-                  <div class="timeline-title">
-                    <span class="component-badge" :class="history.changeType">{{
-                      getComponentLabel(history.componentKey || history.component)
-                    }}</span>
-                    <span class="change-percent" :class="history.changeType"
-                      >{{ history.changeType === "increase" ? "+" : ""
-                      }}{{ formatPercentage(history.percentageChange) }}%</span
-                    >
-                  </div>
-                  <div class="timeline-submitted">
-                    <span class="submitted-icon">👤</span>
-                    <span>{{ history.submittedBy || $t("common.system") || "System" }}</span>
-                  </div>
-                </div>
-                <div class="timeline-values-full">
-                  <div class="value-card old">
-                    <div class="value-label">
-                      {{
-                        $t("compensation.previousAmount") || "Previous Amount"
-                      }}
+          <div v-else class="history-table-wrapper no-scroll">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th class="col-date">{{ $t("compensation.date") || "Date" }}</th>
+                  <th class="col-component">{{ $t("compensation.component") || "Component" }}</th>
+                  <th class="col-old">{{ $t("compensation.previous") || "Previous" }}</th>
+                  <th class="col-new">{{ $t("compensation.new") || "New" }}</th>
+                  <th class="col-change">{{ $t("compensation.change") || "Change" }}</th>
+                
+                </tr>
+              </thead>
+              <tbody>
+                <tr 
+                  v-for="history in compensationHistories" 
+                  :key="history.id"
+                  :class="history.changeType"
+                >
+                  <td class="col-date">
+                    <div class="date-cell">
+                      <span class="date-day">{{ history.changeDay || '--' }}</span>
+                      <span class="date-month">{{ history.changeMonth || '---' }}</span>
+                      <span class="date-year">{{ history.changeYear || '----' }}</span>
                     </div>
-                    <div class="value-amount">
-                      {{ formatCurrency(history.oldValue) }}
-                    </div>
-                  </div>
-                  <div class="value-arrow-full">→</div>
-                  <div class="value-card new" :class="history.changeType">
-                    <div class="value-label">
-                      {{ $t("compensation.newAmount") || "New Amount" }}
-                    </div>
-                    <div class="value-amount">
+                  </td>
+                  <td class="col-component">
+                    <span class="component-badge" :class="history.changeType">
+                      {{ getComponentLabel(history.componentKey || history.component) }}
+                    </span>
+                  </td>
+                  <td class="col-old">
+                    <span class="old-amount">{{ formatCurrency(history.oldValue) }}</span>
+                  </td>
+                  <td class="col-new">
+                    <span class="new-amount" :class="history.changeType">
                       {{ formatCurrency(history.newValue) }}
+                    </span>
+                  </td>
+                  <td class="col-change">
+                    <div class="change-badge" :class="history.changeType">
+                      <span class="change-icon">{{ history.changeType === "increase" ? "▲" : "▼" }}</span>
+                      <span class="change-percent">{{ history.changeType === "increase" ? "+" : "" }}{{ formatPercentage(history.percentageChange) }}%</span>
+                      <span class="change-diff">{{ formatCurrency(history.difference) }}</span>
                     </div>
-                  </div>
-                  <div class="value-diff" :class="history.changeType">
-                    <span class="diff-icon">{{
-                      history.changeType === "increase" ? "▲" : "▼"
-                    }}</span>
-                    <span class="diff-amount">{{
-                      formatCurrency(history.difference)
-                    }}</span>
-                  </div>
-                </div>
-                <div v-if="history.reason" class="timeline-reason-full">
-                  <span class="reason-icon">💬</span>
-                  <span class="reason-text">{{ history.reason }}</span>
-                </div>
-              </div>
-            </div>
+                  </td>
+                 
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
-
-
-     <!-- EmployeeDetail.vue - Termination History Section -->
-
-<!-- Termination History Card -->
-<div class="info-card employment-history-card full-width">
-  <div class="card-header">
-    <div class="card-header-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />
-      </svg>
-    </div>
-    <h3>Employment History Timeline</h3>
-    <span class="history-count" v-if="employmentHistory.length > 0">
-      {{ employmentHistory.length }} {{ $t("compensation.changes") || "periods" }}
-    </span>
-  </div>
-  
-  <div class="history-content-full">
-    <div v-if="loadingTerminationHistory" class="history-loading-full">
-      <div class="spinner"></div>
-      <span>Loading employment history...</span>
-    </div>
-
-    <div v-else-if="employmentHistory.length === 0" class="history-empty-full">
-      <div class="empty-icon">📋</div>
-      <p>No employment history records found</p>
-      <span class="history-hint">Employee has been continuously employed since {{ employee.hireDateEC }} E.C</span>
-    </div>
-
-    <div v-else class="employment-timeline">
-      <!-- Timeline Items -->
-      <div 
-        v-for="(event, index) in employmentHistory" 
-        :key="index"
-        class="timeline-item-wrapper"
-      >
-        <!-- Connector Line -->
-        <div class="timeline-connector-line" v-if="index > 0"></div>
+<br></br>
+      <!-- Employment History Timeline Card - NO SCROLL -->
+      <div class="info-card employment-history-card full-width">
+        <div class="card-header">
+          <div class="card-header-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 8v4l3 3M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />
+            </svg>
+          </div>
+          <h3>Employment History Timeline</h3>
+          <span class="history-count" v-if="employmentHistory.length > 0">
+            {{ employmentHistory.length }} {{ $t("compensation.changes") || "periods" }}
+          </span>
+        </div>
         
-        <div class="timeline-item" :class="event.type">
-          <!-- Left Side - Period Badge -->
-          <div class="timeline-period">
-            <div class="period-badge" :class="event.type">
-              <span class="period-icon">{{ event.icon }}</span>
-              <span class="period-label">{{ event.label }}</span>
-            </div>
+        <div class="history-content-full no-scroll">
+          <div v-if="loadingTerminationHistory" class="history-loading-full">
+            <div class="spinner"></div>
+            <span>Loading employment history...</span>
           </div>
 
-          <!-- Middle - Timeline Node -->
-          <div class="timeline-node" :class="event.type">
-            <div class="node-dot"></div>
-            <div class="node-line" v-if="index < employmentHistory.length - 1"></div>
+          <div v-else-if="employmentHistory.length === 0" class="history-empty-full">
+            <div class="empty-icon">📋</div>
+            <p>No employment history records found</p>
+            <span class="history-hint">Employee has been continuously employed since {{ employee.hireDateEC }} E.C</span>
           </div>
 
-          <!-- Right Side - Content -->
-          <div class="timeline-content-card" :class="event.type">
-            <div class="content-header">
-              <div class="title-section">
-                <h4 class="event-title">{{ event.title }}</h4>
-                <span class="event-subtitle">{{ event.subtitle }}</span>
-              </div>
-              <div class="date-section">
-                <span class="date-range">
-                  {{ event.startDate }} <span class="date-separator">→</span> {{ event.endDate || 'Present' }}
-                </span>
-                <span class="calendar-label">E.C</span>
-              </div>
-            </div>
+          <div v-else class="employment-table-wrapper no-scroll">
+            <table class="employment-table">
+              <thead>
+                <tr>
+                  <th class="col-period">{{ $t("employment.period") || "Period" }}</th>
+                  <th class="col-status">{{ $t("employment.status") || "Status" }}</th>
+                  <th class="col-dates">{{ $t("employment.dates") || "Dates" }}</th>
+                  <th class="col-duration">{{ $t("employment.duration") || "Duration" }}</th>
+                  <th class="col-details">{{ $t("employment.details") || "Details" }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr 
+                  v-for="(event, index) in employmentHistory" 
+                  :key="index"
+                  :class="event.type"
+                >
+                  <td class="col-period">
+                    <div class="period-badge" :class="event.type">
+                      <span class="period-icon">{{ event.icon }}</span>
+                      <span class="period-label">{{ event.label }}</span>
+                    </div>
+                  </td>
+                  <td class="col-status">
+                    <span class="status-badge" :class="event.type">
+                      {{ event.title }}
+                    </span>
+                    <span class="status-subtitle">{{ event.subtitle }}</span>
+                  </td>
+                  <td class="col-dates">
+                    <div class="date-range">
+                      <span class="start-date">{{ event.startDate }}</span>
+                      <span class="date-arrow">→</span>
+                      <span class="end-date">{{ event.endDate || 'Present' }}</span>
+                      <span class="calendar-tag">E.C</span>
+                    </div>
+                  </td>
+                  <td class="col-duration">
+                    <span class="duration-badge" :class="event.type">
+                      <span class="duration-icon">⏱</span>
+                      <span class="duration-text">{{ event.duration || 'Ongoing' }}</span>
+                    </span>
+                  </td>
+                  <td class="col-details">
+                    <div class="details-cell">
+                      <div v-if="event.details?.department" class="detail-row">
+                        <span class="detail-label">Dept:</span>
+                        <span class="detail-value">{{ event.details.department }}</span>
+                      </div>
+                      <div v-if="event.details?.position" class="detail-row">
+                        <span class="detail-label">Pos:</span>
+                        <span class="detail-value">{{ event.details.position }}</span>
+                      </div>
+                      <div v-if="event.details?.salary" class="detail-row">
+                        <span class="detail-label">Salary:</span>
+                        <span class="detail-value">{{ formatCurrency(event.details.salary) }}</span>
+                      </div>
+                      <div v-if="event.details?.reason" class="detail-row reason-row">
+                        <span class="detail-label">Reason:</span>
+                        <span class="detail-value reason-text">{{ event.details.reason }}</span>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            <div class="content-body">
-              <!-- Employment Details -->
-              <div class="employment-details" v-if="event.details">
-                <div class="detail-row" v-if="event.details.department">
-                  <span class="detail-label">Department:</span>
-                  <span class="detail-value">{{ event.details.department }}</span>
-                </div>
-                <div class="detail-row" v-if="event.details.position">
-                  <span class="detail-label">Position:</span>
-                  <span class="detail-value">{{ event.details.position }}</span>
-                </div>
-                <div class="detail-row" v-if="event.details.salary">
-                  <span class="detail-label">Salary:</span>
-                  <span class="detail-value">{{ formatCurrency(event.details.salary) }}</span>
-                </div>
-                <div class="detail-row" v-if="event.details.reason">
-                  <span class="detail-label">Reason:</span>
-                  <span class="detail-value">{{ event.details.reason }}</span>
-                </div>
-                <div class="detail-row" v-if="event.details.notes">
-                  <span class="detail-label">Notes:</span>
-                  <span class="detail-value notes-text">{{ event.details.notes }}</span>
-                </div>
-              </div>
-
-              <!-- Duration Badge -->
-              <div class="duration-badge" :class="event.type">
-                <span class="duration-icon">⏱</span>
-                <span class="duration-text">{{ event.duration || 'Ongoing' }}</span>
+            <!-- Current Status Banner -->
+            <div v-if="employee.status === 'active'" class="current-status-banner">
+              <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Currently Employed - </span>
+                <span class="status-date">Since {{ employee.hireDateEC }} E.C</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Current Status (if active) -->
-      <div v-if="employee.status === 'active'" class="current-status-banner">
-        <div class="status-indicator">
-          <span class="status-dot"></span>
-          <span class="status-text">Currently Employed</span>
-          <span class="status-date">Since {{ employee.hireDateEC }} E.C</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
     </div>
 
@@ -1910,20 +1873,6 @@ const loading = ref(true);
 const loadingHistory = ref(false);
 const employeeId = route.params.id;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const employmentHistory = ref([]);
 const loadingTerminationHistory = ref(false);
 
@@ -1939,7 +1888,6 @@ const calculateDuration = (startEC, endEC) => {
   let isPresent = false;
   
   if (!endEC || endEC === 'Present') {
-    // Calculate from current date
     const now = new Date();
     const ecYear = now.getFullYear() - 8;
     const ecMonth = now.getMonth() + 1;
@@ -1957,7 +1905,7 @@ const calculateDuration = (startEC, endEC) => {
   
   if (months < 0) {
     years--;
-    months += 13; // Ethiopian has 13 months
+    months += 13;
   }
   
   if (years < 0) {
@@ -1979,13 +1927,10 @@ const calculateDuration = (startEC, endEC) => {
 const buildEmploymentHistory = (employee, terminationRecords) => {
   const history = [];
   
-  // 1. Initial Hire
   const hireDate = employee.originalHireDateEC || employee.hireDateEC;
   
-  // Find first termination
   const firstTermination = terminationRecords.length > 0 ? terminationRecords[terminationRecords.length - 1] : null;
   
-  // Initial employment period
   history.push({
     type: 'hired',
     icon: '📋',
@@ -2002,14 +1947,11 @@ const buildEmploymentHistory = (employee, terminationRecords) => {
     }
   });
   
-  // Process each termination
   let currentStartDate = hireDate;
   
   terminationRecords.forEach((record, index) => {
-    const isLast = index === 0; // Most recent first
     const nextRecord = index < terminationRecords.length - 1 ? terminationRecords[index + 1] : null;
     
-    // Termination period (end of employment)
     history.push({
       type: 'terminated',
       icon: '❌',
@@ -2027,9 +1969,7 @@ const buildEmploymentHistory = (employee, terminationRecords) => {
       }
     });
     
-    // If rehired, add rehire period
     if (record.isRehired && record.rehireDateEC) {
-      // Next termination (if any)
       const nextTermination = index > 0 ? terminationRecords[index - 1] : null;
       const endDate = nextTermination ? nextTermination.terminationDateEC : 'Present';
       
@@ -2055,7 +1995,6 @@ const buildEmploymentHistory = (employee, terminationRecords) => {
     }
   });
   
-  // Sort by start date (most recent first)
   return history.sort((a, b) => {
     const aDate = a.startDate.split('/').reverse().join('');
     const bDate = b.startDate.split('/').reverse().join('');
@@ -2070,7 +2009,6 @@ const loadTerminationHistory = async () => {
     const response = await EmployeesService.getTerminationHistory(employeeId);
     if (response.success) {
       const terminationData = response.data?.history || [];
-      // Build employment history timeline
       employmentHistory.value = buildEmploymentHistory(employee.value, terminationData);
     }
   } catch (error) {
@@ -2080,28 +2018,6 @@ const loadTerminationHistory = async () => {
     loadingTerminationHistory.value = false;
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Helper method to get document URL by type (for single documents or first of indexed)
 const getDocumentUrl = (type) => {
@@ -2354,12 +2270,10 @@ const formatPercentage = (value) => {
 const formatDate = (date) => {
   if (!date) return "—";
   
-  // If it's already in DD/MM/YYYY format (Ethiopian Calendar), return as is
   if (typeof date === 'string' && date.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
     return date;
   }
   
-  // If it's in another format, try to parse it
   if (typeof date === 'string') {
     const parts = date.split(/[/-]/);
     if (parts.length === 3) {
@@ -2370,7 +2284,6 @@ const formatDate = (date) => {
     }
   }
   
-  // If it's a Date object or ISO string
   try {
     const d = new Date(date);
     if (!isNaN(d.getTime())) {
@@ -2390,7 +2303,6 @@ const formatDate = (date) => {
 const calculateAgeFromEC = (dateOfBirthEC) => {
   if (!dateOfBirthEC) return "?";
   
-  // Parse EC date: DD/MM/YYYY
   const parts = dateOfBirthEC.split('/');
   if (parts.length !== 3) return "?";
   
@@ -2398,17 +2310,13 @@ const calculateAgeFromEC = (dateOfBirthEC) => {
   const month = parseInt(parts[1]);
   const year = parseInt(parts[2]);
   
-  // Get current EC date (approximate using GC conversion)
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
   
-  // Simple approximation: GC year - EC year (since EC is ~8 years behind)
-  // This is approximate but works for age calculation
   let age = currentYear - year - 8;
   
-  // Adjust for month/day
   if (month > currentMonth || (month === currentMonth && day > currentDay)) {
     age--;
   }
@@ -2457,78 +2365,282 @@ const loadEmployeeData = async () => {
 onMounted(() => {
   loadEmployeeData();
   loadCompensationHistory();
-    loadTerminationHistory();
+  loadTerminationHistory();
 });
 </script>
 
-
 <style scoped>
-
 /* ============================================
-   EMPLOYMENT HISTORY TIMELINE
+   COMPENSATION HISTORY TABLE - NO SCROLL
    ============================================ */
 
-.employment-history-card {
-  background: white;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-.history-content-full {
+.history-content-full.no-scroll {
   padding: 24px;
+  overflow: visible;
+  max-height: none;
 }
 
-/* ============================================
-   TIMELINE WRAPPER
-   ============================================ */
-
-.employment-timeline {
-  position: relative;
-  padding: 10px 0;
+.history-table-wrapper.no-scroll {
+  overflow: visible;
+  padding: 4px 0;
 }
 
-.timeline-item-wrapper {
-  position: relative;
-  margin-bottom: 20px;
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
 }
 
-.timeline-connector-line {
-  position: absolute;
-  left: 60px;
-  top: -20px;
-  width: 2px;
-  height: 40px;
-  background: linear-gradient(180deg, #e2e8f0 0%, #e2e8f0 70%, transparent 100%);
+.history-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9edf2;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
-/* ============================================
-   TIMELINE ITEMS
-   ============================================ */
+.history-table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
 
-.timeline-item {
+.history-table tbody tr {
+  transition: background 0.2s;
+}
+
+.history-table tbody tr:hover {
+  background: #fafcfc;
+}
+
+.history-table tbody tr.increase {
+  border-left: 3px solid #10b981;
+}
+
+.history-table tbody tr.decrease {
+  border-left: 3px solid #ef4444;
+}
+
+/* Column widths */
+.col-date { width: 100px; }
+.col-component { width: 140px; }
+.col-old { width: 120px; }
+.col-new { width: 120px; }
+.col-change { width: 140px; }
+.col-reason { min-width: 180px; }
+
+/* Date cell */
+.date-cell {
   display: flex;
-  gap: 24px;
-  align-items: flex-start;
-  position: relative;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
 }
 
-/* Left - Period Badge */
-.timeline-period {
-  min-width: 120px;
-  padding-top: 8px;
+.date-day {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
 }
 
+.date-month {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6366f1;
+  text-transform: uppercase;
+}
+
+.date-year {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* Component badge */
+.component-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.component-badge.increase {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.component-badge.decrease {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Old amount */
+.old-amount {
+  color: #94a3b8;
+  text-decoration: line-through;
+  font-size: 12px;
+}
+
+/* New amount */
+.new-amount {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.new-amount.increase {
+  color: #10b981;
+}
+
+.new-amount.decrease {
+  color: #ef4444;
+}
+
+/* Change badge */
+.change-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.change-badge.increase {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.change-badge.decrease {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.change-icon {
+  font-size: 10px;
+}
+
+.change-percent {
+  font-weight: 700;
+}
+
+.change-diff {
+  font-size: 11px;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+/* Reason cell */
+.reason-text {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.3;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.submitted-by {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* ============================================
+   EMPLOYMENT HISTORY TABLE - NO SCROLL
+   ============================================ */
+
+.employment-history-card .history-content-full.no-scroll {
+  padding: 24px;
+  overflow: visible;
+  max-height: none;
+}
+
+.employment-table-wrapper.no-scroll {
+  overflow: visible;
+  padding: 4px 0;
+}
+
+.employment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.employment-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9edf2;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.employment-table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.employment-table tbody tr {
+  transition: background 0.2s;
+}
+
+.employment-table tbody tr:hover {
+  background: #fafcfc;
+}
+
+.employment-table tbody tr.hired {
+  border-left: 3px solid #6366f1;
+}
+
+.employment-table tbody tr.terminated {
+  border-left: 3px solid #ef4444;
+}
+
+.employment-table tbody tr.rehired {
+  border-left: 3px solid #10b981;
+}
+
+/* Column widths */
+.col-period { width: 100px; }
+.col-status { width: 150px; }
+.col-dates { width: 180px; }
+.col-duration { width: 130px; }
+.col-details { min-width: 200px; }
+
+/* Period badge */
 .period-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 30px;
-  font-size: 13px;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
   font-weight: 600;
-  background: #f1f5f9;
-  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .period-badge.hired {
@@ -2547,195 +2659,65 @@ onMounted(() => {
 }
 
 .period-icon {
-  font-size: 16px;
+  font-size: 14px;
 }
 
-.period-label {
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* Status cell */
+.status-badge {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.status-badge.hired { color: #4f46e5; }
+.status-badge.terminated { color: #dc2626; }
+.status-badge.rehired { color: #059669; }
+
+.status-subtitle {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+/* Date range */
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.start-date,
+.end-date {
+  font-weight: 500;
+  color: #1e293b;
   font-size: 12px;
 }
 
-/* Middle - Timeline Node */
-.timeline-node {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
-  width: 40px;
-  padding-top: 8px;
-}
-
-.node-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 3px solid #cbd5e1;
-  background: white;
-  transition: all 0.3s;
-  position: relative;
-  z-index: 2;
-}
-
-.timeline-node.hired .node-dot {
-  border-color: #6366f1;
-  background: #eef2ff;
-}
-
-.timeline-node.terminated .node-dot {
-  border-color: #ef4444;
-  background: #fef2f2;
-}
-
-.timeline-node.rehired .node-dot {
-  border-color: #10b981;
-  background: #d1fae5;
-}
-
-.node-line {
-  flex: 1;
-  width: 2px;
-  min-height: 40px;
-  background: #e2e8f0;
-  margin-top: 4px;
-}
-
-/* Right - Content Card */
-.timeline-content-card {
-  flex: 1;
-  background: #f8fafc;
-  border-radius: 16px;
-  padding: 20px 24px;
-  border: 1px solid #eef2ff;
-  transition: all 0.3s;
-  position: relative;
-}
-
-.timeline-content-card:hover {
-  background: white;
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
-}
-
-.timeline-content-card.hired {
-  border-left: 4px solid #6366f1;
-}
-
-.timeline-content-card.terminated {
-  border-left: 4px solid #ef4444;
-}
-
-.timeline-content-card.rehired {
-  border-left: 4px solid #10b981;
-}
-
-/* Content Header */
-.content-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.title-section {
-  flex: 1;
-}
-
-.event-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 4px 0;
-}
-
-.event-subtitle {
-  font-size: 13px;
-  color: #64748b;
-}
-
-.date-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: white;
-  padding: 4px 14px;
-  border-radius: 30px;
-  border: 1px solid #e2e8f0;
-  white-space: nowrap;
-}
-
-.date-range {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.date-separator {
+.date-arrow {
   color: #94a3b8;
-  margin: 0 4px;
+  font-size: 12px;
 }
 
-.calendar-label {
-  font-size: 10px;
+.calendar-tag {
+  font-size: 9px;
   color: #94a3b8;
   background: #f1f5f9;
-  padding: 0 6px;
+  padding: 1px 6px;
   border-radius: 4px;
 }
 
-/* Content Body */
-.content-body {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.employment-details {
-  flex: 1;
-}
-
-.detail-row {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  color: #475569;
-  padding: 2px 0;
-}
-
-.detail-label {
-  min-width: 100px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.detail-value {
-  color: #1e293b;
-}
-
-.notes-text {
-  color: #64748b;
-  font-style: italic;
-  font-size: 12px;
-}
-
-/* Duration Badge */
+/* Duration badge */
 .duration-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 30px;
-  font-size: 12px;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-  background: #f1f5f9;
-  color: #475569;
 }
 
 .duration-badge.hired {
@@ -2754,11 +2736,89 @@ onMounted(() => {
 }
 
 .duration-icon {
-  font-size: 14px;
+  font-size: 12px;
 }
 
-.duration-text {
+/* Details cell */
+.details-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 4px;
   font-size: 12px;
+  align-items: baseline;
+}
+
+.detail-label {
+  font-weight: 500;
+  color: #94a3b8;
+  min-width: 40px;
+}
+
+.detail-value {
+  color: #475569;
+}
+
+.reason-row .detail-value {
+  color: #64748b;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.reason-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* ============================================
+   RESPONSIVE - NO SCROLL (horizontal scroll on small screens only)
+   ============================================ */
+
+@media (max-width: 900px) {
+  .history-table thead th,
+  .employment-table thead th {
+    font-size: 10px;
+    padding: 8px 10px;
+  }
+
+  .history-table tbody td,
+  .employment-table tbody td {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .col-date { width: 80px; }
+  .col-component { width: 100px; }
+  .col-old { width: 90px; }
+  .col-new { width: 90px; }
+  .col-change { width: 100px; }
+  .col-period { width: 80px; }
+  .col-status { width: 120px; }
+  .col-dates { width: 140px; }
+  .col-duration { width: 100px; }
+}
+
+@media (max-width: 768px) {
+  .history-table-wrapper.no-scroll,
+  .employment-table-wrapper.no-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .history-table,
+  .employment-table {
+    min-width: 700px;
+  }
+
+  .history-content-full.no-scroll {
+    padding: 12px 16px;
+  }
 }
 
 /* ============================================
@@ -2766,10 +2826,10 @@ onMounted(() => {
    ============================================ */
 
 .current-status-banner {
-  margin-top: 24px;
-  padding: 16px 24px;
+  margin-top: 20px;
+  padding: 14px 20px;
   background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid #bbf7d0;
 }
 
@@ -2777,11 +2837,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .status-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #10b981;
   animation: pulse 2s infinite;
@@ -2793,78 +2854,24 @@ onMounted(() => {
     transform: scale(1);
   }
   50% {
-    opacity: 0.7;
+    opacity: 0.6;
     transform: scale(1.2);
   }
 }
 
 .status-text {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #065f46;
 }
 
 .status-date {
-  font-size: 13px;
+  font-size: 12px;
   color: #059669;
   margin-left: auto;
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
-
 @media (max-width: 768px) {
-  .timeline-item {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .timeline-period {
-    min-width: auto;
-    padding-top: 0;
-  }
-
-  .timeline-node {
-    display: none;
-  }
-
-  .timeline-connector-line {
-    display: none;
-  }
-
-  .content-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .date-section {
-    white-space: normal;
-    flex-wrap: wrap;
-  }
-
-  .content-body {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .duration-badge {
-    align-self: flex-start;
-  }
-
-  .detail-row {
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .detail-label {
-    min-width: auto;
-  }
-
-  .status-indicator {
-    flex-wrap: wrap;
-  }
-
   .status-date {
     margin-left: 0;
     width: 100%;
@@ -2872,1641 +2879,10 @@ onMounted(() => {
 }
 
 /* ============================================
-   LOADING & EMPTY STATES
+   ORIGINAL STYLES (Keep everything below)
    ============================================ */
 
-.history-loading-full {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 60px;
-  color: #94a3b8;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #6366f1;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.history-empty-full {
-  text-align: center;
-  padding: 60px;
-  color: #94a3b8;
-}
-
-.empty-icon {
-  font-size: 56px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.history-empty-full p {
-  margin: 0 0 8px;
-  font-size: 15px;
-  color: #64748b;
-}
-
-.history-hint {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.history-card.full-width {
-  background: white;
-  border-radius: 20px;
-  overflow: hidden;
-  margin-top: 32px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-
-.history-content-full {
-  padding: 24px;
-}
-
-/* Loading State */
-.history-loading-full {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 60px;
-  color: #94a3b8;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #6366f1;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Empty State */
-.history-empty-full {
-  text-align: center;
-  padding: 60px;
-  color: #94a3b8;
-}
-
-.empty-icon {
-  font-size: 56px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.history-empty-full p {
-  margin: 0 0 8px;
-  font-size: 15px;
-  color: #64748b;
-}
-
-.history-hint {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-/* Timeline Container */
-.history-timeline-full {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* Timeline Entry */
-.timeline-entry {
-  display: flex;
-  gap: 20px;
-  background: #f8fafc;
-  border-radius: 16px;
-  padding: 20px;
-  transition: all 0.2s;
-  border: 1px solid #eef2ff;
-}
-
-.timeline-entry:hover {
-  background: white;
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transform: translateX(4px);
-}
-
-/* Left Side - Date & Arrow */
-.timeline-left {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  min-width: 80px;
-}
-
-.timeline-date-badge {
-  text-align: center;
-  background: white;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  min-width: 70px;
-}
-
-.timeline-date-day {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1e293b;
-  line-height: 1.2;
-}
-
-.timeline-date-month {
-  font-size: 10px;
-  font-weight: 600;
-  color: #6366f1;
-  text-transform: uppercase;
-}
-
-.timeline-date-year {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.timeline-arrow {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.timeline-arrow.increase {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
-}
-
-.timeline-arrow.decrease {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
-}
-
-.arrow-icon {
-  font-size: 18px;
-  font-weight: bold;
-  color: white;
-}
-
-/* Right Side - Content */
-.timeline-body {
-  flex: 1;
-}
-
-.timeline-header-full {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.timeline-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.component-badge {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 5px 14px;
-  border-radius: 20px;
-}
-
-.component-badge.increase {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.component-badge.decrease {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.change-percent {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 20px;
-}
-
-.change-percent.increase {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.change-percent.decrease {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.timeline-submitted {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.submitted-icon {
-  font-size: 12px;
-}
-
-/* Values Section */
-.timeline-values-full {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  background: white;
-  padding: 14px 18px;
-  border-radius: 14px;
-  margin-bottom: 12px;
-}
-
-.value-card {
-  flex: 1;
-  min-width: 120px;
-}
-
-.value-label {
-  font-size: 10px;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-  display: block;
-}
-
-.value-amount {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.value-card.old .value-amount {
-  color: #64748b;
-  text-decoration: line-through;
-}
-
-.value-card.new.increase .value-amount {
-  color: #10b981;
-}
-
-.value-card.new.decrease .value-amount {
-  color: #ef4444;
-}
-
-.value-arrow-full {
-  font-size: 20px;
-  color: #cbd5e1;
-  font-weight: bold;
-}
-
-.value-diff {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 30px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.value-diff.increase {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.value-diff.decrease {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.diff-icon {
-  font-size: 14px;
-}
-
-/* Reason Section */
-.timeline-reason-full {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  background: #f1f5f9;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.4;
-}
-
-.reason-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.reason-text {
-  flex: 1;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .history-content-full {
-    padding: 16px;
-  }
-
-  .timeline-entry {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .timeline-left {
-    flex-direction: row;
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .timeline-values-full {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .value-arrow-full {
-    text-align: center;
-  }
-
-  .value-card {
-    text-align: center;
-  }
-
-  .timeline-header-full {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-.support-section {
-  padding: 12px 20px 20px;
-  border-top: 1px solid #eef2ff;
-}
-
-.support-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6366f1;
-  margin-bottom: 12px;
-}
-
-.simple-support {
-  margin-bottom: 16px;
-}
-
-.support-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border-radius: 10px;
-  margin-bottom: 8px;
-}
-
-.support-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.support-text {
-  font-size: 13px;
-  color: #475569;
-}
-
-.support-record {
-  background: #f8fafc;
-  border-radius: 14px;
-  padding: 14px;
-  margin-bottom: 12px;
-  border: 1px solid #eef2ff;
-}
-
-.support-record:last-child {
-  margin-bottom: 0;
-}
-
-.support-record-header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.support-amount {
-  font-size: 18px;
-  font-weight: 700;
-  color: #10b981;
-}
-
-.support-frequency {
-  font-size: 11px;
-  color: #64748b;
-}
-
-.support-type {
-  font-size: 12px;
-  color: #6366f1;
-  margin-bottom: 6px;
-}
-
-.support-notes {
-  font-size: 12px;
-  color: #475569;
-  margin: 8px 0;
-  padding: 8px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  line-height: 1.4;
-}
-
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-.parent-support-section {
-  padding: 12px 20px 20px;
-  border-top: 1px solid #eef2ff;
-}
-
-.support-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6366f1;
-  margin-bottom: 12px;
-}
-
-.support-record {
-  background: #f8fafc;
-  border-radius: 14px;
-  padding: 14px;
-  margin-bottom: 12px;
-  border: 1px solid #eef2ff;
-}
-
-.support-record:last-child {
-  margin-bottom: 0;
-}
-
-.support-record-header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.support-amount {
-  font-size: 18px;
-  font-weight: 700;
-  color: #10b981;
-}
-
-.support-frequency {
-  font-size: 11px;
-  color: #64748b;
-}
-
-.support-type {
-  font-size: 12px;
-  color: #6366f1;
-  margin-bottom: 6px;
-}
-
-.support-notes {
-  font-size: 12px;
-  color: #475569;
-  margin: 8px 0;
-  padding: 8px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  line-height: 1.4;
-}
-.parents-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-}
-
-.parent-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  background: #f8fafc;
-  border-radius: 14px;
-  border: 1px solid #eef2ff;
-  transition: all 0.2s;
-}
-
-.parent-card:hover {
-  background: white;
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-.parent-icon {
-  font-size: 42px;
-  flex-shrink: 0;
-}
-
-.parent-details {
-  flex: 1;
-}
-
-.parent-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 6px;
-}
-
-.parent-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.parent-job {
-  font-size: 12px;
-  color: #6366f1;
-  background: #eef2ff;
-  padding: 3px 10px;
-  border-radius: 20px;
-}
-
-.parent-income {
-  font-size: 13px;
-  font-weight: 600;
-  color: #10b981;
-}
-
-.support-section {
-  padding: 12px 20px 20px;
-  border-top: 1px solid #eef2ff;
-}
-
-.support-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6366f1;
-  margin-bottom: 10px;
-}
-
-.support-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.support-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border-radius: 10px;
-  font-size: 12px;
-}
-
-.support-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.support-text {
-  color: #475569;
-  line-height: 1.4;
-}
-.spouse-layout {
-  display: flex;
-  gap: 20px;
-  padding: 20px;
-  align-items: flex-start;
-}
-
-.spouse-avatar {
-  flex-shrink: 0;
-  width: 90px;
-  height: 90px;
-}
-
-.spouse-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.spouse-avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  font-weight: 600;
-  color: white;
-  border: 3px solid #e2e8f0;
-}
-
-.spouse-info {
-  flex: 1;
-}
-
-.spouse-name {
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #eef2ff;
-}
-
-.spouse-detail {
-  font-size: 13px;
-  color: #475569;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
-.spouse-detail span {
-  font-weight: 600;
-  color: #64748b;
-  min-width: 130px;
-  display: inline-block;
-}
-
-.spouse-document {
-  margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1px solid #eef2ff;
-}
-
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #eef2ff;
-  border-radius: 16px;
-}
-
-.file-link:hover {
-  background: #e0e7ff;
-  text-decoration: underline;
-}
-
-@media (max-width: 600px) {
-  .spouse-layout {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .spouse-detail {
-    justify-content: center;
-  }
-
-  .spouse-detail span {
-    min-width: auto;
-    margin-right: 6px;
-  }
-}
-.spouse-avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  color: white;
-}
-
-.spouse-info {
-  flex: 1;
-}
-
-.spouse-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 8px;
-}
-
-.spouse-detail {
-  font-size: 12px;
-  color: #475569;
-  margin-bottom: 4px;
-}
-
-.spouse-detail span {
-  font-weight: 500;
-  color: #64748b;
-  min-width: 65px;
-  display: inline-block;
-}
-
-@media (max-width: 600px) {
-  .spouse-layout {
-    flex-direction: column;
-    text-align: center;
-  }
-}
-.file-link-inline {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 11px;
-  margin-left: 12px;
-  padding: 2px 8px;
-  background: #eef2ff;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.file-link-inline:hover {
-  background: #e0e7ff;
-  text-decoration: underline;
-}
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-.children-list {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.child-card {
-  display: flex;
-  gap: 16px;
-  background: #f8fafc;
-  border-radius: 14px;
-  padding: 16px;
-  border: 1px solid #eef2ff;
-  transition: all 0.2s;
-}
-
-.child-card:hover {
-  background: white;
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.child-avatar {
-  flex-shrink: 0;
-  width: 70px;
-  height: 70px;
-}
-
-.child-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  font-weight: 600;
-  color: white;
-  border: 3px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.child-info {
-  flex: 1;
-}
-
-.child-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.child-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.child-age {
-  font-size: 12px;
-  color: #10b981;
-  background: #d1fae5;
-  padding: 2px 10px;
-  border-radius: 20px;
-}
-
-.child-details {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.child-label {
-  font-weight: 500;
-  color: #64748b;
-  min-width: 110px;
-  display: inline-block;
-  font-size: 12px;
-}
-
-.child-documents {
-  margin-top: 8px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #eef2ff;
-  border-radius: 12px;
-}
-
-.file-link:hover {
-  background: #e0e7ff;
-  text-decoration: underline;
-}
-/* Add any additional styles needed for the new sections */
-.children-list,
-.education-list,
-.training-list,
-.work-list,
-.guarantee-list {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.child-card,
-.education-item,
-.training-item,
-.work-item,
-.guarantor-card-item {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 14px;
-  border: 1px solid #eef2ff;
-}
-
-.child-header,
-.edu-header,
-.training-header,
-.work-header,
-.guarantor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.child-name,
-.guarantor-header strong {
-  font-size: 15px;
-  color: #1e293b;
-}
-
-.child-age {
-  font-size: 12px;
-  color: #64748b;
-  background: #e2e8f0;
-  padding: 2px 8px;
-  border-radius: 12px;
-}
-
-.child-details,
-.edu-details,
-.training-details,
-.work-details,
-.guarantor-details {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
-}
-
-.child-label {
-  font-weight: 500;
-  color: #64748b;
-  min-width: 120px;
-  display: inline-block;
-}
-
-.child-documents {
-  margin-top: 8px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.parents-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 16px 20px;
-}
-
-.parent-box {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.parent-box h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  color: #6366f1;
-}
-
-.support-info {
-  padding: 12px 20px 20px;
-  border-top: 1px solid #eef2ff;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.support-card-item,
-.skills-list {
-  padding: 12px 20px;
-}
-
-.skill-tag {
-  display: inline-block;
-  background: #eef2ff;
-  color: #6366f1;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  margin: 4px;
-}
-
-.other-skills {
-  padding: 12px 20px 20px;
-  border-top: 1px solid #eef2ff;
-  font-size: 13px;
-}
-
-.health-legal-content {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.health-section h4,
-.legal-section h4 {
-  font-size: 13px;
-  color: #6366f1;
-  margin: 0 0 8px 0;
-}
-
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 12px;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-
-.guarantor-documents {
-  margin-top: 8px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .parents-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Redesigned History Card Styles */
-.history-card {
-  background: white;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 24px;
-  background: #fafcfc;
-  border-bottom: 1px solid #e9edf2;
-}
-
-.card-header-icon {
-  width: 32px;
-  height: 32px;
-  background: #f1f5f9;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-header-icon svg {
-  width: 16px;
-  height: 16px;
-  color: #6366f1;
-}
-
-.card-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0;
-}
-
-.history-count {
-  margin-left: auto;
-  font-size: 11px;
-  background: #e2e8f0;
-  padding: 2px 10px;
-  border-radius: 20px;
-  color: #475569;
-}
-
-/* Timeline Styles */
-.history-timeline {
-  padding: 20px 24px;
-  max-height: 550px;
-  overflow-y: auto;
-}
-
-.timeline-container {
-  position: relative;
-}
-
-.timeline-item {
-  display: flex;
-  position: relative;
-  margin-bottom: 24px;
-}
-
-.timeline-marker {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 16px;
-  z-index: 2;
-  position: relative;
-}
-
-.marker-increase {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
-}
-
-.marker-decrease {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
-}
-
-.marker-icon {
-  font-size: 16px;
-  font-weight: bold;
-  color: white;
-}
-
-.timeline-connector {
-  position: absolute;
-  left: 17px;
-  top: 50px;
-  width: 2px;
-  height: calc(100% + 10px);
-  background: linear-gradient(
-    180deg,
-    #e2e8f0 0%,
-    #e2e8f0 70%,
-    transparent 100%
-  );
-  z-index: 1;
-}
-
-.timeline-content {
-  flex: 1;
-  background: #f8fafc;
-  border-radius: 16px;
-  padding: 16px;
-  transition: all 0.2s;
-  border: 1px solid #eef2ff;
-}
-
-.timeline-content:hover {
-  background: white;
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.timeline-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.timeline-date {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #64748b;
-}
-
-.timeline-date svg {
-  width: 12px;
-  height: 12px;
-}
-
-.timeline-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 20px;
-}
-
-.badge-increase {
-  background: #d1fae5;
-  color: #059669;
-}
-
-.badge-decrease {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.timeline-component {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed #e2e8f0;
-}
-
-.component-icon svg {
-  width: 16px;
-  height: 16px;
-  color: #6366f1;
-}
-
-.component-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.timeline-values {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.old-value-box,
-.new-value-box {
-  flex: 1;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: white;
-}
-
-.old-value-box {
-  border-left: 3px solid #94a3b8;
-}
-
-.new-value-box.increase {
-  border-left: 3px solid #10b981;
-}
-
-.new-value-box.decrease {
-  border-left: 3px solid #ef4444;
-}
-
-.value-label {
-  display: block;
-  font-size: 9px;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-}
-
-.old-value {
-  font-size: 14px;
-  font-weight: 500;
-  color: #64748b;
-  text-decoration: line-through;
-}
-
-.new-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.new-value-box.increase .new-value {
-  color: #10b981;
-}
-
-.new-value-box.decrease .new-value {
-  color: #ef4444;
-}
-
-.value-arrow {
-  font-size: 16px;
-  color: #94a3b8;
-  font-weight: bold;
-}
-
-.value-difference {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 20px;
-  background: white;
-}
-
-.diff-increase {
-  color: #10b981;
-  background: #d1fae5;
-}
-
-.diff-decrease {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.timeline-reason {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: #f1f5f9;
-  padding: 10px 12px;
-  border-radius: 10px;
-  margin: 12px 0;
-}
-
-.timeline-reason svg {
-  width: 14px;
-  height: 14px;
-  color: #6366f1;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.timeline-reason span {
-  font-size: 11px;
-  color: #475569;
-  line-height: 1.4;
-}
-
-.timeline-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.submitted-by {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.submitted-by svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* Loading State */
-.history-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 60px;
-  color: #94a3b8;
-}
-
-.spinner-small {
-  width: 24px;
-  height: 24px;
-  border: 2px solid #e2e8f0;
-  border-top-color: #6366f1;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-/* Empty State */
-.history-empty {
-  text-align: center;
-  padding: 50px 30px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.history-empty p {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #64748b;
-}
-
-.history-hint {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-/* History Card Styles */
-.history-card {
-  background: white;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.history-list {
-  padding: 20px 24px;
-  max-height: 450px;
-  overflow-y: auto;
-}
-
-.history-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 40px;
-  color: #94a3b8;
-}
-
-.spinner-small {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #e2e8f0;
-  border-top-color: #6366f1;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-.history-item {
-  padding: 14px 0;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.history-item:last-child {
-  border-bottom: none;
-}
-
-.history-date {
-  font-size: 11px;
-  color: #94a3b8;
-  min-width: 90px;
-}
-
-.history-component {
-  min-width: 130px;
-}
-
-.component-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  background: #f1f5f9;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.history-values {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.old-value {
-  color: #94a3b8;
-  text-decoration: line-through;
-  font-size: 12px;
-}
-
-.arrow {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.new-value {
-  font-weight: 600;
-  color: #10b981;
-  font-size: 13px;
-}
-
-.change-increase {
-  color: #10b981;
-  font-size: 12px;
-  font-weight: 500;
-  min-width: 70px;
-}
-
-.change-decrease {
-  color: #ef4444;
-  font-size: 12px;
-  font-weight: 500;
-  min-width: 70px;
-}
-
-.history-difference {
-  font-size: 12px;
-  min-width: 80px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.history-reason {
-  font-size: 11px;
-  color: #64748b;
-  flex: 1;
-  min-width: 150px;
-  background: #f8fafc;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
-.history-submitted {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: #94a3b8;
-  min-width: 100px;
-}
-
-.history-submitted svg {
-  width: 12px;
-  height: 12px;
-}
-
-.history-empty {
-  text-align: center;
-  padding: 40px 20px;
-  color: #94a3b8;
-}
-
-.history-empty svg {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 12px;
-  color: #cbd5e1;
-}
-
-.history-empty p {
-  margin: 0 0 6px 0;
-  font-size: 14px;
-  color: #64748b;
-}
-
-.history-hint {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-/* Rest of your existing styles remain the same */
-/* ... all your existing CSS styles from the original EmployeeDetail.vue ... */
-
-/* ============================================
-   MAIN CONTAINER
-   ============================================ */
+/* Main container */
 .employee-detail {
   max-width: 1200px;
   margin: 0 auto;
@@ -4515,9 +2891,7 @@ onMounted(() => {
   background: linear-gradient(135deg, #f5f7fa 0%, #f0f4f8 100%);
 }
 
-/* ============================================
-   LOADING STATE
-   ============================================ */
+/* Loading state */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -4547,9 +2921,7 @@ onMounted(() => {
   }
 }
 
-/* ============================================
-   ACTION BAR
-   ============================================ */
+/* Action bar */
 .action-bar {
   display: flex;
   justify-content: space-between;
@@ -4594,9 +2966,7 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
-/* ============================================
-   HERO SECTION
-   ============================================ */
+/* Hero section */
 .hero-section {
   background: white;
   border-radius: 24px;
@@ -4715,9 +3085,7 @@ onMounted(() => {
   color: #ef4444;
 }
 
-/* ============================================
-   STATS CARDS
-   ============================================ */
+/* Stats cards */
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -4776,9 +3144,7 @@ onMounted(() => {
   color: #1e293b;
 }
 
-/* ============================================
-   CONTENT GRID
-   ============================================ */
+/* Content grid */
 .content-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4792,9 +3158,7 @@ onMounted(() => {
   gap: 24px;
 }
 
-/* ============================================
-   INFO CARDS
-   ============================================ */
+/* Info cards */
 .info-card {
   background: white;
   border-radius: 20px;
@@ -4834,9 +3198,15 @@ onMounted(() => {
   margin: 0;
 }
 
-/* ============================================
-   INFO LIST
-   ============================================ */
+.history-count {
+  margin-left: auto;
+  font-size: 11px;
+  background: #e2e8f0;
+  padding: 2px 10px;
+  border-radius: 20px;
+  color: #475569;
+}
+
 .info-list {
   padding: 20px 24px;
   display: flex;
@@ -4848,16 +3218,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-
-.info-icon {
-  width: 28px;
-  color: #94a3b8;
-}
-
-.info-icon svg {
-  width: 16px;
-  height: 16px;
 }
 
 .info-label {
@@ -4873,77 +3233,7 @@ onMounted(() => {
   color: #1e293b;
 }
 
-/* ============================================
-   ADDRESS CARD
-   ============================================ */
-.address-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.address-card .card-header {
-  background: rgba(255, 255, 255, 0.1);
-  border-bottom-color: rgba(255, 255, 255, 0.2);
-}
-
-.address-card .card-header-icon {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.address-card .card-header-icon svg {
-  color: white;
-}
-
-.address-card .card-header h3 {
-  color: white;
-}
-
-.address-content {
-  padding: 24px;
-}
-
-.address-display {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.address-icon svg {
-  width: 24px;
-  height: 24px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.address-text p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.address-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 30px;
-  text-align: center;
-}
-
-.address-empty svg {
-  width: 48px;
-  height: 48px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.address-empty span {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* ============================================
-   ALLOWANCES CARD
-   ============================================ */
+/* Allowances card */
 .allowances-card {
   background: white;
   border-radius: 20px;
@@ -5003,110 +3293,40 @@ onMounted(() => {
   margin: 8px 0;
 }
 
-/* ============================================
-   DOCUMENTS CARD
-   ============================================ */
-.documents-list {
-  padding: 20px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.document-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.document-row:last-child {
-  border-bottom: none;
-}
-
-.guarantee-row {
-  flex-wrap: wrap;
-}
-
-.document-icon {
-  width: 36px;
-  height: 36px;
-  background: #f1f5f9;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.document-icon svg {
-  width: 18px;
-  height: 18px;
+/* File links */
+.file-link {
   color: #6366f1;
-}
-
-.document-info {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.document-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.document-status {
+  text-decoration: none;
   font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.document-status.uploaded {
-  background: #10b98115;
-  color: #10b981;
-}
-
-.document-status.missing {
-  background: #f1f5f9;
-  color: #94a3b8;
-}
-
-.document-link {
-  font-size: 13px;
-  color: #6366f1;
-  text-decoration: none;
-  padding: 6px 12px;
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.document-link:hover {
-  background: #f1f5f9;
-}
-
-.document-links {
-  display: flex;
-  gap: 12px;
-  margin-left: 52px;
-}
-
-.document-links a {
-  font-size: 13px;
-  color: #6366f1;
-  text-decoration: none;
-}
-
-.document-links a:hover {
+.file-link:hover {
   text-decoration: underline;
 }
 
-/* ============================================
-   EMPTY STATE
-   ============================================ */
+.file-link-inline {
+  color: #6366f1;
+  text-decoration: none;
+  font-size: 11px;
+  margin-left: 12px;
+  padding: 2px 8px;
+  background: #eef2ff;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.file-link-inline:hover {
+  background: #e0e7ff;
+  text-decoration: underline;
+}
+
+/* Empty state */
 .empty-state {
   text-align: center;
   padding: 60px;
@@ -5132,9 +3352,415 @@ onMounted(() => {
   text-decoration: none;
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
+/* Education, Training, Work, Guarantee lists */
+.education-list,
+.training-list,
+.work-list,
+.guarantee-list {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.education-item,
+.training-item,
+.work-item,
+.guarantor-card-item {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid #eef2ff;
+}
+
+.edu-header,
+.training-header,
+.work-header,
+.guarantor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.edu-details,
+.training-details,
+.work-details,
+.guarantor-details {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.guarantor-documents {
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Children list */
+.children-list {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.child-card {
+  display: flex;
+  gap: 16px;
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid #eef2ff;
+  transition: all 0.2s;
+}
+
+.child-card:hover {
+  background: white;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.child-avatar {
+  flex-shrink: 0;
+  width: 70px;
+  height: 70px;
+}
+
+.child-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.child-info {
+  flex: 1;
+}
+
+.child-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.child-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.child-age {
+  font-size: 12px;
+  color: #10b981;
+  background: #d1fae5;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.child-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.child-label {
+  font-weight: 500;
+  color: #64748b;
+  min-width: 110px;
+  display: inline-block;
+  font-size: 12px;
+}
+
+.child-documents {
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Parents */
+.parents-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.parent-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-radius: 14px;
+  border: 1px solid #eef2ff;
+  transition: all 0.2s;
+}
+
+.parent-card:hover {
+  background: white;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.parent-icon {
+  font-size: 42px;
+  flex-shrink: 0;
+}
+
+.parent-details {
+  flex: 1;
+}
+
+.parent-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 6px;
+}
+
+.parent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.parent-job {
+  font-size: 12px;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.parent-income {
+  font-size: 13px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+.support-section {
+  padding: 12px 20px 20px;
+  border-top: 1px solid #eef2ff;
+}
+
+.support-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6366f1;
+  margin-bottom: 10px;
+}
+
+.support-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.support-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.support-text {
+  font-size: 13px;
+  color: #475569;
+}
+
+/* Spouse */
+.spouse-layout {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  align-items: flex-start;
+}
+
+.spouse-avatar {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+}
+
+.spouse-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.spouse-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: white;
+  border: 3px solid #e2e8f0;
+}
+
+.spouse-info {
+  flex: 1;
+}
+
+.spouse-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #eef2ff;
+}
+
+.spouse-detail {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.spouse-detail span {
+  font-weight: 600;
+  color: #64748b;
+  min-width: 130px;
+  display: inline-block;
+}
+
+.spouse-document {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #eef2ff;
+}
+
+/* Skills */
+.skills-list {
+  padding: 12px 20px;
+}
+
+.skill-tag {
+  display: inline-block;
+  background: #eef2ff;
+  color: #6366f1;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  margin: 4px;
+}
+
+.other-skills {
+  padding: 12px 20px 20px;
+  border-top: 1px solid #eef2ff;
+  font-size: 13px;
+}
+
+/* Health & Legal */
+.health-legal-content {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.health-section h4,
+.legal-section h4 {
+  font-size: 13px;
+  color: #6366f1;
+  margin: 0 0 8px 0;
+}
+
+/* History card base */
+.history-card.full-width {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-top: 32px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.history-content-full {
+  padding: 24px;
+}
+
+.history-loading-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px;
+  color: #94a3b8;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.history-empty-full {
+  text-align: center;
+  padding: 60px;
+  color: #94a3b8;
+}
+
+.empty-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.history-empty-full p {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #64748b;
+}
+
+.history-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Responsive */
 @media (max-width: 900px) {
   .stats-cards {
     grid-template-columns: repeat(2, 1fr);
@@ -5180,24 +3806,63 @@ onMounted(() => {
     width: 100%;
   }
 
-  .document-info {
+  .spouse-layout {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+    align-items: center;
+    text-align: center;
   }
 
-  .guarantee-row {
+  .spouse-detail {
+    justify-content: center;
+  }
+
+  .spouse-detail span {
+    min-width: auto;
+    margin-right: 6px;
+  }
+
+  .child-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .parent-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .parent-meta {
+    justify-content: center;
+  }
+
+  .history-content-full {
+    padding: 12px 16px;
+  }
+
+  .history-table,
+  .employment-table {
+    min-width: 700px;
+  }
+
+  .history-table-wrapper,
+  .employment-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .guarantor-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .document-links {
-    margin-left: 52px;
-  }
-
-  .history-item {
+  .guarantor-documents {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .child-documents {
+    justify-content: center;
   }
 }
-</style>
+</style>1

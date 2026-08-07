@@ -116,6 +116,15 @@ const router = createRouter({
             roles: ["admin", "hr", "finance", "employee", "attendance"],
           },
         },
+         {
+             path: '/dashboard/guarantee-age-details',
+          name: "guarantee-age-details",
+          component: () => import("@/views/dashboard/components/HrDashboardPages/GuaranteeAgeDetails.vue"),
+          meta: {
+            title: "Guarantee Age Details ",
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
+          },
+        },
 
 
 

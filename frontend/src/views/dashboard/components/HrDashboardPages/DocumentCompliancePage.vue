@@ -208,21 +208,24 @@ const loadComplianceSummary = async () => {
   }
 };
 
-// ========== LOAD TAB MISSING COUNTS ==========
+// ========== LOAD TAB MISSING COUNTS - FIXED ==========
 const loadTabCounts = async () => {
   try {
-    // Load counts for each tab
-    const types = ['id_card', 'degree', 'guarantee_letter'];
-    const counts = await Promise.all(
-      types.map(type => employeeService.getDocumentCompliance({ documentType: type }))
-    );
-
-    types.forEach((type, index) => {
-      if (counts[index].success && counts[index].data) {
-        const missing = counts[index].data[type]?.missing || [];
-        tabMissingCounts.value[type] = missing.length;
-      }
-    });
+    // ✅ Use the existing getComplianceSummary which has all the data
+    const res = await employeeService.getComplianceSummary();
+    
+    if (res.success && res.data) {
+      const data = res.data;
+      
+      // ID Card missing count
+      tabMissingCounts.value.id_card = data.idCard?.missing || 0;
+      
+      // Degree missing count
+      tabMissingCounts.value.degree = data.degree?.missing || 0;
+      
+      // Guarantee missing count (employees with 0 or 1 guarantee)
+      tabMissingCounts.value.guarantee_letter = (data.guarantee?.missing || 0) + (data.guarantee?.needSecond || 0);
+    }
   } catch (error) {
     console.error('Error loading tab counts:', error);
   }

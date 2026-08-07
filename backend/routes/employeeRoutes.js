@@ -18,85 +18,49 @@ router.use(authMiddleware());
 // EMPLOYEE CRUD
 // ============================================================================
 
-
-
-
-
 // new route for the new design ========================================
 
 // Summary endpoint (for dashboard cards)
 router.get('/stats/compliance/summary', employeeController.getComplianceSummary);
-// new route for the new design ========================================
 router.get('/without-national-id', employeeController.getEmployeesWithoutNationalId);
 router.get("/degree-missing", employeeController.getDegreeMissing);
-
 router.get("/guarantee-status", employeeController.getGuaranteeStatus);
-
-// routes/employeeRoutes.js or similar
 router.get('/guarantee-age-distribution', employeeController.getGuaranteeAgeDistribution);
 
+// ============================================================================
+// GUARANTEE AGE DETAILS ROUTE
+// ============================================================================
+router.get(
+  '/guarantee-age-details',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.getGuaranteeAgeDetails
+);
 
+router.get(
+  '/departments/:departmentId/employees',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.getDepartmentEmployees
+);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ============================================================================
+// EMPLOYMENT TYPE EMPLOYEES (LAZY LOADING)
+// ============================================================================
+router.get(
+  '/employment-types/:type/employees',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.getTypeEmployees
+);
 
 
 
 // ========== TERMINATE & REACTIVATE ROUTES ==========
-/**
- * @route   POST /api/employees/:id/terminate
- * @desc    Terminate an employee (sets status to 'terminated' and adds termination dates)
- * @access  Private (HR/Admin only)
- */
 router.post('/:id/terminate', authMiddleware("admin", "hr", "finance", "attendance"), 
 employeeController.terminateEmployee);
 
-/**
- * @route   POST /api/employees/:id/reactivate
- * @desc    Reactivate a terminated employee (sets status to 'active' and clears termination dates)
- * @access  Private (HR/Admin only)
- */
 router.post('/:id/reactivate', authMiddleware("admin", "hr", "finance", "attendance"), 
 employeeController.reactivateEmployee);
 
 router.get('/:id/termination-history', employeeController.getTerminationHistory);
-
 
 router.get(
   "/",
@@ -119,7 +83,6 @@ router.delete(
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.deleteEmployee,
 );
-
 
 // ============================================================================
 // ANALYTICS STATS ENDPOINTS
@@ -154,7 +117,6 @@ router.get(
   authMiddleware("admin", "hr", "finance", "attendance"),
   employeeController.getSalaryAnalysis,
 );
-
 router.get(
   "/stats/hiring-details",
   authMiddleware("admin", "hr", "finance", "attendance"),
@@ -162,7 +124,7 @@ router.get(
 );
 
 // ============================================================================
-// PROFILE PICTURE (Special handling - uses uploadSingleProfile)
+// PROFILE PICTURE
 // ============================================================================
 router.post(
   "/:id/profile-picture",
@@ -177,20 +139,8 @@ router.delete(
 );
 
 // ============================================================================
-// GENERIC DOCUMENT UPLOAD - Handles ALL document types
+// GENERIC DOCUMENT UPLOAD - Handles ALL document types (MOVED DOWN)
 // ============================================================================
-// This single route handles:
-// - id_card, passport, national_id
-// - spouse_profile, marriage_certificate
-// - child_birth_certificate, child_medical_report, child_adoption_certificate, child_profile
-// - education_certificate, degree, certificate, cv, resume
-// - training_certificate
-// - experience_letter
-// - guarantee_letter, sdt_letter, guarantee_other
-// - parent_support_document
-// - naturalization_certificate
-// - health_document, legal_document
-// - contract, performance-review
 router.post(
   "/:id/documents/upload/:type",
   uploadDynamicDocument,
@@ -213,7 +163,7 @@ router.delete(
 router.post(
   "/import",
   authMiddleware("admin", "hr", "finance", "attendance"),
-    uploadSingleBalance, // ✅ 2. Added Multer Middleware here
+  uploadSingleBalance,
   employeeController.importEmployees,
 );
 router.get(

@@ -1,6 +1,6 @@
 <template>
   <div class="department-page">
-    <!-- Page Header -->
+    <!-- Header -->
     <div class="page-header">
       <div class="header-left">
         <button class="back-btn" @click="goBack">
@@ -18,20 +18,11 @@
         </div>
       </div>
       <div class="header-actions">
-        <button class="action-btn" @click="exportAllDepartments">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export All
+        <button class="action-btn" @click="exportAllDepartments" :disabled="loading">
+          📥 Export All
         </button>
         <button class="action-btn" @click="refreshData" :disabled="loading">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 4v6h-6M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-          Refresh
+          🔄 Refresh
         </button>
       </div>
     </div>
@@ -70,7 +61,7 @@
         <input
           type="text"
           v-model="searchQuery"
-          placeholder="Search departments or employees..."
+          placeholder="Search departments..."
           class="search-input"
           @input="debounceSearch"
         />
@@ -97,7 +88,6 @@
 
     <!-- Content -->
     <template v-else>
-      <!-- Department List -->
       <div class="department-list">
         <div
           v-for="dept in paginatedDepartments"
@@ -111,9 +101,9 @@
                 <span class="dept-icon">🏢</span>
                 <span>{{ dept.departmentName }}</span>
                 <span class="dept-code" v-if="dept.departmentCode">({{ dept.departmentCode }})</span>
+                <span class="dept-count-badge">{{ dept.count }} employees</span>
               </div>
               <div class="dept-meta">
-                <span class="dept-count">{{ dept.count }} employees</span>
                 <span class="dept-percent">{{ dept.percentage }}%</span>
               </div>
             </div>
@@ -127,61 +117,70 @@
                   }"
                 ></div>
               </div>
-              <div class="dept-actions">
-                <button 
-                  class="export-dept-btn" 
-                  @click.stop="exportDepartment(dept)"
-                  title="Export department employees to Excel"
-                >
-                  📊
-                </button>
-                <span class="expand-icon">{{ expandedDept === dept.departmentId ? '−' : '+' }}</span>
-              </div>
+              <span class="expand-icon">{{ expandedDept === dept.departmentId ? '−' : '+' }}</span>
             </div>
           </div>
 
-          <!-- Expanded Employees -->
+          <!-- ✅ Expanded Employees - All employees, scrollable, NO pagination -->
           <div v-if="expandedDept === dept.departmentId" class="dept-employees">
-            <div class="emp-header">
-              <span>{{ getDepartmentEmployees(dept.departmentId).length }} employees</span>
-              <div class="emp-header-actions">
-                <button 
-                  class="export-emp-btn" 
-                  @click.stop="exportDepartment(dept)"
-                  title="Export these employees to Excel"
+            <!-- Loading state -->
+            <div v-if="deptEmployeeLoading[dept.departmentId]" class="emp-loading">
+              <div class="spinner-small"></div>
+              <span>Loading employees...</span>
+            </div>
+
+            <!-- Employee List -->
+            <template v-else>
+              <div class="emp-header">
+                <span>{{ getDepartmentEmployees(dept.departmentId).length }} employees in {{ dept.departmentName }}</span>
+                <div class="emp-header-actions">
+                  <input
+                    type="text"
+                    v-model="deptEmployeeSearch[dept.departmentId]"
+                    placeholder="Search by name, English name, or ID..."
+                    class="emp-search"
+                    @input="searchDepartmentEmployees(dept.departmentId)"
+                  />
+                  <button class="export-emp-btn" @click.stop="exportDepartment(dept)">
+                    📊 Export
+                  </button>
+                </div>
+              </div>
+
+              <!-- ✅ Scrollable employee list - NO pagination -->
+              <div class="emp-list-scroll">
+                <div
+                  v-for="emp in getFilteredDepartmentEmployees(dept.departmentId)"
+                  :key="emp.id"
+                  class="emp-item"
                 >
-                  📊 Export to Excel
-                </button>
-                <input
-                  type="text"
-                  v-model="deptEmployeeSearch[dept.departmentId]"
-                  placeholder="Filter employees..."
-                  class="emp-search"
-                  @click.stop
-                />
-              </div>
-            </div>
-            <div class="emp-list">
-              <div
-                v-for="emp in getFilteredDepartmentEmployees(dept.departmentId)"
-                :key="emp.id"
-                class="emp-item"
-              >
-                <div class="emp-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
-                  {{ getInitials(emp.fullName) }}
+                  <div class="emp-avatar" :style="{ background: getAvatarColor(emp.fullName) }">
+                    {{ getInitials(emp.fullName) }}
+                  </div>
+                  <div class="emp-details">
+                    <span class="emp-name">{{ emp.fullName || 'N/A' }}</span>
+                    <span class="emp-name-english" v-if="emp.fullNameEnglish">
+                      {{ emp.fullNameEnglish }}
+                    </span>
+                    <span class="emp-id">ID: {{ emp.employeeId || emp.id }}</span>
+                  </div>
+                  <span class="emp-email">{{ emp.email || 'No email' }}</span>
+                  <button class="emp-view-btn" @click.stop="viewEmployee(emp.id)">
+                    View →
+                  </button>
                 </div>
-                <div class="emp-details">
-                  <span class="emp-name">{{ emp.fullName }}</span>
-                  <span class="emp-email">{{ emp.email }}</span>
+                <div v-if="getFilteredDepartmentEmployees(dept.departmentId).length === 0" class="emp-empty">
+                  No employees found
                 </div>
-                <button class="emp-view-btn" @click.stop="viewEmployee(emp.id)">
-                  View →
-                </button>
               </div>
-              <div v-if="getFilteredDepartmentEmployees(dept.departmentId).length === 0" class="emp-empty">
-                No employees found
+
+              <!-- ✅ Show total count -->
+              <div class="emp-footer">
+                <span class="emp-total-count">
+                  Showing {{ getFilteredDepartmentEmployees(dept.departmentId).length }} of {{ getDepartmentEmployees(dept.departmentId).length }} employees
+                </span>
               </div>
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -193,7 +192,7 @@
         <span>Try adjusting your search</span>
       </div>
 
-      <!-- Pagination -->
+      <!-- Department Pagination -->
       <div class="pagination" v-if="pagination.totalPages > 1">
         <button
           @click="changePage(pagination.page - 1)"
@@ -239,17 +238,18 @@ import employeeService from "@/stores/employee";
 
 const router = useRouter();
 
-// State
+// ========== STATE ==========
 const loading = ref(false);
 const searchQuery = ref('');
 const sortBy = ref('count');
 const sortOrder = ref('desc');
 const expandedDept = ref(null);
 const deptEmployeeSearch = ref({});
+const deptEmployeeLoading = ref({});
+const deptEmployeeData = ref({});
 const lastUpdated = ref(new Date().toLocaleString());
 
 const departments = ref([]);
-const employeesByDepartment = ref({});
 
 const pagination = reactive({
   page: 1,
@@ -262,7 +262,7 @@ const pagination = reactive({
 
 let searchTimeout = null;
 
-// Computed
+// ========== COMPUTED ==========
 const totalEmployees = computed(() => {
   return departments.value.reduce((sum, d) => sum + d.count, 0);
 });
@@ -291,11 +291,7 @@ const filteredDepartments = computed(() => {
     const s = searchQuery.value.toLowerCase();
     list = list.filter(d =>
       d.departmentName.toLowerCase().includes(s) ||
-      d.departmentCode?.toLowerCase().includes(s) ||
-      getDepartmentEmployees(d.departmentId).some(e =>
-        e.fullName.toLowerCase().includes(s) ||
-        e.email.toLowerCase().includes(s)
-      )
+      d.departmentCode?.toLowerCase().includes(s)
     );
   }
   
@@ -336,12 +332,10 @@ const visiblePages = computed(() => {
   return pages;
 });
 
-// Methods
-const goBack = () => router.push({ name: 'dashboard' });
+// ========== DEPARTMENT EMPLOYEE METHODS ==========
 
 const getDepartmentEmployees = (deptId) => {
-  const dept = departments.value.find(d => d.departmentId === deptId);
-  return dept ? (employeesByDepartment.value[dept.departmentName] || []) : [];
+  return deptEmployeeData.value[deptId] || [];
 };
 
 const getFilteredDepartmentEmployees = (deptId) => {
@@ -350,10 +344,70 @@ const getFilteredDepartmentEmployees = (deptId) => {
   if (!search) return employees;
   const s = search.toLowerCase();
   return employees.filter(e =>
-    e.fullName.toLowerCase().includes(s) ||
-    e.email.toLowerCase().includes(s)
+    e.fullName?.toLowerCase().includes(s) ||
+    e.fullNameEnglish?.toLowerCase().includes(s) ||
+    e.employeeId?.toLowerCase().includes(s) ||
+    e.email?.toLowerCase().includes(s)
   );
 };
+
+// ✅ Load ALL employees when a department is expanded (no pagination)
+const loadDepartmentEmployees = async (deptId, search = '') => {
+  if (deptEmployeeLoading.value[deptId]) return;
+  
+  deptEmployeeLoading.value[deptId] = true;
+  
+  try {
+    console.log(`📊 Loading all employees - Dept: ${deptId}, Search: "${search}"`);
+    
+    // ✅ Fetch ALL employees (limit 1000 to get all)
+    const response = await employeeService.getDepartmentEmployees({
+      departmentId: deptId,
+      page: 1,
+      limit: 1000,
+      search: search
+    });
+    
+    console.log('📥 Response:', response);
+    
+    if (response.success && response.data) {
+      const data = response.data;
+      deptEmployeeData.value[deptId] = data.employees || [];
+      console.log(`✅ Loaded ${data.employees?.length || 0} employees`);
+    }
+  } catch (error) {
+    console.error('Error loading department employees:', error);
+  } finally {
+    deptEmployeeLoading.value[deptId] = false;
+  }
+};
+
+// Toggle department expansion
+const toggleDepartment = async (deptId) => {
+  // If clicking the same department, collapse it
+  if (expandedDept.value === deptId) {
+    expandedDept.value = null;
+    return;
+  }
+  
+  // Expand the department
+  expandedDept.value = deptId;
+  
+  // ✅ Load ALL employees for this department (lazy loading)
+  if (!deptEmployeeData.value[deptId] || deptEmployeeData.value[deptId].length === 0) {
+    await loadDepartmentEmployees(deptId, '');
+  }
+};
+
+const searchDepartmentEmployees = (deptId) => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    const search = deptEmployeeSearch.value[deptId] || '';
+    loadDepartmentEmployees(deptId, search);
+  }, 300);
+};
+
+// ========== UTILITY METHODS ==========
 
 const getDepartmentColor = (id) => {
   const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#06b6d4', '#d946ef', '#f43f5e'];
@@ -376,15 +430,7 @@ const getInitials = (name) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
-const toggleDepartment = (id) => {
-  expandedDept.value = expandedDept.value === id ? null : id;
-  if (expandedDept.value === id) {
-    const dept = departments.value.find(d => d.departmentId === id);
-    if (dept && !employeesByDepartment.value[dept.departmentName]) {
-      loadDepartmentEmployees(id);
-    }
-  }
-};
+const goBack = () => router.push({ name: 'dashboard' });
 
 const viewEmployee = (id) => {
   if (id) {
@@ -427,78 +473,84 @@ const updatePagination = () => {
   if (pagination.page > pagination.totalPages) pagination.page = pagination.totalPages;
 };
 
-// ===== EXPORT FUNCTIONS =====
+// ========== EXPORT FUNCTIONS ==========
 
-// Export a single department to Excel
-const exportDepartment = (dept) => {
-  const employees = getDepartmentEmployees(dept.departmentId);
-  
-  if (employees.length === 0) {
-    alert(`No employees found in ${dept.departmentName} department`);
-    return;
+const exportDepartment = async (dept) => {
+  try {
+    const employees = getDepartmentEmployees(dept.departmentId);
+    
+    if (employees.length === 0) {
+      alert(`No employees found in ${dept.departmentName} department`);
+      return;
+    }
+
+    let csv = `Department: ${dept.departmentName}\n`;
+    csv += `Total Employees: ${employees.length}\n`;
+    csv += `Percentage of Total: ${dept.percentage}%\n\n`;
+    csv += 'Employee ID,Full Name,English Name,Email,Position\n';
+    
+    employees.forEach(emp => {
+      csv += `"${emp.employeeId || emp.id || 'N/A'}"`;
+      csv += `,"${emp.fullName || 'N/A'}"`;
+      csv += `,"${emp.fullNameEnglish || ''}"`;
+      csv += `,"${emp.email || 'N/A'}"`;
+      csv += `,"${emp.position || 'N/A'}"\n`;
+    });
+
+    csv += `\nReport Generated: ${new Date().toLocaleString()}`;
+    csv += `\nTotal Employees Exported: ${employees.length}`;
+
+    downloadCSV(csv, `${dept.departmentName}_Employees_All`);
+  } catch (error) {
+    console.error('Error exporting department:', error);
+    alert('Failed to export employees');
   }
-
-  let csv = `Department: ${dept.departmentName}\n`;
-  csv += `Total Employees: ${dept.count}\n`;
-  csv += `Percentage of Total: ${dept.percentage}%\n\n`;
-  csv += 'Employee ID,Full Name,Email,Department,Position\n';
-  
-  employees.forEach(emp => {
-    csv += `"${emp.employeeId || 'N/A'}"`;
-    csv += `,"${emp.fullName}"`;
-    csv += `,"${emp.email || 'N/A'}"`;
-    csv += `,"${dept.departmentName}"`;
-    csv += `,"${emp.position || 'N/A'}"\n`;
-  });
-
-  csv += `\nReport Generated: ${new Date().toLocaleString()}`;
-
-  downloadCSV(csv, `${dept.departmentName}_Employees`);
 };
 
-// Export all departments
-const exportAllDepartments = () => {
+const exportAllDepartments = async () => {
   if (departments.value.length === 0) {
     alert('No departments available to export');
     return;
   }
 
-  let csv = 'DEPARTMENT DISTRIBUTION REPORT\n';
-  csv += `Generated: ${new Date().toLocaleString()}\n`;
-  csv += `Total Departments: ${departments.value.length}\n`;
-  csv += `Total Employees: ${totalEmployees.value}\n\n`;
-  csv += '='.repeat(80) + '\n\n';
-  
-  departments.value.forEach((dept, index) => {
-    const employees = getDepartmentEmployees(dept.departmentId);
+  try {
+    let csv = 'DEPARTMENT DISTRIBUTION REPORT\n';
+    csv += `Generated: ${new Date().toLocaleString()}\n`;
+    csv += `Total Departments: ${departments.value.length}\n`;
+    csv += `Total Employees: ${totalEmployees.value}\n\n`;
+    csv += '='.repeat(80) + '\n\n';
     
-    csv += `DEPARTMENT #${index + 1}: ${dept.departmentName}\n`;
-    csv += `Employees: ${dept.count} (${dept.percentage}% of total)\n`;
-    csv += '-'.repeat(60) + '\n';
-    csv += 'Employee ID,Full Name,Email,Position\n';
-    
-    if (employees.length > 0) {
-      employees.forEach(emp => {
-        csv += `"${emp.employeeId || 'N/A'}"`;
-        csv += `,"${emp.fullName}"`;
-        csv += `,"${emp.email || 'N/A'}"`;
-        csv += `,"${emp.position || 'N/A'}"\n`;
-      });
-    } else {
-      csv += 'No employees found in this department\n';
+    for (const dept of departments.value) {
+      const employees = getDepartmentEmployees(dept.departmentId);
+      
+      csv += `DEPARTMENT: ${dept.departmentName}\n`;
+      csv += `Employees: ${dept.count} (${dept.percentage}% of total)\n`;
+      csv += '-'.repeat(60) + '\n';
+      csv += 'Employee ID,Full Name,English Name,Email,Position\n';
+      
+      if (employees.length > 0) {
+        employees.forEach(emp => {
+          csv += `"${emp.employeeId || emp.id || 'N/A'}"`;
+          csv += `,"${emp.fullName || 'N/A'}"`;
+          csv += `,"${emp.fullNameEnglish || ''}"`;
+          csv += `,"${emp.email || 'N/A'}"`;
+          csv += `,"${emp.position || 'N/A'}"\n`;
+        });
+      } else {
+        csv += 'No employees found in this department\n';
+      }
+      csv += '\n' + '-'.repeat(60) + '\n\n';
     }
-    
-    csv += '\n' + '-'.repeat(60) + '\n\n';
-  });
 
-  downloadCSV(csv, 'All_Departments_Report');
+    downloadCSV(csv, 'All_Departments_Report_Full');
+  } catch (error) {
+    console.error('Error exporting all departments:', error);
+    alert('Failed to export all departments');
+  }
 };
 
-// Helper function to download CSV
 const downloadCSV = (csvContent, filename) => {
-  const blob = new Blob(['\uFEFF' + csvContent], { 
-    type: 'text/csv;charset=utf-8;' 
-  });
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -509,62 +561,44 @@ const downloadCSV = (csvContent, filename) => {
   URL.revokeObjectURL(url);
 };
 
-// Data
+// ========== DATA LOADING ==========
+
 const loadDepartmentData = async () => {
   loading.value = true;
   try {
-    const result = await employeeService.getDepartmentDistribution();
+    const result = await employeeService.getDepartmentDistribution({
+      page: pagination.page,
+      limit: pagination.limit
+    });
+    
     if (result.success && result.data) {
       departments.value = result.data.departments || [];
-      employeesByDepartment.value = result.data.employeesByDepartment || {};
-      if (departments.value.length) {
-        const first = departments.value[0];
-        if (first && !employeesByDepartment.value[first.departmentName]) {
-          await loadDepartmentEmployees(first.departmentId);
-        }
-      }
       lastUpdated.value = new Date().toLocaleString();
       updatePagination();
     }
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error loading departments:', error);
   } finally {
     loading.value = false;
   }
 };
 
-const loadDepartmentEmployees = async (deptId) => {
-  try {
-    const dept = departments.value.find(d => d.departmentId === deptId);
-    if (!dept) return;
-    const result = await employeeService.getDepartmentDistributionPaginated({
-      departmentId: deptId,
-      page: 1,
-      limit: 100
-    });
-    if (result.success && result.data) {
-      const employees = result.data.employeesByDepartment?.[dept.departmentName] || [];
-      employeesByDepartment.value = {
-        ...employeesByDepartment.value,
-        [dept.departmentName]: employees
-      };
-    }
-  } catch (error) {
-    console.error('Error loading employees:', error);
-  }
+const refreshData = () => {
+  deptEmployeeData.value = {};
+  deptEmployeeLoading.value = {};
+  deptEmployeeSearch.value = {};
+  expandedDept.value = null;
+  loadDepartmentData();
 };
 
-const refreshData = () => loadDepartmentData();
-
-// Watch
-watch([() => pagination.page, () => pagination.limit], updatePagination);
-
-// Mount
-onMounted(loadDepartmentData);
+// ========== LIFECYCLE ==========
+onMounted(() => {
+  loadDepartmentData();
+});
 </script>
 
 <style scoped>
-/* ===== PAGE ===== */
+/* ========== PAGE ========== */
 .department-page {
   padding: 24px;
   max-width: 1200px;
@@ -573,7 +607,7 @@ onMounted(loadDepartmentData);
   background: #f5f7fb;
 }
 
-/* ===== HEADER ===== */
+/* ========== HEADER ========== */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -669,7 +703,7 @@ onMounted(loadDepartmentData);
   cursor: not-allowed;
 }
 
-/* ===== STATS ROW ===== */
+/* ========== STATS ROW ========== */
 .stats-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -723,7 +757,7 @@ onMounted(loadDepartmentData);
   }
 }
 
-/* ===== FILTERS ===== */
+/* ========== FILTERS ========== */
 .filters-row {
   display: flex;
   gap: 12px;
@@ -807,7 +841,7 @@ onMounted(loadDepartmentData);
   background: white;
 }
 
-/* ===== LOADING ===== */
+/* ========== LOADING ========== */
 .loading-state {
   text-align: center;
   padding: 60px;
@@ -829,7 +863,7 @@ onMounted(loadDepartmentData);
   to { transform: rotate(360deg); }
 }
 
-/* ===== DEPARTMENT LIST ===== */
+/* ========== DEPARTMENT LIST ========== */
 .department-list {
   display: flex;
   flex-direction: column;
@@ -890,15 +924,20 @@ onMounted(loadDepartmentData);
   font-weight: 400;
 }
 
+.dept-count-badge {
+  font-size: 12px;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 2px 10px;
+  border-radius: 12px;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
 .dept-meta {
   display: flex;
   gap: 16px;
   margin-top: 2px;
-}
-
-.dept-count {
-  font-size: 13px;
-  color: #475569;
 }
 
 .dept-percent {
@@ -928,30 +967,6 @@ onMounted(loadDepartmentData);
   transition: width 0.6s ease;
 }
 
-.dept-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.export-dept-btn {
-  padding: 4px 8px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  line-height: 1;
-}
-
-.export-dept-btn:hover {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
-  transform: scale(1.05);
-}
-
 .expand-icon {
   width: 28px;
   height: 28px;
@@ -971,7 +986,7 @@ onMounted(loadDepartmentData);
   background: #e2e8f0;
 }
 
-/* ===== EMPLOYEES ===== */
+/* ========== EMPLOYEES ========== */
 .dept-employees {
   padding: 0 20px 16px;
   animation: slideDown 0.25s ease;
@@ -980,6 +995,24 @@ onMounted(loadDepartmentData);
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.emp-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  color: #64748b;
+}
+
+.spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .emp-header {
@@ -1028,7 +1061,7 @@ onMounted(loadDepartmentData);
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   font-size: 12px;
-  width: 180px;
+  width: 200px;
   background: #f8fafc;
   transition: all 0.2s;
 }
@@ -1039,19 +1072,43 @@ onMounted(loadDepartmentData);
   background: white;
 }
 
-.emp-list {
-  max-height: 280px;
+/* ✅ Scrollable employee list - NO pagination */
+.emp-list-scroll {
+  max-height: 400px;
   overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.emp-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.emp-list-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.emp-list-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.emp-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .emp-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
   transition: background 0.15s;
-  cursor: default;
+}
+
+.emp-item:last-child {
+  border-bottom: none;
 }
 
 .emp-item:hover {
@@ -1073,8 +1130,7 @@ onMounted(loadDepartmentData);
 
 .emp-details {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
 }
 
 .emp-name {
@@ -1083,9 +1139,24 @@ onMounted(loadDepartmentData);
   color: #0f172a;
 }
 
+.emp-name-english {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.emp-id {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+}
+
 .emp-email {
   font-size: 12px;
-  color: #94a3b8;
+  color: #64748b;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .emp-view-btn {
@@ -1098,11 +1169,7 @@ onMounted(loadDepartmentData);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  opacity: 0;
-}
-
-.emp-item:hover .emp-view-btn {
-  opacity: 1;
+  flex-shrink: 0;
 }
 
 .emp-view-btn:hover {
@@ -1117,7 +1184,20 @@ onMounted(loadDepartmentData);
   font-size: 13px;
 }
 
-/* ===== EMPTY STATE ===== */
+/* ✅ Footer with total count */
+.emp-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 4px 0;
+  margin-top: 8px;
+}
+
+.emp-total-count {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ========== EMPTY STATE ========== */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -1142,7 +1222,7 @@ onMounted(loadDepartmentData);
   color: #94a3b8;
 }
 
-/* ===== PAGINATION ===== */
+/* ========== PAGINATION ========== */
 .pagination {
   display: flex;
   align-items: center;
@@ -1198,7 +1278,7 @@ onMounted(loadDepartmentData);
   margin-left: 8px;
 }
 
-/* ===== FOOTER ===== */
+/* ========== FOOTER ========== */
 .page-footer {
   margin-top: 24px;
   padding: 12px 20px;
@@ -1212,19 +1292,7 @@ onMounted(loadDepartmentData);
   flex-wrap: wrap;
 }
 
-/* ===== PRINT ===== */
-@media print {
-  .back-btn, .header-actions, .filters-row, .pagination, .emp-view-btn, .expand-icon, .emp-search, .export-dept-btn, .export-emp-btn {
-    display: none !important;
-  }
-  .department-page { padding: 0; background: white; }
-  .page-header { border-bottom: 2px solid #e2e8f0; padding: 16px 0; }
-  .department-item { break-inside: avoid; border: 1px solid #ddd; }
-  .dept-employees { display: block !important; }
-  .emp-list { max-height: none !important; overflow: visible !important; }
-}
-
-/* ===== RESPONSIVE ===== */
+/* ========== RESPONSIVE ========== */
 @media (max-width: 768px) {
   .department-page { padding: 16px; }
   .page-header { flex-direction: column; align-items: stretch; }
@@ -1237,11 +1305,15 @@ onMounted(loadDepartmentData);
   .dept-bar-wrap { min-width: unset; }
   .emp-header { flex-direction: column; align-items: stretch; }
   .emp-header-actions { flex-direction: column; align-items: stretch; }
+  .emp-email { max-width: 100px; }
+  .emp-list-scroll { max-height: 300px; }
 }
 
 @media (max-width: 480px) {
   .header-left h1 { font-size: 18px; }
   .stat-box-value { font-size: 18px; }
   .dept-name { font-size: 14px; }
+  .emp-email { display: none; }
+  .emp-list-scroll { max-height: 250px; }
 }
 </style>

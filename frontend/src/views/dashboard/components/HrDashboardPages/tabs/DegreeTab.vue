@@ -67,7 +67,6 @@
               <th>Employee ID</th>
               <th>Department</th>
               <th>Position</th>
-              
               <th>Action</th>
             </tr>
           </thead>
@@ -92,10 +91,9 @@
               <td><span class="employee-id-badge">{{ emp.employeeId || 'N/A' }}</span></td>
               <td><span class="dept-badge">{{ emp.department || 'N/A' }}</span></td>
               <td>{{ emp.position || 'N/A' }}</td>
-            
               <td>
-                <button class="btn-view" @click.stop="$emit('view-employee', emp.id)">
-                  👁 View
+                <button class="btn-edit" @click.stop="goToEdit(emp.id)">
+                  ✏️ Edit
                 </button>
               </td>
             </tr>
@@ -149,9 +147,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
-const emit = defineEmits(['update-count', 'view-employee']);
+const router = useRouter();
+
+const emit = defineEmits(['update-count']);
 
 // ========== STATE ==========
 const loading = ref(false);
@@ -196,6 +197,10 @@ const visiblePages = computed(() => {
 // ========== METHODS ==========
 const getRowIndex = (idx) => {
   return idx + 1 + (pagination.value.page - 1) * pagination.value.limit;
+};
+
+const goToEdit = (id) => {
+  router.push(`/employees/${id}/edit`);
 };
 
 const changePage = (page) => {
@@ -651,19 +656,19 @@ onMounted(() => {
   display: inline-block;
 }
 
-.btn-view {
-  padding: 4px 12px;
+.btn-edit {
+  padding: 4px 14px;
   background: #6366f1;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-view:hover {
+.btn-edit:hover {
   background: #4f46e5;
   transform: scale(1.05);
 }
