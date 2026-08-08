@@ -1,4 +1,3 @@
-// employeeRoutes.js
 const express = require("express");
 const router = express.Router();
 const employeeController = require("../controllers/employeeController");
@@ -10,15 +9,48 @@ const {
 } = require("../middleware/uploadMiddleware");
 
 // ============================================================================
-// PROTECTED ROUTES
+// DEPARTMENT TRANSFER ROUTES - PUT THESE BEFORE authMiddleware
+// ============================================================================
+
+// employeeRoutes.js - Department Transfer Routes
+
+/**
+ * GET /api/employees/department-transfers
+ * Get all department transfers with filters
+ */
+router.get(
+  '/department-transfers/employee/:employeeId',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.getEmployeeDepartmentTransfers
+);
+
+/**
+ * POST /api/employees/department-transfers
+ * Create a new department transfer
+ */
+router.post(
+  '/department-transfers',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.createDepartmentTransfer
+);
+
+/**
+ * PUT /api/employees/department-transfers/:transferId/status
+ * Update transfer status (reverse or complete)
+ */
+router.put(
+  '/department-transfers/:transferId/status',
+  authMiddleware('admin', 'hr', 'finance', 'attendance'),
+  employeeController.updateTransferStatus
+);
+// ============================================================================
+// PROTECTED ROUTES - Apply authMiddleware to all remaining routes
 // ============================================================================
 router.use(authMiddleware());
 
 // ============================================================================
-// EMPLOYEE CRUD
+// THEN ALL OTHER ROUTES
 // ============================================================================
-
-// new route for the new design ========================================
 
 // Summary endpoint (for dashboard cards)
 router.get('/stats/compliance/summary', employeeController.getComplianceSummary);
@@ -50,8 +82,6 @@ router.get(
   authMiddleware('admin', 'hr', 'finance', 'attendance'),
   employeeController.getTypeEmployees
 );
-
-
 
 // ========== TERMINATE & REACTIVATE ROUTES ==========
 router.post('/:id/terminate', authMiddleware("admin", "hr", "finance", "attendance"), 
@@ -139,7 +169,7 @@ router.delete(
 );
 
 // ============================================================================
-// GENERIC DOCUMENT UPLOAD - Handles ALL document types (MOVED DOWN)
+// GENERIC DOCUMENT UPLOAD - Handles ALL document types
 // ============================================================================
 router.post(
   "/:id/documents/upload/:type",

@@ -171,10 +171,21 @@
               <h3>{{ $t('employee.personalInfo') }}</h3>
             </div>
             <div class="info-list">
-              <div class="info-item">
-                <span class="info-label">{{ $t('employee.fullName') }}</span>
-                <span class="info-value">{{ employee.fullNameEnglish || employee.fullName }}</span>
-              </div>
+             <!-- Full Name - Editable -->
+<div class="info-item">
+  <span class="info-label">
+    {{ $t('employee.fullName') }}
+    <span class="required">*</span>
+  </span>
+  <div class="info-value">
+    <input 
+      type="text" 
+      v-model="form.fullNameEnglish" 
+      :placeholder="$t('employee.fullNamePlaceholder') || 'Enter full name'"
+      :title="$t('employee.fullName')"
+    />
+  </div>
+</div>
               <div class="info-item">
                 <span class="info-label">{{ $t('employee.workEmail') }}</span>
                 <div class="info-value">
@@ -1167,44 +1178,299 @@
             </div>
           </div>
 
-          <!-- Guarantee Information Card -->
-          <div class="info-card">
+       <!-- Guarantee Information Card -->
+<div class="info-card">
+  <div class="card-header">
+    <div class="card-header-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+        <path d="M2 17l10 5 10-5" />
+        <path d="M2 12l10 5 10-5" />
+      </svg>
+    </div>
+    <h3>{{ $t('guarantee.title') }} ({{ form.guaranteeInfo.length }})</h3>
+  </div>
+  <div class="guarantee-list-edit">
+    <div v-for="(guarantor, idx) in form.guaranteeInfo" :key="idx" class="guarantor-edit-item">
+      <div class="edit-header">
+        <strong>{{ $t('guarantee.guarantor') }} {{ idx + 1 }}</strong>
+        <button class="remove-btn" @click="removeGuarantor(idx)">{{ $t('common.remove') }}</button>
+      </div>
+      <div class="edit-fields">
+        <div class="form-row-two">
+          <input type="text" v-model="guarantor.guarantorName" :placeholder="$t('guarantee.guarantorNamePlaceholder')" :title="$t('guarantee.guarantorName')" />
+          <input type="text" v-model="guarantor.guarantorJob" :placeholder="$t('guarantee.jobPlaceholder')" :title="$t('guarantee.guarantorJob')" />
+        </div>
+        <div class="form-row-two">
+          <input type="text" v-model="guarantor.guarantorOfficeName" :placeholder="$t('guarantee.officeNamePlaceholder')" :title="$t('guarantee.guarantorOfficeName')" />
+          <input type="text" v-model="guarantor.guarantorOfficeAddress" :placeholder="$t('guarantee.addressPlaceholder')" :title="$t('guarantee.guarantorOfficeAddress')" />
+        </div>
+        <div class="form-row-two">
+          <input type="text" v-model="guarantor.guaranteeLetterDateEC" placeholder="Guarantee Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.letterDate')" />
+          <input type="text" v-model="guarantor.sdtLetterDateEC" placeholder="SDT Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.sdtLetterDate')" />
+        </div>
+        
+        <!-- ========== ADD CONFIRMATION DATE FIELD HERE ========== -->
+        <div class="form-row-two">
+          <div class="form-field">
+            <label>{{ $t('guarantee.confirmationDate') || 'Confirmation Date' }}</label>
+            <input 
+              type="text" 
+              v-model="guarantor.confirmedDateEC" 
+              placeholder="DD/MM/YYYY" 
+              class="ec-date-input" 
+              :title="$t('guarantee.confirmationDate') || 'Confirmation Date'"
+            />
+            <small class="ec-hint">Ethiopian Calendar (DD/MM/YYYY)</small>
+          </div>
+          <div class="form-field">
+            <!-- Empty or you can add another field here -->
+          </div>
+        </div>
+        <!-- ========== END CONFIRMATION DATE ========== -->
+        
+      </div>
+      <div class="edit-actions">
+        <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'guarantee')" :title="$t('common.upload')">📄 {{ $t('guarantee.guaranteeLetter') }}</button>
+        <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'sdt')" :title="$t('common.upload')">📄 {{ $t('guarantee.sdtLetter') }}</button>
+      </div>
+    </div>
+    <button class="add-btn" @click="addGuarantor">+ {{ $t('common.add') }} {{ $t('guarantee.guarantor') }}</button>
+  </div>
+</div>
+
+          <!-- ========== NEW: SCANNED DOCUMENTS SECTION ========== -->
+          <div class="info-card scanned-documents-card">
             <div class="card-header">
               <div class="card-header-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
+                  <path d="M4 4h16v16H4V4z" />
+                  <path d="M8 4v16" />
+                  <path d="M16 4v16" />
+                  <path d="M4 8h16" />
+                  <path d="M4 16h16" />
+                  <path d="M12 4v16" />
                 </svg>
               </div>
-              <h3>{{ $t('guarantee.title') }} ({{ form.guaranteeInfo.length }})</h3>
+              <h3>{{ $t('documents.scannedDocs') || 'Scanned Documents' }}</h3>
+              <span class="doc-count-badge">{{ scannedDocumentCount }} {{ $t('documents.files') || 'files' }}</span>
             </div>
-            <div class="guarantee-list-edit">
-              <div v-for="(guarantor, idx) in form.guaranteeInfo" :key="idx" class="guarantor-edit-item">
-                <div class="edit-header">
-                  <strong>{{ $t('guarantee.guarantor') }} {{ idx + 1 }}</strong>
-                  <button class="remove-btn" @click="removeGuarantor(idx)">{{ $t('common.remove') }}</button>
+            
+            <div class="scanned-documents-content">
+              <p class="section-description">
+                {{ $t('documents.scannedDocsHint') || 'Upload additional documents such as guarantee letters, employment letters, certificates, and other official documents.' }}
+              </p>
+              
+              <div class="documents-grid">
+                <!-- 1. Guarantee Letter -->
+                <div class="document-upload-item" :class="{ 'has-file': scannedDocs.guaranteeLetter }">
+                  <div class="doc-icon">📑</div>
+                  <div class="doc-info">
+                    <span class="doc-label">{{ $t('guarantee.guaranteeLetter') || 'Guarantee Letter' }}</span>
+                    <span class="doc-status">{{ scannedDocs.guaranteeLetter ? $t('common.uploaded') : $t('common.missing') }}</span>
+                  </div>
+                  <div class="doc-actions">
+                    <button 
+                      type="button" 
+                      class="upload-btn" 
+                      @click="triggerScannedDocUpload('guaranteeLetter')"
+                      :title="scannedDocs.guaranteeLetter ? $t('common.edit') : $t('common.upload')"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                    </button>
+                    <a 
+                      v-if="getDocumentUrl('guarantee_letter') || scannedDocs.guaranteeLetterUrl" 
+                      :href="getDocumentUrl('guarantee_letter') || scannedDocs.guaranteeLetterUrl" 
+                      target="_blank" 
+                      class="view-link"
+                    >
+                      👁️
+                    </a>
+                    <span v-if="scannedDocs.guaranteeLetter" class="file-name">{{ scannedDocs.guaranteeLetter.name }}</span>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref="guaranteeLetterInput" 
+                    @change="handleScannedDocUpload($event, 'guaranteeLetter')" 
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    style="display: none"
+                  />
                 </div>
-                <div class="edit-fields">
-                  <div class="form-row-two">
-                    <input type="text" v-model="guarantor.guarantorName" :placeholder="$t('guarantee.guarantorNamePlaceholder')" :title="$t('guarantee.guarantorName')" />
-                    <input type="text" v-model="guarantor.guarantorJob" :placeholder="$t('guarantee.jobPlaceholder')" :title="$t('guarantee.guarantorJob')" />
+
+                <!-- 2. Employment Letter -->
+                <div class="document-upload-item" :class="{ 'has-file': scannedDocs.employmentLetter }">
+                  <div class="doc-icon">✉️</div>
+                  <div class="doc-info">
+                    <span class="doc-label">{{ $t('documents.employmentLetter') || 'Employment Letter' }}</span>
+                    <span class="doc-status">{{ scannedDocs.employmentLetter ? $t('common.uploaded') : $t('common.missing') }}</span>
                   </div>
-                  <div class="form-row-two">
-                    <input type="text" v-model="guarantor.guarantorOfficeName" :placeholder="$t('guarantee.officeNamePlaceholder')" :title="$t('guarantee.guarantorOfficeName')" />
-                    <input type="text" v-model="guarantor.guarantorOfficeAddress" :placeholder="$t('guarantee.addressPlaceholder')" :title="$t('guarantee.guarantorOfficeAddress')" />
+                  <div class="doc-actions">
+                    <button 
+                      type="button" 
+                      class="upload-btn" 
+                      @click="triggerScannedDocUpload('employmentLetter')"
+                      :title="scannedDocs.employmentLetter ? $t('common.edit') : $t('common.upload')"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                    </button>
+                    <a 
+                      v-if="getDocumentUrl('employment_letter') || scannedDocs.employmentLetterUrl" 
+                      :href="getDocumentUrl('employment_letter') || scannedDocs.employmentLetterUrl" 
+                      target="_blank" 
+                      class="view-link"
+                    >
+                      👁️
+                    </a>
+                    <span v-if="scannedDocs.employmentLetter" class="file-name">{{ scannedDocs.employmentLetter.name }}</span>
                   </div>
-                  <div class="form-row-two">
-                    <input type="text" v-model="guarantor.guaranteeLetterDateEC" placeholder="Guarantee Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.letterDate')" />
-                    <input type="text" v-model="guarantor.sdtLetterDateEC" placeholder="SDT Letter Date (DD/MM/YYYY)" class="ec-date-input" :title="$t('guarantee.sdtLetterDate')" />
+                  <input 
+                    type="file" 
+                    ref="employmentLetterInput" 
+                    @change="handleScannedDocUpload($event, 'employmentLetter')" 
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    style="display: none"
+                  />
+                </div>
+
+                <!-- 3. Other Document (with custom name) -->
+                <div class="document-upload-item" :class="{ 'has-file': scannedDocs.other }">
+                  <div class="doc-icon">📎</div>
+                  <div class="doc-info">
+                    <div class="doc-label-group">
+                      <input 
+                        type="text" 
+                        v-model="scannedDocs.otherName" 
+                        :placeholder="$t('documents.otherDocumentName') || 'Other document name...'" 
+                        class="doc-name-input"
+                      />
+                    </div>
+                    <span class="doc-status">{{ scannedDocs.other ? $t('common.uploaded') : $t('common.missing') }}</span>
                   </div>
-                 </div>
-                <div class="edit-actions">
-                  <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'guarantee')" :title="$t('common.upload')">📄 {{ $t('guarantee.guaranteeLetter') }}</button>
-                  <button class="upload-small-btn" @click="triggerGuaranteeUpload(idx, 'sdt')" :title="$t('common.upload')">📄 {{ $t('guarantee.sdtLetter') }}</button>
+                  <div class="doc-actions">
+                    <button 
+                      type="button" 
+                      class="upload-btn" 
+                      @click="triggerScannedDocUpload('other')"
+                      :title="scannedDocs.other ? $t('common.edit') : $t('common.upload')"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                    </button>
+                    <button 
+                      v-if="scannedDocs.other || scannedDocs.otherName" 
+                      type="button" 
+                      class="remove-btn" 
+                      @click="clearScannedDoc('other')"
+                      :title="$t('common.remove')"
+                    >
+                      ✕
+                    </button>
+                    <a 
+                      v-if="getDocumentUrl('other_document') || scannedDocs.otherUrl" 
+                      :href="getDocumentUrl('other_document') || scannedDocs.otherUrl" 
+                      target="_blank" 
+                      class="view-link"
+                    >
+                      👁️
+                    </a>
+                    <span v-if="scannedDocs.other" class="file-name">{{ scannedDocs.other.name }}</span>
+                  </div>
+                  <input 
+                    type="file" 
+                    ref="otherInput" 
+                    @change="handleScannedDocUpload($event, 'other')" 
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    style="display: none"
+                  />
                 </div>
               </div>
-              <button class="add-btn" @click="addGuarantor">+ {{ $t('common.add') }} {{ $t('guarantee.guarantor') }}</button>
+
+              <!-- Add Custom Document Button -->
+              <button type="button" class="add-doc-btn" @click="addScannedCustomDocument">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                {{ $t('common.add') }} {{ $t('documents.customDocument') || 'Custom Document' }}
+              </button>
+
+              <!-- Custom Documents List -->
+              <div 
+                v-for="(doc, index) in scannedDocs.custom" 
+                :key="`custom-${index}`" 
+                class="document-upload-item custom-doc" 
+                :class="{ 'has-file': doc.file }"
+              >
+                <div class="doc-icon">📎</div>
+                <div class="doc-info">
+                  <input 
+                    type="text" 
+                    v-model="doc.name" 
+                    :placeholder="$t('documents.documentName') || 'Document name...'" 
+                    class="doc-name-input"
+                  />
+                  <span class="doc-status">{{ doc.file ? $t('common.uploaded') : $t('common.missing') }}</span>
+                </div>
+                <div class="doc-actions">
+                  <button 
+                    type="button" 
+                    class="upload-btn" 
+                    @click="triggerScannedCustomUpload(index)"
+                    :title="doc.file ? $t('common.edit') : $t('common.upload')"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </button>
+                  <button 
+                    type="button" 
+                    class="remove-btn" 
+                    @click="removeScannedCustomDocument(index)"
+                    :title="$t('common.remove')"
+                  >
+                    ✕
+                  </button>
+                  <a 
+                    v-if="getDocumentUrl('custom_document', index) || doc.url" 
+                    :href="getDocumentUrl('custom_document', index) || doc.url" 
+                    target="_blank" 
+                    class="view-link"
+                  >
+                    👁️
+                  </a>
+                  <span v-if="doc.file" class="file-name">{{ doc.file.name }}</span>
+                </div>
+                <input 
+                  :ref="el => setScannedCustomInputRef(el, index)"
+                  type="file" 
+                  @change="handleScannedCustomUpload($event, index)" 
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  style="display: none"
+                />
+              </div>
+              
+              <!-- File Size Warning -->
+              <div class="file-info-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="12" x2="12" y2="16" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span>{{ $t('documents.fileInfo') || 'Accepted formats: PDF, JPG, PNG, DOC, DOCX. Max size: 5MB per file.' }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1270,6 +1536,25 @@ let currentTrainingIndex = null;
 let currentWorkIndex = null;
 let currentGuaranteeData = null;
 let currentChildData = null;
+
+// ========== SCANNED DOCUMENTS STATE ==========
+const scannedDocs = ref({
+  guaranteeLetter: null,
+  guaranteeLetterUrl: null,
+  employmentLetter: null,
+  employmentLetterUrl: null,
+  other: null,
+  otherName: '',
+  otherUrl: null,
+  custom: []
+})
+
+const scannedInputRefs = ref({})
+
+// Scanned document file input refs
+const guaranteeLetterInput = ref(null)
+const employmentLetterInput = ref(null)
+const otherInput = ref(null)
 
 // Form data
 const form = ref({
@@ -1405,8 +1690,26 @@ const formatDate = (date) => (date ? new Date(date).toLocaleDateString() : "—"
 const formatCurrency = (val) =>
   val ? `ETB ${Number(val).toLocaleString()}` : "—";
 
-const getDocumentUrl = (type) =>
-  employee.value?.documents?.[type]?.fileUrl || null;
+const getDocumentUrl = (type, index) => {
+  const docs = employee.value?.documents;
+  if (!docs) return null;
+
+  if (index !== undefined && index !== null) {
+    const indexedKey = `${type}_${index}`;
+    if (docs[indexedKey]) {
+      return docs[indexedKey]?.fileUrl || null;
+    }
+  }
+
+  if (docs[type]) {
+    if (Array.isArray(docs[type])) {
+      return docs[type][0]?.fileUrl || null;
+    }
+    return docs[type]?.fileUrl || null;
+  }
+
+  return null;
+};
 
 const getDocumentWithIndex = (type, index) => {
   const docs = employee.value?.documents;
@@ -1418,7 +1721,7 @@ const getDocumentWithIndex = (type, index) => {
   }
 
   if (docs[type] && !Array.isArray(docs[type])) {
-    return docs[type]?.fileUrl || null;
+    return index === 0 ? docs[type]?.fileUrl : null;
   }
 
   if (docs[type] && Array.isArray(docs[type])) {
@@ -1428,6 +1731,18 @@ const getDocumentWithIndex = (type, index) => {
 
   return null;
 };
+
+// ========== SCANNED DOCUMENTS COMPUTED ==========
+const scannedDocumentCount = computed(() => {
+  let count = 0
+  if (scannedDocs.value.guaranteeLetter) count++
+  if (scannedDocs.value.employmentLetter) count++
+  if (scannedDocs.value.other) count++
+  scannedDocs.value.custom.forEach(doc => {
+    if (doc.file) count++
+  })
+  return count
+})
 
 // Toast
 const addToast = (message, type = "success") => {
@@ -1759,7 +2074,7 @@ const loadEmployeeData = async () => {
         email: emp.email || emp.workEmail || "",
         personalEmail: emp.personalEmail || "",
         phone: emp.phone || emp.phoneNumber || "",
-        
+          fullNameEnglish: emp.fullNameEnglish || "", 
         // ========== EC DATES ONLY ==========
         hireDateEC: emp.hireDateEC || "",
         dateOfBirthEC: emp.dateOfBirthEC || "",
@@ -1817,6 +2132,9 @@ const loadEmployeeData = async () => {
         healthInfo: getHealthInfo(emp.healthInfo),
         legalInfo: getLegalInfo(emp.legalInfo),
       };
+      
+      // Load scanned documents from employee data
+      loadScannedDocuments();
     } else {
       addToast(t('messages.loadError'), "error");
     }
@@ -1841,6 +2159,44 @@ const loadDropdowns = async () => {
     console.error("Error loading dropdowns:", error);
   }
 };
+
+// ========== LOAD SCANNED DOCUMENTS ==========
+const loadScannedDocuments = () => {
+  if (!employee.value) return
+  
+  const docs = employee.value.documents || {}
+  
+  // Check for guarantee letter
+  if (docs.guarantee_letter?.fileUrl) {
+    scannedDocs.value.guaranteeLetterUrl = docs.guarantee_letter.fileUrl
+  }
+  
+  // Check for employment letter
+  if (docs.employment_letter?.fileUrl) {
+    scannedDocs.value.employmentLetterUrl = docs.employment_letter.fileUrl
+  }
+  
+  // Check for other document
+  if (docs.other_document?.fileUrl) {
+    scannedDocs.value.otherUrl = docs.other_document.fileUrl
+    scannedDocs.value.otherName = docs.other_document.fileName || 'Other Document'
+  }
+  
+  // Check for custom documents
+  if (docs.custom_document) {
+    const customDocs = Array.isArray(docs.custom_document) ? docs.custom_document : [docs.custom_document]
+    customDocs.forEach((doc, index) => {
+      if (doc.fileUrl) {
+        scannedDocs.value.custom.push({
+          id: Date.now() + index,
+          name: doc.fileName || 'Custom Document',
+          file: null,
+          url: doc.fileUrl
+        })
+      }
+    })
+  }
+}
 
 // Profile picture
 const profileInput = ref(null);
@@ -2167,6 +2523,127 @@ const addLanguage = () =>
   form.value.languageSkills.push({ language: "", proficiency: "" });
 const removeLanguage = (idx) => form.value.languageSkills.splice(idx, 1);
 
+// ========== SCANNED DOCUMENTS METHODS ==========
+const triggerScannedDocUpload = (type) => {
+  const inputMap = {
+    guaranteeLetter: guaranteeLetterInput,
+    employmentLetter: employmentLetterInput,
+    other: otherInput
+  }
+  const input = inputMap[type]
+  if (input && input.value) {
+    input.value.click()
+  }
+}
+
+const handleScannedDocUpload = async (event, type) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  // Validate file size (5MB max)
+  if (file.size > 5 * 1024 * 1024) {
+    addToast('File size must be less than 5MB', 'error')
+    event.target.value = ''
+    return
+  }
+  
+  // Validate file type
+  const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg', 
+                      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+  if (!validTypes.includes(file.type) && 
+      !file.name.endsWith('.pdf') && 
+      !file.name.endsWith('.doc') && 
+      !file.name.endsWith('.docx')) {
+    addToast('Invalid file type. Please upload PDF, JPG, PNG, DOC, or DOCX.', 'error')
+    event.target.value = ''
+    return
+  }
+  
+  // Map to the correct ref
+  const typeMap = {
+    guaranteeLetter: { file: 'guaranteeLetter', url: 'guaranteeLetterUrl' },
+    employmentLetter: { file: 'employmentLetter', url: 'employmentLetterUrl' },
+    other: { file: 'other', url: 'otherUrl' }
+  }
+  
+  const mapped = typeMap[type]
+  if (mapped) {
+    scannedDocs.value[mapped.file] = file
+    scannedDocs.value[mapped.url] = URL.createObjectURL(file)
+  }
+  
+  addToast(`${file.name} selected`, 'success')
+  event.target.value = ''
+}
+
+const clearScannedDoc = (type) => {
+  const typeMap = {
+    other: { file: 'other', name: 'otherName', url: 'otherUrl' }
+  }
+  const mapped = typeMap[type]
+  if (mapped) {
+    scannedDocs.value[mapped.file] = null
+    scannedDocs.value[mapped.name] = ''
+    scannedDocs.value[mapped.url] = null
+  }
+}
+
+const addScannedCustomDocument = () => {
+  scannedDocs.value.custom.push({ 
+    id: Date.now(), 
+    name: '', 
+    file: null,
+    url: null
+  })
+}
+
+const removeScannedCustomDocument = (index) => {
+  scannedDocs.value.custom.splice(index, 1)
+}
+
+const setScannedCustomInputRef = (el, index) => {
+  if (el) {
+    scannedInputRefs.value[index] = el
+  }
+}
+
+const triggerScannedCustomUpload = (index) => {
+  const input = scannedInputRefs.value[index]
+  if (input) {
+    input.click()
+  }
+}
+
+const handleScannedCustomUpload = (event, index) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  // Validate file size (5MB max)
+  if (file.size > 5 * 1024 * 1024) {
+    addToast('File size must be less than 5MB', 'error')
+    event.target.value = ''
+    return
+  }
+  
+  // Validate file type
+  const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg', 
+                      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+  if (!validTypes.includes(file.type) && 
+      !file.name.endsWith('.pdf') && 
+      !file.name.endsWith('.doc') && 
+      !file.name.endsWith('.docx')) {
+    addToast('Invalid file type. Please upload PDF, JPG, PNG, DOC, or DOCX.', 'error')
+    event.target.value = ''
+    return
+  }
+  
+  scannedDocs.value.custom[index].file = file
+  scannedDocs.value.custom[index].url = URL.createObjectURL(file)
+  
+  addToast(`${file.name} selected`, 'success')
+  event.target.value = ''
+}
+
 // Clean data function
 const cleanData = (data) => {
   if (data === null || data === undefined) return null;
@@ -2214,10 +2691,56 @@ const saveEmployee = async () => {
       );
     }
 
+    // ========== UPLOAD SCANNED DOCUMENTS ==========
+    // 1. Guarantee Letter
+    if (scannedDocs.value.guaranteeLetter) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId,
+        scannedDocs.value.guaranteeLetter,
+        'guarantee_letter'
+      )
+    }
+    
+    // 2. Employment Letter
+    if (scannedDocs.value.employmentLetter) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId,
+        scannedDocs.value.employmentLetter,
+        'employment_letter'
+      )
+    }
+    
+    // 3. Other Document
+    if (scannedDocs.value.other) {
+      await EmployeesService.uploadEmployeeDocument(
+        employeeId,
+        scannedDocs.value.other,
+        'other_document',
+        { description: scannedDocs.value.otherName || 'Other Document' }
+      )
+    }
+    
+    // 4. Custom Documents
+    for (let i = 0; i < scannedDocs.value.custom.length; i++) {
+      const doc = scannedDocs.value.custom[i]
+      if (doc.file) {
+        await EmployeesService.uploadEmployeeDocument(
+          employeeId,
+          doc.file,
+          'custom_document',
+          { 
+            index: i,
+            description: doc.name || 'Custom Document'
+          }
+        )
+      }
+    }
+
     const updateData = {
       firstName: form.value.firstName || undefined,
       lastName: form.value.lastName || undefined,
       middleName: form.value.middleName || undefined,
+        fullNameEnglish: form.value.fullNameEnglish || undefined,
       email: form.value.email || undefined,
       personalEmail: form.value.personalEmail || undefined,
       phone: form.value.phone || undefined,
@@ -4300,15 +4823,309 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+/* ========== SCANNED DOCUMENTS STYLES ========== */
+.scanned-documents-card .scanned-documents-content {
+  padding: 20px 24px;
+}
+
+.scanned-documents-card .section-description {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.document-upload-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #eef2ff;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.document-upload-item:hover {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.document-upload-item.has-file {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.document-upload-item.has-file:hover {
+  background: #dcfce7;
+}
+
+.document-upload-item.custom-doc {
+  border-style: dashed;
+}
+
+.doc-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.doc-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.doc-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.doc-label-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.doc-name-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  background: transparent;
+  font-size: 12px;
+  color: #1e293b;
+  text-align: center;
+}
+
+.doc-name-input:focus {
+  outline: none;
+  border-bottom-color: #6366f1;
+}
+
+.doc-name-input::placeholder {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.doc-status {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.document-upload-item.has-file .doc-status {
+  color: #10b981;
+}
+
+.doc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.upload-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #6366f1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.upload-btn:hover {
+  background: #e0e7ff;
+  transform: scale(1.05);
+}
+
+.upload-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.document-upload-item.has-file .upload-btn {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.document-upload-item.has-file .upload-btn:hover {
+  background: #a7f3d0;
+}
+
+.view-link {
+  font-size: 16px;
+  text-decoration: none;
+  color: #6366f1;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.view-link:hover {
+  background: #eef2ff;
+  transform: scale(1.1);
+}
+
+.remove-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #ef4444;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.remove-btn:hover {
+  background: #fecaca;
+  transform: scale(1.1);
+}
+
+.file-name {
+  font-size: 10px;
+  color: #64748b;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-doc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 2px dashed #e2e8f0;
+  border-radius: 10px;
+  color: #6366f1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.add-doc-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.add-doc-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.file-info-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #eef2ff;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.file-info-note svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.doc-count-badge {
+  margin-left: auto;
+  font-size: 11px;
+  background: #e2e8f0;
+  padding: 2px 10px;
+  border-radius: 20px;
+  color: #475569;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
+  .documents-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
   .stats-cards {
     grid-template-columns: repeat(2, 1fr);
   }
   .content-grid {
     grid-template-columns: 1fr;
   }
+  .parents-edit-grid {
+    grid-template-columns: 1fr;
+  }
 }
+
+@media (max-width: 600px) {
+  .documents-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .document-upload-item {
+    flex-direction: row;
+    text-align: left;
+    padding: 12px 14px;
+  }
+  
+  .doc-info {
+    align-items: flex-start;
+  }
+  
+  .doc-label-group {
+    align-items: flex-start;
+  }
+  
+  .doc-name-input {
+    text-align: left;
+  }
+  
+  .doc-actions {
+    justify-content: flex-end;
+    width: auto;
+  }
+  
+  .file-name {
+    max-width: 60px;
+  }
+}
+
 @media (max-width: 768px) {
   .employee-edit {
     padding: 20px 16px;
@@ -4332,6 +5149,12 @@ textarea:focus {
     align-items: flex-start;
   }
   .info-label {
+    width: 100%;
+  }
+  .edit-name-container {
+    flex-direction: column;
+  }
+  .name-input {
     width: 100%;
   }
   .spouse-layout {

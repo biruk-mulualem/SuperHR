@@ -40,6 +40,10 @@ const uploadDirs = [
   "uploads/documents/health",
   "uploads/documents/legal",
   
+  // ========== NEW: OTHER DOCUMENTS ==========
+  "uploads/documents/employment_letters",  // Employment Letters
+  "uploads/documents/other_documents",     // Other & Custom Documents
+  
   // Legacy document folders (keep for existing files)
   "uploads/documents/id_cards",
   "uploads/documents/cv_resumes",
@@ -48,13 +52,10 @@ const uploadDirs = [
   // Attendance
   "uploads/attendance/",
   
-
- // Item specifications
+  // Item specifications
   "uploads/items/specifications",
 
-    // ============================================
-  // STORE BALANCE - ADD THIS
-  // ============================================
+  // Store Balance
   "uploads/balances/",
   "uploads/balances/imports",
   "uploads/balances/exports",

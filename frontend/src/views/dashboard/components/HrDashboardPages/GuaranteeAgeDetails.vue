@@ -159,7 +159,7 @@
               <th>Department</th>
               <th>Since Last Checked</th>
               <th>Age Range</th>
-              <th>Last Checked Date</th>
+              <th>Last Confirmed Date</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -190,7 +190,7 @@
                 </span>
               </td>
               <td>
-                <span class="ec-date">{{ emp.guaranteeDateEC || 'N/A' }}</span>
+                <span class="ec-date">{{ emp.confirmedDateEC || 'N/A' }} E.C</span>
               </td>
               <td>
                 <div class="action-buttons">
@@ -254,10 +254,10 @@
                 <span class="emp-dept">{{ selectedEmployee?.department }}</span>
               </div>
               <div class="emp-date-info">
-                <span class="date-label">Last Checked:</span>
-                <span class="date-value">{{ selectedEmployee?.guaranteeDateEC || 'N/A' }}</span>
+                <span class="date-label">Last Confirmed:</span>
+                <span class="date-value">{{ selectedEmployee?.confirmedDateEC || 'N/A' }} E.C</span>
                 <span class="date-badge" :class="getAgeBadgeClass(selectedEmployee?.ageInMonths)">
-                  {{ selectedEmployee?.ageInMonths || 0 }} months since last checked
+                  {{ selectedEmployee?.ageInMonths || 0 }} months since last confirmed
                 </span>
               </div>
             </div>
@@ -265,7 +265,7 @@
 
           <!-- Form - Compact -->
           <div class="form-group-compact">
-            <label for="newDate">New Guarantee Date (EC) <span class="required">*</span></label>
+            <label for="newDate"> Guarantee Confirmed Date (EC) <span class="required">*</span></label>
             <input
               id="newDate"
               type="text"
@@ -276,7 +276,7 @@
               @keyup.enter="saveRenewal"
             />
             <span v-if="dateError" class="error-message-compact">{{ dateError }}</span>
-            <small class="help-text-compact">Format: DD/MM/YYYY</small>
+            <small class="help-text-compact">Format: DD/MM/YYYY(In Ethiopian calendar)</small>
           </div>
         </div>
 
@@ -461,7 +461,6 @@ const saveRenewal = async () => {
   saving.value = true;
   
   try {
-    // Get the employee data with guarantee info
     const employeeData = await employeeService.getEmployeeById(selectedEmployee.value.id);
     
     if (!employeeData.success || !employeeData.data) {
@@ -474,18 +473,21 @@ const saveRenewal = async () => {
     // Find which guarantor this is
     let targetIndex = -1;
     
-    if (selectedEmployee.value.guaranteeDateEC) {
+    // Try to find by confirmedDateEC first
+    if (selectedEmployee.value.confirmedDateEC) {
       targetIndex = guaranteeInfo.findIndex(
-        g => g.guaranteeLetterDateEC === selectedEmployee.value.guaranteeDateEC
+        g => g.confirmedDateEC === selectedEmployee.value.confirmedDateEC
       );
     }
     
+    // If not found, try by guarantorName
     if (targetIndex === -1 && selectedEmployee.value.guarantorName) {
       targetIndex = guaranteeInfo.findIndex(
         g => g.guarantorName === selectedEmployee.value.guarantorName
       );
     }
     
+    // If still not found, use the first one
     if (targetIndex === -1 && guaranteeInfo.length > 0) {
       targetIndex = 0;
     }
@@ -494,9 +496,9 @@ const saveRenewal = async () => {
       throw new Error('Could not find the guarantee record to update');
     }
     
-    // Update the guarantee date
-    guaranteeInfo[targetIndex].guaranteeLetterDateEC = newDateEC.value;
-    guaranteeInfo[targetIndex].guaranteeLetterDateGC = null;
+    // ✅ UPDATE BOTH DATES - confirmedDateEC (for age calculation) AND guaranteeLetterDateEC (for reference)
+    guaranteeInfo[targetIndex].confirmedDateEC = newDateEC.value;  // ✅ Primary for age calculation
+    guaranteeInfo[targetIndex].guaranteeLetterDateEC = newDateEC.value;  // For reference
     
     // Update the employee with new guarantee info
     const updateData = {
@@ -508,10 +510,7 @@ const saveRenewal = async () => {
     if (result.success) {
       showToast('✅ Guarantee date updated successfully!', 'success');
       closeRenewModal();
-      
-      setTimeout(() => {
-        loadData();
-      }, 500);
+      setTimeout(() => loadData(), 500);
     } else {
       throw new Error(result.error || 'Update failed');
     }

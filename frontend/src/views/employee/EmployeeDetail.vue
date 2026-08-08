@@ -186,7 +186,7 @@
                 <span class="info-label">{{
                   $t("employee.fullName") || "Full Name"
                 }}</span>
-                <span class="info-value">{{employee.fullName || employee.fullNameEnglish  }}</span>
+                <span class="info-value">{{employee.fullNameEnglish || employee.fullName  }}</span>
               </div>
               <div class="info-item">
                 <span class="info-label">{{
@@ -250,14 +250,6 @@
                 }}</span>
                 <span class="info-value">
                   {{ employee.nationalId || "—" }}
-                  <a
-                    v-if="getDocumentUrl('national_id')"
-                    :href="getDocumentUrl('national_id')"
-                    target="_blank"
-                    class="file-link-inline"
-                  >
-                    📄 {{ $t("common.view") || "View" }}
-                  </a>
                 </span>
               </div>
             </div>
@@ -717,13 +709,6 @@
                   {{ edu.isCurrent ? "Present" : formatDate(edu.endDateEC) }}
                 </div>
                 <div class="edu-address">{{ edu.institutionAddress }}</div>
-                <a
-                  v-if="getDocumentWithIndex('education_certificate', idx) || getDocumentUrl('education_certificate')"
-                  :href="getDocumentWithIndex('education_certificate', idx) || getDocumentUrl('education_certificate')"
-                  target="_blank"
-                  class="file-link"
-                  >📄 {{ $t("common.view") || "View" }}
-                </a>
               </div>
             </div>
           </div>
@@ -767,13 +752,6 @@
                 <div class="training-address">
                   {{ train.institutionAddress }}
                 </div>
-                <a
-                  v-if="getDocumentWithIndex('training_certificate', idx) || getDocumentUrl('training_certificate')"
-                  :href="getDocumentWithIndex('training_certificate', idx) || getDocumentUrl('training_certificate')"
-                  target="_blank"
-                  class="file-link"
-                  >📄 {{ $t("common.view") || "View" }}
-                </a>
               </div>
             </div>
           </div>
@@ -862,22 +840,6 @@
                   getNationalityTypeLabel(employee.nationalityAcquisition.type)
                 }}</span>
               </div>
-              <div
-                class="info-item"
-                v-if="getDocumentUrl('naturalization_certificate')"
-              >
-                <span class="info-label">{{
-                  $t("nationality.certificate") || "Certificate"
-                }}</span>
-                <span class="info-value">
-                  <a
-                    :href="getDocumentUrl('naturalization_certificate')"
-                    target="_blank"
-                    class="file-link"
-                    >📄 {{ $t("common.view") || "View" }}</a
-                  >
-                </span>
-              </div>
             </div>
           </div>
 
@@ -916,13 +878,6 @@
                 <div v-if="employee.healthInfo.injuryDescription">
                   {{ employee.healthInfo.injuryDescription }}
                 </div>
-                <a
-                  v-if="getDocumentUrl('health_document')"
-                  :href="getDocumentUrl('health_document')"
-                  target="_blank"
-                  class="file-link"
-                  >📄 {{ $t("common.view") || "View" }}</a
-                >
               </div>
               <div class="legal-section" v-if="employee.legalInfo">
                 <h4>
@@ -935,13 +890,6 @@
                 <div v-if="employee.legalInfo.criminalRecordDescription">
                   {{ employee.legalInfo.criminalRecordDescription }}
                 </div>
-                <a
-                  v-if="getDocumentUrl('legal_document')"
-                  :href="getDocumentUrl('legal_document')"
-                  target="_blank"
-                  class="file-link"
-                  >📄 {{ $t("common.view") || "View" }}</a
-                >
               </div>
             </div>
           </div>
@@ -979,6 +927,71 @@
               {{ employee.otherSkills }}
             </div>
           </div>
+        
+          <!-- Guarantee Information Card -->
+          <div
+            class="info-card"
+            v-if="employee.guaranteeInfo && employee.guaranteeInfo.length"
+          >
+            <div class="card-header">
+              <div class="card-header-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <h3>
+                {{ $t("guarantee.title") || "Guarantors" }} ({{
+                  employee.guaranteeInfo.length
+                }})
+              </h3>
+            </div>
+            <div class="guarantee-list">
+              <div
+                v-for="(guarantor, idx) in employee.guaranteeInfo"
+                :key="idx"
+                class="guarantor-card-item"
+              >
+                <div class="guarantor-header">
+                  <strong>{{ guarantor.guarantorName }}</strong> -
+                  {{ guarantor.guarantorJob }}
+                </div>
+                <div class="guarantor-details">
+                  <div>
+                    {{ $t("guarantee.guarantorOfficeName") || "Office" }}:
+                    {{ guarantor.guarantorOfficeName }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.guarantorOfficeAddress") || "Address" }}:
+                    {{ guarantor.guarantorOfficeAddress }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.letterNumber") || "Guarantee Letter" }}:
+                    {{ guarantor.guaranteeLetterNo }} ({{
+                      formatDate(guarantor.guaranteeLetterDateEC)
+                    }}) {{ $t('calendar.ec') || 'E.C' }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.sdtLetterNumber") || "SDT Letter" }}:
+                    {{ guarantor.sdtLetterNo }} ({{
+                      formatDate(guarantor.sdtLetterDateEC) }}) {{ $t('calendar.ec') || 'E.C' }}
+                  </div>
+                  <div>
+                    {{ $t("guarantee.confirmedDateEC") || "guarentee Confrimation Date " }}:
+                    {{ formatDate(guarantor.confirmedDateEC) }} {{ $t('calendar.ec') || 'E.C' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+         
+          </div>
+        
         </div>
 
         <div class="right-column">
@@ -1219,23 +1232,6 @@
                   >
                   {{ employee.spouseInfo.companyAddress || "—" }}
                 </div>
-                <div
-                  class="spouse-document"
-                  v-if="
-                    getDocumentWithIndex('marriage_certificate', 0) ||
-                    getDocumentUrl('marriage_certificate')
-                  "
-                >
-                  <a
-                    :href="
-                      getDocumentWithIndex('marriage_certificate', 0) ||
-                      getDocumentUrl('marriage_certificate')
-                    "
-                    target="_blank"
-                    class="file-link"
-                    >📄 {{ $t("common.viewMarriageCertificate") || "View" }}
-                  </a>
-                </div>
               </div>
             </div>
           </div>
@@ -1317,52 +1313,6 @@
                         >{{ $t("family.adopted") || "Adopted" }}:</span
                       >
                       {{ child.isAdopted ? $t("common.yes") || "Yes" : $t("common.no") || "No" }}
-                    </div>
-                    <div class="child-documents">
-                      <a
-                        v-if="
-                          getDocumentWithIndex('child_birth_certificate', idx)
-                        "
-                        :href="
-                          getDocumentWithIndex('child_birth_certificate', idx)
-                        "
-                        target="_blank"
-                        class="file-link"
-                        >📄 {{ $t("common.viewBirthCertificate") || "" }}</a
-                      >
-                      <a
-                        v-if="
-                          getDocumentWithIndex(
-                            'child_adoption_certificate',
-                            idx,
-                          )
-                        "
-                        :href="
-                          getDocumentWithIndex(
-                            'child_adoption_certificate',
-                            idx,
-                          )
-                        "
-                        target="_blank"
-                        class="file-link"
-                        >📄
-                        {{
-                          $t("common.viewAdoptionCertificate") ||
-                          "Adoption Certificate"
-                        }}</a
-                      >
-                      <a
-                        v-if="getDocumentWithIndex('child_medical_report', idx)"
-                        :href="
-                          getDocumentWithIndex('child_medical_report', idx)
-                        "
-                        target="_blank"
-                        class="file-link"
-                        >📄
-                        {{
-                          $t("common.viewMedicalReport") || "Medical Report"
-                        }}</a
-                      >
                     </div>
                   </div>
                 </div>
@@ -1537,101 +1487,173 @@
                     }}: {{ work.terminationReason }}
                   </div>
                 </div>
-                <a
-                  v-if="getDocumentWithIndex('experience_letter', idx)"
-                  :href="getDocumentWithIndex('experience_letter', idx)"
-                  target="_blank"
-                  class="file-link"
-                  >📄 {{ $t("common.view-Experience-Letter") || "View" }}
-                </a>
               </div>
             </div>
           </div>
 
-          <!-- Guarantee Information Card -->
-          <div
-            class="info-card"
-            v-if="employee.guaranteeInfo && employee.guaranteeInfo.length"
-          >
-            <div class="card-header">
-              <div class="card-header-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
+       
+        </div>
+      </div>
+
+      <!-- NEW: Centralized Documents Section -->
+      <div class="info-card documents-card full-width">
+        <div class="card-header">
+          <div class="card-header-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+          </div>
+          <h3>{{ $t("documents.title") || "Employee Documents" }}</h3>
+          <span class="history-count">{{ totalDocuments }} {{ $t("documents.files") || "files" }}</span>
+        </div>
+        
+        <div class="documents-content">
+          <div v-if="allDocuments.length === 0" class="documents-empty">
+            <div class="empty-icon">📄</div>
+            <p>{{ $t("documents.noFiles") || "No documents uploaded" }}</p>
+            <span class="documents-hint">{{ $t("documents.hint") || "Employee documents will appear here when uploaded" }}</span>
+          </div>
+          
+          <div v-else class="documents-table-wrapper">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th class="doc-col-icon">{{ $t("documents.type") || "Type" }}</th>
+                  <th class="doc-col-name">{{ $t("documents.document") || "Document" }}</th>
+                  <th class="doc-col-section">{{ $t("documents.section") || "Section" }}</th>
+                  <th class="doc-col-description">{{ $t("documents.description") || "Description" }}</th>
+                  <th class="doc-col-action">{{ $t("documents.action") || "Action" }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(doc, idx) in allDocuments" :key="idx" class="document-row">
+                  <td class="doc-col-icon">
+                    <span class="doc-icon">{{ doc.icon }}</span>
+                  </td>
+                  <td class="doc-col-name">
+                    <span class="doc-name">{{ doc.label }}</span>
+                  </td>
+                  <td class="doc-col-section">
+                    <span class="section-badge" :class="doc.sectionClass">
+                      {{ doc.section }}
+                    </span>
+                  </td>
+                  <td class="doc-col-description">
+                    <span class="doc-description">{{ doc.description }}</span>
+                  </td>
+                  <td class="doc-col-action">
+                    <a 
+                      :href="doc.url" 
+                      target="_blank" 
+                      class="doc-action-btn"
+                      :class="{ 'doc-action-btn-view': doc.url, 'doc-action-btn-disabled': !doc.url }"
+                    >
+                      <svg v-if="doc.url" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <span v-if="doc.url">{{ $t("common.view") || "View" }}</span>
+                      <span v-else>{{ $t("common.noFile") || "No file" }}</span>
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================
+           DEPARTMENT TRANSFER HISTORY CARD
+           ============================================ -->
+      <div class="info-card transfer-history-card full-width">
+        <div class="card-header">
+          <div class="card-header-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 3h5v5" />
+              <path d="M8 3H3v5" />
+              <path d="M21 3l-7 7" />
+              <path d="M3 21l7-7" />
+              <path d="M16 21h5v-5" />
+              <path d="M8 21H3v-5" />
+            </svg>
+          </div>
+          <h3>{{ $t("employee.departmentTransfers") || "Department Transfer History" }}</h3>
+          <span class="history-count" v-if="departmentTransfers.length > 0">
+            {{ departmentTransfers.length }} {{ $t("employee.transfers") || "transfers" }}
+          </span>
+        </div>
+        
+        <div class="transfer-content">
+          <div v-if="loadingTransfers" class="transfer-loading">
+            <div class="spinner-small"></div>
+            <span>{{ $t("common.loading") || "Loading..." }}</span>
+          </div>
+          
+          <div v-else-if="departmentTransfers.length === 0" class="transfer-empty">
+            <div class="empty-icon">🔄</div>
+            <p>{{ $t("employee.noTransfers") || "No department transfers recorded" }}</p>
+            <span class="transfer-hint">{{ $t("employee.transferHint") || "When an employee changes departments, the transfer will be recorded here" }}</span>
+          </div>
+          
+          <div v-else class="transfer-table-wrapper">
+            <table class="transfer-table">
+              <thead>
+                <tr>
+                  <th class="transfer-col-date">{{ $t("employee.transferDate") || "Transfer Date" }}</th>
+                  <th class="transfer-col-from">{{ $t("employee.fromDepartment") || "From Department" }}</th>
+                  <th class="transfer-col-to">{{ $t("employee.toDepartment") || "To Department" }}</th>
+                  <th class="transfer-col-reason">{{ $t("employee.reason") || "Reason" }}</th>
+                  <th class="transfer-col-status">{{ $t("employee.status") || "Status" }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr 
+                  v-for="(transfer, idx) in departmentTransfers" 
+                  :key="idx" 
+                  class="transfer-row"
+                  :class="{ 
+                    'current-transfer': transfer.isCurrent,
+                    'historical-transfer': transfer.isHistorical && !transfer.isCurrent
+                  }"
                 >
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
-              </div>
-              <h3>
-                {{ $t("guarantee.title") || "Guarantors" }} ({{
-                  employee.guaranteeInfo.length
-                }})
-              </h3>
-            </div>
-            <div class="guarantee-list">
-              <div
-                v-for="(guarantor, idx) in employee.guaranteeInfo"
-                :key="idx"
-                class="guarantor-card-item"
-              >
-                <div class="guarantor-header">
-                  <strong>{{ guarantor.guarantorName }}</strong> -
-                  {{ guarantor.guarantorJob }}
-                </div>
-                <div class="guarantor-details">
-                  <div>
-                    {{ $t("guarantee.guarantorOfficeName") || "Office" }}:
-                    {{ guarantor.guarantorOfficeName }}
-                  </div>
-                  <div>
-                    {{ $t("guarantee.guarantorOfficeAddress") || "Address" }}:
-                    {{ guarantor.guarantorOfficeAddress }}
-                  </div>
-                  <div>
-                    {{ $t("guarantee.letterNumber") || "Guarantee Letter" }}:
-                    {{ guarantor.guaranteeLetterNo }} ({{
-                      formatDate(guarantor.guaranteeLetterDateEC)
-                    }}) {{ $t('calendar.ec') || 'E.C' }}
-                  </div>
-                  <div>
-                    {{ $t("guarantee.sdtLetterNumber") || "SDT Letter" }}:
-                    {{ guarantor.sdtLetterNo }} ({{
-                      formatDate(guarantor.sdtLetterDateEC) }}) {{ $t('calendar.ec') || 'E.C' }}
-                  </div>
-                  <div class="guarantor-documents">
-                    <a
-                      v-if="getDocumentWithIndex('guarantee_letter', idx)"
-                      :href="getDocumentWithIndex('guarantee_letter', idx)"
-                      target="_blank"
-                      class="file-link"
-                      >📄
-                      {{
-                        $t("guarantee.guaranteeLetter") || "Guarantee Letter"
-                      }}</a
-                    >
-                    <a
-                      v-if="getDocumentWithIndex('sdt_letter', idx)"
-                      :href="getDocumentWithIndex('sdt_letter', idx)"
-                      target="_blank"
-                      class="file-link"
-                      >📄 {{ $t("guarantee.sdtLetter") || "SDT Letter" }}</a
-                    >
-                    <a
-                      v-if="getDocumentWithIndex('guarantee_other', idx)"
-                      :href="getDocumentWithIndex('guarantee_other', idx)"
-                      target="_blank"
-                      class="file-link"
-                      >📄
-                      {{ $t("guarantee.otherDocument") || "Other Document" }}</a
-                    >
-                  </div>
-                </div>
-              </div>
-            </div>
+                  <td class="transfer-col-date">
+                    <div class="transfer-date-cell">
+                      <span class="transfer-date-day">{{ getTransferDay(transfer.transferDateEC) }}</span>
+                      <span class="transfer-date-month">{{ getEthiopianMonthName(transfer.transferDateEC) }}</span>
+                      <span class="transfer-date-year">{{ getTransferYear(transfer.transferDateEC) }}</span>
+                    </div>
+                  </td>
+                  <td class="transfer-col-from">
+                    <span class="department-badge from-dept">{{ transfer.fromDepartment || 'Unknown' }}</span>
+                    <span class="transfer-arrow"> → </span>
+                  </td>
+                  <td class="transfer-col-to">
+                    <span class="department-badge to-dept">{{ transfer.toDepartment || 'Unknown' }}</span>
+                  </td>
+                  <td class="transfer-col-reason">
+                    <span class="transfer-reason">{{ transfer.reason || '—' }}</span>
+                  </td>
+                  <td class="transfer-col-status">
+                    <span v-if="transfer.isCurrent" class="status-badge-transfer current">
+                      {{ $t("employee.current") || "Current" }}
+                    </span>
+                    <span v-else-if="transfer.isHistorical" class="status-badge-transfer historical">
+                      {{ $t("employee.historical") || "Historical" }}
+                    </span>
+                    <span v-else class="status-badge-transfer" :class="transfer.status">
+                      {{ transfer.statusLabel }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1791,7 +1813,6 @@
                   <td class="col-dates">
                     <div class="date-range">
                       <span class="start-date">{{ event.startDate }}</span>
-                      <span class="date-arrow">→</span>
                       <span class="end-date">{{ event.endDate || 'Present' }}</span>
                       <span class="calendar-tag">E.C</span>
                     </div>
@@ -1871,6 +1892,8 @@ const employee = ref(null);
 const compensationHistories = ref([]);
 const loading = ref(true);
 const loadingHistory = ref(false);
+const loadingTransfers = ref(false);
+const departmentTransfers = ref([]);
 const employeeId = route.params.id;
 
 const employmentHistory = ref([]);
@@ -2019,6 +2042,92 @@ const loadTerminationHistory = async () => {
   }
 };
 
+
+const loadDepartmentTransfers = async () => {
+  loadingTransfers.value = true;
+  try {
+    const response = await EmployeesService.getEmployeeDepartmentTransfers(employeeId);
+    if (response.success && response.data) {
+      const transfers = response.data.transfers || [];
+      
+      // Find the latest active transfer (current)
+      const activeTransfers = transfers.filter(t => t.status === 'active');
+      let currentTransferId = null;
+      
+      if (activeTransfers.length > 0) {
+        // Sort by transfer date (newest first), then by id (newest first)
+        const sorted = [...activeTransfers].sort((a, b) => {
+          // First compare by date
+          const dateA = a.transferDateEC.split('/').reverse().join('');
+          const dateB = b.transferDateEC.split('/').reverse().join('');
+          const dateCompare = dateB.localeCompare(dateA);
+          
+          // If dates are equal, compare by id (newer id = newer transfer)
+          if (dateCompare === 0) {
+            return b.id - a.id;
+          }
+          return dateCompare;
+        });
+        currentTransferId = sorted[0]?.id;
+      }
+      
+      // Add flags to each transfer
+      departmentTransfers.value = transfers.map(transfer => ({
+        ...transfer,
+        isCurrent: transfer.id === currentTransferId,
+        isHistorical: transfer.status === 'active' && transfer.id !== currentTransferId
+      }));
+    }
+  } catch (error) {
+    console.error('Failed to load department transfers:', error);
+    departmentTransfers.value = [];
+  } finally {
+    loadingTransfers.value = false;
+  }
+};
+
+// Transfer date helpers
+const getTransferDay = (date) => {
+  if (!date) return '--';
+  const parts = date.split('/');
+  return parts[0] || '--';
+};
+
+// Ethiopian month names
+const getEthiopianMonthName = (date) => {
+  if (!date) return '---';
+  const parts = date.split('/');
+  if (parts.length < 2) return '---';
+  
+  const month = parseInt(parts[1]);
+  const monthNames = [
+    'መስከረም',   // 1 - Meskerem
+    'ጥቅምት',     // 2 - Tikimt
+    'ህዳር',      // 3 - Hidar
+    'ታህሳስ',    // 4 - Tahsas
+    'ጥር',       // 5 - Tir
+    'የካቲት',    // 6 - Yekatit
+    'መጋቢት',    // 7 - Megabit
+    'ሚያዝያ',    // 8 - Miazia
+    'ግንቦት',    // 9 - Genbot
+    'ሰኔ',       // 10 - Sene
+    'ሐምሌ',     // 11 - Hamle
+    'ነሐሴ',     // 12 - Nehase
+    'ጳጉሜ'      // 13 - Pagume
+  ];
+  
+  if (month >= 1 && month <= 13) {
+    return monthNames[month - 1];
+  }
+  return '---';
+};
+
+const getTransferYear = (date) => {
+  if (!date) return '----';
+  const parts = date.split('/');
+  return parts[2] || '----';
+};
+
 // Helper method to get document URL by type (for single documents or first of indexed)
 const getDocumentUrl = (type) => {
   const docs = employee.value?.documents;
@@ -2038,6 +2147,253 @@ const getDocumentUrl = (type) => {
 
   return null;
 };
+
+// NEW: Get all documents as a flat array with meaningful descriptions
+const allDocuments = computed(() => {
+  const docs = employee.value?.documents;
+  if (!docs) return [];
+
+  const documentMap = [];
+  const employeeData = employee.value;
+
+  // Helper to get education level name
+  const getEducationLevelName = (level) => {
+    const labels = {
+      primary: 'Primary School',
+      secondary: 'Secondary School',
+      diploma: 'Diploma',
+      bachelor: "Bachelor's Degree",
+      master: "Master's Degree",
+      phd: 'PhD/Doctorate',
+      certificate: 'Certificate'
+    };
+    return labels[level] || level || 'Education';
+  };
+
+  // Helper to get child name by index
+  const getChildName = (index) => {
+    const children = employeeData?.children;
+    if (!children || !children[index]) return `Child ${index + 1}`;
+    return children[index].name || `Child ${index + 1}`;
+  };
+
+  // Helper to get guarantor name by index
+  const getGuarantorName = (index) => {
+    const guarantors = employeeData?.guaranteeInfo;
+    if (!guarantors || !guarantors[index]) return `Guarantor ${index + 1}`;
+    return guarantors[index].guarantorName || `Guarantor ${index + 1}`;
+  };
+
+  // Helper to get education description
+  const getEducationDescription = (index) => {
+    const education = employeeData?.education;
+    if (!education || !education[index]) return `Entry ${index + 1}`;
+    const edu = education[index];
+    const level = getEducationLevelName(edu.level);
+    return `${level} - ${edu.institutionName || 'Unknown Institution'}`;
+  };
+
+  // Helper to get training description
+  const getTrainingDescription = (index) => {
+    const training = employeeData?.training;
+    if (!training || !training[index]) return `Entry ${index + 1}`;
+    const train = training[index];
+    return `${train.trainingName || 'Training'} - ${train.institutionName || 'Unknown Institution'}`;
+  };
+
+  // Helper to get work experience description
+  const getWorkDescription = (index) => {
+    const work = employeeData?.workExperience;
+    if (!work || !work[index]) return `Entry ${index + 1}`;
+    const exp = work[index];
+    return `${exp.position || 'Position'} at ${exp.companyName || 'Unknown Company'}`;
+  };
+
+  // Document type configuration with description builders
+ // In the allDocuments computed property, update the docTypes array:
+
+const docTypes = [
+  { 
+    key: 'national_id', 
+    label: 'National ID (FAN)', 
+    section: 'Personal Information', 
+    sectionClass: 'personal', 
+    icon: '🪪',
+    getDescription: () => 'National Identity Document'
+  },
+  { 
+    key: 'education_certificate', 
+    label: 'Education Certificate', 
+    section: 'Education', 
+    sectionClass: 'education', 
+    icon: '🎓',
+    getDescription: (index) => getEducationDescription(index)
+  },
+  { 
+    key: 'training_certificate', 
+    label: 'Training Certificate', 
+    section: 'Training', 
+    sectionClass: 'training', 
+    icon: '📜',
+    getDescription: (index) => getTrainingDescription(index)
+  },
+  { 
+    key: 'naturalization_certificate', 
+    label: 'Naturalization Certificate', 
+    section: 'Nationality', 
+    sectionClass: 'nationality', 
+    icon: '🛂',
+    getDescription: () => 'Naturalization Document'
+  },
+  { 
+    key: 'health_document', 
+    label: 'Health Document', 
+    section: 'Health & Legal', 
+    sectionClass: 'health', 
+    icon: '🏥',
+    getDescription: () => 'Health Information Record'
+  },
+  { 
+    key: 'legal_document', 
+    label: 'Legal Document', 
+    section: 'Health & Legal', 
+    sectionClass: 'legal', 
+    icon: '⚖️',
+    getDescription: () => 'Legal Information Record'
+  },
+  { 
+    key: 'marriage_certificate', 
+    label: 'Marriage Certificate', 
+    section: 'Spouse', 
+    sectionClass: 'spouse', 
+    icon: '💍',
+    getDescription: () => `Marriage Certificate - ${employeeData?.spouseInfo?.fullName || 'Spouse'}`
+  },
+  { 
+    key: 'child_birth_certificate', 
+    label: 'Child Birth Certificate', 
+    section: 'Children', 
+    sectionClass: 'children', 
+    icon: '📄',
+    getDescription: (index) => `Birth Certificate - ${getChildName(index)}`
+  },
+  { 
+    key: 'child_adoption_certificate', 
+    label: 'Child Adoption Certificate', 
+    section: 'Children', 
+    sectionClass: 'children', 
+    icon: '📋',
+    getDescription: (index) => `Adoption Certificate - ${getChildName(index)}`
+  },
+  { 
+    key: 'child_medical_report', 
+    label: 'Child Medical Report', 
+    section: 'Children', 
+    sectionClass: 'children', 
+    icon: '🩺',
+    getDescription: (index) => `Medical Report - ${getChildName(index)}`
+  },
+  { 
+    key: 'experience_letter', 
+    label: 'Experience Letter', 
+    section: 'Work Experience', 
+    sectionClass: 'work', 
+    icon: '✉️',
+    getDescription: (index) => getWorkDescription(index)
+  },
+  { 
+    key: 'guarantee_letter', 
+    label: 'Guarantee Letter', 
+    section: 'Guarantee', 
+    sectionClass: 'guarantee', 
+    icon: '📑',
+    getDescription: (index) => `Guarantee Letter - ${getGuarantorName(index)}`
+  },
+  { 
+    key: 'sdt_letter', 
+    label: 'SDT Letter', 
+    section: 'Guarantee', 
+    sectionClass: 'guarantee', 
+    icon: '📝',
+    getDescription: (index) => `SDT Letter - ${getGuarantorName(index)}`
+  },
+  { 
+    key: 'guarantee_other', 
+    label: 'Other Guarantee Document', 
+    section: 'Guarantee', 
+    sectionClass: 'guarantee', 
+    icon: '📎',
+    getDescription: (index) => `Other Document - ${getGuarantorName(index)}`
+  },
+  // ========== ADD THESE NEW DOCUMENT TYPES ==========
+  { 
+    key: 'employment_letter', 
+    label: 'Employment Letter', 
+    section: 'Employment', 
+    sectionClass: 'employment', 
+    icon: '📋',
+    getDescription: () => 'Employment Contract/Letter'
+  },
+  { 
+    key: 'other_document', 
+    label: 'Other Document', 
+    section: 'Other', 
+    sectionClass: 'other', 
+    icon: '📎',
+    getDescription: () => 'Additional Document'
+  },
+  { 
+    key: 'custom_document', 
+    label: 'Custom Document', 
+    section: 'Custom', 
+    sectionClass: 'custom', 
+    icon: '📄',
+    getDescription: (index) => `Custom Document ${index + 1}`
+  },
+  // ================================================
+];
+
+  // Process each document type
+  docTypes.forEach(docType => {
+    const { key, label, section, sectionClass, icon, getDescription } = docType;
+
+    // Check if there are indexed versions
+    let hasIndexed = false;
+    for (let i = 0; i < 20; i++) {
+      const indexedKey = `${key}_${i}`;
+      if (docs[indexedKey]?.fileUrl) {
+        hasIndexed = true;
+        documentMap.push({
+          key: indexedKey,
+          label: label,
+          section: section,
+          sectionClass: sectionClass,
+          icon: icon,
+          description: getDescription(i),
+          url: docs[indexedKey].fileUrl
+        });
+      }
+    }
+
+    // If no indexed versions, check single document
+    if (!hasIndexed && docs[key]?.fileUrl) {
+      documentMap.push({
+        key: key,
+        label: label,
+        section: section,
+        sectionClass: sectionClass,
+        icon: icon,
+        description: getDescription(0),
+        url: docs[key].fileUrl
+      });
+    }
+  });
+
+  return documentMap;
+});
+
+// Total documents count
+const totalDocuments = computed(() => allDocuments.value.length);
 
 const getComponentLabel = (componentKey) => {
   const labels = {
@@ -2366,10 +2722,442 @@ onMounted(() => {
   loadEmployeeData();
   loadCompensationHistory();
   loadTerminationHistory();
+  loadDepartmentTransfers();
 });
 </script>
 
 <style scoped>
+
+/* Add to the section-badge styles */
+.section-badge.employment {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.section-badge.other {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.section-badge.custom {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+/* ============================================
+   DOCUMENTS SECTION STYLES
+   ============================================ */
+
+.documents-card.full-width {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-top: 32px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.documents-content {
+  padding: 24px;
+}
+
+.documents-empty {
+  text-align: center;
+  padding: 40px;
+  color: #94a3b8;
+}
+
+.documents-empty .empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.documents-empty p {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #64748b;
+}
+
+.documents-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.documents-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.documents-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.documents-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9edf2;
+  white-space: nowrap;
+}
+
+.documents-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.documents-table tbody tr {
+  transition: background 0.2s;
+}
+
+.documents-table tbody tr:hover {
+  background: #fafcfc;
+}
+
+/* Document column widths */
+.doc-col-icon { width: 50px; }
+.doc-col-name { min-width: 160px; }
+.doc-col-section { width: 140px; }
+.doc-col-description { min-width: 200px; }
+.doc-col-action { width: 100px; }
+
+.doc-icon {
+  font-size: 20px;
+  display: inline-block;
+}
+
+.doc-name {
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.doc-description {
+  font-size: 12px;
+  color: #475569;
+  display: block;
+  line-height: 1.4;
+}
+
+.section-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.section-badge.personal {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.section-badge.education {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.section-badge.training {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.section-badge.nationality {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.section-badge.health {
+  background: #fce4ec;
+  color: #dc2626;
+}
+
+.section-badge.legal {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.section-badge.spouse {
+  background: #fce7f3;
+  color: #db2777;
+}
+
+.section-badge.children {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.section-badge.work {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.section-badge.guarantee {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.doc-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+.doc-action-btn-view {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.doc-action-btn-view:hover {
+  background: #dbeafe;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2);
+}
+
+.doc-action-btn-view svg {
+  width: 14px;
+  height: 14px;
+}
+
+.doc-action-btn-disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.doc-action-btn-disabled:hover {
+  background: #f1f5f9;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ============================================
+   DEPARTMENT TRANSFER HISTORY STYLES
+   ============================================ */
+
+.transfer-history-card.full-width {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-top: 32px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.transfer-content {
+  padding: 24px;
+}
+
+.transfer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: #94a3b8;
+}
+
+.spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.transfer-empty {
+  text-align: center;
+  padding: 40px;
+  color: #94a3b8;
+}
+
+.transfer-empty .empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.transfer-empty p {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #64748b;
+}
+
+.transfer-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.transfer-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.transfer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.transfer-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  background: #f8fafc;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e9edf2;
+  white-space: nowrap;
+}
+
+.transfer-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.transfer-table tbody tr:hover {
+  background: #fafcfc;
+}
+
+/* Transfer column widths */
+.transfer-col-date { width: 100px; }
+.transfer-col-from { width: 140px; }
+.transfer-col-to { width: 140px; }
+.transfer-col-reason { min-width: 150px; }
+.transfer-col-status { width: 100px; }
+
+/* Transfer date cell */
+.transfer-date-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.transfer-date-day {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.transfer-date-month {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.transfer-date-year {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* Department badges */
+.department-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.department-badge.from-dept {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.department-badge.to-dept {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.transfer-arrow {
+  margin: 0 6px;
+  color: #94a3b8;
+  font-weight: 300;
+}
+
+.transfer-reason {
+  font-size: 12px;
+  color: #475569;
+  display: block;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status badge for transfers */
+.status-badge-transfer {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.status-badge-transfer.current {
+  background: #10b981;
+  color: white;
+}
+
+.status-badge-transfer.historical {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.status-badge-transfer.active {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.status-badge-transfer.reversed {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.status-badge-transfer.completed {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+/* Current Transfer Row */
+.transfer-row.current-transfer {
+  background: #f0fdf4;
+  border-left: 4px solid #10b981;
+}
+
+.transfer-row.current-transfer:hover {
+  background: #dcfce7;
+}
+
+.transfer-row.historical-transfer {
+  opacity: 0.85;
+}
+
+.transfer-row.historical-transfer:hover {
+  opacity: 1;
+}
+
 /* ============================================
    COMPENSATION HISTORY TABLE - NO SCROLL
    ============================================ */
@@ -2782,13 +3570,17 @@ onMounted(() => {
 
 @media (max-width: 900px) {
   .history-table thead th,
-  .employment-table thead th {
+  .employment-table thead th,
+  .documents-table thead th,
+  .transfer-table thead th {
     font-size: 10px;
     padding: 8px 10px;
   }
 
   .history-table tbody td,
-  .employment-table tbody td {
+  .employment-table tbody td,
+  .documents-table tbody td,
+  .transfer-table tbody td {
     padding: 10px 12px;
     font-size: 12px;
   }
@@ -2802,21 +3594,34 @@ onMounted(() => {
   .col-status { width: 120px; }
   .col-dates { width: 140px; }
   .col-duration { width: 100px; }
+  .doc-col-section { width: 110px; }
+  .doc-col-description { min-width: 150px; }
+  .transfer-col-date { width: 80px; }
+  .transfer-col-from { width: 100px; }
+  .transfer-col-to { width: 100px; }
+  .transfer-col-reason { min-width: 120px; }
+  .transfer-col-status { width: 80px; }
 }
 
 @media (max-width: 768px) {
   .history-table-wrapper.no-scroll,
-  .employment-table-wrapper.no-scroll {
+  .employment-table-wrapper.no-scroll,
+  .documents-table-wrapper,
+  .transfer-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .history-table,
-  .employment-table {
+  .employment-table,
+  .documents-table,
+  .transfer-table {
     min-width: 700px;
   }
 
-  .history-content-full.no-scroll {
+  .history-content-full.no-scroll,
+  .documents-content,
+  .transfer-content {
     padding: 12px 16px;
   }
 }
@@ -3291,65 +4096,6 @@ onMounted(() => {
   height: 1px;
   background: #eef2ff;
   margin: 8px 0;
-}
-
-/* File links */
-.file-link {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.file-link:hover {
-  text-decoration: underline;
-}
-
-.file-link-inline {
-  color: #6366f1;
-  text-decoration: none;
-  font-size: 11px;
-  margin-left: 12px;
-  padding: 2px 8px;
-  background: #eef2ff;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.file-link-inline:hover {
-  background: #e0e7ff;
-  text-decoration: underline;
-}
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 60px;
-  background: white;
-  border-radius: 24px;
-}
-
-.empty-state svg {
-  width: 64px;
-  height: 64px;
-  color: #cbd5e1;
-  margin-bottom: 20px;
-}
-
-.empty-state h3 {
-  font-size: 18px;
-  color: #1e293b;
-  margin-bottom: 12px;
-}
-
-.empty-state a {
-  color: #6366f1;
-  text-decoration: none;
 }
 
 /* Education, Training, Work, Guarantee lists */
@@ -3841,12 +4587,16 @@ onMounted(() => {
   }
 
   .history-table,
-  .employment-table {
+  .employment-table,
+  .documents-table,
+  .transfer-table {
     min-width: 700px;
   }
 
   .history-table-wrapper,
-  .employment-table-wrapper {
+  .employment-table-wrapper,
+  .documents-table-wrapper,
+  .transfer-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -3865,4 +4615,4 @@ onMounted(() => {
     justify-content: center;
   }
 }
-</style>1
+</style>

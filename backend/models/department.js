@@ -18,6 +18,18 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: "parentDepartmentId", 
         as: "parent" 
       });
+
+        // Department has many DepartmentTransfers as "from" department
+  Department.hasMany(models.DepartmentTransfer, {
+    foreignKey: 'fromDepartmentId',
+    as: 'fromTransfers'
+  });
+
+  // Department has many DepartmentTransfers as "to" department
+  Department.hasMany(models.DepartmentTransfer, {
+    foreignKey: 'toDepartmentId',
+    as: 'toTransfers'
+  });
     }
   }
 

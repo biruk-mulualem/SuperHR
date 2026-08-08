@@ -27,6 +27,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       documentType: {
         type: DataTypes.ENUM(
+          // Legacy document types
           "id_card",
           "cv", 
           "degree", 
@@ -37,22 +38,35 @@ module.exports = (sequelize, DataTypes) => {
           "certificate", 
           "contract", 
           "performance-review",
-          // ADD NEW DOCUMENT TYPES FOR CHILDREN
-          "child_profile",
-          "child_birth_certificate",
-          "child_medical_report",
-          "child_adoption_certificate",
-          "profile_picture",
-          "education_certificate",
-          "training_certificate",
-          "experience_letter",
-          "sdt_letter",
           "national_id",
           "naturalization_certificate",
           "health_document",
           "legal_document",
+          
+          // Family documents
+          "child_profile",
+          "child_birth_certificate",
+          "child_medical_report",
+          "child_adoption_certificate",
           "spouse_profile",
-          "marriage_certificate"
+          "marriage_certificate",
+          
+          // Education & Training
+          "education_certificate",
+          "training_certificate",
+          "experience_letter",
+          
+          // Guarantee documents
+          "sdt_letter",
+          "guarantee_other",
+          
+          // Profile
+          "profile_picture",
+          
+          // ========== NEW DOCUMENT TYPES FOR SCANNED DOCUMENTS ==========
+          "employment_letter",    // ✅ Employment Letter
+          "other_document",       // ✅ Other Document
+          "custom_document"       // ✅ Custom Document (user-defined)
         ),
         allowNull: false,
         field: "document_type",

@@ -121,7 +121,7 @@
             </div>
           </div>
 
-          <!-- ✅ Expanded Employees - All employees, scrollable, NO pagination -->
+          <!-- Expanded Employees -->
           <div v-if="expandedDept === dept.departmentId" class="dept-employees">
             <!-- Loading state -->
             <div v-if="deptEmployeeLoading[dept.departmentId]" class="emp-loading">
@@ -147,7 +147,7 @@
                 </div>
               </div>
 
-              <!-- ✅ Scrollable employee list - NO pagination -->
+              <!-- Scrollable employee list -->
               <div class="emp-list-scroll">
                 <div
                   v-for="emp in getFilteredDepartmentEmployees(dept.departmentId)"
@@ -158,23 +158,33 @@
                     {{ getInitials(emp.fullName) }}
                   </div>
                   <div class="emp-details">
-                    <span class="emp-name">{{ emp.fullName || 'N/A' }}</span>
-                    <span class="emp-name-english" v-if="emp.fullNameEnglish">
-                      {{ emp.fullNameEnglish }}
-                    </span>
-                    <span class="emp-id">ID: {{ emp.employeeId || emp.id }}</span>
+                    <div class="emp-name-row">
+                      <span class="emp-name">{{ emp.fullName || 'N/A' }}</span>
+                      <span class="emp-name-english" v-if="emp.fullNameEnglish">
+                        {{ emp.fullNameEnglish }}
+                      </span>
+                    </div>
+                    <div class="emp-meta-row">
+                      <span class="emp-id">ID: {{ emp.employeeId || emp.id }}</span>
+                      <span class="emp-position" v-if="emp.position">• {{ emp.position }}</span>
+                      <span class="emp-email" v-if="emp.email">• {{ emp.email }}</span>
+                    </div>
                   </div>
-                  <span class="emp-email">{{ emp.email || 'No email' }}</span>
-                  <button class="emp-view-btn" @click.stop="viewEmployee(emp.id)">
-                    View →
-                  </button>
+                  <div class="emp-actions">
+                    <button class="emp-view-btn" @click.stop="viewEmployee(emp.id)">
+                      View →
+                    </button>
+                    <button class="emp-transfer-btn" @click.stop="openTransferModal(emp, dept)">
+                      🔄 Transfer
+                    </button>
+                  </div>
                 </div>
                 <div v-if="getFilteredDepartmentEmployees(dept.departmentId).length === 0" class="emp-empty">
                   No employees found
                 </div>
               </div>
 
-              <!-- ✅ Show total count -->
+              <!-- Show total count -->
               <div class="emp-footer">
                 <span class="emp-total-count">
                   Showing {{ getFilteredDepartmentEmployees(dept.departmentId).length }} of {{ getDepartmentEmployees(dept.departmentId).length }} employees
@@ -220,6 +230,68 @@
       </div>
     </template>
 
+    <!-- Transfer Modal -->
+    <div v-if="showTransferModal" class="modal-overlay" @click="closeTransferModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>Transfer Employee</h3>
+          <button class="modal-close-btn" @click="closeTransferModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="transfer-info">
+            <p><strong>Employee:</strong> {{ selectedEmployee?.fullName || 'N/A' }}</p>
+            <p><strong>Current Department:</strong> {{ selectedDept?.departmentName || 'N/A' }}</p>
+          </div>
+          <div class="form-group">
+            <label>Transfer to Department</label>
+            <select v-model="transferData.toDepartmentId" class="form-select">
+              <option :value="null">Select Department</option>
+              <option 
+                v-for="dept in departments" 
+                :key="dept.departmentId" 
+                :value="dept.departmentId"
+                :disabled="dept.departmentId === selectedEmployee?.departmentId"
+              >
+                {{ dept.departmentName }} ({{ dept.count }} employees)
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Transfer Date (EC)</label>
+            <input 
+              type="text" 
+              v-model="transferData.transferDateEC" 
+              placeholder="DD/MM/YYYY" 
+              class="form-input"
+            />
+          </div>
+          <div class="form-group">
+            <label>Reason for Transfer</label>
+            <input 
+              type="text" 
+              v-model="transferData.reason" 
+              placeholder="Reason for department change" 
+              class="form-input"
+            />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-cancel-btn" @click="closeTransferModal">Cancel</button>
+          <button class="modal-confirm-btn" @click="confirmTransfer" :disabled="transferring">
+            {{ transferring ? 'Transferring...' : 'Confirm Transfer' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success/Error Toast -->
+    <div v-if="toastMessage" class="toast-container">
+      <div :class="['toast', toastType]">
+        <span>{{ toastMessage }}</span>
+        <button @click="clearToast">×</button>
+      </div>
+    </div>
+
     <!-- Footer -->
     <div class="page-footer">
       <span>Updated: {{ lastUpdated }}</span>
@@ -232,7 +304,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import employeeService from "@/stores/employee";
 
@@ -248,6 +320,19 @@ const deptEmployeeSearch = ref({});
 const deptEmployeeLoading = ref({});
 const deptEmployeeData = ref({});
 const lastUpdated = ref(new Date().toLocaleString());
+
+// Transfer Modal State
+const showTransferModal = ref(false);
+const selectedEmployee = ref(null);
+const selectedDept = ref(null);
+const transferring = ref(false);
+const toastMessage = ref('');
+const toastType = ref('success');
+const transferData = ref({
+  toDepartmentId: null,
+  transferDateEC: '',
+  reason: ''
+});
 
 const departments = ref([]);
 
@@ -332,6 +417,20 @@ const visiblePages = computed(() => {
   return pages;
 });
 
+// ========== TOAST METHODS ==========
+const showToast = (message, type = 'success') => {
+  toastMessage.value = message;
+  toastType.value = type;
+  setTimeout(() => {
+    clearToast();
+  }, 5000);
+};
+
+const clearToast = () => {
+  toastMessage.value = '';
+  toastType.value = 'success';
+};
+
 // ========== DEPARTMENT EMPLOYEE METHODS ==========
 
 const getDepartmentEmployees = (deptId) => {
@@ -347,20 +446,18 @@ const getFilteredDepartmentEmployees = (deptId) => {
     e.fullName?.toLowerCase().includes(s) ||
     e.fullNameEnglish?.toLowerCase().includes(s) ||
     e.employeeId?.toLowerCase().includes(s) ||
-    e.email?.toLowerCase().includes(s)
+    e.email?.toLowerCase().includes(s) ||
+    e.position?.toLowerCase().includes(s)
   );
 };
 
-// ✅ Load ALL employees when a department is expanded (no pagination)
+// Load ALL employees when a department is expanded
 const loadDepartmentEmployees = async (deptId, search = '') => {
   if (deptEmployeeLoading.value[deptId]) return;
   
   deptEmployeeLoading.value[deptId] = true;
   
   try {
-    console.log(`📊 Loading all employees - Dept: ${deptId}, Search: "${search}"`);
-    
-    // ✅ Fetch ALL employees (limit 1000 to get all)
     const response = await employeeService.getDepartmentEmployees({
       departmentId: deptId,
       page: 1,
@@ -368,12 +465,9 @@ const loadDepartmentEmployees = async (deptId, search = '') => {
       search: search
     });
     
-    console.log('📥 Response:', response);
-    
     if (response.success && response.data) {
       const data = response.data;
       deptEmployeeData.value[deptId] = data.employees || [];
-      console.log(`✅ Loaded ${data.employees?.length || 0} employees`);
     }
   } catch (error) {
     console.error('Error loading department employees:', error);
@@ -384,16 +478,13 @@ const loadDepartmentEmployees = async (deptId, search = '') => {
 
 // Toggle department expansion
 const toggleDepartment = async (deptId) => {
-  // If clicking the same department, collapse it
   if (expandedDept.value === deptId) {
     expandedDept.value = null;
     return;
   }
   
-  // Expand the department
   expandedDept.value = deptId;
   
-  // ✅ Load ALL employees for this department (lazy loading)
   if (!deptEmployeeData.value[deptId] || deptEmployeeData.value[deptId].length === 0) {
     await loadDepartmentEmployees(deptId, '');
   }
@@ -405,6 +496,82 @@ const searchDepartmentEmployees = (deptId) => {
     const search = deptEmployeeSearch.value[deptId] || '';
     loadDepartmentEmployees(deptId, search);
   }, 300);
+};
+
+// ========== TRANSFER MODAL METHODS ==========
+
+const openTransferModal = (employee, department) => {
+  selectedEmployee.value = employee;
+  selectedDept.value = department;
+  
+  // Set current date as default
+  const now = new Date();
+  const ecYear = now.getFullYear() - 8;
+  const ecMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const ecDay = String(now.getDate()).padStart(2, '0');
+  
+  transferData.value = {
+    toDepartmentId: null,
+    transferDateEC: `${ecDay}/${ecMonth}/${ecYear}`,
+    reason: ''
+  };
+  
+  showTransferModal.value = true;
+};
+
+const closeTransferModal = () => {
+  showTransferModal.value = false;
+  selectedEmployee.value = null;
+  selectedDept.value = null;
+  transferring.value = false;
+};
+
+const confirmTransfer = async () => {
+  if (!transferData.value.toDepartmentId) {
+    showToast('Please select a department to transfer to', 'error');
+    return;
+  }
+  
+  if (!transferData.value.transferDateEC) {
+    showToast('Please enter a transfer date', 'error');
+    return;
+  }
+  
+  // Validate EC date format
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(transferData.value.transferDateEC)) {
+    showToast('Invalid date format. Use DD/MM/YYYY', 'error');
+    return;
+  }
+  
+  transferring.value = true;
+  
+  try {
+    const transferPayload = {
+      employeeId: selectedEmployee.value.id,
+      fromDepartmentId: selectedDept.value.departmentId,
+      toDepartmentId: transferData.value.toDepartmentId,
+      transferDateEC: transferData.value.transferDateEC,
+      reason: transferData.value.reason || 'Department transfer',
+      approvedBy: null
+    };
+    
+    const response = await employeeService.createDepartmentTransfer(transferPayload);
+    
+    if (response.success) {
+      showToast(`✅ ${selectedEmployee.value.fullName} successfully transferred to new department`, 'success');
+      
+      // Refresh data
+      await refreshData();
+      closeTransferModal();
+    } else {
+      showToast(`❌ Failed to transfer employee: ${response.error || 'Unknown error'}`, 'error');
+    }
+  } catch (error) {
+    console.error('Error transferring employee:', error);
+    showToast('❌ Failed to transfer employee. Please try again.', 'error');
+  } finally {
+    transferring.value = false;
+  }
 };
 
 // ========== UTILITY METHODS ==========
@@ -583,12 +750,12 @@ const loadDepartmentData = async () => {
   }
 };
 
-const refreshData = () => {
+const refreshData = async () => {
   deptEmployeeData.value = {};
   deptEmployeeLoading.value = {};
   deptEmployeeSearch.value = {};
   expandedDept.value = null;
-  loadDepartmentData();
+  await loadDepartmentData();
 };
 
 // ========== LIFECYCLE ==========
@@ -1072,7 +1239,6 @@ onMounted(() => {
   background: white;
 }
 
-/* ✅ Scrollable employee list - NO pagination */
 .emp-list-scroll {
   max-height: 400px;
   overflow-y: auto;
@@ -1102,8 +1268,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef2ff;
   transition: background 0.15s;
 }
 
@@ -1116,15 +1282,15 @@ onMounted(() => {
 }
 
 .emp-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
@@ -1133,21 +1299,42 @@ onMounted(() => {
   min-width: 0;
 }
 
+.emp-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .emp-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: #0f172a;
 }
 
 .emp-name-english {
-  font-size: 11px;
+  font-size: 12px;
   color: #94a3b8;
+}
+
+.emp-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
 }
 
 .emp-id {
   font-size: 11px;
   color: #94a3b8;
   font-family: 'Courier New', monospace;
+}
+
+.emp-position {
+  font-size: 12px;
+  color: #6366f1;
+  font-weight: 500;
 }
 
 .emp-email {
@@ -1157,6 +1344,12 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.emp-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .emp-view-btn {
@@ -1169,11 +1362,30 @@ onMounted(() => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  flex-shrink: 0;
 }
 
 .emp-view-btn:hover {
   background: #4f46e5;
+  transform: scale(1.05);
+}
+
+.emp-transfer-btn {
+  padding: 4px 10px;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.emp-transfer-btn:hover {
+  background: #d97706;
   transform: scale(1.05);
 }
 
@@ -1184,7 +1396,6 @@ onMounted(() => {
   font-size: 13px;
 }
 
-/* ✅ Footer with total count */
 .emp-footer {
   display: flex;
   justify-content: flex-end;
@@ -1195,6 +1406,228 @@ onMounted(() => {
 .emp-total-count {
   font-size: 12px;
   color: #94a3b8;
+}
+
+/* ========== TOAST ========== */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1100;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  min-width: 300px;
+  animation: slideIn 0.3s ease;
+}
+
+.toast.success {
+  border-left: 4px solid #10b981;
+  background: #f0fdf4;
+}
+
+.toast.error {
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.toast button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+.toast button:hover {
+  color: #ef4444;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ========== MODAL ========== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.2s;
+}
+
+.modal-close-btn:hover {
+  color: #ef4444;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.transfer-info {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+.transfer-info p {
+  margin: 4px 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.transfer-info p strong {
+  color: #0f172a;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.form-select,
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: white;
+}
+
+.form-select:focus,
+.form-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.form-select option:disabled {
+  color: #94a3b8;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.modal-cancel-btn {
+  padding: 8px 20px;
+  background: #f1f5f9;
+  color: #475569;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-cancel-btn:hover {
+  background: #e2e8f0;
+}
+
+.modal-confirm-btn {
+  padding: 8px 24px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-confirm-btn:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: scale(1.02);
+}
+
+.modal-confirm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ========== EMPTY STATE ========== */
@@ -1305,8 +1738,11 @@ onMounted(() => {
   .dept-bar-wrap { min-width: unset; }
   .emp-header { flex-direction: column; align-items: stretch; }
   .emp-header-actions { flex-direction: column; align-items: stretch; }
-  .emp-email { max-width: 100px; }
+  .emp-item { flex-wrap: wrap; }
+  .emp-actions { width: 100%; justify-content: flex-start; margin-top: 4px; }
   .emp-list-scroll { max-height: 300px; }
+  .modal-content { width: 95%; margin: 16px; }
+  .toast { min-width: auto; width: 90%; }
 }
 
 @media (max-width: 480px) {
@@ -1315,5 +1751,8 @@ onMounted(() => {
   .dept-name { font-size: 14px; }
   .emp-email { display: none; }
   .emp-list-scroll { max-height: 250px; }
+  .modal-footer { flex-direction: column; }
+  .modal-confirm-btn,
+  .modal-cancel-btn { width: 100%; text-align: center; }
 }
 </style>

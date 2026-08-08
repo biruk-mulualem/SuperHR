@@ -250,12 +250,14 @@ exports.importAttendanceFile = async (req, res) => {
         }
 
         // ✅ FIX 1: Validate employee exists - DON'T use getEmployeeMap
-        const employee = await Employee.findOne({
-          where: {
-            employee_id: employeeId,
-            is_active: true
-          }
-        });
+       // ✅ FIX 1: Validate employee exists - ONLY select employee_id
+const employee = await Employee.findOne({
+  where: {
+    employee_id: employeeId,
+    is_active: true
+  },
+  attributes: ['employee_id']  // ← Only select the employee_id field!
+});
 
         if (!employee) {
           // Don't throw - just log error and continue

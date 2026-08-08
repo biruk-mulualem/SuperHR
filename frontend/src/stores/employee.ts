@@ -1823,6 +1823,141 @@ async getHiringDetails(params?: { departmentId?: string | null; months?: string 
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================================
+// DEPARTMENT TRANSFER METHODS
+// ============================================================================
+
+async getEmployeeDepartmentTransfers(
+  employeeId: number,
+  params?: {
+    status?: 'active' | 'reversed' | 'completed' | 'all'
+    page?: number
+    limit?: number
+  }
+) {
+  try {
+    const queryParams = new URLSearchParams()
+    
+    if (params?.status && params.status !== 'all') {
+      queryParams.append('status', params.status)
+    }
+    if (params?.page) queryParams.append('page', params.page.toString())
+    if (params?.limit) queryParams.append('limit', params.limit.toString())
+
+    const url = `/employees/department-transfers/employee/${employeeId}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`
+    const response = await api.get(url)
+    
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Get employee department transfers error:', error)
+    return {
+      success: false,
+      data: null,
+      error: error.response?.data?.error || 'Failed to fetch employee transfers'
+    }
+  }
+}
+/**
+ * Create a new department transfer
+ * POST /api/employees/department-transfers
+ * This saves the transfer record AND updates the employee's department
+ */
+async createDepartmentTransfer(params: {
+  employeeId: number
+  fromDepartmentId?: number  // Optional - uses employee's current department if not provided
+  toDepartmentId: number
+  transferDateEC: string     // Ethiopian calendar date (DD/MM/YYYY)
+  reason?: string
+  approvedBy?: number
+  notes?: string
+}) {
+  try {
+    // ✅ Updated URL: /employees/department-transfers
+    const response = await api.post('/employees/department-transfers', {
+      employeeId: params.employeeId,
+      fromDepartmentId: params.fromDepartmentId,
+      toDepartmentId: params.toDepartmentId,
+      transferDateEC: params.transferDateEC,
+      reason: params.reason,
+      approvedBy: params.approvedBy,
+      notes: params.notes
+    })
+    
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Create department transfer error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to create department transfer'
+    }
+  }
+}
+
+/**
+ * Update transfer status (reverse or complete)
+ * PUT /api/employees/department-transfers/:transferId/status
+ * If status is 'reversed', the employee's department is reverted back
+ */
+async updateTransferStatus(transferId: number, params: {
+  status: 'active' | 'reversed' | 'completed'
+  notes?: string
+}) {
+  try {
+    // ✅ Updated URL: /employees/department-transfers/${transferId}/status
+    const response = await api.put(`/employees/department-transfers/${transferId}/status`, {
+      status: params.status,
+      notes: params.notes
+    })
+    
+    return {
+      success: true,
+      message: response.data.message,
+      data: response.data.data
+    }
+  } catch (error: any) {
+    console.error('Update transfer status error:', error)
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to update transfer status'
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ============================================================================
   // UTILITY METHODS
   // ============================================================================

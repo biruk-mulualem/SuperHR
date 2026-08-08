@@ -1,4 +1,4 @@
-const { Employee, Department, Position, User, EmployeeDocument,CompensationHistory, Role ,TerminationHistory ,sequelize } = require('../models');
+const { Employee, Department, Position, User,DepartmentTransfer, EmployeeDocument,CompensationHistory, Role ,TerminationHistory ,sequelize } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
@@ -4738,13 +4738,14 @@ exports.getHiringDetails = async (req, res) => {
 
 
 
-// employeeController.js - uploadEmployeeDocument (UPDATED)
-
+// ============================================================================
+// UPLOAD EMPLOYEE DOCUMENT - FULLY UPDATED (Supports multiple documents)
+// ============================================================================
 
 exports.uploadEmployeeDocument = async (req, res) => {
   try {
     const { id, type } = req.params;
-    const { subType, index, description } = req.body;
+    const { subType, index, description, documentName } = req.body;
     const documentType = type;
     
     const employee = await Employee.findByPk(id);
@@ -4759,49 +4760,261 @@ exports.uploadEmployeeDocument = async (req, res) => {
     
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     
-    // ========== DELETE OLD DOCUMENT IF EXISTS ==========
-    let existingDoc = null;
+    // ================================================================
+    // DOCUMENT TYPES THAT SUPPORT MULTIPLE DOCUMENTS (NO REPLACEMENT)
+    // ================================================================
+    const multiDocumentTypes = [
+      'custom_document',
+      'employment_letter',
+      'other_document',
+      'guarantee_letter',
+      'sdt_letter',
+      'guarantee_other'
+    ];
     
-    // For documents with an index (guarantee_letter, sdt_letter, etc.)
-    const hasIndex = index !== undefined && index !== null && index !== '' && index !== 'null';
-    
-    if (hasIndex) {
-      // ✅ Find existing document for this specific index (guarantor)
-      existingDoc = await EmployeeDocument.findOne({
-        where: {
-          employeeId: id,
-          documentType: documentType,
-          index: parseInt(index)
-        }
-      });
-    } else {
-      // For single documents (national_id, degree, cv, etc.)
-      existingDoc = await EmployeeDocument.findOne({
+    // ================================================================
+    // HANDLE MULTI-DOCUMENT TYPES - ALWAYS CREATE NEW
+    // ================================================================
+    if (multiDocumentTypes.includes(documentType)) {
+      console.log(`📄 Uploading ${documentType} for employee:`, id);
+      
+      // Find the next available index for this document type
+      const existingDocs = await EmployeeDocument.findAll({
         where: {
           employeeId: id,
           documentType: documentType
+        },
+        attributes: ['index'],
+        order: [['index', 'DESC']]
+      });
+      
+      let nextIndex = 0;
+      if (existingDocs.length > 0) {
+        const maxIndex = Math.max(...existingDocs.map(doc => doc.index || 0));
+        nextIndex = maxIndex + 1;
+      }
+      
+      console.log(`📄 Next ${documentType} index: ${nextIndex}`);
+      
+      // Determine folder
+      let folder = 'other_documents';
+      if (documentType === 'guarantee_letter' || documentType === 'sdt_letter' || documentType === 'guarantee_other') {
+        folder = 'guarantees';
+      } else if (documentType === 'employment_letter') {
+        folder = 'employment_letters';
+      } else if (documentType === 'custom_document') {
+        folder = 'other_documents';
+      }
+      
+      const relativePath = `/uploads/documents/${folder}/${req.file.filename}`;
+      const absoluteUrl = `${baseUrl}${relativePath}`;
+      
+      // Use custom name if provided, otherwise use original filename
+      const customName = documentName || req.body.documentName || req.file.originalname;
+      
+      // ✅ CREATE NEW DOCUMENT (don't delete anything)
+      const document = await EmployeeDocument.create({
+        employeeId: id,
+        documentType: documentType,
+        subType: subType || null,
+        index: nextIndex,
+        documentName: customName,
+        fileName: req.file.filename,
+        fileUrl: absoluteUrl,
+        filePath: req.file.path,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        description: description || null,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+      
+      console.log(`✅ ${documentType} created with ID: ${document.documentId}, Index: ${nextIndex}`);
+      
+      // ================================================================
+      // SPECIAL HANDLING FOR GUARANTEE DOCUMENTS - Update JSONB
+      // ================================================================
+      if (['guarantee_letter', 'sdt_letter', 'guarantee_other'].includes(documentType)) {
+        const guarantees = employee.guaranteeInfo || [];
+        const guarIdx = (index !== undefined && index !== null && index !== '' && index !== 'null') 
+          ? parseInt(index) 
+          : 0;
+        
+        const fieldMap = {
+          'guarantee_letter': 'guaranteeLetterUrls',
+          'sdt_letter': 'sdtLetterUrls',
+          'guarantee_other': 'otherDocumentUrls'
+        };
+        const field = fieldMap[documentType];
+        
+        if (guarantees[guarIdx]) {
+          // Initialize array if it doesn't exist
+          if (!guarantees[guarIdx][field]) {
+            guarantees[guarIdx][field] = [];
+          }
+          
+          // ✅ Add new document to the array (don't replace)
+          guarantees[guarIdx][field].push({
+            documentId: document.documentId,
+            fileUrl: absoluteUrl,
+            fileName: req.file.originalname,
+            uploadedAt: new Date().toISOString()
+          });
+          
+          // For backward compatibility, keep the first URL as the main one
+          if (!guarantees[guarIdx]['guaranteeLetterUrl'] && documentType === 'guarantee_letter') {
+            guarantees[guarIdx]['guaranteeLetterUrl'] = absoluteUrl;
+            guarantees[guarIdx]['guaranteeLetterDocumentId'] = document.documentId;
+          }
+          if (!guarantees[guarIdx]['sdtLetterUrl'] && documentType === 'sdt_letter') {
+            guarantees[guarIdx]['sdtLetterUrl'] = absoluteUrl;
+            guarantees[guarIdx]['sdtLetterDocumentId'] = document.documentId;
+          }
+          if (!guarantees[guarIdx]['otherDocumentUrl'] && documentType === 'guarantee_other') {
+            guarantees[guarIdx]['otherDocumentUrl'] = absoluteUrl;
+            guarantees[guarIdx]['otherDocumentDocumentId'] = document.documentId;
+          }
+          
+          await employee.update({ guaranteeInfo: guarantees });
+        }
+      }
+      
+      // ================================================================
+      // SPECIAL HANDLING FOR EMPLOYMENT LETTER - Update JSONB if needed
+      // ================================================================
+      if (documentType === 'employment_letter') {
+        // You can store employment letters in a separate array in employee JSONB
+        const employmentLetters = employee.employmentLetters || [];
+        employmentLetters.push({
+          documentId: document.documentId,
+          fileUrl: absoluteUrl,
+          fileName: req.file.originalname,
+          description: description || null,
+          uploadedAt: new Date().toISOString()
+        });
+        await employee.update({ employmentLetters: employmentLetters });
+      }
+      
+      // ================================================================
+      // SPECIAL HANDLING FOR OTHER DOCUMENT - Update JSONB if needed
+      // ================================================================
+      if (documentType === 'other_document') {
+        const otherDocuments = employee.otherDocuments || [];
+        otherDocuments.push({
+          documentId: document.documentId,
+          fileUrl: absoluteUrl,
+          fileName: req.file.originalname,
+          description: description || null,
+          uploadedAt: new Date().toISOString()
+        });
+        await employee.update({ otherDocuments: otherDocuments });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: `${documentType} uploaded successfully`,
+        data: {
+          id: document.documentId,
+          type: documentType,
+          index: nextIndex,
+          fileName: req.file.originalname,
+          fileUrl: absoluteUrl,
+          uploadedAt: document.created_at
         }
       });
     }
     
-    if (existingDoc) {
-      console.log(`🗑️ Deleting old ${documentType} document for employee ${id}${hasIndex ? ` (index: ${index})` : ''}`);
+    // ================================================================
+    // HANDLE SINGLE-DOCUMENT TYPES (Replace existing)
+    // ================================================================
+    // These types should have only ONE document
+    const singleDocumentTypes = [
+      'national_id', 'id_card', 'degree', 'cv', 'resume', 
+      'education_certificate', 'training_certificate', 'experience_letter',
+      'marriage_certificate', 'child_birth_certificate', 'child_medical_report',
+      'child_adoption_certificate', 'child_profile', 'spouse_profile',
+      'naturalization_certificate', 'health_document', 'legal_document',
+      'profile_picture'
+    ];
+    
+    if (singleDocumentTypes.includes(documentType)) {
+      // Delete existing document if it exists
+      let existingDoc = null;
       
-      // Delete old file from disk
-      if (existingDoc.filePath) {
-        const oldFilePath = path.join(__dirname, '..', existingDoc.filePath);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
-          console.log(`✅ Old file deleted: ${oldFilePath}`);
-        }
+      if (index !== undefined && index !== null && index !== '' && index !== 'null') {
+        existingDoc = await EmployeeDocument.findOne({
+          where: {
+            employeeId: id,
+            documentType: documentType,
+            index: parseInt(index)
+          }
+        });
+      } else {
+        existingDoc = await EmployeeDocument.findOne({
+          where: {
+            employeeId: id,
+            documentType: documentType
+          }
+        });
       }
       
-      // Delete old document record from database
-      await existingDoc.destroy();
-      console.log(`✅ Old document record deleted: ${existingDoc.documentId}`);
+      if (existingDoc) {
+        console.log(`🗑️ Deleting old ${documentType} document for employee ${id}`);
+        if (existingDoc.filePath) {
+          const oldFilePath = path.join(__dirname, '..', existingDoc.filePath);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+        await existingDoc.destroy();
+      }
+      
+      // Create new document
+      const folder = getDocumentFolder(documentType) || 'others';
+      const relativePath = `/uploads/documents/${folder}/${req.file.filename}`;
+      const absoluteUrl = `${baseUrl}${relativePath}`;
+      
+      const document = await EmployeeDocument.create({
+        employeeId: id,
+        documentType: documentType,
+        subType: subType || null,
+        index: (index !== undefined && index !== null && index !== '' && index !== 'null') 
+          ? parseInt(index) 
+          : null,
+        documentName: req.file.originalname,
+        fileName: req.file.filename,
+        fileUrl: absoluteUrl,
+        filePath: req.file.path,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+        description: description || null,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+      
+      // Update JSONB field in Employee table
+      await updateEmployeeJsonbField(id, documentType, index, {
+        documentId: document.documentId,
+        fileUrl: absoluteUrl,
+        fileName: req.file.originalname
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Document uploaded successfully',
+        data: {
+          id: document.documentId,
+          type: documentType,
+          fileName: req.file.originalname,
+          fileUrl: absoluteUrl,
+          uploadedAt: document.created_at
+        }
+      });
     }
     
-    // ========== PROFILE PICTURES ==========
+    // ================================================================
+    // HANDLE PROFILE PICTURE (Special case)
+    // ================================================================
     if (documentType === 'profile_picture') {
       if (employee.profilePictureUrl) {
         const oldFileName = employee.profilePictureUrl.split('/').pop();
@@ -4816,7 +5029,7 @@ exports.uploadEmployeeDocument = async (req, res) => {
         employeeId: id,
         documentType: 'profile_picture',
         subType: subType || null,
-        index: hasIndex ? parseInt(index) : null,
+        index: null,
         documentName: req.file.originalname,
         fileName: req.file.filename,
         fileUrl: profilePictureUrl,
@@ -4841,26 +5054,20 @@ exports.uploadEmployeeDocument = async (req, res) => {
       });
     }
     
-    // ========== REGULAR DOCUMENTS ==========
-    const folder = getDocumentFolder(documentType);
-    
-    if (!folder || folder === 'others') {
-      if (req.file) deleteFile(req.file.path);
-      return res.status(400).json({
-        success: false,
-        error: `Unknown document type: ${documentType}`
-      });
-    }
-    
+    // ================================================================
+    // DEFAULT: Create new document without deleting
+    // ================================================================
+    const folder = getDocumentFolder(documentType) || 'others';
     const relativePath = `/uploads/documents/${folder}/${req.file.filename}`;
     const absoluteUrl = `${baseUrl}${relativePath}`;
     
-    // ✅ Create new document record
     const document = await EmployeeDocument.create({
       employeeId: id,
       documentType: documentType,
       subType: subType || null,
-      index: hasIndex ? parseInt(index) : null,
+      index: (index !== undefined && index !== null && index !== '' && index !== 'null') 
+        ? parseInt(index) 
+        : null,
       documentName: req.file.originalname,
       fileName: req.file.filename,
       fileUrl: absoluteUrl,
@@ -4870,15 +5077,6 @@ exports.uploadEmployeeDocument = async (req, res) => {
       description: description || null,
       created_at: new Date(),
       updated_at: new Date()
-    });
-    
-    console.log(`✅ New ${documentType} document created: ${document.documentId}`);
-    
-    // Update JSONB field in Employee table
-    await updateEmployeeJsonbField(id, documentType, index, {
-      documentId: document.documentId,
-      fileUrl: absoluteUrl,
-      fileName: req.file.originalname
     });
     
     res.status(200).json({
@@ -4899,7 +5097,6 @@ exports.uploadEmployeeDocument = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 // ====================new endpoint for document compliance summary in the dashboard========================================
 
@@ -5493,7 +5690,6 @@ exports.getGuaranteeStatus = async (req, res) => {
 
 
 
-
 exports.getGuaranteeAgeDistribution = async (req, res) => {
   try {
     const { 
@@ -5592,24 +5788,25 @@ exports.getGuaranteeAgeDistribution = async (req, res) => {
     activeEmployees.forEach(emp => {
       const guaranteeInfo = emp.guaranteeInfo || [];
       
-      // ✅ FILTER GUARANTEES THAT HAVE A VALID GUARANTEE LETTER DATE
+      // ✅ FILTER GUARANTEES THAT HAVE A VALID CONFIRMATION DATE (NOT guaranteeLetterDateEC)
       const validGuarantees = guaranteeInfo.filter(g => 
-        g.guaranteeLetterDateEC && 
-        g.guaranteeLetterDateEC.trim() !== '' &&
-        g.guaranteeLetterDateEC !== 'undefined' &&
-        g.guaranteeLetterDateEC !== 'null'
+        g.confirmedDateEC && 
+        g.confirmedDateEC.trim() !== '' &&
+        g.confirmedDateEC !== 'undefined' &&
+        g.confirmedDateEC !== 'null'
       );
       
-      console.log(`👤 Employee ${emp.employeeCode}: ${validGuarantees.length} valid guarantee letter dates`);
+      console.log(`👤 Employee ${emp.employeeCode}: ${validGuarantees.length} valid confirmed dates`);
       
       // ✅ PROCESS EACH GUARANTEE SEPARATELY
       validGuarantees.forEach((guarantee, index) => {
-        const guaranteeDateEC = guarantee.guaranteeLetterDateEC;
+        // ✅ USE CONFIRMATION DATE INSTEAD OF GUARANTEE LETTER DATE
+        const confirmationDateEC = guarantee.confirmedDateEC;
         
-        console.log(`  📅 Guarantee Letter ${index + 1}: Date = ${guaranteeDateEC}`);
+        console.log(`  📅 Guarantee ${index + 1}: Confirmed Date = ${confirmationDateEC}`);
         
-        // Calculate age for this specific guarantee letter
-        const ageInMonths = calculateAgeInMonthsEC(guaranteeDateEC, currentECDate);
+        // Calculate age for this specific guarantee using confirmation date
+        const ageInMonths = calculateAgeInMonthsEC(confirmationDateEC, currentECDate);
         
         console.log(`  📊 Age in months: ${ageInMonths}`);
         
@@ -5624,7 +5821,7 @@ exports.getGuaranteeAgeDistribution = async (req, res) => {
             position: emp.Position?.title || 'Unknown',
             guaranteeIndex: index + 1,
             totalGuarantees: validGuarantees.length,
-            guaranteeLetterDateEC: guaranteeDateEC,
+            confirmedDateEC: confirmationDateEC,  // ✅ Return confirmation date
             ageInMonths: Math.round(ageInMonths)
           };
 
@@ -5651,7 +5848,7 @@ exports.getGuaranteeAgeDistribution = async (req, res) => {
           if (ageInMonths > oldest) oldest = ageInMonths;
           if (ageInMonths < youngest) youngest = ageInMonths;
         } else {
-          console.log(`  ⚠️ Invalid age calculation for guarantee letter ${index + 1}`);
+          console.log(`  ⚠️ Invalid age calculation for guarantee ${index + 1}`);
         }
       });
     });
@@ -5681,8 +5878,8 @@ exports.getGuaranteeAgeDistribution = async (req, res) => {
           totalGuarantees: totalGuaranteeCount,
           totalEmployeesWithGuarantees: activeEmployees.filter(e => 
             (e.guaranteeInfo || []).filter(g => 
-              g.guaranteeLetterDateEC && 
-              g.guaranteeLetterDateEC.trim() !== ''
+              g.confirmedDateEC && 
+              g.confirmedDateEC.trim() !== ''
             ).length > 0
           ).length,
           averageAgeMonths: totalGuaranteeCount > 0 ? Math.round(totalAge / totalGuaranteeCount) : 0,
@@ -5691,8 +5888,8 @@ exports.getGuaranteeAgeDistribution = async (req, res) => {
           totalEmployees: activeEmployees.length,
           employeesWithoutGuarantees: activeEmployees.filter(e => 
             (e.guaranteeInfo || []).filter(g => 
-              g.guaranteeLetterDateEC && 
-              g.guaranteeLetterDateEC.trim() !== ''
+              g.confirmedDateEC && 
+              g.confirmedDateEC.trim() !== ''
             ).length === 0
           ).length,
           currentECDate: currentECDate
@@ -5837,12 +6034,12 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
     activeEmployees.forEach(emp => {
       const guaranteeInfo = emp.guaranteeInfo || [];
       
-      // Filter valid guarantees
+      // ✅ FILTER GUARANTEES THAT HAVE A VALID CONFIRMATION DATE (NOT guaranteeLetterDateEC)
       const validGuarantees = guaranteeInfo.filter(g => 
-        g.guaranteeLetterDateEC && 
-        g.guaranteeLetterDateEC.trim() !== '' &&
-        g.guaranteeLetterDateEC !== 'undefined' &&
-        g.guaranteeLetterDateEC !== 'null'
+        g.confirmedDateEC && 
+        g.confirmedDateEC.trim() !== '' &&
+        g.confirmedDateEC !== 'undefined' &&
+        g.confirmedDateEC !== 'null'
       );
 
       // ========== COUNT GUARANTEES PER EMPLOYEE ==========
@@ -5861,8 +6058,9 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
       if (validGuarantees.length > 0) {
         // Process each guarantee
         validGuarantees.forEach((guarantee, index) => {
-          const guaranteeDateEC = guarantee.guaranteeLetterDateEC;
-          const ageInMonths = calculateAgeInMonthsEC(guaranteeDateEC, currentECDate);
+          // ✅ USE CONFIRMATION DATE INSTEAD OF GUARANTEE LETTER DATE
+          const confirmationDateEC = guarantee.confirmedDateEC;
+          const ageInMonths = calculateAgeInMonthsEC(confirmationDateEC, currentECDate);
           
           if (ageInMonths !== null && ageInMonths >= 0) {
             // Find which category this belongs to
@@ -5884,7 +6082,8 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
                   departmentCode: emp.Department?.code || null,
                   position: emp.Position?.title || 'Unknown',
                   profilePictureUrl: emp.profilePictureUrl || null,
-                  guaranteeDateEC: guaranteeDateEC,
+                  // ✅ RETURN CONFIRMATION DATE
+                  confirmedDateEC: confirmationDateEC,
                   guaranteeIndex: index + 1,
                   totalGuarantees: validGuarantees.length,
                   ageInMonths: Math.round(ageInMonths),
@@ -5914,7 +6113,8 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
                 departmentCode: emp.Department?.code || null,
                 position: emp.Position?.title || 'Unknown',
                 profilePictureUrl: emp.profilePictureUrl || null,
-                guaranteeDateEC: guaranteeDateEC,
+                // ✅ RETURN CONFIRMATION DATE
+                confirmedDateEC: confirmationDateEC,
                 guaranteeIndex: index + 1,
                 totalGuarantees: validGuarantees.length,
                 ageInMonths: Math.round(ageInMonths),
@@ -5938,7 +6138,8 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
               departmentCode: emp.Department?.code || null,
               position: emp.Position?.title || 'Unknown',
               profilePictureUrl: emp.profilePictureUrl || null,
-              guaranteeDateEC: guaranteeDateEC,
+              // ✅ RETURN CONFIRMATION DATE
+              confirmedDateEC: confirmationDateEC,
               guaranteeIndex: index + 1,
               totalGuarantees: validGuarantees.length,
               ageInMonths: Math.round(ageInMonths),
@@ -5996,8 +6197,8 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
           totalGuarantees: employeeDetails.length,
           totalEmployeesWithGuarantees: activeEmployees.filter(e => 
             (e.guaranteeInfo || []).filter(g => 
-              g.guaranteeLetterDateEC && 
-              g.guaranteeLetterDateEC.trim() !== ''
+              g.confirmedDateEC && 
+              g.confirmedDateEC.trim() !== ''
             ).length > 0
           ).length,
           averageAgeMonths: employeeDetails.length > 0 ? Math.round(totalAge / employeeDetails.length) : 0,
@@ -6048,6 +6249,464 @@ exports.getGuaranteeAgeDetails = async (req, res) => {
 
 
 
+/**
+ * Create a new department transfer
+ * POST /api/department-transfers
+ */
+exports.createDepartmentTransfer = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const {
+      employeeId,
+      fromDepartmentId,
+      toDepartmentId,
+      transferDateEC,
+      reason,
+      approvedBy,
+      notes
+    } = req.body;
+
+    const { Employee, Department, User, DepartmentTransfer } = sequelize.models;
+    const { isValidEthiopianDate, convertEthiopianToGregorian } = require('../utils/dateConverter');
+
+    // ========== VALIDATION ==========
+    if (!employeeId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Employee ID is required'
+      });
+    }
+
+    if (!toDepartmentId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'To Department is required'
+      });
+    }
+
+    if (!transferDateEC) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Transfer date is required'
+      });
+    }
+
+    // Validate EC date format
+    if (!isValidEthiopianDate(transferDateEC)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Invalid Ethiopian date format: ${transferDateEC}. Use DD/MM/YYYY`
+      });
+    }
+
+    // Check if employee exists
+    const employee = await Employee.findByPk(employeeId, { transaction });
+    if (!employee) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found'
+      });
+    }
+
+    // Check if employee is active
+    if (employee.employmentStatus !== 'active') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot transfer an inactive employee'
+      });
+    }
+
+    // Use employee's current department as fromDepartment if not provided
+    let fromDeptId = fromDepartmentId || employee.departmentId;
+
+    // Check if fromDepartment exists
+    const fromDept = await Department.findByPk(fromDeptId, { transaction });
+    if (!fromDept) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'From Department not found'
+      });
+    }
+
+    // Check if toDepartment exists
+    const toDept = await Department.findByPk(toDepartmentId, { transaction });
+    if (!toDept) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'To Department not found'
+      });
+    }
+
+    // Check if departments are the same
+    if (fromDeptId === toDepartmentId) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'From and To departments cannot be the same'
+      });
+    }
+
+    // Check if approvedBy user exists (if provided)
+    if (approvedBy) {
+      const approver = await User.findByPk(approvedBy, { transaction });
+      if (!approver) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          error: 'Approver not found'
+        });
+      }
+    }
+
+    // ========== CONVERT EC TO GC ==========
+    const transferDateGC = convertEthiopianToGregorian(transferDateEC);
+
+    // ========== STEP 1: CREATE TRANSFER RECORD ==========
+    const transfer = await DepartmentTransfer.create({
+      employeeId: parseInt(employeeId),
+      fromDepartmentId: parseInt(fromDeptId),
+      toDepartmentId: parseInt(toDepartmentId),
+      transferDateEC: transferDateEC,
+      transferDateGC: transferDateGC,
+      reason: reason || `Department transfer from ${fromDept.name} to ${toDept.name}`,
+      approvedBy: approvedBy || null,
+      notes: notes || null,
+      status: 'active'
+    }, { transaction });
+
+    // ========== STEP 2: UPDATE EMPLOYEE'S DEPARTMENT ==========
+    await employee.update({
+      departmentId: parseInt(toDepartmentId)
+    }, { transaction });
+
+    // ========== COMMIT BOTH CHANGES ==========
+    await transaction.commit();
+
+    // ========== FETCH CREATED TRANSFER ==========
+    const createdTransfer = await DepartmentTransfer.findByPk(transfer.transferId, {
+      include: [
+        { 
+          model: Employee, 
+          as: 'employee',
+          attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish', 'workEmail']
+        },
+        { 
+          model: Department, 
+          as: 'fromDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        },
+        { 
+          model: Department, 
+          as: 'toDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        },
+        { 
+          model: User, 
+          as: 'approver',
+          attributes: ['userId', 'fullName', 'email']
+        }
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Employee successfully transferred from ${fromDept.name} to ${toDept.name}`,
+      data: {
+        transfer: {
+          id: createdTransfer.transferId,
+          employeeId: createdTransfer.employeeId,
+          employeeCode: createdTransfer.employee?.employeeCode,
+          employeeName: createdTransfer.employee ? 
+            `${createdTransfer.employee.firstName} ${createdTransfer.employee.middleName ? createdTransfer.employee.middleName + ' ' : ''}${createdTransfer.employee.lastName}` : 
+            'Unknown',
+          fromDepartment: createdTransfer.fromDepartment?.name || 'Unknown',
+          fromDepartmentCode: createdTransfer.fromDepartment?.code,
+          toDepartment: createdTransfer.toDepartment?.name || 'Unknown',
+          toDepartmentCode: createdTransfer.toDepartment?.code,
+          transferDateEC: createdTransfer.transferDateEC,
+          transferDateGC: createdTransfer.transferDateGC,
+          reason: createdTransfer.reason,
+          status: createdTransfer.status,
+          approvedBy: createdTransfer.approvedBy,
+          approverName: createdTransfer.approver?.fullName || 'System',
+          createdAt: createdTransfer.createdAt
+        },
+        employeeUpdated: {
+          id: employee.employeeId,
+          employeeCode: employee.employeeCode,
+          fullName: employee.getFullName ? employee.getFullName() : `${employee.firstName} ${employee.lastName}`,
+          previousDepartment: fromDept.name,
+          currentDepartment: toDept.name,
+          departmentId: employee.departmentId
+        }
+      }
+    });
+
+  } catch (error) {
+    if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+      await transaction.rollback();
+    }
+    console.error('❌ Create department transfer error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
 
 
+
+
+/**
+ * Get all department transfers for an employee with current indicator
+ * GET /api/employees/department-transfers/employee/:employeeId
+ */
+exports.getEmployeeDepartmentTransfers = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const { status } = req.query;
+
+    const { DepartmentTransfer, Employee, Department, User } = sequelize.models;
+    const { Op } = require('sequelize');
+
+    // Check if employee exists
+    const employee = await Employee.findByPk(employeeId, {
+      attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish', 'workEmail', 'departmentId'],
+      include: [
+        { model: Department, attributes: ['departmentId', 'name', 'code'] }
+      ]
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        error: 'Employee not found'
+      });
+    }
+
+    // Build where conditions - get ALL transfers (not just active)
+    const where = { 
+      employeeId: parseInt(employeeId)
+    };
+
+    // If status filter is provided, use it
+    if (status && status !== 'all' && status !== 'undefined') {
+      where.status = status;
+    }
+
+    // Get ALL transfers
+    const transfers = await DepartmentTransfer.findAll({
+      where,
+      include: [
+        { 
+          model: Department, 
+          as: 'fromDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        },
+        { 
+          model: Department, 
+          as: 'toDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        },
+        { 
+          model: User, 
+          as: 'approver',
+          attributes: ['userId', 'fullName', 'email']
+        }
+      ],
+      order: [['transferDateGC', 'ASC'], ['createdAt', 'ASC']] // Oldest first
+    });
+
+    // ✅ Find the CURRENT transfer (latest active one)
+    const currentTransfer = transfers
+      .filter(t => t.status === 'active')
+      .sort((a, b) => {
+        const dateA = a.transferDateEC.split('/').reverse().join('');
+        const dateB = b.transferDateEC.split('/').reverse().join('');
+        return dateB.localeCompare(dateA);
+      })[0] || null;
+
+    // Format transfers with isCurrent flag
+    const formattedTransfers = transfers.map(transfer => {
+      const isCurrent = currentTransfer && transfer.transferId === currentTransfer.transferId;
+      
+      return {
+        id: transfer.transferId,
+        fromDepartmentId: transfer.fromDepartmentId,
+        fromDepartment: transfer.fromDepartment?.name || 'Unknown',
+        fromDepartmentCode: transfer.fromDepartment?.code,
+        toDepartmentId: transfer.toDepartmentId,
+        toDepartment: transfer.toDepartment?.name || 'Unknown',
+        toDepartmentCode: transfer.toDepartment?.code,
+        transferDateEC: transfer.transferDateEC,
+        transferDateGC: transfer.transferDateGC,
+        reason: transfer.reason,
+        notes: transfer.notes,
+        status: transfer.status,
+        statusLabel: transfer.getStatusLabel ? transfer.getStatusLabel() : transfer.status,
+        approvedBy: transfer.approvedBy,
+        approverName: transfer.approver?.fullName || 'System',
+        createdAt: transfer.createdAt,
+        updatedAt: transfer.updatedAt,
+        isCurrent: isCurrent, // ✅ Flag to identify current transfer
+        isHistorical: !isCurrent && transfer.status === 'active' // ✅ Historical active transfers
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        employee: {
+          id: employee.employeeId,
+          employeeId: employee.employeeCode,
+          fullName: `${employee.firstName} ${employee.middleName ? employee.middleName + ' ' : ''}${employee.lastName}`,
+          fullNameEnglish: employee.fullNameEnglish,
+          email: employee.workEmail,
+          currentDepartment: employee.Department?.name || 'Unknown',
+          currentDepartmentId: employee.departmentId
+        },
+        transfers: formattedTransfers,
+        currentTransferId: currentTransfer?.transferId || null,
+        hasTransfer: transfers.length > 0
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get employee transfers error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
+
+
+/**
+ * Update transfer status (reverse or complete)
+ * PUT /api/department-transfers/:transferId/status
+ */
+exports.updateTransferStatus = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { transferId } = req.params;
+    const { status, notes } = req.body;
+
+    const { Employee, DepartmentTransfer } = sequelize.models;
+
+    // Validate status
+    const validStatuses = ['active', 'reversed', 'completed'];
+    if (!status || !validStatuses.includes(status)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    // Find transfer
+    const transfer = await DepartmentTransfer.findByPk(transferId, { transaction });
+    if (!transfer) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Transfer not found'
+      });
+    }
+
+    // Check if transfer is already in target status
+    if (transfer.status === status) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Transfer is already ${status}`
+      });
+    }
+
+    const oldStatus = transfer.status;
+
+    // ========== UPDATE TRANSFER STATUS ==========
+    await transfer.update({
+      status: status,
+      notes: notes || transfer.notes
+    }, { transaction });
+
+    // ========== IF REVERSING, REVERT EMPLOYEE'S DEPARTMENT ==========
+    if (status === 'reversed' && oldStatus === 'active') {
+      const employee = await Employee.findByPk(transfer.employeeId, { transaction });
+      if (employee) {
+        await employee.update({
+          departmentId: transfer.fromDepartmentId
+        }, { transaction });
+      }
+    }
+
+    await transaction.commit();
+
+    // Fetch updated transfer
+    const updatedTransfer = await DepartmentTransfer.findByPk(transferId, {
+      include: [
+        { 
+          model: Employee, 
+          as: 'employee',
+          attributes: ['employeeId', 'employeeCode', 'firstName', 'lastName', 'middleName', 'fullNameEnglish', 'workEmail']
+        },
+        { 
+          model: Department, 
+          as: 'fromDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        },
+        { 
+          model: Department, 
+          as: 'toDepartment',
+          attributes: ['departmentId', 'code', 'name']
+        }
+      ]
+    });
+
+    const statusMessages = {
+      active: 'Transfer reactivated',
+      reversed: 'Transfer reversed, employee returned to previous department',
+      completed: 'Transfer marked as completed'
+    };
+
+    res.json({
+      success: true,
+      message: statusMessages[status] || 'Transfer status updated',
+      data: {
+        id: updatedTransfer.transferId,
+        employeeId: updatedTransfer.employeeId,
+        employeeName: updatedTransfer.employee ? 
+          `${updatedTransfer.employee.firstName} ${updatedTransfer.employee.middleName ? updatedTransfer.employee.middleName + ' ' : ''}${updatedTransfer.employee.lastName}` : 
+          'Unknown',
+        fromDepartment: updatedTransfer.fromDepartment?.name || 'Unknown',
+        toDepartment: updatedTransfer.toDepartment?.name || 'Unknown',
+        transferDateEC: updatedTransfer.transferDateEC,
+        status: updatedTransfer.status,
+        statusLabel: updatedTransfer.getStatusLabel ? updatedTransfer.getStatusLabel() : updatedTransfer.status,
+        notes: updatedTransfer.notes,
+        updatedAt: updatedTransfer.updatedAt
+      }
+    });
+
+  } catch (error) {
+    if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+      await transaction.rollback();
+    }
+    console.error('❌ Update transfer status error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+};
 
