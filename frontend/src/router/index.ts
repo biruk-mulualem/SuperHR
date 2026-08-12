@@ -38,7 +38,7 @@ const router = createRouter({
         {
           path: "profile",
           name: "profile",
-          component: () => import("@/views/employee/Profile.vue"),
+          component: () => import("@/views/employee/profile.vue"),
           meta: {
             title: "My Profile",
             roles: [
@@ -56,7 +56,7 @@ const router = createRouter({
         {
           path: "employees",
           name: "employees",
-          component: () => import("@/views/employee/Employees.vue"),
+          component: () => import("@/views/employee/employees.vue"),
           meta: {
             title: "Employees Management",
             roles: ["admin", "hr", "finance", "employee", "attendance"],
@@ -293,7 +293,7 @@ const router = createRouter({
         {
           path: "users",
           name: "users",
-          component: () => import("@/views/users/Users.vue"),
+          component: () => import("@/views/users/users.vue"),
           meta: {
             title: "Users Management",
             roles: ["admin", "hr", "finance", "employee", "attendance"],
