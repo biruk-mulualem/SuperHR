@@ -1,0 +1,44 @@
+// stores/interceptor.ts - SIMPLIFIED VERSION
+import axios from 'axios';
+const BASE_URL = import.meta.env.VITE_API_URL;
+const api = axios.create({
+    baseURL: BASE_URL,
+    timeout: 190000,
+    headers: {
+        'Content-Type': 'application/json',
+    }
+});
+// ==================== REQUEST INTERCEPTOR ====================
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        // console.log(`📤 ${config.method?.toUpperCase()} ${config.url} - Token attached`);
+    }
+    else {
+        // console.warn(`📤 ${config.method?.toUpperCase()} ${config.url} - NO TOKEN`);
+    }
+    return config;
+}, (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+});
+// ==================== RESPONSE INTERCEPTOR ====================
+api.interceptors.response.use((response) => {
+    // console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`);
+    return response;
+}, async (error) => {
+    // Log the error
+    console.error(`❌ Error: ${error.response?.status} ${error.config?.method?.toUpperCase()} ${error.config?.url}`);
+    // For 401 on admin routes, don't logout immediately - just reject
+    if (error.response?.status === 401) {
+        console.warn('🔐 Authentication failed - check if token is valid');
+        // Don't clear token here - let the component handle it
+    }
+    // For 403, just log and reject
+    if (error.response?.status === 403) {
+        console.warn('⛔ Forbidden - User lacks permission');
+    }
+    return Promise.reject(error);
+});
+export default api;

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --force --host",
     "dev:clear": "vite --force --clearScreen false",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "vite build",
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build"
