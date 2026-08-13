@@ -1,8 +1,5 @@
 // services/settingService.ts
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-
+import api from '@/stores/interceptor'; 
 export interface Role {
   roleId: number;
   name: string;
@@ -101,7 +98,6 @@ export interface AttendanceRules {
     holidayOTRate: number;
     maxPerDay: number;
     maxPerWeek: number;
-   
     eligiblePositions: number[];
   };
   leaveRules: {
@@ -170,23 +166,12 @@ export interface ApiResponse<T> {
 }
 
 class SettingService {
-  private getAuthHeaders() {
-    const token = localStorage.getItem('token');
-    return {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    };
-  }
-
   // ==================== ROLES API ====================
   
   async getRoles(page: number = 1, limit: number = 20, includeInactive: boolean = false): Promise<PaginatedResponse<Role>> {
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/settings/roles?page=${page}&limit=${limit}&includeInactive=${includeInactive}`,
-        this.getAuthHeaders()
+      const response = await api.get(
+        `/settings/roles?page=${page}&limit=${limit}&includeInactive=${includeInactive}`
       );
       return response.data;
     } catch (error: any) {
@@ -196,7 +181,7 @@ class SettingService {
 
   async getRoleById(id: number): Promise<ApiResponse<Role>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/roles/${id}`, this.getAuthHeaders());
+      const response = await api.get(`/settings/roles/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch role' };
@@ -205,7 +190,7 @@ class SettingService {
 
   async createRole(data: Partial<Role>): Promise<ApiResponse<Role>> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/settings/roles`, data, this.getAuthHeaders());
+      const response = await api.post('/settings/roles', data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to create role' };
@@ -214,7 +199,7 @@ class SettingService {
 
   async updateRole(id: number, data: Partial<Role>): Promise<ApiResponse<Role>> {
     try {
-      const response = await axios.put(`${API_BASE_URL}/settings/roles/${id}`, data, this.getAuthHeaders());
+      const response = await api.put(`/settings/roles/${id}`, data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to update role' };
@@ -223,7 +208,7 @@ class SettingService {
 
   async toggleRoleStatus(id: number, isActive: boolean): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/settings/roles/${id}/status`, { isActive }, this.getAuthHeaders());
+      const response = await api.patch(`/settings/roles/${id}/status`, { isActive });
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to toggle role status' };
@@ -232,7 +217,7 @@ class SettingService {
 
   async deleteRole(id: number): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/settings/roles/${id}`, this.getAuthHeaders());
+      const response = await api.delete(`/settings/roles/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to delete role' };
@@ -243,9 +228,8 @@ class SettingService {
   
   async getDepartments(page: number = 1, limit: number = 20, includeInactive: boolean = false): Promise<PaginatedResponse<Department>> {
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/settings/departments?page=${page}&limit=${limit}&includeInactive=${includeInactive}`,
-        this.getAuthHeaders()
+      const response = await api.get(
+        `/settings/departments?page=${page}&limit=${limit}&includeInactive=${includeInactive}`
       );
       return response.data;
     } catch (error: any) {
@@ -255,7 +239,7 @@ class SettingService {
 
   async getAllDepartments(): Promise<ApiResponse<Department[]>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/departments/all`, this.getAuthHeaders());
+      const response = await api.get('/settings/departments/all');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch all departments' };
@@ -264,7 +248,7 @@ class SettingService {
 
   async getDepartmentById(id: number): Promise<ApiResponse<Department>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/departments/${id}`, this.getAuthHeaders());
+      const response = await api.get(`/settings/departments/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch department' };
@@ -273,7 +257,7 @@ class SettingService {
 
   async getDepartmentTree(): Promise<ApiResponse<any[]>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/departments/tree`, this.getAuthHeaders());
+      const response = await api.get('/settings/departments/tree');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch department tree' };
@@ -282,7 +266,7 @@ class SettingService {
 
   async getDepartmentStatistics(): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/departments/stats`, this.getAuthHeaders());
+      const response = await api.get('/settings/departments/stats');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch department statistics' };
@@ -291,7 +275,7 @@ class SettingService {
 
   async createDepartment(data: Partial<Department>): Promise<ApiResponse<Department>> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/settings/departments`, data, this.getAuthHeaders());
+      const response = await api.post('/settings/departments', data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to create department' };
@@ -300,7 +284,7 @@ class SettingService {
 
   async updateDepartment(id: number, data: Partial<Department>): Promise<ApiResponse<Department>> {
     try {
-      const response = await axios.put(`${API_BASE_URL}/settings/departments/${id}`, data, this.getAuthHeaders());
+      const response = await api.put(`/settings/departments/${id}`, data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to update department' };
@@ -309,7 +293,7 @@ class SettingService {
 
   async toggleDepartmentStatus(id: number, isActive: boolean): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/settings/departments/${id}/status`, { isActive }, this.getAuthHeaders());
+      const response = await api.patch(`/settings/departments/${id}/status`, { isActive });
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to toggle department status' };
@@ -318,7 +302,7 @@ class SettingService {
 
   async deleteDepartment(id: number): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/settings/departments/${id}`, this.getAuthHeaders());
+      const response = await api.delete(`/settings/departments/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to delete department' };
@@ -329,9 +313,9 @@ class SettingService {
   
   async getPositions(page: number = 1, limit: number = 20, includeInactive: boolean = false, departmentId?: number): Promise<PaginatedResponse<Position>> {
     try {
-      let url = `${API_BASE_URL}/settings/positions?page=${page}&limit=${limit}&includeInactive=${includeInactive}`;
+      let url = `/settings/positions?page=${page}&limit=${limit}&includeInactive=${includeInactive}`;
       if (departmentId) url += `&departmentId=${departmentId}`;
-      const response = await axios.get(url, this.getAuthHeaders());
+      const response = await api.get(url);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch positions' };
@@ -340,7 +324,7 @@ class SettingService {
 
   async getAllPositions(): Promise<ApiResponse<Position[]>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/positions/all`, this.getAuthHeaders());
+      const response = await api.get('/settings/positions/all');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch all positions' };
@@ -349,7 +333,7 @@ class SettingService {
 
   async getPositionById(id: number): Promise<ApiResponse<Position>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/positions/${id}`, this.getAuthHeaders());
+      const response = await api.get(`/settings/positions/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch position' };
@@ -358,7 +342,7 @@ class SettingService {
 
   async createPosition(data: Partial<Position>): Promise<ApiResponse<Position>> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/settings/positions`, data, this.getAuthHeaders());
+      const response = await api.post('/settings/positions', data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to create position' };
@@ -367,7 +351,7 @@ class SettingService {
 
   async updatePosition(id: number, data: Partial<Position>): Promise<ApiResponse<Position>> {
     try {
-      const response = await axios.put(`${API_BASE_URL}/settings/positions/${id}`, data, this.getAuthHeaders());
+      const response = await api.put(`/settings/positions/${id}`, data);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to update position' };
@@ -376,7 +360,7 @@ class SettingService {
 
   async togglePositionStatus(id: number, isActive: boolean): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/settings/positions/${id}/status`, { isActive }, this.getAuthHeaders());
+      const response = await api.patch(`/settings/positions/${id}/status`, { isActive });
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to toggle position status' };
@@ -385,7 +369,7 @@ class SettingService {
 
   async deletePosition(id: number): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/settings/positions/${id}`, this.getAuthHeaders());
+      const response = await api.delete(`/settings/positions/${id}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to delete position' };
@@ -396,7 +380,7 @@ class SettingService {
   
   async getAllSettings(): Promise<ApiResponse<SystemSetting[]>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/settings`, this.getAuthHeaders());
+      const response = await api.get('/settings/settings');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch settings' };
@@ -405,7 +389,7 @@ class SettingService {
 
   async getSettingByKey(key: string): Promise<ApiResponse<SystemSetting>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/settings/${key}`, this.getAuthHeaders());
+      const response = await api.get(`/settings/settings/${key}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch setting' };
@@ -414,13 +398,13 @@ class SettingService {
 
   async upsertSetting(key: string, value: any, category?: string, description?: string, dataType?: string): Promise<ApiResponse<SystemSetting>> {
     try {
-      const response = await axios.post(`${API_BASE_URL}/settings/settings`, {
+      const response = await api.post('/settings/settings', {
         key,
         value,
         category,
         description,
         dataType
-      }, this.getAuthHeaders());
+      });
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to save setting' };
@@ -429,7 +413,7 @@ class SettingService {
 
   async batchUpdateSettings(settings: Record<string, any>): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.put(`${API_BASE_URL}/settings/settings/batch`, { settings }, this.getAuthHeaders());
+      const response = await api.put('/settings/settings/batch', { settings });
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to batch update settings' };
@@ -438,7 +422,7 @@ class SettingService {
 
   async deleteSetting(key: string): Promise<ApiResponse<any>> {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/settings/settings/${key}`, this.getAuthHeaders());
+      const response = await api.delete(`/settings/settings/${key}`);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to delete setting' };
@@ -449,7 +433,7 @@ class SettingService {
   
   async getAttendanceRules(): Promise<ApiResponse<AttendanceRules>> {
     try {
-      const response = await axios.get(`${API_BASE_URL}/settings/attendance/rules`, this.getAuthHeaders());
+      const response = await api.get('/settings/attendance/rules');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to fetch attendance rules' };
@@ -458,7 +442,7 @@ class SettingService {
 
   async updateAttendanceRules(rules: Partial<AttendanceRules>): Promise<ApiResponse<SystemSetting>> {
     try {
-      const response = await axios.put(`${API_BASE_URL}/settings/attendance/rules`, rules, this.getAuthHeaders());
+      const response = await api.put('/settings/attendance/rules', rules);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to update attendance rules' };
@@ -467,7 +451,6 @@ class SettingService {
 
   // ==================== UTILITY METHODS ====================
   
-  // Get default attendance rules
   getDefaultAttendanceRules(): AttendanceRules {
     return {
       workSchedule: {
@@ -495,7 +478,6 @@ class SettingService {
         holidayOTRate: 2.5,
         maxPerDay: 4,
         maxPerWeek: 20,
-      
         eligiblePositions: []
       },
       leaveRules: {
@@ -554,7 +536,6 @@ class SettingService {
     };
   }
 
-  // Format currency
   formatCurrency(amount: number): string {
     return new Intl.NumberFormat('en-ET', {
       style: 'currency',
@@ -564,7 +545,6 @@ class SettingService {
     }).format(amount);
   }
 
-  // Format date
   formatDate(date: string | Date): string {
     return new Date(date).toLocaleDateString('en-ET', {
       year: 'numeric',
