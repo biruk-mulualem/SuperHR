@@ -5,12 +5,10 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "nodemon ./bin/www",
-    "migrate": "npx sequelize-cli db:migrate",
-    "migrate:undo": "npx sequelize-cli db:migrate:undo:all",
-    "seed": "npx sequelize-cli db:seed:all",
-
-
-    "postinstall": "npm run migrate" 
+    "migrate": "npx sequelize-cli db:migrate --config config/config.js",
+    "migrate:undo": "npx sequelize-cli db:migrate:undo:all --config config/config.js",
+    "seed": "npx sequelize-cli db:seed:all --config config/config.js"
+    
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
