@@ -12,6 +12,7 @@ const {
   StoreBalance,
   RequestNotification,
   StoreGroupRelation,
+  Department,
   Group,
   sequelize,
 } = db;
@@ -32,8 +33,52 @@ const shouldSkipNotifications = (storeCode) => {
 };
 
 // ================================================================
-// HELPER: Validate stock availability
+// HELPER: Get department from SystemSetting for asset approvals
 // ================================================================
+async function getApprovalDepartmentConfig() {
+  try {
+    const SystemSetting = db.SystemSetting;
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' }
+    });
+
+    if (!setting) {
+      console.log('⚠️ No department setting found');
+      return null;
+    }
+
+    // ✅ The settingValue is already parsed JSONB in PostgreSQL
+    const config = setting.settingValue;
+    
+    console.log('📋 Found department config:', config);
+
+    // Check if departmentId exists
+    if (!config || !config.departmentId) {
+      console.log('⚠️ Department setting missing departmentId');
+      return null;
+    }
+
+    // Verify the department exists
+    const department = await db.Department.findByPk(config.departmentId);
+    if (!department) {
+      console.log(`⚠️ Department ${config.departmentId} not found`);
+      return null;
+    }
+
+    return {
+      departmentId: config.departmentId,
+      name: config.name || department.name,
+      code: config.code || department.code,
+      applyToStores: config.applyToStores || [],
+      requiresApproval: config.requiresApproval !== false,
+    };
+  } catch (error) {
+    console.error('❌ Error getting approval department config:', error);
+    return null;
+  }
+}
+
+
 const validateStockAvailability = async (supplyingStoreId, items) => {
   const errors = [];
   const stockInfo = [];
@@ -143,16 +188,24 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
 };
 
 // ================================================================
-// HELPER: Create notifications for all groups in a store
+// HELPER: Create notifications (GROUPS + DEPARTMENT for ASSET)
 // ================================================================
-
-async function createRequestNotifications(requestId, storeId) {
+async function createRequestNotifications(requestId, storeId, askingStoreId, isAsset = false, transaction = null) {
   try {
     console.log(
-      `📤 Creating notifications for request ${requestId}, store ${storeId}`,
+      `📤 Creating notifications for request ${requestId}, store ${storeId}, isAsset: ${isAsset}`,
     );
 
-    // 🔥 Get all active groups
+    // 🔥 STEP 1: Get the asking store details
+    const askingStore = await Store.findByPk(askingStoreId);
+    if (!askingStore) {
+      console.log(`⚠️ Asking store ${askingStoreId} not found`);
+      return 0;
+    }
+
+    console.log(`📋 Asking Store: ${askingStore.code} (${askingStore.name})`);
+
+    // 🔥 STEP 2: Get all active groups for the supplying store
     const groups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
        FROM groups g
@@ -161,55 +214,109 @@ async function createRequestNotifications(requestId, storeId) {
       {
         replacements: { storeId: parseInt(storeId) },
         type: db.sequelize.QueryTypes.SELECT,
+        transaction: transaction,
       },
     );
 
-    console.log(`📋 Found ${groups.length} groups`);
+    console.log(`📋 Found ${groups.length} groups for supplying store`);
 
-    if (!groups || groups.length === 0) {
-      console.log(`⚠️ No active groups found for store ${storeId}`);
-      return 0;
+    // 🔥 STEP 3: Create notifications
+    let totalCount = 0;
+
+    // 3a. Create group notifications using bulkCreate
+    const groupNotifications = [];
+    for (const group of groups) {
+      const groupId = parseInt(group.id);
+      if (!groupId || isNaN(groupId)) continue;
+
+      groupNotifications.push({
+        request_id: parseInt(requestId),
+        group_id: groupId,
+        store_id: parseInt(storeId),
+        status: "pending",
+        approval_type: "group",
+        is_department_approval: false,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
     }
 
-    // 🔥 Use bulk create for better performance
-    const notificationsData = groups
-      .map((group) => {
-        const groupId = parseInt(group.id);
-        if (!groupId || isNaN(groupId)) return null;
-
-        return {
-          request_id: parseInt(requestId),
-          group_id: groupId,
-          store_id: parseInt(storeId),
-          status: "pending",
-          created_at: new Date(),
-          updated_at: new Date(),
-        };
-      })
-      .filter((item) => item !== null);
-
-    if (notificationsData.length === 0) {
-      console.log(`⚠️ No valid groups to create notifications for`);
-      return 0;
+    if (groupNotifications.length > 0) {
+      const result = await RequestNotification.bulkCreate(groupNotifications, {
+        validate: false,
+        returning: true,
+        transaction: transaction,
+      });
+      totalCount += result.length;
+      console.log(`✅ Created ${result.length} group notifications`);
     }
 
-    // 🔥 Bulk insert for speed
-    const result = await RequestNotification.bulkCreate(notificationsData, {
-      validate: false,
-      returning: true,
-    });
+    // 3b. 🔥 CREATE DEPARTMENT NOTIFICATION USING `create()`
+    if (isAsset) {
+      console.log(`📋 isAsset is true, checking department config...`);
+      
+      // Get department from SystemSetting
+      const SystemSetting = db.SystemSetting;
+      const setting = await SystemSetting.findOne({
+        where: { settingKey: 'approval.department' }
+      });
 
-    console.log(`✅ Created ${result.length} notifications`);
-    return result.length;
+      console.log('📋 Found setting:', setting ? setting.toJSON() : 'null');
+
+      if (setting && setting.settingValue) {
+        const config = setting.settingValue;
+        const departmentId = config.departmentId;
+        
+        console.log(`📋 Department ID from config: ${departmentId}`);
+
+        if (departmentId) {
+          // ✅ Verify department exists using the correct field name
+          const department = await db.Department.findByPk(departmentId);
+          console.log('📋 Found department:', department ? department.toJSON() : 'null');
+          
+          if (department) {
+            // ✅ CREATE department notification - department_id will be saved!
+            const deptNotification = await RequestNotification.create({
+              request_id: parseInt(requestId),
+              group_id: null,
+              department_id: department.departmentId,  // ✅ Use department.departmentId (from model)
+              store_id: parseInt(storeId),
+              status: "pending",
+              approval_type: "department",
+              is_department_approval: true,
+              created_at: new Date(),
+              updated_at: new Date(),
+            }, { 
+              transaction: transaction,
+            });
+            
+            totalCount++;
+            console.log(`✅ Added department notification for: ${department.name} (ID: ${department.departmentId})`);
+            console.log('📋 Created department notification:', deptNotification.toJSON());
+          } else {
+            console.log(`⚠️ Department ${departmentId} not found in departments table`);
+          }
+        } else {
+          console.log(`⚠️ No departmentId in config`);
+        }
+      } else {
+        console.log(`⚠️ No SystemSetting found for 'approval.department'`);
+      }
+    }
+
+    console.log(`✅ Total notifications created: ${totalCount}`);
+    return totalCount;
   } catch (error) {
     console.error("❌ Error creating notifications:", error);
-    // Don't throw - just log and continue
-    // The request should still be created even if notifications fail
-    return 0;
+    throw error;
   }
 }
+
 // ================================================================
 // HELPER: Check if all groups have accepted a request
+// ================================================================
+// ================================================================
+// HELPER: Check if all groups (and department for asset) have accepted
 // ================================================================
 async function isRequestFullyAccepted(requestId) {
   const notifications = await RequestNotification.findAll({
@@ -224,27 +331,72 @@ async function isRequestFullyAccepted(requestId) {
       acceptedCount: 0,
       rejectedCount: 0,
       pendingCount: 0,
+      groups: {
+        total: 0,
+        accepted: 0,
+        rejected: 0,
+        pending: 0,
+        allAccepted: false,
+      },
+      department: {
+        total: 0,
+        accepted: 0,
+        rejected: 0,
+        pending: 0,
+        allAccepted: false,
+      },
     };
   }
 
-  const acceptedCount = notifications.filter(
-    (n) => n.status === "accepted",
-  ).length;
-  const rejectedCount = notifications.filter(
-    (n) => n.status === "rejected",
-  ).length;
-  const pendingCount = notifications.filter(
-    (n) => n.status === "pending",
-  ).length;
+  // Separate group and department notifications
+  const groupNotifications = notifications.filter(
+    (n) => n.approval_type === 'group' || !n.approval_type
+  );
+  const departmentNotifications = notifications.filter(
+    (n) => n.approval_type === 'department'
+  );
+
+  // Group stats
+  const groupsAccepted = groupNotifications.filter((n) => n.status === 'accepted').length;
+  const groupsRejected = groupNotifications.filter((n) => n.status === 'rejected').length;
+  const groupsPending = groupNotifications.filter((n) => n.status === 'pending').length;
+
+  const allGroupsAccepted = groupNotifications.length > 0 && 
+    groupsAccepted === groupNotifications.length;
+
+  // Department stats
+  const deptAccepted = departmentNotifications.filter((n) => n.status === 'accepted').length;
+  const deptRejected = departmentNotifications.filter((n) => n.status === 'rejected').length;
+  const deptPending = departmentNotifications.filter((n) => n.status === 'pending').length;
+
+  const allDepartmentsAccepted = departmentNotifications.length === 0 || 
+    (departmentNotifications.length > 0 && deptAccepted === departmentNotifications.length);
+
+  // Overall status
+  const allAccepted = allGroupsAccepted && allDepartmentsAccepted;
+  const hasRejection = groupsRejected > 0 || deptRejected > 0;
 
   return {
-    allAccepted:
-      acceptedCount === notifications.length && notifications.length > 0,
-    hasRejection: rejectedCount > 0,
+    allAccepted,
+    hasRejection,
     total: notifications.length,
-    acceptedCount,
-    rejectedCount,
-    pendingCount,
+    acceptedCount: groupsAccepted + deptAccepted,
+    rejectedCount: groupsRejected + deptRejected,
+    pendingCount: groupsPending + deptPending,
+    groups: {
+      total: groupNotifications.length,
+      accepted: groupsAccepted,
+      rejected: groupsRejected,
+      pending: groupsPending,
+      allAccepted: allGroupsAccepted,
+    },
+    department: {
+      total: departmentNotifications.length,
+      accepted: deptAccepted,
+      rejected: deptRejected,
+      pending: deptPending,
+      allAccepted: allDepartmentsAccepted,
+    },
   };
 }
 
@@ -326,14 +478,12 @@ exports.checkStockAvailability = async (req, res) => {
   }
 };
 
-// ================================================================
-// 2. GET ALL REQUESTS
-// ================================================================
-
-// controllers/itemRequestController.js - COMPLETE FIXED getRequests
-
 exports.getRequests = async (req, res) => {
   try {
+    console.log("=".repeat(80));
+    console.log("🚀 GET REQUESTS STARTED");
+    console.log("=".repeat(80));
+
     const {
       page = 1,
       limit = 10,
@@ -345,139 +495,234 @@ exports.getRequests = async (req, res) => {
       sortOrder = "DESC",
     } = req.query;
 
+    console.log("📋 Request Query Parameters:", {
+      page,
+      limit,
+      search,
+      status,
+      storeId,
+      userId,
+      sortBy,
+      sortOrder
+    });
+
     const offset = (page - 1) * limit;
     const where = {};
-    const userRelevantWhere = {};
 
-    // 🔥 Get the logged-in user
+    // ================================================================
+    // 🔥 GET USER INFORMATION
+    // ================================================================
     const currentUser = req.user;
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
-    const userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
+    
+    console.log("👤 Current User from Request:", {
+      userId: currentUserId,
+      role: currentUserRole,
+      username: currentUser?.username,
+      fullName: currentUser?.fullName
+    });
 
-    console.log("🔍 Current user:", {
+    const { getUserStoreAndGroup } = require('../utils/userAccess');
+    
+    let userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
+    let userIsAdmin = false;
+    
+    console.log("📍 Initial userStoreId from token:", userStoreId);
+    
+    if (!userStoreId && currentUserId) {
+      console.log("🔍 No storeId in token, fetching from database...");
+      try {
+        const accessResult = await getUserStoreAndGroup(currentUserId);
+        console.log("📊 Database access result:", JSON.stringify(accessResult, null, 2));
+        
+        if (accessResult.success && accessResult.data) {
+          userStoreId = accessResult.data.assignedStoreId;
+          userIsAdmin = accessResult.data.isAdmin || false;
+          console.log("✅ Retrieved from database - storeId:", userStoreId, "isAdmin:", userIsAdmin);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not get user store from database:', err);
+      }
+    }
+
+    console.log("=".repeat(80));
+    console.log("📌 FINAL USER INFORMATION:");
+    console.log("=".repeat(80));
+    console.log({
       userId: currentUserId,
       role: currentUserRole,
       storeId: userStoreId,
+      isAdmin: userIsAdmin,
+      hasStore: !!userStoreId
     });
 
     // ================================================================
     // 🔥 STATUS FILTER
     // ================================================================
+    console.log("\n📌 STATUS FILTER:");
     if (status !== "all") {
       where.status = status;
-      userRelevantWhere.status = status;
-    }
-
-    // ================================================================
-    // 🔥 STORE FILTER - Based on user role
-    // ================================================================
-    let userRelevantCondition = {};
-
-    if (storeId !== "all") {
-      // When a specific store is selected in filter
-      where[Op.or] = [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) },
-      ];
-      userRelevantWhere[Op.or] = [
-        { askingStoreId: parseInt(storeId) },
-        { supplyingStoreId: parseInt(storeId) },
-      ];
+      console.log("✅ Status filter applied:", status);
     } else {
-      // Auto-filter based on user role
-      if (currentUserRole === "admin") {
-        // Admin sees all requests
-        console.log("👑 Admin user - showing all requests");
-        // No additional filters needed
-      } else if (
-        currentUserRole === "storekeeper" ||
-        currentUserRole === "store_it"
-      ) {
-        if (userStoreId) {
-          // 🔥 FIX: Show ALL requests where the user's store is involved
-          // This includes BOTH asking AND supplying stores, for ALL statuses
-          where[Op.or] = [
-            { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId }, // ✅ REMOVED the status restriction
-          ];
-
-          // 🔥 For user-relevant counting
-          userRelevantCondition = {
-            [Op.or]: [
-              { requestedById: currentUserId },
-              { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId },
-            ],
-          };
-
-          userRelevantWhere[Op.or] = [
-            { requestedById: currentUserId },
-            { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId },
-          ];
-
-          console.log(
-            `📦 Store user (${currentUserRole}) - showing ALL requests for store ${userStoreId}`,
-          );
-        } else {
-          if (currentUserId) {
-            where.requestedById = currentUserId;
-            userRelevantWhere.requestedById = currentUserId;
-            console.log(
-              `👤 User has no store assigned - showing only their requests`,
-            );
-          }
-        }
-      } else if (
-        currentUserRole === "checker" ||
-        currentUserRole === "finance"
-      ) {
-        // Checker/Finance can see approved and finalized requests
-        if (status === "all") {
-          where.status = { [Op.in]: ["approved", "finalized"] };
-          userRelevantWhere.status = { [Op.in]: ["approved", "finalized"] };
-        }
-        if (userStoreId) {
-          where[Op.or] = [
-            { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId },
-          ];
-          userRelevantWhere[Op.or] = [
-            { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId },
-          ];
-        }
-        console.log(
-          `📊 Checker/Finance user - showing approved/finalized requests`,
-        );
-      } else {
-        // Other users see requests they created or are involved in
-        if (currentUserId) {
-          where[Op.or] = [{ requestedById: currentUserId }];
-          userRelevantWhere[Op.or] = [{ requestedById: currentUserId }];
-          if (userStoreId) {
-            where[Op.or].push(
-              { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId },
-            );
-            userRelevantWhere[Op.or].push(
-              { askingStoreId: userStoreId },
-              { supplyingStoreId: userStoreId },
-            );
-          }
-        }
-        console.log(
-          `👤 Other role (${currentUserRole}) - showing requests they created or involved in`,
-        );
-      }
+      console.log("ℹ️ No status filter (status = 'all')");
     }
 
+    // ================================================================
+    // 🔥 PERMISSION LOGIC
+    // ================================================================
+    console.log("\n" + "=".repeat(80));
+    console.log("🔒 PERMISSION LOGIC START");
+    console.log("=".repeat(80));
+    
+    // ✅ ADMIN: Can see everything
+    if (currentUserRole === "admin" || userIsAdmin) {
+      console.log("\n👑 ADMIN USER DETECTED - showing all requests");
+      
+      if (status !== "all") {
+        where.status = status;
+        console.log("  - Status filter applied:", status);
+      }
+      
+      if (storeId !== "all") {
+        where[Op.or] = [
+          { askingStoreId: parseInt(storeId) },
+          { supplyingStoreId: parseInt(storeId) },
+        ];
+        console.log("  - Store filter applied:", storeId);
+      }
+      
+      console.log("📋 Admin WHERE clause so far:", JSON.stringify(where, null, 2));
+      
+    // ✅ STORE USER (storekeeper / store_it)
+    } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
+      
+      console.log("\n📦 STORE USER DETECTED:", currentUserRole);
+      
+      if (!userStoreId) {
+        console.log("⚠️ User has NO store assigned");
+        if (currentUserId) {
+          where.requestedById = currentUserId;
+          console.log("  - Filtering by requestedById:", currentUserId);
+        }
+        console.log("📋 WHERE clause for user with no store:", JSON.stringify(where, null, 2));
+      } else {
+        console.log("✅ User has store assigned:", userStoreId);
+        
+        // ✅ CORRECT PERMISSION LOGIC
+        
+        // RULE 1: User is the ASKING store → Can see ALL statuses
+        const askingStoreCondition = { askingStoreId: userStoreId };
+        console.log(`\n📌 RULE 1 - Asking Store (ID: ${userStoreId}):`);
+        console.log("  - Can see ALL statuses (pending, approved, finalized)");
+        if (status !== "all") {
+          askingStoreCondition.status = status;
+          console.log("  - Status filter applied to asking condition:", status);
+        }
+        console.log("  - Condition:", JSON.stringify(askingStoreCondition));
+        
+        // RULE 2: User is the SUPPLYING store → Can ONLY see approved/finalized
+        const supplyingStoreCondition = {
+          supplyingStoreId: userStoreId,
+          status: { [Op.in]: ['approved', 'finalized'] }
+        };
+        console.log(`\n📌 RULE 2 - Supplying Store (ID: ${userStoreId}):`);
+        console.log("  - Can ONLY see approved/finalized");
+        if (status !== "all" && ['approved', 'finalized'].includes(status)) {
+          supplyingStoreCondition.status = status;
+          console.log("  - Status filter applied to supplying condition:", status);
+        }
+        if (status === "pending") {
+          console.log("  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!");
+        }
+        console.log("  - Condition:", JSON.stringify(supplyingStoreCondition));
+        
+        // Combine with OR
+        where[Op.or] = [
+          askingStoreCondition,
+          supplyingStoreCondition
+        ];
+        
+        console.log("\n📋 Combined WHERE clause with OR:");
+        console.log(JSON.stringify(where, null, 2));
+        
+        // ✅ If a specific store filter is requested, apply it WITHIN the permission
+        if (storeId !== "all" && parseInt(storeId) !== userStoreId) {
+          console.log(`\n📌 Additional store filter applied (${storeId}):`);
+          where[Op.and] = [
+            {
+              [Op.or]: [
+                { askingStoreId: parseInt(storeId) },
+                { supplyingStoreId: parseInt(storeId) },
+              ]
+            },
+            {
+              [Op.or]: [
+                askingStoreCondition,
+                supplyingStoreCondition
+              ]
+            }
+          ];
+          console.log("📋 Updated WHERE with AND + store filter:");
+          console.log(JSON.stringify(where, null, 2));
+        }
+        
+        console.log("\n📋 FINAL PERMISSION SUMMARY:");
+        console.log("  - Asking Store:", userStoreId, "→ ALL statuses");
+        console.log("  - Supplying Store:", userStoreId, "→ ONLY approved/finalized");
+      }
+      
+    // ✅ CHECKER / FINANCE: Only see approved/finalized
+    } else if (currentUserRole === "checker" || currentUserRole === "finance") {
+      
+      console.log("\n📊 CHECKER/FINANCE USER DETECTED:", currentUserRole);
+      
+      if (status === "all") {
+        where.status = { [Op.in]: ['approved', 'finalized'] };
+        console.log("  - Status set to approved/finalized (no status filter)");
+      } else {
+        where.status = status;
+        console.log("  - Status filter applied:", status);
+      }
+      
+      if (userStoreId) {
+        where[Op.or] = [
+          { askingStoreId: userStoreId },
+          { supplyingStoreId: userStoreId },
+        ];
+        console.log("  - Store filter applied:", userStoreId);
+      }
+      
+      console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
+      
+    // ✅ OTHER USERS: Only see requests they created
+    } else {
+      
+      console.log("\n👤 OTHER USER ROLE DETECTED:", currentUserRole);
+      
+      if (currentUserId) {
+        where.requestedById = currentUserId;
+        console.log("  - Filtering by requestedById:", currentUserId);
+      }
+      console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
+    }
+
+    // ================================================================
+    // 🔥 USER FILTER (overrides all other filters)
+    // ================================================================
+    console.log("\n" + "=".repeat(80));
+    console.log("📌 USER FILTER CHECK:");
     if (userId !== "all") {
       where.requestedById = userId;
-      userRelevantWhere.requestedById = userId;
+      console.log("✅ User filter applied - requestedById:", userId);
+    } else {
+      console.log("ℹ️ No user filter (userId = 'all')");
     }
 
+    // ================================================================
+    // 🔥 SEARCH FILTER
+    // ================================================================
+    console.log("\n📌 SEARCH FILTER CHECK:");
     if (search) {
       const searchCondition = {
         [Op.or]: [
@@ -485,218 +730,123 @@ exports.getRequests = async (req, res) => {
           { remark: { [Op.like]: `%${search}%` } },
         ],
       };
-      where[Op.and] = where[Op.and] || [];
-      where[Op.and].push(searchCondition);
-
-      userRelevantWhere[Op.and] = userRelevantWhere[Op.and] || [];
-      userRelevantWhere[Op.and].push(searchCondition);
+      
+      if (where[Op.and]) {
+        where[Op.and].push(searchCondition);
+      } else {
+        where[Op.and] = [searchCondition];
+      }
+      console.log("✅ Search filter applied:", search);
+      console.log("  - Search condition:", JSON.stringify(searchCondition));
+    } else {
+      console.log("ℹ️ No search filter (search = '')");
     }
 
-    console.log("📋 Final WHERE clause:", JSON.stringify(where, null, 2));
-
     // ================================================================
-    // 🔥 GET CORRECT TOTAL COUNT
+    // 🔥 FINAL WHERE CLAUSE
     // ================================================================
-    const totalCount = await ItemRequest.count({ where });
-    console.log(`📊 Total count of visible requests: ${totalCount}`);
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 FINAL WHERE CLAUSE:");
+    console.log("=".repeat(80));
+    console.log(JSON.stringify(where, null, 2));
+    console.log("=".repeat(80));
 
     // ================================================================
     // 🔥 QUERY DATABASE
     // ================================================================
-    let rows = [];
+    console.log("\n📊 EXECUTING DATABASE QUERY:");
+    console.log("  - Page:", page);
+    console.log("  - Limit:", limit);
+    console.log("  - Offset:", offset);
+    console.log("  - Sort By:", sortBy);
+    console.log("  - Sort Order:", sortOrder);
+    
+    const totalCount = await ItemRequest.count({ where });
+    console.log(`\n📊 Total count of visible requests: ${totalCount}`);
 
-    if (currentUserId && userStoreId && currentUserRole !== "admin") {
-      // 🔥 Get user's relevant requests first
-      const userRequests = await ItemRequest.findAll({
-        where: {
-          ...where,
-          ...userRelevantCondition,
-        },
-        limit: parseInt(limit),
-        order: [[sortBy, sortOrder]],
-        include: [
-          {
-            model: ItemRequestDetail,
-            as: "items",
-            include: [
-              {
-                model: Item,
-                as: "item",
-                include: [{ model: UOM, as: "uom" }],
-              },
-            ],
-          },
-          {
-            model: Store,
-            as: "askingStore",
-          },
-          {
-            model: Store,
-            as: "supplyingStore",
-          },
-          {
-            model: User,
-            as: "requestedByUser",
-            attributes: [
-              "userId",
-              "username",
-              "fullName",
-              "email",
-              "roleId",
-              "departmentId",
-            ],
-          },
-          {
-            model: RequestNotification,
-            as: "notifications",
-            include: [
-              { model: Group, as: "group" },
-              { model: User, as: "respondedByUser" },
-            ],
-          },
-        ],
-      });
-
-      // Get the remaining requests
-      const remainingLimit = parseInt(limit) - userRequests.length;
-
-      let otherRequests = [];
-      if (remainingLimit > 0) {
-        const userRelevantCount = await ItemRequest.count({
-          where: {
-            ...where,
-            ...userRelevantCondition,
-          },
-        });
-
-        let otherOffset = parseInt(offset);
-        if (page == 1) {
-          otherOffset = 0;
-        } else {
-          const userRelevantOnPreviousPages = Math.min(
-            (parseInt(page) - 1) * parseInt(limit),
-            userRelevantCount,
-          );
-          otherOffset = Math.max(
-            0,
-            parseInt(offset) - userRelevantOnPreviousPages,
-          );
-        }
-
-        // 🔥 Get other requests (excluding user's relevant ones)
-        const otherWhere = {
-          ...where,
-          [Op.and]: [
-            { requestedById: { [Op.ne]: currentUserId } },
-            { askingStoreId: { [Op.ne]: userStoreId } },
-            { supplyingStoreId: { [Op.ne]: userStoreId } },
-          ],
-        };
-
-        otherRequests = await ItemRequest.findAll({
-          where: otherWhere,
-          limit: remainingLimit,
-          offset: otherOffset,
-          order: [[sortBy, sortOrder]],
+    const rows = await ItemRequest.findAll({
+      where,
+      offset: parseInt(offset),
+      limit: parseInt(limit),
+      order: [[sortBy, sortOrder]],
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: "items",
           include: [
             {
-              model: ItemRequestDetail,
-              as: "items",
-              include: [
-                {
-                  model: Item,
-                  as: "item",
-                  include: [{ model: UOM, as: "uom" }],
-                },
-              ],
-            },
-            {
-              model: Store,
-              as: "askingStore",
-            },
-            {
-              model: Store,
-              as: "supplyingStore",
-            },
-            {
-              model: User,
-              as: "requestedByUser",
-              attributes: [
-                "userId",
-                "username",
-                "fullName",
-                "email",
-                "roleId",
-                "departmentId",
-              ],
-            },
-            {
-              model: RequestNotification,
-              as: "notifications",
-              include: [
-                { model: Group, as: "group" },
-                { model: User, as: "respondedByUser" },
-              ],
+              model: Item,
+              as: "item",
+              include: [{ model: UOM, as: "uom" }],
             },
           ],
-        });
-      }
+        },
+        {
+          model: Store,
+          as: "askingStore",
+        },
+        {
+          model: Store,
+          as: "supplyingStore",
+        },
+        {
+          model: User,
+          as: "requestedByUser",
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
+        },
+        {
+          model: RequestNotification,
+          as: "notifications",
+          include: [
+            { model: Group, as: "group" },
+            { model: User, as: "respondedByUser" },
+          ],
+        },
+      ],
+    });
 
-      rows = [...userRequests, ...otherRequests];
+    console.log(`\n📊 Query returned ${rows.length} requests`);
 
-      console.log(
-        `✅ Found ${userRequests.length} user-relevant requests and ${otherRequests.length} other requests (total: ${rows.length})`,
-      );
+    // ================================================================
+    // 🔥 LOG RETURNED REQUESTS
+    // ================================================================
+    console.log("\n" + "=".repeat(80));
+    console.log("📋 RETURNED REQUESTS:");
+    console.log("=".repeat(80));
+    
+    if (rows.length === 0) {
+      console.log("ℹ️ No requests found");
     } else {
-      // Admin or no user store - normal query
-      rows = await ItemRequest.findAll({
-        where,
-        offset: parseInt(offset),
-        limit: parseInt(limit),
-        order: [[sortBy, sortOrder]],
-        include: [
-          {
-            model: ItemRequestDetail,
-            as: "items",
-            include: [
-              {
-                model: Item,
-                as: "item",
-                include: [{ model: UOM, as: "uom" }],
-              },
-            ],
-          },
-          {
-            model: Store,
-            as: "askingStore",
-          },
-          {
-            model: Store,
-            as: "supplyingStore",
-          },
-          {
-            model: User,
-            as: "requestedByUser",
-            attributes: [
-              "userId",
-              "username",
-              "fullName",
-              "email",
-              "roleId",
-              "departmentId",
-            ],
-          },
-          {
-            model: RequestNotification,
-            as: "notifications",
-            include: [
-              { model: Group, as: "group" },
-              { model: User, as: "respondedByUser" },
-            ],
-          },
-        ],
+      rows.forEach((req, index) => {
+        const request = req.toJSON ? req.toJSON() : req;
+        console.log(`\n📌 Request ${index + 1}:`);
+        console.log(`  - ID: ${request.requestId}`);
+        console.log(`  - Code: ${request.requestCode}`);
+        console.log(`  - Status: ${request.status}`);
+        console.log(`  - Asking Store ID: ${request.askingStoreId}`);
+        console.log(`  - Supplying Store ID: ${request.supplyingStoreId}`);
+        console.log(`  - Requested By: ${request.requestedByUser?.username || 'Unknown'}`);
+        console.log(`  - Created At: ${request.createdAt}`);
+        
+        // Check role visibility
+        if (request.askingStoreId === userStoreId) {
+          console.log(`  - ✅ User's store is ASKING → SHOWN (status: ${request.status})`);
+        } else if (request.supplyingStoreId === userStoreId) {
+          console.log(`  - ✅ User's store is SUPPLYING → SHOWN (status: ${request.status})`);
+        }
       });
     }
+
+    console.log("\n" + "=".repeat(80));
+    console.log("✅ GET REQUESTS COMPLETED");
+    console.log("=".repeat(80));
 
     res.json({
       success: true,
@@ -710,8 +860,13 @@ exports.getRequests = async (req, res) => {
         },
       },
     });
+    
   } catch (error) {
-    console.error("❌ Get requests error:", error);
+    console.error("\n❌ GET REQUESTS ERROR:");
+    console.error("=".repeat(80));
+    console.error(error);
+    console.error("=".repeat(80));
+    
     res.status(500).json({
       success: false,
       error: "Failed to fetch requests",
@@ -789,75 +944,8 @@ exports.getRequestById = async (req, res) => {
     });
   }
 };
-
 // ================================================================
-// 4. CREATE REQUEST
-// ================================================================
-// controllers/itemRequestController.js - COMPLETE createRequest
-
-// ================================================================
-// HELPER: Create notifications (for non-skip stores only)
-// ================================================================
-async function createRequestNotifications(requestId, storeId) {
-  try {
-    console.log(
-      `📤 Creating notifications for request ${requestId}, store ${storeId}`,
-    );
-
-    const groups = await db.sequelize.query(
-      `SELECT g.id, g.name, g.code, g.status
-       FROM groups g
-       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
-       WHERE sgr.store_id = :storeId AND g.status = 'Active'`,
-      {
-        replacements: { storeId: parseInt(storeId) },
-        type: db.sequelize.QueryTypes.SELECT,
-      },
-    );
-
-    console.log(`📋 Found ${groups.length} groups`);
-
-    if (!groups || groups.length === 0) {
-      console.log(`⚠️ No active groups found for store ${storeId}`);
-      return 0;
-    }
-
-    const notificationsData = groups
-      .map((group) => {
-        const groupId = parseInt(group.id);
-        if (!groupId || isNaN(groupId)) return null;
-
-        return {
-          request_id: parseInt(requestId),
-          group_id: groupId,
-          store_id: parseInt(storeId),
-          status: "pending",
-          created_at: new Date(),
-          updated_at: new Date(),
-        };
-      })
-      .filter((item) => item !== null);
-
-    if (notificationsData.length === 0) {
-      console.log(`⚠️ No valid groups to create notifications for`);
-      return 0;
-    }
-
-    const result = await RequestNotification.bulkCreate(notificationsData, {
-      validate: false,
-      returning: true,
-    });
-
-    console.log(`✅ Created ${result.length} notifications`);
-    return result.length;
-  } catch (error) {
-    console.error("❌ Error creating notifications:", error);
-    return 0;
-  }
-}
-
-// ================================================================
-// COMPLETE CREATE REQUEST FUNCTION
+// 4. CREATE REQUEST - GROUP ONLY (NO DEPARTMENT)
 // ================================================================
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -871,6 +959,7 @@ exports.createRequest = async (req, res) => {
       requestedDate,
       status = "pending",
       remark,
+      isAsset = false,  // ✅ Read isAsset from request body
     } = req.body;
 
     // ================================================================
@@ -1068,20 +1157,22 @@ exports.createRequest = async (req, res) => {
     const requestCode = await ItemRequest.generateRequestCode();
 
     // ================================================================
-    // 8. CREATE THE REQUEST
+    // 8. CREATE THE REQUEST (with isAsset)
     // ================================================================
-    const request = await ItemRequest.create(
-      {
-        requestCode,
-        askingStoreId: parseInt(askingStoreId),
-        supplyingStoreId: parseInt(supplyingStoreId),
-        requestedById: requestedById || null,
-        requestedDate: requestedDate || new Date().toISOString().split("T")[0],
-        status: status || "pending",
-        remark: remark || null,
-      },
-      { transaction: t },
-    );
+  // In createRequest, when creating the request:
+const request = await ItemRequest.create(
+  {
+    requestCode,
+    askingStoreId: parseInt(askingStoreId),
+    supplyingStoreId: parseInt(supplyingStoreId),
+    requestedById: requestedById || null,
+    requestedDate: requestedDate || new Date().toISOString().split("T")[0],
+    status: status || "pending",
+    remark: remark || null,
+    isAsset: isAsset || false,  // ✅ This is already in your code
+  },
+  { transaction: t },
+);
 
     // ================================================================
     // 9. CREATE ITEM DETAILS
@@ -1101,91 +1192,25 @@ exports.createRequest = async (req, res) => {
     );
 
     // ================================================================
-    // 10. CREATE NOTIFICATIONS - SKIP FOR FOREIGN/LOCAL PURCHASE STORES
+    // 10. CREATE NOTIFICATIONS - GROUPS + DEPARTMENT (if isAsset)
     // ================================================================
     let notificationCount = 0;
 
     if (!skipNotifications) {
       console.log(
-        `📤 Creating notifications for request ${request.requestId}, store ${supplyingStoreId}`,
+        `📤 Creating notifications for request ${request.requestId}, isAsset: ${isAsset}`,
       );
 
       try {
-        // Get all active groups for the supplying store
-        const groups = await db.sequelize.query(
-          `SELECT g.id, g.name, g.code, g.status
-           FROM groups g
-           INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
-           WHERE sgr.store_id = :storeId AND g.status = 'Active'`,
-          {
-            replacements: { storeId: parseInt(supplyingStoreId) },
-            type: db.sequelize.QueryTypes.SELECT,
-            transaction: t,
-          },
+        notificationCount = await createRequestNotifications(
+          request.requestId,
+          supplyingStoreId,
+          askingStoreId,
+          isAsset,  // ✅ Pass isAsset flag
+          t
         );
-
-        console.log(
-          `📋 Found ${groups.length} groups for store ${supplyingStoreId}`,
-        );
-
-        if (groups && groups.length > 0) {
-          for (const group of groups) {
-            const groupId = parseInt(group.id);
-            if (!groupId || isNaN(groupId)) {
-              console.log(`⚠️ Skipping invalid group:`, group);
-              continue;
-            }
-
-            try {
-              await db.sequelize.query(
-                `INSERT INTO request_notifications (
-                  request_id,
-                  group_id,
-                  store_id,
-                  status,
-                  created_at,
-                  updated_at
-                ) VALUES (
-                  :request_id,
-                  :group_id,
-                  :store_id,
-                  :status,
-                  NOW(),
-                  NOW()
-                )`,
-                {
-                  replacements: {
-                    request_id: request.requestId,
-                    group_id: groupId,
-                    store_id: parseInt(supplyingStoreId),
-                    status: "pending",
-                  },
-                  type: db.sequelize.QueryTypes.INSERT,
-                  transaction: t,
-                },
-              );
-              notificationCount++;
-              console.log(
-                `✅ Created notification for group ${groupId} (${group.name})`,
-              );
-            } catch (err) {
-              console.error(
-                `❌ Failed to insert for group ${groupId}:`,
-                err.message,
-              );
-            }
-          }
-          console.log(
-            `✅ Created ${notificationCount}/${groups.length} notifications`,
-          );
-        } else {
-          console.log(
-            `⚠️ No active groups found for store ${supplyingStoreId}`,
-          );
-        }
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
-        // Don't rollback - request still created even if notifications fail
       }
     } else {
       console.log(
@@ -1239,6 +1264,7 @@ exports.createRequest = async (req, res) => {
           as: "notifications",
           include: [
             { model: Group, as: "group" },
+            { model: Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -1276,13 +1302,16 @@ exports.createRequest = async (req, res) => {
 
     const responseMessage = skipNotifications
       ? `✅ Request created successfully. (${supplyingStore.code} - No approval required - Foreign/Local Purchase)`
-      : "✅ Request created successfully. Notifications sent to all groups.";
+      : isAsset
+        ? `✅ Asset request created successfully. Notifications sent to groups and asset department.`
+        : `✅ Request created successfully. Notifications sent to all groups.`;
 
     res.status(201).json({
       success: true,
       message: responseMessage,
       data: {
         request: completeRequest,
+        isAsset: isAsset,
         skipNotifications: skipNotifications,
         skipReason: skipNotifications
           ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)`
@@ -1327,7 +1356,6 @@ exports.createRequest = async (req, res) => {
 // ================================================================
 // 5. UPDATE REQUEST
 // ================================================================
-// controllers/itemRequestController.js - COMPLETE FIXED VERSION
 
 exports.updateRequest = async (req, res) => {
   try {
@@ -1339,13 +1367,11 @@ exports.updateRequest = async (req, res) => {
       requestedById,
       requestedDate,
       remark,
+      isAsset,  // ✅ Read isAsset from request body
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, req.body);
 
-    // ================================================================
-    // STEP 1: GET THE REQUEST
-    // ================================================================
     const request = await ItemRequest.findByPk(id);
     if (!request) {
       return res.status(404).json({
@@ -1354,7 +1380,6 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ✅ Allow editing if status is pending OR rejected
     if (request.status === "finalized") {
       return res.status(400).json({
         success: false,
@@ -1362,29 +1387,24 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // STEP 2: UPDATE THE REQUEST - NO TRANSACTION
-    // ================================================================
+    // ✅ Update request with isAsset
     await request.update({
       askingStoreId: askingStoreId || request.askingStoreId,
       supplyingStoreId: supplyingStoreId || request.supplyingStoreId,
       requestedById:
         requestedById !== undefined ? requestedById : request.requestedById,
       requestedDate: requestedDate || request.requestedDate,
-      status: "pending", // 🔥 ALWAYS reset to pending
+      status: "pending",
       remark: remark !== undefined ? remark : request.remark,
+      isAsset: isAsset !== undefined ? isAsset : request.isAsset,  // ✅ Save isAsset
     });
 
-    // ================================================================
-    // STEP 3: UPDATE ITEMS - NO TRANSACTION
-    // ================================================================
+    // ✅ Update items
     if (items && items.length > 0) {
-      // Delete existing items
       await ItemRequestDetail.destroy({
         where: { requestId: id },
       });
 
-      // Create new items in parallel
       await Promise.all(
         items.map(async (item) => {
           return ItemRequestDetail.create({
@@ -1397,28 +1417,27 @@ exports.updateRequest = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // STEP 4: DELETE EXISTING NOTIFICATIONS - NO TRANSACTION
-    // ================================================================
+    // ✅ Delete existing notifications
     console.log(`🗑️ Deleting existing notifications for request ${id}`);
     await RequestNotification.destroy({
       where: { request_id: id },
     });
 
-    // ================================================================
-    // STEP 5: CREATE NEW NOTIFICATIONS - NO TRANSACTION
-    // ================================================================
-    console.log(`📤 Creating new notifications for request ${id}`);
+    // ✅ Recreate notifications with updated isAsset
+    const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
+    console.log(`📤 Creating new notifications for request ${id}, isAsset: ${updatedIsAsset}`);
+    
     await createRequestNotifications(
       request.requestId,
       request.supplyingStoreId,
+      request.askingStoreId,
+      updatedIsAsset || false,  // ✅ Pass isAsset flag
+      null
     );
 
     console.log(`✅ Request ${id} updated successfully`);
 
-    // ================================================================
-    // STEP 6: FETCH THE UPDATED REQUEST
-    // ================================================================
+    // ✅ Fetch updated request
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
@@ -1457,6 +1476,7 @@ exports.updateRequest = async (req, res) => {
           as: "notifications",
           include: [
             { model: Group, as: "group" },
+            { model: Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -1465,8 +1485,7 @@ exports.updateRequest = async (req, res) => {
 
     res.json({
       success: true,
-      message:
-        "Request updated successfully. New notifications sent to all groups.",
+      message: "Request updated successfully. New notifications sent.",
       data: updatedRequest,
     });
   } catch (error) {
@@ -1894,7 +1913,6 @@ exports.deleteRequest = async (req, res) => {
       });
     }
 
-    // Delete notifications first
     await RequestNotification.destroy({
       where: { request_id: id },
     });
@@ -1959,6 +1977,7 @@ exports.getRequestWithNotifications = async (req, res) => {
           as: "notifications",
           include: [
             { model: Group, as: "group" },
+            { model: Department, as: "department" },  // ✅ ADD THIS
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -1986,16 +2005,25 @@ exports.getRequestWithNotifications = async (req, res) => {
 
     const rejectionReasons = notifications
       .filter((n) => n.status === "rejected")
-      .map((n) => ({
-        groupId: n.group_id,
-        groupName: n.group?.name || "Unknown Group",
-        reason: n.rejected_reason,
-        respondedBy:
-          n.respondedByUser?.fullName ||
-          n.respondedByUser?.username ||
-          "Unknown",
-        respondedAt: n.responded_at,
-      }));
+      .map((n) => {
+        let name = "Unknown";
+        if (n.group_id) {
+          name = n.group?.name || `Group ${n.group_id}`;
+        } else if (n.department_id) {
+          name = n.department?.name || `Department ${n.department_id}`;
+        }
+        return {
+          id: n.id,
+          type: n.approval_type || "group",
+          name: name,
+          reason: n.rejected_reason,
+          respondedBy:
+            n.respondedByUser?.fullName ||
+            n.respondedByUser?.username ||
+            "Unknown",
+          respondedAt: n.responded_at,
+        };
+      });
 
     res.status(200).json({
       success: true,
@@ -2282,10 +2310,8 @@ exports.exportRequests = async (req, res) => {
 // ================================================================
 // 18. GET REQUEST STATISTICS
 // ================================================================
-
 exports.getStats = async (req, res) => {
   try {
-    // 🔥 Get the logged-in user
     const currentUser = req.user;
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
@@ -2297,19 +2323,11 @@ exports.getStats = async (req, res) => {
       storeId: userStoreId,
     });
 
-    // ================================================================
-    // 🔥 BUILD WHERE CLAUSE - SAME AS getRequests
-    // ================================================================
     let where = {};
 
-    // ================================================================
-    // ROLE-BASED FILTERS (EXACTLY like getRequests)
-    // ================================================================
-    
     if (currentUserRole === "admin") {
       console.log("👑 Admin user - showing all requests for stats");
-    } 
-    else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
+    } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
       if (userStoreId) {
         where[Op.or] = [
           { askingStoreId: userStoreId },
@@ -2322,8 +2340,7 @@ exports.getStats = async (req, res) => {
         }
         console.log(`👤 Store user with no store - showing only their requests`);
       }
-    } 
-    else if (currentUserRole === "checker" || currentUserRole === "finance") {
+    } else if (currentUserRole === "checker" || currentUserRole === "finance") {
       where.status = { [Op.in]: ["approved", "finalized"] };
       if (userStoreId) {
         where[Op.or] = [
@@ -2332,9 +2349,7 @@ exports.getStats = async (req, res) => {
         ];
       }
       console.log(`📊 Checker/Finance user - showing approved/finalized requests`);
-    } 
-    else {
-      // 🔥 NON-STORE USER - shows only their own requests
+    } else {
       if (currentUserId) {
         where.requestedById = currentUserId;
         console.log(`👤 Non-store user - showing only their requests (userId: ${currentUserId})`);
@@ -2363,10 +2378,6 @@ exports.getStats = async (req, res) => {
 
     console.log("📋 Stats WHERE clause:", JSON.stringify(where, null, 2));
 
-    // ================================================================
-    // 🔥 COUNT REQUESTS BY STATUS
-    // ================================================================
-
     const total = await ItemRequest.count({ where });
 
     const pending = await ItemRequest.count({
@@ -2385,14 +2396,10 @@ exports.getStats = async (req, res) => {
       where: { ...where, status: 'finalized' }
     });
 
-    // ================================================================
-    // 🔥 DETAILED BREAKDOWN - FIXED: Use correct column name
-    // ================================================================
-    // 🔥 FIX: Use 'id' instead of 'requestId' (or use '*' for COUNT)
     const statusBreakdown = await ItemRequest.findAll({
       attributes: [
         'status',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']  // ✅ Use 'id' or '*' 
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
       where,
       group: ['status']
@@ -2410,9 +2417,6 @@ exports.getStats = async (req, res) => {
       }))
     });
 
-    // ================================================================
-    // 🔥 RETURN RESPONSE
-    // ================================================================
     res.json({
       success: true,
       data: {
@@ -2501,17 +2505,13 @@ exports.getActiveItems = async (req, res) => {
   }
 };
 
-// controllers/itemRequestController.js - Add this method
-
 // ================================================================
-// GET NOTIFICATIONS FOR A GROUP IN A SPECIFIC STORE
+// 21. GET GROUP NOTIFICATIONS
 // ================================================================
-// controllers/itemRequestController.js - Updated getGroupNotifications with pagination
-
 exports.getGroupNotifications = async (req, res) => {
   try {
     const { storeId, groupId } = req.params;
-    const { page = 1, limit = 10, status } = req.query; // 🔥 Add pagination params
+    const { page = 1, limit = 10, status } = req.query;
     const userId = req.user?.userId;
 
     if (!userId) {
@@ -2521,7 +2521,7 @@ exports.getGroupNotifications = async (req, res) => {
       });
     }
 
-    // Verify the group belongs to the store
+    // 🔥 Verify the group belongs to the store
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         store_id: parseInt(storeId),
@@ -2536,7 +2536,7 @@ exports.getGroupNotifications = async (req, res) => {
       });
     }
 
-    // 🔥 Build where clause with optional status filter
+    // 🔥 Build where clause - GROUP NOTIFICATIONS ONLY
     const whereClause = {
       group_id: parseInt(groupId),
       store_id: parseInt(storeId),
@@ -2546,12 +2546,10 @@ exports.getGroupNotifications = async (req, res) => {
       whereClause.status = status;
     }
 
-    // 🔥 Get total count
     const totalCount = await RequestNotification.count({
       where: whereClause,
     });
 
-    // 🔥 Get paginated notifications
     const notifications = await RequestNotification.findAll({
       where: whereClause,
       include: [
@@ -2559,56 +2557,31 @@ exports.getGroupNotifications = async (req, res) => {
           model: ItemRequest,
           as: "request",
           include: [
-            {
-              model: Store,
-              as: "askingStore",
-              attributes: ["storeId", "name", "code", "location"],
-            },
-            {
-              model: Store,
-              as: "supplyingStore",
-              attributes: ["storeId", "name", "code", "location"],
-            },
-            {
-              model: User,
-              as: "requestedByUser",
-              attributes: ["userId", "username", "fullName", "email"],
-            },
-            {
-              model: ItemRequestDetail,
+            { model: Store, as: "askingStore" },
+            { model: Store, as: "supplyingStore" },
+            { model: User, as: "requestedByUser" },
+            { 
+              model: ItemRequestDetail, 
               as: "items",
               include: [
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }],
-                },
-              ],
-            },
-          ],
+                  include: [{ model: UOM, as: "uom" }]
+                }
+              ]
+            }
+          ]
         },
-        {
-          model: Group,
-          as: "group",
-          attributes: ["id", "name", "code"],
-        },
-        {
-          model: Store,
-          as: "store",
-          attributes: ["storeId", "name", "code"],
-        },
-        {
-          model: User,
-          as: "respondedByUser",
-          attributes: ["userId", "username", "fullName"],
-        },
+        { model: Group, as: "group" },
+        { model: Store, as: "store" },
+        { model: User, as: "respondedByUser" }
       ],
       order: [["created_at", "DESC"]],
       limit: parseInt(limit),
       offset: (parseInt(page) - 1) * parseInt(limit),
     });
 
-    // 🔥 Get summary counts (without pagination)
     const summary = {
       total: totalCount,
       pending: await RequestNotification.count({
@@ -2635,9 +2608,7 @@ exports.getGroupNotifications = async (req, res) => {
         },
         store: {
           id: parseInt(storeId),
-          group: {
-            id: parseInt(groupId),
-          },
+          group: { id: parseInt(groupId) },
         },
       },
     });
@@ -2646,6 +2617,176 @@ exports.getGroupNotifications = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get notifications",
+    });
+  }
+};
+
+// ================================================================
+// 22. GET DEPARTMENT NOTIFICATIONS - REMOVED
+// ================================================================
+// This endpoint has been removed as department validation is no longer used.
+
+// ================================================================
+// 23. GET STORE GROUPS (Helper endpoint)
+// ================================================================
+exports.getStoreGroups = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    const groups = await db.sequelize.query(
+      `SELECT g.id, g.name, g.code, g.status
+       FROM groups g
+       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+       WHERE sgr.store_id = :storeId AND g.status = 'Active'`,
+      {
+        replacements: { storeId: parseInt(storeId) },
+        type: db.sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    res.json({
+      success: true,
+      data: groups,
+    });
+  } catch (error) {
+    console.error("❌ Error getting store groups:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get store groups",
+    });
+  }
+};
+
+
+// ================================================================
+// 22. GET DEPARTMENT NOTIFICATIONS (for ASSET requests)
+// ================================================================
+exports.getDepartmentNotifications = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const { page = 1, limit = 10, status } = req.query;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    const deptId = parseInt(departmentId);
+    if (isNaN(deptId) || deptId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid department ID",
+      });
+    }
+
+    // Get Department model
+    const { Department } = db;
+
+    // ✅ Verify department exists
+    const department = await Department.findByPk(deptId);
+    if (!department) {
+      return res.status(404).json({
+        success: false,
+        error: "Department not found",
+      });
+    }
+
+    // ✅ Build where clause - DEPARTMENT NOTIFICATIONS ONLY
+    const whereClause = {
+      department_id: deptId,
+      approval_type: "department",
+      is_department_approval: true,
+    };
+
+    if (status && status !== "all") {
+      whereClause.status = status;
+    }
+
+    // ✅ Get total count
+    const totalCount = await RequestNotification.count({
+      where: whereClause,
+    });
+
+    // ✅ Get paginated notifications
+    const notifications = await RequestNotification.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: ItemRequest,
+          as: "request",
+          include: [
+            { model: Store, as: "askingStore" },
+            { model: Store, as: "supplyingStore" },
+            { model: User, as: "requestedByUser" },
+            { 
+              model: ItemRequestDetail, 
+              as: "items",
+              include: [
+                {
+                  model: Item,
+                  as: "item",
+                  include: [{ model: UOM, as: "uom" }]
+                }
+              ]
+            }
+          ]
+        },
+        { 
+          model: Department, 
+          as: "department",
+          attributes: ["department_id", "name", "code", "description"]
+        },
+        { 
+          model: User, 
+          as: "respondedByUser",
+          attributes: ["userId", "username", "fullName"]
+        }
+      ],
+      order: [["created_at", "DESC"]],
+      limit: parseInt(limit) || 10,
+      offset: ((parseInt(page) || 1) - 1) * (parseInt(limit) || 10),
+    });
+
+    // ✅ Get summary counts
+    const summary = {
+      total: totalCount,
+      pending: await RequestNotification.count({
+        where: { ...whereClause, status: "pending" },
+      }),
+      accepted: await RequestNotification.count({
+        where: { ...whereClause, status: "accepted" },
+      }),
+      rejected: await RequestNotification.count({
+        where: { ...whereClause, status: "rejected" },
+      }),
+    };
+
+    res.json({
+      success: true,
+      data: {
+        notifications,
+        summary,
+        pagination: {
+          page: parseInt(page) || 1,
+          limit: parseInt(limit) || 10,
+          total: totalCount,
+          pages: Math.ceil(totalCount / (parseInt(limit) || 10)),
+        },
+        department: {
+          department_id: department.department_id,
+          name: department.name,
+          code: department.code,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting department notifications:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get department notifications",
     });
   }
 };

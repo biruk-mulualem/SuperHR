@@ -292,6 +292,7 @@ class UsersService {
    * Update user
    */
   async updateUser(userId: number, userData: {
+      username?: string  // ✅ ADD THIS
     fullName?: string
     email?: string
     roleId?: number

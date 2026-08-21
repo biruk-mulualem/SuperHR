@@ -288,7 +288,7 @@ const loadCategories = async () => {
     const response = await balanceService.getActiveCategories()
     if (response.success) {
       categories.value = response.data || []
-      console.log(`✅ Loaded ${categories.value.length} categories for print`)
+      // console.log(`✅ Loaded ${categories.value.length} categories for print`)
     }
   } catch (error) {
     console.error('Load categories error:', error)

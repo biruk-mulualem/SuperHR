@@ -17,7 +17,7 @@
             </div>
             <div class="form-group">
               <label>Username *</label>
-              <input type="text" v-model="userForm.username" :disabled="isEditing" class="form-input" :class="{ error: errors.username }">
+             <input type="text" v-model="userForm.username" class="form-input" :class="{ error: errors.username }">
               <span class="error-text" v-if="errors.username">{{ errors.username }}</span>
             </div>
           </div>

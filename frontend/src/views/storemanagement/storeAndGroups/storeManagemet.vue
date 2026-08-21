@@ -454,7 +454,7 @@ const loadGroups = async () => {
     const response = await storeService.getAllGroups()
     if (response.success) {
       allGroups.value = response.data || []
-      console.log('✅ Groups loaded:', allGroups.value.length)
+      // console.log('✅ Groups loaded:', allGroups.value.length)
     } else {
       console.error('❌ Failed to load groups:', response.error)
       // Fallback to mock data if API fails

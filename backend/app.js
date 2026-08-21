@@ -61,7 +61,10 @@ const uploadDirs = [
   "uploads/balances/exports",
 
   // Temp uploads
-  "uploads/temp/"
+  "uploads/temp/",
+
+  // ========== NEW: BACKUP DIRECTORY ==========
+  "uploads/backups/"
 ];
 
 // Serve static files from uploads directory
@@ -97,6 +100,9 @@ const itemCostRoutes = require('./routes/itemCostRoutes');
 const StoreDashboardRoutes = require('./routes/StoreDashboardRoutes');
 const checkerDashboardRoutes=require('./routes/checkerDashboardRoutes');
 const costDashboardRoutes = require('./routes/costDashboardRoutes');
+
+// ========== NEW: BACKUP ROUTES ==========
+const backupRoutes = require("./routes/backupRoutes");
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -153,6 +159,9 @@ app.use('/api/item-costs', itemCostRoutes);
 app.use('/api/store-dashboard', StoreDashboardRoutes);
 app.use('/api/cost-dashboard', costDashboardRoutes);
 app.use('/api/checker-dashboard', checkerDashboardRoutes);
+
+// ========== NEW: BACKUP ROUTES ==========
+app.use("/api/backup", backupRoutes);
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT

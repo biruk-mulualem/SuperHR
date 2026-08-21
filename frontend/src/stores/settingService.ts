@@ -449,6 +449,114 @@ class SettingService {
     }
   }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// services/settingService.ts
+
+// ==================== APPROVAL DEPARTMENT API ====================
+
+/**
+ * Get approval department configuration
+ */
+async getApprovalDepartment(): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.get('/settings/approval/department');
+    return response.data;
+  } catch (error: any) {
+    throw error.response?.data || { success: false, error: 'Failed to fetch approval department' };
+  }
+}
+
+/**
+ * Get all departments for approval dropdown
+ */
+async getDepartmentsForApproval(): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.get('/settings/approval/departments');
+    return response.data;
+  } catch (error: any) {
+    throw error.response?.data || { success: false, error: 'Failed to fetch departments' };
+  }
+}
+
+/**
+ * 🔥 Get all stores for "Apply To" dropdown
+ */
+async getStoresForApproval(): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.get('/settings/approval/stores');
+    return response.data;
+  } catch (error: any) {
+    throw error.response?.data || { success: false, error: 'Failed to fetch stores' };
+  }
+}
+
+/**
+ * Set approval department
+ */
+async setApprovalDepartment(data: {
+  departmentId: number;
+  requiresApproval?: boolean;
+  applyToStores?: string[];
+}): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.post('/settings/approval/department', data);
+    return response.data;
+  } catch (error: any) {
+    throw error.response?.data || { success: false, error: 'Failed to set approval department' };
+  }
+}
+
+/**
+ * Remove/disable approval department
+ */
+async removeApprovalDepartment(): Promise<ApiResponse<any>> {
+  try {
+    const response = await api.delete('/settings/approval/department');
+    return response.data;
+  } catch (error: any) {
+    throw error.response?.data || { success: false, error: 'Failed to remove approval department' };
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ==================== UTILITY METHODS ====================
   
   getDefaultAttendanceRules(): AttendanceRules {

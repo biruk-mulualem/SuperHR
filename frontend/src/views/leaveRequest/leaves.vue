@@ -812,8 +812,8 @@ async function loadApprovedRequests() {
       
       // Debug: Log first request to see structure
       if (approvedLeaveRequests.value.length > 0) {
-        console.log('Sample approved request:', approvedLeaveRequests.value[0])
-        console.log('Approved date field:', approvedLeaveRequests.value[0].approvedDate)
+        // console.log('Sample approved request:', approvedLeaveRequests.value[0])
+        // console.log('Approved date field:', approvedLeaveRequests.value[0].approvedDate)
       }
     }
   } catch (error) {
@@ -915,10 +915,10 @@ async function loadBalanceData() {
         employees.map(async (emp) => {
           try {
             const balanceResult = await leaveService.getEmployeeBalance(emp.id, new Date().getFullYear())
-            console.log(`Employee ${emp.firstName} ${emp.lastName}:`, {
-              employeeData: emp,
-              balanceData: balanceResult.data
-            })
+            // console.log(`Employee ${emp.firstName} ${emp.lastName}:`, {
+            //   employeeData: emp,
+            //   balanceData: balanceResult.data
+            // })
             
             // FIXED: Get department name from employee data
             let departmentName = 'N/A'
@@ -978,7 +978,7 @@ async function loadBalanceData() {
       balanceData.value = balances
       balanceTotalPages.value = Math.ceil(balanceData.value.length / itemsPerPage)
       
-      console.log('Final balance data with departments:', balanceData.value)
+      // console.log('Final balance data with departments:', balanceData.value)
     }
   } catch (error) {
     console.error('Error loading balance data:', error)
@@ -1006,7 +1006,7 @@ async function loadEmployees() {
   try {
     const result = await employeeService.getEmployees({ limit: 100 })
     if (result.success) {
-      console.log('Employees loaded:', result.data)
+      // console.log('Employees loaded:', result.data)
       // Log first employee to see structure
       if (result.data && result.data.length > 0) {
         // console.log('First employee structure:', JSON.stringify(result.data[0], null, 2))
@@ -1261,7 +1261,7 @@ function formatApprovedDate(request) {
   const dateValue = request.approvedDate || request.approved_at || request.approvedAt || request.approved_date || null
   
   if (!dateValue) {
-    console.log('No approved date found for request:', request.leaveRequestId, 'Keys:', Object.keys(request))
+    // console.log('No approved date found for request:', request.leaveRequestId, 'Keys:', Object.keys(request))
     return 'N/A'
   }
   

@@ -9,6 +9,7 @@
       <div v-show="!isCollapsed" class="user-info">
         <h4>{{ userDisplayName }}</h4>
         <p>{{ roleTitle }}</p>
+       
       </div>
     </div>
 
@@ -101,13 +102,16 @@ const roleMenus = {
     { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
     { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
+    { name: 'balance-corrections ', path: '/store-balance-corrections', icon: 'UserIcon', badge: null },
     { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
     { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
         { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-  ],
+   { name: 'fleet Management', path: '/fleet-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
+ 
+      ],
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
@@ -165,16 +169,21 @@ const roleMenus = {
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
     { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
+        { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
+     { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
+      { name: 'balance-corrections ', path: '/store-balance-corrections', icon: 'UserIcon', badge: null },
   ],
   cost: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
+        { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
   ],
     nebret: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-    { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },  // ← Added for reference
-    { name: 'Inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },  // ← Added for reference
+    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+    // { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null }, 
+    // { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },  // ← Added for reference
+    // { name: 'Inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },  // ← Added for reference
   ]
 }
 

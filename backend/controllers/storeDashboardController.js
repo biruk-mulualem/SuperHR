@@ -369,7 +369,9 @@ exports.getStockSummary = async (req, res) => {
         }
         
         const { balanceWhereClause } = filters;
+        const groupId = userAccess.groupId;
         console.log('📊 balanceWhereClause:', balanceWhereClause);
+        console.log('📊 groupId:', groupId);
         
         // ================================================================
         // 1. TOTAL ITEMS - Count balances with storeId and groupId
@@ -424,19 +426,66 @@ exports.getStockSummary = async (req, res) => {
         console.log('📊 minStockAlert:', minStockAlert);
         
         // ================================================================
-        // 6. APPROVED REQUESTS - Count APPROVED requests where store is asking or supplying
-        // Note: Status should be 'approved' (not pending)
+        // 6. APPROVED REQUESTS - Count approved requests that haven't been processed yet
+        // ✅ FIX: Only count requests with status = 'approved' AND not processed/skipped by this group
         // ================================================================
-        const approvedRequests = await ItemRequest.count({
-            where: {
-                status: 'approved',
-                [Op.or]: [
-                    { askingStoreId: balanceWhereClause.storeId },
-                    { supplyingStoreId: balanceWhereClause.storeId }
-                ]
+        let approvedRequestsCount = 0;
+        
+        if (groupId) {
+            // Get all approved requests for this store
+            const approvedRequests = await ItemRequest.findAll({
+                where: {
+                    status: 'approved',
+                    [Op.or]: [
+                        { askingStoreId: balanceWhereClause.storeId },
+                        { supplyingStoreId: balanceWhereClause.storeId }
+                    ]
+                },
+                attributes: ['requestId']
+            });
+            
+            if (approvedRequests.length > 0) {
+                const requestIds = approvedRequests.map(r => r.requestId);
+                
+                // Check which requests have been processed or skipped by this group
+                const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+                if (RequestGroupProcessing) {
+                    const processingRecords = await RequestGroupProcessing.findAll({
+                        where: {
+                            requestId: { [Op.in]: requestIds },
+                            groupId: parseInt(groupId),
+                            status: { [Op.in]: ['processed', 'skipped'] }
+                        },
+                        attributes: ['requestId']
+                    });
+                    
+                    const excludedRequestIds = new Set(
+                        processingRecords.map(r => parseInt(r.requestId))
+                    );
+                    
+                    // Count only requests NOT processed/skipped
+                    approvedRequestsCount = approvedRequests.filter(
+                        r => !excludedRequestIds.has(parseInt(r.requestId))
+                    ).length;
+                } else {
+                    // If RequestGroupProcessing model doesn't exist, count all approved requests
+                    approvedRequestsCount = approvedRequests.length;
+                }
             }
-        });
-        console.log('📊 approvedRequests:', approvedRequests);
+        } else {
+            // No groupId - count all approved requests
+            approvedRequestsCount = await ItemRequest.count({
+                where: {
+                    status: 'approved',
+                    [Op.or]: [
+                        { askingStoreId: balanceWhereClause.storeId },
+                        { supplyingStoreId: balanceWhereClause.storeId }
+                    ]
+                }
+            });
+        }
+        
+        console.log('📊 approvedRequests (not processed yet):', approvedRequestsCount);
         
         // ================================================================
         // 7. Calculate zero stock percentage
@@ -455,7 +504,7 @@ exports.getStockSummary = async (req, res) => {
                 zeroStock: zeroStock || 0,
                 zeroStockPercentage: zeroStockPercentage || 0,
                 minStockAlert: minStockAlert || 0,
-                pendingRequests: approvedRequests || 0  // ✅ Changed to approvedRequests
+                pendingRequests: approvedRequestsCount || 0  // ✅ Only approved NOT processed
             }
         });
         
@@ -753,14 +802,15 @@ exports.getApprovedRequests = async (req, res) => {
         
         const { requestWhereClause } = filters;
         const { limit = 10 } = req.query;
+        const groupId = userAccess.groupId;  // ✅ Get the group ID
         
-        // ✅ Changed from 'pending' to 'approved'
+        // ✅ Get all approved requests for this store
         const whereClause = { status: 'approved' };
         if (requestWhereClause && requestWhereClause[Op.or]) {
             whereClause[Op.or] = requestWhereClause[Op.or];
         }
         
-        const approvedRequests = await ItemRequest.findAll({
+        let approvedRequests = await ItemRequest.findAll({
             where: whereClause,
             include: [
                 {
@@ -797,18 +847,56 @@ exports.getApprovedRequests = async (req, res) => {
                     ]
                 }
             ],
-            order: [['createdAt', 'DESC']],
-            limit: parseInt(limit)
+            order: [['createdAt', 'DESC']]
         });
         
-        const result = approvedRequests.map(req => ({
+        console.log(`✅ Found ${approvedRequests.length} total approved requests`);
+        
+        // ✅ Filter out requests already processed or skipped by this group
+        let filteredRequests = approvedRequests;
+        
+        if (groupId && approvedRequests.length > 0) {
+            const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+            
+            if (RequestGroupProcessing) {
+                const requestIds = approvedRequests.map(r => r.requestId);
+                const groupIdInt = parseInt(groupId);
+                
+                const processingRecords = await RequestGroupProcessing.findAll({
+                    where: {
+                        requestId: { [Op.in]: requestIds },
+                        groupId: groupIdInt,
+                        status: { [Op.in]: ['processed', 'skipped'] }
+                    },
+                    attributes: ['requestId', 'status']
+                });
+                
+                const excludedRequestIds = new Set(
+                    processingRecords.map(r => parseInt(r.requestId))
+                );
+                
+                // ✅ Only keep requests NOT processed/skipped
+                filteredRequests = approvedRequests.filter(
+                    r => !excludedRequestIds.has(parseInt(r.requestId))
+                );
+                
+                console.log(
+                    `✅ ${filteredRequests.length} requests remaining after filtering out processed/skipped ones`
+                );
+            }
+        }
+        
+        // ✅ Apply limit after filtering
+        const limitedRequests = filteredRequests.slice(0, parseInt(limit));
+        
+        const result = limitedRequests.map(req => ({
             id: req.requestId,
             requestCode: req.requestCode,
             askingStore: req.askingStore?.name || null,
             supplyingStore: req.supplyingStore?.name || null,
             requestedBy: req.requestedByUser?.fullName || req.requestedByUser?.username || 'Unknown',
             requestedDate: req.requestedDate,
-            status: req.status, // This will be 'approved'
+            status: req.status,
             items: req.items?.map(item => ({
                 itemId: item.itemId,
                 itemName: item.item?.standard_name || item.item?.name || 'Unknown',
@@ -822,7 +910,12 @@ exports.getApprovedRequests = async (req, res) => {
         res.status(200).json({
             success: true,
             data: result,
-            total: result.length
+            total: filteredRequests.length,  // ✅ Total remaining (not processed)
+            meta: {
+                allApproved: approvedRequests.length,
+                remaining: filteredRequests.length,
+                groupId: groupId || null
+            }
         });
     } catch (error) {
         console.error('❌ Error getting approved requests:', error);
@@ -836,6 +929,8 @@ exports.getApprovedRequests = async (req, res) => {
 // ================================================================
 // 6. GET RECENT TRANSACTIONS
 // ================================================================
+// controllers/storeDashboardController.js
+
 exports.getRecentTransactions = async (req, res) => {
     try {
         const userAccess = await getUserStoreAndGroupFromRequest(req);
@@ -851,73 +946,72 @@ exports.getRecentTransactions = async (req, res) => {
         const { balanceWhereClause } = filters;
         const { limit = 10 } = req.query;
         
-        const balances = await StoreBalance.findAll({
-            where: balanceWhereClause,
-            attributes: ['id']
-        });
-        
-        const balanceIds = balances.map(b => b.id);
-        
-        if (balanceIds.length === 0) {
-            return res.status(200).json({
-                success: true,
-                data: []
-            });
-        }
-        
-        // ✅ FIX: Use transaction_type instead of transactionType
-        const transactions = await StoreBalanceHistory.findAll({
-            where: { balanceId: { [Op.in]: balanceIds } },
-            include: [
-                {
-                    model: Store,
-                    as: 'store',
-                    attributes: ['id', 'name', 'code']
+        // ✅ RAW SQL - Gets BOTH Stock In AND Stock Out with correct transaction_type
+        const transactions = await sequelize.query(
+            `SELECT 
+                sbh.id,
+                sbh.store_id,
+                sbh.group_id,
+                sbh.item_id,
+                sbh.transaction_type,
+                sbh.change_amount,
+                sbh.previous_balance,
+                sbh.new_balance,
+                sbh.reference_type,
+                sbh.reference_id,
+                sbh.remark,
+                sbh.created_at,
+                i.code AS item_code,
+                i.name AS item_name,
+                i.standard_name AS item_standard_name,
+                uom.code AS uom_code,
+                s.name AS store_name,
+                u.full_name AS created_by_name
+            FROM store_balance_histories sbh
+            LEFT JOIN items i ON sbh.item_id = i.id
+            LEFT JOIN uom uom ON i.uom_id = uom.id
+            LEFT JOIN stores s ON sbh.store_id = s.id
+            LEFT JOIN users u ON sbh.changed_by = u.user_id
+            WHERE sbh.store_id = :storeId
+              AND sbh.group_id = :groupId
+            ORDER BY sbh.created_at DESC
+            LIMIT :limit`,
+            {
+                replacements: {
+                    storeId: balanceWhereClause.storeId,
+                    groupId: balanceWhereClause.groupId,
+                    limit: parseInt(limit)
                 },
-                {
-                    model: Group,
-                    as: 'group',
-                    attributes: ['id', 'name', 'code']
-                },
-                {
-                    model: Item,
-                    as: 'item',
-                    attributes: ['id', 'code', 'name', 'standard_name'],
-                    include: [
-                        {
-                            model: UOM,
-                            as: 'uom',
-                            attributes: ['code', 'name']
-                        }
-                    ]
-                },
-                {
-                    model: User,
-                    as: 'changedByUser',
-                    attributes: ['userId', 'username', 'fullName']
-                }
-            ],
-            order: [['createdAt', 'DESC']],
-            limit: parseInt(limit)
-        });
+                type: sequelize.QueryTypes.SELECT
+            }
+        );
         
+        console.log(`✅ Found ${transactions.length} recent transactions`);
+        
+        // ✅ Map results - transaction_type comes directly from the database
         const result = transactions.map(tx => ({
             id: tx.id,
-            itemName: tx.item?.standard_name || tx.item?.name || 'Unknown Item',
-            itemCode: tx.item?.code || 'N/A',
-            storeId: tx.storeId,
-            storeName: tx.store?.name || null,
-            type: tx.transaction_type || 'Stock In',  // ✅ FIX: Use transaction_type
-            quantity: parseFloat(tx.changeAmount || 0),
-            previousBalance: parseFloat(tx.previousBalance || 0),
-            newBalance: parseFloat(tx.newBalance || 0),
-            uom: tx.item?.uom?.code || 'PCS',
-            referenceType: tx.referenceType,
-            referenceId: tx.referenceId,
+            itemName: tx.item_standard_name || tx.item_name || 'Unknown Item',
+            itemCode: tx.item_code || 'N/A',
+            storeId: tx.store_id,
+            storeName: tx.store_name || null,
+            // ✅ CORRECT: transaction_type from database
+            type: tx.transaction_type || 'Stock In',
+            quantity: Math.abs(parseFloat(tx.change_amount || 0)),
+            previousBalance: parseFloat(tx.previous_balance || 0),
+            newBalance: parseFloat(tx.new_balance || 0),
+            uom: tx.uom_code || 'PCS',
+            referenceType: tx.reference_type,
+            referenceId: tx.reference_id,
             remark: tx.remark,
-            createdBy: tx.changedByUser?.fullName || tx.changedByUser?.username || 'System',
-            createdAt: tx.createdAt
+            createdBy: tx.created_by_name || 'System',
+            createdAt: tx.created_at
         }));
+        
+        // ✅ Log the types being returned
+        const types = result.map(r => r.type);
+        console.log(`📊 Stock In: ${types.filter(t => t === 'Stock In').length}`);
+        console.log(`📊 Stock Out: ${types.filter(t => t === 'Stock Out').length}`);
         
         res.status(200).json({
             success: true,
@@ -931,7 +1025,6 @@ exports.getRecentTransactions = async (req, res) => {
         });
     }
 };
-
 
 
 // controllers/storeDashboardController.js

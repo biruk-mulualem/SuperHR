@@ -16,6 +16,7 @@ const {
   ItemRequestDetail,
   Store,
   Group,
+  Role,
   Category,
   Item,
   UOM,
@@ -1295,14 +1296,10 @@ exports.getApprovedRequests = async (req, res) => {
   }
 };
 
-// ============================================
-// PROCESS REQUESTS - COMPLETE PRODUCTION VERSION
-// ============================================
 
 
 // ================================================================
-// PROCESS REQUESTS - COMPLETE FIXED VERSION
-// Checks BOTH stores (asking AND supplying) for all groups
+// PROCESS REQUESTS - FIXED WITH CORRECT USER ID
 // ================================================================
 
 exports.processRequests = async (req, res) => {
@@ -1338,32 +1335,50 @@ exports.processRequests = async (req, res) => {
     console.log("✅ Valid request IDs:", validRequestIds);
 
     // ================================================================
-    // 2. GET USER ID
+    // 2. GET USER ID - FIXED: Use the actual logged-in user
     // ================================================================
-    let userId = req.user?.userId || null;
-
+    const userId = req.user?.userId;
+    
+    // ✅ LOG THE USER INFO
+    console.log("👤 User from request:", {
+      userId: req.user?.userId,
+      username: req.user?.username,
+      fullName: req.user?.fullName,
+      role: req.user?.role
+    });
+    
+    // ✅ If no userId, return error instead of using a default user
     if (!userId) {
-      const defaultUser = await User.findOne({
-        where: { isActive: true },
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
+      await transaction.rollback();
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized. Please log in."
       });
-      userId = defaultUser ? defaultUser.userId : null;
     }
 
-    if (!userId) {
-      const anyUser = await User.findOne({
-        attributes: ["userId"],
-        order: [["userId", "ASC"]],
+    // ✅ Verify the user exists and is active
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+    });
+    
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
       });
-      userId = anyUser ? anyUser.userId : null;
     }
-
-    if (!userId) {
-      throw new Error("No valid user found to process request");
+    
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "User account is inactive"
+      });
     }
 
     console.log("👤 Using userId:", userId);
+    console.log("👤 User fullName:", user.fullName);
 
     // ================================================================
     // 3. VALIDATE GROUP AND STORE
@@ -1632,8 +1647,8 @@ exports.processRequests = async (req, res) => {
                 transactionType: "Stock In",
                 referenceType: "auto_initialization",
                 referenceId: request.requestId,
-                changedBy: userId,
-                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`,
+                changedBy: userId, // ✅ NOW USING THE CORRECT userId
+                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
               },
               { transaction },
             );
@@ -1679,7 +1694,7 @@ exports.processRequests = async (req, res) => {
           balance.balance = newBalance;
           await balance.save({ transaction });
 
-          // Create history record
+          // Create history record - ✅ USING CORRECT userId
           await StoreBalanceHistory.create(
             {
               balanceId: balance.id,
@@ -1696,8 +1711,8 @@ exports.processRequests = async (req, res) => {
                 action === "STOCK_OUT" ? request.askingStoreId : null,
               referenceType: "request",
               referenceId: request.requestId,
-              changedBy: userId,
-              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
+              changedBy: userId, // ✅ NOW USING THE CORRECT userId
+              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
             },
             { transaction },
           );
@@ -1745,13 +1760,13 @@ exports.processRequests = async (req, res) => {
       if (requestResults.length > 0 || requestErrors.length > 0) {
         const remark =
           requestResults.length > 0
-            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`
-            : "No items processed - errors occurred";
+            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""} - By: ${user.fullName}`
+            : `No items processed - errors occurred - By: ${user.fullName}`;
 
         if (existingRecord) {
           existingRecord.status = "processed";
           existingRecord.processedAt = new Date();
-          existingRecord.processedBy = userId;
+          existingRecord.processedBy = userId; // ✅ USING CORRECT userId
           existingRecord.remark = remark;
           await existingRecord.save({ transaction });
         } else {
@@ -1762,7 +1777,7 @@ exports.processRequests = async (req, res) => {
               storeId: parseInt(storeId),
               processedAt: new Date(),
               status: "processed",
-              processedBy: userId,
+              processedBy: userId, // ✅ USING CORRECT userId
               remark: remark,
             },
             { transaction },
@@ -1788,7 +1803,6 @@ exports.processRequests = async (req, res) => {
 
       // ================================================================
       // 5f. 🔥 CRITICAL: Check if ALL groups from BOTH stores have processed
-      // This will ONLY finalize if ALL groups from asking AND supplying stores have processed
       // ================================================================
       await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
     }
@@ -1807,7 +1821,7 @@ exports.processRequests = async (req, res) => {
 
     if (allAutoInitializedItems.length > 0) {
       detailedLogs.unshift(
-        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}":`,
+        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}" by ${user.fullName}:`,
       );
       allAutoInitializedItems.forEach((item) => {
         detailedLogs.push(
@@ -1862,6 +1876,7 @@ exports.processRequests = async (req, res) => {
         storeName: store.name,
         groupName: group.name,
         userId: userId,
+        userFullName: user.fullName, // ✅ Add user name to response
         totalRequests: requests.length,
       },
     });
@@ -1875,7 +1890,6 @@ exports.processRequests = async (req, res) => {
     });
   }
 };
-
 // ============================================
 // 11. GET ALL STORES
 // ============================================
@@ -4340,50 +4354,224 @@ exports.debugRequestProcessing = async (req, res) => {
   }
 };
 
+// ================================================================
+// BALANCE CORRECTION ENDPOINT - NO ADMIN CHECK
+// ================================================================
 
+/**
+ * POST /api/balances/correct
+ * Correct a balance and log in balance history
+ */
+exports.correctBalance = async (req, res) => {
+  const transaction = await sequelize.transaction();
 
+  try {
+    const { balanceId, newBalance, reason } = req.body;
+    
+    // ================================================================
+    // 1. GET USER ID FROM AUTHENTICATED USER
+    // ================================================================
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized. Please log in.'
+      });
+    }
+    
+    console.log('👤 User ID from auth:', userId);
+    console.log('👤 User role:', req.user?.role);
 
+    // ================================================================
+    // 2. VALIDATE INPUT
+    // ================================================================
+    if (!balanceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Balance ID is required'
+      });
+    }
 
+    if (newBalance === undefined || newBalance === null || newBalance < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'New balance must be a positive number'
+      });
+    }
 
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a valid reason (minimum 3 characters)'
+      });
+    }
 
+    // ================================================================
+    // 3. GET THE BALANCE RECORD
+    // ================================================================
+    const balance = await StoreBalance.findByPk(parseInt(balanceId), {
+      include: [
+        {
+          model: Store,
+          as: 'store',
+          attributes: ['id', 'name', 'code']
+        },
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['id', 'name', 'code']
+        },
+        {
+          model: Item,
+          as: 'item',
+          include: [
+            {
+              model: UOM,
+              as: 'uom',
+              attributes: ['id', 'code', 'name']
+            }
+          ]
+        }
+      ]
+    });
 
+    if (!balance) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Balance record not found'
+      });
+    }
 
+    // ================================================================
+    // 4. CHECK IF BALANCE IS ACTIVE
+    // ================================================================
+    if (balance.status !== 'Active') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Cannot correct inactive balance. Current status: ${balance.status}`
+      });
+    }
 
+    // ================================================================
+    // 5. CALCULATE CHANGES
+    // ================================================================
+    const oldBalance = parseFloat(balance.balance);
+    const newBalanceValue = parseFloat(newBalance);
+    const changeAmount = newBalanceValue - oldBalance;
 
+    // Prevent negative balance
+    if (newBalanceValue < 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Balance cannot be negative'
+      });
+    }
 
+    // Check if there's actually a change
+    if (changeAmount === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'New balance is the same as current balance. No correction needed.'
+      });
+    }
 
+    // ================================================================
+    // 6. UPDATE THE BALANCE
+    // ================================================================
+    await balance.update({
+      balance: newBalanceValue
+    }, { transaction });
 
+    // ================================================================
+    // 7. REGISTER IN BALANCE HISTORY TABLE
+    // ================================================================
+    const historyRecord = await StoreBalanceHistory.create({
+      balanceId: balance.id,
+      storeId: balance.storeId,
+      groupId: balance.groupId,
+      itemId: balance.itemId,
+      previousBalance: oldBalance,
+      newBalance: newBalanceValue,
+      changeAmount: Math.abs(changeAmount),
+      transactionType: changeAmount > 0 ? 'Stock In' : 'Stock Out',
+      referenceType: 'adjustment',
+      changedBy: userId,
+      remark: `Balance correction: ${reason}`
+    }, { transaction });
 
+    // ================================================================
+    // 8. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
 
+    // ================================================================
+    // 9. GET USER FOR RESPONSE
+    // ================================================================
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName']
+    });
 
+    // ================================================================
+    // 10. FORMAT RESPONSE
+    // ================================================================
+    const responseData = {
+      id: balance.id,
+      storeId: balance.storeId,
+      storeName: balance.store?.name || null,
+      storeCode: balance.store?.code || null,
+      groupId: balance.groupId,
+      groupName: balance.group?.name || null,
+      groupCode: balance.group?.code || null,
+      itemId: balance.itemId,
+      itemCode: balance.item?.code || null,
+      itemName: balance.item?.standardName || balance.item?.name || null,
+      uomCode: balance.item?.uom?.code || null,
+      previousBalance: oldBalance,
+      newBalance: newBalanceValue,
+      changeAmount: changeAmount,
+      changeType: changeAmount > 0 ? 'Increased' : 'Decreased',
+      status: balance.status,
+      reason: reason,
+      correctedBy: user?.fullName || user?.username || 'System',
+      historyId: historyRecord.id,
+      createdAt: balance.createdAt,
+      updatedAt: balance.updatedAt
+    };
 
+    res.status(200).json({
+      success: true,
+      message: `Balance corrected from ${oldBalance} to ${newBalanceValue}`,
+      data: responseData
+    });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Balance correction error:', error);
+    
+    // Handle specific error types
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid user reference. Please ensure the user exists.'
+      });
+    }
+    
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map((e) => e.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(', ')
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to correct balance'
+    });
+  }
+};

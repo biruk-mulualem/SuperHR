@@ -18,15 +18,11 @@ const dashboardComponents = {
   finance: defineAsyncComponent(() => import('./components/FinanceDashboard.vue')),
   employee: defineAsyncComponent(() => import('./components/EmployeeDashboard.vue')),
   attendance: defineAsyncComponent(() => import('./components/AttendanceDashboard.vue')),
-  
-  // ⭐ NEW: Store and Checker dashboards
   store: defineAsyncComponent(() => import('./components/StoreDashboard.vue')),
   storekeeper: defineAsyncComponent(() => import('./components/StoreDashboard.vue')),
   store_it: defineAsyncComponent(() => import('./components/StoreDashboard.vue')),
   store_manager: defineAsyncComponent(() => import('./components/StoreDashboard.vue')),
-  
   checker: defineAsyncComponent(() => import('./components/CheckerDashboard.vue')),
-
   cost: defineAsyncComponent(() => import('./components/CostDashboard.vue')),
   employee: defineAsyncComponent(() => import('./components/NonStoreUserDashboard.vue')),
 }

@@ -8,7 +8,6 @@
     "migrate": "npx sequelize-cli db:migrate --config config/config.js",
     "migrate:undo": "npx sequelize-cli db:migrate:undo:all --config config/config.js",
     "seed": "npx sequelize-cli db:seed:all --config config/config.js"
-    
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
@@ -46,7 +45,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
+    "sequelize-auto-migrations": "^1.0.3",
     "sequelize-cli": "^6.6.5"
   }
-
 }

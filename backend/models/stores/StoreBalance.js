@@ -276,3 +276,18 @@ module.exports = (sequelize, DataTypes) => {
 
   return StoreBalance;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

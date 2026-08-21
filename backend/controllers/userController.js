@@ -1277,13 +1277,59 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullName, roleId, departmentId, isActive, email } = req.body;
+    const { fullName, roleId, departmentId, isActive, email, username } = req.body;
+    
+    // ================================================================
+    // 1. CHECK PERMISSIONS
+    // ================================================================
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+    const isAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(userRole);
+    
+    if (!isAdmin && parseInt(id) !== parseInt(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. You can only update your own profile.'
+      });
+    }
 
+    // ================================================================
+    // 2. FIND THE USER
+    // ================================================================
     const user = await User.findByPk(id);
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    // ================================================================
+    // 3. ✅ VALIDATE USERNAME BEFORE SAVING
+    // ================================================================
+    if (username !== undefined && username !== user.username) {
+      // Check if username is already taken
+      const existingUser = await User.findOne({ where: { username } });
+      if (existingUser) {
+        return res.status(400).json({ success: false, error: 'Username already taken' });
+      }
+      
+      // ✅ Validate username format (allow letters, numbers, underscores)
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username can only contain letters, numbers, and underscores'
+        });
+      }
+      
+      if (username.length < 3 || username.length > 50) {
+        return res.status(400).json({
+          success: false,
+          error: 'Username must be between 3 and 50 characters'
+        });
+      }
+    }
+
+    // ================================================================
+    // 4. CHECK EMAIL
+    // ================================================================
     if (email && email !== user.email) {
       const existingEmail = await User.findOne({ where: { email } });
       if (existingEmail) {
@@ -1291,26 +1337,76 @@ exports.updateUser = async (req, res) => {
       }
     }
 
-    if (roleId) {
-      const roleExists = await Role.findByPk(roleId);
-      if (!roleExists) {
-        return res.status(400).json({ success: false, error: 'Invalid role ID' });
+    // ================================================================
+    // 5. RESTRICT ROLE/DEPARTMENT CHANGES FOR NON-ADMINS
+    // ================================================================
+    if (!isAdmin) {
+      if (roleId !== undefined && roleId !== user.roleId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Only admins can change role.'
+        });
+      }
+      if (departmentId !== undefined && departmentId !== user.departmentId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Only admins can change department.'
+        });
+      }
+      if (isActive !== undefined && isActive !== user.isActive) {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Only admins can change account status.'
+        });
+      }
+    } else {
+      if (roleId) {
+        const roleExists = await Role.findByPk(roleId);
+        if (!roleExists) {
+          return res.status(400).json({ success: false, error: 'Invalid role ID' });
+        }
       }
     }
 
+    // ================================================================
+    // 6. BUILD UPDATE DATA
+    // ================================================================
     const updateData = {};
+    
+    // Username - only if provided and valid
+    if (username !== undefined) updateData.username = username;
+    
+    // Full name - anyone can change their own full name
     if (fullName !== undefined) updateData.fullName = fullName;
+    
+    // Email - anyone can change their own email (if not taken)
     if (email !== undefined) updateData.email = email;
-    if (roleId !== undefined) updateData.roleId = roleId;
-    if (departmentId !== undefined) updateData.departmentId = departmentId;
-    if (isActive !== undefined) updateData.isActive = isActive;
+    
+    // Role, Department, Status - only admins can change these
+    if (isAdmin) {
+      if (roleId !== undefined) updateData.roleId = roleId;
+      if (departmentId !== undefined) updateData.departmentId = departmentId;
+      if (isActive !== undefined) updateData.isActive = isActive;
+    }
 
+    // ================================================================
+    // 7. UPDATE THE USER
+    // ================================================================
     await user.update(updateData);
 
+    // ================================================================
+    // 8. FETCH UPDATED USER
+    // ================================================================
     const updatedUser = await User.findByPk(id, {
-      include: [{ model: Role, attributes: ['name'] }, { model: Department, attributes: ['name'] }]
+      include: [
+        { model: Role, attributes: ['name'] },
+        { model: Department, attributes: ['name'] }
+      ]
     });
 
+    // ================================================================
+    // 9. RETURN RESPONSE
+    // ================================================================
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
@@ -1326,9 +1422,23 @@ exports.updateUser = async (req, res) => {
         isActive: updatedUser.isActive
       }
     });
+    
   } catch (error) {
     console.error('Update user error:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    
+    // ✅ Handle validation errors better
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(', ')
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Server error' 
+    });
   }
 };
 

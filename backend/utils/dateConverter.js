@@ -25,7 +25,7 @@ function isValidEthiopianDate(dateStr) {
 function convertEthiopianToGregorian(dateStr) {
   if (!dateStr) return null;
   
-  console.log('🔄 Converting EC date:', dateStr);
+  // console.log('🔄 Converting EC date:', dateStr);
   
   const parts = dateStr.split('/');
   if (parts.length !== 3) return null;

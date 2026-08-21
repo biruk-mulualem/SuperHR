@@ -536,7 +536,7 @@ const loadData = async () => {
       limit: pageSize.value
     });
 
-    console.log('📥 Details Response:', response);
+    // console.log('📥 Details Response:', response);
 
     if (response && response.data && response.data.success && response.data.data) {
       const payload = response.data.data;

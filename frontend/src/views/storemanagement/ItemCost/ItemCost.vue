@@ -580,7 +580,7 @@ const loadItems = async () => {
       params.status = filterStatus.value
     }
     
-    console.log('📄 Loading page:', currentPage.value, 'with params:', params)
+    // console.log('📄 Loading page:', currentPage.value, 'with params:', params)
     
     const response = await itemCostService.getItemsWithCost(params)
 
@@ -588,7 +588,7 @@ const loadItems = async () => {
       items.value = response.data
       totalItems.value = response.pagination.total
       totalPages.value = response.pagination.pages
-      console.log('✅ Loaded page', currentPage.value, 'of', totalPages.value)
+      // console.log('✅ Loaded page', currentPage.value, 'of', totalPages.value)
     } else {
       showToastMessage(response.error || 'Failed to load items', 'error')
     }
@@ -692,7 +692,7 @@ const exportAllFilteredData = async () => {
     if (filterStatus.value) params.status = filterStatus.value;
     if (searchQuery.value) params.search = searchQuery.value;
     
-    console.log('📤 Exporting with params:', params);
+    // console.log('📤 Exporting with params:', params);
     
     // 🔥 Get data directly from exportAllItems
     const response = await itemCostService.exportAllItems(params);

@@ -1,4 +1,4 @@
-const { Employee, Department, Position, User, EmployeeDocument, Role, SystemSetting, sequelize } = require('../models');
+const { Employee, Department,Store, Position, User, EmployeeDocument, Role, SystemSetting, sequelize } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const fs = require('fs');
 
@@ -1088,5 +1088,295 @@ exports.getDepartmentStatistics = async (req, res) => {
   } catch (error) {
     console.error('Get department statistics error:', error);
     res.status(500).json({ success: false, error: 'Server error: ' + error.message });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// controllers/settingsController.js
+
+// ============================================================================
+// APPROVAL DEPARTMENT SETTINGS
+// ============================================================================
+
+/**
+ * GET: Get approval department configuration
+ */
+exports.getApprovalDepartment = async (req, res) => {
+  try {
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' }
+    });
+
+    if (!setting || !setting.settingValue) {
+      return res.json({
+        success: true,
+        data: {
+          configured: false,
+          departmentId: null,
+          department: null,
+          requiresApproval: true,
+          applyToStores: [],
+          message: 'No approval department configured'
+        }
+      });
+    }
+
+    const config = setting.settingValue;
+    
+    let department = null;
+    if (config.departmentId) {
+      department = await Department.findByPk(config.departmentId, {
+        attributes: ['departmentId', 'code', 'name', 'description', 'isActive']
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        configured: !!department && department.isActive,
+        departmentId: config.departmentId || null,
+        department: department ? {
+          id: department.departmentId,
+          code: department.code,
+          name: department.name,
+          description: department.description,
+          isActive: department.isActive
+        } : null,
+        requiresApproval: config.requiresApproval !== false,
+        applyToStores: config.applyToStores || [],
+        message: department ? `Approval department: ${department.name}` : 'No department configured'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get approval department error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * GET: Get all active departments for approval dropdown
+ */
+exports.getDepartmentsForApproval = async (req, res) => {
+  try {
+    const departments = await Department.findAll({
+      where: { isActive: true },
+      attributes: ['departmentId', 'code', 'name', 'description'],
+      order: [['name', 'ASC']]
+    });
+
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' }
+    });
+    const configuredDeptId = setting?.settingValue?.departmentId || null;
+
+    const formatted = departments.map(dept => ({
+      departmentId: dept.departmentId,
+      code: dept.code,
+      name: dept.name,
+      description: dept.description,
+      isConfigured: dept.departmentId === configuredDeptId
+    }));
+
+    res.json({
+      success: true,
+      data: formatted
+    });
+
+  } catch (error) {
+    console.error('❌ Get departments for approval error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * 🔥 GET: Get all active stores for "Apply To" dropdown
+ */
+/**
+ * GET: Get all active stores for "Apply To" dropdown
+ */
+exports.getStoresForApproval = async (req, res) => {
+  try {
+    console.log('📦 Fetching stores for approval...');
+
+    const stores = await Store.findAll({
+      where: { status: 'Active' },
+      attributes: ['storeId', 'code', 'name', 'location'], // ✅ No 'type'
+      order: [['code', 'ASC']]
+    });
+
+    console.log(`📦 Found ${stores.length} stores`);
+
+    // Get currently selected stores from config
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' }
+    });
+    const selectedStores = setting?.settingValue?.applyToStores || [];
+
+    const formatted = stores.map(store => ({
+      storeId: store.storeId,
+      code: store.code,
+      name: store.name,
+      location: store.location,
+      isSelected: selectedStores.includes(store.code)
+    }));
+
+    res.json({
+      success: true,
+      data: formatted,
+      selected: selectedStores
+    });
+
+  } catch (error) {
+    console.error('❌ Get stores for approval error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * POST: Set approval department
+ */
+exports.setApprovalDepartment = async (req, res) => {
+  try {
+    const { 
+      departmentId, 
+      requiresApproval = true,
+      applyToStores = []
+    } = req.body;
+    const userId = req.user?.userId;
+
+    if (!departmentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Department ID is required'
+      });
+    }
+
+    const department = await Department.findOne({
+      where: { 
+        departmentId: departmentId,
+        isActive: true 
+      }
+    });
+
+    if (!department) {
+      return res.status(404).json({
+        success: false,
+        error: 'Department not found or inactive'
+      });
+    }
+
+    const value = {
+      departmentId: department.departmentId,
+      code: department.code,
+      name: department.name,
+      requiresApproval: requiresApproval,
+      applyToStores: applyToStores || [],
+      lastUpdated: new Date().toISOString(),
+      updatedBy: userId,
+      version: 1
+    };
+
+    const [setting, created] = await SystemSetting.findOrCreate({
+      where: { settingKey: 'approval.department' },
+      defaults: {
+        settingKey: 'approval.department',
+        settingValue: value,
+        category: 'approval',
+        description: 'Department that approves item requests',
+        dataType: 'json',
+        isEditable: true,
+        updatedBy: userId
+      }
+    });
+
+    if (!created) {
+      const currentVersion = setting.settingValue?.version || 0;
+      value.version = currentVersion + 1;
+      
+      await setting.update({
+        settingValue: value,
+        updatedBy: userId
+      });
+    }
+
+    console.log(`✅ Approval department set to: ${department.name} (${department.code})`);
+    console.log(`   Apply to stores: ${applyToStores.join(', ') || 'None'}`);
+
+    res.json({
+      success: true,
+      message: `Approval department set to: ${department.name}`,
+      data: {
+        department: {
+          id: department.departmentId,
+          code: department.code,
+          name: department.name
+        },
+        requiresApproval: requiresApproval,
+        applyToStores: applyToStores,
+        setting: setting
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Set approval department error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * DELETE: Remove/disable approval department
+ */
+exports.removeApprovalDepartment = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' }
+    });
+
+    if (!setting) {
+      return res.status(404).json({
+        success: false,
+        error: 'Approval department setting not found'
+      });
+    }
+
+    const value = setting.settingValue || {};
+    value.requiresApproval = false;
+    value.applyToStores = [];
+    value.version = (value.version || 0) + 1;
+
+    await setting.update({
+      settingValue: value,
+      updatedBy: userId
+    });
+
+    console.log('❌ Approval department disabled');
+
+    res.json({
+      success: true,
+      message: 'Approval department disabled successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Remove approval department error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };

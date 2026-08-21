@@ -428,26 +428,26 @@ const updateLegalInfo = (newLegal) => {
 
 // Save all data
 const saveAllData = async () => {
-  console.log('🔍 VALIDATION DEBUG - Form values:', {
-    firstName: form.value.firstName,
-    lastName: form.value.lastName,
-    email: form.value.email,
-    phone: form.value.phone,
-    departmentId: form.value.departmentId,
-    positionId: form.value.positionId,
-    employmentType: form.value.employmentType,
-    hireDateEC: form.value.hireDateEC,
-    dateOfBirthEC: form.value.dateOfBirthEC
-  })
+  // console.log('🔍 VALIDATION DEBUG - Form values:', {
+  //   firstName: form.value.firstName,
+  //   lastName: form.value.lastName,
+  //   email: form.value.email,
+  //   phone: form.value.phone,
+  //   departmentId: form.value.departmentId,
+  //   positionId: form.value.positionId,
+  //   employmentType: form.value.employmentType,
+  //   hireDateEC: form.value.hireDateEC,
+  //   dateOfBirthEC: form.value.dateOfBirthEC
+  // })
   
   if (!validateForm()) {
     addToast('Please fix validation errors', 'error')
     return
   }
   
-  console.log('=== SAVING EMPLOYEE DATA ===')
-  console.log('EC Dates - Hire:', form.value.hireDateEC)
-  console.log('EC Dates - DOB:', form.value.dateOfBirthEC)
+  // console.log('=== SAVING EMPLOYEE DATA ===')
+  // console.log('EC Dates - Hire:', form.value.hireDateEC)
+  // console.log('EC Dates - DOB:', form.value.dateOfBirthEC)
   
   isSubmitting.value = true
   
@@ -505,10 +505,10 @@ const saveAllData = async () => {
       bankAccount: JSON.stringify(bankAccount)
     }
     
-    console.log('Sending EC Dates to backend:', {
-      hireDateEC: employeeData.hireDateEC,
-      dateOfBirthEC: employeeData.dateOfBirthEC
-    })
+    // console.log('Sending EC Dates to backend:', {
+    //   hireDateEC: employeeData.hireDateEC,
+    //   dateOfBirthEC: employeeData.dateOfBirthEC
+    // })
     
     let employeeId
   
@@ -519,7 +519,7 @@ const saveAllData = async () => {
       addToast('Employee updated successfully!', 'success')
     } else {
       const result = await EmployeesService.createEmployee(employeeData)
-      console.log('Create result:', result)
+      // console.log('Create result:', result)
       if (!result.success) throw new Error(result.error || 'Failed to create employee')
       employeeId = result.data.id
       addToast('Employee created successfully!', 'success')
@@ -541,7 +541,7 @@ const saveAllData = async () => {
 
 // Upload all documents
 const uploadAllDocuments = async (employeeId) => {
-  console.log('Uploading documents for employee:', employeeId)
+  // console.log('Uploading documents for employee:', employeeId)
   
   // 1. Profile Picture
   if (profileFile.value) {
@@ -675,7 +675,7 @@ const uploadAllDocuments = async (employeeId) => {
     const allDocs = scannedDocsRef.value.getAllDocuments()
     
     if (allDocs && allDocs.length > 0) {
-      console.log('Uploading scanned documents:', allDocs.length)
+      // console.log('Uploading scanned documents:', allDocs.length)
       
       for (let i = 0; i < allDocs.length; i++) {
         const doc = allDocs[i]
@@ -705,7 +705,7 @@ const uploadAllDocuments = async (employeeId) => {
               }
             )
             
-            console.log(`✅ Uploaded: ${doc.name || doc.type} (${docType})`)
+            // console.log(`✅ Uploaded: ${doc.name || doc.type} (${docType})`)
           } catch (error) {
             console.error(`❌ Failed to upload document: ${doc.name}`, error)
           }

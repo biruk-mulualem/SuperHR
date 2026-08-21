@@ -32,6 +32,7 @@ const router = createRouter({
               "storekeeper",
               "store_it",
               "checker",
+              "nebret",
             ],
           },
         },
@@ -128,6 +129,19 @@ const router = createRouter({
 
 
 
+
+
+
+
+        {
+          path: "fleet-management",
+          name: "FleetManagement",
+          component: () => import("@/views/fuelManagement/FleetManagement.vue"),
+          meta: {
+            title: "Fleet Management",
+            roles: ["admin", "hr", "finance", "employee", "attendance"],
+          },
+        },
         
 
 
@@ -221,6 +235,7 @@ const router = createRouter({
             roles: ["admin", "hr", "finance", "employee", "attendance"],
           },
         },
+
 
         {
           path: "documents-letters/type1",
@@ -361,7 +376,7 @@ const router = createRouter({
             import("@/views/storemanagement/notifications/Notifications.vue"),
           meta: {
             title: "Notifications",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee" ,"nebret"],
           },
         },
 
@@ -493,6 +508,16 @@ const router = createRouter({
             roles: ["admin", "storekeeper", "store_it", "checker"],
           },
         },
+         {
+          path: "store-balance-corrections",
+          name: "store-balance-corrections",
+          component: () =>
+            import("@/views/storemanagement/storebalance/BalanceCorrection.vue"),
+          meta: {
+            title: "Print Store Balance",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
 
         {
           path: "store-transaction",
@@ -523,7 +548,7 @@ const router = createRouter({
             import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost"],
           },
         },
 

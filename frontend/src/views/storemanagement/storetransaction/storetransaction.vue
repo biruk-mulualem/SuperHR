@@ -29,69 +29,75 @@
     </div>
 
     <!-- ==================== FILTERS ==================== -->
-    <div class="filter-bar">
-      <div class="filter-group">
-        <select 
-          v-model="filterStore" 
-          class="filter-select" 
-          @change="onFilterChange"
-          :disabled="!userIsAdmin && !!userAssignedStoreId"
-        >
-          <option value="">All Stores</option>
-          <option v-for="store in stores" :key="store.id" :value="store.id">
-            {{ store.name }}
-          </option>
-        </select>
-      </div>
-      
-      <div class="filter-group">
-        <select 
-          v-model="filterGroup" 
-          class="filter-select" 
-          @change="onFilterChange"
-          :disabled="!userIsAdmin && !!userAssignedGroupId"
-        >
-          <option value="">All Groups</option>
-          <option v-for="group in allGroups" :key="group.id" :value="group.id">
-            {{ group.name }}
-          </option>
-        </select>
-      </div>
-      
-      <!-- ✅ CATEGORY FILTER -->
-      <div class="filter-group">
-        <select 
-          v-model="filterCategory" 
-          class="filter-select" 
-          @change="onFilterChange"
-        >
-          <option value="">All Categories</option>
-          <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-            {{ cat.name }}
-          </option>
-        </select>
-      </div>
-      
-      <select v-model="filterType" class="filter-select" @change="onFilterChange">
-        <option value="">All Types</option>
-        <option value="Stock In">📥 Stock In</option>
-        <option value="Stock Out">📤 Stock Out</option>
-      </select>
-      <select v-model="filterDate" class="filter-select" @change="onFilterChange">
-        <option value="">All Dates</option>
-        <option value="today">Today</option>
-        <option value="yesterday">Yesterday</option>
-        <option value="week">This Week</option>
-        <option value="month">This Month</option>
-        <option value="3months">Last 3 Months</option>
-        <option value="6months">Last 6 Months</option>
-        <option value="12months">Last 12 Months</option>
-      </select>
+  <!-- ==================== FILTERS ==================== -->
+<div class="filter-bar">
+  <!-- Only show Store filter for admin users -->
+  <div class="filter-group" v-if="userIsAdmin">
+    <select 
+      v-model="filterStore" 
+      class="filter-select" 
+      @change="onFilterChange"
+    >
+      <option value="">All Stores</option>
+      <option v-for="store in stores" :key="store.id" :value="store.id">
+        {{ store.name }}
+      </option>
+    </select>
+  </div>
+  
+  <!-- Only show Group filter for admin users -->
+  <div class="filter-group" v-if="userIsAdmin">
+    <select 
+      v-model="filterGroup" 
+      class="filter-select" 
+      @change="onFilterChange"
+    >
+      <option value="">All Groups</option>
+      <option v-for="group in allGroups" :key="group.id" :value="group.id">
+        {{ group.name }}
+      </option>
+    </select>
+  </div>
+  
+  <!-- ✅ CATEGORY FILTER - Visible to all users -->
+  <div class="filter-group">
+    <select 
+      v-model="filterCategory" 
+      class="filter-select" 
+      @change="onFilterChange"
+    >
+      <option value="">All Categories</option>
+      <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+        {{ cat.name }}
+      </option>
+    </select>
+  </div>
+  
+  <select v-model="filterType" class="filter-select" @change="onFilterChange">
+    <option value="">All Types</option>
+    <option value="Stock In">📥 Stock In</option>
+    <option value="Stock Out">📤 Stock Out</option>
+  </select>
+  <select v-model="filterDate" class="filter-select" @change="onFilterChange">
+    <option value="">All Dates</option>
+    <option value="today">Today</option>
+    <option value="yesterday">Yesterday</option>
+    <option value="week">This Week</option>
+    <option value="month">This Month</option>
+    <option value="3months">Last 3 Months</option>
+    <option value="6months">Last 6 Months</option>
+    <option value="12months">Last 12 Months</option>
+  </select>
 
-      <button class="btn-clear-filters" @click="clearFilters" v-if="hasActiveFilters && userIsAdmin">
-        ✕ Clear Filters
-      </button>
-    </div>
+  <!-- Clear filters button - Only show for admin users -->
+  <button 
+    class="btn-clear-filters" 
+    @click="clearFilters" 
+    v-if="hasActiveFilters && userIsAdmin"
+  >
+    ✕ Clear Filters
+  </button>
+</div>
 
     <!-- ==================== STATS ==================== -->
     <div class="stats-grid" v-if="!isLoading">
@@ -156,7 +162,8 @@
                   {{ expandedRow === transaction.id ? "▼" : "▶" }}
                 </button>
               </td>
-              <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
+            <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
+
               <td>
                 <span class="item-code">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span>
               </td>
@@ -288,6 +295,14 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import transactionService from '@/stores/transactionService'
 import balanceService from '@/stores/balanceService'
+
+
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 // ================================================================
 // STATE
@@ -552,27 +567,24 @@ const formatNumber = (num) => {
   return new Intl.NumberFormat().format(num)
 }
 
+// ================================================================
+// DATE FORMATTING FUNCTIONS - 12-HOUR FORMAT WITH AM/PM
+// ================================================================
+
 const formatDateTime = (dateString) => {
   if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  // ✅ Convert UTC to local time with 12-hour format
+  return dayjs.utc(dateString)
+    .add(6, 'hour')
+    .format('MMM D, YYYY h:mm A')  // ✅ h = 12-hour, A = AM/PM
 }
 
 const formatDateShort = (dateString) => {
   if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  // ✅ Convert UTC to local time with 12-hour format
+  return dayjs.utc(dateString)
+    .add(6, 'hour')
+    .format('MMM D, h:mm A')  // ✅ h = 12-hour, A = AM/PM
 }
 
 // ================================================================

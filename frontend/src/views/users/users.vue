@@ -343,6 +343,7 @@ const saveUser = async () => {
     let result
     if (isEditing.value) {
       result = await UsersService.updateUser(userForm.value.userId, {
+           username: userForm.value.username, // Add this line
         fullName: userForm.value.fullName,
         email: userForm.value.email,
         roleId: userForm.value.roleId,

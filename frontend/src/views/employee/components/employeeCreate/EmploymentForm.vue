@@ -438,10 +438,10 @@ const setWorkDocumentInputRef = (index, el) => {
 }
 // Add this watch to monitor form.hireDate changes
 watch(() => props.form.hireDateEC, (newValue, oldValue) => {
-  console.log('EmploymentForm - hireDateEC changed:', {
-    oldValue: oldValue,
-    newValue: newValue
-  })
+  // console.log('EmploymentForm - hireDateEC changed:', {
+  //   oldValue: oldValue,
+  //   newValue: newValue
+  // })
 }, { immediate: true })
 
 // Computed properties for allowance calculations

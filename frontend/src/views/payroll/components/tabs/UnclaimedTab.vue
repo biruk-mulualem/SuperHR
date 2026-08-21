@@ -506,7 +506,7 @@ async function confirmBulkReturn() {
       clearSelection();
       emit('unclaimed-updated');
       
-      console.log(`${response.data.returnedCount} salaries marked as returned successfully`);
+      // console.log(`${response.data.returnedCount} salaries marked as returned successfully`);
       showTemporaryMessage('success', `${response.data.returnedCount} salaries marked as returned successfully!`);
     } else {
       console.error('Bulk return failed:', response.error);

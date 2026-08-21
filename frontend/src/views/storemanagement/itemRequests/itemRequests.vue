@@ -18,13 +18,13 @@
             @input="onSearchChange"
           />
         </div>
-      <button 
-  v-if="userIsAdmin || userIsAskingStore" 
-  class="btn-add" 
-  @click="openCreateModal"
->
-  ➕ New Request
-</button>
+        <button 
+          v-if="userIsAdmin || userIsAskingStore" 
+          class="btn-add" 
+          @click="openCreateModal"
+        >
+          ➕ New Request
+        </button>
       </div>
     </div>
 
@@ -138,23 +138,35 @@
               <td class="store-name">
                 {{ getStoreName(req.supplyingStoreId) }}
               </td>
+              <!-- Status Column with Group/Department Indicators -->
               <td>
                 <span :class="['status-badge', req.status]">
                   {{ req.status }}
                 </span>
                 <div v-if="req.status === 'pending'" class="notification-status">
-                  <span 
+                  <div 
                     v-for="notification in (req.notifications || [])" 
                     :key="notification.id"
-                    :class="['notification-dot', notification.status]"
-                    :title="'Group: ' + (notification.group?.name || notification.group_id) + ' - ' + notification.status"
-                  ></span>
+                    class="notification-item-wrapper"
+                    :title="getNotificationTooltip(notification)"
+                  >
+                    <span 
+                      :class="[
+                        'notification-dot', 
+                        notification.status,
+                        notification.approval_type === 'department' ? 'dept-dot' : 'group-dot'
+                      ]"
+                    ></span>
+                    <span class="notification-type-label">
+                      {{ notification.approval_type === 'department' ? 'D' : 'G' }}
+                    </span>
+                  </div>
                   <span class="notification-text">{{ getAcceptanceSummary(req) }}</span>
                 </div>
+                <div v-if="(req as any).isAsset" class="asset-badge">🔧 Asset</div>
               </td>
               <td>
                 <div class="action-buttons">
-                  <!-- 🔥 PRINT: Only asking store can print -->
                   <button
                     v-if="canPrintRequest(req) && userIsAskingStore"
                     class="icon-btn print-btn"
@@ -165,7 +177,6 @@
                     🖨️
                   </button>
                   
-                  <!-- 🔥 EDIT: Only asking store can edit -->
                   <button
                     v-if="canEditRequest(req) && userIsAskingStore"
                     class="icon-btn"
@@ -175,7 +186,6 @@
                     ✏️
                   </button>
                   
-                  <!-- 🔥 APPROVE: Only asking store can approve -->
                   <button
                     v-if="canApproveRequest(req) && userIsAskingStore"
                     class="icon-btn"
@@ -189,6 +199,7 @@
               </td>
             </tr>
 
+            <!-- ==================== EXPANDED DETAIL ROW ==================== -->
             <tr
               v-if="expandedRow === (req.requestId || req.id) && shouldShowRequest(req)"
               class="detail-expand-row"
@@ -236,6 +247,10 @@
                           ><span class="value">{{
                             formatDateTime(req.updatedAt)
                           }}</span>
+                        </div>
+                        <div v-if="(req as any).isAsset">
+                          <span>🔧 Asset Request</span>
+                          <span class="value">Yes</span>
                         </div>
                       </div>
 
@@ -500,6 +515,9 @@
             class="request-form"
             v-show="!showValidationErrors"
           >
+            <!-- ============================================================ -->
+            <!-- STORE SELECTION -->
+            <!-- ============================================================ -->
             <div class="form-row">
               <div class="form-group" v-if="userIsAdmin">
                 <label>Asking Store (Source) *</label>
@@ -537,247 +555,156 @@
               </div>
             </div>
 
+            <!-- ============================================================ -->
+            <!-- 🔥 IMPROVED ITEM SELECTION -->
+            <!-- ============================================================ -->
             <div class="form-section-title">
               <span>📦 Items</span>
-              <button type="button" class="btn-add-item" @click="addItemRow">
-                ➕ Add Item
+              <span class="selected-count" v-if="selectedItemsList.length > 0">
+                {{ selectedItemsList.length }} selected
+              </span>
+            </div>
+
+            <!-- Search -->
+            <div class="item-search-area">
+              <div class="item-search-wrapper">
+                <span class="search-icon-small">🔍</span>
+                <input
+                  type="text"
+                  v-model="itemSearchGlobal"
+                  placeholder="Search items by code, name, brand, or model..."
+                  class="item-global-search"
+                  @input="itemCurrentPage = 1"
+                />
+              </div>
+              <span class="item-count-badge">{{ filteredItemsList.length }} items</span>
+            </div>
+
+            <!-- Item Grid - Click whole card to toggle -->
+            <div class="item-grid">
+              <div
+                v-for="itemOption in paginatedItemList"
+                :key="itemOption.id"
+                class="item-card"
+                :class="{
+                  'item-selected': isItemSelected(itemOption),
+                }"
+                @click="toggleItemSelection(itemOption)"
+              >
+                <div class="item-card-content">
+                  <div class="item-card-info">
+                    <div class="item-card-code">{{ itemOption.code }}</div>
+                    <div class="item-card-name">
+                      {{ itemOption.standardName || itemOption.name || "Unnamed" }}
+                    </div>
+                    <div class="item-card-details">
+                      <span v-if="itemOption.brand" class="item-tag brand">{{ itemOption.brand }}</span>
+                      <span v-if="itemOption.model" class="item-tag model">{{ itemOption.model }}</span>
+                      <span class="item-tag uom">{{ itemOption.uom?.code || "N/A" }}</span>
+                    </div>
+                  </div>
+                  <div class="item-card-actions" @click.stop>
+                    <!-- Quantity controls (only show if selected) -->
+                    <div v-if="isItemSelected(itemOption)" class="quantity-control">
+                      <button 
+                        type="button" 
+                        class="qty-btn" 
+                        @click="adjustQuantity(itemOption, -1)"
+                        :disabled="getItemQuantity(itemOption) <= 1"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        :value="getItemQuantity(itemOption)"
+                        @change="setItemQuantity(itemOption, $event)"
+                        min="0.01"
+                        step="0.01"
+                        class="qty-input"
+                      />
+                      <button 
+                        type="button" 
+                        class="qty-btn" 
+                        @click="adjustQuantity(itemOption, 1)"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span v-else class="click-hint">Click to add</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Item Pagination -->
+            <div class="item-pagination" v-if="filteredItemsList.length > itemPageSize">
+              <button
+                type="button"
+                class="page-btn-small"
+                :disabled="itemCurrentPage === 1"
+                @click="itemCurrentPage--"
+              >
+                ←
+              </button>
+              <span class="page-info-small">
+                {{ itemCurrentPage }} / {{ itemTotalPages }}
+              </span>
+              <button
+                type="button"
+                class="page-btn-small"
+                :disabled="itemCurrentPage === itemTotalPages"
+                @click="itemCurrentPage++"
+              >
+                →
               </button>
             </div>
 
-            <div v-if="form.items.length === 0" class="no-items-message">
-              <p>No items added yet. Click "Add Item" to add items to this request.</p>
-            </div>
-
-            <div
-              v-for="(item, index) in form.items"
-              :key="index"
-              class="item-row"
-            >
-              <div class="item-row-header">
-                <span class="item-number">Item #{{ index + 1 }}</span>
-                <button
-                  type="button"
-                  class="btn-remove-item"
-                  @click="removeItemRow(index)"
-                  v-if="form.items.length > 1"
-                >
-                  ✕ Remove
+            <!-- Selected Items Summary -->
+            <div class="selected-items-summary" v-if="selectedItemsList.length > 0">
+              <div class="selected-header">
+                <span class="selected-title">✅ Selected Items ({{ selectedItemsList.length }})</span>
+                <button type="button" class="btn-clear-all" @click="clearAllItems">
+                  🗑️ Clear All
                 </button>
               </div>
-
-              <div class="form-row full-width">
-                <div class="form-group full-width">
-                  <label>Select Item *</label>
-                  <div v-if="item.itemId && isItemAlreadyAdded(item.itemId, index)" class="duplicate-error">
-                    ⚠️ This item is already in the request. Please remove this row or select a different item.
-                  </div>
-                  <div class="item-search-wrapper">
-                    <input
-                      type="text"
-                      :ref="(el) => setSearchInputRef(el, index)"
-                      v-model="itemSearchQueries[index]"
-                      placeholder="Search items by code, name, brand, or model..."
-                      @input="resetItemList(index)"
-                      class="item-search-input"
-                    />
-                  </div>
-                  <div
-                    class="item-select-container"
-                    :ref="(el) => setItemContainer(el, index)"
+              <div class="selected-items-list">
+                <div
+                  v-for="item in selectedItemsList"
+                  :key="item.itemId"
+                  class="selected-item-chip"
+                >
+                  <span class="chip-code">{{ item.code }}</span>
+                  <span class="chip-name">{{ item.name }}</span>
+                  <span class="chip-qty">×{{ item.quantity }}</span>
+                  <button
+                    type="button"
+                    class="chip-remove"
+                    @click="removeSelectedItem(item.itemId)"
                   >
-                    <div
-                      class="item-select-scroll"
-                      @scroll="onItemScroll(index)"
-                    >
-                      <div
-                        v-for="itemOption in getDisplayedItems(index)"
-                        :key="itemOption.id"
-                        class="item-option"
-                        :class="{
-                          selected:
-                            item.itemId ===
-                            (itemOption.itemId || itemOption.id),
-                          'already-added': isItemAlreadyAdded(
-                            itemOption.itemId || itemOption.id,
-                            index
-                          )
-                        }"
-                        @click="selectItemForRow(index, itemOption)"
-                      >
-                        <div class="item-option-content">
-                          <div class="item-option-left">
-                            <span class="item-option-code">{{
-                              itemOption.code
-                            }}</span>
-                          </div>
-                          <div class="item-option-middle">
-                            <div class="item-option-common-name">
-                              {{
-                                (itemOption as any).commonName ||
-                                itemOption.name ||
-                                "Unnamed"
-                              }}
-                            </div>
-                            <div
-                              class="item-option-standard-name"
-                              v-if="
-                                itemOption.standardName &&
-                                itemOption.standardName !==
-                                  ((itemOption as any).commonName || itemOption.name)
-                              "
-                            >
-                              {{ itemOption.standardName }}
-                            </div>
-                          </div>
-                          <div class="item-option-right">
-                            <div
-                              class="item-option-brand"
-                              v-if="itemOption.brand"
-                            >
-                              {{ itemOption.brand }}
-                            </div>
-                            <div
-                              class="item-option-model"
-                              v-if="itemOption.model"
-                            >
-                              {{ itemOption.model }}
-                            </div>
-                          </div>
-                          <div class="item-option-uom">
-                            {{ itemOption.uom?.code || "N/A" }}
-                          </div>
-                          <div
-                            v-if="isItemAlreadyAdded(
-                              itemOption.itemId || itemOption.id,
-                              index
-                            )"
-                            class="already-added-badge"
-                          >
-                            ✅ Already Added
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        v-if="isLoadingItemsForRow[index]"
-                        class="item-loading"
-                      >
-                        <div class="spinner-small"></div>
-                        Loading more items...
-                      </div>
-                      <div
-                        v-if="
-                          getFilteredItems(index).length === 0 &&
-                          !isLoadingItemsForRow[index]
-                        "
-                        class="item-no-results"
-                      >
-                        No items found
-                      </div>
-                      <div
-                        v-if="
-                          hasMoreItems(index) && !isLoadingItemsForRow[index]
-                        "
-                        class="item-load-more"
-                      >
-                        Scroll for more items...
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    v-if="selectedItemDisplays[index]"
-                    class="selected-item-display"
-                    :class="{
-                      'selected-duplicate': item.itemId && isItemAlreadyAdded(item.itemId, index)
-                    }"
-                  >
-                    <span class="selected-badge">✅ Selected:</span>
-                    <span class="selected-item-code">{{
-                      selectedItemDisplays[index].code
-                    }}</span>
-                    <span class="selected-item-name">{{
-                      selectedItemDisplays[index].standardName ||
-                      selectedItemDisplays[index].name
-                    }}</span>
-                    <span
-                      class="selected-item-common"
-                      v-if="selectedItemDisplays[index].commonName"
-                      >{{ selectedItemDisplays[index].commonName }}</span
-                    >
-                    <span
-                      class="selected-item-brand"
-                      v-if="selectedItemDisplays[index].brand"
-                      >Brand: {{ selectedItemDisplays[index].brand }}</span
-                    >
-                    <span
-                      class="selected-item-model"
-                      v-if="selectedItemDisplays[index].model"
-                      >Model: {{ selectedItemDisplays[index].model }}</span
-                    >
-                    <span class="selected-item-uom"
-                      >({{
-                        selectedItemDisplays[index].uom?.code || "N/A"
-                      }})</span
-                    >
-                    <button
-                      type="button"
-                      class="clear-selection"
-                      @click="clearItemSelection(index)"
-                    >
-                      ✕
-                    </button>
-                    <span v-if="item.itemId && isItemAlreadyAdded(item.itemId, index)" class="duplicate-tag">
-                      ⚠️ Duplicate
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-row">
-                <div class="form-group">
-                  <label>UOM</label>
-                  <input
-                    :value="getItemUOM(Number(item.itemId))"
-                    type="text"
-                    readonly
-                    class="readonly-field"
-                  />
-                </div>
-                <div class="form-group">
-                  <label>Quantity *</label>
-                  <input
-                    v-model.number="item.quantity"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    required
-                    placeholder="Enter quantity"
-                  />
-                </div>
-                <div class="form-group">
-                  <label>Standard Name</label>
-                  <input
-                    :value="getItemStandardName(Number(item.itemId))"
-                    type="text"
-                    readonly
-                    class="readonly-field"
-                  />
-                </div>
-              </div>
-
-              <div class="form-row full-width">
-                <div class="form-group">
-                  <label>Item Remark</label>
-                  <textarea
-                    v-model="item.remark"
-                    rows="2"
-                    placeholder="Add remark for this item..."
-                    class="textarea-field"
-                  ></textarea>
+                    ✕
+                  </button>
                 </div>
               </div>
             </div>
 
+            <!-- Item Remark -->
+            <div class="form-row full-width" v-if="selectedItemsList.length > 0">
+              <div class="form-group">
+                <label>Item Remark (optional)</label>
+                <textarea
+                  v-model="form.itemRemark"
+                  rows="2"
+                  placeholder="Add a remark for all items..."
+                  class="textarea-field"
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- REQUEST DETAILS -->
+            <!-- ============================================================ -->
             <div class="form-section-title">📋 Request Details</div>
+            
             <div class="form-row">
               <div class="form-group">
                 <label>Requested By</label>
@@ -795,19 +722,26 @@
               </div>
             </div>
 
-            <div class="form-row" v-if="!editingRequest">
+            <!-- 🔥 IS ASSET TOGGLE - NO DEPARTMENT SELECTION -->
+            <div class="form-row full-width">
               <div class="form-group">
-                <label>Status</label>
-                <select v-model="form.status">
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-              <div class="form-group">
+                <label class="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    v-model="form.isAsset" 
+                  />
+                  <span class="checkbox-text">🔧 This request contains ASSET items</span>
+                </label>
+                <span class="hint" v-if="form.isAsset">
+                  📌 Department approval will be required (configured in system settings)
+                </span>
+                <span class="hint" v-else>
+                  ℹ️ Toggle on if this request contains asset items that need department approval
+                </span>
               </div>
             </div>
 
+            <!-- Status info for editing -->
             <div class="form-row" v-if="editingRequest">
               <div class="form-group">
                 <label>Status</label>
@@ -820,9 +754,11 @@
                 <span class="hint">Status is always reset to Pending when editing</span>
               </div>
               <div class="form-group">
+                <!-- Empty for spacing -->
               </div>
             </div>
 
+            <!-- General Remark -->
             <div class="form-row full-width">
               <div class="form-group">
                 <label>General Remark</label>
@@ -836,6 +772,7 @@
               </div>
             </div>
 
+            <!-- Form Errors -->
             <div v-if="formErrors.length > 0" class="form-errors">
               <div v-for="error in formErrors" :key="error" class="form-error">
                 ⚠️ {{ error }}
@@ -956,8 +893,6 @@
   </div>
 </template>
 
-
-
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
@@ -969,6 +904,9 @@ import type {
   Store,
   Item,
 } from "@/stores/itemRequestService";
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 
 // ================================================================
 // STATE
@@ -976,6 +914,13 @@ import type {
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+
 
 // Data
 const stores = ref<Store[]>([]);
@@ -1020,13 +965,13 @@ const showStatusModal = ref(false);
 const statusTarget = ref<ItemRequest | null>(null);
 const statusAction = ref<"approved" | "finalized">("approved");
 
-// Item Selection State
-const itemSearchQueries = ref<Record<number, string>>({});
-const itemDisplayLimits = ref<Record<number, number>>({});
-const isLoadingItemsForRow = ref<Record<number, boolean>>({});
-const itemContainers = ref<Record<number, HTMLElement | null>>({});
-const selectedItemDisplays = ref<Record<number, any>>({});
-const searchInputRefs = ref<Record<number, HTMLInputElement | null>>({});
+// ================================================================
+// 🔥 IMPROVED ITEM SELECTION STATE
+// ================================================================
+const itemSearchGlobal = ref("");
+const itemCurrentPage = ref(1);
+const itemPageSize = ref(10);
+const selectedItems = ref<Map<number, { itemId: number; code: string; name: string; quantity: number }>>(new Map());
 
 // Form
 const form = ref({
@@ -1037,6 +982,8 @@ const form = ref({
   requestedDate: "",
   status: "pending" as "pending" | "approved" | "rejected",
   remark: "",
+  itemRemark: "",
+  isAsset: false,
 });
 
 const formErrors = ref<string[]>([]);
@@ -1065,12 +1012,48 @@ const filteredSupplyingStores = computed(() => {
   return result;
 });
 
+// 🔥 Item selection computed
+const filteredItemsList = computed(() => {
+  let list = items.value;
+  const query = itemSearchGlobal.value.toLowerCase().trim();
+  if (query) {
+    list = list.filter(
+      (item) =>
+        item.code?.toLowerCase().includes(query) ||
+        item.name?.toLowerCase().includes(query) ||
+        item.standardName?.toLowerCase().includes(query) ||
+        item.brand?.toLowerCase().includes(query) ||
+        item.model?.toLowerCase().includes(query),
+    );
+  }
+  return list;
+});
+
+const itemTotalPages = computed(() => {
+  return Math.ceil(filteredItemsList.value.length / itemPageSize.value) || 1;
+});
+
+const paginatedItemList = computed(() => {
+  const start = (itemCurrentPage.value - 1) * itemPageSize.value;
+  const end = start + itemPageSize.value;
+  return filteredItemsList.value.slice(start, end);
+});
+
+const selectedItemsList = computed(() => {
+  return Array.from(selectedItems.value.values());
+});
+
 const isFormValid = computed(() => {
+  // Check if there are selected items
+  if (selectedItemsList.value.length === 0) return false;
+  
+  // Check if all selected items have quantities > 0
+  const allValid = selectedItemsList.value.every(item => item.quantity > 0);
+  if (!allValid) return false;
+  
   return !!(
     form.value.askingStoreId &&
     form.value.supplyingStoreId &&
-    form.value.items.length > 0 &&
-    form.value.items.every((item) => item.itemId && item.quantity > 0) &&
     form.value.requestedBy &&
     form.value.requestedDate
   );
@@ -1098,7 +1081,7 @@ const canCreateRequests = computed(() => {
 });
 
 // ================================================================
-// 🔥 HELPER: Check if store is foreign/local purchase (skip notifications)
+// HELPER: Check if store is foreign/local purchase
 // ================================================================
 const SKIP_NOTIFICATION_STORES = ['STORE-006', 'STORE-007'];
 
@@ -1112,7 +1095,93 @@ const isSkipStore = (req: ItemRequest): boolean => {
 };
 
 // ================================================================
-// PERMISSION METHODS - UPDATED for skip stores
+// 🔥 ITEM SELECTION METHODS
+// ================================================================
+
+const getItemId = (itemOption: any): number => {
+  const id = itemOption?.itemId || itemOption?.id;
+  return id ? Number(id) : 0;
+};
+
+const isItemSelected = (itemOption: any): boolean => {
+  const id = getItemId(itemOption);
+  if (id === 0) return false;
+  return selectedItems.value.has(id);
+};
+
+const getItemQuantity = (itemOption: any): number => {
+  const id = getItemId(itemOption);
+  if (id === 0) return 1;
+  return selectedItems.value.get(id)?.quantity || 1;
+};
+
+const toggleItemSelection = (itemOption: any): void => {
+  const id = getItemId(itemOption);
+  if (id === 0) {
+    showToastMessage('Invalid item selected', 'warning');
+    return;
+  }
+  
+  if (selectedItems.value.has(id)) {
+    selectedItems.value.delete(id);
+  } else {
+    selectedItems.value.set(id, {
+      itemId: id,
+      code: itemOption.code,
+      name: itemOption.standardName || itemOption.name || "Unknown",
+      quantity: 1,
+    });
+  }
+};
+
+const adjustQuantity = (itemOption: any, delta: number): void => {
+  const id = getItemId(itemOption);
+  if (id === 0) return;
+  
+  const item = selectedItems.value.get(id);
+  if (!item) return;
+  const newQty = item.quantity + delta;
+  if (newQty < 1) return;
+  selectedItems.value.set(id, { ...item, quantity: newQty });
+};
+
+const setItemQuantity = (itemOption: any, event: Event): void => {
+  const id = getItemId(itemOption);
+  if (id === 0) return;
+  
+  const input = event.target as HTMLInputElement;
+  const value = parseFloat(input.value);
+  const item = selectedItems.value.get(id);
+  if (!item) return;
+  if (isNaN(value) || value < 1) {
+    showToastMessage("Quantity must be at least 1", "warning");
+    return;
+  }
+  selectedItems.value.set(id, { ...item, quantity: value });
+};
+
+const removeSelectedItem = (itemId: number): void => {
+  selectedItems.value.delete(itemId);
+};
+
+const clearAllItems = (): void => {
+  if (selectedItemsList.value.length === 0) return;
+  if (confirm("Are you sure you want to remove all items from this request?")) {
+    selectedItems.value.clear();
+  }
+};
+
+const syncSelectedItemsToForm = (): void => {
+  const items = Array.from(selectedItems.value.values()).map(item => ({
+    itemId: item.itemId,
+    quantity: item.quantity,
+    remark: form.value.itemRemark || "",
+  }));
+  form.value.items = items;
+};
+
+// ================================================================
+// PERMISSION METHODS
 // ================================================================
 
 const isUserAskingStore = (req: ItemRequest): boolean => {
@@ -1125,133 +1194,135 @@ const isUserSupplyingStore = (req: ItemRequest): boolean => {
   return Number(req.supplyingStoreId) === userAssignedStoreId.value;
 };
 
-const shouldShowRequest = (req: ItemRequest): boolean => {
-  if (userIsAdmin.value) return true;
-  
-  // Asking store sees ALL statuses (pending, approved, finalized)
-  if (isUserAskingStore(req)) return true;
-  
-  // Supplying store ONLY sees approved and finalized requests
-  if (isUserSupplyingStore(req)) {
-    return req.status === 'approved' || req.status === 'finalized';
-  }
-  
-  return false;
-};
-/**
- * Check if user can edit a request
- * - Only asking store can edit
- * - For skip stores (foreign/local purchase): can edit anytime when pending
- * - For normal stores: can edit if status is 'pending' and NOT fully accepted
- * - Can edit if status is 'rejected' (to fix and resubmit)
- */
 const canEditRequest = (req: ItemRequest): boolean => {
   if (!isUserAskingStore(req)) return false;
-  
-  // ✅ Can edit rejected requests to fix issues
-  if (req.status === 'rejected') {
-    return true;
-  }
-  
-  // 🔥 Check if this is a skip store (foreign/local purchase)
-  if (isSkipStore(req)) {
-    // For foreign/local purchase stores, can edit anytime when pending
-    return req.status === 'pending';
-  }
-  
-  // ✅ Can edit pending requests if not fully accepted
+  if (req.status === 'rejected') return true;
+  if (isSkipStore(req)) return req.status === 'pending';
   if (req.status === 'pending') {
     if (req.notifications && req.notifications.length > 0) {
-      const allAccepted = req.notifications.every(n => n.status === 'accepted');
-      // Can edit if NOT all accepted (there are still pending or rejected)
+      const allAccepted = req.notifications.every((n: { status: string; }) => n.status === 'accepted');
       return !allAccepted;
     }
-    // If no notifications yet, can edit
     return true;
   }
-  
-  // ❌ Cannot edit approved or finalized requests
   return false;
 };
 
-/**
- * Check if user can approve a request
- * - Only asking store can approve
- * - For skip stores (foreign/local purchase): can approve anytime when pending
- * - For normal stores: only if all groups have accepted and no rejections
- */
 const canApproveRequest = (req: ItemRequest): boolean => {
   if (!isUserAskingStore(req)) return false;
   if (req.status !== 'pending') return false;
-  
-  // 🔥 Check if this is a skip store (foreign/local purchase)
-  if (isSkipStore(req)) {
-    // For foreign/local purchase stores, can approve anytime
-    return true;
-  }
-  
-  // Normal store: need all groups to accept
+  if (isSkipStore(req)) return true;
   if (!req.notifications || req.notifications.length === 0) return false;
-  const allAccepted = req.notifications.every(n => n.status === 'accepted');
-  const hasRejection = req.notifications.some(n => n.status === 'rejected');
+  const allAccepted = req.notifications.every((n: { status: string; }) => n.status === 'accepted');
+  const hasRejection = req.notifications.some((n: { status: string; }) => n.status === 'rejected');
   return allAccepted && !hasRejection;
 };
 
-/**
- * Check if user can print a request
- * - Only asking store can print
- * - For skip stores (foreign/local purchase): can print anytime when pending
- * - For normal stores: only if all groups have accepted and no rejections
- */
 const canPrintRequest = (req: ItemRequest): boolean => {
   if (!isUserAskingStore(req)) return false;
   if (req.status !== 'pending') return false;
-  
-  // 🔥 Check if this is a skip store (foreign/local purchase)
-  if (isSkipStore(req)) {
-    // For foreign/local purchase stores, can print anytime
-    return true;
-  }
-  
-  // Normal store: need all groups to accept
+  if (isSkipStore(req)) return true;
   if (!req.notifications || req.notifications.length === 0) return false;
-  const allAccepted = req.notifications.every(n => n.status === 'accepted');
-  const hasRejection = req.notifications.some(n => n.status === 'rejected');
+  const allAccepted = req.notifications.every((n: { status: string; }) => n.status === 'accepted');
+  const hasRejection = req.notifications.some((n: { status: string; }) => n.status === 'rejected');
   return allAccepted && !hasRejection;
 };
 
 const getApproveTooltip = (req: ItemRequest): string => {
   if (req.status !== 'pending') return 'Request is not pending';
-  
-  // 🔥 Check if this is a skip store (foreign/local purchase)
-  if (isSkipStore(req)) {
-    return '📦 No approval required - Click to approve (Foreign/Local Purchase)';
-  }
-  
-  const hasRejection = req.notifications?.some(n => n.status === 'rejected') || false;
+  if (isSkipStore(req)) return '📦 No acceptance required - Click to approve (Foreign/Local Purchase)';
+  const hasRejection = req.notifications?.some((n: { status: string; }) => n.status === 'rejected') || false;
   if (hasRejection) return 'Some groups have rejected - Edit and resubmit';
-  
-  const allAccepted = req.notifications?.every(n => n.status === 'accepted') || false;
+  const allAccepted = req.notifications?.every((n: { status: string; }) => n.status === 'accepted') || false;
   if (!allAccepted) return 'Waiting for all groups to accept';
-  
   return 'All groups accepted - Ready to proceed';
 };
 
+// ================================================================
+// 🔥 ACCEPTANCE SUMMARY - FIXED
+// ================================================================
+
 const getAcceptanceSummary = (req: ItemRequest): string => {
-  // 🔥 Check if this is a skip store (foreign/local purchase)
-  if (isSkipStore(req)) {
-    return '📦 you can directly print the request';
-  }
-  
-  if (!req.notifications || req.notifications.length === 0) return 'No responses';
+  if (isSkipStore(req)) return '📦 No acceptance required';
+  if (!req.notifications || req.notifications.length === 0) return 'No approvals';
   
   const total = req.notifications.length;
-  const accepted = req.notifications.filter(n => n.status === 'accepted').length;
-  const rejected = req.notifications.filter(n => n.status === 'rejected').length;
-  if (rejected > 0) return `❌ ${rejected} rejected`;
-  if (accepted === total) return `✅ All ${total} accepted`;
-  return `⏳ ${accepted}/${total} accepted`;
+  const accepted = req.notifications.filter((n: { status: string; }) => n.status === 'accepted').length;
+  const rejected = req.notifications.filter((n: { status: string; }) => n.status === 'rejected').length;
+  const pending = req.notifications.filter((n: { status: string; }) => n.status === 'pending').length;
+  
+  // Check if there's a department notification
+  const hasDepartment = req.notifications.some((n: any) => n.approval_type === 'department' || n.is_department_approval);
+  const hasGroups = req.notifications.some((n: any) => n.approval_type === 'group' || !n.approval_type);
+  
+  let summary = '';
+  
+  if (rejected > 0) {
+    summary = `❌ ${rejected} rejected`;
+  } else if (accepted === total) {
+    summary = `✅ All ${total} accepted`;
+  } else {
+    summary = `⏳ ${accepted}/${total} accepted`;
+  }
+  
+  // Add type indicator
+  if (hasDepartment && hasGroups) {
+    summary += ' ';
+  } else if (hasDepartment) {
+    summary += ' ';
+  }
+  
+  return summary;
 };
+
+// ================================================================
+// 🔥 NOTIFICATION TOOLTIP - FIXED
+// ================================================================
+
+const getNotificationTooltip = (notification: any): string => {
+  let name = '';
+  let type = '';
+  let responder = '';
+  
+  // 1️⃣ Get the name based on type
+  if (notification.approval_type === 'department' || notification.is_department_approval) {
+    type = 'Department';
+    name = notification.department?.name || 'Unknown Department';
+  } else {
+    type = 'Group';
+    name = notification.group?.name || 'Unknown Group';
+  }
+  
+  // 2️⃣ Get responder from populated data
+  if (notification.status === 'accepted' || notification.status === 'rejected') {
+    const user = notification.respondedByUser;
+    if (user) {
+      responder = user.fullName || user.username || 'Unknown';
+    }
+  }
+  
+  // 3️⃣ Build tooltip
+  let tooltip = `${type}: ${name}`;
+  
+  if (notification.status === 'accepted') {
+    tooltip += `\n✅ Accepted`;
+    if (responder) tooltip += `\n👤 ${responder}`;
+  } else if (notification.status === 'rejected') {
+    tooltip += `\n❌ Rejected`;
+    if (responder) tooltip += `\n👤 ${responder}`;
+    if (notification.rejected_reason) {
+      tooltip += `\n📝 ${notification.rejected_reason}`;
+    }
+  } else {
+    tooltip += `\n⏳ Pending`;
+  }
+  
+  return tooltip;
+};
+
+// ================================================================
+// REJECTION REASONS
+// ================================================================
 
 const getRejectionReasons = (req: ItemRequest): Array<{
   groupName: string;
@@ -1261,8 +1332,8 @@ const getRejectionReasons = (req: ItemRequest): Array<{
 }> => {
   if (!req.notifications) return [];
   return req.notifications
-    .filter(n => n.status === 'rejected')
-    .map(n => ({
+    .filter((n: { status: string; }) => n.status === 'rejected')
+    .map((n: any) => ({
       groupName: n.group?.name || `Group ${n.group_id}`,
       reason: n.rejected_reason || 'No reason provided',
       respondedBy: n.respondedByUser?.fullName || n.respondedByUser?.username || 'Unknown',
@@ -1270,110 +1341,12 @@ const getRejectionReasons = (req: ItemRequest): Array<{
     }));
 };
 
-// ================================================================
-// ITEM SELECTION METHODS - ALL FUNCTIONS DEFINED HERE
-// ================================================================
-
-const isItemAlreadyAdded = (itemId: number | undefined, currentIndex: number): boolean => {
-  if (!itemId || itemId === 0) return false;
-  const exists = form.value.items.some(
-    (item, index) => item.itemId === itemId && index !== currentIndex
-  );
-  return exists;
-};
-
-const setItemContainer = (el: any, index: number) => {
-  itemContainers.value[index] = el;
-};
-
-const setSearchInputRef = (el: any, index: number) => {
-  searchInputRefs.value[index] = el;
-};
-
-const resetItemList = (index: number) => {
-  itemDisplayLimits.value[index] = 10;
-};
-
-const onItemScroll = (index: number) => {
-  const element = itemContainers.value[index];
-  if (!element) return;
-  const scrollTop = element.scrollTop;
-  const scrollHeight = element.scrollHeight;
-  const clientHeight = element.clientHeight;
-  if (scrollTop + clientHeight >= scrollHeight - 50) {
-    const filtered = getFilteredItems(index);
-    const currentLimit = itemDisplayLimits.value[index] || 10;
-    if (filtered.length > currentLimit && !isLoadingItemsForRow.value[index]) {
-      isLoadingItemsForRow.value[index] = true;
-      setTimeout(() => {
-        itemDisplayLimits.value[index] = Math.min(
-          currentLimit + 10,
-          filtered.length,
-        );
-        isLoadingItemsForRow.value[index] = false;
-      }, 300);
-    }
-  }
-};
-
-const getFilteredItems = (rowIndex: number) => {
-  let itemsList = [...items.value];
-  const query = itemSearchQueries.value[rowIndex] || "";
-  if (query) {
-    const q = query.toLowerCase();
-    itemsList = itemsList.filter(
-      (item) =>
-        item.code?.toLowerCase().includes(q) ||
-        item.name?.toLowerCase().includes(q) ||
-        item.standardName?.toLowerCase().includes(q) ||
-        item.brand?.toLowerCase().includes(q) ||
-        item.model?.toLowerCase().includes(q),
-    );
-  }
-  return itemsList;
-};
-
-const getDisplayedItems = (rowIndex: number) => {
-  const limit = itemDisplayLimits.value[rowIndex] || 10;
-  return getFilteredItems(rowIndex).slice(0, limit);
-};
-
-const hasMoreItems = (rowIndex: number) => {
-  const limit = itemDisplayLimits.value[rowIndex] || 10;
-  return getDisplayedItems(rowIndex).length < getFilteredItems(rowIndex).length;
-};
-
-const selectItemForRow = (rowIndex: number, itemOption: any) => {
-  const itemRow = form.value.items[rowIndex];
-  if (!itemRow) return;
-  const itemId = itemOption.itemId || itemOption.id;
-  if (isItemAlreadyAdded(itemId, rowIndex)) {
-    showToastMessage(
-      `"${itemOption.name || itemOption.standardName || 'Item'}" is already added to this request. Please remove the existing one or use a different item.`,
-      "warning"
-    );
-    return;
-  }
-  itemRow.itemId = itemId;
-  selectedItemDisplays.value[rowIndex] = itemOption;
-  updateItemDetails(rowIndex);
-  const searchInput = searchInputRefs.value[rowIndex];
-  if (searchInput) {
-    searchInput.blur();
-  }
-};
-
-const clearItemSelection = (rowIndex: number) => {
-  const itemRow = form.value.items[rowIndex];
-  if (!itemRow) return;
-  itemRow.itemId = 0;
-  selectedItemDisplays.value[rowIndex] = null;
-  itemSearchQueries.value[rowIndex] = "";
-  itemDisplayLimits.value[rowIndex] = 10;
+const shouldShowRequest = (req: ItemRequest): boolean => {
+  return true;
 };
 
 // ================================================================
-// METHODS
+// DATA LOADING METHODS
 // ================================================================
 
 const loadUserData = () => {
@@ -1464,6 +1437,10 @@ const loadRequests = async () => {
   }
 };
 
+// ================================================================
+// HELPER METHODS
+// ================================================================
+
 const getStoreName = (storeId: number): string => {
   const store = stores.value.find((s) => (s.storeId || s.id) === storeId);
   return store ? store.name : "Unknown Store";
@@ -1540,19 +1517,20 @@ const formatDate = (dateString?: string): string => {
     day: "numeric",
   });
 };
+// ✅ FIXED - Using UTC+6 (Based on your actual time)
+const formatDateTime = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
+  if (!dateString) return ''
+  return dayjs.utc(dateString)
+    .add(6, 'hour')  // ✅ Your system shows UTC+6
+    .format('MMM D, YYYY h:mm A')
+}
 
-const formatDateTime = (dateString?: string): string => {
-  if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
+const formatDateShort = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
+  if (!dateString) return ''
+  return dayjs.utc(dateString)
+    .add(6, 'hour')  // ✅ Your system shows UTC+6
+    .format('MMM D, h:mm A')
+}
 const getCurrentUser = (): string => {
   return (
     authStore.user?.fullName ||
@@ -1565,33 +1543,6 @@ const getCurrentUser = (): string => {
 const getCurrentUserId = (): number | undefined => {
   return authStore.user?.userId;
 };
-
-const addItemRow = (): void => {
-  const newIndex = form.value.items.length;
-  form.value.items.push({
-    itemId: 0,
-    quantity: 1,
-    remark: "",
-  });
-  itemSearchQueries.value[newIndex] = "";
-  itemDisplayLimits.value[newIndex] = 10;
-  isLoadingItemsForRow.value[newIndex] = false;
-  selectedItemDisplays.value[newIndex] = null;
-  itemContainers.value[newIndex] = null;
-  searchInputRefs.value[newIndex] = null;
-};
-
-const removeItemRow = (index: number): void => {
-  form.value.items.splice(index, 1);
-  delete itemSearchQueries.value[index];
-  delete itemDisplayLimits.value[index];
-  delete isLoadingItemsForRow.value[index];
-  delete itemContainers.value[index];
-  delete selectedItemDisplays.value[index];
-  delete searchInputRefs.value[index];
-};
-
-const updateItemDetails = (_index: number): void => {};
 
 const toggleExpand = (id?: number): void => {
   if (id === undefined || id === null) {
@@ -1607,108 +1558,109 @@ const closeValidationErrors = (): void => {
   validationMessage.value = "";
 };
 
+// ================================================================
+// MODAL METHODS
+// ================================================================
+
 const openCreateModal = (): void => {
   editingRequest.value = null;
   const today: string = new Date().toISOString().split("T")[0] || "";
   closeValidationErrors();
+  selectedItems.value.clear();
+  itemSearchGlobal.value = "";
+  itemCurrentPage.value = 1;
+  
   const askingStoreId = userIsAdmin.value
     ? ""
     : String(userAssignedStoreId.value || "");
+  
   form.value = {
     askingStoreId: askingStoreId,
     supplyingStoreId: "",
-    items: [{ itemId: 0, quantity: 1, remark: "" }],
+    items: [],
     requestedBy: getCurrentUser(),
     requestedDate: today,
     status: "pending",
     remark: "",
+    itemRemark: "",
+    isAsset: false,
   };
-  itemSearchQueries.value[0] = "";
-  itemDisplayLimits.value[0] = 10;
-  isLoadingItemsForRow.value[0] = false;
-  selectedItemDisplays.value[0] = null;
-  itemContainers.value[0] = null;
-  searchInputRefs.value[0] = null;
+  
   formErrors.value = [];
   showModal.value = true;
 };
 
 const editRequest = (req: ItemRequest): void => {
-  // Only asking store can edit
   if (!isUserAskingStore(req)) {
     showToastMessage("You don't have permission to edit this request", "error");
     return;
   }
   
-  // 🔥 Store the original request for reference
-  const originalRequest = req;
-  
   if (req.status === 'rejected') {
     showToastMessage("📝 This request was rejected. Please fix the issues and resubmit.", "info");
   }
   
-  // 🔥 Set editingRequest BEFORE populating the form
   editingRequest.value = req;
-  
   const today: string = new Date().toISOString().split("T")[0] || "";
   const requestedDate: string = String(req.requestedDate || today);
   closeValidationErrors();
   
-  const askingStoreId = String(req.askingStoreId);
+  // Populate selected items from request
+  selectedItems.value.clear();
+  if (req.items) {
+    req.items.forEach((item: any) => {
+      const itemId = Number(item.itemId || 0);
+      const itemData = items.value.find(i => (i.itemId || i.id) === itemId);
+      if (itemData && itemId > 0) {
+        selectedItems.value.set(itemId, {
+          itemId: itemId,
+          code: itemData.code,
+          name: itemData.standardName || itemData.name || "Unknown",
+          quantity: item.quantity || 1,
+        });
+      }
+    });
+  }
   
   form.value = {
-    askingStoreId: askingStoreId,
+    askingStoreId: String(req.askingStoreId),
     supplyingStoreId: String(req.supplyingStoreId),
-    items: req.items
-      ? req.items.map((item) => ({
-          ...item,
-          itemId: Number((item as any).itemId || 0),
-        }))
-      : [{ itemId: 0, quantity: 1, remark: "" }],
+    items: req.items ? req.items.map((item: any) => ({
+      ...item,
+      itemId: Number((item as any).itemId || 0),
+    })) : [],
     requestedBy: getRequesterName(req),
     requestedDate,
     status: "pending",
     remark: req.remark || "",
+    itemRemark: "",
+    isAsset: (req as any).isAsset || false,
   };
   
-  form.value.items.forEach((_, index) => {
-    itemSearchQueries.value[index] = "";
-    itemDisplayLimits.value[index] = 10;
-    isLoadingItemsForRow.value[index] = false;
-    selectedItemDisplays.value[index] = null;
-    itemContainers.value[index] = null;
-    searchInputRefs.value[index] = null;
-  });
-  
+  itemSearchGlobal.value = "";
+  itemCurrentPage.value = 1;
   formErrors.value = [];
   showModal.value = true;
-  
-  console.log('✏️ Editing request:', {
-    originalRequest: originalRequest,
-    editingRequestId: editingRequest.value?.requestId || editingRequest.value?.id,
-    formData: form.value
-  });
 };
 
 const closeModal = (): void => {
   showModal.value = false;
-  editingRequest.value = null; // 🔥 Reset editingRequest
-  saving.value = false; // 🔥 Reset saving state
+  editingRequest.value = null;
+  saving.value = false;
+  selectedItems.value.clear();
   closeValidationErrors();
-  Object.keys(itemSearchQueries.value).forEach((key) => {
-    delete itemSearchQueries.value[Number(key)];
-    delete itemDisplayLimits.value[Number(key)];
-    delete isLoadingItemsForRow.value[Number(key)];
-    delete itemContainers.value[Number(key)];
-    delete selectedItemDisplays.value[Number(key)];
-    delete searchInputRefs.value[Number(key)];
-  });
 };
 
-// -- Save Request --
+// ================================================================
+// SAVE REQUEST
+// ================================================================
+
 const saveRequest = async (): Promise<void> => {
   closeValidationErrors();
   formErrors.value = [];
+
+  // Sync selected items to form
+  syncSelectedItemsToForm();
 
   // Validation checks
   if (!form.value.askingStoreId) {
@@ -1777,12 +1729,6 @@ const saveRequest = async (): Promise<void> => {
   try {
     const userId = getCurrentUserId();
     
-    console.log('📤 Saving request data:', {
-      isEditing: !!editingRequest.value,
-      editingRequestId: editingRequest.value?.requestId || editingRequest.value?.id,
-      formData: form.value
-    });
-    
     const requestData = {
       askingStoreId: Number(form.value.askingStoreId),
       supplyingStoreId: Number(form.value.supplyingStoreId),
@@ -1795,6 +1741,7 @@ const saveRequest = async (): Promise<void> => {
       requestedDate: form.value.requestedDate,
       status: form.value.status as "pending" | "approved" | "rejected",
       remark: form.value.remark,
+      isAsset: form.value.isAsset,
     };
 
     let response;
@@ -1802,73 +1749,54 @@ const saveRequest = async (): Promise<void> => {
     if (editingRequest.value) {
       const requestId = editingRequest.value.requestId || editingRequest.value.id;
       
-      console.log(`🔄 Updating request ${requestId} with data:`, requestData);
-      
       try {
         response = await itemRequestService.updateRequest(
           requestId!,
           requestData
         );
       } catch (apiError: any) {
-        console.error('❌ API call failed:', apiError);
+        console.error('API call failed:', apiError);
         showToastMessage(apiError.message || 'Failed to update request', 'error');
         saving.value = false;
         return;
       }
       
-      console.log('📥 Update response:', response);
-      
-      // 🔥 Check if response is valid
       if (!response) {
-        console.error('❌ No response received from server');
         showToastMessage('No response from server', 'error');
         saving.value = false;
         return;
       }
       
-      // 🔥 Check if response has success property
       if (response.success === true) {
-        showToastMessage(
-          "✅ Request updated and resubmitted successfully!",
-          "success"
-        );
+        showToastMessage("✅ Request updated and resubmitted successfully!", "success");
         await loadRequests();
         closeModal();
         saving.value = false;
         return;
       } else {
-        // 🔥 Check for validation errors
         if (response.errors && response.errors.length > 0) {
           validationErrors.value = response.errors;
           validationMessage.value = response.message || "Validation failed. Please fix the issues below.";
           showValidationErrors.value = true;
           showToastMessage("Validation failed - please fix the issues below", "error");
         } else {
-          // 🔥 Check if there's an error message
           const errorMsg = response.error || response.message || 'Failed to update request';
           showToastMessage(errorMsg, "error");
-          console.error('❌ Update failed:', errorMsg);
         }
         saving.value = false;
         return;
       }
     } else {
-      // Creating new request
-      console.log('📤 Creating new request with data:', requestData);
-      
       try {
         response = await itemRequestService.createRequest(requestData);
       } catch (apiError: any) {
-        console.error('❌ API call failed:', apiError);
+        console.error('API call failed:', apiError);
         showToastMessage(apiError.message || 'Failed to create request', 'error');
         saving.value = false;
         return;
       }
       
-      console.log('📥 Create response:', response);
-      
       if (!response) {
-        console.error('❌ No response received from server');
         showToastMessage('No response from server', 'error');
         saving.value = false;
         return;
@@ -1889,14 +1817,13 @@ const saveRequest = async (): Promise<void> => {
         } else {
           const errorMsg = response.error || response.message || 'Failed to create request';
           showToastMessage(errorMsg, "error");
-          console.error('❌ Create failed:', errorMsg);
         }
         saving.value = false;
         return;
       }
     }
   } catch (error: any) {
-    console.error("❌ Save request error:", error);
+    console.error("Save request error:", error);
     const errorData = error.response?.data;
     
     if (errorData && errorData.errors && errorData.errors.length > 0) {
@@ -1909,9 +1836,12 @@ const saveRequest = async (): Promise<void> => {
     }
   } finally {
     saving.value = false;
-    console.log('✅ Saving completed, saving state reset to false');
   }
 };
+
+// ================================================================
+// STATUS CONFIRMATION
+// ================================================================
 
 const openStatusConfirmation = (req: ItemRequest, action: "approved" | "finalized"): void => {
   statusTarget.value = req;
@@ -1952,6 +1882,10 @@ const printRequest = (req: ItemRequest): void => {
   });
 };
 
+// ================================================================
+// FILTERS & PAGINATION
+// ================================================================
+
 const onSearchChange = (): void => {
   currentPage.value = 1;
   loadRequests();
@@ -1979,6 +1913,10 @@ const changePage = (page: number): void => {
 const changePageSize = (): void => {
   currentPage.value = 1;
 };
+
+// ================================================================
+// EXPORT
+// ================================================================
 
 const openExportModal = (): void => {
   exportType.value = "full";
@@ -2069,15 +2007,85 @@ watch(pageSize, () => {
 onMounted(async () => {
   loadUserData();
   await Promise.all([loadStores(), loadItems(), loadRequests()]);
-  // 🔥 REMOVE this line - let the backend handle filtering based on user role
-  // if (!userIsAdmin.value && userAssignedStoreId.value) {
-  //   filterStore.value = String(userAssignedStoreId.value);
-  // }
 });
 </script>
 
-<!-- Rest of the template and styles remain the same -->
 <style scoped>
+/* ================================================================
+   NOTIFICATION STATUS STYLES - WITH GROUP/DEPT TYPES
+   ================================================================ */
+.notification-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.notification-item-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-right: 2px;
+  cursor: help;
+}
+
+.notification-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0,0,0,0.1);
+}
+
+.notification-dot.pending {
+  background: #f59e0b;
+}
+
+.notification-dot.accepted {
+  background: #10b981;
+}
+
+.notification-dot.rejected {
+  background: #ef4444;
+}
+
+.notification-dot.group-dot {
+  border-radius: 50%;
+}
+
+.notification-dot.dept-dot {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  width: 8px;
+  height: 8px;
+  margin: 1px;
+}
+
+.notification-type-label {
+  font-size: 7px;
+  font-weight: 700;
+  color: #64748b;
+  margin-right: 2px;
+}
+
+.notification-text {
+  font-size: 9px;
+  color: #64748b;
+  margin-left: 2px;
+}
+
+.asset-badge {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-top: 2px;
+}
+
 /* ================================================================
    VALIDATION ERROR BOX
    ================================================================ */
@@ -2582,43 +2590,6 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   NOTIFICATION STATUS STYLES
-   ================================================================ */
-.notification-status {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.notification-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  border: 1px solid rgba(0,0,0,0.1);
-}
-
-.notification-dot.pending {
-  background: #f59e0b;
-}
-
-.notification-dot.accepted {
-  background: #10b981;
-}
-
-.notification-dot.rejected {
-  background: #ef4444;
-}
-
-.notification-text {
-  font-size: 9px;
-  color: #64748b;
-  margin-left: 4px;
-}
-
-/* ================================================================
    REJECTION REASONS - TEXT AREA STYLES
    ================================================================ */
 .rejection-card {
@@ -3112,7 +3083,7 @@ onMounted(async () => {
 .modal-container {
   background: white;
   border-radius: 16px;
-  max-width: 800px;
+  max-width: 900px;
   width: 95%;
   max-height: 90vh;
   overflow: hidden;
@@ -3199,151 +3170,17 @@ onMounted(async () => {
   align-items: center;
 }
 
-.btn-add-item {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
+.selected-count {
   font-size: 12px;
-  transition: all 0.2s;
-}
-
-.btn-add-item:hover {
-  background: #2563eb;
-}
-
-.item-row {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 8px;
-}
-
-/* ================================================================
-   FORM ROW - FULL WIDTH
-   ================================================================ */
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.form-row.full-width {
-  grid-template-columns: 1fr;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-  width: 100%;
-}
-
-.form-group.full-width .item-search-wrapper {
-  width: 100%;
-}
-
-.form-group.full-width .item-search-input {
-  width: 100%;
-}
-
-.form-group.full-width .item-select-container {
-  width: 100%;
-}
-
-.form-group.full-width .item-select-scroll {
-  width: 100%;
-}
-
-.item-row-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.item-number {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 13px;
-}
-
-.btn-remove-item {
-  background: #fee2e2;
-  color: #991b1b;
-  border: none;
-  padding: 2px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.btn-remove-item:hover {
-  background: #fecaca;
-}
-
-.no-items-message {
-  padding: 20px;
-  text-align: center;
-  color: #94a3b8;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px dashed #e2e8f0;
-}
-
-/* ================================================================
-   DUPLICATE ITEM STYLES
-   ================================================================ */
-.duplicate-error {
-  color: #dc2626;
-  font-size: 12px;
+  color: #64748b;
   font-weight: 500;
-  padding: 4px 12px;
-  margin-bottom: 6px;
-  background: #fee2e2;
-  border-radius: 4px;
-  border: 1px solid #fecaca;
-}
-
-.duplicate-tag {
-  background: #dc2626;
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 10px;
-  margin-left: 4px;
-}
-
-.selected-duplicate {
-  border-color: #dc2626 !important;
-  background: #fee2e2 !important;
-}
-
-.item-option.already-added {
-  opacity: 0.5;
-  cursor: not-allowed;
   background: #f1f5f9;
-}
-
-.item-option.already-added:hover {
-  background: #f1f5f9;
-}
-
-.already-added-badge {
-  font-size: 10px;
-  color: #16a34a;
-  background: #dcfce7;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-weight: 500;
-  margin-left: auto;
+  padding: 2px 12px;
+  border-radius: 12px;
 }
 
 /* ================================================================
-   FORM ROW - CONTINUED
+   FORM ROW
    ================================================================ */
 .form-row {
   display: grid;
@@ -3438,283 +3275,381 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   ENHANCED ITEM SELECTION STYLES - STACKED LAYOUT
+   🔥 IMPROVED ITEM SELECTION STYLES
    ================================================================ */
 
-.full-width {
-  flex: 1 1 100%;
-  min-width: 100%;
+.item-search-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .item-search-wrapper {
   position: relative;
   flex: 1;
-  min-width: 150px;
+  min-width: 200px;
 }
 
-.item-search-input {
+.search-icon-small {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.item-global-search {
   width: 100%;
-  padding: 6px 10px 6px 30px;
+  padding: 8px 12px 8px 36px;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 13px;
   background: #f8fafc;
   transition: all 0.2s;
 }
 
-.item-search-input:focus {
+.item-global-search:focus {
   outline: none;
   border-color: #3b82f6;
   background: white;
-}
-
-.item-select-container {
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  max-height: 220px;
-  overflow: hidden;
-  transition: border-color 0.2s;
-  margin-top: 4px;
-}
-
-.item-select-container:focus-within {
-  border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.item-select-scroll {
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 4px;
+.item-count-badge {
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 4px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
 }
 
-.item-select-scroll::-webkit-scrollbar {
+.item-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.item-grid::-webkit-scrollbar {
   width: 6px;
 }
 
-.item-select-scroll::-webkit-scrollbar-track {
+.item-grid::-webkit-scrollbar-track {
   background: #f1f5f9;
   border-radius: 3px;
 }
 
-.item-select-scroll::-webkit-scrollbar-thumb {
+.item-grid::-webkit-scrollbar-thumb {
   background: #94a3b8;
   border-radius: 3px;
 }
 
-.item-select-scroll::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-
-/* ================================================================
-   ITEM OPTION - STACKED LAYOUT
-   ================================================================ */
-
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
+.item-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
   cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.2s;
 }
 
-.item-option:hover {
-  background: #f1f5f9;
+.item-card:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
 }
 
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
+.item-card.item-selected {
+  border-color: #22c55e;
+  background: #f0fdf4;
 }
 
-.item-option:last-child {
-  border-bottom: none;
+.item-card.item-selected:hover {
+  border-color: #16a34a;
+  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.15);
 }
 
-.item-option-content {
+.item-card-content {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  width: 100%;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.item-option-left {
-  min-width: 100px;
-  flex-shrink: 0;
+.item-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.item-option-code {
+.item-card-code {
+  font-size: 11px;
   font-weight: 600;
   color: #2563eb;
-  font-size: 12px;
+  font-family: monospace;
 }
 
-.item-option-middle {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-common-name {
+.item-card-name {
   font-size: 13px;
-  color: #1e293b;
   font-weight: 500;
-  line-height: 1.3;
+  color: #1e293b;
 }
 
-.item-option-standard-name {
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.2;
-}
-
-.item-option-right {
-  min-width: 80px;
-  flex-shrink: 0;
+.item-card-details {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
 }
 
-.item-option-brand {
-  font-size: 11px;
-  color: #8b5cf6;
+.item-tag {
+  font-size: 9px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.item-tag.brand {
   background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
+  color: #7c3aed;
 }
 
-.item-option-model {
-  font-size: 10px;
-  color: #64748b;
+.item-tag.model {
   background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
+  color: #64748b;
 }
 
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
+.item-tag.uom {
   background: #dcfce7;
-  padding: 2px 12px;
-  border-radius: 10px;
-  min-width: 45px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
+  color: #166534;
 }
 
-.selected-item-display {
+.item-card-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  margin-top: 2px;
+  min-height: 32px;
 }
 
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-name {
-  color: #1e293b;
-  font-size: 13px;
-}
-
-.selected-item-common {
+.click-hint {
   font-size: 11px;
   color: #94a3b8;
-}
-
-.selected-item-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-
-.clear-selection:hover {
-  color: #dc2626;
-}
-
-.item-loading {
-  text-align: center;
-  padding: 10px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.item-no-results {
-  text-align: center;
-  padding: 20px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.item-load-more {
-  text-align: center;
-  padding: 8px;
-  color: #94a3b8;
-  font-size: 11px;
   font-style: italic;
 }
 
-.spinner-small {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid #e2e8f0;
-  border-top: 2px solid #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-right: 8px;
-  vertical-align: middle;
+.item-card.item-selected .click-hint {
+  display: none;
+}
+
+.quantity-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  padding: 1px;
+}
+
+.qty-btn {
+  background: transparent;
+  border: none;
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.qty-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.qty-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.qty-input {
+  width: 50px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.qty-input:focus {
+  outline: none;
+}
+
+/* ================================================================
+   SELECTED ITEMS SUMMARY
+   ================================================================ */
+
+.selected-items-summary {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+
+.selected-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.selected-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #166534;
+}
+
+.btn-clear-all {
+  background: #fee2e2;
+  color: #991b1b;
+  border: none;
+  padding: 2px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.btn-clear-all:hover {
+  background: #fecaca;
+}
+
+.selected-items-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.selected-item-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.chip-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.chip-name {
+  color: #1e293b;
+}
+
+.chip-qty {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.chip-remove {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.chip-remove:hover {
+  color: #dc2626;
+}
+
+/* ================================================================
+   ITEM PAGINATION
+   ================================================================ */
+
+.item-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.page-btn-small {
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.page-btn-small:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.page-btn-small:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-info-small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ================================================================
+   ASSET CHECKBOX
+   ================================================================ */
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.2s;
+  background: #f8fafc;
+}
+
+.checkbox-label:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.checkbox-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
 }
 
 /* ================================================================
@@ -3995,43 +3930,29 @@ onMounted(async () => {
     justify-content: center;
   }
 
-  .item-row {
-    padding: 10px;
-  }
-
   .col-actions {
     min-width: 180px;
   }
 
-  .item-option-content {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .item-option-left {
-    min-width: 80px;
-  }
-
-  .item-option-middle {
-    min-width: 100px;
-    flex: 1 1 100%;
-  }
-
-  .item-option-right {
-    min-width: 60px;
-  }
-
-  .item-option-brand,
-  .item-option-model {
-    font-size: 9px;
-    padding: 1px 6px;
-  }
-
-  .selected-item-display {
-    font-size: 12px;
-    gap: 4px;
+  .item-grid {
+    grid-template-columns: 1fr;
+    max-height: 400px;
   }
   
+  .selected-items-list {
+    flex-direction: column;
+  }
+  
+  .selected-item-chip {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .item-search-area {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .rejection-item {
     padding: 12px 14px;
   }

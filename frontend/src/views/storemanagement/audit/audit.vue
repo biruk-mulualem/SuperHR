@@ -601,7 +601,7 @@ const getCellClass = (item, groupId) => {
 
 // -- Transform Audit Data - UPDATED (Removed Outlier) --
 const transformAuditData = (data) => {
-  console.log('🔄 Transform audit data:', data)
+  // console.log('🔄 Transform audit data:', data)
 
   if (!data) {
     return []
@@ -757,7 +757,7 @@ const transformAuditData = (data) => {
 // -- Load Categories --
 const loadCategories = async () => {
   try {
-    console.log('📂 Loading categories...')
+    // console.log('📂 Loading categories...')
     const result = await auditService.getCategories()
     if (result.success) {
       categoriesList.value = result.data.map(cat => cat.name)
@@ -770,9 +770,9 @@ const loadCategories = async () => {
 // -- Load Stores --
 const loadStores = async () => {
   try {
-    console.log('🏪 Loading stores...')
+    // console.log('🏪 Loading stores...')
     const result = await auditService.getStoresWithGroups()
-    console.log('📥 Stores response:', result)
+    // console.log('📥 Stores response:', result)
 
     if (result.success && result.data.length > 0) {
       stores.value = result.data.map((store) => {
@@ -801,7 +801,7 @@ const loadStores = async () => {
 }
 
 const autoSelectStore = async () => {
-  console.log('🔄 Auto-selecting store...');
+  // console.log('🔄 Auto-selecting store...');
 
   if (!stores.value || stores.value.length === 0) {
     console.warn('No stores available to auto-select');
@@ -858,7 +858,7 @@ const loadStoreData = async (storeId) => {
   error.value = null
 
   try {
-    console.log(`🔍 Loading audit data for store: ${storeId}`)
+    // console.log(`🔍 Loading audit data for store: ${storeId}`)
     const result = await auditService.getStoreAudit(storeId, {
       includeTransactions: true,
       transactionLimit: 10
@@ -889,7 +889,7 @@ const loadStoreData = async (storeId) => {
       }
 
       if (transformedData.length === 0) {
-        console.log(`ℹ️ No products found for this store`)
+        // console.log(`ℹ️ No products found for this store`)
       } else {
         showToastMessage(`Loaded ${transformedData.length} products`, 'success')
       }

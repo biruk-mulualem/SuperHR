@@ -50,16 +50,34 @@ export interface Item {
   specText?: string;
 }
 
+export interface Group {
+  id: number;
+  name: string;
+  code: string;
+  status: string;
+}
+
+export interface Department {
+  department_id: number;
+  id?: number;
+  name: string;
+  code: string;
+  description?: string;
+  status?: string;
+}
 
 // ================================================================
-// NOTIFICATION TYPES - NEW
+// NOTIFICATION TYPES
 // ================================================================
 
 export interface RequestNotification {
   id: number;
   request_id: number;
-  group_id: number;
+  group_id: number | null;
+  department_id: number | null;
   store_id: number;
+  approval_type?: 'group' | 'department';
+  is_department_approval?: boolean;
   status: 'pending' | 'accepted' | 'rejected';
   rejected_reason: string | null;
   responded_by: number | null;
@@ -69,6 +87,11 @@ export interface RequestNotification {
   updated_at: string;
   group?: {
     id: number;
+    name: string;
+    code: string;
+  };
+  department?: {
+    department_id: number;
     name: string;
     code: string;
   };
@@ -126,6 +149,13 @@ export interface ItemRequest {
   canApprove?: boolean;
   canReject?: boolean;
   canFinalize?: boolean;
+  isAsset?: boolean;
+  departmentId?: number;
+  department?: {
+    id: number;
+    name: string;
+    code: string;
+  };
 }
 
 export interface ItemRequestStats {
@@ -140,7 +170,6 @@ export interface ItemRequestStats {
   }>;
 }
 
-// ✅ Validation Error Types
 export interface ValidationError {
   itemId: number;
   itemCode: string;
@@ -194,7 +223,6 @@ export interface SingleRequestResponse {
   data: ItemRequest;
   message?: string;
   error?: string;
-  // ✅ ADD THIS - For validation errors
   errors?: ValidationError[];
 }
 
@@ -217,6 +245,7 @@ export interface CreateRequestData {
   requestedDate: string;
   status?: 'pending' | 'approved' | 'rejected';
   remark?: string;
+  isAsset?: boolean;
 }
 
 export interface UpdateRequestData {
@@ -230,6 +259,7 @@ export interface UpdateRequestData {
   requestedById?: number;
   requestedDate?: string;
   remark?: string;
+  isAsset?: boolean;
 }
 
 export interface ExportItemData {
@@ -240,8 +270,58 @@ export interface ExportItemData {
   'Requested By Email': string;
   'Requested Date': string;
   'Status': string;
+  'Is Asset': string;
   'Items': string;
   'Remark': string;
+}
+
+// ================================================================
+// GROUP NOTIFICATION RESPONSE TYPES
+// ================================================================
+
+export interface GroupNotificationsResponse {
+  success: boolean;
+  data?: {
+    notifications: Array<{
+      id: number;
+      request_id: number;
+      group_id: number | null;
+      department_id: number | null;
+      store_id: number;
+      status: 'pending' | 'accepted' | 'rejected';
+      rejected_reason: string | null;
+      responded_by: number | null;
+      responded_at: string | null;
+      created_at: string;
+      updated_at: string;
+      request: ItemRequest;
+      group?: Group;
+      department?: {
+        department_id: number;
+        name: string;
+        code: string;
+      };
+      store: Store;
+      respondedByUser?: User;
+    }>;
+    summary: {
+      total: number;
+      pending: number;
+      accepted: number;
+      rejected: number;
+    };
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+    store: {
+      id: number;
+      group: { id: number };
+    };
+  };
+  error?: string;
 }
 
 // ================================================================
@@ -293,6 +373,32 @@ class ItemRequestService {
         success: false,
         data: [],
         error: error.response?.data?.error || 'Failed to fetch active items'
+      };
+    }
+  }
+
+  // ================================================================
+  // STORE GROUPS METHOD
+  // ================================================================
+
+  /**
+   * Get all active groups for a specific store
+   * GET /api/item-requests/stores/:storeId/groups
+   */
+  async getStoreGroups(storeId: number): Promise<{
+    success: boolean;
+    data: Group[];
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/item-requests/stores/${storeId}/groups`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get store groups error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch store groups'
       };
     }
   }
@@ -511,12 +617,9 @@ class ItemRequestService {
     } catch (error: any) {
       console.error('Create request error:', error);
       
-      // 🔥 FIX: Check if the error response contains validation errors
       const errorData = error.response?.data;
       
-      // If this is a validation error response with errors array
       if (errorData && errorData.errors && errorData.errors.length > 0) {
-        // Return the full validation error response
         return errorData as SingleRequestResponse;
       }
       
@@ -539,12 +642,9 @@ class ItemRequestService {
     } catch (error: any) {
       console.error('Update request error:', error);
       
-      // 🔥 Check if the error response contains validation errors
       const errorData = error.response?.data;
       
-      // If this is a validation error response with errors array
       if (errorData && errorData.errors && errorData.errors.length > 0) {
-        // Return the full validation error response
         return errorData as SingleRequestResponse;
       }
       
@@ -677,91 +777,156 @@ class ItemRequestService {
     }
   }
 
-    // ================================================================
-  // NOTIFICATION METHODS - NEW
+  // ================================================================
+  // GROUP NOTIFICATION METHODS
   // ================================================================
 
-// stores/itemRequestService.ts
+  /**
+   * Get notifications for a specific group in a specific store
+   * GET /api/item-requests/notifications/:storeId/:groupId
+   * 
+   * @param storeId - The ID of the store
+   * @param groupId - The ID of the group
+   * @param params - Optional pagination and status filters
+   */
+  async getGroupNotifications(
+    storeId: number, 
+    groupId: number,
+    params?: {
+      page?: number;
+      limit?: number;
+      status?: 'pending' | 'accepted' | 'rejected' | 'all';
+    }
+  ): Promise<GroupNotificationsResponse> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.status) queryParams.append('status', params.status);
+      
+      const url = queryParams.toString() 
+        ? `/item-requests/notifications/${storeId}/${groupId}?${queryParams.toString()}`
+        : `/item-requests/notifications/${storeId}/${groupId}`;
+      
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get group notifications error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to get group notifications'
+      };
+    }
+  }
 
-/**
- * Get notifications for a specific group in a specific store
- * GET /api/item-requests/notifications/:storeId/:groupId
- */
-async getGroupNotifications(
-  storeId: number, 
-  groupId: number,
-  params?: {
-    page?: number;
-    limit?: number;
-    status?: 'pending' | 'accepted' | 'rejected' | 'all';
+  // ================================================================
+  // 🔥 DEPARTMENT NOTIFICATIONS (for ASSET requests)
+  // ================================================================
+
+  /**
+   * Get notifications for a specific department (ASSET requests only)
+   * GET /api/item-requests/notifications/department/:departmentId
+   * 
+   * @param departmentId - The ID of the department
+   * @param params - Optional pagination and status filters
+   */
+  async getDepartmentNotifications(
+    departmentId: number,
+    params?: {
+      page?: number;
+      limit?: number;
+      status?: 'pending' | 'accepted' | 'rejected' | 'all';
+    }
+  ): Promise<{
+    success: boolean;
+    data?: {
+      notifications: Array<{
+        id: number;
+        request_id: number;
+        department_id: number;
+        store_id: number;
+        status: 'pending' | 'accepted' | 'rejected';
+        rejected_reason: string | null;
+        responded_by: number | null;
+        responded_at: string | null;
+        created_at: string;
+        updated_at: string;
+        request: ItemRequest;
+        department: {
+          department_id: number;
+          name: string;
+          code: string;
+          description?: string;
+        };
+        respondedByUser?: User;
+      }>;
+      summary: {
+        total: number;
+        pending: number;
+        accepted: number;
+        rejected: number;
+      };
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        pages: number;
+      };
+      department: {
+        id: number;
+        name: string;
+        code: string;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      // Validate departmentId
+      if (!departmentId || isNaN(departmentId) || departmentId <= 0) {
+        return {
+          success: false,
+          error: 'Invalid department ID'
+        };
+      }
+
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.status) queryParams.append('status', params.status);
+      
+      const url = queryParams.toString() 
+        ? `/item-requests/notifications/department/${departmentId}?${queryParams.toString()}`
+        : `/item-requests/notifications/department/${departmentId}`;
+      
+      console.log('📤 Fetching department notifications:', url);
+      
+      const response = await api.get(url);
+      console.log('📥 Department notifications response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Get department notifications error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to get department notifications'
+      };
+    }
   }
-): Promise<{
-  success: boolean;
-  data?: {
-    notifications: any[];
-    summary: {
-      total: number;
-      pending: number;
-      accepted: number;
-      rejected: number;
-    };
-    pagination?: {
-      page: number;
-      limit: number;
-      total: number;
-      pages: number;
-    };
-    store: {
-      id: number;
-      group: { id: number };
-    };
-  };
-  error?: string;
-}> {
-  try {
-    // Build query string
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.status) queryParams.append('status', params.status);
-    
-    const url = queryParams.toString() 
-      ? `/item-requests/notifications/${storeId}/${groupId}?${queryParams.toString()}`
-      : `/item-requests/notifications/${storeId}/${groupId}`;
-    
-    const response = await api.get(url);
-    return response.data;
-  } catch (error: any) {
-    console.error('Get group notifications error:', error);
-    return {
-      success: false,
-      error: error.response?.data?.error || 'Failed to get group notifications'
-    };
-  }
-}
+
+  // ================================================================
+  // OTHER NOTIFICATION METHODS
+  // ================================================================
+
   /**
    * Get request with notification status and group responses
    * GET /api/item-requests/:id/notifications
+   * 
+   * @param id - The request ID
    */
   async getRequestWithNotifications(id: number | string): Promise<{
     success: boolean;
     data?: {
       request: ItemRequest;
-      notificationSummary: {
-        total: number;
-        accepted: number;
-        rejected: number;
-        pending: number;
-        allAccepted: boolean;
-        hasRejection: boolean;
-        rejectionReasons: Array<{
-          groupId: number;
-          groupName: string;
-          reason: string;
-          respondedBy: string;
-          respondedAt: string;
-        }>;
-      };
+      notificationSummary: RequestNotificationSummary;
     };
     error?: string;
   }> {
@@ -780,6 +945,8 @@ async getGroupNotifications(
   /**
    * Check if all groups have accepted/rejected the request
    * GET /api/item-requests/:id/notifications/status
+   * 
+   * @param requestId - The request ID
    */
   async checkRequestNotificationStatus(requestId: number): Promise<{
     success: boolean;
@@ -808,6 +975,8 @@ async getGroupNotifications(
   /**
    * Get all rejection reasons for a request
    * GET /api/item-requests/notifications/requests/:requestId/rejections
+   * 
+   * @param requestId - The request ID
    */
   async getRejectionReasons(requestId: number): Promise<{
     success: boolean;
@@ -833,13 +1002,15 @@ async getGroupNotifications(
   }
 
   /**
-   * Accept a notification (group accepts the request)
+   * Accept a notification (group or department accepts the request)
    * POST /api/item-requests/notifications/:notificationId/accept
+   * 
+   * @param notificationId - The notification ID
    */
   async acceptNotification(notificationId: number): Promise<{
     success: boolean;
     message?: string;
-    data?: any;
+    data?: RequestNotification;
     error?: string;
   }> {
     try {
@@ -857,11 +1028,14 @@ async getGroupNotifications(
   /**
    * Reject a notification with reason
    * POST /api/item-requests/notifications/:notificationId/reject
+   * 
+   * @param notificationId - The notification ID
+   * @param reason - The rejection reason
    */
   async rejectNotification(notificationId: number, reason: string): Promise<{
     success: boolean;
     message?: string;
-    data?: any;
+    data?: RequestNotification;
     error?: string;
   }> {
     try {
@@ -881,16 +1055,14 @@ async getGroupNotifications(
   // ================================================================
 
   /**
-   * Check if a request can be approved (all groups accepted)
+   * Check if a request can be approved (all groups and department accepted)
    */
   canApproveRequest(request: ItemRequest): boolean {
     if (!request || request.status !== 'pending') return false;
     
-    // Check if request has notifications
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return false;
     
-    // Check if all groups accepted and none rejected
     const allAccepted = notifications.every((n: any) => n.status === 'accepted');
     const hasRejection = notifications.some((n: any) => n.status === 'rejected');
     
@@ -898,7 +1070,7 @@ async getGroupNotifications(
   }
 
   /**
-   * Check if a request can be printed (all groups accepted)
+   * Check if a request can be printed
    */
   canPrintRequest(request: ItemRequest): boolean {
     return this.canApproveRequest(request);
@@ -909,16 +1081,16 @@ async getGroupNotifications(
    */
   getAcceptanceSummary(request: ItemRequest): string {
     const notifications = (request as any).notifications || [];
-    if (notifications.length === 0) return 'No groups';
+    if (notifications.length === 0) return 'No approvals';
     
     const total = notifications.length;
     const accepted = notifications.filter((n: any) => n.status === 'accepted').length;
     const rejected = notifications.filter((n: any) => n.status === 'rejected').length;
     const pending = notifications.filter((n: any) => n.status === 'pending').length;
     
-    if (rejected > 0) return `❌ ${rejected} group(s) rejected`;
-    if (accepted === total) return `✅ All ${total} groups accepted`;
-    return `⏳ ${accepted}/${total} groups accepted`;
+    if (rejected > 0) return `❌ ${rejected} rejected`;
+    if (accepted === total) return `✅ All ${total} accepted`;
+    return `⏳ ${accepted}/${total} accepted`;
   }
 
   /**
@@ -929,12 +1101,44 @@ async getGroupNotifications(
     
     const notifications = (request as any).notifications || [];
     const hasRejection = notifications.some((n: any) => n.status === 'rejected');
-    if (hasRejection) return 'Some groups have rejected this request. Edit and resubmit.';
+    if (hasRejection) return 'Some have rejected this request. Edit and resubmit.';
     
     const allAccepted = notifications.every((n: any) => n.status === 'accepted');
-    if (!allAccepted) return 'Waiting for all groups to accept the request';
+    if (!allAccepted) return 'Waiting for all approvals';
     
-    return 'All groups accepted - Click to approve';
+    return 'All approved - Click to proceed';
+  }
+
+  /**
+   * Get group acceptance status for display
+   */
+  getGroupStatusDisplay(request: ItemRequest): {
+    total: number;
+    accepted: number;
+    rejected: number;
+    pending: number;
+    allAccepted: boolean;
+    hasRejection: boolean;
+    progress: number;
+  } {
+    const notifications = (request as any).notifications || [];
+    const total = notifications.length;
+    const accepted = notifications.filter((n: any) => n.status === 'accepted').length;
+    const rejected = notifications.filter((n: any) => n.status === 'rejected').length;
+    const pending = notifications.filter((n: any) => n.status === 'pending').length;
+    const allAccepted = total > 0 && accepted === total;
+    const hasRejection = rejected > 0;
+    const progress = total > 0 ? (accepted / total) * 100 : 0;
+
+    return {
+      total,
+      accepted,
+      rejected,
+      pending,
+      allAccepted,
+      hasRejection,
+      progress
+    };
   }
 
   // ================================================================
@@ -1109,6 +1313,49 @@ async getGroupNotifications(
    */
   isFinalized(request: ItemRequest): boolean {
     return request?.status === 'finalized';
+  }
+
+  /**
+   * Check if request has all groups accepted
+   */
+  hasAllGroupsAccepted(request: ItemRequest): boolean {
+    const notifications = (request as any).notifications || [];
+    if (notifications.length === 0) return false;
+    return notifications.every((n: any) => n.status === 'accepted');
+  }
+
+  /**
+   * Check if request has any rejection
+   */
+  hasAnyRejection(request: ItemRequest): boolean {
+    const notifications = (request as any).notifications || [];
+    return notifications.some((n: any) => n.status === 'rejected');
+  }
+
+  /**
+   * Get pending groups count
+   */
+  getPendingGroupsCount(request: ItemRequest): number {
+    const notifications = (request as any).notifications || [];
+    return notifications.filter((n: any) => n.status === 'pending').length;
+  }
+
+  /**
+   * Check if request is an asset request
+   */
+  isAssetRequest(request: ItemRequest): boolean {
+    return (request as any).isAsset === true;
+  }
+
+  /**
+   * Get department name for asset request
+   */
+  getAssetDepartment(request: ItemRequest): string {
+    const dept = (request as any).department;
+    if (dept) {
+      return dept.name || dept.code || 'N/A';
+    }
+    return 'N/A';
   }
 }
 

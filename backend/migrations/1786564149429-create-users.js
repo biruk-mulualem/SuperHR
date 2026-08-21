@@ -1,68 +1,34 @@
+// migrations/XXXXXX-seed-default-roles.js
 'use strict';
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.createTable('users', {
-      id: {
-        allowNull: false,
-        autoIncrement: true,
-        primaryKey: true,
-        type: Sequelize.INTEGER
+    await queryInterface.bulkInsert('roles', [
+      {
+        role_id: 1,
+        name: 'Admin',
+        description: 'System Administrator',
+        created_at: new Date(),
+        updated_at: new Date(),
       },
-      userId: {
-        type: Sequelize.INTEGER,
-        allowNull: true
+      {
+        role_id: 2,
+        name: 'Manager',
+        description: 'Department Manager',
+        created_at: new Date(),
+        updated_at: new Date(),
       },
-      username: {
-        type: Sequelize.STRING,
-        allowNull: true
+      {
+        role_id: 3,
+        name: 'Employee',
+        description: 'Regular Employee',
+        created_at: new Date(),
+        updated_at: new Date(),
       },
-      email: {
-        type: Sequelize.STRING,
-        allowNull: true
-      },
-      passwordHash: {
-        type: Sequelize.STRING,
-        allowNull: true
-      },
-      fullName: {
-        type: Sequelize.STRING,
-        allowNull: true
-      },
-      roleId: {
-        type: Sequelize.INTEGER,
-        allowNull: true
-      },
-      departmentId: {
-        type: Sequelize.INTEGER,
-        allowNull: true
-      },
-      isActive: {
-        type: Sequelize.BOOLEAN,
-        allowNull: true
-      },
-      lastLogin: {
-        type: Sequelize.DATE,
-        allowNull: true
-      },
-      createdBy: {
-        type: Sequelize.INTEGER,
-        allowNull: true
-      },
-      createdAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
-      },
-      updatedAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
-      }
-    });
+    ]);
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('users');
-  }
+    await queryInterface.bulkDelete('roles', null, {});
+  },
 };

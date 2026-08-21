@@ -22,7 +22,7 @@ router.get('/departments', userController.getAllDepartments);
 router.get('/positions', userController.getAllPositions);
 
 // ADMIN ONLY ROUTES (Requires admin role)
-router.use(authMiddleware('admin'));
+router.use(authMiddleware());
 
 // All routes below require admin role
 router.get('/', userController.getUsers);

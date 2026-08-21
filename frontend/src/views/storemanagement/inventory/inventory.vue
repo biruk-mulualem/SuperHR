@@ -1379,11 +1379,11 @@ const saveItem = async () => {
       }
     }
 
-    console.log('📤 Saving with conversion:', {
-      uomId: itemForm.value.uomId,
-      conversionUomId: conversionUomId,
-      conversionValue: conversionValue,
-    });
+    // console.log('📤 Saving with conversion:', {
+    //   uomId: itemForm.value.uomId,
+    //   conversionUomId: conversionUomId,
+    //   conversionValue: conversionValue,
+    // });
 
     const formData = {
       name: itemForm.value.name,
@@ -1418,7 +1418,7 @@ const saveItem = async () => {
 
     if (editingItem.value) {
       // 🔥 UPDATE existing item
-      console.log('🔄 Updating item:', itemId, formData);
+      // console.log('🔄 Updating item:', itemId, formData);
       response = await itemService.updateItem(itemId, formData);
       
       if (response.success) {
@@ -1436,7 +1436,7 @@ const saveItem = async () => {
       }
     } else {
       // 🔥 CREATE new item
-      console.log('📤 Creating new item:', formData);
+      // console.log('📤 Creating new item:', formData);
       response = await itemService.createItem(formData);
       
       if (response.success) {

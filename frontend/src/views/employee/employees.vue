@@ -238,7 +238,7 @@ const closeTerminateModal = () => {
 }
 
 const confirmTerminate = async () => {
-  console.log('🔴 Confirming terminate for:', employeeToTerminate.value?.fullName)
+  // console.log('🔴 Confirming terminate for:', employeeToTerminate.value?.fullName)
   terminating.value = true
   try {
     const result = await EmployeesService.terminateEmployee(
@@ -262,7 +262,7 @@ const confirmTerminate = async () => {
 
 // ========== REACTIVATE MODAL ==========
 const handleReactivation = (employee) => {
-  console.log('🟢 Reactivate clicked for:', employee.fullName)
+  // console.log('🟢 Reactivate clicked for:', employee.fullName)
   employeeToReactivate.value = employee
   showReactivateModal.value = true
 }
@@ -273,7 +273,7 @@ const closeReactivateModal = () => {
 }
 
 const confirmReactivate = async () => {
-  console.log('🟢 Confirming reactivate for:', employeeToReactivate.value?.fullName)
+  // console.log('🟢 Confirming reactivate for:', employeeToReactivate.value?.fullName)
   reactivating.value = true
   try {
     const result = await EmployeesService.reactivateEmployee(
@@ -372,7 +372,7 @@ const loadEmployees = async () => {
 // EMPLOYEE ACTIONS
 // ============================================================================
 const toggleStatus = async (employee) => {
-  console.log('🔄 Toggle status for:', employee.fullName, 'Current:', employee.status)
+  // console.log('🔄 Toggle status for:', employee.fullName, 'Current:', employee.status)
   
   if (employee.status === 'terminated') {
     addToast('Cannot toggle terminated employees', 'warning')

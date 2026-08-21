@@ -38,8 +38,8 @@ async function getUserStoreAndGroup(userId) {
           isActive: user.isActive,
           isAdmin: true,
           hasAssignments: false,
-          assignedStoreId: null,  // ✅ null, not undefined
-          assignedGroupId: null,  // ✅ null, not undefined
+          assignedStoreId: null,  
+          assignedGroupId: null,  
           assignedStore: null,
           assignedGroup: null,
         },
@@ -88,7 +88,7 @@ async function getUserStoreAndGroup(userId) {
         {
           model: Store,
           as: 'store',
-          attributes: ['id', 'name', 'code', 'location', 'status'],
+          attributes: ['id', 'storeId', 'name', 'code', 'location', 'status'], // ✅ Added storeId
         },
       ],
     });
@@ -116,6 +116,9 @@ async function getUserStoreAndGroup(userId) {
 
     const store = storeGroupRelation.store;
 
+    // ✅ FIX: Use the correct ID field (storeId or id)
+    const storeId = store.storeId || store.id;
+
     return {
       success: true,
       data: {
@@ -128,10 +131,10 @@ async function getUserStoreAndGroup(userId) {
         isActive: user.isActive,
         isAdmin: false,
         hasAssignments: true,
-        assignedStoreId: store.id,
+        assignedStoreId: storeId,  // ✅ Now using correct ID
         assignedGroupId: groupId,
         assignedStore: {
-          id: store.id,
+          id: storeId,
           name: store.name,
           code: store.code,
           location: store.location,

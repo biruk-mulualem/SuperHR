@@ -20,6 +20,11 @@ module.exports = (sequelize) => {
         foreignKey: 'responded_by',
         as: 'respondedByUser',
       });
+      // ✅ Department association
+      RequestNotification.belongsTo(models.Department, {
+        foreignKey: 'department_id',
+        as: 'department',
+      });
     }
   }
 
@@ -37,12 +42,39 @@ module.exports = (sequelize) => {
       },
       group_id: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,  // ✅ NULL for department
+      },
+      department_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,  // ✅ NULL for groups
+        references: {
+          model: 'departments',
+          key: 'department_id',
+        },
       },
       store_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      approval_type: {
+        type: DataTypes.ENUM('group', 'department'),
+        defaultValue: 'group',
+        allowNull: false,
+      },
+      is_department_approval: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false,
+      },
+      // ❌ REMOVE THESE - they don't exist in DB
+      // department_code: {
+      //   type: DataTypes.STRING(20),
+      //   allowNull: true,
+      // },
+      // department_name: {
+      //   type: DataTypes.STRING(100),
+      //   allowNull: true,
+      // },
       status: {
         type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
         defaultValue: 'pending',

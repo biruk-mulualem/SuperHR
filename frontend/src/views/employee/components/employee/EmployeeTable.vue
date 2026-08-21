@@ -169,17 +169,17 @@ const emit = defineEmits([
 
 // ========== HANDLE FUNCTIONS ==========
 const handleToggleStatus = (emp) => {
-  console.log('🔄 Toggle status clicked for:', emp.fullName, 'Current status:', emp.status)
+  // console.log('🔄 Toggle status clicked for:', emp.fullName, 'Current status:', emp.status)
   emit('toggle-status', emp)
 }
 
 const handleTerminate = (emp) => {
-  console.log('🔴 Terminate clicked for:', emp.fullName)
+  // console.log('🔴 Terminate clicked for:', emp.fullName)
   emit('terminate-employee', emp)
 }
 
 const handleReactivate = (emp) => {
-  console.log('🟢 Reactivate clicked for:', emp.fullName)
+  // console.log('🟢 Reactivate clicked for:', emp.fullName)
   emit('reactivate-employee', emp)
 }
 

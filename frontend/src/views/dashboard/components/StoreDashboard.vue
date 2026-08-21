@@ -194,33 +194,36 @@
 
       <div class="section-card">
         <div class="table-container">
-          <table class="mini-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Item</th>
-                <th>Type</th>
-                <th>Quantity</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="recentTransactions.length === 0">
-                <td colspan="4" class="empty-state-small">No recent transactions</td>
-              </tr>
-              <tr v-for="tx in recentTransactions" :key="tx.id">
-                <td>{{ formatDateShort(tx.createdAt) }}</td>
-                <td>{{ tx.itemName }}</td>
-                <td>
-                  <span :class="['type-badge', tx.type === 'Stock In' ? 'stock-in' : 'stock-out']">
-                    {{ tx.type === 'Stock In' ? '📥 In' : '📤 Out' }}
-                  </span>
-                </td>
-                <td :class="tx.type === 'Stock In' ? 'positive' : 'negative'">
-                  {{ tx.type === 'Stock In' ? '+' : '-' }}{{ formatNumber(tx.quantity) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- Find the recent transactions table and add the item code column -->
+<table class="mini-table">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Item Code</th>  <!-- ✅ Added -->
+      <th>Item</th>
+      <th>Type</th>
+      <th>Quantity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-if="recentTransactions.length === 0">
+      <td colspan="5" class="empty-state-small">No recent transactions</td>
+    </tr>
+    <tr v-for="tx in recentTransactions" :key="tx.id">
+      <td>{{ formatDateShort(tx.createdAt) }}</td>
+      <td><span class="item-code-tag">{{ tx.itemCode || 'N/A' }}</span></td>  <!-- ✅ Added -->
+      <td>{{ tx.itemName }}</td>
+      <td>
+        <span :class="['type-badge', tx.type === 'Stock In' ? 'stock-in' : 'stock-out']">
+          {{ tx.type === 'Stock In' ? '📥 In' : '📤 Out' }}
+        </span>
+      </td>
+      <td :class="tx.type === 'Stock In' ? 'positive' : 'negative'">
+        {{ tx.type === 'Stock In' ? '+' : '-' }}{{ formatNumber(tx.quantity) }}
+      </td>
+    </tr>
+  </tbody>
+</table>
         </div>
         <div class="view-all-link" @click="navigateTo('store-transaction')">
           View All Transactions →
@@ -461,8 +464,8 @@
                 </div>
                 <div class="list-date">Requested: {{ formatDate(request.requestedDate) }}</div>
               </div>
-              <span class="status-badge approved">✅ Approved</span>
-              <button class="btn-process" @click="navigateTo('item-requests')">⚙️ Process</button>
+          
+              <button class="btn-process" @click="navigateTo('item-requests')">⚙️ Review</button>
             </div>
             <div v-if="pendingRequestsList.length > 5" class="view-more-link" @click="navigateTo('item-requests')">
               View all {{ pendingRequestsList.length }} approved requests →
@@ -486,6 +489,10 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import storeDashboardService from '@/stores/storeDashboardService'
 import { useAuthStore } from '@/stores/auth'
+// Add to the imports at the top
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -495,6 +502,11 @@ const exporting = ref(false)
 const selectedStore = ref('all')
 const selectedGroup = ref('all')
 const movementDateRange = ref('week')
+
+
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 // Dashboard data
 const stockSummary = ref<any>({})
@@ -875,12 +887,19 @@ const formatNumber = (num: number): string => {
   return storeDashboardService.formatNumber(num)
 }
 
-const formatDate = (dateString?: string): string => {
-  return storeDashboardService.formatDate(dateString || null)
+// ✅ FIXED - Converting UTC to local time (UTC+6 based on your system)
+const formatDateShort = (dateString?: string): string => {
+  if (!dateString) return ''
+  return dayjs.utc(dateString)
+    .add(6, 'hour')  // ✅ Your system shows UTC+6
+    .format('MMM D, h:mm A')
 }
 
-const formatDateShort = (dateString?: string): string => {
-  return storeDashboardService.formatDateShort(dateString || null)
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'N/A'
+  return dayjs.utc(dateString)
+    .add(6, 'hour')  // ✅ Your system shows UTC+6
+    .format('MMM D, YYYY')
 }
 
 const getInitials = (name: string): string => {
@@ -937,7 +956,17 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* All existing styles remain the same */
+/* Add to the style section */
+.item-code-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563eb;
+  font-family: monospace;
+  background: #eff6ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
 /* ================================================================
    PROCESS BUTTON - Fix styles
    ================================================================ */

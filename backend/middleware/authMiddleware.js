@@ -25,10 +25,11 @@ const authMiddleware = (...allowedRoles) => {
       
       // Verify the token
       const decoded = jwt.verify(token, JWT_SECRET);
-      console.log('Token decoded successfully:', {
+         console.log('Token decoded successfully:', {
         userId: decoded.userId,
         username: decoded.username,
-        role: decoded.role
+        role: decoded.role,
+        fullName: decoded.fullName
       });
       
       // Attach user info to request

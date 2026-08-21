@@ -394,6 +394,83 @@ class BalanceService {
         return response.data;
     }
 
+
+
+    // ================================================================
+// BALANCE CORRECTION
+// ================================================================
+
+// ================================================================
+// BALANCE CORRECTION SERVICE METHOD
+// ================================================================
+
+/**
+ * Correct a balance (Admin only)
+ */
+async correctBalance(payload: {
+  balanceId: number;
+  newBalance: number;
+  reason: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data?: {
+    id: number;
+    storeId: number;
+    storeName: string;
+    groupId: number;
+    groupName: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    uomCode: string;
+    previousBalance: number;
+    newBalance: number;
+    changeAmount: number;
+    changeType: 'Increased' | 'Decreased';
+    status: string;
+    reason: string;
+    historyId: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  error?: string;
+}> {
+  try {
+    const response = await api.post('/balances/correct', payload);
+    return response.data;
+  } catch (error: any) {
+    console.error('Balance correction error:', error);
+    return {
+      success: false,
+            message: error.response?.data?.message || error.response?.data?.error || 'Failed to correct balance',
+      error: error.response?.data?.error || 'Failed to correct balance'
+    };
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     /**
      * Get balance statistics (dashboard stats)
      */

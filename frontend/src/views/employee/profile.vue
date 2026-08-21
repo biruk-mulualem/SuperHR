@@ -1,16 +1,11 @@
 <template>
   <div class="profile-page">
-    <!-- Header Section with Cover Photo -->
+    <!-- ============================================================ -->
+    <!-- HEADER SECTION -->
+    <!-- ============================================================ -->
     <div class="profile-header">
       <div class="cover-photo">
         <img :src="coverPhoto" alt="Cover">
-        <button class="change-cover-btn" @click="uploadCoverPhoto">
-          <svg class="camera-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-            <circle cx="12" cy="13" r="4"/>
-          </svg>
-          <span>Change Cover</span>
-        </button>
       </div>
       
       <div class="profile-avatar-section">
@@ -25,13 +20,26 @@
         </div>
         <div class="profile-info">
           <h1 class="profile-name">{{ userDisplayName }}</h1>
-          <p class="profile-role">{{ roleTitle }}</p>
-          <p class="profile-department">{{ userDepartment }}</p>
+          <div class="profile-role-wrapper">
+            <span class="profile-role">{{ roleTitle }}</span>
+          </div>
+          <div class="profile-badges">
+            <span class="badge">{{ user.employeeCode || 'No Code' }}</span>
+            <span class="badge status" :class="user.isActive ? 'active' : 'inactive'">
+              {{ user.isActive ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="profile-department">
+            <span class="dept-icon">🏢</span>
+            {{ userDepartment }}
+          </p>
         </div>
       </div>
     </div>
 
-    <!-- Main Content Tabs -->
+    <!-- ============================================================ -->
+    <!-- TABS -->
+    <!-- ============================================================ -->
     <div class="profile-content">
       <div class="profile-tabs">
         <button 
@@ -41,255 +49,296 @@
           :class="{ active: activeTab === tab.id }"
           @click="activeTab = tab.id"
         >
-          <component :is="tab.icon" class="tab-icon" />
+          <span class="tab-icon">{{ tab.icon }}</span>
           {{ tab.name }}
         </button>
       </div>
 
-      <!-- Personal Information Tab -->
+      <!-- ============================================================ -->
+      <!-- PERSONAL INFORMATION TAB -->
+      <!-- ============================================================ -->
       <div v-show="activeTab === 'personal'" class="tab-content">
         <div class="info-grid">
+          <!-- Personal Details -->
           <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              Basic Information
-            </h3>
-            <div class="info-row">
-              <span class="info-label">Full Name:</span>
-              <span class="info-value">{{ user.fullEmployeeName || user.fullName }}</span>
+            <div class="card-header">
+              <span class="card-icon">👤</span>
+              <h3 class="card-title">Personal Information</h3>
             </div>
             <div class="info-row">
-              <span class="info-label">Employee ID:</span>
+              <span class="info-label">Full Name</span>
+              <span class="info-value">{{ user.fullEmployeeName || user.fullName || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Username</span>
+              <span class="info-value username">{{ user.username || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Employee ID</span>
               <span class="info-value">{{ user.employeeCode || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Date of Birth:</span>
-              <span class="info-value">{{ formatDate(user.dateOfBirth) }}</span>
+              <span class="info-label">First Name</span>
+              <span class="info-value">{{ user.firstName || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Gender:</span>
+              <span class="info-label">Last Name</span>
+              <span class="info-value">{{ user.lastName || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Middle Name</span>
+              <span class="info-value">{{ user.middleName || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date of Birth (EC)</span>
+              <span class="info-value">{{ user.dateOfBirthEC || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date of Birth (GC)</span>
+              <span class="info-value">{{ formatDate(user.dateOfBirthGC) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Gender</span>
               <span class="info-value capitalize">{{ user.gender || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Marital Status:</span>
+              <span class="info-label">Marital Status</span>
               <span class="info-value capitalize">{{ user.maritalStatus || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Nationality:</span>
+              <span class="info-label">Nationality</span>
               <span class="info-value">{{ user.nationality || 'N/A' }}</span>
             </div>
           </div>
 
+          <!-- Contact Information -->
           <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-              </svg>
-              Contact Information
-            </h3>
-            <div class="info-row">
-              <span class="info-label">Email:</span>
-              <span class="info-value">{{ user.email || user.workEmail || 'N/A' }}</span>
+            <div class="card-header">
+              <span class="card-icon">📞</span>
+              <h3 class="card-title">Contact Information</h3>
             </div>
             <div class="info-row">
-              <span class="info-label">Work Email:</span>
+              <span class="info-label">Email</span>
+              <span class="info-value">{{ user.email || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Work Email</span>
               <span class="info-value">{{ user.workEmail || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Personal Email:</span>
+              <span class="info-label">Personal Email</span>
               <span class="info-value">{{ user.personalEmail || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Phone:</span>
+              <span class="info-label">Phone Number</span>
               <span class="info-value">{{ user.phoneNumber || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Emergency Contact</span>
+              <span class="info-value">{{ formatEmergencyContact(user.emergencyContact) }}</span>
             </div>
           </div>
 
+          <!-- Address Information -->
           <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                <polyline points="9 22 9 12 15 12 15 22"/>
-              </svg>
-              Address Information
-            </h3>
+            <div class="card-header">
+              <span class="card-icon">📍</span>
+              <h3 class="card-title">Address Information</h3>
+            </div>
             <div class="info-row">
-              <span class="info-label">Current Address:</span>
+              <span class="info-label">Current Address</span>
               <span class="info-value">{{ formatAddress(user.currentAddress) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Permanent Address:</span>
+              <span class="info-label">Permanent Address</span>
               <span class="info-value">{{ formatAddress(user.permanentAddress) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Work Location</span>
+              <span class="info-value">{{ user.workLocation || 'Main Office' }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Employment Tab -->
+      <!-- ============================================================ -->
+      <!-- EMPLOYMENT TAB -->
+      <!-- ============================================================ -->
       <div v-show="activeTab === 'employment'" class="tab-content">
         <div class="info-grid">
+          <!-- Employment Details -->
           <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
-                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-              </svg>
-              Employment Details
-            </h3>
+            <div class="card-header">
+              <span class="card-icon">💼</span>
+              <h3 class="card-title">Employment Details</h3>
+            </div>
             <div class="info-row">
-              <span class="info-label">Employee Code:</span>
+              <span class="info-label">Employee Code</span>
               <span class="info-value">{{ user.employeeCode || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Position:</span>
+              <span class="info-label">Position ID</span>
               <span class="info-value">{{ user.positionId || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Department:</span>
+              <span class="info-label">Department</span>
               <span class="info-value">{{ user.departmentName || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Employment Type:</span>
+              <span class="info-label">Department Code</span>
+              <span class="info-value">{{ user.departmentCode || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Manager ID</span>
+              <span class="info-value">{{ user.managerId || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Employment Type</span>
               <span class="info-value capitalize">{{ user.employmentType || 'N/A' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Employment Status:</span>
-              <span class="info-value capitalize">
-                <span :class="`status-badge status-${user.employmentStatus}`">
+              <span class="info-label">Employment Status</span>
+              <span class="info-value">
+                <span :class="`status-badge status-${user.employmentStatus?.toLowerCase() || 'unknown'}`">
                   {{ user.employmentStatus || 'N/A' }}
                 </span>
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">Hire Date:</span>
-              <span class="info-value">{{ formatDate(user.hireDate) }}</span>
+              <span class="info-label">Hire Date (EC)</span>
+              <span class="info-value">{{ user.hireDateEC || 'N/A' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Hire Date (GC)</span>
+              <span class="info-value">{{ formatDate(user.hireDateGC) }}</span>
             </div>
           </div>
 
+          <!-- Compensation -->
           <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-              Work Location
-            </h3>
-            <div class="info-row">
-              <span class="info-label">Work Location:</span>
-              <span class="info-value">{{ user.workLocation || 'Main Office' }}</span>
+            <div class="card-header">
+              <span class="card-icon">💰</span>
+              <h3 class="card-title">Compensation</h3>
             </div>
-          </div>
-
-          <div class="info-card">
-            <h3 class="card-title">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="1" x2="12" y2="23"/>
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-              </svg>
-              Compensation
-            </h3>
             <div class="info-row">
-              <span class="info-label">Basic Salary:</span>
+              <span class="info-label">Basic Salary</span>
               <span class="info-value">{{ formatCurrency(user.basicSalary) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Bank Account:</span>
-              <span class="info-value">{{ formatBankAccount(user.bankAccount) }}</span>
+              <span class="info-label">Bank Account</span>
+              <span class="info-value">{{ user.bankAccount || 'N/A' }}</span>
+            </div>
+          </div>
+
+          <!-- Statistics -->
+          <div class="info-card">
+            <div class="card-header">
+              <span class="card-icon">📊</span>
+              <h3 class="card-title">Statistics</h3>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Last Login</span>
+              <span class="info-value">{{ formatDateTime(user.lastLogin) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Account Status</span>
+              <span class="info-value">
+                <span :class="`status-badge status-${user.isActive ? 'active' : 'inactive'}`">
+                  {{ user.isActive ? 'Active' : 'Inactive' }}
+                </span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Years of Service</span>
+              <span class="info-value">{{ yearsOfService }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Role</span>
+              <span class="info-value">{{ roleTitle }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Role ID</span>
+              <span class="info-value">{{ user.roleId || 'N/A' }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Statistics Tab -->
-      <div v-show="activeTab === 'stats'" class="tab-content">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-icon attendance">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
+      <!-- ============================================================ -->
+      <!-- ACCOUNT SETTINGS TAB -->
+      <!-- ============================================================ -->
+      <div v-show="activeTab === 'settings'" class="tab-content">
+        <div class="settings-grid">
+          <!-- Change Username -->
+          <div class="settings-card">
+            <div class="settings-header">
+              <span class="settings-icon">👤</span>
+              <div>
+                <h3 class="settings-title">Change Username</h3>
+                <p class="settings-subtitle">Update your username</p>
+              </div>
             </div>
-            <div class="stat-info">
-              <h3>Attendance Rate</h3>
-              <p class="stat-number">96%</p>
-              <span class="stat-trend positive">+2% from last month</span>
-            </div>
-          </div>
-
-          <div class="stat-card">
-            <div class="stat-icon leaves">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <h3>Leave Balance</h3>
-              <p class="stat-number">15 days</p>
-              <span class="stat-trend">Annual leave remaining</span>
-            </div>
-          </div>
-
-          <div class="stat-card">
-            <div class="stat-icon performance">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 20V10M18 20V4M6 20v-4"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <h3>Performance Rating</h3>
-              <p class="stat-number">4.5/5</p>
-              <span class="stat-trend positive">Excellent</span>
+            <div class="settings-body">
+              <div class="form-group">
+                <label>Current Username</label>
+                <input type="text" class="form-input" :value="user.username" disabled>
+              </div>
+              <div class="form-group">
+                <label>New Username</label>
+                <input type="text" v-model="usernameForm.newUsername" class="form-input" placeholder="Enter new username">
+                <span class="hint">Minimum 3 characters, alphanumeric</span>
+              </div>
+              <div class="form-group">
+                <label>Confirm New Username</label>
+                <input type="text" v-model="usernameForm.confirmUsername" class="form-input" placeholder="Confirm new username">
+              </div>
+              <div v-if="usernameError" class="error-message">{{ usernameError }}</div>
+              <div v-if="usernameSuccess" class="success-message">{{ usernameSuccess }}</div>
+              <button class="settings-btn primary" @click="updateUsername" :disabled="updatingUsername">
+                {{ updatingUsername ? 'Updating...' : 'Update Username' }}
+              </button>
             </div>
           </div>
 
-          <div class="stat-card">
-            <div class="stat-icon tenure">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
+          <!-- Change Password -->
+          <div class="settings-card">
+            <div class="settings-header">
+              <span class="settings-icon">🔒</span>
+              <div>
+                <h3 class="settings-title">Change Password</h3>
+                <p class="settings-subtitle">Update your password</p>
+              </div>
             </div>
-            <div class="stat-info">
-              <h3>Years of Service</h3>
-              <p class="stat-number">{{ yearsOfService }}</p>
-              <span class="stat-trend">With company</span>
+            <div class="settings-body">
+              <div class="form-group">
+                <label>Current Password</label>
+                <input type="password" v-model="passwordForm.currentPassword" class="form-input" placeholder="Enter current password">
+              </div>
+              <div class="form-group">
+                <label>New Password</label>
+                <input type="password" v-model="passwordForm.newPassword" class="form-input" placeholder="Enter new password">
+                <span class="hint">Minimum 6 characters</span>
+              </div>
+              <div class="form-group">
+                <label>Confirm New Password</label>
+                <input type="password" v-model="passwordForm.confirmPassword" class="form-input" placeholder="Confirm new password">
+              </div>
+              <div v-if="passwordError" class="error-message">{{ passwordError }}</div>
+              <div v-if="passwordSuccess" class="success-message">{{ passwordSuccess }}</div>
+              <button class="settings-btn primary" @click="updatePassword" :disabled="updatingPassword">
+                {{ updatingPassword ? 'Updating...' : 'Update Password' }}
+              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Edit Profile Modal -->
-    <div v-if="showEditModal" class="modal-overlay" @click="closeModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h2>Edit Profile</h2>
-          <button class="close-btn" @click="closeModal">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input type="text" v-model="editForm.phoneNumber" class="form-input">
-          </div>
-          <div class="form-group">
-            <label>Personal Email</label>
-            <input type="email" v-model="editForm.personalEmail" class="form-input">
-          </div>
-          <div class="form-group">
-            <label>Current Address</label>
-            <textarea v-model="editForm.currentAddress" class="form-textarea" rows="3"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" @click="closeModal">Cancel</button>
-          <button class="btn-save" @click="saveProfile">Save Changes</button>
-        </div>
-      </div>
+    <!-- ============================================================ -->
+    <!-- TOAST -->
+    <!-- ============================================================ -->
+    <div v-if="showToast" class="toast" :class="toastType">
+      <span>{{ toastMessage }}</span>
     </div>
   </div>
 </template>
@@ -297,19 +346,31 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import userService from '@/stores/users'
 
 const authStore = useAuthStore()
 const user = computed(() => authStore.user || {})
 const activeTab = ref('personal')
-const showEditModal = ref(false)
+const updatingPassword = ref(false)
+const updatingUsername = ref(false)
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('success')
+const passwordError = ref('')
+const passwordSuccess = ref('')
+const usernameError = ref('')
+const usernameSuccess = ref('')
 
 const tabs = [
-  { id: 'personal', name: 'Personal Info', icon: 'UserIcon' },
-  { id: 'employment', name: 'Employment', icon: 'BriefcaseIcon' },
-  { id: 'stats', name: 'Statistics', icon: 'ChartBarIcon' }
+  { id: 'personal', name: 'Personal Info', icon: '👤' },
+  { id: 'employment', name: 'Employment', icon: '💼' },
+  { id: 'settings', name: 'Account Settings', icon: '⚙️' }
 ]
 
-// Computed properties
+// ================================================================
+// COMPUTED PROPERTIES
+// ================================================================
+
 const userDisplayName = computed(() => {
   return user.value.fullEmployeeName || user.value.fullName || 'User'
 })
@@ -326,9 +387,13 @@ const roleTitle = computed(() => {
     admin: 'System Administrator',
     hr: 'HR Manager',
     finance: 'Finance Officer',
-    employee: 'Employee'
+    employee: 'Employee',
+    manager: 'Manager',
+    supervisor: 'Supervisor',
+    store_it: 'Store IT',
+    storekeeper: 'Storekeeper'
   }
-  return titles[user.value.role] || user.value.role || 'Employee'
+  return titles[user.value.role] || user.value.role || user.value.roleTitle || 'Employee'
 })
 
 const userDepartment = computed(() => {
@@ -336,26 +401,58 @@ const userDepartment = computed(() => {
 })
 
 const yearsOfService = computed(() => {
-  if (!user.value.hireDate) return 'N/A'
-  const hireDate = new Date(user.value.hireDate)
+  if (!user.value.hireDateGC && !user.value.hireDateEC) return 'N/A'
+  const hireDate = new Date(user.value.hireDateGC || user.value.hireDateEC)
+  if (isNaN(hireDate.getTime())) return 'N/A'
   const today = new Date()
   const years = today.getFullYear() - hireDate.getFullYear()
+  const months = today.getMonth() - hireDate.getMonth()
+  if (months < 0) {
+    return `${years - 1} years`
+  }
   return `${years} years`
 })
 
-const editForm = ref({
-  phoneNumber: '',
-  personalEmail: '',
-  currentAddress: ''
+// ================================================================
+// FORM STATE
+// ================================================================
+
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
 })
 
-// Methods
+const usernameForm = ref({
+  newUsername: '',
+  confirmUsername: ''
+})
+
+// ================================================================
+// METHODS
+// ================================================================
+
 const formatDate = (date) => {
   if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-US', {
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return 'N/A'
+  return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
+  })
+}
+
+const formatDateTime = (date) => {
+  if (!date) return 'Never'
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return 'Never'
+  return d.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 
@@ -368,118 +465,224 @@ const formatCurrency = (amount) => {
 }
 
 const formatAddress = (address) => {
-  if (!address || typeof address !== 'object') return 'N/A'
-  const parts = []
-  if (address.street) parts.push(address.street)
-  if (address.city) parts.push(address.city)
-  if (address.country) parts.push(address.country)
-  return parts.length ? parts.join(', ') : 'N/A'
+  if (!address) return 'N/A'
+  if (typeof address === 'string') return address
+  if (typeof address === 'object') {
+    const parts = []
+    if (address.street) parts.push(address.street)
+    if (address.city) parts.push(address.city)
+    if (address.state) parts.push(address.state)
+    if (address.country) parts.push(address.country)
+    if (address.zipCode) parts.push(address.zipCode)
+    return parts.length ? parts.join(', ') : 'N/A'
+  }
+  return 'N/A'
 }
 
-const formatBankAccount = (account) => {
-  if (!account || typeof account !== 'object') return 'N/A'
-  return account.bankName ? `${account.bankName} - ${account.accountNumber || 'N/A'}` : 'N/A'
+const formatEmergencyContact = (contact) => {
+  if (!contact) return 'N/A'
+  if (typeof contact === 'string') return contact
+  if (typeof contact === 'object') {
+    const parts = []
+    if (contact.name) parts.push(contact.name)
+    if (contact.phone) parts.push(contact.phone)
+    if (contact.relationship) parts.push(`(${contact.relationship})`)
+    return parts.length ? parts.join(' ') : 'N/A'
+  }
+  return 'N/A'
 }
+
+// ================================================================
+// PROFILE PICTURE
+// ================================================================
 
 const uploadProfilePicture = () => {
-  // Implement profile picture upload
-  alert('Profile picture upload feature coming soon')
+  showToastMessage('Profile picture upload feature coming soon', 'info')
 }
 
-const uploadCoverPhoto = () => {
-  // Implement cover photo upload
-  alert('Cover photo upload feature coming soon')
-}
+// ================================================================
+// CHANGE USERNAME - INTEGRATED WITH BACKEND
+// ================================================================
 
-const openEditModal = () => {
-  editForm.value = {
-    phoneNumber: user.value.phoneNumber || '',
-    personalEmail: user.value.personalEmail || '',
-    currentAddress: typeof user.value.currentAddress === 'object' 
-      ? JSON.stringify(user.value.currentAddress, null, 2) 
-      : user.value.currentAddress || ''
+const updateUsername = async () => {
+  usernameError.value = ''
+  usernameSuccess.value = ''
+  
+  // Validation
+  if (!usernameForm.value.newUsername || usernameForm.value.newUsername.length < 3) {
+    usernameError.value = 'Username must be at least 3 characters'
+    return
   }
-  showEditModal.value = true
+  
+  if (!/^[a-zA-Z0-9_]+$/.test(usernameForm.value.newUsername)) {
+    usernameError.value = 'Username can only contain letters, numbers, and underscores'
+    return
+  }
+  
+  if (usernameForm.value.newUsername !== usernameForm.value.confirmUsername) {
+    usernameError.value = 'Usernames do not match'
+    return
+  }
+  
+  if (usernameForm.value.newUsername === user.value.username) {
+    usernameError.value = 'New username is the same as current'
+    return
+  }
+
+  updatingUsername.value = true
+  try {
+    // ✅ Call the API to update username
+    const response = await userService.updateUser(authStore.user.userId, {
+      username: usernameForm.value.newUsername
+    })
+    
+    if (response.success) {
+      usernameSuccess.value = '✅ Username updated successfully!'
+      showToastMessage('✅ Username updated successfully!', 'success')
+      
+      // ✅ Refresh user data
+      await authStore.fetchUser()
+      
+      // Clear form
+      setTimeout(() => {
+        usernameSuccess.value = ''
+        usernameForm.value = { newUsername: '', confirmUsername: '' }
+      }, 3000)
+    } else {
+      usernameError.value = response.error || 'Failed to update username'
+    }
+  } catch (error) {
+    console.error('Error updating username:', error)
+    usernameError.value = error.response?.data?.error || 'Failed to update username'
+  } finally {
+    updatingUsername.value = false
+  }
 }
 
-const closeModal = () => {
-  showEditModal.value = false
+// ================================================================
+// CHANGE PASSWORD - INTEGRATED WITH BACKEND
+// ================================================================
+
+const updatePassword = async () => {
+  passwordError.value = ''
+  passwordSuccess.value = ''
+  
+  // Validation
+  if (!passwordForm.value.currentPassword) {
+    passwordError.value = 'Please enter your current password'
+    return
+  }
+  
+  if (!passwordForm.value.newPassword || passwordForm.value.newPassword.length < 6) {
+    passwordError.value = 'New password must be at least 6 characters'
+    return
+  }
+  
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    passwordError.value = 'Passwords do not match'
+    return
+  }
+
+  updatingPassword.value = true
+  try {
+    // ✅ Call the API to change password
+    const response = await userService.changePassword(
+      passwordForm.value.currentPassword,
+      passwordForm.value.newPassword
+    )
+    
+    if (response.success) {
+      passwordSuccess.value = '✅ Password updated successfully!'
+      showToastMessage('✅ Password updated successfully!', 'success')
+      
+      // Clear form
+      setTimeout(() => {
+        passwordSuccess.value = ''
+        passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' }
+      }, 3000)
+    } else {
+      passwordError.value = response.error || 'Failed to update password'
+    }
+  } catch (error) {
+    console.error('Error updating password:', error)
+    passwordError.value = error.response?.data?.error || 'Failed to update password'
+  } finally {
+    updatingPassword.value = false
+  }
 }
 
-const saveProfile = async () => {
-  // Implement save profile
-  alert('Save profile feature coming soon')
-  closeModal()
+// ================================================================
+// TOAST
+// ================================================================
+
+const showToastMessage = (message, type = 'success') => {
+  toastMessage.value = message
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 3000)
 }
 
-onMounted(() => {
-  // Fetch latest user data if needed
+// ================================================================
+// LIFECYCLE
+// ================================================================
+
+onMounted(async () => {
+  // ✅ Fetch user data from backend
+  await authStore.fetchUser()
 })
 </script>
 
 <style scoped>
+/* ================================================================
+   PAGE
+   ================================================================ */
 .profile-page {
   min-height: 100vh;
-  background: #f5f7fb;
+  background: #f0f2f6;
 }
 
-/* Profile Header */
+/* ================================================================
+   HEADER - FIXED COVER AND ROLE VISIBILITY
+   ================================================================ */
 .profile-header {
   background: white;
   border-radius: 0 0 24px 24px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  position: relative;
 }
 
 .cover-photo {
   position: relative;
-  height: 250px;
+  height: 180px;
   overflow: hidden;
 }
-
 .cover-photo img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.change-cover-btn {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 14px;
-}
-
-.change-cover-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
 .profile-avatar-section {
   display: flex;
   align-items: flex-end;
-  padding: 0 32px 24px;
-  margin-top: -60px;
-  gap: 24px;
+  padding: 0 32px 20px;
+  margin-top: -50px;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 2;
 }
 
 .avatar-wrapper {
   position: relative;
+  flex-shrink: 0;
 }
-
 .profile-avatar {
-  width: 120px;
-  height: 120px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
   border: 4px solid white;
   object-fit: cover;
@@ -488,12 +691,12 @@ onMounted(() => {
 
 .change-avatar-btn {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: 4px;
+  right: 4px;
   background: #6a11cb;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -501,78 +704,109 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .change-avatar-btn:hover {
   transform: scale(1.1);
   background: #7c3aed;
 }
-
 .camera-icon-small {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   color: white;
 }
 
 .profile-info {
-  margin-bottom: 12px;
+  flex: 1;
+  min-width: 200px;
+  padding-bottom: 4px;
 }
-
 .profile-name {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: #1e293b;
-  margin-bottom: 4px;
+  margin: 0 0 2px 0;
 }
 
+.profile-role-wrapper {
+  display: block;
+  margin-bottom: 4px;
+}
 .profile-role {
-  font-size: 16px;
+  font-size: 15px;
   color: #6a11cb;
   font-weight: 600;
+  display: inline-block;
+  background: #f3e8ff;
+  padding: 2px 14px;
+  border-radius: 12px;
+}
+
+.profile-badges {
+  display: flex;
+  gap: 6px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.badge {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: #475569;
+}
+.badge.status.active {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge.status.inactive {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .profile-department {
-  font-size: 14px;
+  font-size: 13px;
   color: #64748b;
+  margin: 0;
+}
+.dept-icon {
+  margin-right: 4px;
 }
 
-/* Tabs */
+/* ================================================================
+   TABS
+   ================================================================ */
 .profile-content {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px 32px;
+  padding: 20px 32px;
 }
 
 .profile-tabs {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   border-bottom: 2px solid #e2e8f0;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
-
 .tab-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
+  gap: 6px;
+  padding: 10px 20px;
   background: none;
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
 }
-
 .tab-btn:hover {
   color: #6a11cb;
 }
-
 .tab-btn.active {
   color: #6a11cb;
 }
-
 .tab-btn.active::after {
   content: '';
   position: absolute;
@@ -582,330 +816,331 @@ onMounted(() => {
   height: 2px;
   background: #6a11cb;
 }
-
 .tab-icon {
-  width: 20px;
-  height: 20px;
+  font-size: 16px;
 }
 
-/* Info Grid */
+/* ================================================================
+   INFO GRID
+   ================================================================ */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
 }
 
 .info-card {
   background: white;
-  border-radius: 20px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s, box-shadow 0.2s;
 }
-
 .info-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
-.card-title {
+.card-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 20px;
   padding-bottom: 12px;
   border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 16px;
 }
-
 .card-icon {
-  width: 22px;
-  height: 22px;
-  color: #6a11cb;
+  font-size: 20px;
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
 }
 
 .info-row {
   display: flex;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 8px 0;
   border-bottom: 1px solid #f1f5f9;
 }
-
 .info-row:last-child {
   border-bottom: none;
 }
-
 .info-label {
   font-weight: 500;
   color: #64748b;
-  font-size: 14px;
+  font-size: 13px;
 }
-
 .info-value {
   color: #1e293b;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   text-align: right;
+  max-width: 60%;
 }
-
+.info-value.username {
+  color: #2563eb;
+  font-family: monospace;
+}
 .capitalize {
   text-transform: capitalize;
 }
 
-/* Status Badge */
+/* ================================================================
+   STATUS BADGE
+   ================================================================ */
 .status-badge {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
-
 .status-active {
-  background: #10b98120;
-  color: #10b981;
+  background: #dcfce7;
+  color: #166534;
 }
-
 .status-inactive {
-  background: #ef444420;
-  color: #ef4444;
+  background: #fee2e2;
+  color: #991b1b;
 }
-
 .status-on-leave {
-  background: #f59e0b20;
-  color: #f59e0b;
+  background: #fef3c7;
+  color: #92400e;
+}
+.status-terminated {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.status-unknown {
+  background: #f1f5f9;
+  color: #475569;
 }
 
-/* Stats Grid */
-.stats-grid {
+/* ================================================================
+   SETTINGS GRID
+   ================================================================ */
+.settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 24px;
 }
 
-.stat-card {
+.settings-card {
   background: white;
-  border-radius: 20px;
+  border-radius: 16px;
   padding: 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.settings-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
-.stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-}
-
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
+.settings-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 16px;
 }
-
-.stat-icon svg {
-  width: 30px;
-  height: 30px;
-  color: white;
-}
-
-.stat-icon.attendance { background: linear-gradient(135deg, #667eea, #764ba2); }
-.stat-icon.leaves { background: linear-gradient(135deg, #f093fb, #f5576c); }
-.stat-icon.performance { background: linear-gradient(135deg, #4facfe, #00f2fe); }
-.stat-icon.tenure { background: linear-gradient(135deg, #43e97b, #38f9d7); }
-
-.stat-info h3 {
-  font-size: 14px;
-  font-weight: 500;
-  color: #64748b;
-  margin-bottom: 8px;
-}
-
-.stat-number {
+.settings-icon {
   font-size: 28px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 4px;
 }
-
-.stat-trend {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.stat-trend.positive {
-  color: #10b981;
-}
-
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 24px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 90vh;
-  overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.modal-header h2 {
-  font-size: 20px;
+.settings-title {
+  font-size: 18px;
   font-weight: 600;
   color: #1e293b;
+  margin: 0;
+}
+.settings-subtitle {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-  color: #64748b;
-  transition: color 0.2s;
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.close-btn:hover {
-  color: #ef4444;
+.settings-body .form-group {
+  margin-bottom: 0;
 }
-
-.modal-body {
-  padding: 24px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 14px;
+.settings-body .form-group label {
+  font-size: 13px;
   font-weight: 500;
   color: #1e293b;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  display: block;
 }
-
-.form-input,
-.form-textarea {
+.settings-body .form-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  font-size: 14px;
+  border-radius: 10px;
+  font-size: 13px;
   transition: all 0.2s;
 }
-
-.form-input:focus,
-.form-textarea:focus {
+.settings-body .form-input:focus {
   outline: none;
   border-color: #6a11cb;
   box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.1);
 }
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 20px 24px;
-  border-top: 1px solid #e2e8f0;
+.settings-body .form-input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+.settings-body .hint {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
 }
 
-.btn-cancel,
-.btn-save {
-  padding: 10px 20px;
-  border-radius: 12px;
-  font-size: 14px;
+.error-message {
+  color: #ef4444;
+  font-size: 13px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 8px;
+}
+.success-message {
+  color: #10b981;
+  font-size: 13px;
+  padding: 8px 12px;
+  background: #dcfce7;
+  border-radius: 8px;
+}
+
+.settings-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  align-self: flex-start;
 }
-
-.btn-cancel {
-  background: white;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-}
-
-.btn-cancel:hover {
-  background: #f8fafc;
-}
-
-.btn-save {
+.settings-btn.primary {
   background: #6a11cb;
-  border: none;
   color: white;
 }
-
-.btn-save:hover {
+.settings-btn.primary:hover:not(:disabled) {
   background: #7c3aed;
   transform: translateY(-1px);
 }
+.settings-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-/* Responsive */
+/* ================================================================
+   TOAST
+   ================================================================ */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+}
+.toast.success { background: #10b981; }
+.toast.error { background: #ef4444; }
+.toast.warning { background: #f59e0b; }
+.toast.info { background: #3b82f6; }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes fadeOut {
+  to { opacity: 0; transform: translateY(-10px); }
+}
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
 @media (max-width: 768px) {
   .profile-avatar-section {
     flex-direction: column;
     align-items: center;
+    text-align: center;
+    padding: 0 16px 16px;
+  }
+  .profile-name {
+    font-size: 20px;
+  }
+  .profile-role {
+    font-size: 14px;
+  }
+  .profile-badges {
+    justify-content: center;
+  }
+  .profile-department {
     text-align: center;
   }
   
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
-  .profile-content {
-    padding: 16px;
-  }
-  
-  .profile-name {
-    font-size: 24px;
-  }
-  
   .info-row {
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
   }
-  
   .info-value {
     text-align: left;
+    max-width: 100%;
+  }
+  
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .profile-content {
+    padding: 12px 16px;
+  }
+  .profile-tabs {
+    overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  
+  .settings-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .cover-photo {
+    height: 120px;
+  }
+  .profile-avatar {
+    width: 80px;
+    height: 80px;
+  }
+  .profile-avatar-section {
+    margin-top: -40px;
+  }
+  .profile-role {
+    font-size: 13px;
+    padding: 1px 10px;
   }
 }
 </style>
