@@ -21,6 +21,25 @@
       </div>
     </div>
 
+    <!-- ✅ Centered Store Name Display -->
+    <div class="header-center">
+      <div v-if="storeName" class="store-brand">
+        <div class="store-icon-wrapper">
+          <span class="store-icon">🏪</span>
+        </div>
+        <div class="store-info-wrapper">
+          <span class="store-name-main">{{ storeName }}</span>
+         
+          <span v-if="groupName" class="group-divider">•</span>
+          <span v-if="groupName" class="group-name-tag">👥 {{ groupName }}</span>
+       
+        </div>
+      </div>
+      <div v-else class="store-brand empty">
+        <span class="no-store-text">No Store Assigned</span>
+      </div>
+    </div>
+
     <div class="header-right">
       <!-- 🔔 Notifications - Only Pending -->
       <div class="notification-dropdown" @click.stop>
@@ -202,16 +221,14 @@
                 <span v-if="storeName" class="store-info-item">
                   <span class="info-icon">🏪</span>
                   {{ storeName }}
-                  <span v-if="storeId" class="store-id-badge">ID: {{ storeId }}</span>
+                  <span v-if="storeId" class="store-id-badge">storeId: {{ storeId }}</span>
                 </span>
                 <span v-if="groupName" class="group-info-item">
                   <span class="info-icon">👥</span>
                   {{ groupName }}
-                  <span v-if="groupId" class="group-id-badge">ID: {{ groupId }}</span>
+                  <span v-if="groupId" class="group-id-badge">groupId: {{ groupId }}</span>
                 </span>
               </div>
-              
-            
             </div>
           </div>
 
@@ -906,6 +923,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 20px;
+  flex: 0 0 auto;
 }
 
 .menu-btn {
@@ -945,11 +963,137 @@ onUnmounted(() => {
   color: transparent;
 }
 
+/* ================================================================
+   HEADER CENTER - Store Name Display
+   ================================================================ */
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.store-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  padding: 6px 18px 6px 12px;
+  border-radius: 30px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+  cursor: default;
+}
+
+.store-brand:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+  transform: translateY(-1px);
+}
+
+.store-brand.empty {
+  background: transparent;
+  border: 1px dashed #e2e8f0;
+  box-shadow: none;
+  padding: 6px 16px;
+}
+
+.store-brand.empty:hover {
+  transform: none;
+  border-color: #e2e8f0;
+}
+
+.store-icon-wrapper {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+  }
+  50% {
+    box-shadow: 0 2px 16px rgba(59, 130, 246, 0.4);
+  }
+}
+
+.store-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.store-info-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.store-name-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  letter-spacing: 0.3px;
+}
+
+.store-id-tag {
+  font-size: 9px;
+  font-weight: 600;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+}
+
+.group-divider {
+  color: #cbd5e1;
+  font-weight: 300;
+  font-size: 12px;
+}
+
+.group-name-tag {
+  font-size: 11px;
+  color: #059669;
+  font-weight: 500;
+}
+
+.group-id-tag {
+  font-size: 8px;
+  font-weight: 600;
+  color: #64748b;
+  background: #ecfdf5;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-family: 'Courier New', monospace;
+}
+
+.no-store-text {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* ================================================================
+   HEADER RIGHT
+   ================================================================ */
 .header-right {
   position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 /* ================================================================
@@ -1860,11 +2004,48 @@ onUnmounted(() => {
    ================================================================ */
 @media (max-width: 768px) {
   .header {
-    padding: 0 16px;
+    padding: 0 12px;
+    height: 56px;
   }
 
-  .system-name {
-    font-size: 14px;
+  .header-center {
+    padding: 0 8px;
+  }
+
+  .store-brand {
+    padding: 4px 12px 4px 8px;
+    gap: 6px;
+  }
+
+  .store-icon-wrapper {
+    width: 22px;
+    height: 22px;
+  }
+
+  .store-icon {
+    font-size: 11px;
+  }
+
+  .store-name-main {
+    font-size: 12px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .store-id-tag {
+    font-size: 8px;
+    padding: 0px 6px;
+  }
+
+  .menu-btn {
+    padding: 6px;
+  }
+
+  .menu-icon {
+    width: 18px;
+    height: 18px;
   }
 
   .notifications-panel {
@@ -1901,21 +2082,41 @@ onUnmounted(() => {
 
 @media (max-width: 480px) {
   .header {
-    padding: 0 12px;
-    height: 56px;
+    padding: 0 8px;
+    height: 52px;
+  }
+
+  .store-brand {
+    padding: 3px 8px 3px 6px;
+    gap: 4px;
+  }
+
+  .store-icon-wrapper {
+    width: 18px;
+    height: 18px;
+  }
+
+  .store-icon {
+    font-size: 9px;
+  }
+
+  .store-name-main {
+    font-size: 10px;
+    max-width: 80px;
+  }
+
+  .store-id-tag {
+    font-size: 7px;
+    padding: 0px 4px;
   }
 
   .system-name {
     font-size: 12px;
   }
 
-  .menu-btn {
-    padding: 6px;
-  }
-
   .menu-icon {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
   }
 
   .notifications-panel {
