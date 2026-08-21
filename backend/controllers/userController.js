@@ -9,6 +9,22 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 // HELPER FUNCTIONS
 // ============================================================================
 
+
+
+// OR for case-insensitive check
+const isAdminOrChecker = (user) => {
+  if (!user) return false;
+  const role = (user.role || user.Role?.name)?.toLowerCase();
+  return ['admin', 'superadmin', 'checker'].includes(role);
+};
+
+const isAdmin = (user) => {
+  if (!user) return false;
+  const role = (user.role || user.Role?.name)?.toLowerCase();
+  return ['admin', 'superadmin'].includes(role);
+};
+
+
 async function getRoleIdFromName(roleName) {
   if (!roleName || roleName === 'all') return null;
   const role = await Role.findOne({ where: { name: roleName } });
@@ -419,10 +435,10 @@ exports.refreshToken = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     // Check admin privileges
-    if (req.user.role !== 'admin') {
+    if (!isAdminOrChecker(req.user)) {
       return res.status(403).json({ 
         success: false, 
-        error: 'Access denied. Admin privileges required.' 
+        error: 'Access denied. Admin or Checker privileges required.' 
       });
     }
 
@@ -433,7 +449,7 @@ exports.getUsers = async (req, res) => {
       sortBy = 'created_at',
       sortOrder = 'DESC',
       search = '',
-      role: roleName = 'all',  // Rename to roleName to avoid confusion
+      role: roleName = 'all',
       status = 'all',
       department = 'all',
       dateFrom = '',
@@ -446,13 +462,47 @@ exports.getUsers = async (req, res) => {
     // Build where condition
     let whereCondition = {};
     
+    // ✅ If user is NOT admin (only checker), prevent seeing admin users
+  const isAdminUser = isAdmin(req.user);
+    if (!isAdminUser) {
+      // Checker can see all users EXCEPT admins
+      // Get admin role IDs to exclude
+      const adminRoles = await Role.findAll({
+        where: { 
+          name: { [Op.in]: ['admin', 'Admin', 'superadmin', 'Superadmin'] }
+        },
+        attributes: ['roleId']
+      });
+      const adminRoleIds = adminRoles.map(r => r.roleId);
+      
+      if (adminRoleIds.length > 0) {
+        whereCondition.roleId = { [Op.notIn]: adminRoleIds };
+      }
+    }
+    
     // Handle role filter - convert role name to roleId
     if (roleName && roleName !== 'all') {
       const roleRecord = await Role.findOne({ where: { name: roleName } });
       if (roleRecord) {
+        // ✅ If checker is trying to filter for admin role, deny it
+        if (!isAdminUser) {
+          const adminRoles = await Role.findAll({
+            where: { 
+              name: { [Op.in]: ['admin', 'Admin', 'superadmin', 'Superadmin'] }
+            },
+            attributes: ['roleId']
+          });
+          const adminRoleIds = adminRoles.map(r => r.roleId);
+          
+          if (adminRoleIds.includes(roleRecord.roleId)) {
+            return res.status(403).json({
+              success: false,
+              error: 'Access denied. You cannot view admin users.'
+            });
+          }
+        }
         whereCondition.roleId = roleRecord.roleId;
       } else {
-        // If role name not found, return empty results
         return res.status(200).json({
           success: true,
           data: [],
@@ -518,7 +568,7 @@ exports.getUsers = async (req, res) => {
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
     const sortDirection = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
-    console.log('Where condition:', JSON.stringify(whereCondition, null, 2)); // Debug log
+    console.log('Where condition:', JSON.stringify(whereCondition, null, 2));
 
     // Execute query
     const { count, rows: users } = await User.findAndCountAll({
@@ -549,7 +599,7 @@ exports.getUsers = async (req, res) => {
       distinct: true
     });
 
-    // Format response
+    // Format response - ✅ Add flag to indicate if user is admin
     const formattedUsers = users.map(user => ({
       userId: user.userId,
       username: user.username,
@@ -563,6 +613,7 @@ exports.getUsers = async (req, res) => {
       isActive: user.isActive,
       lastLogin: user.lastLogin,
       createdAt: user.created_at,
+      isAdminRole: ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(user.Role?.name),
       employee: user.employee ? {
         employeeId: user.employee.employeeId,
         employeeCode: user.employee.employeeCode,
@@ -615,12 +666,13 @@ exports.getUsers = async (req, res) => {
 // ============================================================================
 exports.getUserStats = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Access denied. Admin privileges required.' 
-      });
-    }
+ // ✅ Using the helper
+if (!isAdminOrChecker(req.user)) {
+  return res.status(403).json({ 
+    success: false, 
+    error: 'Access denied. Admin or Checker privileges required.' 
+  });
+}
 
     // Parallel queries for better performance
     const [
@@ -742,9 +794,13 @@ exports.getUserStats = async (req, res) => {
 // ============================================================================
 exports.advancedSearchUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
+   // ✅ Using the helper
+if (!isAdminOrChecker(req.user)) {
+  return res.status(403).json({ 
+    success: false, 
+    error: 'Access denied. Admin or Checker privileges required.' 
+  });
+}
 
     const {
       q = '',
@@ -816,9 +872,12 @@ exports.advancedSearchUsers = async (req, res) => {
 // ============================================================================
 exports.bulkUpdateUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
+   if (!isAdminOrChecker(req.user)) {
+  return res.status(403).json({ 
+    success: false, 
+    error: 'Access denied. Admin or Checker privileges required.' 
+  });
+}
 
     const { userIds, updates } = req.body;
     
@@ -873,9 +932,12 @@ exports.bulkUpdateUsers = async (req, res) => {
 // ============================================================================
 exports.exportUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
+    if (!isAdminOrChecker(req.user)) {
+  return res.status(403).json({ 
+    success: false, 
+    error: 'Access denied. Admin or Checker privileges required.' 
+  });
+}
 
     const {
       format = 'json',
@@ -1001,8 +1063,20 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // Check permission (admin or own profile)
-    if (req.user.role !== 'admin' && req.user.userId !== user.userId) {
+    // ✅ Check if the target user is an admin
+    const isTargetAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(user.Role?.name);
+    const isAdminUser = isAdmin(req.user);
+
+    // ✅ If current user is NOT admin (checker) and target is admin, deny access
+    if (!isAdminUser && isTargetAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. You cannot view admin users.' 
+      });
+    }
+
+    // ✅ Allow admin/checker to view any user, or users to view themselves
+    if (!isAdminOrChecker(req.user) && req.user.userId !== user.userId) {
       return res.status(403).json({ 
         success: false, 
         error: 'Access denied. You can only view your own profile.' 
@@ -1025,6 +1099,7 @@ exports.getUserById = async (req, res) => {
         isActive: user.isActive,
         lastLogin: user.lastLogin,
         createdAt: user.created_at,
+        isAdminRole: isTargetAdmin,
         employee: user.employee
       }
     });
@@ -1105,8 +1180,8 @@ exports.getAllPositions = async (req, res) => {
 // ============================================================================
 exports.getFilterOptions = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: 'Access denied' });
+ if (!isAdminOrChecker(req.user)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Admin or Checker privileges required.' });
     }
 
     const [roles, departments, statuses, dateRange] = await Promise.all([
@@ -1284,7 +1359,7 @@ exports.updateUser = async (req, res) => {
     // ================================================================
     const userId = req.user?.userId;
     const userRole = req.user?.role;
-    const isAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(userRole);
+    const isAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin', 'checker', 'Checker'].includes(userRole);
     
     if (!isAdmin && parseInt(id) !== parseInt(userId)) {
       return res.status(403).json({

@@ -311,7 +311,7 @@ const router = createRouter({
           component: () => import("@/views/users/users.vue"),
           meta: {
             title: "Users Management",
-            roles: ["admin", "hr", "finance", "employee", "attendance"],
+            roles: ["admin", "hr", "finance", "employee", "attendance","checker"],
           },
         },
 
