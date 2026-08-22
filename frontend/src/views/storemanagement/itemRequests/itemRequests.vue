@@ -1351,22 +1351,66 @@ const shouldShowRequest = (req: ItemRequest): boolean => {
 
 const loadUserData = () => {
   const user = authStore.user;
-  if (user) {
-    const userData = user as any;
-    userIsAdmin.value =
-      userData.isAdmin || user.role === "admin" || user.role === "Admin";
-    if (user && "assignedStore" in user && user.assignedStore) {
-      const assignedStore = user.assignedStore as any;
-      userAssignedStoreId.value = assignedStore.id || null;
-      userAssignedStoreName.value = assignedStore.name || null;
-    } else {
-      userAssignedStoreId.value = null;
-      userAssignedStoreName.value = null;
-    }
-    userIsAskingStore.value = !!userAssignedStoreId.value;
+  console.log('📌 loadUserData - user:', user);
+  
+  if (!user) {
+    console.log('⚠️ No user found in auth store');
+    return;
   }
+  
+  const userData = user as any;
+  
+  // Check admin
+  userIsAdmin.value = userData.isAdmin || user.role === "admin" || user.role === "Admin";
+  console.log('👑 userIsAdmin:', userIsAdmin.value);
+  
+  // ✅ Get store ID from userData directly
+  let storeId = userData.storeId || null;
+  let storeName = userData.storeName || null;
+  
+  console.log('🔍 userData.storeId:', storeId);
+  console.log('🔍 userData.storeName:', storeName);
+  
+  // If storeId is null, try assignedStore
+  if (!storeId && userData.assignedStore) {
+    storeId = userData.assignedStore.id || userData.assignedStore.storeId || null;
+    storeName = userData.assignedStore.name || null;
+    console.log('🔍 assignedStore:', { storeId, storeName });
+  }
+  
+  // If still null, try currentStore
+  if (!storeId && userData.currentStore) {
+    storeId = userData.currentStore.id || userData.currentStore.storeId || null;
+    storeName = userData.currentStore.name || null;
+    console.log('🔍 currentStore:', { storeId, storeName });
+  }
+  
+  // If still null, try stores array
+  if (!storeId && userData.stores && userData.stores.length > 0) {
+    storeId = userData.stores[0].id || userData.stores[0].storeId || null;
+    storeName = userData.stores[0].name || null;
+    console.log('🔍 stores[0]:', { storeId, storeName });
+  }
+  
+  console.log('📦 Final storeId:', storeId, 'storeName:', storeName);
+  
+  if (storeId) {
+    userAssignedStoreId.value = storeId;
+    userAssignedStoreName.value = storeName || 'Assigned Store';
+    userIsAskingStore.value = true;
+    console.log('✅ Store assigned successfully:', { 
+      id: userAssignedStoreId.value, 
+      name: userAssignedStoreName.value 
+    });
+  } else {
+    userAssignedStoreId.value = null;
+    userAssignedStoreName.value = null;
+    userIsAskingStore.value = false;
+    console.log('❌ No store ID found - user cannot create requests');
+  }
+  
+  console.log('📋 Final userIsAskingStore:', userIsAskingStore.value);
 };
-
 const getUserAssignedStoreName = (): string => {
   return userAssignedStoreName.value || "No store assigned";
 };

@@ -24,7 +24,7 @@ export interface User {
   lastName?: string
   fullEmployeeName?: string
   departmentCode?: string
-  // 🔥 NEW: Store and Group fields
+  // 🔥 Store and Group fields
   storeId?: number | null
   groupId?: number | null
   storeName?: string | null
@@ -52,6 +52,38 @@ export interface User {
     name: string
     code: string
   }>
+  // 🔥 ADD THESE - From login response
+  currentStore?: {
+    id: number
+    name: string
+    code: string
+    location?: string
+  } | null
+  currentGroup?: {
+    id: number
+    name: string
+    code: string
+  } | null
+  groupsForStore?: Array<{
+    id: number
+    name: string
+    code: string
+    description?: string
+    status?: string
+  }>
+  accessibleStores?: Array<{
+    id: number
+    name: string
+    code: string
+    location?: string
+    status?: string
+    groups: Array<{
+      groupId: number
+      groupName: string
+      groupCode: string
+    }>
+  }>
+  hasMultipleStores?: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -82,13 +114,23 @@ export const useAuthStore = defineStore('auth', () => {
   
   const userAvatar = computed(() => user.value?.profilePicture || user.value?.profilePictureUrl || null)
 
-  // 🔥 NEW: Get store and group IDs from user
+  // 🔥 Get store and group IDs from user - Now with correct types
   const userStoreId = computed(() => {
-    return user.value?.storeId || user.value?.assignedStore?.id || null
+    // Check multiple sources for store ID
+    return user.value?.storeId || 
+           user.value?.assignedStore?.id || 
+           user.value?.currentStore?.id ||
+           user.value?.stores?.[0]?.id ||
+           null
   })
 
   const userGroupId = computed(() => {
-    return user.value?.groupId || user.value?.assignedGroup?.id || null
+    // Check multiple sources for group ID
+    return user.value?.groupId || 
+           user.value?.assignedGroup?.id || 
+           user.value?.currentGroup?.id ||
+           user.value?.groups?.[0]?.id ||
+           null
   })
 
   // ==================== ACTIONS ====================
@@ -141,67 +183,152 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 🔥 NEW: Helper to set store and group from login data
-  const setUserStoreAndGroup = (userData: any) => {
-    if (!userData) return
 
-    // Try to get store ID from various sources
-    const storeId = userData.storeId || 
-                    userData.assignedStoreId || 
-                    userData.assignedStore?.id || 
-                    userData.store?.id ||
-                    userData.stores?.[0]?.id ||
-                    null
+const setUserStoreAndGroup = (userData: any) => {
+  if (!userData || !user.value) return
 
-    // Try to get group ID from various sources
-    const groupId = userData.groupId || 
-                    userData.assignedGroupId || 
-                    userData.assignedGroup?.id || 
-                    userData.group?.id ||
-                    userData.groups?.[0]?.id ||
-                    null
+  console.log('🔧 setUserStoreAndGroup called with:', userData)
 
-    // Try to get store and group names
-    const storeName = userData.storeName || 
-                      userData.assignedStore?.name || 
-                      userData.store?.name ||
-                      null
+  // ✅ Try to get store ID from various sources
+  let storeId = userData.storeId || 
+                userData.assignedStoreId || 
+                userData.assignedStore?.id || 
+                userData.currentStore?.id ||
+                userData.store?.id ||
+                userData.stores?.[0]?.id ||
+                null
 
-    const groupName = userData.groupName || 
-                      userData.assignedGroup?.name || 
-                      userData.group?.name ||
-                      null
-
-    // Update the user object with the extracted data
-    if (user.value) {
-      user.value.storeId = storeId
-      user.value.groupId = groupId
-      user.value.storeName = storeName
-      user.value.groupName = groupName
-      
-      if (!user.value.assignedStore && userData.assignedStore) {
-        user.value.assignedStore = userData.assignedStore
-      }
-      if (!user.value.assignedGroup && userData.assignedGroup) {
-        user.value.assignedGroup = userData.assignedGroup
-      }
-      if (!user.value.stores && userData.stores) {
-        user.value.stores = userData.stores
-      }
-      if (!user.value.groups && userData.groups) {
-        user.value.groups = userData.groups
-      }
-
-      // Save updated user
-      localStorage.setItem('user', JSON.stringify(user.value))
+  // ✅ If still no storeId, try to get it from the stores array by matching name
+  if (!storeId && userData.stores && userData.stores.length > 0 && userData.assignedStore) {
+    const matchingStore = userData.stores.find((s: any) => 
+      s.name === userData.assignedStore.name || 
+      s.code === userData.assignedStore.code
+    );
+    if (matchingStore) {
+      storeId = matchingStore.id || matchingStore.storeId;
+      console.log('✅ Found storeId from stores array:', storeId);
     }
-
-    return { storeId, groupId, storeName, groupName }
   }
 
-  const login = async (username: string, password: string) => {
+  // Try to get group ID from various sources
+  const groupId = userData.groupId || 
+                  userData.assignedGroupId || 
+                  userData.assignedGroup?.id || 
+                  userData.currentGroup?.id ||
+                  userData.group?.id ||
+                  userData.groups?.[0]?.id ||
+                  null
+
+  // Try to get store and group names
+  const storeName = userData.storeName || 
+                    userData.assignedStore?.name || 
+                    userData.currentStore?.name ||
+                    userData.store?.name ||
+                    null
+
+  const groupName = userData.groupName || 
+                    userData.assignedGroup?.name || 
+                    userData.currentGroup?.name ||
+                    userData.group?.name ||
+                    null
+
+  console.log('📦 Extracted storeId:', storeId, 'groupId:', groupId)
+
+  // Update the user object with the extracted data
+  if (user.value) {
+    // ✅ IMPORTANT: Set storeId on the user object
+    user.value.storeId = storeId
+    user.value.groupId = groupId
+    user.value.storeName = storeName
+    user.value.groupName = groupName
+    
+    // ✅ FIX: Prioritize currentStore over assignedStore (currentStore has the ID)
+    const storeToUse = userData.currentStore || userData.assignedStore;
+    
+    // Set assignedStore if available
+    if (!user.value.assignedStore && storeToUse) {
+      // ✅ Make sure we include the ID
+      user.value.assignedStore = {
+        id: storeId || storeToUse.id || storeToUse.storeId,
+        name: storeToUse.name,
+        code: storeToUse.code,
+        location: storeToUse.location || ''
+      }
+      console.log('✅ Set assignedStore with ID:', user.value.assignedStore)
+    } else if (user.value.assignedStore && storeId) {
+      // ✅ If assignedStore exists but has no ID, update it
+      user.value.assignedStore.id = storeId;
+      console.log('✅ Updated assignedStore with ID:', storeId)
+    }
+    
+    // Set assignedGroup if available
+    if (!user.value.assignedGroup && (userData.assignedGroup || userData.currentGroup)) {
+      const groupToUse = userData.currentGroup || userData.assignedGroup;
+      user.value.assignedGroup = {
+        id: groupId || groupToUse.id || groupToUse.groupId,
+        name: groupToUse.name,
+        code: groupToUse.code
+      }
+    }
+    
+    // Set stores array if available
+    if (!user.value.stores && userData.stores) {
+      user.value.stores = userData.stores
+    }
+    
+    // Set groups array if available
+    if (!user.value.groups && userData.groups) {
+      user.value.groups = userData.groups
+    }
+
+    // Also set groupsForStore if available
+    if (userData.groupsForStore && !user.value.groups) {
+      user.value.groups = userData.groupsForStore
+    }
+
+    // Save updated user
+    localStorage.setItem('user', JSON.stringify(user.value))
+    console.log('✅ Updated user with store/group:', user.value)
+    console.log('✅ storeId in user:', user.value.storeId)
+    console.log('✅ assignedStore.id in user:', user.value.assignedStore?.id)
+  }
+
+  return { storeId, groupId, storeName, groupName }
+}
+
+  // ==================== 🔥 STORE-BASED LOGIN METHODS ====================
+
+  /**
+   * Fetch stores for a user by username
+   * POST /api/users/stores-by-username
+   */
+  const fetchStoresByUsername = async (username: string) => {
     try {
-      const response = await api.post('/users/login', { username, password })
+      const response = await api.post('/users/stores-by-username', { username })
+      console.log('✅ fetchStoresByUsername response:', response.data)
+      return response.data
+    } catch (error: any) {
+      console.error('❌ Fetch stores error:', error)
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to fetch stores'
+      }
+    }
+  }
+
+  /**
+   * Login with username, store selection, and password
+   * POST /api/users/login-with-store
+   */
+  const loginWithStore = async (credentials: { username: string; password: string; storeId: number }) => {
+    try {
+      console.log('🔐 loginWithStore called with:', { 
+        username: credentials.username, 
+        storeId: credentials.storeId 
+      })
+      
+      const response = await api.post('/users/login-with-store', credentials)
+      console.log('✅ loginWithStore response:', response.data)
 
       if (response.data.success) {
         const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
@@ -210,11 +337,13 @@ export const useAuthStore = defineStore('auth', () => {
           userData.role = 'employee'
         }
 
+        // Set auth store state
         user.value = userData
         token.value = authToken
         refreshToken.value = authRefreshToken
         isLoggedOut.value = false
 
+        // Store in localStorage
         localStorage.setItem('token', authToken)
         localStorage.setItem('refreshToken', authRefreshToken)
         localStorage.setItem('user', JSON.stringify(userData))
@@ -222,6 +351,7 @@ export const useAuthStore = defineStore('auth', () => {
         // 🔥 Extract store and group info from user data
         setUserStoreAndGroup(userData)
 
+        // Fetch roles
         await fetchRoles()
 
         return { success: true, user: userData }
@@ -229,7 +359,7 @@ export const useAuthStore = defineStore('auth', () => {
 
       return { success: false, error: response.data.error || 'Login failed' }
     } catch (error: any) {
-      console.error('Login error:', error)
+      console.error('❌ Login with store error:', error)
 
       if (error.response?.status === 401) {
         return { success: false, error: 'Invalid username or password' }
@@ -238,9 +368,75 @@ export const useAuthStore = defineStore('auth', () => {
         return { success: false, error: 'Account is deactivated. Please contact administrator.' }
       }
 
-      return { success: false, error: error.response?.data?.error || 'Login failed. Please try again.' }
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Login failed. Please try again.' 
+      }
     }
   }
+
+  // ==================== LEGACY LOGIN ====================
+
+ // stores/auth.ts - Update the login function
+
+const login = async (username: string, password: string) => {
+  try {
+    console.log('🔐 Legacy login called with:', { username, password: '***' })
+    
+    // ✅ Make sure we're sending the data correctly
+    const response = await api.post('/users/login', { 
+      username: username.trim(), 
+      password: password.trim() 
+    })
+    
+    console.log('✅ Legacy login response:', response.data)
+
+    if (response.data.success) {
+      const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
+
+      if (!userData.role) {
+        userData.role = 'employee'
+      }
+
+      user.value = userData
+      token.value = authToken
+      refreshToken.value = authRefreshToken
+      isLoggedOut.value = false
+
+      localStorage.setItem('token', authToken)
+      localStorage.setItem('refreshToken', authRefreshToken)
+      localStorage.setItem('user', JSON.stringify(userData))
+
+      setUserStoreAndGroup(userData)
+      await fetchRoles()
+
+      return { success: true, user: userData }
+    }
+
+    return { success: false, error: response.data.error || 'Login failed' }
+  } catch (error: any) {
+    console.error('❌ Legacy login error:', error)
+    
+    // Log the full error response for debugging
+    if (error.response) {
+      console.error('Error response data:', error.response.data)
+      console.error('Error status:', error.response.status)
+      console.error('Error headers:', error.response.headers)
+    }
+
+    if (error.response?.status === 401) {
+      return { success: false, error: 'Invalid username or password' }
+    }
+    if (error.response?.status === 403) {
+      return { success: false, error: 'Account is deactivated. Please contact administrator.' }
+    }
+
+    return { 
+      success: false, 
+      error: error.response?.data?.error || 'Login failed. Please try again.' 
+    }
+  }
+}
 
   const logout = async () => {
     try {
@@ -266,7 +462,6 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = userData
         localStorage.setItem('user', JSON.stringify(userData))
         
-        // 🔥 Extract store and group info from profile data
         setUserStoreAndGroup(userData)
         
         return { success: true, user: userData }
@@ -298,17 +493,22 @@ export const useAuthStore = defineStore('auth', () => {
   init()
 
   return {
+    // State
     user,
     token,
     refreshToken,
-    isAuthenticated,
     isLoggedOut,
+    availableRoles,
+    
+    // Getters
+    isAuthenticated,
     userRole,
     userFullName,
     userAvatar,
-    availableRoles,
     userStoreId,
     userGroupId,
+    
+    // Actions - Legacy
     login,
     logout,
     fetchProfile,
@@ -316,6 +516,11 @@ export const useAuthStore = defineStore('auth', () => {
     hasRole,
     init,
     clearAuthData,
-    setUserStoreAndGroup
+    setUserStoreAndGroup,
+    fetchRoles,
+    
+    // 🔥 Store-based login actions
+    fetchStoresByUsername,
+    loginWithStore
   }
 })

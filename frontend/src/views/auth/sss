@@ -13,16 +13,15 @@
       <!-- Left Side - Branding (Full Height) -->
       <div class="brand-section">
         <div class="brand-content">
-          <!-- Motto -->
+           <!-- Motto -->
           <div class="brand-motto">
             <p>We Trust In God!!! | <span class="amharic">እግዚአብሔር ይባረክ!!!</span></p>
           </div>
 
-          <!-- System Name -->
+            <!-- System Name -->
           <div class="system-name">
             <p>STOCK MANAGEMENT SYSTEM</p> 
           </div>
-
           <!-- Logo -->
           <div class="brand-logo">
             <div class="logo-icon">
@@ -34,6 +33,10 @@
             </div>
           </div>
 
+
+
+          
+          
           <div class="brand-divider"></div>
 
           <!-- Features -->
@@ -42,13 +45,19 @@
               <span class="feature-dot"></span>
               <span class="feature-text">📦 Stock Management</span>
             </div>
+           
             <div class="feature-item">
               <span class="feature-dot"></span>
               <span class="feature-text">📊 Reports &amp; Analytics</span>
             </div>
+            
           </div>
 
           <div class="brand-divider"></div>
+
+         
+
+        
 
           <!-- Version -->
           <div class="version-info">
@@ -61,7 +70,7 @@
       <div class="login-section">
         <div class="login-card">
           <div class="login-inner-border">
-            <!-- ✅ Login Form Component -->
+            <!-- ✅ Use the working LoginForm component -->
             <LoginForm />
             
             <!-- Footer -->
@@ -83,11 +92,22 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import ParticleBackground from './components/ParticleBackground.vue'
 import LoginForm from './components/LoginForm.vue'
 
+// Animation values - same as your original
+const fadeAnim = ref(0)
+const slideAnim = ref(30)
+const scaleAnim = ref(0.95)
+
+// Animations - same as your original
 onMounted(() => {
-  console.log('✅ Login page mounted')
+  setTimeout(() => {
+    fadeAnim.value = 1
+    slideAnim.value = 0
+    scaleAnim.value = 1
+  }, 100)
 })
 </script>
 
@@ -412,6 +432,7 @@ onMounted(() => {
   box-shadow: 0 0 30px rgba(201, 168, 76, 0.05);
 }
 
+/* Inner border glow effect */
 .login-inner-border::before {
   content: '';
   position: absolute;
@@ -422,11 +443,24 @@ onMounted(() => {
   filter: blur(10px);
 }
 
+/* Decorative corner accents */
 .login-inner-border::after {
   content: '✦';
   position: absolute;
   top: -10px;
   right: 20px;
+  color: #c9a84c;
+  font-size: 14px;
+  background: #ffffff;
+  padding: 0 8px;
+}
+
+/* Add second corner accent */
+.login-header::before {
+  content: '✦';
+  position: absolute;
+  top: -10px;
+  left: 20px;
   color: #c9a84c;
   font-size: 14px;
   background: #ffffff;

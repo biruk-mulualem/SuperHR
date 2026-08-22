@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { User, Role, Department, Employee,Position,Group,StoreGroupRelation ,Store } = require('../models');
 const { Op, Sequelize } = require('sequelize');
+const userStoreService = require('../services/userStoreService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -1610,5 +1611,367 @@ exports.toggleUserStatus = async (req, res) => {
   } catch (error) {
     console.error('Toggle user status error:', error);
     res.status(500).json({ success: false, error: 'Server error: ' + error.message });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Get stores for a user by username (with group info)
+ * POST /api/users/stores-by-username
+ */
+// backend/controllers/userController.js - getStoresByUsername
+
+/**
+ * Get stores for a user by username (with group info)
+ * POST /api/users/stores-by-username
+ */
+exports.getStoresByUsername = async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    console.log('========================================');
+    console.log('📥 getStoresByUsername called with:', { username });
+    console.log('========================================');
+
+    if (!username || !username.trim()) {
+      console.log('❌ Username is required');
+      return res.status(400).json({
+        success: false,
+        error: 'Username is required'
+      });
+    }
+
+    const result = await userStoreService.getUserStores(username.trim());
+
+    console.log('📊 Result from userStoreService:');
+    console.log('  success:', result.success);
+    console.log('  hasAccess:', result.data?.hasAccess);
+    console.log('  stores count:', result.data?.stores?.length);
+    
+    if (result.data?.stores) {
+      console.log('  Stores:');
+      result.data.stores.forEach((store, index) => {
+        console.log(`    Store ${index + 1}:`);
+        console.log(`      storeId: ${store.storeId}`);
+        console.log(`      name: ${store.name}`);
+        console.log(`      code: ${store.code}`);
+        console.log(`      groups: ${store.groups?.length || 0}`);
+        if (store.groups) {
+          store.groups.forEach((group, gIndex) => {
+            console.log(`        ${gIndex + 1}. ${group.groupName} (${group.groupCode})`);
+          });
+        }
+      });
+    }
+
+    if (!result.success) {
+      console.log('❌ Service returned error:', result.error);
+      return res.status(404).json({
+        success: false,
+        error: result.error || 'User not found'
+      });
+    }
+
+    // ✅ Format the stores to include storeId and groups
+    const formattedStores = (result.data.stores || []).map(store => ({
+      storeId: store.storeId,
+      name: store.name,
+      code: store.code,
+      location: store.location || 'N/A',
+      status: store.status || 'Active',
+      groups: (store.groups || []).map(group => ({
+        groupId: group.groupId,
+        groupName: group.groupName,
+        groupCode: group.groupCode,
+        description: group.description || '',
+        status: group.status || 'Active'
+      }))
+    }));
+
+    console.log('📤 Final formatted response:');
+    console.log('  stores count:', formattedStores.length);
+    formattedStores.forEach((store, index) => {
+      console.log(`  Store ${index + 1}:`);
+      console.log(`    storeId: ${store.storeId}`);
+      console.log(`    name: ${store.name}`);
+      console.log(`    groups: ${store.groups.length}`);
+    });
+    console.log('========================================');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: result.data.user,
+        stores: formattedStores,
+        hasAccess: result.data.hasAccess
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get stores by username error:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.log('========================================');
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+/**
+ * Get user's groups for a specific store
+ * GET /api/users/stores/:storeId/groups
+ */
+exports.getUserStoreGroups = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const userId = req.user.userId;
+
+    const result = await userStoreService.getUserGroupsForStore(userId, storeId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result.data
+    });
+  } catch (error) {
+    console.error('Get user store groups error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
+// backend/controllers/userController.js - loginWithStore
+
+// backend/controllers/userController.js - loginWithStore
+
+exports.loginWithStore = async (req, res) => {
+  try {
+    const { username, password, storeId, groupId } = req.body;
+
+    console.log('🔐 loginWithStore request:', { username, storeId, groupId });
+
+    // Validate required fields
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Username and password are required'
+      });
+    }
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Store selection is required'
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { username: username },
+          { email: username }
+        ],
+        isActive: true
+      },
+      include: [
+        { 
+          model: Role, 
+          attributes: ['roleId', 'name', 'description'] 
+        },
+        { 
+          model: Department, 
+          attributes: ['departmentId', 'name', 'code', 'description'] 
+        },
+        { 
+          model: Employee, 
+          as: 'employee',
+          required: false,
+          attributes: [
+            'employeeId', 'employeeCode', 'firstName', 'lastName', 
+            'middleName', 'profilePicture', 'profilePictureUrl', 
+            'phoneNumber', 'positionId', 'employmentStatus'
+          ]
+        }
+      ]
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid username or password'
+      });
+    }
+
+    // Validate password
+    const isValid = await user.validatePassword(password);
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid username or password'
+      });
+    }
+
+    // ✅ Verify user has access to the selected store
+    const accessResult = await userStoreService.verifyStoreAccess(user.userId, storeId);
+    
+    if (!accessResult.success || !accessResult.hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have access to this store'
+      });
+    }
+
+    const groupsForStore = accessResult.groups || [];
+    console.log('📋 Groups for store:', groupsForStore.map(g => ({ id: g.id || g.groupId, name: g.name })));
+
+    // ✅ Determine which group to use
+    let selectedGroup = null;
+    
+    if (groupId) {
+      // If groupId is provided, find it in the groupsForStore
+      selectedGroup = groupsForStore.find(g => {
+        const gId = g.id || g.groupId;
+        return gId === parseInt(groupId);
+      });
+      
+      if (!selectedGroup) {
+        console.error('❌ Group not found in store access:', { 
+          groupId, 
+          availableGroups: groupsForStore.map(g => g.id || g.groupId) 
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have access to this group in the selected store'
+        });
+      }
+    } else {
+      // If no groupId provided, use the first group
+      selectedGroup = groupsForStore[0] || null;
+    }
+
+    if (!selectedGroup) {
+      return res.status(403).json({
+        success: false,
+        error: 'No group assigned for this store'
+      });
+    }
+
+    // ✅ Get the actual group ID (handle both id and groupId fields)
+    const actualGroupId = selectedGroup.id || selectedGroup.groupId;
+
+    console.log('✅ Selected group:', { id: actualGroupId, name: selectedGroup.name });
+
+    // Get store details
+    const store = await Store.findByPk(storeId, {
+      attributes: ['id', 'name', 'code', 'location', 'status']
+    });
+
+    // Generate tokens
+    const roleName = user.Role?.name;
+    const token = jwt.sign(
+      {
+        userId: user.userId,
+        username: user.username,
+        role: roleName,
+        roleId: user.roleId,
+        departmentId: user.departmentId,
+        employeeId: user.employee?.employeeId,
+        storeId: parseInt(storeId),
+        groupId: actualGroupId
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    const refreshToken = jwt.sign(
+      { userId: user.userId },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    await user.update({ lastLogin: new Date() });
+
+    res.status(200).json({
+      success: true,
+      token,
+      refreshToken,
+      user: {
+        userId: user.userId,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        role: roleName,
+        roleId: user.roleId,
+        departmentId: user.departmentId,
+        departmentName: user.Department?.name,
+        isActive: user.isActive,
+        lastLogin: user.lastLogin,
+        employee: user.employee,
+        currentStore: {
+          id: store.id,
+          name: store.name,
+          code: store.code
+        },
+        currentGroup: {
+          id: actualGroupId,
+          name: selectedGroup.name,
+          code: selectedGroup.code
+        },
+        groupsForStore: groupsForStore.map(g => ({
+          id: g.id || g.groupId,
+          name: g.name,
+          code: g.code,
+          description: g.description,
+          status: g.status
+        })),
+        accessibleStores: [],
+        hasMultipleStores: false
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Login with store error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error'
+    });
   }
 };
