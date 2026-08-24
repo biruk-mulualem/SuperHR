@@ -379,6 +379,17 @@ const router = createRouter({
             roles: ["admin", "storekeeper", "store_it", "checker", "employee" ,"nebret"],
           },
         },
+        
+{
+  path: "pending-request",  // ✅ Correct spelling
+  name: "pending-request",
+  component: () =>
+    import("@/views/storemanagement/notifications/NotificationManagement.vue"),
+  meta: {
+    title: "pending-request",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost"],
+  },
+},
 
         {
           path: "/cost-calculation-rules",

@@ -110,8 +110,9 @@ const roleMenus = {
     { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
         { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
    { name: 'fleet Management', path: '/fleet-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
- 
-      ],
+    { name: 'pending-request', path: '/pending-requestt', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
+      
+  ],
   hr: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
     { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
@@ -176,6 +177,8 @@ const roleMenus = {
      
   
       { name: 'balance-corrections ', path: '/store-balance-corrections', icon: 'UserIcon', badge: null },
+       { name: 'pending-request', path: '/pending-request', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
+    
   ],
   cost: [
     { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },

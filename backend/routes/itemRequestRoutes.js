@@ -27,6 +27,10 @@ router.get('/check-stock', itemRequestController.checkStockAvailability);
 router.get('/active-stores', itemRequestController.getActiveStores);
 router.get('/active-items', itemRequestController.getActiveItems);
 
+
+
+router.get('/notifications/pending', itemRequestController.getPendingNotifications);
+
 // ================================================================
 // STORE GROUPS ROUTE (Get groups for a specific store)
 // ================================================================

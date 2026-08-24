@@ -2790,3 +2790,251 @@ exports.getDepartmentNotifications = async (req, res) => {
     });
   }
 };
+
+
+
+// ================================================================
+// 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
+// ================================================================
+exports.getPendingNotifications = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const userId = req.user?.userId;
+    const userRole = req.user?.role;
+    const userStoreId = req.user?.storeId || req.user?.assignedStoreId;
+    const userGroupId = req.user?.groupId || req.user?.assignedGroupId;
+    const departmentId = req.user?.departmentId;
+
+    console.log('📤 getPendingNotifications called:');
+    console.log('  userId:', userId);
+    console.log('  userRole:', userRole);
+    console.log('  userStoreId:', userStoreId);
+    console.log('  userGroupId:', userGroupId);
+    console.log('  departmentId:', departmentId);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    // ================================================================
+    // ✅ FIX: For ADMIN or CHECKER, show ALL pending notifications
+    // For other roles, filter by their store/group/department
+    // ================================================================
+
+    const isAdmin = userRole === 'admin' || userRole === 'Admin' || userRole === 'superadmin';
+    const isChecker = userRole === 'checker' || userRole === 'Checker';
+
+    // ✅ GROUP notifications: status = pending AND approval_type IS NULL OR 'group'
+    let groupWhere = { 
+      status: 'pending',
+      [Op.or]: [
+        { approval_type: 'group' },
+        { approval_type: null }
+      ]
+    };
+
+    // ✅ DEPARTMENT notifications: status = pending AND approval_type = 'department'
+    let deptWhere = { 
+      status: 'pending', 
+      approval_type: 'department', 
+      is_department_approval: true 
+    };
+
+    // ✅ ADMIN or CHECKER: Show ALL pending notifications (no filters)
+    if (isAdmin || isChecker) {
+      console.log(`👑 ${userRole} user - showing ALL pending notifications`);
+    } else {
+      // ✅ NON-ADMIN/NON-CHECKER: Filter by their assignments
+    
+      // Group notifications - if user has store & group
+      if (userStoreId && userGroupId) {
+        // Verify the group belongs to the store
+        const storeGroupRelation = await StoreGroupRelation.findOne({
+          where: {
+            store_id: parseInt(userStoreId),
+            group_id: parseInt(userGroupId),
+          },
+        });
+
+        if (storeGroupRelation) {
+          groupWhere.group_id = parseInt(userGroupId);
+          groupWhere.store_id = parseInt(userStoreId);
+          console.log('✅ Group notifications will be fetched for store:', userStoreId, 'group:', userGroupId);
+        } else {
+          console.log('⚠️ Group not found in this store, skipping group notifications');
+          groupWhere.id = -1; // No results
+        }
+      } else {
+        console.log('⚠️ No store/group found, skipping group notifications');
+        groupWhere.id = -1; // No results
+      }
+
+      // Department notifications - if user has department
+      if (departmentId) {
+        deptWhere.department_id = parseInt(departmentId);
+        console.log('✅ Department notifications will be fetched for department:', departmentId);
+      } else {
+        console.log('⚠️ No department found, skipping department notifications');
+        deptWhere.id = -1; // No results
+      }
+    }
+
+    // ================================================================
+    // FETCH NOTIFICATIONS - SEPARATE QUERIES
+    // ================================================================
+
+    const limitVal = parseInt(limit) || 10;
+    const offsetVal = ((parseInt(page) || 1) - 1) * limitVal;
+
+    let groupNotifications = [];
+    let deptNotifications = [];
+    let groupTotal = 0;
+    let deptTotal = 0;
+
+    // ✅ Fetch GROUP notifications (approval_type = 'group' OR NULL)
+    if (groupWhere.id !== -1) {
+      const groupResult = await RequestNotification.findAndCountAll({
+        where: groupWhere,
+        include: [
+          {
+            model: ItemRequest,
+            as: "request",
+            include: [
+              { model: Store, as: "askingStore" },
+              { model: Store, as: "supplyingStore" },
+              { model: User, as: "requestedByUser" },
+              {
+                model: ItemRequestDetail,
+                as: "items",
+                include: [
+                  {
+                    model: Item,
+                    as: "item",
+                    include: [{ model: UOM, as: "uom" }]
+                  }
+                ]
+              }
+            ]
+          },
+          { model: Group, as: "group" },
+          { model: Store, as: "store" },
+          { model: User, as: "respondedByUser" }
+        ],
+        order: [["created_at", "DESC"]],
+        limit: limitVal,
+        offset: offsetVal,
+        distinct: true,
+      });
+      groupNotifications = groupResult.rows || [];
+      groupTotal = groupResult.count || 0;
+      console.log(`📊 Found ${groupTotal} group notifications`);
+    }
+
+    // ✅ Fetch DEPARTMENT notifications (approval_type = 'department')
+    if (deptWhere.id !== -1) {
+      const deptResult = await RequestNotification.findAndCountAll({
+        where: deptWhere,
+        include: [
+          {
+            model: ItemRequest,
+            as: "request",
+            include: [
+              { model: Store, as: "askingStore" },
+              { model: Store, as: "supplyingStore" },
+              { model: User, as: "requestedByUser" },
+              {
+                model: ItemRequestDetail,
+                as: "items",
+                include: [
+                  {
+                    model: Item,
+                    as: "item",
+                    include: [{ model: UOM, as: "uom" }]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            model: Department,
+            as: "department",
+            attributes: ["department_id", "name", "code", "description"]
+          },
+          {
+            model: User,
+            as: "respondedByUser",
+            attributes: ["userId", "username", "fullName"]
+          }
+        ],
+        order: [["created_at", "DESC"]],
+        limit: limitVal,
+        offset: offsetVal,
+        distinct: true,
+      });
+      deptNotifications = deptResult.rows || [];
+      deptTotal = deptResult.count || 0;
+      console.log(`📊 Found ${deptTotal} department notifications`);
+    }
+
+    // ================================================================
+    // COMBINE AND SORT - NO DUPLICATES
+    // ================================================================
+
+    const allNotifications = [
+      ...groupNotifications.map(n => ({
+        ...(n.toJSON ? n.toJSON() : n),
+        _type: 'group',
+        _typeLabel: '👥 Group'
+      })),
+      ...deptNotifications.map(n => ({
+        ...(n.toJSON ? n.toJSON() : n),
+        _type: 'department',
+        _typeLabel: '🏛️ Department'
+      }))
+    ];
+
+    // Sort by created_at (newest first)
+    allNotifications.sort((a, b) => {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    const total = groupTotal + deptTotal;
+    const pages = Math.ceil(total / limitVal);
+
+    console.log(`✅ Total pending notifications: ${total} (Group: ${groupTotal}, Dept: ${deptTotal})`);
+
+    res.json({
+      success: true,
+      data: {
+        notifications: allNotifications,
+        summary: {
+          total,
+          group: groupTotal,
+          department: deptTotal,
+          page: parseInt(page) || 1,
+          limit: limitVal,
+          pages: pages,
+        },
+        user: {
+          userId,
+          role: userRole,
+          storeId: userStoreId,
+          groupId: userGroupId,
+          departmentId: departmentId,
+          isAdmin: isAdmin,
+          isChecker: isChecker,
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Error getting pending notifications:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get pending notifications",
+    });
+  }
+};

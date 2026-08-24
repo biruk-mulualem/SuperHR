@@ -820,7 +820,7 @@ class ItemRequestService {
   }
 
   // ================================================================
-  // 🔥 DEPARTMENT NOTIFICATIONS (for ASSET requests)
+  // DEPARTMENT NOTIFICATIONS (for ASSET requests)
   // ================================================================
 
   /**
@@ -908,6 +908,94 @@ class ItemRequestService {
       return {
         success: false,
         error: error.response?.data?.error || 'Failed to get department notifications'
+      };
+    }
+  }
+
+  // ================================================================
+  // 🔥 PENDING NOTIFICATIONS (Combined - Group + Department)
+  // ================================================================
+
+  /**
+   * Get all pending notifications for the current user (Group + Department)
+   * GET /api/item-requests/notifications/pending
+   * 
+   * @param params - Optional pagination filters
+   */
+  async getPendingNotifications(params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      notifications: Array<{
+        id: number;
+        request_id: number;
+        group_id: number | null;
+        department_id: number | null;
+        store_id: number;
+        approval_type: 'group' | 'department';
+        is_department_approval: boolean;
+        status: 'pending' | 'accepted' | 'rejected';
+        rejected_reason: string | null;
+        responded_by: number | null;
+        responded_at: string | null;
+        viewed_at: string | null;
+        created_at: string;
+        updated_at: string;
+        request: ItemRequest;
+        group?: {
+          id: number;
+          name: string;
+          code: string;
+        };
+        department?: {
+          department_id: number;
+          name: string;
+          code: string;
+        };
+        store?: Store;
+        respondedByUser?: User;
+        _type?: 'group' | 'department';
+        _typeLabel?: string;
+      }>;
+      summary: {
+        total: number;
+        group: number;
+        department: number;
+        page: number;
+        limit: number;
+        pages: number;
+      };
+      user: {
+        userId: number;
+        role: string;
+        storeId: number | null;
+        groupId: number | null;
+        departmentId: number | null;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      
+      const url = queryParams.toString() 
+        ? `/item-requests/notifications/pending?${queryParams.toString()}`
+        : '/item-requests/notifications/pending';
+      
+      console.log('📤 Fetching pending notifications:', url);
+      
+      const response = await api.get(url);
+      console.log('📥 Pending notifications response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Get pending notifications error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to get pending notifications'
       };
     }
   }
