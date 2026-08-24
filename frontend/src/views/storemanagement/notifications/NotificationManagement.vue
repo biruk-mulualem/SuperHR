@@ -111,7 +111,7 @@
                 <th>Approver</th>
                 <th>Store</th>
                 <th>Requested By</th>
-                <th>Status</th>
+                
                 <th>Requested Date</th>
               </tr>
             </thead>
@@ -139,9 +139,7 @@
                   <span class="store-name">{{ getStoreName(notif) }}</span>
                 </td>
                 <td>{{ getRequesterName(notif) }}</td>
-                <td>
-                  <span class="status-badge pending">⏳ Pending</span>
-                </td>
+                
                 <td>
                   <span class="date-text">{{ formatDate(notif.created_at) }}</span>
                 </td>
