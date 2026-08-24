@@ -84,6 +84,7 @@ export interface User {
     }>
   }>
   hasMultipleStores?: boolean
+  isAdmin?: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -114,23 +115,87 @@ export const useAuthStore = defineStore('auth', () => {
   
   const userAvatar = computed(() => user.value?.profilePicture || user.value?.profilePictureUrl || null)
 
-  // 🔥 Get store and group IDs from user - Now with correct types
+  // ================================================================
+  // 🔥 FIXED: Get store and group IDs - Check currentStore FIRST
+  // ================================================================
   const userStoreId = computed(() => {
-    // Check multiple sources for store ID
-    return user.value?.storeId || 
-           user.value?.assignedStore?.id || 
-           user.value?.currentStore?.id ||
-           user.value?.stores?.[0]?.id ||
-           null
+    const userData = user.value;
+    if (!userData) return null;
+    
+    console.log('🔍 userStoreId computed - checking sources:', {
+      hasCurrentStore: !!userData.currentStore,
+      currentStoreId: userData.currentStore?.id,
+      hasAssignedStore: !!userData.assignedStore,
+      assignedStoreId: userData.assignedStore?.id,
+      storeId: userData.storeId,
+      hasStores: !!userData.stores,
+      storesLength: userData.stores?.length
+    });
+    
+    // ✅ Check currentStore FIRST (this has the correct data from backend)
+    if (userData.currentStore?.id) {
+      console.log('✅ Found storeId from currentStore:', userData.currentStore.id);
+      return userData.currentStore.id;
+    }
+    
+    // Then check assignedStore
+    if (userData.assignedStore?.id) {
+      console.log('✅ Found storeId from assignedStore:', userData.assignedStore.id);
+      return userData.assignedStore.id;
+    }
+    
+    // Then check direct storeId
+    if (userData.storeId) {
+      console.log('✅ Found storeId from storeId:', userData.storeId);
+      return userData.storeId;
+    }
+    
+    // Last resort - stores array
+    if (userData.stores && userData.stores.length > 0) {
+      const firstStore = userData.stores[0];
+      if (firstStore?.id) {
+        console.log('✅ Found storeId from stores array:', firstStore.id);
+        return firstStore.id;
+      }
+    }
+    
+    console.log('❌ No storeId found in any source');
+    return null;
   })
 
   const userGroupId = computed(() => {
-    // Check multiple sources for group ID
-    return user.value?.groupId || 
-           user.value?.assignedGroup?.id || 
-           user.value?.currentGroup?.id ||
-           user.value?.groups?.[0]?.id ||
-           null
+    const userData = user.value;
+    if (!userData) return null;
+    
+    // ✅ Check currentGroup FIRST (this has the correct data from backend)
+    if (userData.currentGroup?.id) {
+      console.log('✅ Found groupId from currentGroup:', userData.currentGroup.id);
+      return userData.currentGroup.id;
+    }
+    
+    // Then check assignedGroup
+    if (userData.assignedGroup?.id) {
+      console.log('✅ Found groupId from assignedGroup:', userData.assignedGroup.id);
+      return userData.assignedGroup.id;
+    }
+    
+    // Then check direct groupId
+    if (userData.groupId) {
+      console.log('✅ Found groupId from groupId:', userData.groupId);
+      return userData.groupId;
+    }
+    
+    // Last resort - groups array
+    if (userData.groups && userData.groups.length > 0) {
+      const firstGroup = userData.groups[0];
+      if (firstGroup?.id) {
+        console.log('✅ Found groupId from groups array:', firstGroup.id);
+        return firstGroup.id;
+      }
+    }
+    
+    console.log('❌ No groupId found in any source');
+    return null;
   })
 
   // ==================== ACTIONS ====================
@@ -183,118 +248,192 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-
-const setUserStoreAndGroup = (userData: any) => {
-  if (!userData || !user.value) return
-
-  console.log('🔧 setUserStoreAndGroup called with:', userData)
-
-  // ✅ Try to get store ID from various sources
-  let storeId = userData.storeId || 
-                userData.assignedStoreId || 
-                userData.assignedStore?.id || 
-                userData.currentStore?.id ||
-                userData.store?.id ||
-                userData.stores?.[0]?.id ||
-                null
-
-  // ✅ If still no storeId, try to get it from the stores array by matching name
-  if (!storeId && userData.stores && userData.stores.length > 0 && userData.assignedStore) {
-    const matchingStore = userData.stores.find((s: any) => 
-      s.name === userData.assignedStore.name || 
-      s.code === userData.assignedStore.code
-    );
-    if (matchingStore) {
-      storeId = matchingStore.id || matchingStore.storeId;
-      console.log('✅ Found storeId from stores array:', storeId);
+  // ================================================================
+  // setUserStoreAndGroup - Enhanced with better logging
+  // ================================================================
+  const setUserStoreAndGroup = (userData: any) => {
+    if (!userData || !user.value) {
+      console.warn('⚠️ setUserStoreAndGroup: No user data or user.value is null');
+      return;
     }
-  }
 
-  // Try to get group ID from various sources
-  const groupId = userData.groupId || 
-                  userData.assignedGroupId || 
-                  userData.assignedGroup?.id || 
-                  userData.currentGroup?.id ||
+    console.log('🔧 setUserStoreAndGroup called with:', {
+      storeId: userData.storeId,
+      groupId: userData.groupId,
+      storeName: userData.storeName,
+      groupName: userData.groupName,
+      hasCurrentStore: !!userData.currentStore,
+      currentStoreData: userData.currentStore,
+      hasCurrentGroup: !!userData.currentGroup,
+      currentGroupData: userData.currentGroup,
+      hasAssignedStore: !!userData.assignedStore,
+      hasAssignedGroup: !!userData.assignedGroup,
+      isAdmin: userData.isAdmin
+    });
+
+    // ================================================================
+    // 1. EXTRACT STORE ID - Check ALL possible sources
+    // ================================================================
+    let storeId = userData.storeId || 
+                  userData.currentStore?.id || 
+                  userData.assignedStore?.id ||
+                  userData.store?.id ||
+                  (userData.stores && userData.stores.length > 0 ? userData.stores[0]?.id : null) ||
+                  null;
+
+    // ================================================================
+    // 2. EXTRACT GROUP ID - Check ALL possible sources
+    // ================================================================
+    let groupId = userData.groupId || 
+                  userData.currentGroup?.id || 
+                  userData.assignedGroup?.id ||
                   userData.group?.id ||
-                  userData.groups?.[0]?.id ||
-                  null
+                  (userData.groups && userData.groups.length > 0 ? userData.groups[0]?.id : null) ||
+                  (userData.groupsForStore && userData.groupsForStore.length > 0 ? userData.groupsForStore[0]?.id : null) ||
+                  null;
 
-  // Try to get store and group names
-  const storeName = userData.storeName || 
-                    userData.assignedStore?.name || 
-                    userData.currentStore?.name ||
+    // ================================================================
+    // 3. EXTRACT NAMES
+    // ================================================================
+    let storeName = userData.storeName || 
+                    userData.currentStore?.name || 
+                    userData.assignedStore?.name ||
                     userData.store?.name ||
-                    null
+                    (userData.stores && userData.stores.length > 0 ? userData.stores[0]?.name : null) ||
+                    null;
 
-  const groupName = userData.groupName || 
-                    userData.assignedGroup?.name || 
-                    userData.currentGroup?.name ||
+    let groupName = userData.groupName || 
+                    userData.currentGroup?.name || 
+                    userData.assignedGroup?.name ||
                     userData.group?.name ||
-                    null
+                    (userData.groups && userData.groups.length > 0 ? userData.groups[0]?.name : null) ||
+                    (userData.groupsForStore && userData.groupsForStore.length > 0 ? userData.groupsForStore[0]?.name : null) ||
+                    null;
 
-  console.log('📦 Extracted storeId:', storeId, 'groupId:', groupId)
+    // ================================================================
+    // 4. GET STORE AND GROUP OBJECTS
+    // ================================================================
+    const storeObj = userData.currentStore || userData.assignedStore || userData.store;
+    const groupObj = userData.currentGroup || userData.assignedGroup || userData.group;
 
-  // Update the user object with the extracted data
-  if (user.value) {
-    // ✅ IMPORTANT: Set storeId on the user object
-    user.value.storeId = storeId
-    user.value.groupId = groupId
-    user.value.storeName = storeName
-    user.value.groupName = groupName
-    
-    // ✅ FIX: Prioritize currentStore over assignedStore (currentStore has the ID)
-    const storeToUse = userData.currentStore || userData.assignedStore;
-    
-    // Set assignedStore if available
-    if (!user.value.assignedStore && storeToUse) {
-      // ✅ Make sure we include the ID
-      user.value.assignedStore = {
-        id: storeId || storeToUse.id || storeToUse.storeId,
-        name: storeToUse.name,
-        code: storeToUse.code,
-        location: storeToUse.location || ''
+    console.log('📦 Extracted values:', { 
+      storeId, 
+      groupId, 
+      storeName, 
+      groupName,
+      hasStoreObj: !!storeObj,
+      hasGroupObj: !!groupObj
+    });
+
+    // ================================================================
+    // 5. UPDATE USER OBJECT
+    // ================================================================
+    if (user.value) {
+      // ✅ Primary fields
+      user.value.storeId = storeId;
+      user.value.groupId = groupId;
+      user.value.storeName = storeName;
+      user.value.groupName = groupName;
+      
+      // ✅ Preserve currentStore from server data
+      if (userData.currentStore) {
+        user.value.currentStore = {
+          id: userData.currentStore.id,
+          name: userData.currentStore.name,
+          code: userData.currentStore.code || '',
+          location: userData.currentStore.location || ''
+        };
+        console.log('✅ Set currentStore with ID:', user.value.currentStore.id);
       }
-      console.log('✅ Set assignedStore with ID:', user.value.assignedStore)
-    } else if (user.value.assignedStore && storeId) {
-      // ✅ If assignedStore exists but has no ID, update it
-      user.value.assignedStore.id = storeId;
-      console.log('✅ Updated assignedStore with ID:', storeId)
-    }
-    
-    // Set assignedGroup if available
-    if (!user.value.assignedGroup && (userData.assignedGroup || userData.currentGroup)) {
-      const groupToUse = userData.currentGroup || userData.assignedGroup;
-      user.value.assignedGroup = {
-        id: groupId || groupToUse.id || groupToUse.groupId,
-        name: groupToUse.name,
-        code: groupToUse.code
+      
+      // ✅ Preserve currentGroup from server data
+      if (userData.currentGroup) {
+        user.value.currentGroup = {
+          id: userData.currentGroup.id,
+          name: userData.currentGroup.name,
+          code: userData.currentGroup.code || ''
+        };
+        console.log('✅ Set currentGroup with ID:', user.value.currentGroup.id);
       }
-    }
-    
-    // Set stores array if available
-    if (!user.value.stores && userData.stores) {
-      user.value.stores = userData.stores
-    }
-    
-    // Set groups array if available
-    if (!user.value.groups && userData.groups) {
-      user.value.groups = userData.groups
+      
+      // ✅ Ensure assignedStore exists with correct ID
+      if (storeObj && !user.value.assignedStore) {
+        user.value.assignedStore = {
+          id: storeId || storeObj.id,
+          name: storeObj.name || storeName || 'Unknown Store',
+          code: storeObj.code || '',
+          location: storeObj.location || ''
+        };
+      } else if (user.value.assignedStore && storeId) {
+        user.value.assignedStore.id = storeId;
+        if (storeName) user.value.assignedStore.name = storeName;
+      }
+
+      // ✅ Ensure assignedGroup exists with correct ID
+      if (groupObj && !user.value.assignedGroup) {
+        user.value.assignedGroup = {
+          id: groupId || groupObj.id,
+          name: groupObj.name || groupName || 'Unknown Group',
+          code: groupObj.code || ''
+        };
+      } else if (user.value.assignedGroup && groupId) {
+        user.value.assignedGroup.id = groupId;
+        if (groupName) user.value.assignedGroup.name = groupName;
+      }
+
+      // ✅ Set stores array if available
+      if (userData.stores && userData.stores.length > 0) {
+        user.value.stores = userData.stores;
+      } else if (storeObj && !user.value.stores) {
+        user.value.stores = [{
+          id: storeId || storeObj.id,
+          name: storeObj.name || storeName || 'Unknown Store',
+          code: storeObj.code || ''
+        }];
+      }
+
+      // ✅ Set groups array if available
+      if (userData.groups && userData.groups.length > 0) {
+        user.value.groups = userData.groups;
+      } else if (userData.groupsForStore && userData.groupsForStore.length > 0) {
+        user.value.groups = userData.groupsForStore;
+      } else if (groupObj && !user.value.groups) {
+        user.value.groups = [{
+          id: groupId || groupObj.id,
+          name: groupObj.name || groupName || 'Unknown Group',
+          code: groupObj.code || ''
+        }];
+      }
+
+      // ✅ Set hasMultipleStores
+      if (userData.hasMultipleStores !== undefined) {
+        user.value.hasMultipleStores = userData.hasMultipleStores;
+      } else if (userData.stores) {
+        user.value.hasMultipleStores = userData.stores.length > 1;
+      }
+
+      // ✅ Set isAdmin flag
+      if (userData.isAdmin !== undefined) {
+        user.value.isAdmin = userData.isAdmin;
+      }
+
+      // ✅ Save updated user to localStorage
+      localStorage.setItem('user', JSON.stringify(user.value));
+      
+      console.log('✅ FINAL Updated user with store/group:', {
+        storeId: user.value.storeId,
+        groupId: user.value.groupId,
+        storeName: user.value.storeName,
+        groupName: user.value.groupName,
+        currentStore: user.value.currentStore,
+        currentGroup: user.value.currentGroup,
+        assignedStoreId: user.value.assignedStore?.id,
+        assignedGroupId: user.value.assignedGroup?.id
+      });
     }
 
-    // Also set groupsForStore if available
-    if (userData.groupsForStore && !user.value.groups) {
-      user.value.groups = userData.groupsForStore
-    }
-
-    // Save updated user
-    localStorage.setItem('user', JSON.stringify(user.value))
-    console.log('✅ Updated user with store/group:', user.value)
-    console.log('✅ storeId in user:', user.value.storeId)
-    console.log('✅ assignedStore.id in user:', user.value.assignedStore?.id)
-  }
-
-  return { storeId, groupId, storeName, groupName }
-}
+    return { storeId, groupId, storeName, groupName };
+  };
 
   // ==================== 🔥 STORE-BASED LOGIN METHODS ====================
 
@@ -320,15 +459,133 @@ const setUserStoreAndGroup = (userData: any) => {
    * Login with username, store selection, and password
    * POST /api/users/login-with-store
    */
-  const loginWithStore = async (credentials: { username: string; password: string; storeId: number }) => {
+  const loginWithStore = async (credentials: { 
+    username: string; 
+    password: string; 
+    storeId: number;
+    groupId?: number;
+  }) => {
     try {
       console.log('🔐 loginWithStore called with:', { 
         username: credentials.username, 
-        storeId: credentials.storeId 
+        storeId: credentials.storeId,
+        groupId: credentials.groupId || 'none'
+      });
+      
+      const response = await api.post('/users/login-with-store', credentials);
+      console.log('✅ loginWithStore response received');
+
+      if (response.data.success) {
+        const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data;
+
+        console.log('📦 User data from server:', {
+          userId: userData.userId,
+          username: userData.username,
+          role: userData.role,
+          storeId: userData.storeId,
+          groupId: userData.groupId,
+          storeName: userData.storeName,
+          groupName: userData.groupName,
+          hasCurrentStore: !!userData.currentStore,
+          currentStore: userData.currentStore,
+          hasCurrentGroup: !!userData.currentGroup,
+          currentGroup: userData.currentGroup,
+          hasAssignedStore: !!userData.assignedStore,
+          hasAssignedGroup: !!userData.assignedGroup,
+          isAdmin: userData.isAdmin
+        });
+
+        // Ensure role is set
+        if (!userData.role) {
+          userData.role = 'employee';
+        }
+
+        // ✅ Set auth store state
+        user.value = userData;
+        token.value = authToken;
+        refreshToken.value = authRefreshToken;
+        isLoggedOut.value = false;
+
+        // ✅ Store in localStorage
+        localStorage.setItem('token', authToken);
+        localStorage.setItem('refreshToken', authRefreshToken);
+        localStorage.setItem('user', JSON.stringify(userData));
+
+        // ✅ Set store and group data
+        setUserStoreAndGroup(userData);
+
+        // ✅ Fetch roles
+        await fetchRoles();
+
+        // ✅ Verify the data was set correctly
+        console.log('✅ After setUserStoreAndGroup - user.value:', {
+          storeId: user.value?.storeId,
+          groupId: user.value?.groupId,
+          storeName: user.value?.storeName,
+          groupName: user.value?.groupName,
+          currentStore: user.value?.currentStore,
+          currentGroup: user.value?.currentGroup
+        });
+
+        // ✅ Verify userStoreId computed getter
+        console.log('✅ userStoreId computed:', userStoreId.value);
+
+        return { 
+          success: true, 
+          user: userData,
+          storeId: userData.storeId,
+          groupId: userData.groupId
+        };
+      }
+
+      console.error('❌ loginWithStore returned success: false');
+      return { 
+        success: false, 
+        error: response.data.error || 'Login failed' 
+      };
+    } catch (error: any) {
+      console.error('❌ Login with store error:', error);
+
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error status:', error.response.status);
+        
+        if (error.response.status === 401) {
+          return { success: false, error: 'Invalid username or password' };
+        }
+        if (error.response.status === 403) {
+          return { 
+            success: false, 
+            error: error.response.data?.error || 'Access denied to this store' 
+          };
+        }
+        if (error.response.status === 404) {
+          return { 
+            success: false, 
+            error: error.response.data?.error || 'Store not found' 
+          };
+        }
+      }
+
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Login failed. Please try again.' 
+      };
+    }
+  };
+
+  // ==================== LEGACY LOGIN ====================
+
+  const login = async (username: string, password: string) => {
+    try {
+      console.log('🔐 Legacy login called with:', { username, password: '***' })
+      
+      const response = await api.post('/users/login', { 
+        username: username.trim(), 
+        password: password.trim() 
       })
       
-      const response = await api.post('/users/login-with-store', credentials)
-      console.log('✅ loginWithStore response:', response.data)
+      console.log('✅ Legacy login response:', response.data)
 
       if (response.data.success) {
         const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
@@ -337,21 +594,16 @@ const setUserStoreAndGroup = (userData: any) => {
           userData.role = 'employee'
         }
 
-        // Set auth store state
         user.value = userData
         token.value = authToken
         refreshToken.value = authRefreshToken
         isLoggedOut.value = false
 
-        // Store in localStorage
         localStorage.setItem('token', authToken)
         localStorage.setItem('refreshToken', authRefreshToken)
         localStorage.setItem('user', JSON.stringify(userData))
 
-        // 🔥 Extract store and group info from user data
         setUserStoreAndGroup(userData)
-
-        // Fetch roles
         await fetchRoles()
 
         return { success: true, user: userData }
@@ -359,7 +611,13 @@ const setUserStoreAndGroup = (userData: any) => {
 
       return { success: false, error: response.data.error || 'Login failed' }
     } catch (error: any) {
-      console.error('❌ Login with store error:', error)
+      console.error('❌ Legacy login error:', error)
+      
+      if (error.response) {
+        console.error('Error response data:', error.response.data)
+        console.error('Error status:', error.response.status)
+        console.error('Error headers:', error.response.headers)
+      }
 
       if (error.response?.status === 401) {
         return { success: false, error: 'Invalid username or password' }
@@ -374,69 +632,6 @@ const setUserStoreAndGroup = (userData: any) => {
       }
     }
   }
-
-  // ==================== LEGACY LOGIN ====================
-
- // stores/auth.ts - Update the login function
-
-const login = async (username: string, password: string) => {
-  try {
-    console.log('🔐 Legacy login called with:', { username, password: '***' })
-    
-    // ✅ Make sure we're sending the data correctly
-    const response = await api.post('/users/login', { 
-      username: username.trim(), 
-      password: password.trim() 
-    })
-    
-    console.log('✅ Legacy login response:', response.data)
-
-    if (response.data.success) {
-      const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
-
-      if (!userData.role) {
-        userData.role = 'employee'
-      }
-
-      user.value = userData
-      token.value = authToken
-      refreshToken.value = authRefreshToken
-      isLoggedOut.value = false
-
-      localStorage.setItem('token', authToken)
-      localStorage.setItem('refreshToken', authRefreshToken)
-      localStorage.setItem('user', JSON.stringify(userData))
-
-      setUserStoreAndGroup(userData)
-      await fetchRoles()
-
-      return { success: true, user: userData }
-    }
-
-    return { success: false, error: response.data.error || 'Login failed' }
-  } catch (error: any) {
-    console.error('❌ Legacy login error:', error)
-    
-    // Log the full error response for debugging
-    if (error.response) {
-      console.error('Error response data:', error.response.data)
-      console.error('Error status:', error.response.status)
-      console.error('Error headers:', error.response.headers)
-    }
-
-    if (error.response?.status === 401) {
-      return { success: false, error: 'Invalid username or password' }
-    }
-    if (error.response?.status === 403) {
-      return { success: false, error: 'Account is deactivated. Please contact administrator.' }
-    }
-
-    return { 
-      success: false, 
-      error: error.response?.data?.error || 'Login failed. Please try again.' 
-    }
-  }
-}
 
   const logout = async () => {
     try {

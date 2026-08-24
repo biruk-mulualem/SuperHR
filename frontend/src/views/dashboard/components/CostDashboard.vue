@@ -443,7 +443,13 @@ const goToRules = () => {
 const handleExportCostByStore = async () => {
   exportingStore.value = true
   try {
+    // ✅ Get store and group context from service
+    const context = costDashboardService.getUserContext()
+    console.log('📤 Exporting cost by store with context:', context)
+    
     const response = await costDashboardService.exportCostByStore(1, 100)
+    console.log('📤 Export response:', response)
+    
     if (response.success && response.data && response.data.length > 0) {
       const exportData = response.data
       const headers = Object.keys(exportData[0])
@@ -453,6 +459,8 @@ const handleExportCostByStore = async () => {
         `"Total Stores","${response.pagination?.total || exportData.length}"`,
         `"Page","${response.pagination?.page || 1}"`,
         `"Total Cost (ETB)","${response.totalCost || 'N/A'}"`,
+        `"Store ID","${context.storeId || 'N/A'}"`,
+        `"Group ID","${context.groupId || 'N/A'}"`,
         ""
       ]
       
@@ -473,7 +481,7 @@ const handleExportCostByStore = async () => {
         ...rows.map(row => row.join(','))
       ].join('\n')
       
-      downloadCSV(csvContent, 'cost_by_store_export')
+      costDashboardService.downloadCSV(exportData, 'cost_by_store_export')
       showToastMessage(`Exported ${exportData.length} stores!`, 'success')
     } else {
       showToastMessage(response.error || 'No data to export', 'warning')
@@ -493,7 +501,13 @@ const handleExportCostByStore = async () => {
 const handleExportTopCostItems = async () => {
   exportingTop.value = true
   try {
+    // ✅ Get store and group context from service
+    const context = costDashboardService.getUserContext()
+    console.log('📤 Exporting top cost items with context:', context)
+    
     const response = await costDashboardService.exportTopCostItems(1, 10)
+    console.log('📤 Export response:', response)
+    
     if (response.success && response.data && response.data.length > 0) {
       const exportData = response.data
       const headers = Object.keys(exportData[0])
@@ -502,6 +516,8 @@ const handleExportTopCostItems = async () => {
         `"Export Date","${new Date().toISOString()}"`,
         `"Total Items","${response.pagination?.total || exportData.length}"`,
         `"Total Inventory Cost (ETB)","${response.totalInventoryCost || 'N/A'}"`,
+        `"Store ID","${context.storeId || 'N/A'}"`,
+        `"Group ID","${context.groupId || 'N/A'}"`,
         ""
       ]
       
@@ -522,7 +538,7 @@ const handleExportTopCostItems = async () => {
         ...rows.map(row => row.join(','))
       ].join('\n')
       
-      downloadCSV(csvContent, 'top_cost_items_export')
+      costDashboardService.downloadCSV(exportData, 'top_cost_items_export')
       showToastMessage(`Exported ${exportData.length} items!`, 'success')
     } else {
       showToastMessage(response.error || 'No data to export', 'warning')
@@ -542,10 +558,16 @@ const handleExportTopCostItems = async () => {
 const handleExportZeroCostItems = async () => {
   exportingZero.value = true
   try {
+    // ✅ Get store and group context from service
+    const context = costDashboardService.getUserContext()
+    console.log('📤 Exporting zero cost items with context:', context)
+    
     const response = await costDashboardService.exportZeroCostItems(
       zeroCostPagination.value.page,
       zeroCostPagination.value.limit
     )
+    console.log('📤 Export response:', response)
+    
     if (response.success && response.data && response.data.length > 0) {
       const exportData = response.data
       const headers = Object.keys(exportData[0])
@@ -556,6 +578,8 @@ const handleExportZeroCostItems = async () => {
         `"Items Per Page","${response.pagination?.limit || zeroCostPagination.value.limit}"`,
         `"Total Items","${response.pagination?.total || zeroCostPagination.value.total}"`,
         `"Total Pages","${response.pagination?.totalPages || zeroCostPagination.value.totalPages}"`,
+        `"Store ID","${context.storeId || 'N/A'}"`,
+        `"Group ID","${context.groupId || 'N/A'}"`,
         ""
       ]
       
@@ -576,7 +600,7 @@ const handleExportZeroCostItems = async () => {
         ...rows.map(row => row.join(','))
       ].join('\n')
       
-      downloadCSV(csvContent, `zero_cost_items_page_${zeroCostPagination.value.page}`)
+      costDashboardService.downloadCSV(exportData, `zero_cost_items_page_${zeroCostPagination.value.page}`)
       showToastMessage(`Exported ${exportData.length} zero-cost items from page ${zeroCostPagination.value.page}!`, 'success')
     } else {
       showToastMessage(response.error || 'No data to export', 'warning')
@@ -590,21 +614,11 @@ const handleExportZeroCostItems = async () => {
 }
 
 // ================================================================
-// 🔥 Helper: Download CSV
+// 🔥 Helper: Download CSV (now using service)
 // ================================================================
 
-const downloadCSV = (csvContent, filename) => {
-  const blob = new Blob(['\uFEFF' + csvContent], { 
-    type: 'text/csv;charset=utf-8;' 
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+const downloadCSV = (data, filename) => {
+  costDashboardService.downloadCSV(data, filename)
 }
 
 // ================================================================
@@ -615,11 +629,29 @@ const loadDashboardData = async () => {
   loading.value = true
   try {
     const user = authStore.user
+    
+    // ✅ Get storeId and groupId from auth store properly
+    let storeId = null;
+    let groupId = null;
+    
     if (user) {
-      costDashboardService.setUserContext(
-        user.storeId || null,
-        user.groupId || null
-      )
+      // Try multiple sources for storeId
+      storeId = user.storeId || 
+                user.assignedStore?.id || 
+                user.currentStore?.id ||
+                null;
+      
+      // Try multiple sources for groupId
+      groupId = user.groupId || 
+                user.assignedGroup?.id || 
+                user.currentGroup?.id ||
+                null;
+      
+      console.log('📌 Setting cost dashboard context:', { storeId, groupId });
+      costDashboardService.setUserContext(storeId, groupId);
+    } else {
+      console.warn('⚠️ No user found in auth store');
+      costDashboardService.setUserContext(null, null);
     }
 
     const response = await costDashboardService.getDashboardData()

@@ -11,6 +11,7 @@ export interface CostSummary {
   totalCost: number;
   excludedByConflict: number;
   excludedByData: number;
+  itemsWithCost?: number;
 }
 
 export interface CostByStore {
@@ -74,6 +75,8 @@ export interface ExportResponse {
     limit: number;
     totalPages: number;
   };
+  totalCost?: number;
+  totalInventoryCost?: number;
   error?: string;
 }
 
@@ -125,6 +128,7 @@ class CostDashboardService {
   private buildParams(extraParams?: Record<string, any>): string {
     const params = new URLSearchParams();
     
+    // ✅ Always add storeId and groupId if available
     if (this.userStoreId) {
       params.append('storeId', this.userStoreId.toString());
     }
@@ -132,6 +136,7 @@ class CostDashboardService {
       params.append('groupId', this.userGroupId.toString());
     }
     
+    // Add extra params
     if (extraParams) {
       Object.entries(extraParams).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== '') {
@@ -140,7 +145,9 @@ class CostDashboardService {
       });
     }
     
-    return params.toString();
+    const queryString = params.toString();
+    console.log('📤 BuildParams result:', queryString);
+    return queryString;
   }
 
   // ================================================================
@@ -252,6 +259,11 @@ class CostDashboardService {
 
   async getDashboardData(): Promise<DashboardResponse> {
     try {
+      // Ensure we have storeId and groupId before making requests
+      if (!this.userStoreId || !this.userGroupId) {
+        console.warn('⚠️ No storeId or groupId set for cost dashboard');
+      }
+
       const [summary, costByStore, topCostItems, zeroCostItems] = await Promise.all([
         this.getCostSummary(),
         this.getCostByStore(),
@@ -267,7 +279,8 @@ class CostDashboardService {
             zeroCostItems: 0,
             totalCost: 0,
             excludedByConflict: 0,
-            excludedByData: 0
+            excludedByData: 0,
+            itemsWithCost: 0
           },
           costByStore: costByStore.success && costByStore.data ? costByStore.data : [],
           topCostItems: topCostItems.success && topCostItems.data ? topCostItems.data : [],
@@ -293,13 +306,19 @@ class CostDashboardService {
   // 6. EXPORT COST BY STORE (with pagination)
   // ================================================================
 
-  async exportCostByStore(page: number = 1, limit: number = 10): Promise<ExportResponse> {
+  async exportCostByStore(page: number = 1, limit: number = 100): Promise<ExportResponse> {
     try {
+      // ✅ Ensure we have storeId and groupId
+      if (!this.userStoreId || !this.userGroupId) {
+        console.warn('⚠️ No storeId or groupId for export, using default');
+      }
+      
       const params = this.buildParams({ page, limit });
       const url = `/cost-dashboard/export/cost-by-store${params ? '?' + params : ''}`;
       console.log('📤 Exporting cost by store from:', url);
       
       const response = await api.get(url);
+      console.log('✅ Export cost by store response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Failed to export cost by store:', error);
@@ -323,6 +342,7 @@ class CostDashboardService {
       console.log('📤 Exporting top cost items from:', url);
       
       const response = await api.get(url);
+      console.log('✅ Export top cost items response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Failed to export top cost items:', error);
@@ -346,6 +366,7 @@ class CostDashboardService {
       console.log('📤 Exporting zero cost items from:', url);
       
       const response = await api.get(url);
+      console.log('✅ Export zero cost items response:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Failed to export zero cost items:', error);

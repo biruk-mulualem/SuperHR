@@ -1349,6 +1349,8 @@ const shouldShowRequest = (req: ItemRequest): boolean => {
 // DATA LOADING METHODS
 // ================================================================
 
+// In itemrequests.vue - replace the store ID extraction
+
 const loadUserData = () => {
   const user = authStore.user;
   console.log('📌 loadUserData - user:', user);
@@ -1364,32 +1366,31 @@ const loadUserData = () => {
   userIsAdmin.value = userData.isAdmin || user.role === "admin" || user.role === "Admin";
   console.log('👑 userIsAdmin:', userIsAdmin.value);
   
-  // ✅ Get store ID from userData directly
-  let storeId = userData.storeId || null;
+  // ✅ Get store ID - use the computed value from auth store
+  let storeId = authStore.userStoreId;  // ✅ Use the computed getter!
   let storeName = userData.storeName || null;
   
-  console.log('🔍 userData.storeId:', storeId);
-  console.log('🔍 userData.storeName:', storeName);
+  console.log('🔍 authStore.userStoreId:', storeId);
   
-  // If storeId is null, try assignedStore
-  if (!storeId && userData.assignedStore) {
-    storeId = userData.assignedStore.id || userData.assignedStore.storeId || null;
-    storeName = userData.assignedStore.name || null;
-    console.log('🔍 assignedStore:', { storeId, storeName });
+  // If still null, try direct properties
+  if (!storeId) {
+    storeId = userData.storeId || 
+              userData.assignedStore?.id || 
+              userData.assignedStore?.storeId ||
+              userData.currentStore?.id || 
+              userData.currentStore?.storeId ||
+              userData.store?.id ||
+              null;
+    console.log('🔍 Direct storeId:', storeId);
   }
   
-  // If still null, try currentStore
-  if (!storeId && userData.currentStore) {
-    storeId = userData.currentStore.id || userData.currentStore.storeId || null;
-    storeName = userData.currentStore.name || null;
-    console.log('🔍 currentStore:', { storeId, storeName });
-  }
-  
-  // If still null, try stores array
-  if (!storeId && userData.stores && userData.stores.length > 0) {
-    storeId = userData.stores[0].id || userData.stores[0].storeId || null;
-    storeName = userData.stores[0].name || null;
-    console.log('🔍 stores[0]:', { storeId, storeName });
+  // Get store name
+  if (!storeName) {
+    storeName = userData.storeName || 
+                userData.assignedStore?.name || 
+                userData.currentStore?.name ||
+                userData.store?.name ||
+                null;
   }
   
   console.log('📦 Final storeId:', storeId, 'storeName:', storeName);
@@ -1562,11 +1563,26 @@ const formatDate = (dateString?: string): string => {
   });
 };
 // ✅ FIXED - Using UTC+6 (Based on your actual time)
+// In itemrequests.vue - fix the timezone
 const formatDateTime = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
   if (!dateString) return ''
-  return dayjs.utc(dateString)
-    .add(6, 'hour')  // ✅ Your system shows UTC+6
-    .format('MMM D, YYYY h:mm A')
+  
+  // ✅ Detect the actual timezone offset from the data
+  const date = dayjs.utc(dateString)
+  
+  // If your data already has timezone info, use it directly
+  if (dateString.toString().includes('+') || dateString.toString().includes('Z')) {
+    return date.format('MMM D, YYYY h:mm A')
+  }
+  
+  // ✅ Only add offset if the data is naive (no timezone info)
+  // Check your database timezone - use the correct offset
+  // If your database uses UTC, don't add any offset
+  // If your database uses UTC+3, add 3 hours
+  return date.format('MMM D, YYYY h:mm A')
+  
+  // Or if you need UTC+6:
+  // return date.add(6, 'hour').format('MMM D, YYYY h:mm A')
 }
 
 const formatDateShort = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
