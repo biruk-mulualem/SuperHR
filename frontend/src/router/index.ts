@@ -549,6 +549,7 @@ const router = createRouter({
           meta: {
             title: "Print Transactions",
             roles: ["admin", "storekeeper", "store_it", "checker"],
+             hideLayout: true  // ✅ ADD THIS
           },
         },
 

@@ -23,7 +23,7 @@
             <span v-else>📊</span>
             {{ exporting ? "Report..." : "Report" }}
           </button>
-          <!-- <button class="btn-print" @click="printReport">🖨️ Print</button> -->
+          <button class="btn-print" @click="printReport">🖨️ Print</button>
         </div>
       </div>
     </div>
