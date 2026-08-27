@@ -1,4 +1,4 @@
-<!-- views/storemanagement/storebalance/storebalance.vue - FULLY UPDATED WITH FIXED ITEM SELECTION -->
+<!-- views/storemanagement/storebalance/storebalance.vue - FULLY UPDATED WITH PROCESS REQUESTS REMOVED -->
 
 <template>
   <div class="section-card">
@@ -31,78 +31,75 @@
     </div>
 
     <!-- ==================== FILTERS ==================== -->
-   <!-- ==================== FILTERS ==================== -->
-<div class="filter-bar">
-  <!-- Only show Store filter for admin users -->
-  <select
-    v-if="isAdmin"
-    v-model="filterStore"
-    class="filter-select"
-    @change="onFilterChange"
-  >
-    <option value="">All Stores</option>
-    <option
-      v-for="store in availableStores"
-      :key="store.id"
-      :value="store.id"
-    >
-      {{ store.name }}
-    </option>
-  </select>
-  
-  <!-- Only show Group filter for admin users -->
-  <select
-    v-if="isAdmin"
-    v-model="filterGroup"
-    class="filter-select"
-    @change="onFilterChange"
-  >
-    <option value="">All Groups</option>
-    <option
-      v-for="group in availableGroups"
-      :key="group.id"
-      :value="group.id"
-    >
-      {{ group.name }}
-    </option>
-  </select>
-  
-  <select
-    v-model="filterCategory"
-    class="filter-select"
-    @change="onFilterChange"
-  >
-    <option value="">All Categories</option>
-    <option
-      v-for="cat in availableCategories"
-      :key="cat.id"
-      :value="cat.id"
-    >
-      {{ cat.name }}
-    </option>
-  </select>
-  <select
-    v-model="filterStatus"
-    class="filter-select"
-    @change="onFilterChange"
-  >
-    <option value="">All Status</option>
-    <option value="Active">Active</option>
-    <option value="Inactive">Inactive</option>
-  </select>
-  <button
-    class="btn-clear-filters"
-    @click="clearFilters"
-    v-if="hasActiveFilters"
-  >
-    ✕ Clear Filters
-  </button>
-  <div class="filter-actions">
-    <button class="btn-export" @click="openExportModal">📊 Report</button>
-  </div>
-</div>
+    <div class="filter-bar">
+      <!-- Only show Store filter for admin users -->
+      <select
+        v-if="isAdmin"
+        v-model="filterStore"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Stores</option>
+        <option
+          v-for="store in availableStores"
+          :key="store.id"
+          :value="store.id"
+        >
+          {{ store.name }}
+        </option>
+      </select>
 
-   
+      <!-- Only show Group filter for admin users -->
+      <select
+        v-if="isAdmin"
+        v-model="filterGroup"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Groups</option>
+        <option
+          v-for="group in availableGroups"
+          :key="group.id"
+          :value="group.id"
+        >
+          {{ group.name }}
+        </option>
+      </select>
+
+      <select
+        v-model="filterCategory"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Categories</option>
+        <option
+          v-for="cat in availableCategories"
+          :key="cat.id"
+          :value="cat.id"
+        >
+          {{ cat.name }}
+        </option>
+      </select>
+      <select
+        v-model="filterStatus"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Status</option>
+        <option value="Active">Active</option>
+        <option value="Inactive">Inactive</option>
+      </select>
+      <button
+        class="btn-clear-filters"
+        @click="clearFilters"
+        v-if="hasActiveFilters"
+      >
+        ✕ Clear Filters
+      </button>
+      <div class="filter-actions">
+        <button class="btn-export" @click="openExportModal">📊 Report</button>
+      </div>
+    </div>
 
     <!-- ==================== STORE BALANCE TABLE ==================== -->
     <div class="table-container" id="printable-area">
@@ -335,7 +332,7 @@
                     v-if="!isAdmin && userData?.assignedStore"
                     class="hint pre-filled"
                   >
-                     Pre-filled with your assigned store:
+                    Pre-filled with your assigned store:
                     <strong>{{ userData.assignedStore.name }}</strong>
                   </span>
                   <span
@@ -365,7 +362,7 @@
                     v-if="!isAdmin && userData?.assignedGroup"
                     class="hint pre-filled"
                   >
-                     Pre-filled with your assigned group:
+                    Pre-filled with your assigned group:
                     <strong>{{ userData.assignedGroup.name }}</strong>
                   </span>
                   <span
@@ -844,330 +841,17 @@
       </div>
     </div>
 
-    <!-- ==================== PROCESS REQUESTS MODAL ==================== -->
-   <!-- ==================== PROCESS REQUESTS MODAL - REDESIGNED ==================== -->
-<div
-  v-if="showProcessModal"
-  class="modal-overlay"
-  @click.self="closeProcessModal"
->
-  <div class="modal-container process-modal">
-    <div class="modal-header">
-      <div class="modal-header-content">
-        <span class="modal-icon">📋</span>
-        <div>
-          <h3>Process Approved Requests</h3>
-          <p class="modal-subtitle">Apply approved requests to store balances</p>
-        </div>
-      </div>
-      <button class="modal-close" @click="closeProcessModal">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <!-- ============================================================ -->
-      <!-- STEP 1: SELECT STORE (Admin only) -->
-      <!-- ============================================================ -->
-      <div v-if="isAdmin" class="step-container">
-        <div class="step-indicator">
-          <span class="step-number">1</span>
-          <span class="step-label">Select Store</span>
-          <span class="step-line"></span>
-        </div>
-        <div class="step-content">
-          <div class="form-group">
-            <select
-              v-model="selectedStoreId"
-              required
-              @change="onStoreSelect"
-              class="form-select-enhanced"
-              :class="{ 'has-value': selectedStoreId }"
-            >
-              <option value="">Choose a store...</option>
-              <option
-                v-for="store in availableStores"
-                :key="store.id"
-                :value="store.id"
-              >
-                🏪 {{ store.name }}
-              </option>
-            </select>
-            <span class="form-hint">Select the store to process requests for</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============================================================ -->
-      <!-- STEP 2: SELECT REQUESTS (Visible to all) -->
-      <!-- ============================================================ -->
-      <div class="step-container">
-        <div class="step-indicator">
-          <span class="step-number">1</span>
-          <span class="step-label">Select Requests</span>
-          <span class="step-line"></span>
-        </div>
-        <div class="step-content">
-          <div v-if="storeRequests.length === 0" class="empty-requests">
-            <span class="empty-icon">✅</span>
-            <p>No pending requests found</p>
-            <span class="empty-sub">All requests have been processed</span>
-          </div>
-
-          <div v-else>
-            <!-- Select All -->
-            <div class="select-all-container">
-              <label class="select-all-label">
-                <input
-                  type="checkbox"
-                  v-model="selectAllRequests"
-                  @change="toggleAllRequests"
-                />
-                <span class="select-all-text">
-                  Select All ({{ storeRequests.length }} requests)
-                </span>
-                <span class="select-all-badge">{{ getTotalRequestItems() }} items</span>
-              </label>
-            </div>
-
-            <!-- Request List -->
-            <div class="requests-checkbox-list">
-              <label
-                v-for="req in storeRequests"
-                :key="req.id"
-                class="request-checkbox"
-                :class="{ selected: selectedRequestIds.includes(req.id) }"
-              >
-                <input
-                  type="checkbox"
-                  v-model="selectedRequestIds"
-                  :value="req.id"
-                  @change="onRequestSelect"
-                />
-                <div class="request-info">
-                  <div class="request-header-info">
-                    <span class="req-code">{{ req.requestCode }}</span>
-                    <span class="req-date">{{ formatDate(req.requestedDate) }}</span>
-                  </div>
-                  <div class="req-details">
-                    <span class="req-items-count">📦 {{ req.items?.length || 0 }} items</span>
-                    <span class="req-action" :class="getItemActionClass(req)">
-                      {{ getItemActionLabel(req) }}
-                    </span>
-                    <span
-                      v-if="req.isProcessedByGroup"
-                      class="req-status processed"
-                    >
-                      ✅ Processed
-                    </span>
-                    <span v-else class="req-status pending"> ⏳ Pending </span>
-                  </div>
-                  <div v-if="req.remark" class="req-remark">
-                    💬 {{ req.remark }}
-                  </div>
-                </div>
-              </label>
-            </div>
-
-            <!-- Selection Summary -->
-            <div v-if="selectedRequestIds.length > 0" class="selection-summary">
-              <span class="summary-icon">📋</span>
-              <span class="summary-text">
-                {{ selectedRequestIds.length }} request(s) selected
-              </span>
-              <span class="summary-items">
-                {{ getSelectedTotalItems() }} total items
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============================================================ -->
-      <!-- STEP 3: SELECT GROUP (Admin only) -->
-      <!-- ============================================================ -->
-      <div v-if="isAdmin && selectedRequestIds.length > 0" class="step-container">
-        <div class="step-indicator">
-          <span class="step-number">2</span>
-          <span class="step-label">Select Group</span>
-          <span class="step-line"></span>
-        </div>
-        <div class="step-content">
-          <div class="form-group">
-            <select
-              v-model="selectedGroupId"
-              required
-              class="form-select-enhanced"
-              :class="{ 'has-value': selectedGroupId }"
-            >
-              <option value="">Choose a group...</option>
-              <option
-                v-for="group in availableGroups"
-                :key="group.id"
-                :value="group.id"
-              >
-                👥 {{ group.name }}
-              </option>
-            </select>
-            <span class="form-hint">Select the group that will receive/remove stock</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============================================================ -->
-      <!-- PREVIEW SECTION -->
-      <!-- ============================================================ -->
-      <div
-        v-if="selectedRequestIds.length > 0 && (isAdmin ? selectedGroupId : true)"
-        class="preview-container"
-      >
-        <div class="preview-header">
-          <span class="preview-icon">📊</span>
-          <span class="preview-title">Request Preview</span>
-          <span class="preview-badge">{{ selectedRequestIds.length }} request(s)</span>
-        </div>
-
-        <div class="preview-requests">
-          <div
-            v-for="req in selectedRequests"
-            :key="req.id"
-            class="preview-request"
-          >
-            <div class="preview-request-header">
-              <span class="preview-request-code">{{ req.requestCode }}</span>
-              <span class="preview-action" :class="getItemActionClass(req)">
-                {{ getItemActionLabel(req) }}
-              </span>
-            </div>
-            <div class="preview-request-items">
-              <span
-                v-for="item in req.items"
-                :key="item.itemId"
-                class="preview-item"
-              >
-                {{ getItemCommonName(item.itemId) }}
-                <span class="preview-qty">×{{ item.quantity }}</span>
-              </span>
-            </div>
-            <div v-if="req.remark" class="preview-remark">
-              💬 {{ req.remark }}
-            </div>
-          </div>
-        </div>
-
-      
-      </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- FOOTER -->
-    <!-- ============================================================ -->
-    <div class="modal-footer">
-      <button class="btn-secondary" @click="closeProcessModal">
-        Cancel
-      </button>
-      <button
-        class="btn-primary"
-        @click="openProcessConfirmation"
-        :disabled="
-          selectedRequestIds.length === 0 ||
-          (isAdmin && !selectedGroupId) ||
-          processing
-        "
-      >
-        {{ processing ? "Processing..." : `Process ${selectedRequestIds.length} Request(s)` }}
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== PROCESS CONFIRMATION MODAL ==================== -->
-<div
-  v-if="showProcessConfirmation"
-  class="modal-overlay"
-  @click.self="closeProcessConfirmation"
->
-  <div class="modal-container confirmation-modal">
-    <div class="modal-header">
-      <div class="modal-header-content">
-        <span class="modal-icon">⚠️</span>
-        <div>
-          <h3>Confirm Processing</h3>
-          <p class="modal-subtitle">Please review before proceeding</p>
-        </div>
-      </div>
-      <button class="modal-close" @click="closeProcessConfirmation">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <div class="confirmation-icon">🔄</div>
-      <p class="confirmation-title">Are you sure you want to process these requests?</p>
-
-      <div class="confirmation-details">
-        <div class="detail-row">
-          <span class="detail-label">Requests</span>
-          <span class="detail-value">{{ selectedRequestIds.length }} request(s)</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Total Items</span>
-          <span class="detail-value">{{ getSelectedTotalItems() }} items</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Store</span>
-          <span class="detail-value">{{ isAdmin ? getStoreName(Number(selectedStoreId)) : 'Your Store' }}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Group</span>
-          <span class="detail-value">{{ isAdmin ? getGroupName(Number(selectedGroupId)) : 'Your Group' }}</span>
-        </div>
-        <div class="detail-row highlight">
-          <span class="detail-label">⚠️ Action</span>
-          <span class="detail-value">
-            {{ getItemsByAction('add') > 0 ? `➕ Add ${getItemsByAction('add')} items` : '' }}
-            {{ getItemsByAction('add') > 0 && getItemsByAction('remove') > 0 ? ' & ' : '' }}
-            {{ getItemsByAction('remove') > 0 ? `➖ Remove ${getItemsByAction('remove')} items` : '' }}
-          </span>
-        </div>
-      </div>
-
-      <div class="warning-box">
-        <span class="warning-icon">⚠️</span>
-        <span class="warning-text">
-          This action will update store balances and cannot be undone.
-          Please verify the requests and items before proceeding.
-        </span>
-      </div>
-
-      <div class="requests-confirmation-list">
-        <div
-          v-for="req in selectedRequests.slice(0, 5)"
-          :key="req.id"
-          class="confirmation-request"
-        >
-          <span class="confirmation-req-code">{{ req.requestCode }}</span>
-          <span class="confirmation-req-items">{{ req.items.length }} items</span>
-          <span class="confirmation-req-action" :class="getItemActionClass(req)">
-            {{ getItemActionLabel(req) }}
-          </span>
-        </div>
-        <div v-if="selectedRequests.length > 5" class="confirmation-more">
-          ... and {{ selectedRequests.length - 5 }} more requests
-        </div>
-      </div>
-    </div>
-
-    <div class="modal-footer">
-      <button class="btn-secondary" @click="closeProcessConfirmation">
-        Cancel
-      </button>
-      <button
-        class="btn-primary confirm-btn"
-        @click="confirmProcessRequests"
-        :disabled="processing"
-      >
-        {{ processing ? "Processing..." : "✅ Confirm & Process" }}
-      </button>
-    </div>
-  </div>
-</div>
+    <!-- ==================== PROCESS REQUESTS MODAL - STANDALONE COMPONENT ==================== -->
+    <ProcessRequestsModal
+      v-if="showProcessModal"
+      :is-admin="isAdmin"
+      :stores="availableStores"
+      :groups="availableGroups"
+      :user-data="userData"
+      :inventory-items="inventoryItems"
+      @close="closeProcessModal"
+      @success="onProcessSuccess"
+    />
 
     <!-- ==================== TOGGLE STATUS CONFIRMATION ==================== -->
     <div
@@ -1263,6 +947,8 @@
 import { ref, computed, onMounted, watch } from "vue";
 import balanceService from "@/stores/balanceService";
 import { useRouter } from "vue-router";
+import ProcessRequestsModal from "./components/ProcessRequestsModal.vue";
+
 const router = useRouter();
 
 // ================================================================
@@ -1282,51 +968,6 @@ const getUserData = () => {
 const userData = ref(getUserData());
 const isAdmin = computed(() => userData.value?.isAdmin || false);
 
-
-// ================================================================
-// PROCESS CONFIRMATION STATE
-// ================================================================
-const showProcessConfirmation = ref(false)
-
-// ================================================================
-// PROCESS CONFIRMATION METHODS
-// ================================================================
-
-const openProcessConfirmation = () => {
-  if (
-    selectedRequestIds.value.length === 0 ||
-    (isAdmin.value && !selectedGroupId.value) ||
-    processing.value
-  ) {
-    return
-  }
-  showProcessConfirmation.value = true
-}
-
-const closeProcessConfirmation = () => {
-  showProcessConfirmation.value = false
-}
-
-const getItemsByAction = (action) => {
-  let count = 0
-  selectedRequests.value.forEach(req => {
-    const actionLabel = getItemActionLabel(req)
-    if (action === 'add' && actionLabel.includes('ADD')) {
-      count += req.items.length
-    } else if (action === 'remove' && actionLabel.includes('REMOVE')) {
-      count += req.items.length
-    }
-  })
-  return count
-}
-
-const getTotalRequestItems = () => {
-  let total = 0
-  storeRequests.value.forEach(req => {
-    total += req.items?.length || 0
-  })
-  return total
-}
 // ================================================================
 // STORE DATA
 // ================================================================
@@ -1378,7 +1019,7 @@ const showExportModal = ref(false);
 const initTab = ref("manual");
 const saving = ref(false);
 
-const totalItemsFromAPI = ref(0); // ✅ Store the total from API response
+const totalItemsFromAPI = ref(0);
 
 // Import State
 const csvFile = ref(null);
@@ -1402,12 +1043,6 @@ const deleteTarget = ref(null);
 
 // Process Requests State
 const showProcessModal = ref(false);
-const selectedStoreId = ref("");
-const selectedGroupId = ref("");
-const selectedRequestIds = ref([]);
-const storeRequests = ref([]);
-const processing = ref(false);
-const selectAllRequests = ref(false);
 
 const form = ref({
   storeId: "",
@@ -1453,22 +1088,19 @@ const availableCategories = computed(() => {
 });
 
 // ================================================================
-// COMPUTED - ITEM LIST WITH FILTERS - FIXED
+// COMPUTED - ITEM LIST WITH FILTERS
 // ================================================================
 
 const filteredItemsList = computed(() => {
-  // ✅ Safety check - if no items, return empty array
   if (!inventoryItems.value || inventoryItems.value.length === 0) {
     return [];
   }
 
   let items = [...inventoryItems.value];
 
-  // ✅ Category filter
   if (itemCategoryFilter.value) {
     const categoryId = Number(itemCategoryFilter.value);
     items = items.filter((item) => {
-      // Handle different possible property names
       const itemCategoryId =
         item.categoryId ||
         item.category?.categoryId ||
@@ -1478,7 +1110,6 @@ const filteredItemsList = computed(() => {
     });
   }
 
-  // ✅ Search filter
   if (itemSearchQuery.value) {
     const query = itemSearchQuery.value.toLowerCase().trim();
     items = items.filter((item) => {
@@ -1487,7 +1118,6 @@ const filteredItemsList = computed(() => {
       const standardName = (item.standardName || "").toLowerCase();
       const brand = (item.brand || "").toLowerCase();
       const model = (item.model || "").toLowerCase();
-
       return (
         code.includes(query) ||
         name.includes(query) ||
@@ -1599,7 +1229,6 @@ const filteredBalances = computed(() => {
 // ================================================================
 
 const paginatedBalances = computed(() => {
-  // Use filteredBalances which already has client-side filters applied
   const start = (currentPage.value - 1) * pageSize.value;
   const end = start + pageSize.value;
   return filteredBalances.value.slice(start, end);
@@ -1616,21 +1245,13 @@ const totalStores = computed(() => {
   return uniqueStores.size;
 });
 
-// ================================================================
-// COMPUTED - STATS - FIXED
-// ================================================================
-
-// ✅ Use the total from API for the stats
 const totalItems = computed(() => {
-  // If there are filters, use filteredBalances length (client-side filtering)
-  // Otherwise, use the total from API
   if (hasActiveFilters.value) {
     return filteredBalances.value.length;
   }
   return totalItemsFromAPI.value || filteredBalances.value.length;
 });
 
-// ✅ For the total pages, use API total
 const totalPages = computed(() => {
   const total = hasActiveFilters.value
     ? filteredBalances.value.length
@@ -1649,12 +1270,6 @@ const pendingRequestsCount = computed(() => {
     if (req.status !== "approved") return false;
     return true;
   }).length;
-});
-
-const selectedRequests = computed(() => {
-  return storeRequests.value.filter((req) =>
-    selectedRequestIds.value.includes(req.id),
-  );
 });
 
 // ================================================================
@@ -1702,7 +1317,7 @@ const clearItemSelection = () => {
 };
 
 // ================================================================
-// HELPER METHODS - UPDATED (ONLY TWO NAME FIELDS)
+// HELPER METHODS
 // ================================================================
 
 const getItemStandardName = (itemId) => {
@@ -1811,32 +1426,6 @@ const formatFileSize = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 };
 
-const getItemActionLabel = (req) => {
-  if (selectedStoreId.value === String(req.askingStoreId)) {
-    return "➕ ADD to balance";
-  } else if (selectedStoreId.value === String(req.supplyingStoreId)) {
-    return "➖ REMOVE from balance";
-  }
-  return "";
-};
-
-const getItemActionClass = (req) => {
-  if (selectedStoreId.value === String(req.askingStoreId)) {
-    return "action-add";
-  } else if (selectedStoreId.value === String(req.supplyingStoreId)) {
-    return "action-remove";
-  }
-  return "";
-};
-
-const getSelectedTotalItems = () => {
-  let total = 0;
-  selectedRequests.value.forEach((req) => {
-    total += req.items.length;
-  });
-  return total;
-};
-
 // ================================================================
 // UI HELPERS
 // ================================================================
@@ -1884,7 +1473,6 @@ const fetchCategories = async () => {
     const response = await balanceService.getActiveCategories();
     if (response.success) {
       categories.value = response.data || [];
-      // console.log(`✅ Loaded ${categories.value.length} categories`);
     } else {
       console.error("Failed to fetch categories:", response.error);
     }
@@ -1898,28 +1486,12 @@ const fetchItems = async () => {
   isLoadingItems.value = true;
   try {
     const response = await balanceService.getActiveItems();
-    // console.log("📦 getActiveItems response:", response);
-
     if (response && response.success && response.data) {
       inventoryItems.value = response.data || [];
-      // console.log(`✅ Loaded ${inventoryItems.value.length} items`);
-
-      if (inventoryItems.value.length > 0) {
-        // console.log("📦 Sample item:", {
-        //   id: inventoryItems.value[0].id,
-        //   code: inventoryItems.value[0].code,
-        //   name: inventoryItems.value[0].name,
-        //   standardName: inventoryItems.value[0].standardName,
-        //   categoryId: inventoryItems.value[0].categoryId,
-        //   brand: inventoryItems.value[0].brand,
-        //   model: inventoryItems.value[0].model,
-        // });
-      }
     } else {
       console.error("❌ Invalid response from getActiveItems:", response);
       inventoryItems.value = [];
     }
-
     showToastMessage(`Loaded ${inventoryItems.value.length} items`, "success");
   } catch (error) {
     console.error("Error fetching items:", error);
@@ -1931,7 +1503,7 @@ const fetchItems = async () => {
 };
 
 // ================================================================
-// FETCH BALANCES - FIXED
+// FETCH BALANCES
 // ================================================================
 
 const fetchBalances = async () => {
@@ -1973,27 +1545,17 @@ const fetchBalances = async () => {
       filters.search = searchQuery.value;
     }
 
-    // ✅ Use pagination
     filters.page = currentPage.value;
-    filters.limit = 10000; // High limit to get all data
+    filters.limit = 10000;
 
     const response = await balanceService.getBalances(filters);
 
-    // ✅ Store the data
     balances.value = response.data || [];
 
-    // ✅ Store the total from API pagination
     if (response.pagination) {
       totalItemsFromAPI.value = response.pagination.total || 0;
       currentPage.value = response.pagination.page || 1;
     }
-
-    // ✅ Debug logging
-    // console.log("📊 API Response:", {
-    //   dataLength: balances.value.length,
-    //   total: totalItemsFromAPI.value,
-    //   page: currentPage.value,
-    // });
   } catch (error) {
     console.error("Error fetching balances:", error);
     showToastMessage("Failed to load balances", "error");
@@ -2097,8 +1659,6 @@ const openAddBalanceModal = () => {
   if (!isAdmin.value && userData.value?.hasAccess) {
     const assignedStoreId = userData.value.assignedStore?.id;
     const assignedGroupId = userData.value.assignedGroup?.id;
-    const assignedStoreName = userData.value.assignedStore?.name;
-    const assignedGroupName = userData.value.assignedGroup?.name;
 
     const storeExists = assignedStoreId
       ? availableStores.value.some((s) => s.id === assignedStoreId)
@@ -2115,23 +1675,6 @@ const openAddBalanceModal = () => {
       status: "Active",
       minStock: 0,
     };
-
-    if (form.value.storeId && form.value.groupId) {
-      showToastMessage(
-        ` Pre-filled with your assigned store: ${assignedStoreName} and group: ${assignedGroupName}`,
-        "info",
-      );
-    } else if (form.value.storeId) {
-      showToastMessage(
-        ` Pre-filled with your assigned store: ${assignedStoreName}`,
-        "info",
-      );
-    } else if (form.value.groupId) {
-      showToastMessage(
-        ` Pre-filled with your assigned group: ${assignedGroupName}`,
-        "info",
-      );
-    }
   } else {
     form.value = {
       storeId: "",
@@ -2495,217 +2038,18 @@ const confirmDelete = async () => {
 // ================================================================
 
 const processApprovedRequests = async () => {
-  selectedStoreId.value = "";
-  selectedGroupId.value = "";
-  selectedRequestIds.value = [];
-  storeRequests.value = [];
-  selectAllRequests.value = false;
-
   showProcessModal.value = true;
-
-  if (!isAdmin.value && userData.value?.hasAccess) {
-    if (userData.value.assignedStore) {
-      selectedStoreId.value = String(userData.value.assignedStore.id);
-      await onStoreSelect();
-    }
-    if (userData.value.assignedGroup) {
-      selectedGroupId.value = String(userData.value.assignedGroup.id);
-    }
-  }
-
   await fetchApprovedRequests();
 };
 
 const closeProcessModal = () => {
   showProcessModal.value = false;
-  selectedStoreId.value = "";
-  selectedGroupId.value = "";
-  selectedRequestIds.value = [];
-  storeRequests.value = [];
-  selectAllRequests.value = false;
 };
 
-const onStoreSelect = async () => {
-  selectedRequestIds.value = [];
-  storeRequests.value = [];
-  selectAllRequests.value = false;
-  selectedGroupId.value = "";
-
-  if (!selectedStoreId.value) {
-    return;
-  }
-
-  if (!isAdmin.value && userData.value?.assignedStore) {
-    if (Number(selectedStoreId.value) !== userData.value.assignedStore.id) {
-      showToastMessage("You do not have access to this store", "error");
-      selectedStoreId.value = "";
-      return;
-    }
-  }
-
-  try {
-    const storeId = Number(selectedStoreId.value);
-    const groupId = userData.value?.assignedGroup?.id;
-
-    const response = await balanceService.getApprovedRequests(storeId, groupId);
-    storeRequests.value = response.data || [];
-
-    if (storeRequests.value.length > 0) {
-      selectAllRequests.value = true;
-      selectedRequestIds.value = storeRequests.value.map((req) => req.id);
-    } else {
-      selectAllRequests.value = false;
-      selectedRequestIds.value = [];
-      showToastMessage("✅ No pending requests for this store", "info");
-    }
-  } catch (error) {
-    console.error("Error fetching approved requests:", error);
-    showToastMessage("Failed to fetch approved requests", "error");
-  }
-};
-
-const toggleAllRequests = () => {
-  if (selectAllRequests.value) {
-    selectedRequestIds.value = storeRequests.value.map((req) => req.id);
-  } else {
-    selectedRequestIds.value = [];
-  }
-};
-
-const onRequestSelect = () => {
-  if (selectedRequestIds.value.length === storeRequests.value.length) {
-    selectAllRequests.value = true;
-  } else {
-    selectAllRequests.value = false;
-  }
-};
-
-const confirmProcessRequests = async () => {
-  if (
-    !selectedStoreId.value ||
-    selectedRequestIds.value.length === 0 ||
-    !selectedGroupId.value
-  ) {
-    showToastMessage("Please select a store, requests, and a group", "warning");
-    return;
-  }
-
-  if (!isAdmin.value && userData.value?.assignedGroup) {
-    if (Number(selectedGroupId.value) !== userData.value.assignedGroup.id) {
-      showToastMessage("You do not have access to this group", "error");
-      return;
-    }
-  }
-
-  processing.value = true;
-
-  try {
-    const response = await balanceService.processRequests({
-      storeId: Number(selectedStoreId.value),
-      groupId: Number(selectedGroupId.value),
-      requestIds: selectedRequestIds.value.map((id) => Number(id)),
-    });
-
-    if (response.success) {
-      const {
-        processed,
-        failed,
-        missingItems,
-        processedItems,
-        autoInitializedItems,
-        partialRequests,
-        logs,
-        processedRequestIds,
-        totalRequests,
-      } = response.data || {};
-
-      const processedIds = processedRequestIds || [];
-
-      storeRequests.value = storeRequests.value.filter(
-        (req) => !processedIds.includes(req.id),
-      );
-
-      selectedRequestIds.value = storeRequests.value.map((req) => req.id);
-
-      let message = "";
-      let hasErrors = false;
-
-      if (processed > 0 || processedItems?.length > 0) {
-        message += `✅ Processed ${processed || processedItems?.length || 0} items successfully. `;
-      }
-
-      if (autoInitializedItems && autoInitializedItems.length > 0) {
-        message += `\n📦 Auto-initialized ${autoInitializedItems.length} item(s): `;
-        autoInitializedItems.slice(0, 3).forEach((item) => {
-          message += `${item.itemCode || item.itemName}, `;
-        });
-        if (autoInitializedItems.length > 3) {
-          message += `+${autoInitializedItems.length - 3} more. `;
-        }
-      }
-
-      if (missingItems && missingItems.length > 0) {
-        hasErrors = true;
-        message += `\n⚠️ ${missingItems.length} item(s) need initialization: `;
-        missingItems.slice(0, 3).forEach((item) => {
-          message += `${item.itemCode || "Unknown"}, `;
-        });
-        if (missingItems.length > 3) {
-          message += `+${missingItems.length - 3} more. `;
-        }
-        message += `\n💡 Please initialize these items first.`;
-      }
-
-      const alreadyProcessedCount =
-        processedIds.length - (processedItems?.length || 0);
-
-      if (alreadyProcessedCount > 0 && processed === 0) {
-        message += `\n⏭️ ${alreadyProcessedCount} request(s) were already processed by your group and have been removed from your list.`;
-      }
-
-      if (partialRequests && partialRequests.length > 0) {
-        message += `\n\n⏳ ${partialRequests.length} request(s) partially processed:`;
-        partialRequests.forEach((req) => {
-          const remainingNames = req.remainingGroups.join(", ");
-          message += `\n   • ${req.requestCode}: ${req.remainingCount} group(s) remaining (${remainingNames})`;
-        });
-        message += `\n\n💡 The request will be finalized when ALL groups have processed it.`;
-      }
-
-      if (!message) {
-        message = response.message || "Requests processed!";
-      }
-
-      const remainingCount = storeRequests.value.length;
-
-      if (remainingCount === 0) {
-        message += `\n\n🎉 All requests have been processed by your group!`;
-        setTimeout(() => {
-          closeProcessModal();
-          showToastMessage(
-            "🎉 All requests processed by your group!",
-            "success",
-          );
-        }, 2000);
-      } else {
-        message += `\n\n📋 ${remainingCount} request(s) remaining in your list.`;
-      }
-
-      showToastMessage(message, hasErrors ? "warning" : "success");
-
-      await Promise.all([fetchBalances(), fetchApprovedRequests()]);
-    } else {
-      showToastMessage(response.error || "Failed to process requests", "error");
-    }
-  } catch (error) {
-    console.error("Error processing requests:", error);
-    showToastMessage(
-      error.response?.data?.error || "Error processing requests",
-      "error",
-    );
-  } finally {
-    processing.value = false;
-  }
+const onProcessSuccess = (data) => {
+  showToastMessage("Requests processed successfully!", "success");
+  fetchBalances();
+  fetchApprovedRequests();
 };
 
 // ================================================================
@@ -2750,15 +2094,10 @@ const printReport = () => {
     if (filterCategory.value) query.categoryId = filterCategory.value;
     if (filterStatus.value) query.status = filterStatus.value;
 
-    // console.log("🖨️ Navigating to print page with filters:", query);
-
     router
       .push({
         name: "print-store-balance",
         query: query,
-      })
-      .then(() => {
-        // console.log("✅ Navigation to print page successful");
       })
       .catch((err) => {
         console.error("❌ Navigation to print page failed:", err);
@@ -2779,35 +2118,40 @@ const closeExportModal = () => {
   showExportModal.value = false;
 };
 
-// ================================================================
-// PRINT & EXPORT
-// ================================================================
-
-// storebalance.vue - exportSelectedReport
 const exportSelectedReport = async () => {
-  exporting.value = true
+  exporting.value = true;
   try {
-    const storeId = filterStore.value ? Number(filterStore.value) : (userData.value?.assignedStore?.id || 28);
-    const groupId = filterGroup.value ? Number(filterGroup.value) : (userData.value?.assignedGroup?.id || 32);
-    const categoryId = filterCategory.value ? Number(filterCategory.value) : undefined;
+    const storeId = filterStore.value
+      ? Number(filterStore.value)
+      : userData.value?.assignedStore?.id || 28;
+    const groupId = filterGroup.value
+      ? Number(filterGroup.value)
+      : userData.value?.assignedGroup?.id || 32;
+    const categoryId = filterCategory.value
+      ? Number(filterCategory.value)
+      : undefined;
     const status = filterStatus.value || undefined;
-    
-    // <!-- console.log('📊 Exporting with storeId:', storeId, 'groupId:', groupId, 'categoryId:', categoryId, 'status:', status); -->
-    
-    const blob = await balanceService.exportBalances(exportType.value, storeId, groupId, categoryId, status);
+
+    const blob = await balanceService.exportBalances(
+      exportType.value,
+      storeId,
+      groupId,
+      categoryId,
+      status,
+    );
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `Store_Balance_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `Store_Balance_Report_${new Date().toISOString().split("T")[0]}.xlsx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
-    
-    showToastMessage('Excel export completed successfully!', 'success');
+
+    showToastMessage("Excel export completed successfully!", "success");
   } catch (error) {
-    console.error('Export error:', error);
-    showToastMessage('Failed to export data', 'error');
+    console.error("Export error:", error);
+    showToastMessage("Failed to export data", "error");
   } finally {
     exporting.value = false;
     closeExportModal();
@@ -2865,2579 +2209,9 @@ watch(
 
 <style scoped>
 /* ================================================================
-   PROCESS MODAL STYLES
-   ================================================================ */
-
-.process-modal .modal-container {
-  max-width: 750px;
-}
-
-.modal-header-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.modal-icon {
-  font-size: 28px;
-}
-
-.modal-subtitle {
-  font-size: 13px;
-  color: #94a3b8;
-  margin: 0;
-}
-
-.step-container {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s;
-}
-
-.step-container:hover {
-  border-color: #cbd5e1;
-}
-
-.step-indicator {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: #6a11cb;
-  color: white;
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.step-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.step-line {
-  flex: 1;
-  height: 1px;
-  background: #e2e8f0;
-}
-
-.step-content {
-  padding-left: 40px;
-}
-
-.form-select-enhanced {
-  width: 100%;
-  padding: 10px 14px;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 14px;
-  background: white;
-  transition: all 0.2s;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 36px;
-}
-
-.form-select-enhanced:focus {
-  outline: none;
-  border-color: #6a11cb;
-  box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.1);
-}
-
-.form-select-enhanced.has-value {
-  border-color: #6a11cb;
-  background-color: #faf5ff;
-}
-
-.form-hint {
-  display: block;
-  font-size: 12px;
-  color: #94a3b8;
-  margin-top: 6px;
-}
-
-.empty-requests {
-  text-align: center;
-  padding: 30px 20px;
-}
-
-.empty-requests .empty-icon {
-  font-size: 40px;
-  display: block;
-  margin-bottom: 10px;
-}
-
-.empty-requests p {
-  font-size: 15px;
-  color: #1e293b;
-  margin: 0;
-  font-weight: 500;
-}
-
-.empty-sub {
-  font-size: 13px;
-  color: #94a3b8;
-  margin-top: 4px;
-  display: block;
-}
-
-.select-all-container {
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  background: #f1f5f9;
-  border-radius: 8px;
-}
-
-.select-all-container:hover {
-  background: #e2e8f0;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  width: 100%;
-}
-
-.select-all-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #6a11cb;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.select-all-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.select-all-badge {
-  font-size: 11px;
-  font-weight: 500;
-  color: #64748b;
-  background: white;
-  padding: 2px 12px;
-  border-radius: 12px;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.requests-checkbox-list {
-  max-height: 280px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 4px;
-  background: white;
-}
-
-.requests-checkbox-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.requests-checkbox-list::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.requests-checkbox-list::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-
-.requests-checkbox-list::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-
-.request-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.request-checkbox:last-child {
-  border-bottom: none;
-}
-
-.request-checkbox:hover {
-  background: #f8fafc;
-}
-
-.request-checkbox.selected {
-  background: #f0fdf4;
-  border-left: 3px solid #22c55e;
-}
-
-.request-checkbox input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #6a11cb;
-  cursor: pointer;
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.request-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.request-header-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
-}
-
-.req-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-  font-family: 'Courier New', monospace;
-}
-
-.req-date {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.req-details {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.req-items-count {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.req-action {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 12px;
-}
-
-.req-action.action-add {
-  color: #22c55e;
-  background: #dcfce7;
-}
-
-.req-action.action-remove {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.req-status {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 12px;
-}
-
-.req-status.processed {
-  color: #16a34a;
-  background: #dcfce7;
-}
-
-.req-status.pending {
-  color: #f59e0b;
-  background: #fef3c7;
-}
-
-.req-remark {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 4px;
-  padding: 4px 10px;
-  background: #fef3c7;
-  border-radius: 6px;
-  display: inline-block;
-  max-width: 100%;
-}
-
-.selection-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: #f0fdf4;
-  border-radius: 8px;
-  border: 1px solid #bbf7d0;
-  margin-top: 12px;
-}
-
-.summary-icon {
-  font-size: 18px;
-}
-
-.summary-text {
-  font-size: 13px;
-  font-weight: 600;
-  color: #166534;
-}
-
-.summary-items {
-  font-size: 12px;
-  color: #64748b;
-  margin-left: auto;
-  background: white;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-.preview-container {
-  margin-top: 20px;
-  border-top: 2px solid #e2e8f0;
-  padding-top: 16px;
-}
-
-.preview-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.preview-icon {
-  font-size: 18px;
-}
-
-.preview-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.preview-badge {
-  font-size: 11px;
-  font-weight: 500;
-  color: white;
-  background: #6a11cb;
-  padding: 2px 12px;
-  border-radius: 12px;
-  margin-left: auto;
-}
-
-.preview-requests {
-  max-height: 200px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.preview-requests::-webkit-scrollbar {
-  width: 6px;
-}
-
-.preview-requests::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.preview-requests::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-
-.preview-request {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 10px 14px;
-  border: 1px solid #e2e8f0;
-}
-
-.preview-request:hover {
-  border-color: #cbd5e1;
-}
-
-.preview-request-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.preview-request-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-  font-family: 'Courier New', monospace;
-}
-
-.preview-action {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-.preview-action.action-add {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.preview-action.action-remove {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.preview-request-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-}
-
-.preview-item {
-  font-size: 12px;
-  color: #1e293b;
-  background: white;
-  padding: 2px 10px;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
-}
-
-.preview-qty {
-  font-weight: 600;
-  color: #64748b;
-  margin-left: 2px;
-}
-
-.preview-remark {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 6px;
-  padding: 4px 10px;
-  background: #fef3c7;
-  border-radius: 6px;
-}
-
-.action-summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.action-summary-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.action-summary-item.add {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-}
-
-.action-summary-item.remove {
-  background: #fef2f2;
-  border-color: #fecaca;
-}
-
-.action-icon {
-  font-size: 16px;
-}
-
-.action-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.action-count {
-  font-size: 16px;
-  font-weight: 700;
-  margin-left: auto;
-}
-
-.action-summary-item.add .action-count {
-  color: #166534;
-}
-
-.action-summary-item.remove .action-count {
-  color: #991b1b;
-}
-
-.confirmation-modal .modal-container {
-  max-width: 520px;
-}
-
-.confirmation-icon {
-  font-size: 48px;
-  text-align: center;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.confirmation-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-.confirmation-details {
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-row.highlight {
-  background: #fef3c7;
-  margin: 0 -16px;
-  padding: 6px 16px;
-  border-radius: 4px;
-  border-bottom: none;
-}
-
-.detail-label {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.detail-value {
-  color: #1e293b;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.warning-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 16px;
-  background: #fef2f2;
-  border-radius: 8px;
-  border: 1px solid #fecaca;
-  margin-bottom: 16px;
-}
-
-.warning-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.warning-text {
-  font-size: 13px;
-  color: #991b1b;
-  line-height: 1.5;
-}
-
-.requests-confirmation-list {
-  max-height: 120px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.requests-confirmation-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.requests-confirmation-list::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 2px;
-}
-
-.requests-confirmation-list::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 2px;
-}
-
-.confirmation-request {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: #f8fafc;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.confirmation-req-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-  font-family: 'Courier New', monospace;
-}
-
-.confirmation-req-items {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.confirmation-req-action {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 10px;
-  border-radius: 10px;
-  margin-left: auto;
-}
-
-.confirmation-req-action.action-add {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.confirmation-req-action.action-remove {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.confirmation-more {
-  text-align: center;
-  font-size: 12px;
-  color: #94a3b8;
-  padding: 4px;
-  font-style: italic;
-}
-
-.confirm-btn {
-  background: #dc2626 !important;
-}
-
-.confirm-btn:hover:not(:disabled) {
-  background: #b91c1c !important;
-}
-
-/* ================================================================
-   RESPONSIVE
-   ================================================================ */
-@media (max-width: 768px) {
-  .process-modal .modal-container {
-    max-width: 98%;
-    margin: 10px;
-  }
-
-  .step-content {
-    padding-left: 0;
-  }
-
-  .step-indicator {
-    flex-wrap: wrap;
-  }
-
-  .step-line {
-    display: none;
-  }
-
-  .action-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .confirmation-modal .modal-container {
-    max-width: 98%;
-  }
-
-  .preview-request-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-
-  .request-checkbox {
-    padding: 8px 10px;
-  }
-
-  .request-header-info {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .selection-summary {
-    flex-wrap: wrap;
-  }
-
-  .summary-items {
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 480px) {
-  .confirmation-request {
-    flex-wrap: wrap;
-  }
-
-  .confirmation-req-action {
-    margin-left: 0;
-  }
-
-  .detail-row {
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .modal-footer {
-    flex-direction: column;
-  }
-
-  .modal-footer button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .preview-item {
-    font-size: 11px;
-    padding: 1px 8px;
-  }
-
-  .select-all-container {
-    padding: 8px 12px;
-  }
-
-  .select-all-label {
-    flex-wrap: wrap;
-  }
-
-  .select-all-badge {
-    margin-left: 0;
-  }
-}
-
-
-/* ================================================================
    ALL EXISTING STYLES REMAIN THE SAME
    ================================================================ */
 
-/* ================================================================
-   ITEM NAME DISPLAY - UPDATED
-   ================================================================ */
-.item-name-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.4;
-  gap: 1px;
-}
-
-.item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 11px;
-}
-
-.item-common-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.item-standard-name {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 400;
-  font-style: italic;
-}
-
-/* ================================================================
-   CATEGORY TAG STYLES
-   ================================================================ */
-.category-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.category-tag.has-category {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.category-tag.no-category {
-  background: #f1f5f9;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .category-tag {
-    font-size: 10px;
-    padding: 1px 8px;
-  }
-}
-
-@media print {
-  .category-tag {
-    border: 1px solid #ddd;
-    padding: 1px 6px;
-  }
-}
-
-/* ================================================================
-   ITEM OPTION STYLES - UPDATED
-   ================================================================ */
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option:last-child {
-  border-bottom: none;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  width: 100%;
-}
-
-.item-option-left {
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-}
-
-.item-option-middle {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-common-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.item-option-standard-name {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-.item-option-right {
-  min-width: 80px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-brand {
-  font-size: 11px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-model {
-  font-size: 10px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 2px 12px;
-  border-radius: 10px;
-  min-width: 45px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-/* Selected Item Display - UPDATED */
-.selected-item-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-common-name {
-  color: #1e293b;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.selected-item-standard-name {
-  color: #64748b;
-  font-size: 12px;
-  font-style: italic;
-}
-
-.selected-item-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-.clear-selection:hover {
-  color: #dc2626;
-}
-
-/* ================================================================
-   ITEM FILTER ROW - NEW
-   ================================================================ */
-.item-filter-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-select-small {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  background: white;
-  min-width: 150px;
-  cursor: pointer;
-}
-
-/* ================================================================
-   RESPONSIVE - Item Selection
-   ================================================================ */
-@media (max-width: 768px) {
-  .item-filter-row {
-    flex-direction: column;
-  }
-
-  .filter-select-small {
-    width: 100%;
-  }
-
-  .item-option-content {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .item-option-left {
-    min-width: 80px;
-  }
-
-  .item-option-middle {
-    min-width: 100px;
-    flex: 1 1 100%;
-  }
-
-  .item-option-right {
-    min-width: 60px;
-  }
-
-  .selected-item-display {
-    font-size: 12px;
-    gap: 4px;
-  }
-}
-
-@media (max-width: 480px) {
-  .item-option-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .item-option-left {
-    min-width: auto;
-  }
-
-  .item-option-right {
-    min-width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .item-option-uom {
-    align-self: flex-start;
-    margin-left: 0;
-  }
-
-  .selected-item-display {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .clear-selection {
-    align-self: flex-end;
-  }
-}
-
-/* ================================================================
-   ITEM LOADING & NO RESULTS
-   ================================================================ */
-.item-loading {
-  text-align: center;
-  padding: 20px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.item-load-more {
-  text-align: center;
-  padding: 10px;
-  color: #94a3b8;
-  font-size: 12px;
-  font-style: italic;
-}
-
-.item-no-results {
-  text-align: center;
-  padding: 30px;
-  color: #94a3b8;
-  font-size: 14px;
-}
-
-/* ================================================================
-   MODALS
-   ================================================================ */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
-.modal-container {
-  background: white;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 700px;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.3s ease;
-}
-
-.balance-modal .modal-container {
-  max-width: 800px;
-}
-
-.process-modal .modal-container {
-  max-width: 750px;
-}
-
-.toggle-modal .modal-container {
-  max-width: 400px;
-}
-
-.export-modal .modal-container {
-  max-width: 400px;
-}
-
-.delete-modal .modal-container {
-  max-width: 450px;
-}
-
-.import-modal .modal-container {
-  max-width: 750px;
-}
-
-@media (max-width: 900px) {
-  .balance-modal .modal-container {
-    max-width: 95vw;
-  }
-
-  .process-modal .modal-container {
-    max-width: 95vw;
-  }
-
-  .import-modal .modal-container {
-    max-width: 95vw;
-  }
-}
-
-@media (max-width: 768px) {
-  .modal-container {
-    max-width: 98% !important;
-    margin: 10px;
-  }
-
-  .balance-modal .modal-container {
-    max-width: 98% !important;
-  }
-
-  .process-modal .modal-container {
-    max-width: 98% !important;
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-/* ================================================================
-   ALL EXISTING STYLES REMAIN THE SAME
-   ================================================================ */
-
-/* ================================================================
-   ITEM NAME DISPLAY - UPDATED
-   ================================================================ */
-.item-name-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.4;
-  gap: 1px;
-}
-
-.item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 11px;
-}
-
-.item-common-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.item-standard-name {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 400;
-  font-style: italic;
-}
-
-/* ================================================================
-   CATEGORY TAG STYLES
-   ================================================================ */
-.category-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.category-tag.has-category {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.category-tag.no-category {
-  background: #f1f5f9;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .category-tag {
-    font-size: 10px;
-    padding: 1px 8px;
-  }
-}
-
-@media print {
-  .category-tag {
-    border: 1px solid #ddd;
-    padding: 1px 6px;
-  }
-}
-
-/* ================================================================
-   ITEM OPTION STYLES - UPDATED
-   ================================================================ */
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option:last-child {
-  border-bottom: none;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  width: 100%;
-}
-
-.item-option-left {
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-}
-
-.item-option-middle {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-common-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.item-option-standard-name {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-.item-option-right {
-  min-width: 80px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-brand {
-  font-size: 11px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-model {
-  font-size: 10px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 2px 12px;
-  border-radius: 10px;
-  min-width: 45px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-/* Selected Item Display - UPDATED */
-.selected-item-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-common-name {
-  color: #1e293b;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.selected-item-standard-name {
-  color: #64748b;
-  font-size: 12px;
-  font-style: italic;
-}
-
-.selected-item-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-.clear-selection:hover {
-  color: #dc2626;
-}
-
-/* ================================================================
-   ITEM FILTER ROW - NEW
-   ================================================================ */
-.item-filter-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-select-small {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  background: white;
-  min-width: 150px;
-  cursor: pointer;
-}
-
-/* ================================================================
-   RESPONSIVE - Item Selection
-   ================================================================ */
-@media (max-width: 768px) {
-  .item-filter-row {
-    flex-direction: column;
-  }
-
-  .filter-select-small {
-    width: 100%;
-  }
-
-  .item-option-content {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .item-option-left {
-    min-width: 80px;
-  }
-
-  .item-option-middle {
-    min-width: 100px;
-    flex: 1 1 100%;
-  }
-
-  .item-option-right {
-    min-width: 60px;
-  }
-
-  .selected-item-display {
-    font-size: 12px;
-    gap: 4px;
-  }
-}
-
-@media (max-width: 480px) {
-  .item-option-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .item-option-left {
-    min-width: auto;
-  }
-
-  .item-option-right {
-    min-width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .item-option-uom {
-    align-self: flex-start;
-    margin-left: 0;
-  }
-
-  .selected-item-display {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .clear-selection {
-    align-self: flex-end;
-  }
-}
-
-.item-name-wrapper {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.4;
-  gap: 1px;
-}
-
-.item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 11px;
-}
-
-/* ✅ COMMON NAME - Primary (always shown) */
-.item-common-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-/* ✅ STANDARD NAME - Secondary (only shown if exists) */
-.item-standard-name {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 400;
-  font-style: italic;
-}
-/* ================================================================
-   CATEGORY TAG STYLES - ADD THIS
-   ================================================================ */
-.category-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.category-tag.has-category {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.category-tag.no-category {
-  background: #f1f5f9;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* Optional: Category color variants */
-.category-tag.raw-material {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.category-tag.finished-good {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.category-tag.packaging {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.category-tag.chemicals {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.category-tag.electronics {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .category-tag {
-    font-size: 10px;
-    padding: 1px 8px;
-  }
-}
-
-@media print {
-  .category-tag {
-    border: 1px solid #ddd;
-    padding: 1px 6px;
-  }
-}
-
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option:last-child {
-  border-bottom: none;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  width: 100%;
-}
-
-/* Left: Code */
-.item-option-left {
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-}
-
-/* Middle: Standard Name & Common Name (stacked) */
-.item-option-middle {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-.item-option-common {
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.2;
-}
-
-/* Right: Brand & Model (stacked) */
-.item-option-right {
-  min-width: 80px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-brand {
-  font-size: 11px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-model {
-  font-size: 10px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* Far Right: UOM */
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 2px 12px;
-  border-radius: 10px;
-  min-width: 45px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-/* Selected Item Display */
-.selected-item-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-name {
-  color: #1e293b;
-  font-size: 13px;
-}
-
-.selected-item-common {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.selected-item-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-
-.clear-selection:hover {
-  color: #dc2626;
-}
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
-.modal-container {
-  background: white;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 700px; /* ✅ INCREASED FROM 500px to 700px */
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.3s ease;
-}
-
-/* Balance Modal - Extra Wide */
-.balance-modal .modal-container {
-  max-width: 800px; /* ✅ EVEN WIDER for balance modal */
-}
-
-.process-modal .modal-container {
-  max-width: 750px;
-}
-
-.toggle-modal .modal-container {
-  max-width: 400px;
-}
-
-.export-modal .modal-container {
-  max-width: 400px;
-}
-
-.delete-modal .modal-container {
-  max-width: 450px;
-}
-
-.import-modal .modal-container {
-  max-width: 750px;
-}
-
-/* Responsive */
-@media (max-width: 900px) {
-  .balance-modal .modal-container {
-    max-width: 95vw;
-  }
-
-  .process-modal .modal-container {
-    max-width: 95vw;
-  }
-
-  .import-modal .modal-container {
-    max-width: 95vw;
-  }
-}
-
-@media (max-width: 768px) {
-  .modal-container {
-    max-width: 98% !important;
-    margin: 10px;
-  }
-
-  .balance-modal .modal-container {
-    max-width: 98% !important;
-  }
-
-  .process-modal .modal-container {
-    max-width: 98% !important;
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-/* ================================================================
-   ENHANCED ITEM OPTION STYLES - STACKED LAYOUT
-   ================================================================ */
-
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option:last-child {
-  border-bottom: none;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  width: 100%;
-}
-
-/* Left: Code */
-.item-option-left {
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-}
-
-/* Middle: Standard Name (primary) & Name (secondary) - stacked */
-.item-option-middle {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-standard-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.item-option-name {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-/* Right: Brand & Model (stacked) */
-.item-option-right {
-  min-width: 80px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.item-option-brand {
-  font-size: 11px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.item-option-model {
-  font-size: 10px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* Far Right: UOM */
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 2px 12px;
-  border-radius: 10px;
-  min-width: 45px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-/* Selected Item Display */
-.selected-item-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-standard-name {
-  color: #1e293b;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.selected-item-name {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.selected-item-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-
-.clear-selection:hover {
-  color: #dc2626;
-}
-
-/* ================================================================
-   RESPONSIVE - Item Selection
-   ================================================================ */
-@media (max-width: 768px) {
-  .item-option-content {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .item-option-left {
-    min-width: 80px;
-  }
-
-  .item-option-middle {
-    min-width: 100px;
-    flex: 1 1 100%;
-  }
-
-  .item-option-right {
-    min-width: 60px;
-  }
-
-  .item-option-brand,
-  .item-option-model {
-    font-size: 9px;
-    padding: 1px 6px;
-  }
-
-  .selected-item-display {
-    font-size: 12px;
-    gap: 4px;
-  }
-}
-
-@media (max-width: 480px) {
-  .item-option-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .item-option-left {
-    min-width: auto;
-  }
-
-  .item-option-right {
-    min-width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .item-option-uom {
-    align-self: flex-start;
-    margin-left: 0;
-  }
-
-  .selected-item-display {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .clear-selection {
-    align-self: flex-end;
-  }
-}
-
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option:last-child {
-  border-bottom: none;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.item-option-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 500;
-  min-width: 120px;
-}
-
-.item-option-common {
-  font-size: 11px;
-  color: #94a3b8;
-  min-width: 80px;
-}
-
-.item-option-brand {
-  font-size: 12px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 10px;
-  border-radius: 10px;
-  min-width: 60px;
-  text-align: center;
-}
-
-.item-option-model {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 10px;
-  border-radius: 10px;
-  min-width: 60px;
-  text-align: center;
-}
-
-.item-option-uom {
-  font-size: 11px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 1px 10px;
-  border-radius: 10px;
-  min-width: 50px;
-  text-align: center;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-/* ================================================================
-   ENHANCED ITEM SELECTION STYLES
-   ================================================================ */
-
-.full-width {
-  flex: 1 1 100%;
-  min-width: 100%;
-}
-
-.item-filter-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-select-small {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  background: white;
-  min-width: 150px;
-  cursor: pointer;
-}
-
-.item-search-wrapper {
-  position: relative;
-  flex: 1;
-  min-width: 150px;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.item-search-input {
-  width: 100%;
-  padding: 6px 10px 6px 30px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 12px;
-  background: #f8fafc;
-  transition: all 0.2s;
-}
-
-.item-search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: white;
-}
-
-.item-select-container {
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  max-height: 220px;
-  overflow: hidden;
-  transition: border-color 0.2s;
-  margin-top: 4px;
-}
-
-.item-select-container:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.item-select-scroll {
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.item-select-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.item-select-scroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.item-select-scroll::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-
-.item-select-scroll::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-
-.item-option {
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-}
-
-.item-option:hover {
-  background: #f1f5f9;
-}
-
-.item-option.selected {
-  background: #dbeafe;
-  border: 1px solid #93bbfc;
-}
-
-.item-option-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.item-option-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-  min-width: 90px;
-}
-
-.item-option-name {
-  font-size: 13px;
-  color: #1e293b;
-  flex: 1;
-}
-
-.item-option-common {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.item-option-uom {
-  font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 8px;
-  border-radius: 10px;
-}
-
-.item-loading {
-  text-align: center;
-  padding: 10px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.item-no-results {
-  text-align: center;
-  padding: 20px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.selected-item-display {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.selected-badge {
-  font-weight: 600;
-  color: #166534;
-  font-size: 12px;
-}
-
-.selected-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.selected-item-name {
-  color: #1e293b;
-  font-size: 13px;
-}
-
-.selected-item-uom {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.clear-selection {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ef4444;
-  font-size: 14px;
-  padding: 0 4px;
-  margin-left: auto;
-}
-
-.clear-selection:hover {
-  color: #dc2626;
-}
-
-/* ================================================================
-   RESPONSIVE - Item Selection
-   ================================================================ */
-@media (max-width: 768px) {
-  .item-filter-row {
-    flex-direction: column;
-  }
-
-  .filter-select-small {
-    width: 100%;
-  }
-
-  .item-search-wrapper {
-    width: 100%;
-  }
-
-  .item-option-content {
-    gap: 6px;
-  }
-
-  .item-option-common {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .item-option-code {
-    min-width: 70px;
-    font-size: 11px;
-  }
-
-  .item-option-name {
-    font-size: 12px;
-  }
-
-  .item-option-uom {
-    font-size: 10px;
-  }
-}
-
-.req-status {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 4px;
-}
-
-.req-status.processed {
-  color: #16a34a;
-  background: #dcfce7;
-}
-
-.req-status.pending {
-  color: #f59e0b;
-  background: #fef3c7;
-}
-.badge-count {
-  display: inline-block;
-  background: #ef4444;
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 12px;
-  margin-left: 4px;
-}
-/* In the style section, add these */
-.hint.pre-filled {
-  color: #2563eb;
-  font-weight: 500;
-}
-
-.hint.warning {
-  color: #f59e0b;
-  font-weight: 500;
-}
-
-.hint.info {
-  color: #3b82f6;
-}
-
-select:disabled {
-  background: #f1f5f9;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-select:disabled + .hint {
-  margin-top: 4px;
-}
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -5598,24 +2372,6 @@ select:disabled + .hint {
   margin-left: auto;
 }
 
-.btn-print {
-  background: #8b5cf6;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s;
-}
-
-.btn-print:hover {
-  background: #7c3aed;
-}
-
 .btn-export {
   background: #10b981;
   color: white;
@@ -5632,54 +2388,6 @@ select:disabled + .hint {
 
 .btn-export:hover {
   background: #059669;
-}
-
-/* ================================================================
-   STATS
-   ================================================================ */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.stat-card {
-  background: #f8fafc;
-  padding: 14px 16px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.2s;
-}
-
-.stat-card:hover {
-  background: #f1f5f9;
-}
-
-.stat-icon {
-  font-size: 24px;
-  background: white;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  flex-shrink: 0;
-}
-
-.stat-number {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: #64748b;
 }
 
 /* ================================================================
@@ -5717,11 +2425,6 @@ select:disabled + .hint {
   text-align: center;
 }
 
-.store-name {
-  font-weight: 500;
-  font-size: 12px;
-}
-
 .item-name-wrapper {
   display: flex;
   flex-direction: column;
@@ -5734,14 +2437,17 @@ select:disabled + .hint {
   font-size: 11px;
 }
 
-.standard-name {
-  font-size: 12px;
+.item-common-name {
+  font-size: 13px;
+  font-weight: 600;
   color: #1e293b;
 }
 
-.common-name {
-  font-size: 10px;
-  color: #94a3b8;
+.item-standard-name {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 400;
+  font-style: italic;
 }
 
 .group-tag {
@@ -5915,33 +2621,46 @@ select:disabled + .hint {
 /* ================================================================
    MODALS
    ================================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
 
 .modal-container {
   background: white;
-  border-radius: 12px;
-  width: 120%;
-  max-width: 500px;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 700px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
 }
 
-.process-modal .modal-container {
-  max-width: 650px;
+.balance-modal .modal-container {
+  max-width: 800px;
 }
 
 .toggle-modal .modal-container {
-  max-width: 380px;
+  max-width: 400px;
 }
 
 .export-modal .modal-container {
-  max-width: 380px;
+  max-width: 400px;
 }
 
 .delete-modal .modal-container {
-  max-width: 400px;
+  max-width: 450px;
 }
 
 .modal-header {
@@ -5997,6 +2716,26 @@ select:disabled + .hint {
   color: #1e293b;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* ================================================================
    FORMS
    ================================================================ */
@@ -6050,68 +2789,6 @@ select:disabled + .hint {
   font-size: 10px;
   color: #94a3b8;
   margin-top: 2px;
-}
-
-.process-modal .form-group {
-  margin-bottom: 12px;
-}
-
-.process-modal .form-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 4px;
-}
-
-.process-modal .form-group select {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-}
-
-.process-modal .form-group select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-/* ================================================================
-   INITIALIZE BALANCE TABS
-   ================================================================ */
-.init-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  padding: 4px;
-}
-
-.init-tab {
-  flex: 1;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  background: transparent;
-  color: #64748b;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-
-.init-tab.active {
-  background: white;
-  color: #1e293b;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.init-tab:hover:not(.active) {
-  background: #e2e8f0;
 }
 
 /* ================================================================
@@ -6389,330 +3066,6 @@ select:disabled + .hint {
 }
 
 /* ================================================================
-   PROCESS REQUESTS MODAL
-   ================================================================ */
-.process-info {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: #f0fdf4;
-  border-radius: 8px;
-  border: 1px solid #bbf7d0;
-}
-
-.process-info-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.process-info .info-icon {
-  font-size: 16px;
-}
-
-.info-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.process-rules {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 12px;
-  color: #475569;
-}
-
-.process-rules li {
-  margin: 4px 0;
-}
-
-.text-success {
-  color: #22c55e;
-  font-weight: 600;
-}
-
-.text-danger {
-  color: #ef4444;
-  font-weight: 600;
-}
-
-.requests-checkbox-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 4px;
-}
-
-.request-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.request-checkbox:hover {
-  background: #f8fafc;
-}
-
-.request-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.request-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 12px;
-}
-
-.req-code {
-  font-weight: 600;
-  color: #2563eb;
-}
-
-.req-date {
-  color: #94a3b8;
-}
-
-.req-items-count {
-  color: #475569;
-  font-size: 11px;
-}
-
-.req-action {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 4px;
-}
-
-.req-action.action-add {
-  color: #22c55e;
-  background: #dcfce7;
-}
-
-.req-action.action-remove {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.select-all-container {
-  margin-bottom: 8px;
-  padding: 6px 0;
-}
-
-.select-all-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-  cursor: pointer;
-}
-
-.no-requests {
-  text-align: center;
-  padding: 30px 20px;
-  color: #94a3b8;
-}
-
-.no-requests-icon {
-  font-size: 32px;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.requests-preview {
-  margin-top: 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.badge-info {
-  background: #dbeafe;
-  color: #1e40af;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-}
-
-.requests-list {
-  max-height: 250px;
-  overflow-y: auto;
-}
-
-.request-item {
-  padding: 10px 14px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.request-item:last-child {
-  border-bottom: none;
-}
-
-.request-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.request-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 13px;
-}
-
-.request-date {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.request-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
-.request-item-detail {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #1e293b;
-}
-
-.item-qty {
-  font-weight: 600;
-  color: #475569;
-}
-
-.item-uom {
-  color: #94a3b8;
-  font-size: 10px;
-}
-
-.item-action {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-
-.item-action.action-add {
-  color: #22c55e;
-  background: #dcfce7;
-}
-
-.item-action.action-remove {
-  color: #ef4444;
-  background: #fee2e2;
-}
-
-.request-remark {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #64748b;
-}
-
-.remark-label {
-  font-weight: 500;
-  color: #94a3b8;
-}
-
-/* ================================================================
-   TOAST
-   ================================================================ */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 3px solid #10b981;
-  white-space: nowrap;
-  max-width: 90vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 13px;
-}
-
-.toast.error {
-  border-left-color: #ef4444;
-}
-
-.toast.info {
-  border-left-color: #3b82f6;
-}
-
-.toast.warning {
-  border-left-color: #f59e0b;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* ================================================================
-   EMPTY STATE
-   ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 30px !important;
-}
-
-.empty-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.empty-icon {
-  font-size: 36px;
-  opacity: 0.3;
-}
-
-.empty-content p {
-  color: #64748b;
-  margin: 0;
-  font-size: 14px;
-}
-
-/* ================================================================
    DELETE MODAL
    ================================================================ */
 .delete-icon {
@@ -6863,31 +3216,73 @@ select:disabled + .hint {
 }
 
 /* ================================================================
-   PRINT STYLES
+   TOAST
    ================================================================ */
-@media print {
-  .btn-add,
-  .btn-print,
-  .btn-export,
-  .btn-process-requests,
-  .search-box,
-  .filter-bar,
-  .pagination,
-  .action-buttons,
-  .icon-btn {
-    display: none !important;
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+  animation: slideIn 0.3s ease;
+  border-left: 3px solid #10b981;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.toast.error {
+  border-left-color: #ef4444;
+}
+
+.toast.info {
+  border-left-color: #3b82f6;
+}
+
+.toast.warning {
+  border-left-color: #f59e0b;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
   }
-  .section-card {
-    box-shadow: none !important;
-    padding: 0 !important;
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
-  .balance-table th,
-  .balance-table td {
-    border: 1px solid #ddd !important;
-  }
-  .stats-grid {
-    display: none !important;
-  }
+}
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 30px !important;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-icon {
+  font-size: 36px;
+  opacity: 0.3;
+}
+
+.empty-content p {
+  color: #64748b;
+  margin: 0;
+  font-size: 14px;
 }
 
 /* ================================================================
@@ -6915,9 +3310,6 @@ select:disabled + .hint {
     margin-left: 0;
     justify-content: flex-start;
   }
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-  }
   .pagination {
     flex-wrap: wrap;
   }
@@ -6928,26 +3320,6 @@ select:disabled + .hint {
     margin: 10px;
     max-width: 100% !important;
   }
-  .process-modal .modal-container {
-    max-width: 100% !important;
-  }
-  .request-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-  .request-items {
-    flex-direction: column;
-    gap: 2px;
-  }
-  .preview-header {
-    flex-direction: column;
-    gap: 4px;
-    align-items: flex-start;
-  }
-  .request-info {
-    flex-wrap: wrap;
-  }
   .init-tabs {
     flex-direction: column;
   }
@@ -6957,18 +3329,345 @@ select:disabled + .hint {
 }
 
 @media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
   .balance-table {
     font-size: 11px;
     min-width: 600px;
   }
-  .requests-checkbox-list {
-    max-height: 150px;
+}
+
+/* ================================================================
+   ITEM SELECTION STYLES
+   ================================================================ */
+.full-width {
+  flex: 1 1 100%;
+  min-width: 100%;
+}
+
+.item-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 150px;
+}
+
+.search-icon-small {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.item-search-input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.item-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+}
+
+.item-select-container {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  max-height: 220px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  margin-top: 4px;
+}
+
+.item-select-container:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.item-select-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.item-select-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.item-select-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+
+.item-select-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.item-option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 2px;
+}
+
+.item-option:hover {
+  background: #f1f5f9;
+}
+
+.item-option.selected {
+  background: #dbeafe;
+  border: 1px solid #93bbfc;
+}
+
+.item-option-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.item-option-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+  min-width: 90px;
+}
+
+.item-option-common-name {
+  font-size: 13px;
+  color: #1e293b;
+  flex: 1;
+}
+
+.item-option-standard-name {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.item-option-brand {
+  font-size: 11px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.item-option-model {
+  font-size: 10px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.item-option-uom {
+  font-size: 11px;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 12px;
+  border-radius: 10px;
+  min-width: 45px;
+  text-align: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.item-loading {
+  text-align: center;
+  padding: 10px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.item-no-results {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.item-load-more {
+  text-align: center;
+  padding: 10px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.selected-item-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.selected-badge {
+  font-weight: 600;
+  color: #166534;
+  font-size: 12px;
+}
+
+.selected-item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.selected-item-common-name {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.selected-item-standard-name {
+  color: #64748b;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.selected-item-brand {
+  font-size: 12px;
+  color: #8b5cf6;
+  background: #f3e8ff;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-model {
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+.selected-item-uom {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.clear-selection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 14px;
+  padding: 0 4px;
+  margin-left: auto;
+}
+
+.clear-selection:hover {
+  color: #dc2626;
+}
+
+/* ================================================================
+   PRINT STYLES
+   ================================================================ */
+@media print {
+  .btn-add,
+  .btn-export,
+  .btn-process-requests,
+  .search-box,
+  .filter-bar,
+  .pagination,
+  .action-buttons,
+  .icon-btn {
+    display: none !important;
   }
-  .requests-list {
-    max-height: 150px;
+  .section-card {
+    box-shadow: none !important;
+    padding: 0 !important;
   }
+  .balance-table th,
+  .balance-table td {
+    border: 1px solid #ddd !important;
+  }
+}
+
+/* ================================================================
+   CATEGORY TAG STYLES
+   ================================================================ */
+.category-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.category-tag.has-category {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.category-tag.no-category {
+  background: #f1f5f9;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .category-tag {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
+}
+
+@media print {
+  .category-tag {
+    border: 1px solid #ddd;
+    padding: 1px 6px;
+  }
+}
+
+.hint.pre-filled {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.hint.warning {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.hint.info {
+  color: #3b82f6;
+}
+
+select:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+select:disabled + .hint {
+  margin-top: 4px;
+}
+
+.badge-count {
+  display: inline-block;
+  background: #ef4444;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 12px;
+  margin-left: 4px;
 }
 </style>

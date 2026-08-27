@@ -1,4 +1,5 @@
-<!-- views/storemanagement/storetransaction/storetransaction.vue - COMPLETE WITH WORKING PAGINATION -->
+<!-- views/storemanagement/storetransaction/storetransaction.vue - WITHOUT GRN, SIV & DATE FILTERS -->
+
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -23,81 +24,77 @@
             <span v-else>📊</span>
             {{ exporting ? "Report..." : "Report" }}
           </button>
-          <button class="btn-print" @click="printReport">🖨️ Print</button>
+          <button class="btn-print" @click="printReport">🖨️ Stock Card</button>
+          <!-- Collapse Toggle Button -->
+          <button class="btn-filter-toggle" @click="toggleFilters">
+            {{ showFilters ? '▲ Hide Filters' : '▼ Show Filters' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- ==================== FILTERS ==================== -->
-  <!-- ==================== FILTERS ==================== -->
-<div class="filter-bar">
-  <!-- Only show Store filter for admin users -->
-  <div class="filter-group" v-if="userIsAdmin">
-    <select 
-      v-model="filterStore" 
-      class="filter-select" 
-      @change="onFilterChange"
-    >
-      <option value="">All Stores</option>
-      <option v-for="store in stores" :key="store.id" :value="store.id">
-        {{ store.name }}
-      </option>
-    </select>
-  </div>
-  
-  <!-- Only show Group filter for admin users -->
-  <div class="filter-group" v-if="userIsAdmin">
-    <select 
-      v-model="filterGroup" 
-      class="filter-select" 
-      @change="onFilterChange"
-    >
-      <option value="">All Groups</option>
-      <option v-for="group in allGroups" :key="group.id" :value="group.id">
-        {{ group.name }}
-      </option>
-    </select>
-  </div>
-  
-  <!-- ✅ CATEGORY FILTER - Visible to all users -->
-  <div class="filter-group">
-    <select 
-      v-model="filterCategory" 
-      class="filter-select" 
-      @change="onFilterChange"
-    >
-      <option value="">All Categories</option>
-      <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-        {{ cat.name }}
-      </option>
-    </select>
-  </div>
-  
-  <select v-model="filterType" class="filter-select" @change="onFilterChange">
-    <option value="">All Types</option>
-    <option value="Stock In">📥 Stock In</option>
-    <option value="Stock Out">📤 Stock Out</option>
-  </select>
-  <select v-model="filterDate" class="filter-select" @change="onFilterChange">
-    <option value="">All Dates</option>
-    <option value="today">Today</option>
-    <option value="yesterday">Yesterday</option>
-    <option value="week">This Week</option>
-    <option value="month">This Month</option>
-    <option value="3months">Last 3 Months</option>
-    <option value="6months">Last 6 Months</option>
-    <option value="12months">Last 12 Months</option>
-  </select>
+    <!-- ==================== FILTERS - COLLAPSIBLE ==================== -->
+    <div class="filter-wrapper" :class="{ 'filter-expanded': showFilters }">
+      <div class="filter-bar">
+        <!-- Only show Store filter for admin users -->
+        <div class="filter-group" v-if="userIsAdmin">
+          <select 
+            v-model="filterStore" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Stores</option>
+            <option v-for="store in stores" :key="store.id" :value="store.id">
+              {{ store.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Only show Group filter for admin users -->
+        <div class="filter-group" v-if="userIsAdmin">
+          <select 
+            v-model="filterGroup" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Groups</option>
+            <option v-for="group in allGroups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Category Filter - Visible to all users -->
+        <div class="filter-group">
+          <select 
+            v-model="filterCategory" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Categories</option>
+            <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Type Filter -->
+        <select v-model="filterType" class="filter-select" @change="onFilterChange">
+          <option value="">All Types</option>
+          <option value="Stock In">📥 Stock In</option>
+          <option value="Stock Out">📤 Stock Out</option>
+        </select>
 
-  <!-- Clear filters button - Only show for admin users -->
-  <button 
-    class="btn-clear-filters" 
-    @click="clearFilters" 
-    v-if="hasActiveFilters && userIsAdmin"
-  >
-    ✕ Clear Filters
-  </button>
-</div>
+        <!-- Clear filters button -->
+        <button 
+          class="btn-clear-filters" 
+          @click="clearFilters" 
+          v-if="hasActiveFilters"
+        >
+          ✕ Clear Filters
+        </button>
+      </div>
+    </div>
 
     <!-- ==================== STATS ==================== -->
     <div class="stats-grid" v-if="!isLoading">
@@ -133,7 +130,7 @@
       <table v-else class="transaction-table">
         <thead>
           <tr>
-            <th style="width:35px"></th>
+            <th style="width:30px"></th>
             <th>Date</th>
             <th>Item Code</th>
             <th>Item</th>
@@ -162,16 +159,13 @@
                   {{ expandedRow === transaction.id ? "▼" : "▶" }}
                 </button>
               </td>
-            <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
-
+              <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
               <td>
                 <span class="item-code">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span>
               </td>
               <td>
                 <div class="item-info">
-                  <!-- ✅ COMMON NAME - Primary (always shown) -->
                   <div class="item-common-name">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</div>
-                  <!-- ✅ STANDARD NAME - Secondary (only shown if exists) -->
                   <div class="item-standard-name" v-if="transaction.itemStandardName || getItemStandardName(transaction.itemId)">
                     {{ transaction.itemStandardName || getItemStandardName(transaction.itemId) }}
                   </div>
@@ -296,7 +290,6 @@ import { useAuthStore } from '@/stores/auth'
 import transactionService from '@/stores/transactionService'
 import balanceService from '@/stores/balanceService'
 
-
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
@@ -330,13 +323,15 @@ const userAssignedGroupId = ref(null)
 const userAssignedGroupName = ref(null)
 const userIsAdmin = ref(false)
 
+// Collapse state - default hidden
+const showFilters = ref(false)
+
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterGroup = ref('')
 const filterCategory = ref('')
 const filterItem = ref('')
 const filterType = ref('')
-const filterDate = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
 const expandedRow = ref(null)
@@ -353,10 +348,10 @@ const toastType = ref('success')
 // ================================================================
 
 const hasActiveFilters = computed(() => {
-  return filterStore.value || filterGroup.value || filterCategory.value || filterItem.value || filterType.value || filterDate.value || searchQuery.value
+  return filterStore.value || filterGroup.value || filterCategory.value || 
+         filterItem.value || filterType.value || searchQuery.value
 })
 
-// ✅ Use server-side pagination - transactions already contains the current page
 const totalPages = computed(() => {
   return paginationInfo.value.totalPages || 1
 })
@@ -403,6 +398,14 @@ const loadUserData = () => {
 }
 
 // ================================================================
+// UI HELPERS - Collapse Toggle
+// ================================================================
+
+const toggleFilters = () => {
+  showFilters.value = !showFilters.value
+}
+
+// ================================================================
 // API METHODS
 // ================================================================
 
@@ -445,23 +448,19 @@ const fetchItems = async () => {
   }
 }
 
-// ✅ FIXED: fetchTransactions with server-side pagination
 const fetchTransactions = async () => {
   isLoading.value = true
   try {
     const filters = {}
     
-    // If non-admin with assigned store, filter by their store
     if (!userIsAdmin.value && userAssignedStoreId.value) {
       filters.storeId = userAssignedStoreId.value
     }
     
-    // If non-admin with assigned group, filter by their group
     if (!userIsAdmin.value && userAssignedGroupId.value) {
       filters.groupId = userAssignedGroupId.value
     }
     
-    // Add UI filters
     if (userIsAdmin.value) {
       if (filterStore.value) {
         filters.storeId = Number(filterStore.value)
@@ -486,7 +485,6 @@ const fetchTransactions = async () => {
       filters.search = searchQuery.value
     }
     
-    // ✅ Server-side pagination
     filters.page = currentPage.value
     filters.limit = pageSize.value
     
@@ -568,23 +566,21 @@ const formatNumber = (num) => {
 }
 
 // ================================================================
-// DATE FORMATTING FUNCTIONS - 12-HOUR FORMAT WITH AM/PM
+// DATE FORMATTING FUNCTIONS
 // ================================================================
 
 const formatDateTime = (dateString) => {
   if (!dateString) return ''
-  // ✅ Convert UTC to local time with 12-hour format
   return dayjs.utc(dateString)
     .add(6, 'hour')
-    .format('MMM D, YYYY h:mm A')  // ✅ h = 12-hour, A = AM/PM
+    .format('MMM D, YYYY h:mm A')
 }
 
 const formatDateShort = (dateString) => {
   if (!dateString) return ''
-  // ✅ Convert UTC to local time with 12-hour format
   return dayjs.utc(dateString)
     .add(6, 'hour')
-    .format('MMM D, h:mm A')  // ✅ h = 12-hour, A = AM/PM
+    .format('MMM D, h:mm A')
 }
 
 // ================================================================
@@ -615,7 +611,6 @@ const clearFilters = () => {
   filterCategory.value = ''
   filterItem.value = ''
   filterType.value = ''
-  filterDate.value = ''
   searchQuery.value = ''
   currentPage.value = 1
   showToastMessage('Filters cleared', 'info')
@@ -644,7 +639,6 @@ const printReport = () => {
   if (filterCategory.value) query.categoryId = filterCategory.value
   if (filterItem.value) query.itemId = filterItem.value
   if (filterType.value) query.type = filterType.value
-  if (filterDate.value) query.date = filterDate.value
   if (searchQuery.value) query.search = searchQuery.value
   
   router.push({
@@ -661,7 +655,6 @@ const openExportModal = () => {
 const closeExportModal = () => {
   showExportModal.value = false
 }
-
 
 const exportSelectedReport = async () => {
   exporting.value = true
@@ -848,6 +841,87 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.btn-filter-toggle {
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-filter-toggle:hover {
+  background: #e2e8f0;
+}
+
+/* ================================================================
+   FILTER WRAPPER - COLLAPSIBLE
+   ================================================================ */
+.filter-wrapper {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, margin 0.3s ease;
+  margin-bottom: 0;
+}
+
+.filter-wrapper.filter-expanded {
+  max-height: 400px;
+  margin-bottom: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.filter-select {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.filter-select:disabled {
+  background: #f1f5f9;
+  color: #475569;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.btn-clear-filters {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-clear-filters:hover { background: #e2e8f0; }
+
 /* ================================================================
    BUTTONS
    ================================================================ */
@@ -916,62 +990,6 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
-
-/* ================================================================
-   FILTER BAR
-   ================================================================ */
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  position: relative;
-}
-
-.filter-select {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  font-size: 13px;
-  cursor: pointer;
-  min-width: 150px;
-}
-
-.filter-select:disabled {
-  background: #f1f5f9;
-  color: #475569;
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
-.filter-hint {
-  font-size: 10px;
-  color: #2563eb;
-  font-weight: 500;
-  padding-left: 4px;
-  white-space: nowrap;
-}
-
-.btn-clear-filters {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  color: #64748b;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-clear-filters:hover { background: #e2e8f0; }
 
 /* ================================================================
    STATS
@@ -1060,22 +1078,6 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.store-name {
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #eff6ff;
-  color: #2563eb;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
 .type-badge {
   display: inline-block;
   padding: 3px 12px;
@@ -1096,7 +1098,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   ITEM INFO - UPDATED
+   ITEM INFO
    ================================================================ */
 .item-info {
   display: flex;
@@ -1110,7 +1112,6 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-/* ✅ COMMON NAME - Primary (always shown) */
 .item-common-name {
   font-size: 13px;
   font-weight: 600;
@@ -1118,7 +1119,6 @@ onMounted(async () => {
   line-height: 1.3;
 }
 
-/* ✅ STANDARD NAME - Secondary (only shown if exists) */
 .item-standard-name {
   font-size: 11px;
   color: #64748b;
@@ -1408,7 +1408,7 @@ onMounted(async () => {
    PRINT STYLES
    ================================================================ */
 @media print {
-  .btn-export, .btn-print, .search-box, .filter-bar, .pagination, .action-buttons, .expand-btn {
+  .btn-export, .btn-print, .search-box, .filter-wrapper, .pagination, .action-buttons, .expand-btn, .btn-filter-toggle {
     display: none !important;
   }
   .section-card { box-shadow: none !important; padding: 0 !important; }
@@ -1456,6 +1456,7 @@ onMounted(async () => {
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
   .filter-group { width: 100%; }
+  .filter-wrapper.filter-expanded { max-height: 600px; }
   
   .item-common-name {
     font-size: 12px;

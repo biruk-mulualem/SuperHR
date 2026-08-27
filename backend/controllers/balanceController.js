@@ -1299,19 +1299,21 @@ exports.getApprovedRequests = async (req, res) => {
 
 
 // ================================================================
-// PROCESS REQUESTS - FIXED WITH CORRECT USER ID
+// PROCESS REQUESTS - WITH GRN/SIV SUPPORT
 // ================================================================
 
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { storeId, groupId, requestIds } = req.body;
+    // ✅ ADDED: documentRefs to payload
+    const { storeId, groupId, requestIds, documentRefs } = req.body;
 
     console.log("📤 Processing requests payload:", {
       storeId,
       groupId,
       requestIds,
+      documentRefs,
     });
 
     // ================================================================
@@ -1335,11 +1337,10 @@ exports.processRequests = async (req, res) => {
     console.log("✅ Valid request IDs:", validRequestIds);
 
     // ================================================================
-    // 2. GET USER ID - FIXED: Use the actual logged-in user
+    // 2. GET USER ID
     // ================================================================
     const userId = req.user?.userId;
     
-    // ✅ LOG THE USER INFO
     console.log("👤 User from request:", {
       userId: req.user?.userId,
       username: req.user?.username,
@@ -1347,7 +1348,6 @@ exports.processRequests = async (req, res) => {
       role: req.user?.role
     });
     
-    // ✅ If no userId, return error instead of using a default user
     if (!userId) {
       await transaction.rollback();
       return res.status(401).json({
@@ -1356,7 +1356,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // ✅ Verify the user exists and is active
     const user = await User.findByPk(userId, {
       attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
     });
@@ -1422,7 +1421,6 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    // Check if group has access to this store
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         storeId: parseInt(storeId),
@@ -1509,7 +1507,6 @@ exports.processRequests = async (req, res) => {
           `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
         );
         processedRequestIds.push(request.requestId);
-        // 🔥 Still check if all groups from BOTH stores have processed
         await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
         continue;
       }
@@ -1524,7 +1521,6 @@ exports.processRequests = async (req, res) => {
           reason: existingRecord.remark || "Skipped by admin",
         });
         processedRequestIds.push(request.requestId);
-        // 🔥 Still check if all groups from BOTH stores have processed
         await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
         continue;
       }
@@ -1647,7 +1643,7 @@ exports.processRequests = async (req, res) => {
                 transactionType: "Stock In",
                 referenceType: "auto_initialization",
                 referenceId: request.requestId,
-                changedBy: userId, // ✅ NOW USING THE CORRECT userId
+                changedBy: userId,
                 remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
               },
               { transaction },
@@ -1694,7 +1690,7 @@ exports.processRequests = async (req, res) => {
           balance.balance = newBalance;
           await balance.save({ transaction });
 
-          // Create history record - ✅ USING CORRECT userId
+          // ✅ CREATE HISTORY RECORD WITH GRN/SIV
           await StoreBalanceHistory.create(
             {
               balanceId: balance.id,
@@ -1711,7 +1707,10 @@ exports.processRequests = async (req, res) => {
                 action === "STOCK_OUT" ? request.askingStoreId : null,
               referenceType: "request",
               referenceId: request.requestId,
-              changedBy: userId, // ✅ NOW USING THE CORRECT userId
+              changedBy: userId,
+              // ✅ GRN and SIV from documentRefs
+              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
+              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
               remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
             },
             { transaction },
@@ -1766,7 +1765,7 @@ exports.processRequests = async (req, res) => {
         if (existingRecord) {
           existingRecord.status = "processed";
           existingRecord.processedAt = new Date();
-          existingRecord.processedBy = userId; // ✅ USING CORRECT userId
+          existingRecord.processedBy = userId;
           existingRecord.remark = remark;
           await existingRecord.save({ transaction });
         } else {
@@ -1777,7 +1776,7 @@ exports.processRequests = async (req, res) => {
               storeId: parseInt(storeId),
               processedAt: new Date(),
               status: "processed",
-              processedBy: userId, // ✅ USING CORRECT userId
+              processedBy: userId,
               remark: remark,
             },
             { transaction },
@@ -1802,7 +1801,7 @@ exports.processRequests = async (req, res) => {
       processedRequestIds.push(request.requestId);
 
       // ================================================================
-      // 5f. 🔥 CRITICAL: Check if ALL groups from BOTH stores have processed
+      // 5f. CHECK IF ALL GROUPS FROM BOTH STORES HAVE PROCESSED
       // ================================================================
       await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
     }
@@ -1876,8 +1875,10 @@ exports.processRequests = async (req, res) => {
         storeName: store.name,
         groupName: group.name,
         userId: userId,
-        userFullName: user.fullName, // ✅ Add user name to response
+        userFullName: user.fullName,
         totalRequests: requests.length,
+        // ✅ Return document references for verification
+        documentRefs: documentRefs || {},
       },
     });
 
@@ -3765,12 +3766,17 @@ exports.getRequestGroupStatus = async (req, res) => {
 // PROCESS REQUEST FOR A SPECIFIC GROUP - FIXED
 // ============================================
 
+// ================================================================
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH GRN/SIV SUPPORT
+// ================================================================
+
 exports.processRequestForGroup = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
     const { requestId } = req.params;
-    const { groupId, storeId } = req.body;
+    // ✅ ADDED: grnNumber and sivNumber to body
+    const { groupId, storeId, grnNumber, sivNumber } = req.body;
     const userId = req.user?.userId || 1;
 
     console.log("📤 Processing request for group:", {
@@ -3778,8 +3784,13 @@ exports.processRequestForGroup = async (req, res) => {
       groupId,
       storeId,
       userId,
+      grnNumber,
+      sivNumber,
     });
 
+    // ================================================================
+    // 1. VALIDATE INPUTS
+    // ================================================================
     if (!groupId || !storeId) {
       return res.status(400).json({
         success: false,
@@ -3787,6 +3798,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
+    // ================================================================
+    // 2. VALIDATE GROUP
+    // ================================================================
     const group = await Group.findByPk(parseInt(groupId));
     if (!group) {
       return res.status(404).json({
@@ -3802,6 +3816,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
+    // ================================================================
+    // 3. VALIDATE STORE
+    // ================================================================
     const store = await Store.findByPk(parseInt(storeId));
     if (!store) {
       return res.status(404).json({
@@ -3817,6 +3834,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
+    // ================================================================
+    // 4. VALIDATE STORE-GROUP RELATION
+    // ================================================================
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         storeId: parseInt(storeId),
@@ -3831,6 +3851,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
+    // ================================================================
+    // 5. GET THE REQUEST
+    // ================================================================
     const request = await ItemRequest.findByPk(requestId, {
       include: [
         {
@@ -3875,7 +3898,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // 🔥 Check if this group has already processed this request
+    // ================================================================
+    // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
+    // ================================================================
     const existingRecord = await RequestGroupProcessing.findOne({
       where: {
         requestId: parseInt(requestId),
@@ -3897,6 +3922,9 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
+    // ================================================================
+    // 7. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
+    // ================================================================
     if (
       request.askingStoreId !== parseInt(storeId) &&
       request.supplyingStoreId !== parseInt(storeId)
@@ -3907,7 +3935,39 @@ exports.processRequestForGroup = async (req, res) => {
       });
     }
 
-    // 🔥 Process items and auto-initialize if needed
+    // ================================================================
+    // 8. DETERMINE ACTION
+    // ================================================================
+    let action, transactionType, changeMultiplier, actionLabel;
+    if (request.askingStoreId === parseInt(storeId)) {
+      action = "STOCK_IN";
+      transactionType = "Stock In";
+      changeMultiplier = 1;
+      actionLabel = "RECEIVED";
+    } else if (request.supplyingStoreId === parseInt(storeId)) {
+      action = "STOCK_OUT";
+      transactionType = "Stock Out";
+      changeMultiplier = -1;
+      actionLabel = "SENT";
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: "Store is neither the asking nor supplying store for this request",
+      });
+    }
+
+    console.log(`📋 Action: ${action} for request ${request.requestCode}`);
+
+    // ================================================================
+    // 9. GET USER
+    // ================================================================
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+    });
+
+    // ================================================================
+    // 10. PROCESS ITEMS
+    // ================================================================
     const autoInitializedItems = [];
     const results = [];
     const errors = [];
@@ -3972,18 +4032,6 @@ exports.processRequestForGroup = async (req, res) => {
           continue;
         }
 
-        // Determine action
-        let action, changeMultiplier, actionLabel;
-        if (request.askingStoreId === parseInt(storeId)) {
-          action = "STOCK_IN";
-          changeMultiplier = 1;
-          actionLabel = "RECEIVED";
-        } else {
-          action = "STOCK_OUT";
-          changeMultiplier = -1;
-          actionLabel = "SENT";
-        }
-
         const previousBalance = parseFloat(balance.balance);
         const quantity = parseFloat(item.quantity);
         const changeAmount = quantity * changeMultiplier;
@@ -3997,6 +4045,7 @@ exports.processRequestForGroup = async (req, res) => {
         balance.balance = newBalance;
         await balance.save({ transaction });
 
+        // ✅ CREATE HISTORY RECORD WITH GRN/SIV
         await StoreBalanceHistory.create(
           {
             balanceId: balance.id,
@@ -4012,7 +4061,10 @@ exports.processRequestForGroup = async (req, res) => {
             referenceType: "request",
             referenceId: request.requestId,
             changedBy: userId,
-            remark: `Processed request ${request.requestCode} for group ${group.name}`,
+            // ✅ GRN and SIV from body
+            grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+            sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
+            remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
           },
           { transaction },
         );
@@ -4035,7 +4087,9 @@ exports.processRequestForGroup = async (req, res) => {
       }
     }
 
-    // 🔥 Create group processing record
+    // ================================================================
+    // 11. CREATE GROUP PROCESSING RECORD
+    // ================================================================
     const remark = results.length > 0
       ? `Processed ${results.length} items${autoInitializedItems.length > 0 ? ` (${autoInitializedItems.length} auto-initialized)` : ""}`
       : "No items processed";
@@ -4061,13 +4115,21 @@ exports.processRequestForGroup = async (req, res) => {
       );
     }
 
-    // 🔥 CRITICAL: Check if ALL groups have processed this request
+    // ================================================================
+    // 12. CHECK IF ALL GROUPS HAVE PROCESSED
+    // ================================================================
     const logs = [];
     const finalizedRequests = [];
     await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
 
+    // ================================================================
+    // 13. COMMIT TRANSACTION
+    // ================================================================
     await transaction.commit();
 
+    // ================================================================
+    // 14. PREPARE RESPONSE
+    // ================================================================
     const responseData = {
       requestId: parseInt(requestId),
       requestCode: request.requestCode,
@@ -4081,6 +4143,9 @@ exports.processRequestForGroup = async (req, res) => {
       isFullyProcessed: request.status === 'finalized',
       logs: logs,
       finalizedRequests: finalizedRequests,
+      // ✅ Return document references for verification
+      grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+      sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
     };
 
     let statusMessage = `Request ${request.requestCode} processed for group ${group.name}`;

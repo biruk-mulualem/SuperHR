@@ -53,6 +53,8 @@ module.exports = (sequelize, DataTypes) => {
         referenceId: this.referenceId,
         changedByUser: this.changedByUser,
         remark: this.remark,
+        grnNumber: this.grnNumber,
+        sivNumber: this.sivNumber,
         createdAt: this.createdAt,
       };
     }
@@ -148,6 +150,17 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      // ✅ NEW FIELDS: Document References
+      grnNumber: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'grn_number',
+      },
+      sivNumber: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'siv_number',
+      },
       createdAt: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -168,6 +181,9 @@ module.exports = (sequelize, DataTypes) => {
         { fields: ['item_id'], name: 'idx_item_id' },
         { fields: ['created_at'], name: 'idx_created_at' },
         { fields: ['transaction_type'], name: 'idx_transaction_type' },
+        // ✅ NEW INDEXES
+        { fields: ['grn_number'], name: 'idx_grn_number' },
+        { fields: ['siv_number'], name: 'idx_siv_number' },
       ],
     }
   );
@@ -202,6 +218,16 @@ module.exports = (sequelize, DataTypes) => {
     if (filters.itemId) where.itemId = filters.itemId;
     if (filters.transactionType) where.transactionType = filters.transactionType;
 
+    // ✅ Filter by GRN Number
+    if (filters.grnNumber) {
+      where.grnNumber = { [Op.iLike]: `%${filters.grnNumber}%` };
+    }
+
+    // ✅ Filter by SIV Number
+    if (filters.sivNumber) {
+      where.sivNumber = { [Op.iLike]: `%${filters.sivNumber}%` };
+    }
+
     // Date range filter
     if (filters.startDate) {
       where.createdAt = {
@@ -220,6 +246,8 @@ module.exports = (sequelize, DataTypes) => {
       const searchTerm = `%${filters.search}%`;
       where[Op.or] = [
         { remark: { [Op.iLike]: searchTerm } },
+        { grnNumber: { [Op.iLike]: searchTerm } },
+        { sivNumber: { [Op.iLike]: searchTerm } },
       ];
       
       include.push({

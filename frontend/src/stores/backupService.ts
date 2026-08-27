@@ -1,456 +1,1092 @@
-// FILE: frontend/src/stores/backupService.ts
+// stores/balanceService.ts - COMPLETE FILE WITH DOCUMENT REFS SUPPORT
+
 import api from "./interceptor";
 
 // ============================================
 // TYPES & INTERFACES
 // ============================================
 
-export interface Backup {
-    id: string;
-    fileName: string;
-    filePath: string;
-    fileSize: string;
-    type: 'full' | 'table' | 'partial';
-    format: 'sql' | 'json' | 'csv';
-    includeStructure: boolean;
-    tableName: string | null;
-    status: 'pending' | 'completed' | 'failed';
-    createdBy: number | null;
-    restoredBy: number | null;
-    restoredAt: string | null;
-    createdAt: string;
-    deletedAt: string | null;
-}
-
-export interface TableInfo {
+export interface Category {
+    id: number;
+    categoryId: number;
     name: string;
-    label: string;
-    recordCount: number;
-    size: string;
+    description?: string;
+    status: 'Active' | 'Inactive';
+    createdAt?: string;
+    updatedAt?: string;
 }
 
-export interface BackupStats {
-    totalTables: number;
-    totalRecords: number;
-    totalBackups: number;
-    fullBackups: number;
-    tableBackups: number;
-    storageUsed: string;
-}
-
-export interface PaginationInfo {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-}
-
-export interface ApiResponse<T = any> {
-    success: boolean;
-    data?: T;
-    message?: string;
-    error?: string;
-    pagination?: PaginationInfo;
-}
-
-export interface CreateBackupOptions {
-    format?: 'sql' | 'json' | 'csv';
-    includeStructure?: boolean;
-}
-
-export interface BackupTableOptions {
-    tableName: string;
-    format?: 'sql' | 'json' | 'csv';
-    includeStructure?: boolean;
-}
-
-export interface RestoreOptions {
-    dropExisting?: boolean;
-}
-
-export interface RestoreFromFileOptions {
-    type?: 'full' | 'table';
-    targetTable?: string;
-    dropExisting?: boolean;
-    includeData?: boolean;
-    createBackup?: boolean;
-}
-
-export interface GetBackupsParams {
+export interface BalanceFilters {
+    storeId?: number;
+    groupId?: number;
+    categoryId?: number;
+    status?: string;
+    search?: string;
     page?: number;
     limit?: number;
 }
 
-// ============================================
-// BACKUP SERVICE CLASS
-// ============================================
-
-class BackupService {
-    // ================================================================
-    // BACKUP OPERATIONS
-    // ================================================================
-
-    /**
-     * Create a full database backup
-     */
-    async createBackup(options: CreateBackupOptions = {}): Promise<ApiResponse<Backup>> {
-        try {
-            const response = await api.post('/backup/backup', {
-                format: options.format || 'sql',
-                includeStructure: options.includeStructure !== undefined ? options.includeStructure : true,
-            });
-            return response.data;
-        } catch (error: any) {
-            console.error('Create backup error:', error);
-            return {
-                success: false,
-                data: {} as Backup,
-                error: error.response?.data?.error || 'Failed to create backup'
-            };
-        }
-    }
-
-    /**
-     * Backup a specific table
-     */
- // FILE: frontend/src/stores/backupService.ts
-
-// Update the backupTable method
-async backupTable(options: BackupTableOptions): Promise<ApiResponse<Backup>> {
-  try {
-    const response = await api.post('/backup/backup/table', {
-      tableName: options.tableName,  // ✅ Use tableName (camelCase)
-      format: options.format || 'json',
-      includeStructure: options.includeStructure !== undefined ? options.includeStructure : true,
-    });
-    return response.data;
-  } catch (error: any) {
-    console.error('Backup table error:', error);
-    return {
-      success: false,
-      data: {} as Backup,
-      error: error.response?.data?.error || 'Failed to backup table'
-    };
-  }
+export interface BalanceRecord {
+    id: number;
+    storeId: number;
+    storeName: string;
+    storeCode: string;
+    groupId: number;
+    groupName: string;
+    groupCode: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    itemCommonName: string;
+    categoryId: number | null;
+    categoryName: string | null;
+    uomCode: string;
+    uomName: string;
+    conversionUomCode: string;
+    conversionUomName: string;
+    conversionValue: number;
+    balance: number;
+    minStock: number;
+    baseBalance: number;
+    status: 'Active' | 'Inactive';
+    statusClass: 'normal' | 'low' | 'zero';
+    isLowStock: boolean;
+    isZeroStock: boolean;
+    createdAt: string;
+    updatedAt: string;
 }
 
+export interface BalanceStats {
+    totalStores: number;
+    totalItems: number;
+    activeItems: number;
+    inactiveItems: number;
+    lowStockItems: number;
+    zeroStockItems: number;
+    pendingRequestsCount: number;
+    totalBalance: number;
+}
+
+export interface BalanceHistoryRecord {
+    id: number;
+    balanceId: number;
+    storeName: string;
+    groupName: string;
+    itemName: string;
+    itemCode: string;
+    uomCode: string;
+    previousBalance: number;
+    newBalance: number;
+    changeAmount: number;
+    transactionType: 'Stock In' | 'Stock Out';
+    sourceStore: string | null;
+    destinationStore: string | null;
+    referenceType: string;
+    referenceId: number | null;
+    changedBy: string;
+    remark: string;
+    // ✅ ADDED: Document references
+    grnNumber?: string | null;
+    sivNumber?: string | null;
+    createdAt: string;
+}
+
+export interface BalanceHistoryResponse {
+    success: boolean;
+    data: BalanceHistoryRecord[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+export interface LowStockItem {
+    id: number;
+    storeId: number;
+    storeName: string;
+    groupId: number;
+    groupName: string;
+    itemId: number;
+    itemName: string;
+    itemCode: string;
+    uomCode: string;
+    balance: number;
+    minStockAlert: number;
+    shortage: number;
+}
+
+export interface SummaryByStore {
+    storeId: number;
+    storeName: string;
+    storeCode: string;
+    totalItems: number;
+    totalBalance: string;
+    totalBaseBalance: string;
+    activeItems: number;
+    inactiveItems: number;
+    lowStockItems: number;
+    zeroStockItems: number;
+    lowStockPercentage: string;
+    zeroStockPercentage: string;
+}
+
+export interface SummaryByGroup {
+    groupId: number;
+    groupName: string;
+    groupCode: string;
+    totalItems: number;
+    totalBalance: string;
+    totalBaseBalance: string;
+    activeItems: number;
+    inactiveItems: number;
+    lowStockItems: number;
+    zeroStockItems: number;
+    lowStockPercentage: string;
+    zeroStockPercentage: string;
+}
+
+export interface SummaryByItem {
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    itemCommonName: string;
+    uomCode: string;
+    conversionValue: number;
+    totalStores: number;
+    totalBalance: string;
+    totalBaseBalance: string;
+    averageBalance: string;
+    averageBaseBalance: string;
+    minBalance: number;
+    maxBalance: number;
+    stores: {
+        storeId: number;
+        storeName: string;
+        balance: number;
+        baseBalance: number;
+        status: string;
+    }[];
+}
+
+export interface CreateBalancePayload {
+    storeId: number;
+    groupId: number;
+    itemId: number;
+    balance: number;
+    minStock?: number;
+    status?: 'Active' | 'Inactive';
+}
+
+export interface UpdateBalancePayload {
+    storeId?: number;
+    groupId?: number;
+    itemId?: number;
+    minStock?: number;
+    status?: 'Active' | 'Inactive';
+}
+
+// ✅ UPDATED: ProcessRequestsPayload with documentRefs
+export interface ProcessRequestsPayload {
+    storeId: number;
+    groupId: number;
+    requestIds: number[];
+    documentRefs?: Record<number, string>;  // ✅ ADDED - Per-request document references
+}
+
+// ✅ UPDATED: ProcessRequestForGroupPayload with grnNumber and sivNumber
+export interface ProcessRequestForGroupPayload {
+    groupId: number;
+    storeId: number;
+    grnNumber?: string | null;   // ✅ ADDED - For Stock In
+    sivNumber?: string | null;   // ✅ ADDED - For Stock Out
+}
+
+export interface ProcessRequestsResult {
+    processed: number;
+    failed: number;
+    logs: string[];
+    missingItems?: any[];
+    processedItems?: any[];
+    autoInitializedItems?: any[];
+    skippedGroups?: any[];
+    partialRequests?: any[];
+    requestIds: number[];
+    processedRequestIds?: number[];
+    storeId: number;
+    groupId: number;
+    storeName: string;
+    groupName: string;
+    userId: number;
+    totalRequests: number;
+    // ✅ ADDED: Document references returned for verification
+    documentRefs?: Record<number, string>;
+}
+
+export interface ImportResult {
+    total: number;
+    success: number;
+    failed: number;
+    errors: string[];
+}
+
+export interface ItemRequest {
+    id: number;
+    requestCode: string;
+    askingStoreId: number;
+    askingStoreName: string;
+    supplyingStoreId: number;
+    supplyingStoreName: string;
+    requestedDate: string;
+    status: string;
+    remark: string;
+    items: {
+        itemId: number;
+        itemName: string;
+        itemCode: string;
+        quantity: number;
+        uomCode: string;
+    }[];
+    isProcessedByGroup?: boolean;
+    isFullyProcessed?: boolean;
+    processingStatus?: {
+        status: string;
+        label: string;
+        processed: number;
+        total: number;
+        remaining: number;
+    };
+    canProcess?: boolean;
+    action?: string;
+    actionLabel?: string;
+    actionClass?: string;
+}
+
+export interface RequestGroupProcessing {
+    id: number;
+    requestId: number;
+    groupId: number;
+    storeId: number;
+    processedAt: string | null;
+    status: 'pending' | 'processed' | 'skipped';
+    remark: string | null;
+    processedBy: number | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface RequestProcessingStatus {
+    requestId: number;
+    requestCode: string;
+    totalGroups: number;
+    processedCount: number;
+    isFullyProcessed: boolean;
+    groups: {
+        groupId: number;
+        groupName: string;
+        groupCode: string;
+        status: 'pending' | 'processed' | 'skipped';
+        processedAt: string | null;
+        processedBy: {
+            userId: number;
+            username: string;
+            fullName: string;
+        } | null;
+        remark: string | null;
+    }[];
+}
+
+export interface PaginatedResponse<T> {
+    success: boolean;
+    data: T[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+// ============================================
+// STORE TYPES
+// ============================================
+
+export interface Store {
+    id: number;
+    name: string;
+    code: string;
+    location?: string;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+// ============================================
+// GROUP TYPES
+// ============================================
+
+export interface Group {
+    id: number;
+    name: string;
+    code: string;
+    description?: string;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+// ============================================
+// ITEM TYPES - UPDATED WITH CATEGORY
+// ============================================
+
+export interface Item {
+    id: number;
+    code: string;
+    name: string;
+    standardName: string;
+    commonName?: string;
+    description?: string;
+    brand?: string;
+    model?: string;
+    barcode?: string;
+    categoryId?: number;
+    categoryName?: string;
+    category?: Category;
+    uomId?: number;
+    uomCode?: string;
+    uomName?: string;
+    conversionUomId?: number;
+    conversionUomCode?: string;
+    conversionUomName?: string;
+    conversionValue: number;
+    costPrice?: number;
+    status: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+// ============================================
+// USER TYPES
+// ============================================
+
+export interface User {
+    userId: number;
+    username: string;
+    email: string;
+    fullName: string;
+    role: string;
+    isActive: boolean;
+    lastLogin?: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+// ============================================
+// BALANCE SERVICE CLASS
+// ============================================
+
+class BalanceService {
+    // ================================================================
+    // BALANCE CRUD OPERATIONS
+    // ================================================================
+
     /**
-     * Get all backups with pagination
+     * Get all balances with filters and pagination
      */
-    async getBackups(params: GetBackupsParams = {}): Promise<{
+    async getBalances(filters: BalanceFilters = {}): Promise<PaginatedResponse<BalanceRecord>> {
+        const params = new URLSearchParams();
+        
+        if (filters.storeId) params.append('storeId', filters.storeId.toString());
+        if (filters.groupId) params.append('groupId', filters.groupId.toString());
+        if (filters.categoryId) params.append('categoryId', filters.categoryId.toString());
+        if (filters.status) params.append('status', filters.status);
+        if (filters.search) params.append('search', filters.search);
+        if (filters.page) params.append('page', filters.page.toString());
+        if (filters.limit) params.append('limit', filters.limit.toString());
+        
+        const response = await api.get(`/balances?${params.toString()}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // BALANCE CORRECTION
+    // ================================================================
+
+    /**
+     * Correct a balance (Admin only)
+     */
+    async correctBalance(payload: {
+        balanceId: number;
+        newBalance: number;
+        reason: string;
+    }): Promise<{
         success: boolean;
-        data: Backup[];
-        pagination: PaginationInfo;
+        message: string;
+        data?: {
+            id: number;
+            storeId: number;
+            storeName: string;
+            groupId: number;
+            groupName: string;
+            itemId: number;
+            itemCode: string;
+            itemName: string;
+            uomCode: string;
+            previousBalance: number;
+            newBalance: number;
+            changeAmount: number;
+            changeType: 'Increased' | 'Decreased';
+            status: string;
+            reason: string;
+            historyId: number;
+            createdAt: string;
+            updatedAt: string;
+        };
         error?: string;
     }> {
         try {
-            const response = await api.get('/backup/backups', {
-                params: {
-                    page: params.page || 1,
-                    limit: params.limit || 12,
-                },
-            });
+            const response = await api.post('/balances/correct', payload);
             return response.data;
         } catch (error: any) {
-            console.error('Get backups error:', error);
+            console.error('Balance correction error:', error);
             return {
                 success: false,
-                data: [],
-                pagination: { page: 1, limit: 12, total: 0, totalPages: 0 },
-                error: error.response?.data?.error || 'Failed to fetch backups'
+                message: error.response?.data?.message || error.response?.data?.error || 'Failed to correct balance',
+                error: error.response?.data?.error || 'Failed to correct balance'
             };
         }
     }
 
     /**
-     * Get a single backup by ID
+     * Get balance statistics (dashboard stats)
      */
-    async getBackup(id: string): Promise<ApiResponse<Backup>> {
-        try {
-            const response = await api.get(`/backup/backup/${id}`);
-            return response.data;
-        } catch (error: any) {
-            console.error('Get backup error:', error);
-            return {
-                success: false,
-                data: {} as Backup,
-                error: error.response?.data?.error || 'Failed to fetch backup'
-            };
-        }
+    async getStats(): Promise<{ success: boolean; data: BalanceStats }> {
+        const response = await api.get('/balances/stats');
+        return response.data;
     }
 
     /**
-     * Download a backup file
+     * Get low stock items
      */
-    async downloadBackup(id: string, filename?: string): Promise<{ success: boolean; error?: string }> {
-        try {
-            const response = await api.get(`/backup/backup/${id}/download`, {
-                responseType: 'blob',
-            });
-
-            const blob = new Blob([response.data]);
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename || `backup_${id}.sql`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-
-            return { success: true };
-        } catch (error: any) {
-            console.error('Download backup error:', error);
-            return {
-                success: false,
-                error: error.response?.data?.error || 'Failed to download backup'
-            };
-        }
+    async getLowStockItems(): Promise<{ success: boolean; data: LowStockItem[] }> {
+        const response = await api.get('/balances/low-stock');
+        return response.data;
     }
 
     /**
-     * Restore from a backup
+     * Get balance by ID
      */
-    async restoreFromBackup(id: string, options: RestoreOptions = {}): Promise<ApiResponse<any>> {
-        try {
-            const response = await api.post(`/backup/backup/${id}/restore`, {
-                dropExisting: options.dropExisting !== undefined ? options.dropExisting : true,
-            });
-            return response.data;
-        } catch (error: any) {
-            console.error('Restore from backup error:', error);
-            return {
-                success: false,
-                data: null,
-                error: error.response?.data?.error || 'Failed to restore from backup'
-            };
-        }
+    async getBalanceById(id: number): Promise<{ success: boolean; data: BalanceRecord }> {
+        const response = await api.get(`/balances/${id}`);
+        return response.data;
     }
 
     /**
-     * Restore from an uploaded file
+     * Create new balance (Initialize)
      */
-    async restoreFromFile(file: File, options: RestoreFromFileOptions = {}): Promise<ApiResponse<any>> {
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('type', options.type || 'full');
-            formData.append('targetTable', options.targetTable || '');
-            formData.append('dropExisting', String(options.dropExisting !== undefined ? options.dropExisting : true));
-            formData.append('includeData', String(options.includeData !== undefined ? options.includeData : true));
-            formData.append('createBackup', String(options.createBackup !== undefined ? options.createBackup : false));
-
-            const response = await api.post('/backup/backup/restore-file', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-                timeout: 120000, // 2 minutes for large restores
-            });
-            return response.data;
-        } catch (error: any) {
-            console.error('Restore from file error:', error);
-            return {
-                success: false,
-                data: null,
-                error: error.response?.data?.error || 'Failed to restore from file'
-            };
-        }
+    async createBalance(payload: CreateBalancePayload): Promise<{ success: boolean; message: string; data: BalanceRecord }> {
+        const response = await api.post('/balances', payload);
+        return response.data;
     }
 
     /**
-     * Delete a backup (soft delete)
+     * Update balance
      */
-    async deleteBackup(id: string): Promise<{ success: boolean; message: string; error?: string }> {
-        try {
-            const response = await api.delete(`/backup/backup/${id}`);
-            return response.data;
-        } catch (error: any) {
-            console.error('Delete backup error:', error);
-            return {
-                success: false,
-                message: '',
-                error: error.response?.data?.error || 'Failed to delete backup'
-            };
-        }
+    async updateBalance(id: number, payload: UpdateBalancePayload): Promise<{ success: boolean; message: string; data: BalanceRecord }> {
+        const response = await api.put(`/balances/${id}`, payload);
+        return response.data;
+    }
+
+    /**
+     * Toggle balance status (Active/Inactive)
+     */
+    async toggleStatus(id: number): Promise<{ success: boolean; message: string; data: { id: number; status: string } }> {
+        const response = await api.patch(`/balances/${id}/toggle-status`);
+        return response.data;
+    }
+
+    /**
+     * Delete balance (only if inactive)
+     */
+    async deleteBalance(id: number): Promise<{ success: boolean; message: string }> {
+        const response = await api.delete(`/balances/${id}`);
+        return response.data;
     }
 
     // ================================================================
-    // TABLE MANAGEMENT
+    // CATEGORY METHODS
     // ================================================================
 
     /**
-     * Get all tables with statistics
+     * Get all categories with pagination and filtering
      */
-    async getTables(): Promise<{ success: boolean; data: TableInfo[]; error?: string }> {
-        try {
-            const response = await api.get('/backup/tables');
-            return response.data;
-        } catch (error: any) {
-            console.error('Get tables error:', error);
-            return {
-                success: false,
-                data: [],
-                error: error.response?.data?.error || 'Failed to fetch tables'
-            };
-        }
-    }
-
-    /**
-     * Get table data preview
-     */
-    async getTableData(tableName: string, limit: number = 10): Promise<ApiResponse<any[]>> {
-        try {
-            const response = await api.get(`/backup/tables/${tableName}/data`, {
-                params: { limit },
-            });
-            return response.data;
-        } catch (error: any) {
-            console.error('Get table data error:', error);
-            return {
-                success: false,
-                data: [],
-                error: error.response?.data?.error || 'Failed to fetch table data'
-            };
-        }
-    }
-
-    /**
-     * Delete a table (DROP TABLE)
-     */
-    async deleteTable(tableName: string): Promise<{ success: boolean; message: string; error?: string }> {
-        try {
-            const response = await api.delete(`/backup/table/${tableName}`);
-            return response.data;
-        } catch (error: any) {
-            console.error('Delete table error:', error);
-            return {
-                success: false,
-                message: '',
-                error: error.response?.data?.error || 'Failed to delete table'
-            };
-        }
-    }
-
-    /**
-     * Clear all data from a table (TRUNCATE or DELETE)
-     */
-    async clearTable(tableName: string): Promise<{ success: boolean; message: string; error?: string }> {
-        try {
-            const response = await api.post(`/backup/table/${tableName}/clear`);
-            return response.data;
-        } catch (error: any) {
-            console.error('Clear table error:', error);
-            return {
-                success: false,
-                message: '',
-                error: error.response?.data?.error || 'Failed to clear table'
-            };
-        }
-    }
-
-    /**
-     * Delete multiple tables
-     */
-    async deleteTables(tableNames: string[]): Promise<{ success: boolean; message: string; error?: string }> {
-        try {
-            const response = await api.post('/backup/tables/delete-multiple', { tableNames });
-            return response.data;
-        } catch (error: any) {
-            console.error('Delete tables error:', error);
-            return {
-                success: false,
-                message: '',
-                error: error.response?.data?.error || 'Failed to delete tables'
-            };
-        }
-    }
-
-    /**
-     * Clear multiple tables
-     */
-    async clearTables(tableNames: string[]): Promise<{ success: boolean; message: string; error?: string }> {
-        try {
-            const response = await api.post('/backup/tables/clear-multiple', { tableNames });
-            return response.data;
-        } catch (error: any) {
-            console.error('Clear tables error:', error);
-            return {
-                success: false,
-                message: '',
-                error: error.response?.data?.error || 'Failed to clear tables'
-            };
-        }
-    }
-
-    // ================================================================
-    // STATISTICS
-    // ================================================================
-
-    /**
-     * Get backup statistics
-     */
-    async getStats(): Promise<{ success: boolean; data: BackupStats; error?: string }> {
-        try {
-            const response = await api.get('/backup/stats');
-            return response.data;
-        } catch (error: any) {
-            console.error('Get stats error:', error);
-            return {
-                success: false,
-                data: {
-                    totalTables: 0,
-                    totalRecords: 0,
-                    totalBackups: 0,
-                    fullBackups: 0,
-                    tableBackups: 0,
-                    storageUsed: '0 MB'
-                },
-                error: error.response?.data?.error || 'Failed to fetch statistics'
-            };
-        }
-    }
-
-    // ================================================================
-    // UTILITY METHODS - FIXED TYPE SAFETY
-    // ================================================================
-
-    /**
-     * Format file size from bytes
-     */
-    formatFileSize(bytes: number): string {
-        if (bytes === 0) return '0 B';
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-    }
-
-    /**
-     * Get backup size in bytes from string
-     */
-    getBackupSizeInBytes(sizeStr: string): number {
-        if (!sizeStr) return 0;
-        
-        const match = sizeStr.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i);
-        if (!match) return 0;
-        
-        const value = Number.parseFloat(match[1] ?? '0');
-        const unit = (match[2] ?? 'B').toUpperCase();
-        
-        const multipliers: Record<string, number> = {
-            'B': 1,
-            'KB': 1024,
-            'MB': 1024 * 1024,
-            'GB': 1024 * 1024 * 1024,
-            'TB': 1024 * 1024 * 1024 * 1024
+    async getCategories(params?: { 
+        page?: number; 
+        limit?: number; 
+        search?: string;
+        status?: string;
+    }): Promise<{ 
+        success: boolean; 
+        data: Category[];
+        pagination?: {
+            page: number;
+            limit: number;
+            total: number;
+            totalPages: number;
         };
+        error?: string;
+    }> {
+        try {
+            const queryParams = new URLSearchParams();
+            if (params?.page) queryParams.append('page', params.page.toString());
+            if (params?.limit) queryParams.append('limit', params.limit.toString());
+            if (params?.search) queryParams.append('search', params.search);
+            if (params?.status) queryParams.append('status', params.status);
+            
+            const url = queryParams.toString() 
+                ? `/balances/categories?${queryParams.toString()}`
+                : '/balances/categories';
+            
+            const response = await api.get(url);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get categories error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch categories'
+            };
+        }
+    }
+
+    /**
+     * Get active categories only (for dropdowns)
+     */
+    async getActiveCategories(): Promise<{ 
+        success: boolean; 
+        data: Category[];
+        error?: string;
+    }> {
+        try {
+            const response = await api.get('/balances/categories/active');
+            return response.data;
+        } catch (error: any) {
+            console.error('Get active categories error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch active categories'
+            };
+        }
+    }
+
+    /**
+     * Get category by ID
+     */
+    async getCategoryById(id: number): Promise<{ 
+        success: boolean; 
+        data: Category;
+        error?: string;
+    }> {
+        try {
+            const response = await api.get(`/balances/categories/${id}`);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get category by ID error:', error);
+            return {
+                success: false,
+                data: {} as Category,
+                error: error.response?.data?.error || 'Failed to fetch category'
+            };
+        }
+    }
+
+    /**
+     * Get items by category
+     */
+    async getItemsByCategory(categoryId: number): Promise<{
+        success: boolean;
+        data: Item[];
+        error?: string;
+    }> {
+        try {
+            const response = await api.get(`/balances/categories/${categoryId}/items`);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get items by category error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch items by category'
+            };
+        }
+    }
+
+    // ================================================================
+    // CSV IMPORT / EXPORT
+    // ================================================================
+
+    /**
+     * Download CSV template for import
+     */
+    async downloadTemplate(): Promise<Blob> {
+        const response = await api.get('/balances/template/download', {
+            responseType: 'blob'
+        });
+        return response.data;
+    }
+
+    /**
+     * Import balances from CSV file
+     */
+    async importBalances(file: File): Promise<{ success: boolean; message: string; data: ImportResult }> {
+        const formData = new FormData();
+        formData.append('file', file);
         
-        return value * (multipliers[unit] || 1);
+        const response = await api.post('/balances/import', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
+            timeout: 120000
+        });
+        return response.data;
+    }
+
+    /**
+     * Export balances as Excel (.xlsx)
+     */
+    async exportBalances(
+        type: 'full' | 'summary' = 'full', 
+        storeId?: number, 
+        groupId?: number,
+        categoryId?: number,
+        status?: string
+    ): Promise<Blob> {
+        let url = `/balances/export?type=${type}`;
+        if (storeId) url += `&storeId=${storeId}`;
+        if (groupId) url += `&groupId=${groupId}`;
+        if (categoryId) url += `&categoryId=${categoryId}`;
+        if (status) url += `&status=${status}`;
+        
+        console.log('📊 Export URL:', url);
+        
+        const response = await api.get(url, {
+            responseType: 'blob'
+        });
+        return response.data;
+    }
+
+    // ================================================================
+    // REQUEST PROCESSING
+    // ================================================================
+
+    /**
+     * Get approved requests for a store
+     * If groupId is provided, only returns requests not yet processed by that group
+     */
+    async getApprovedRequests(storeId: number, groupId?: number): Promise<{ 
+        success: boolean; 
+        data: ItemRequest[];
+        meta?: {
+            total: number;
+            remaining: number;
+            groupId: number | null;
+            storeId: number;
+        };
+    }> {
+        let url = `/balances/requests/approved/${storeId}`;
+        if (groupId) {
+            url += `?groupId=${groupId}`;
+        }
+        const response = await api.get(url);
+        return response.data;
+    }
+
+    /**
+     * Process approved requests for a specific group
+     * ✅ UPDATED: Supports documentRefs
+     */
+    async processRequests(payload: ProcessRequestsPayload): Promise<{ 
+        success: boolean; 
+        message: string; 
+        data: ProcessRequestsResult 
+    }> {
+        const response = await api.post('/balances/requests/process', payload);
+        return response.data;
+    }
+
+    /**
+     * Process a single request for a specific group
+     * ✅ UPDATED: Supports grnNumber and sivNumber
+     */
+    async processRequestForGroup(requestId: number, payload: ProcessRequestForGroupPayload): Promise<{
+        success: boolean;
+        message: string;
+        data: {
+            requestId: number;
+            requestCode: string;
+            groupId: number;
+            groupName: string;
+            storeId: number;
+            storeName: string;
+            action: string;
+            actionLabel: string;
+            autoInitializedItems: any[];
+            processedItems: any[];
+            errors: string[];
+            isFullyProcessed: boolean;
+            totalGroups: number;
+            processedGroups: number;
+            remainingGroups: number[];
+            remainingGroupNames: string[];
+            // ✅ ADDED: Document references returned
+            grnNumber?: string | null;
+            sivNumber?: string | null;
+        };
+    }> {
+        const response = await api.post(`/balances/requests/${requestId}/process-group`, payload);
+        return response.data;
+    }
+
+    /**
+     * Get processing status for a request
+     */
+    async getRequestProcessingStatus(requestId: number): Promise<{
+        success: boolean;
+        data: RequestProcessingStatus;
+    }> {
+        const response = await api.get(`/balances/requests/${requestId}/group-status`);
+        return response.data;
+    }
+
+    /**
+     * Get all request processing statuses
+     */
+    async getAllRequestProcessingStatus(storeId?: number): Promise<{
+        success: boolean;
+        data: any[];
+    }> {
+        let url = '/balances/requests/processing-status';
+        if (storeId) {
+            url += `?storeId=${storeId}`;
+        }
+        const response = await api.get(url);
+        return response.data;
+    }
+
+    /**
+     * Skip group processing (Admin only)
+     */
+    async skipGroupProcessing(requestId: number, payload: { groupId: number; remark?: string }): Promise<{
+        success: boolean;
+        message: string;
+        data: any;
+    }> {
+        const response = await api.post(`/balances/requests/${requestId}/skip-group`, payload);
+        return response.data;
+    }
+
+    /**
+     * Check if items are initialized for a group
+     */
+    async checkGroupInitialization(requestId: number, groupId: number, storeId: number): Promise<{
+        success: boolean;
+        data: {
+            requestId: number;
+            requestCode: string;
+            groupId: number;
+            storeId: number;
+            totalItems: number;
+            initializedCount: number;
+            missingCount: number;
+            allInitialized: boolean;
+            missingItems: any[];
+            initializedItems: any[];
+            canProcess: boolean;
+            message: string;
+        };
+    }> {
+        const response = await api.get(`/balances/requests/check-initialization?requestId=${requestId}&groupId=${groupId}&storeId=${storeId}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // HISTORY & SUMMARY
+    // ================================================================
+
+    /**
+     * Get balance history
+     */
+    async getBalanceHistory(balanceId: number, page: number = 1, limit: number = 20): Promise<BalanceHistoryResponse> {
+        const response = await api.get(`/balances/${balanceId}/history?page=${page}&limit=${limit}`);
+        return response.data;
+    }
+
+    /**
+     * Get summary by store
+     */
+    async getSummaryByStore(): Promise<{ success: boolean; data: SummaryByStore[] }> {
+        const response = await api.get('/balances/summary/by-store');
+        return response.data;
+    }
+
+    /**
+     * Get summary by group
+     */
+    async getSummaryByGroup(): Promise<{ success: boolean; data: SummaryByGroup[] }> {
+        const response = await api.get('/balances/summary/by-group');
+        return response.data;
+    }
+
+    /**
+     * Get summary by item
+     */
+    async getSummaryByItem(): Promise<{ success: boolean; data: SummaryByItem[] }> {
+        const response = await api.get('/balances/summary/by-item');
+        return response.data;
+    }
+
+    // ================================================================
+    // STORE ENDPOINTS
+    // ================================================================
+
+    /**
+     * Get all stores
+     */
+    async getStores(params?: { page?: number; limit?: number; search?: string }): Promise<{ success: boolean; data: Store[]; pagination?: any }> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', params.page.toString());
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.search) queryParams.append('search', params.search);
+        
+        const response = await api.get(`/balances/stores${queryParams.toString() ? `?${queryParams.toString()}` : ''}`);
+        return response.data;
+    }
+
+    /**
+     * Get store by ID
+     */
+    async getStoreById(id: number): Promise<{ success: boolean; data: Store }> {
+        const response = await api.get(`/balances/stores/${id}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // GROUP ENDPOINTS
+    // ================================================================
+
+    /**
+     * Get all groups
+     */
+    async getGroups(params?: { page?: number; limit?: number; search?: string }): Promise<{ success: boolean; data: Group[]; pagination?: any }> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', params.page.toString());
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.search) queryParams.append('search', params.search);
+        
+        const response = await api.get(`/balances/groups${queryParams.toString() ? `?${queryParams.toString()}` : ''}`);
+        return response.data;
+    }
+
+    /**
+     * Get group by ID
+     */
+    async getGroupById(id: number): Promise<{ success: boolean; data: Group }> {
+        const response = await api.get(`/balances/groups/${id}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // ITEM ENDPOINTS - UPDATED WITH CATEGORY
+    // ================================================================
+
+    /**
+     * Get all items with pagination and filtering
+     */
+    async getItems(params?: { 
+        page?: number; 
+        limit?: number; 
+        search?: string; 
+        categoryId?: number;
+        status?: string;
+    }): Promise<PaginatedResponse<Item>> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', params.page.toString());
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.search) queryParams.append('search', params.search);
+        if (params?.categoryId) queryParams.append('categoryId', params.categoryId.toString());
+        if (params?.status) queryParams.append('status', params.status);
+        
+        const response = await api.get(`/balances/items${queryParams.toString() ? `?${queryParams.toString()}` : ''}`);
+        return response.data;
+    }
+
+    /**
+     * Get active items (for dropdowns)
+     */
+    async getActiveItems(): Promise<{ success: boolean; data: Item[] }> {
+        const response = await api.get('/balances/items/active');
+        return response.data;
+    }
+
+    /**
+     * Get item by ID
+     */
+    async getItemById(id: number): Promise<{ success: boolean; data: Item }> {
+        const response = await api.get(`/balances/items/${id}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // USER ENDPOINTS
+    // ================================================================
+
+    /**
+     * Get all users
+     */
+    async getUsers(params?: { page?: number; limit?: number; search?: string; role?: string }): Promise<{ success: boolean; data: User[]; pagination?: any }> {
+        const queryParams = new URLSearchParams();
+        if (params?.page) queryParams.append('page', params.page.toString());
+        if (params?.limit) queryParams.append('limit', params.limit.toString());
+        if (params?.search) queryParams.append('search', params.search);
+        if (params?.role) queryParams.append('role', params.role);
+        
+        const response = await api.get(`/balances/users${queryParams.toString() ? `?${queryParams.toString()}` : ''}`);
+        return response.data;
+    }
+
+    /**
+     * Get user by ID
+     */
+    async getUserById(id: number): Promise<{ success: boolean; data: User }> {
+        const response = await api.get(`/balances/users/${id}`);
+        return response.data;
+    }
+
+    // ================================================================
+    // STORE-GROUP RELATIONS
+    // ================================================================
+
+    /**
+     * Get store-group relations
+     */
+    async getStoreGroupRelations(storeId?: number): Promise<{
+        success: boolean;
+        data: any[];
+    }> {
+        let url = '/balances/store-group-relations';
+        if (storeId) {
+            url += `?storeId=${storeId}`;
+        }
+        const response = await api.get(url);
+        return response.data;
+    }
+
+    // ================================================================
+    // GET USER STORE AND GROUP ACCESS
+    // ================================================================
+    async getUserStoreAndGroup(): Promise<{
+        success: boolean;
+        data: {
+            userId: number;
+            username: string;
+            fullName: string;
+            email: string;
+            role: string;
+            isActive: boolean;
+            isAdmin: boolean;
+            hasAssignments: boolean;
+            assignedStoreId: number | null;
+            assignedGroupId: number | null;
+            assignedStore: {
+                id: number;
+                name: string;
+                code: string;
+                location: string;
+                status: string;
+            } | null;
+            assignedGroup: {
+                id: number;
+                name: string;
+                code: string;
+                description: string;
+                status: string;
+            } | null;
+        };
+    }> {
+        const response = await api.get('/balances/user/store-group');
+        return response.data;
+    }
+
+    // ================================================================
+    // CATEGORY UTILITY METHODS
+    // ================================================================
+
+    /**
+     * Get category display color
+     */
+    getCategoryColor(categoryName: string | null): string {
+        if (!categoryName) return '#94a3b8';
+        const colors: Record<string, string> = {
+            'Raw Material': '#8b5cf6',
+            'Finished Good': '#10b981',
+            'Packaging': '#3b82f6',
+            'Chemicals': '#ef4444',
+            'Electronics': '#f59e0b',
+            'Hardware': '#64748b',
+            'Software': '#06b6d4',
+            'Office Supplies': '#8b5cf6',
+            'Safety Equipment': '#22c55e',
+            'Spare Parts': '#f97316',
+            'Consumables': '#ec4899',
+        };
+        return colors[categoryName] || '#94a3b8';
+    }
+
+    /**
+     * Get category display class
+     */
+    getCategoryClass(categoryName: string | null): string {
+        if (!categoryName) return 'no-category';
+        return 'has-category';
+    }
+
+    /**
+     * Get category display badge
+     */
+    getCategoryBadge(categoryName: string | null): string {
+        if (!categoryName) return '📂 Uncategorized';
+        return `📁 ${categoryName}`;
+    }
+
+    // ================================================================
+    // UTILITY METHODS
+    // ================================================================
+
+    /**
+     * Format number with commas
+     */
+    formatNumber(num: number): string {
+        return new Intl.NumberFormat().format(num);
     }
 
     /**
      * Format date
      */
     formatDate(dateStr: string | null): string {
+        if (!dateStr) return '';
+        return new Date(dateStr).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    /**
+     * Format datetime
+     */
+    formatDateTime(dateStr: string | null): string {
         if (!dateStr) return '';
         return new Date(dateStr).toLocaleString('en-US', {
             year: 'numeric',
@@ -462,199 +1098,128 @@ async backupTable(options: BackupTableOptions): Promise<ApiResponse<Backup>> {
     }
 
     /**
-     * Get backup type label with icon
+     * Get balance status class for UI
      */
-    getBackupTypeLabel(type: string): string {
-        const labels: Record<string, string> = {
-            'full': '📦 Full Backup',
-            'table': '📋 Table Backup',
-            'partial': '📊 Partial Backup'
-        };
-        return labels[type] || type;
+    getBalanceStatusClass(balance: number, minStock: number): string {
+        if (balance === 0) return 'zero';
+        if (balance <= minStock) return 'low';
+        return 'normal';
     }
 
     /**
-     * Get backup format label
+     * Get status label
      */
-    getBackupFormatLabel(format: string): string {
+    getStatusLabel(status: string): string {
         const labels: Record<string, string> = {
-            'sql': '🗄️ SQL',
-            'json': '📄 JSON',
-            'csv': '📊 CSV'
-        };
-        return labels[format] || format;
-    }
-
-    /**
-     * Get backup status label with icon
-     */
-    getBackupStatusLabel(status: string): string {
-        const labels: Record<string, string> = {
-            'pending': '⏳ Pending',
-            'completed': '✅ Completed',
-            'failed': '❌ Failed'
+            'Active': '✅ Active',
+            'Inactive': '⏸️ Inactive'
         };
         return labels[status] || status;
     }
 
     /**
-     * Get backup status class for styling
+     * Get transaction type label with icon
      */
-    getBackupStatusClass(status: string): string {
-        const classes: Record<string, string> = {
-            'pending': 'status-pending',
-            'completed': 'status-completed',
-            'failed': 'status-failed'
-        };
-        return classes[status] || '';
-    }
-
-    /**
-     * Get restore type label
-     */
-    getRestoreTypeLabel(type: string): string {
+    getTransactionTypeLabel(type: string): string {
         const labels: Record<string, string> = {
-            'full': '🔄 Full Restore',
-            'table': '📋 Table Restore'
+            'Stock In': '📥 Stock In',
+            'Stock Out': '📤 Stock Out'
         };
         return labels[type] || type;
     }
 
     /**
-     * Get table status badge class
+     * Get transaction type class for styling
      */
-    getTableStatusClass(table: TableInfo): string {
-        if (table.recordCount === 0) return 'empty';
-        if (table.recordCount < 100) return 'small';
-        if (table.recordCount < 1000) return 'medium';
-        return 'large';
+    getTransactionTypeClass(type: string): string {
+        return type === 'Stock In' ? 'stock-in' : 'stock-out';
     }
 
     /**
-     * Get table status label
+     * Get reference type label
      */
-    getTableStatusLabel(table: TableInfo): string {
-        if (table.recordCount === 0) return 'Empty';
-        if (table.recordCount < 100) return 'Small';
-        if (table.recordCount < 1000) return 'Medium';
-        return 'Large';
+    getReferenceTypeLabel(type: string): string {
+        const labels: Record<string, string> = {
+            'initialization': '📦 Initialization',
+            'purchase': '🛒 Purchase',
+            'transfer': '🔄 Transfer',
+            'adjustment': '📊 Adjustment',
+            'return': '↩️ Return',
+            'sale': '💰 Sale',
+            'request': '📋 Request',
+            'auto_initialization': '🤖 Auto-Initialization'
+        };
+        return labels[type] || type;
     }
 
     /**
-     * Generate a backup filename with timestamp
+     * Get CSS class for balance value
      */
-    generateBackupFilename(prefix: string = 'backup', format: string = 'sql'): string {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        return `${prefix}_${timestamp}.${format}`;
+    getBalanceValueClass(balance: number, minStock: number): string {
+        if (balance === 0) return 'text-danger';
+        if (balance <= minStock) return 'text-warning';
+        return 'text-success';
     }
 
     /**
-     * Validate backup file type
+     * Calculate base balance (balance * conversion value)
      */
-    isValidBackupFile(file: File): boolean {
-        const allowedTypes = [
-            'application/json',
-            'application/sql',
-            'application/zip',
-            'text/csv',
-            'text/plain'
-        ];
-        const allowedExtensions = ['.json', '.sql', '.zip', '.csv'];
-
-        const fileType = file.type;
-        const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
-
-        return allowedTypes.includes(fileType) ||
-            (!!fileExt && allowedExtensions.includes(fileExt));
+    calculateBaseBalance(balance: number, conversionValue: number): number {
+        return balance * conversionValue;
     }
 
     /**
-     * Get file extension from backup
+     * Check if stock is low
      */
-    getFileExtension(backup: Backup): string {
-        return backup.fileName.split('.').pop()?.toLowerCase() || '';
+    isLowStock(balance: number, minStock: number): boolean {
+        return balance <= minStock && balance > 0;
     }
 
     /**
-     * Check if backup is restorable
+     * Check if stock is zero
      */
-    isRestorable(backup: Backup): boolean {
-        return backup.status === 'completed' && backup.deletedAt === null;
+    isZeroStock(balance: number): boolean {
+        return balance === 0;
     }
 
     /**
-     * Format backup size for display
+     * Get low stock warning message
      */
-    formatBackupSize(sizeStr: string): string {
-        if (!sizeStr) return '0 B';
-        return sizeStr;
+    getLowStockMessage(balance: number, minStock: number, itemName: string): string {
+        if (balance === 0) {
+            return `⚠️ ${itemName} is out of stock!`;
+        }
+        if (balance <= minStock) {
+            return `⚠️ ${itemName} is low on stock (${balance} remaining, minimum ${minStock})`;
+        }
+        return '';
     }
 
     /**
-     * Get backup file name without extension
+     * Get processing status label for a request
      */
-    getBackupNameWithoutExtension(backup: Backup): string {
-        const lastDotIndex = backup.fileName.lastIndexOf('.');
-        return lastDotIndex > 0 ? backup.fileName.substring(0, lastDotIndex) : backup.fileName;
+    getRequestProcessingStatusLabel(status: string): string {
+        const labels: Record<string, string> = {
+            'pending': '⏳ Pending',
+            'partial': '🔄 Partially Processed',
+            'completed': '✅ Completed',
+            'finalized': '✅ Finalized'
+        };
+        return labels[status] || status;
     }
 
     /**
-     * Get backup file extension
+     * Check if a request can be processed by the current group
      */
-    getBackupExtension(backup: Backup): string {
-        const fileName = backup.fileName || '';
-        const parts = fileName.split('.');
-        const last = parts.length > 1 ? parts[parts.length - 1] : '';
-        return typeof last === 'string' && last.length > 0 ? last.toLowerCase() : '';
-    }
-
-    /**
-     * Check if backup is a full backup
-     */
-    isFullBackup(backup: Backup): boolean {
-        return backup.type === 'full';
-    }
-
-    /**
-     * Check if backup is a table backup
-     */
-    isTableBackup(backup: Backup): boolean {
-        return backup.type === 'table';
-    }
-
-    /**
-     * Get backup age in days
-     */
-    getBackupAgeInDays(backup: Backup): number {
-        if (!backup.createdAt) return 0;
-        const created = new Date(backup.createdAt);
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - created.getTime());
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    }
-
-    /**
-     * Get backup size class for display
-     */
-    getBackupSizeClass(sizeStr: string): string {
-        const bytes = this.getBackupSizeInBytes(sizeStr);
-        if (bytes < 1024 * 1024) return 'small'; // < 1MB
-        if (bytes < 1024 * 1024 * 10) return 'medium'; // < 10MB
-        return 'large';
-    }
-
-    /**
-     * Get backup size label
-     */
-    getBackupSizeLabel(sizeStr: string): string {
-        const bytes = this.getBackupSizeInBytes(sizeStr);
-        if (bytes < 1024 * 1024) return 'Small';
-        if (bytes < 1024 * 1024 * 10) return 'Medium';
-        return 'Large';
+    canProcessRequest(request: ItemRequest, groupId: number): boolean {
+        if (request.status === 'finalized') return false;
+        if (request.isProcessedByGroup) return false;
+        if (request.isFullyProcessed) return false;
+        return true;
     }
 }
 
 // ============================================
 // EXPORT SERVICE INSTANCE
 // ============================================
-export default new BackupService();
+export default new BalanceService();

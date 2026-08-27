@@ -1,0 +1,29 @@
+-- ============================================================
+-- ADD GRN AND SIV COLUMNS TO store_balance_histories
+-- ============================================================
+
+-- Add GRN Number column
+ALTER TABLE store_balance_histories 
+ADD COLUMN grn_number VARCHAR(100) NULL;
+
+-- Add SIV Number column
+ALTER TABLE store_balance_histories 
+ADD COLUMN siv_number VARCHAR(100) NULL;
+
+-- Add indexes for better query performance
+CREATE INDEX idx_grn_number ON store_balance_histories(grn_number);
+CREATE INDEX idx_siv_number ON store_balance_histories(siv_number);
+
+-- ============================================================
+-- VERIFY
+-- ============================================================
+
+SELECT 
+    column_name, 
+    data_type, 
+    is_nullable
+FROM 
+    information_schema.columns 
+WHERE 
+    table_name = 'store_balance_histories' 
+    AND column_name IN ('grn_number', 'siv_number');

@@ -100,6 +100,9 @@ const itemCostRoutes = require('./routes/itemCostRoutes');
 const StoreDashboardRoutes = require('./routes/StoreDashboardRoutes');
 const checkerDashboardRoutes=require('./routes/checkerDashboardRoutes');
 const costDashboardRoutes = require('./routes/costDashboardRoutes');
+const stockCardRoutes = require('./routes/stockCardRoutes');
+
+
 
 // ========== NEW: BACKUP ROUTES ==========
 const backupRoutes = require("./routes/backupRoutes");
@@ -159,7 +162,7 @@ app.use('/api/item-costs', itemCostRoutes);
 app.use('/api/store-dashboard', StoreDashboardRoutes);
 app.use('/api/cost-dashboard', costDashboardRoutes);
 app.use('/api/checker-dashboard', checkerDashboardRoutes);
-
+app.use('/api/stock-card', stockCardRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
 

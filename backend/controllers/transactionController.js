@@ -1,4 +1,4 @@
-// controllers/transactionController.js - COMPLETE WITH CATEGORY SUPPORT
+// controllers/transactionController.js - COMPLETE WITH GRN & SIV SUPPORT
 
 'use strict';
 
@@ -15,12 +15,6 @@ const {
   User,
   sequelize,
 } = require('../models');
-
-// ================================================================
-// HELPER FUNCTIONS
-// ================================================================
-
-// controllers/transactionController.js - UPDATED formatTransactionResponse
 
 // ================================================================
 // HELPER FUNCTIONS
@@ -46,13 +40,13 @@ const formatTransactionResponse = (record) => {
     groupCode: record.group?.code || null,
     itemId: record.itemId,
     itemCode: item?.code || null,
-    // ✅ ONLY TWO NAME FIELDS
-    itemStandardName: standardName,  // Can be null
-    itemCommonName: itemName || standardName || null,  // Uses name as primary
-    // ✅ CATEGORY FIELDS
+    // Name fields
+    itemStandardName: standardName,
+    itemCommonName: itemName || standardName || null,
+    // Category fields
     categoryId: category?.categoryId || null,
     categoryName: category?.name || null,
-    // ✅ UOM FIELDS
+    // UOM fields
     uomCode: uom?.code || null,
     uomName: uom?.name || null,
     type: record.transactionType,
@@ -67,6 +61,9 @@ const formatTransactionResponse = (record) => {
     referenceId: record.referenceId,
     updatedBy: record.changedByUser?.fullName || record.changedByUser?.username || null,
     remark: record.remark,
+    // ✅ ADDED: Document References
+    grnNumber: record.grnNumber || null,
+    sivNumber: record.sivNumber || null,
     createdAt: record.createdAt,
   };
 };
@@ -79,12 +76,14 @@ exports.getTransactions = async (req, res) => {
     const {
       storeId,
       groupId,
-      categoryId,  // ✅ ADD CATEGORY FILTER
+      categoryId,
       itemId,
       transactionType,
       startDate,
       endDate,
       search,
+      grnNumber,      // ✅ ADDED: Filter by GRN
+      sivNumber,      // ✅ ADDED: Filter by SIV
       page = 1,
       limit = 20,
     } = req.query;
@@ -148,8 +147,16 @@ exports.getTransactions = async (req, res) => {
     if (transactionType) {
       whereClause.transactionType = transactionType;
     }
+    // ✅ ADDED: GRN Number filter
+    if (grnNumber) {
+      whereClause.grnNumber = { [Op.iLike]: `%${grnNumber}%` };
+    }
+    // ✅ ADDED: SIV Number filter
+    if (sivNumber) {
+      whereClause.sivNumber = { [Op.iLike]: `%${sivNumber}%` };
+    }
 
-    // ✅ CATEGORY FILTER
+    // Category filter
     if (categoryId) {
       include.push({
         model: Item,
@@ -194,6 +201,8 @@ exports.getTransactions = async (req, res) => {
         { '$item.category.name$': { [Op.iLike]: searchTerm } },
         { '$store.name$': { [Op.iLike]: searchTerm } },
         { remark: { [Op.iLike]: searchTerm } },
+        { grnNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
+        { sivNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
       ];
     }
 
@@ -239,7 +248,7 @@ exports.getTransactionStats = async (req, res) => {
     if (groupId) whereClause.groupId = parseInt(groupId);
     if (itemId) whereClause.itemId = parseInt(itemId);
 
-    // ✅ CATEGORY FILTER
+    // Category filter
     let itemIds = null;
     if (categoryId) {
       const items = await Item.findAll({
@@ -477,12 +486,7 @@ exports.getTransactionsByBalance = async (req, res) => {
 };
 
 // ================================================================
-// EXPORT TRANSACTIONS AS CSV
-// ================================================================
-
-
-// ================================================================
-// EXPORT TRANSACTIONS AS EXCEL (.xlsx) - FIXED SUMMARY
+// EXPORT TRANSACTIONS AS EXCEL (.xlsx)
 // ================================================================
 exports.exportTransactions = async (req, res) => {
   try {
@@ -582,6 +586,8 @@ exports.exportTransactions = async (req, res) => {
         { '$item.category.name$': { [Op.iLike]: searchTerm } },
         { '$store.name$': { [Op.iLike]: searchTerm } },
         { remark: { [Op.iLike]: searchTerm } },
+        { grnNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
+        { sivNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
       ];
     }
 
@@ -607,7 +613,7 @@ exports.exportTransactions = async (req, res) => {
     // ============================================================
 
     // Row 1: Company Name
-    sheet.mergeCells(`A${currentRow}:H${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
     const companyCell = sheet.getCell(`A${currentRow}`);
     companyCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
     companyCell.font = { bold: true, size: 18, color: { argb: 'FF1A56DB' } };
@@ -616,7 +622,7 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // Row 2: Slogan
-    sheet.mergeCells(`A${currentRow}:H${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
     const sloganCell = sheet.getCell(`A${currentRow}`);
     sloganCell.value = 'WE TRUST IN GOD!!!  እግዚአብሔር ይባረክ!!!';
     sloganCell.font = { bold: true, size: 12, color: { argb: 'FF4B5563' } };
@@ -628,7 +634,7 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // Row 4: Report Title
-    sheet.mergeCells(`A${currentRow}:H${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
     const titleCell = sheet.getCell(`A${currentRow}`);
     titleCell.value = 'STORE TRANSACTIONS REPORT';
     titleCell.font = { bold: true, size: 16, color: { argb: 'FF1A56DB' } };
@@ -688,10 +694,9 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // ============================================================
-    // SUMMARY SECTION - COUNT ONLY
+    // SUMMARY SECTION
     // ============================================================
 
-    // Calculate totals - COUNT of transactions, not quantity values
     let totalStockInCount = 0;
     let totalStockOutCount = 0;
 
@@ -704,7 +709,7 @@ exports.exportTransactions = async (req, res) => {
     });
 
     // Summary Title
-    sheet.mergeCells(`A${currentRow}:H${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
     const summaryTitleCell = sheet.getCell(`A${currentRow}`);
     summaryTitleCell.value = 'SUMMARY';
     summaryTitleCell.font = { bold: true, size: 14, color: { argb: 'FF1A56DB' } };
@@ -736,12 +741,12 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // ============================================================
-    // DATA TABLE SECTION
+    // DATA TABLE SECTION - UPDATED WITH GRN & SIV
     // ============================================================
 
     // Table Header
     const headerRow = sheet.getRow(currentRow);
-    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM', 'Type', 'Quantity', 'Date & Time'];
+    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM', 'Type', 'Quantity', 'GRN No.', 'SIV No.', 'Date & Time'];
     headers.forEach((header, index) => {
       const col = index + 1;
       headerRow.getCell(col).value = header;
@@ -770,7 +775,9 @@ exports.exportTransactions = async (req, res) => {
     sheet.getColumn(5).width = 12;   // UOM
     sheet.getColumn(6).width = 14;   // Type
     sheet.getColumn(7).width = 14;   // Quantity
-    sheet.getColumn(8).width = 20;   // Date & Time
+    sheet.getColumn(8).width = 20;   // GRN No.
+    sheet.getColumn(9).width = 20;   // SIV No.
+    sheet.getColumn(10).width = 20;  // Date & Time
 
     // Add data rows
     let rowCounter = 1;
@@ -783,6 +790,8 @@ exports.exportTransactions = async (req, res) => {
         uomCode: item?.uom?.code || 'PCS',
         type: record.transactionType,
         quantity: parseFloat(record.changeAmount || 0),
+        grnNumber: record.grnNumber || '',
+        sivNumber: record.sivNumber || '',
         createdAt: record.createdAt,
       };
 
@@ -794,7 +803,9 @@ exports.exportTransactions = async (req, res) => {
       row.getCell(5).value = formatted.uomCode;
       row.getCell(6).value = formatted.type === 'Stock In' ? '📥 Stock In' : '📤 Stock Out';
       row.getCell(7).value = formatted.type === 'Stock In' ? `+${formatted.quantity}` : `-${formatted.quantity}`;
-      row.getCell(8).value = formatted.createdAt ? new Date(formatted.createdAt).toLocaleString() : '';
+      row.getCell(8).value = formatted.grnNumber;
+      row.getCell(9).value = formatted.sivNumber;
+      row.getCell(10).value = formatted.createdAt ? new Date(formatted.createdAt).toLocaleString() : '';
 
       // Color the Type cell
       const typeCell = row.getCell(6);
@@ -823,7 +834,7 @@ exports.exportTransactions = async (req, res) => {
       }
 
       // Add borders to all cells
-      for (let col = 1; col <= 8; col++) {
+      for (let col = 1; col <= 10; col++) {
         row.getCell(col).border = {
           top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -842,7 +853,7 @@ exports.exportTransactions = async (req, res) => {
     const headerRowNumber = headerRow.number;
     sheet.autoFilter = {
       from: `A${headerRowNumber}`,
-      to: `H${headerRowNumber}`
+      to: `J${headerRowNumber}`
     };
 
     // ============================================================
