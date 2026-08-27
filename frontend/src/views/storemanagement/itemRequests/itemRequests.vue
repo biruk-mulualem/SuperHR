@@ -432,368 +432,6 @@
       </select>
     </div>
 
-    <!-- ==================== CREATE/EDIT MODAL ==================== -->
-    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-container request-modal">
-        <div class="modal-header">
-          <h3>
-            {{ editingRequest ? "✏️ Edit Request" : "➕ New Item Request" }}
-          </h3>
-          <button class="modal-close" @click="closeModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div
-            v-if="showValidationErrors && validationErrors.length > 0"
-            class="validation-error-box"
-          >
-            <div class="validation-error-header">
-              <span class="error-icon">❌</span>
-              <span class="error-title">Request Validation Failed</span>
-            </div>
-            <div class="validation-error-message">{{ validationMessage }}</div>
-            <div class="validation-error-list">
-              <div
-                v-for="(error, index) in validationErrors"
-                :key="index"
-                class="validation-error-item"
-              >
-                <div class="error-item-header">
-                  <span class="error-item-icon">📦</span>
-                  <span class="error-item-title">
-                    <strong>{{ error.itemName || "Unknown Item" }}</strong>
-                    <span v-if="error.itemCode" class="error-code"
-                      >({{ error.itemCode }})</span
-                    >
-                    <span v-if="error.requestedQuantity" class="error-quantity">
-                      Requested: {{ error.requestedQuantity }}
-                    </span>
-                  </span>
-                </div>
-                <div class="error-item-message">{{ error.message }}</div>
-                <div
-                  v-if="
-                    error.groupsWithoutBalance &&
-                    error.groupsWithoutBalance.length > 0
-                  "
-                  class="error-groups"
-                >
-                  <span class="groups-label">📋 Missing Groups:</span>
-                  <span
-                    v-for="(group, idx) in error.groupsWithoutBalance"
-                    :key="idx"
-                    class="group-tag"
-                  >
-                    {{ group.groupName }}
-                  </span>
-                </div>
-                <div
-                  v-if="error.balanceDetails && error.balanceDetails.length > 0"
-                  class="error-balance-details"
-                >
-                  <span class="balance-label">📊 Balance Variation:</span>
-                  <div class="balance-list">
-                    <span
-                      v-for="(detail, idx) in error.balanceDetails"
-                      :key="idx"
-                      class="balance-item"
-                    >
-                      {{ detail.groupName }}: {{ detail.balance }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="validation-actions">
-              <button class="btn-secondary" @click="closeValidationErrors">
-                ✕ Dismiss
-              </button>
-            </div>
-          </div>
-
-          <form
-            @submit.prevent="saveRequest"
-            class="request-form"
-            v-show="!showValidationErrors"
-          >
-            <!-- ============================================================ -->
-            <!-- STORE SELECTION -->
-            <!-- ============================================================ -->
-            <div class="form-row">
-              <div class="form-group" v-if="userIsAdmin">
-                <label>Asking Store (Source) *</label>
-                <select
-                  v-model="form.askingStoreId"
-                  required
-                  :disabled="!!userAssignedStoreId || !!editingRequest"
-                >
-                  <option value="">Select Store</option>
-                  <option
-                    v-for="store in activeStores"
-                    :key="store.storeId || store.id"
-                    :value="store.storeId || store.id"
-                  >
-                    {{ store.name }}
-                  </option>
-                </select>
-                <span v-if="userAssignedStoreId" class="hint">
-                  📌 Using your assigned store: {{ getUserAssignedStoreName() }}
-                </span>
-              </div>
-              <div class="form-group">
-                <label>Supplying Store (Target) *</label>
-                <select v-model="form.supplyingStoreId" required>
-                  <option value="">Select Store</option>
-                  <option
-                    v-for="store in filteredSupplyingStores"
-                    :key="store.storeId || store.id"
-                    :value="store.storeId || store.id"
-                  >
-                    {{ store.name }}
-                  </option>
-                </select>
-                <span class="hint">Select the store that will supply the items</span>
-              </div>
-            </div>
-
-            <!-- ============================================================ -->
-            <!-- 🔥 IMPROVED ITEM SELECTION -->
-            <!-- ============================================================ -->
-            <div class="form-section-title">
-              <span>📦 Items</span>
-              <span class="selected-count" v-if="selectedItemsList.length > 0">
-                {{ selectedItemsList.length }} selected
-              </span>
-            </div>
-
-            <!-- Search -->
-            <div class="item-search-area">
-              <div class="item-search-wrapper">
-                <span class="search-icon-small">🔍</span>
-                <input
-                  type="text"
-                  v-model="itemSearchGlobal"
-                  placeholder="Search items by code, name, brand, or model..."
-                  class="item-global-search"
-                  @input="itemCurrentPage = 1"
-                />
-              </div>
-              <span class="item-count-badge">{{ filteredItemsList.length }} items</span>
-            </div>
-
-            <!-- Item Grid - Click whole card to toggle -->
-            <div class="item-grid">
-              <div
-                v-for="itemOption in paginatedItemList"
-                :key="itemOption.id"
-                class="item-card"
-                :class="{
-                  'item-selected': isItemSelected(itemOption),
-                }"
-                @click="toggleItemSelection(itemOption)"
-              >
-                <div class="item-card-content">
-                  <div class="item-card-info">
-                    <div class="item-card-code">{{ itemOption.code }}</div>
-                    <div class="item-card-name">
-                      {{ itemOption.standardName || itemOption.name || "Unnamed" }}
-                    </div>
-                    <div class="item-card-details">
-                      <span v-if="itemOption.brand" class="item-tag brand">{{ itemOption.brand }}</span>
-                      <span v-if="itemOption.model" class="item-tag model">{{ itemOption.model }}</span>
-                      <span class="item-tag uom">{{ itemOption.uom?.code || "N/A" }}</span>
-                    </div>
-                  </div>
-                  <div class="item-card-actions" @click.stop>
-                    <!-- Quantity controls (only show if selected) -->
-                    <div v-if="isItemSelected(itemOption)" class="quantity-control">
-                      <button 
-                        type="button" 
-                        class="qty-btn" 
-                        @click="adjustQuantity(itemOption, -1)"
-                        :disabled="getItemQuantity(itemOption) <= 1"
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        :value="getItemQuantity(itemOption)"
-                        @change="setItemQuantity(itemOption, $event)"
-                        min="0.01"
-                        step="0.01"
-                        class="qty-input"
-                      />
-                      <button 
-                        type="button" 
-                        class="qty-btn" 
-                        @click="adjustQuantity(itemOption, 1)"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <span v-else class="click-hint">Click to add</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Item Pagination -->
-            <div class="item-pagination" v-if="filteredItemsList.length > itemPageSize">
-              <button
-                type="button"
-                class="page-btn-small"
-                :disabled="itemCurrentPage === 1"
-                @click="itemCurrentPage--"
-              >
-                ←
-              </button>
-              <span class="page-info-small">
-                {{ itemCurrentPage }} / {{ itemTotalPages }}
-              </span>
-              <button
-                type="button"
-                class="page-btn-small"
-                :disabled="itemCurrentPage === itemTotalPages"
-                @click="itemCurrentPage++"
-              >
-                →
-              </button>
-            </div>
-
-            <!-- Selected Items Summary -->
-            <div class="selected-items-summary" v-if="selectedItemsList.length > 0">
-              <div class="selected-header">
-                <span class="selected-title">✅ Selected Items ({{ selectedItemsList.length }})</span>
-                <button type="button" class="btn-clear-all" @click="clearAllItems">
-                  🗑️ Clear All
-                </button>
-              </div>
-              <div class="selected-items-list">
-                <div
-                  v-for="item in selectedItemsList"
-                  :key="item.itemId"
-                  class="selected-item-chip"
-                >
-                  <span class="chip-code">{{ item.code }}</span>
-                  <span class="chip-name">{{ item.name }}</span>
-                  <span class="chip-qty">×{{ item.quantity }}</span>
-                  <button
-                    type="button"
-                    class="chip-remove"
-                    @click="removeSelectedItem(item.itemId)"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Item Remark -->
-            <div class="form-row full-width" v-if="selectedItemsList.length > 0">
-              <div class="form-group">
-                <label>Item Remark (optional)</label>
-                <textarea
-                  v-model="form.itemRemark"
-                  rows="2"
-                  placeholder="Add a remark for all items..."
-                  class="textarea-field"
-                ></textarea>
-              </div>
-            </div>
-
-            <!-- ============================================================ -->
-            <!-- REQUEST DETAILS -->
-            <!-- ============================================================ -->
-            <div class="form-section-title">📋 Request Details</div>
-            
-            <div class="form-row">
-              <div class="form-group">
-                <label>Requested By</label>
-                <input
-                  v-model="form.requestedBy"
-                  type="text"
-                  readonly
-                  class="readonly-field"
-                />
-                <span class="hint">Auto-filled with current user</span>
-              </div>
-              <div class="form-group">
-                <label>Requested Date *</label>
-                <input v-model="form.requestedDate" type="date" required />
-              </div>
-            </div>
-
-            <!-- 🔥 IS ASSET TOGGLE - NO DEPARTMENT SELECTION -->
-            <div class="form-row full-width">
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    v-model="form.isAsset" 
-                  />
-                  <span class="checkbox-text">🔧 This request contains ASSET items</span>
-                </label>
-                <span class="hint" v-if="form.isAsset">
-                  📌 Department approval will be required (configured in system settings)
-                </span>
-                <span class="hint" v-else>
-                  ℹ️ Toggle on if this request contains asset items that need department approval
-                </span>
-              </div>
-            </div>
-
-            <!-- Status info for editing -->
-            <div class="form-row" v-if="editingRequest">
-              <div class="form-group">
-                <label>Status</label>
-                <input
-                  value="Pending (Reset on Edit)"
-                  type="text"
-                  readonly
-                  class="status-info-field"
-                />
-                <span class="hint">Status is always reset to Pending when editing</span>
-              </div>
-              <div class="form-group">
-                <!-- Empty for spacing -->
-              </div>
-            </div>
-
-            <!-- General Remark -->
-            <div class="form-row full-width">
-              <div class="form-group">
-                <label>General Remark</label>
-                <textarea
-                  v-model="form.remark"
-                  rows="3"
-                  placeholder="General notes or remarks..."
-                  class="textarea-field"
-                ></textarea>
-                <span class="hint">This remark applies to the entire request</span>
-              </div>
-            </div>
-
-            <!-- Form Errors -->
-            <div v-if="formErrors.length > 0" class="form-errors">
-              <div v-for="error in formErrors" :key="error" class="form-error">
-                ⚠️ {{ error }}
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button
-            v-show="!showValidationErrors"
-            class="btn-primary"
-            @click="saveRequest"
-            :disabled="saving || !isFormValid"
-          >
-            {{ saving ? "Saving..." : editingRequest ? "Update" : "Create" }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- ==================== STATUS CONFIRMATION MODAL ==================== -->
     <div
       v-if="showStatusModal"
@@ -886,6 +524,14 @@
       </div>
     </div>
 
+    <!-- ==================== CREATE/EDIT MODAL ==================== -->
+    <CreateRequestModal
+      v-model:visible="showCreateModal"
+      :editing-request="editingRequestData"
+      @saved="handleModalSaved"
+      @closed="handleModalClosed"
+    />
+
     <!-- ==================== TOAST ==================== -->
     <div v-if="showToast" class="toast" :class="toastType">
       <span>{{ toastMessage }}</span>
@@ -904,6 +550,7 @@ import type {
   Store,
   Item,
 } from "@/stores/itemRequestService";
+import CreateRequestModal from "./components/CreateRequestModal.vue";
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
@@ -915,12 +562,8 @@ import timezone from 'dayjs/plugin/timezone'
 const router = useRouter();
 const authStore = useAuthStore();
 
-
-
 dayjs.extend(utc)
 dayjs.extend(timezone)
-
-
 
 // Data
 const stores = ref<Store[]>([]);
@@ -944,18 +587,12 @@ const currentPage = ref(1);
 const pageSize = ref(10);
 const totalItems = ref(0);
 
-// Validation Errors
-const validationErrors = ref<any[]>([]);
-const validationMessage = ref<string>("");
-const showValidationErrors = ref(false);
-
 // Expand
 const expandedRow = ref<number | null>(null);
 
 // Modal states
-const showModal = ref(false);
-const editingRequest = ref<ItemRequest | null>(null);
-const saving = ref(false);
+const showCreateModal = ref(false);
+const editingRequestData = ref<ItemRequest | null>(null);
 const showExportModal = ref(false);
 const exporting = ref(false);
 const exportType = ref<"full" | "summary">("full");
@@ -964,29 +601,6 @@ const exportType = ref<"full" | "summary">("full");
 const showStatusModal = ref(false);
 const statusTarget = ref<ItemRequest | null>(null);
 const statusAction = ref<"approved" | "finalized">("approved");
-
-// ================================================================
-// 🔥 IMPROVED ITEM SELECTION STATE
-// ================================================================
-const itemSearchGlobal = ref("");
-const itemCurrentPage = ref(1);
-const itemPageSize = ref(10);
-const selectedItems = ref<Map<number, { itemId: number; code: string; name: string; quantity: number }>>(new Map());
-
-// Form
-const form = ref({
-  askingStoreId: "",
-  supplyingStoreId: "",
-  items: [] as RequestItem[],
-  requestedBy: "",
-  requestedDate: "",
-  status: "pending" as "pending" | "approved" | "rejected",
-  remark: "",
-  itemRemark: "",
-  isAsset: false,
-});
-
-const formErrors = ref<string[]>([]);
 
 // Toast
 const showToast = ref(false);
@@ -999,64 +613,6 @@ const toastType = ref<"success" | "error" | "info" | "warning">("success");
 
 const activeStores = computed(() => {
   return stores.value.filter((store) => store.status === "Active");
-});
-
-const filteredSupplyingStores = computed(() => {
-  let result = activeStores.value;
-  if (form.value.askingStoreId) {
-    result = result.filter(
-      (store) =>
-        (store.storeId || store.id) !== Number(form.value.askingStoreId),
-    );
-  }
-  return result;
-});
-
-// 🔥 Item selection computed
-const filteredItemsList = computed(() => {
-  let list = items.value;
-  const query = itemSearchGlobal.value.toLowerCase().trim();
-  if (query) {
-    list = list.filter(
-      (item) =>
-        item.code?.toLowerCase().includes(query) ||
-        item.name?.toLowerCase().includes(query) ||
-        item.standardName?.toLowerCase().includes(query) ||
-        item.brand?.toLowerCase().includes(query) ||
-        item.model?.toLowerCase().includes(query),
-    );
-  }
-  return list;
-});
-
-const itemTotalPages = computed(() => {
-  return Math.ceil(filteredItemsList.value.length / itemPageSize.value) || 1;
-});
-
-const paginatedItemList = computed(() => {
-  const start = (itemCurrentPage.value - 1) * itemPageSize.value;
-  const end = start + itemPageSize.value;
-  return filteredItemsList.value.slice(start, end);
-});
-
-const selectedItemsList = computed(() => {
-  return Array.from(selectedItems.value.values());
-});
-
-const isFormValid = computed(() => {
-  // Check if there are selected items
-  if (selectedItemsList.value.length === 0) return false;
-  
-  // Check if all selected items have quantities > 0
-  const allValid = selectedItemsList.value.every(item => item.quantity > 0);
-  if (!allValid) return false;
-  
-  return !!(
-    form.value.askingStoreId &&
-    form.value.supplyingStoreId &&
-    form.value.requestedBy &&
-    form.value.requestedDate
-  );
 });
 
 const hasActiveFilters = computed(() => {
@@ -1081,8 +637,9 @@ const canCreateRequests = computed(() => {
 });
 
 // ================================================================
-// HELPER: Check if store is foreign/local purchase
+// SKIP NOTIFICATION STORES
 // ================================================================
+
 const SKIP_NOTIFICATION_STORES = ['STORE-006', 'STORE-007'];
 
 const shouldSkipNotifications = (storeCode: string): boolean => {
@@ -1092,92 +649,6 @@ const shouldSkipNotifications = (storeCode: string): boolean => {
 const isSkipStore = (req: ItemRequest): boolean => {
   const supplyingStore = stores.value.find(s => (s.storeId || s.id) === req.supplyingStoreId);
   return supplyingStore ? shouldSkipNotifications(supplyingStore.code) : false;
-};
-
-// ================================================================
-// 🔥 ITEM SELECTION METHODS
-// ================================================================
-
-const getItemId = (itemOption: any): number => {
-  const id = itemOption?.itemId || itemOption?.id;
-  return id ? Number(id) : 0;
-};
-
-const isItemSelected = (itemOption: any): boolean => {
-  const id = getItemId(itemOption);
-  if (id === 0) return false;
-  return selectedItems.value.has(id);
-};
-
-const getItemQuantity = (itemOption: any): number => {
-  const id = getItemId(itemOption);
-  if (id === 0) return 1;
-  return selectedItems.value.get(id)?.quantity || 1;
-};
-
-const toggleItemSelection = (itemOption: any): void => {
-  const id = getItemId(itemOption);
-  if (id === 0) {
-    showToastMessage('Invalid item selected', 'warning');
-    return;
-  }
-  
-  if (selectedItems.value.has(id)) {
-    selectedItems.value.delete(id);
-  } else {
-    selectedItems.value.set(id, {
-      itemId: id,
-      code: itemOption.code,
-      name: itemOption.standardName || itemOption.name || "Unknown",
-      quantity: 1,
-    });
-  }
-};
-
-const adjustQuantity = (itemOption: any, delta: number): void => {
-  const id = getItemId(itemOption);
-  if (id === 0) return;
-  
-  const item = selectedItems.value.get(id);
-  if (!item) return;
-  const newQty = item.quantity + delta;
-  if (newQty < 1) return;
-  selectedItems.value.set(id, { ...item, quantity: newQty });
-};
-
-const setItemQuantity = (itemOption: any, event: Event): void => {
-  const id = getItemId(itemOption);
-  if (id === 0) return;
-  
-  const input = event.target as HTMLInputElement;
-  const value = parseFloat(input.value);
-  const item = selectedItems.value.get(id);
-  if (!item) return;
-  if (isNaN(value) || value < 1) {
-    showToastMessage("Quantity must be at least 1", "warning");
-    return;
-  }
-  selectedItems.value.set(id, { ...item, quantity: value });
-};
-
-const removeSelectedItem = (itemId: number): void => {
-  selectedItems.value.delete(itemId);
-};
-
-const clearAllItems = (): void => {
-  if (selectedItemsList.value.length === 0) return;
-  if (confirm("Are you sure you want to remove all items from this request?")) {
-    selectedItems.value.clear();
-  }
-};
-
-const syncSelectedItemsToForm = (): void => {
-  const items = Array.from(selectedItems.value.values()).map(item => ({
-    itemId: item.itemId,
-    quantity: item.quantity,
-    remark: form.value.itemRemark || "",
-  }));
-  form.value.items = items;
 };
 
 // ================================================================
@@ -1239,7 +710,7 @@ const getApproveTooltip = (req: ItemRequest): string => {
 };
 
 // ================================================================
-// 🔥 ACCEPTANCE SUMMARY - FIXED
+// ACCEPTANCE SUMMARY
 // ================================================================
 
 const getAcceptanceSummary = (req: ItemRequest): string => {
@@ -1251,7 +722,6 @@ const getAcceptanceSummary = (req: ItemRequest): string => {
   const rejected = req.notifications.filter((n: { status: string; }) => n.status === 'rejected').length;
   const pending = req.notifications.filter((n: { status: string; }) => n.status === 'pending').length;
   
-  // Check if there's a department notification
   const hasDepartment = req.notifications.some((n: any) => n.approval_type === 'department' || n.is_department_approval);
   const hasGroups = req.notifications.some((n: any) => n.approval_type === 'group' || !n.approval_type);
   
@@ -1265,18 +735,11 @@ const getAcceptanceSummary = (req: ItemRequest): string => {
     summary = `⏳ ${accepted}/${total} accepted`;
   }
   
-  // Add type indicator
-  if (hasDepartment && hasGroups) {
-    summary += ' ';
-  } else if (hasDepartment) {
-    summary += ' ';
-  }
-  
   return summary;
 };
 
 // ================================================================
-// 🔥 NOTIFICATION TOOLTIP - FIXED
+// NOTIFICATION TOOLTIP
 // ================================================================
 
 const getNotificationTooltip = (notification: any): string => {
@@ -1284,7 +747,6 @@ const getNotificationTooltip = (notification: any): string => {
   let type = '';
   let responder = '';
   
-  // 1️⃣ Get the name based on type
   if (notification.approval_type === 'department' || notification.is_department_approval) {
     type = 'Department';
     name = notification.department?.name || 'Unknown Department';
@@ -1293,7 +755,6 @@ const getNotificationTooltip = (notification: any): string => {
     name = notification.group?.name || 'Unknown Group';
   }
   
-  // 2️⃣ Get responder from populated data
   if (notification.status === 'accepted' || notification.status === 'rejected') {
     const user = notification.respondedByUser;
     if (user) {
@@ -1301,7 +762,6 @@ const getNotificationTooltip = (notification: any): string => {
     }
   }
   
-  // 3️⃣ Build tooltip
   let tooltip = `${type}: ${name}`;
   
   if (notification.status === 'accepted') {
@@ -1349,69 +809,40 @@ const shouldShowRequest = (req: ItemRequest): boolean => {
 // DATA LOADING METHODS
 // ================================================================
 
-// In itemrequests.vue - replace the store ID extraction
-
 const loadUserData = () => {
   const user = authStore.user;
-  console.log('📌 loadUserData - user:', user);
-  
-  if (!user) {
-    console.log('⚠️ No user found in auth store');
-    return;
-  }
+  if (!user) return;
   
   const userData = user as any;
-  
-  // Check admin
   userIsAdmin.value = userData.isAdmin || user.role === "admin" || user.role === "Admin";
-  console.log('👑 userIsAdmin:', userIsAdmin.value);
   
-  // ✅ Get store ID - use the computed value from auth store
-  let storeId = authStore.userStoreId;  // ✅ Use the computed getter!
-  let storeName = userData.storeName || null;
+  let storeId = authStore.userStoreId;
   
-  console.log('🔍 authStore.userStoreId:', storeId);
-  
-  // If still null, try direct properties
   if (!storeId) {
     storeId = userData.storeId || 
               userData.assignedStore?.id || 
-              userData.assignedStore?.storeId ||
-              userData.currentStore?.id || 
-              userData.currentStore?.storeId ||
+              userData.currentStore?.id ||
               userData.store?.id ||
               null;
-    console.log('🔍 Direct storeId:', storeId);
   }
   
-  // Get store name
-  if (!storeName) {
-    storeName = userData.storeName || 
-                userData.assignedStore?.name || 
-                userData.currentStore?.name ||
-                userData.store?.name ||
-                null;
-  }
-  
-  console.log('📦 Final storeId:', storeId, 'storeName:', storeName);
+  let storeName = userData.storeName || 
+                  userData.assignedStore?.name || 
+                  userData.currentStore?.name ||
+                  userData.store?.name ||
+                  null;
   
   if (storeId) {
     userAssignedStoreId.value = storeId;
     userAssignedStoreName.value = storeName || 'Assigned Store';
     userIsAskingStore.value = true;
-    console.log('✅ Store assigned successfully:', { 
-      id: userAssignedStoreId.value, 
-      name: userAssignedStoreName.value 
-    });
   } else {
     userAssignedStoreId.value = null;
     userAssignedStoreName.value = null;
     userIsAskingStore.value = false;
-    console.log('❌ No store ID found - user cannot create requests');
   }
-  
-  console.log('📋 Final userIsAskingStore:', userIsAskingStore.value);
 };
+
 const getUserAssignedStoreName = (): string => {
   return userAssignedStoreName.value || "No store assigned";
 };
@@ -1562,35 +993,13 @@ const formatDate = (dateString?: string): string => {
     day: "numeric",
   });
 };
-// ✅ FIXED - Using UTC+6 (Based on your actual time)
-// In itemrequests.vue - fix the timezone
-const formatDateTime = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
-  if (!dateString) return ''
-  
-  // ✅ Detect the actual timezone offset from the data
-  const date = dayjs.utc(dateString)
-  
-  // If your data already has timezone info, use it directly
-  if (dateString.toString().includes('+') || dateString.toString().includes('Z')) {
-    return date.format('MMM D, YYYY h:mm A')
-  }
-  
-  // ✅ Only add offset if the data is naive (no timezone info)
-  // Check your database timezone - use the correct offset
-  // If your database uses UTC, don't add any offset
-  // If your database uses UTC+3, add 3 hours
-  return date.format('MMM D, YYYY h:mm A')
-  
-  // Or if you need UTC+6:
-  // return date.add(6, 'hour').format('MMM D, YYYY h:mm A')
-}
 
-const formatDateShort = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
-  if (!dateString) return ''
-  return dayjs.utc(dateString)
-    .add(6, 'hour')  // ✅ Your system shows UTC+6
-    .format('MMM D, h:mm A')
-}
+const formatDateTime = (dateString: string | number | Date | dayjs.Dayjs | null | undefined) => {
+  if (!dateString) return '';
+  const date = dayjs.utc(dateString);
+  return date.format('MMM D, YYYY h:mm A');
+};
+
 const getCurrentUser = (): string => {
   return (
     authStore.user?.fullName ||
@@ -1612,42 +1021,13 @@ const toggleExpand = (id?: number): void => {
   expandedRow.value = expandedRow.value === id ? null : id;
 };
 
-const closeValidationErrors = (): void => {
-  showValidationErrors.value = false;
-  validationErrors.value = [];
-  validationMessage.value = "";
-};
-
 // ================================================================
 // MODAL METHODS
 // ================================================================
 
 const openCreateModal = (): void => {
-  editingRequest.value = null;
-  const today: string = new Date().toISOString().split("T")[0] || "";
-  closeValidationErrors();
-  selectedItems.value.clear();
-  itemSearchGlobal.value = "";
-  itemCurrentPage.value = 1;
-  
-  const askingStoreId = userIsAdmin.value
-    ? ""
-    : String(userAssignedStoreId.value || "");
-  
-  form.value = {
-    askingStoreId: askingStoreId,
-    supplyingStoreId: "",
-    items: [],
-    requestedBy: getCurrentUser(),
-    requestedDate: today,
-    status: "pending",
-    remark: "",
-    itemRemark: "",
-    isAsset: false,
-  };
-  
-  formErrors.value = [];
-  showModal.value = true;
+  editingRequestData.value = null;
+  showCreateModal.value = true;
 };
 
 const editRequest = (req: ItemRequest): void => {
@@ -1655,248 +1035,17 @@ const editRequest = (req: ItemRequest): void => {
     showToastMessage("You don't have permission to edit this request", "error");
     return;
   }
-  
-  if (req.status === 'rejected') {
-    showToastMessage("📝 This request was rejected. Please fix the issues and resubmit.", "info");
-  }
-  
-  editingRequest.value = req;
-  const today: string = new Date().toISOString().split("T")[0] || "";
-  const requestedDate: string = String(req.requestedDate || today);
-  closeValidationErrors();
-  
-  // Populate selected items from request
-  selectedItems.value.clear();
-  if (req.items) {
-    req.items.forEach((item: any) => {
-      const itemId = Number(item.itemId || 0);
-      const itemData = items.value.find(i => (i.itemId || i.id) === itemId);
-      if (itemData && itemId > 0) {
-        selectedItems.value.set(itemId, {
-          itemId: itemId,
-          code: itemData.code,
-          name: itemData.standardName || itemData.name || "Unknown",
-          quantity: item.quantity || 1,
-        });
-      }
-    });
-  }
-  
-  form.value = {
-    askingStoreId: String(req.askingStoreId),
-    supplyingStoreId: String(req.supplyingStoreId),
-    items: req.items ? req.items.map((item: any) => ({
-      ...item,
-      itemId: Number((item as any).itemId || 0),
-    })) : [],
-    requestedBy: getRequesterName(req),
-    requestedDate,
-    status: "pending",
-    remark: req.remark || "",
-    itemRemark: "",
-    isAsset: (req as any).isAsset || false,
-  };
-  
-  itemSearchGlobal.value = "";
-  itemCurrentPage.value = 1;
-  formErrors.value = [];
-  showModal.value = true;
+  editingRequestData.value = req;
+  showCreateModal.value = true;
 };
 
-const closeModal = (): void => {
-  showModal.value = false;
-  editingRequest.value = null;
-  saving.value = false;
-  selectedItems.value.clear();
-  closeValidationErrors();
+const handleModalSaved = (): void => {
+  loadRequests();
+  showToastMessage("Request saved successfully!", "success");
 };
 
-// ================================================================
-// SAVE REQUEST
-// ================================================================
-
-const saveRequest = async (): Promise<void> => {
-  closeValidationErrors();
-  formErrors.value = [];
-
-  // Sync selected items to form
-  syncSelectedItemsToForm();
-
-  // Validation checks
-  if (!form.value.askingStoreId) {
-    formErrors.value.push("Please select the asking store");
-  }
-  if (!form.value.supplyingStoreId) {
-    formErrors.value.push("Please select the supplying store");
-  }
-  if (form.value.askingStoreId === form.value.supplyingStoreId) {
-    formErrors.value.push("Asking store and supplying store cannot be the same");
-  }
-  if (form.value.items.length === 0) {
-    formErrors.value.push("Please add at least one item");
-  }
-
-  // Check for duplicates
-  const itemIds = form.value.items.map(item => item.itemId).filter(id => id && id !== 0);
-  const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index);
-  
-  if (duplicateIds.length > 0) {
-    const duplicateItems = form.value.items.filter(item => 
-      duplicateIds.includes(item.itemId)
-    );
-    
-    duplicateItems.forEach(item => {
-      const itemName = getItemName(Number(item.itemId)) || 'Unknown Item';
-      formErrors.value.push(
-        `⚠️ "${itemName}" (${getItemCode(Number(item.itemId))}) is already added to this request. Please remove the duplicate entry.`
-      );
-    });
-    
-    validationErrors.value = duplicateItems.map(item => ({
-      itemId: item.itemId,
-      itemName: getItemName(Number(item.itemId)) || 'Unknown Item',
-      itemCode: getItemCode(Number(item.itemId)) || 'N/A',
-      requestedQuantity: item.quantity,
-      message: 'This item is already added to the request. Please remove the duplicate entry.'
-    }));
-    
-    validationMessage.value = 'Duplicate items found in the request. Please fix the following issues:';
-    showValidationErrors.value = true;
-    saving.value = false;
-    return;
-  }
-
-  form.value.items.forEach((item, index) => {
-    if (!item.itemId) {
-      formErrors.value.push(`Item #${index + 1}: Please select an item`);
-    }
-    if (!item.quantity || item.quantity <= 0) {
-      formErrors.value.push(`Item #${index + 1}: Please enter a valid quantity`);
-    }
-  });
-
-  if (!form.value.requestedDate) {
-    formErrors.value.push("Please select a requested date");
-  }
-
-  if (formErrors.value.length > 0) {
-    saving.value = false;
-    return;
-  }
-
-  saving.value = true;
-  
-  try {
-    const userId = getCurrentUserId();
-    
-    const requestData = {
-      askingStoreId: Number(form.value.askingStoreId),
-      supplyingStoreId: Number(form.value.supplyingStoreId),
-      items: form.value.items.map((item) => ({
-        itemId: Number(item.itemId),
-        quantity: item.quantity,
-        remark: item.remark || "",
-      })),
-      requestedById: userId,
-      requestedDate: form.value.requestedDate,
-      status: form.value.status as "pending" | "approved" | "rejected",
-      remark: form.value.remark,
-      isAsset: form.value.isAsset,
-    };
-
-    let response;
-    
-    if (editingRequest.value) {
-      const requestId = editingRequest.value.requestId || editingRequest.value.id;
-      
-      try {
-        response = await itemRequestService.updateRequest(
-          requestId!,
-          requestData
-        );
-      } catch (apiError: any) {
-        console.error('API call failed:', apiError);
-        showToastMessage(apiError.message || 'Failed to update request', 'error');
-        saving.value = false;
-        return;
-      }
-      
-      if (!response) {
-        showToastMessage('No response from server', 'error');
-        saving.value = false;
-        return;
-      }
-      
-      if (response.success === true) {
-        showToastMessage("✅ Request updated and resubmitted successfully!", "success");
-        await loadRequests();
-        closeModal();
-        saving.value = false;
-        return;
-      } else {
-        if (response.errors && response.errors.length > 0) {
-          validationErrors.value = response.errors;
-          validationMessage.value = response.message || "Validation failed. Please fix the issues below.";
-          showValidationErrors.value = true;
-          showToastMessage("Validation failed - please fix the issues below", "error");
-        } else {
-          const errorMsg = response.error || response.message || 'Failed to update request';
-          showToastMessage(errorMsg, "error");
-        }
-        saving.value = false;
-        return;
-      }
-    } else {
-      try {
-        response = await itemRequestService.createRequest(requestData);
-      } catch (apiError: any) {
-        console.error('API call failed:', apiError);
-        showToastMessage(apiError.message || 'Failed to create request', 'error');
-        saving.value = false;
-        return;
-      }
-      
-      if (!response) {
-        showToastMessage('No response from server', 'error');
-        saving.value = false;
-        return;
-      }
-      
-      if (response.success === true) {
-        showToastMessage("✅ Request created successfully!", "success");
-        await loadRequests();
-        closeModal();
-        saving.value = false;
-        return;
-      } else {
-        if (response.errors && response.errors.length > 0) {
-          validationErrors.value = response.errors;
-          validationMessage.value = response.message || "The request cannot be created due to the following issues:";
-          showValidationErrors.value = true;
-          showToastMessage("Validation failed - please fix the issues below", "error");
-        } else {
-          const errorMsg = response.error || response.message || 'Failed to create request';
-          showToastMessage(errorMsg, "error");
-        }
-        saving.value = false;
-        return;
-      }
-    }
-  } catch (error: any) {
-    console.error("Save request error:", error);
-    const errorData = error.response?.data;
-    
-    if (errorData && errorData.errors && errorData.errors.length > 0) {
-      validationErrors.value = errorData.errors;
-      validationMessage.value = errorData.message || "The request cannot be created due to the following issues:";
-      showValidationErrors.value = true;
-      showToastMessage("Validation failed - please fix the issues below", "error");
-    } else {
-      showToastMessage(error.message || "Failed to save request", "error");
-    }
-  } finally {
-    saving.value = false;
-  }
+const handleModalClosed = (): void => {
+  editingRequestData.value = null;
 };
 
 // ================================================================
@@ -2072,7 +1221,7 @@ onMounted(async () => {
 
 <style scoped>
 /* ================================================================
-   NOTIFICATION STATUS STYLES - WITH GROUP/DEPT TYPES
+   NOTIFICATION STATUS STYLES
    ================================================================ */
 .notification-status {
   display: flex;
@@ -2144,157 +1293,6 @@ onMounted(async () => {
   padding: 1px 8px;
   border-radius: 10px;
   margin-top: 2px;
-}
-
-/* ================================================================
-   VALIDATION ERROR BOX
-   ================================================================ */
-.validation-error-box {
-  background: #fef2f2;
-  border: 2px solid #fecaca;
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
-}
-
-.validation-error-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.validation-error-header .error-icon {
-  font-size: 20px;
-}
-
-.validation-error-header .error-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #991b1b;
-}
-
-.validation-error-message {
-  color: #7f1d1d;
-  font-size: 14px;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: #fee2e2;
-  border-radius: 6px;
-}
-
-.validation-error-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-  max-height: 350px;
-  overflow-y: auto;
-}
-
-.validation-error-item {
-  background: white;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.error-item-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.error-item-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.error-item-title {
-  font-size: 14px;
-  color: #1e293b;
-}
-
-.error-code {
-  color: #64748b;
-  font-weight: normal;
-  margin-left: 4px;
-}
-
-.error-quantity {
-  font-size: 12px;
-  color: #64748b;
-  margin-left: 8px;
-  font-weight: normal;
-}
-
-.error-item-message {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
-  margin-bottom: 6px;
-  padding-left: 28px;
-}
-
-.error-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  padding-left: 28px;
-  margin-top: 4px;
-}
-
-.groups-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #fef3c7;
-  color: #92400e;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.error-balance-details {
-  padding-left: 28px;
-  margin-top: 4px;
-}
-
-.balance-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.balance-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.balance-item {
-  display: inline-block;
-  padding: 2px 10px;
-  background: #dbeafe;
-  color: #1e40af;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.validation-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 4px;
 }
 
 /* ================================================================
@@ -2454,32 +1452,6 @@ onMounted(async () => {
 
 .btn-export:hover {
   background: #059669;
-}
-
-/* ================================================================
-   READONLY INDICATORS
-   ================================================================ */
-.readonly-indicator {
-  font-size: 11px;
-  color: #94a3b8;
-  background: #f1f5f9;
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-
-.readonly-actions {
-  justify-content: center;
-  padding: 8px 0;
-}
-
-.readonly-badge {
-  font-size: 13px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 4px 16px;
-  border-radius: 20px;
-  font-weight: 500;
 }
 
 /* ================================================================
@@ -2650,7 +1622,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   REJECTION REASONS - TEXT AREA STYLES
+   REJECTION REASONS
    ================================================================ */
 .rejection-card {
   border-left: 4px solid #ef4444;
@@ -3006,22 +1978,18 @@ onMounted(async () => {
   background: #16a34a;
 }
 
-.btn-finalize-detail {
-  background: #8b5cf6;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s;
+.readonly-actions {
+  justify-content: center;
+  padding: 8px 0;
 }
 
-.btn-finalize-detail:hover {
-  background: #7c3aed;
+.readonly-badge {
+  font-size: 13px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-weight: 500;
 }
 
 /* ================================================================
@@ -3132,12 +2100,8 @@ onMounted(async () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-container {
@@ -3210,535 +2174,7 @@ onMounted(async () => {
   background: #fafbfc;
 }
 
-/* ================================================================
-   REQUEST FORM
-   ================================================================ */
-.request-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  padding: 8px 0;
-  border-bottom: 2px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.selected-count {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 500;
-  background: #f1f5f9;
-  padding: 2px 12px;
-  border-radius: 12px;
-}
-
-/* ================================================================
-   FORM ROW
-   ================================================================ */
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.form-row.full-width {
-  grid-template-columns: 1fr;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s;
-  background: white;
-  font-family: inherit;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.form-group input:read-only,
-.form-group textarea:read-only {
-  background: #f8fafc;
-  color: #64748b;
-}
-
-.readonly-field {
-  background: #f8fafc !important;
-  color: #475569 !important;
-  cursor: not-allowed;
-}
-
-.status-info-field {
-  background: #f0fdf4 !important;
-  color: #166534 !important;
-  border: 1px solid #bbf7d0 !important;
-  font-weight: 500;
-  cursor: not-allowed;
-}
-
-.hint {
-  display: block;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 4px;
-}
-
-.textarea-field {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.form-errors {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-error {
-  background: #fee2e2;
-  color: #991b1b;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #fecaca;
-}
-
-/* ================================================================
-   🔥 IMPROVED ITEM SELECTION STYLES
-   ================================================================ */
-
-.item-search-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.item-search-wrapper {
-  position: relative;
-  flex: 1;
-  min-width: 200px;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 14px;
-  color: #94a3b8;
-}
-
-.item-global-search {
-  width: 100%;
-  padding: 8px 12px 8px 36px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  background: #f8fafc;
-  transition: all 0.2s;
-}
-
-.item-global-search:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.item-count-badge {
-  font-size: 12px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 4px 12px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.item-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fafbfc;
-}
-
-.item-grid::-webkit-scrollbar {
-  width: 6px;
-}
-
-.item-grid::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.item-grid::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
-}
-
-.item-card {
-  background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.item-card:hover {
-  border-color: #94a3b8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  transform: translateY(-1px);
-}
-
-.item-card.item-selected {
-  border-color: #22c55e;
-  background: #f0fdf4;
-}
-
-.item-card.item-selected:hover {
-  border-color: #16a34a;
-  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.15);
-}
-
-.item-card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.item-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.item-card-code {
-  font-size: 11px;
-  font-weight: 600;
-  color: #2563eb;
-  font-family: monospace;
-}
-
-.item-card-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.item-card-details {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
-.item-tag {
-  font-size: 9px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-weight: 500;
-}
-
-.item-tag.brand {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.item-tag.model {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.item-tag.uom {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.item-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 2px;
-  min-height: 32px;
-}
-
-.click-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-.item-card.item-selected .click-hint {
-  display: none;
-}
-
-.quantity-control {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  padding: 1px;
-}
-
-.qty-btn {
-  background: transparent;
-  border: none;
-  padding: 2px 10px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 600;
-  color: #64748b;
-  transition: all 0.2s;
-  border-radius: 4px;
-}
-
-.qty-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.qty-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.qty-input {
-  width: 50px;
-  text-align: center;
-  border: none;
-  background: transparent;
-  padding: 4px 0;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.qty-input:focus {
-  outline: none;
-}
-
-/* ================================================================
-   SELECTED ITEMS SUMMARY
-   ================================================================ */
-
-.selected-items-summary {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-top: 8px;
-}
-
-.selected-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.selected-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #166534;
-}
-
-.btn-clear-all {
-  background: #fee2e2;
-  color: #991b1b;
-  border: none;
-  padding: 2px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  transition: all 0.2s;
-}
-
-.btn-clear-all:hover {
-  background: #fecaca;
-}
-
-.selected-items-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.selected-item-chip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: white;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.chip-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-family: monospace;
-  font-size: 10px;
-}
-
-.chip-name {
-  color: #1e293b;
-}
-
-.chip-qty {
-  color: #64748b;
-  font-weight: 500;
-}
-
-.chip-remove {
-  background: transparent;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 12px;
-}
-
-.chip-remove:hover {
-  color: #dc2626;
-}
-
-/* ================================================================
-   ITEM PAGINATION
-   ================================================================ */
-
-.item-pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.page-btn-small {
-  padding: 4px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: white;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.page-btn-small:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-
-.page-btn-small:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.page-info-small {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* ================================================================
-   ASSET CHECKBOX
-   ================================================================ */
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  transition: all 0.2s;
-  background: #f8fafc;
-}
-
-.checkbox-label:hover {
-  border-color: #94a3b8;
-  background: #f1f5f9;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #3b82f6;
-  cursor: pointer;
-}
-
-.checkbox-text {
-  font-size: 14px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-/* ================================================================
-   BUTTONS
-   ================================================================ */
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 24px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ================================================================
-   STATUS CONFIRMATION MODAL
-   ================================================================ */
+/* Status Confirmation Modal */
 .status-modal {
   max-width: 450px;
 }
@@ -3799,9 +2235,7 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-/* ================================================================
-   EXPORT MODAL
-   ================================================================ */
+/* Export Modal */
 .export-options {
   display: flex;
   flex-direction: column;
@@ -3936,10 +2370,6 @@ onMounted(async () => {
     margin-left: 0;
   }
 
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
   .detail-row-two-cols {
     grid-template-columns: 1fr;
   }
@@ -3992,25 +2422,6 @@ onMounted(async () => {
 
   .col-actions {
     min-width: 180px;
-  }
-
-  .item-grid {
-    grid-template-columns: 1fr;
-    max-height: 400px;
-  }
-  
-  .selected-items-list {
-    flex-direction: column;
-  }
-  
-  .selected-item-chip {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .item-search-area {
-    flex-direction: column;
-    align-items: stretch;
   }
 
   .rejection-item {
@@ -4071,34 +2482,11 @@ onMounted(async () => {
     min-width: 160px;
   }
 
-  .item-option-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
-
-  .item-option-left {
-    min-width: auto;
-  }
-
-  .item-option-right {
-    min-width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .item-option-uom {
-    align-self: flex-start;
-    margin-left: 0;
-  }
-
-  .selected-item-display {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .clear-selection {
-    align-self: flex-end;
+  .btn-back-top,
+  .btn-print-top {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
   }
 }
 
