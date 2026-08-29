@@ -1,4 +1,4 @@
-// controllers/stockCardController.js - FIXED to use newBalance + SHORT PARTICULARS
+// controllers/stockCardController.js - FIXED: Use balance from StoreBalance table only
 
 'use strict';
 
@@ -19,36 +19,20 @@ const {
 // HELPER: BUILD SHORT PARTICULARS
 // ================================================================
 
-/**
- * Build short particulars from transaction remark or reference type
- * Extracts REQ, GRN, or SIV codes from the remark
- */
 function buildParticulars(tx) {
-  // 1. If there's a remark, extract just the request code
   if (tx.remark) {
-    // Try to extract REQ-XXXXXX-XXX pattern
     const reqMatch = tx.remark.match(/REQ-\d{6}-\d{3}/);
-    if (reqMatch) {
-      return reqMatch[0]; // Just the request code
-    }
+    if (reqMatch) return reqMatch[0];
     
-    // Try to extract GRN pattern
     const grnMatch = tx.remark.match(/GRN-\d{4}-\d{3}/);
-    if (grnMatch) {
-      return grnMatch[0];
-    }
+    if (grnMatch) return grnMatch[0];
     
-    // Try to extract SIV pattern
     const sivMatch = tx.remark.match(/SIV-\d{4}-\d{3}/);
-    if (sivMatch) {
-      return sivMatch[0];
-    }
+    if (sivMatch) return sivMatch[0];
     
-    // If no pattern found, use first 40 characters
     return tx.remark.substring(0, 40) + (tx.remark.length > 40 ? '...' : '');
   }
   
-  // 2. If no remark, use reference type
   if (tx.referenceType) {
     const refLabels = {
       purchase: 'Purchase',
@@ -60,7 +44,6 @@ function buildParticulars(tx) {
       request: 'Request',
     };
     
-    // For transfers, show source → destination
     if (tx.referenceType === 'transfer' && tx.sourceStore && tx.destinationStore) {
       return `Transfer: ${tx.sourceStore.name} → ${tx.destinationStore.name}`;
     }
@@ -74,6 +57,8 @@ function buildParticulars(tx) {
 // ================================================================
 // GET STOCK CARD
 // ================================================================
+
+// controllers/stockCardController.js - FIXED VERSION
 
 const getStockCard = async (req, res) => {
   try {
@@ -103,16 +88,8 @@ const getStockCard = async (req, res) => {
 
     const item = await Item.findByPk(itemId, {
       include: [
-        {
-          model: UOM,
-          as: 'uom',
-          attributes: ['id', 'code', 'name'],
-        },
-        {
-          model: Category,
-          as: 'category',
-          attributes: ['categoryId', 'name'],
-        },
+        { model: UOM, as: 'uom', attributes: ['id', 'code', 'name'] },
+        { model: Category, as: 'category', attributes: ['categoryId', 'name'] },
       ],
     });
 
@@ -127,6 +104,7 @@ const getStockCard = async (req, res) => {
 
     // ============================================================
     // 3. ✅ GET CURRENT BALANCE FROM STORE_BALANCE TABLE
+    //    This is the SOURCE OF TRUTH for the CURRENT balance
     // ============================================================
 
     const balanceWhere = {
@@ -139,19 +117,12 @@ const getStockCard = async (req, res) => {
       where: balanceWhere,
       attributes: ['balance', 'minStockAlert', 'status', 'storeId', 'groupId'],
       include: [
-        {
-          model: Store,
-          as: 'store',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: Group,
-          as: 'group',
-          attributes: ['id', 'name', 'code'],
-        },
+        { model: Store, as: 'store', attributes: ['id', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
       ],
     });
 
+    // ✅ CURRENT BALANCE from StoreBalance table (SOURCE OF TRUTH)
     const currentBalance = currentBalanceRecord
       ? parseFloat(currentBalanceRecord.balance || 0)
       : 0;
@@ -188,31 +159,11 @@ const getStockCard = async (req, res) => {
     const transactions = await StoreBalanceHistory.findAll({
       where: whereClause,
       include: [
-        {
-          model: Store,
-          as: 'store',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: Group,
-          as: 'group',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: Store,
-          as: 'sourceStore',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: Store,
-          as: 'destinationStore',
-          attributes: ['id', 'name', 'code'],
-        },
-        {
-          model: User,
-          as: 'changedByUser',
-          attributes: ['userId', 'username', 'fullName'],
-        },
+        { model: Store, as: 'store', attributes: ['id', 'name', 'code'] },
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Store, as: 'sourceStore', attributes: ['id', 'name', 'code'] },
+        { model: Store, as: 'destinationStore', attributes: ['id', 'name', 'code'] },
+        { model: User, as: 'changedByUser', attributes: ['userId', 'username', 'fullName'] },
       ],
       order: [
         ['createdAt', 'ASC'],
@@ -222,7 +173,8 @@ const getStockCard = async (req, res) => {
     });
 
     // ============================================================
-    // 6. FORMAT ROWS - USE newBalance AS THE BALANCE
+    // 6. ✅ CALCULATE BALANCE USING CURRENT BALANCE FROM STORE_BALANCE
+    //    START FROM 0 AND ADD TRANSACTIONS, OR USE newBalance
     // ============================================================
 
     let totalQuantityIn = 0;
@@ -230,15 +182,16 @@ const getStockCard = async (req, res) => {
     let totalCostIn = 0;
     let totalCostOut = 0;
 
+    // ✅ Option A: Use newBalance from history (should be correct)
+    //    This assumes your history table has correct newBalance values
     const formattedRows = transactions.map((tx) => {
       const isStockIn = tx.transactionType === 'Stock In';
       const quantity = parseFloat(tx.changeAmount || 0);
       
-      // ✅ Use newBalance from history as the running balance
+      // ✅ USE newBalance from history (which should equal StoreBalance at that point)
       const runningQuantityBalance = parseFloat(tx.newBalance || 0);
       const runningCostBalance = runningQuantityBalance * unitCost;
 
-      // Update totals
       if (isStockIn) {
         totalQuantityIn += quantity;
         totalCostIn += quantity * unitCost;
@@ -251,7 +204,6 @@ const getStockCard = async (req, res) => {
         ? new Date(tx.createdAt).toLocaleDateString('en-GB')
         : '';
 
-      // ✅ USE THE buildParticulars FUNCTION - SHORT VERSION
       const particulars = buildParticulars(tx);
 
       return {
@@ -262,7 +214,7 @@ const getStockCard = async (req, res) => {
         quantityIn: isStockIn ? quantity : 0,
         quantityOut: isStockIn ? 0 : quantity,
         unitCost: unitCost,
-        // ✅ BALANCE = newBalance from history (this is the running balance)
+        // ✅ BALANCE from history (should match StoreBalance at this point)
         runningQuantityBalance: runningQuantityBalance,
         runningCostBalance: runningCostBalance,
         previousBalance: parseFloat(tx.previousBalance || 0),
@@ -280,6 +232,29 @@ const getStockCard = async (req, res) => {
       };
     });
 
+    // ✅ If no transactions, show current balance from StoreBalance
+    if (formattedRows.length === 0) {
+      formattedRows.push({
+        date: '',
+        grn: '',
+        siv: '',
+        particulars: `No transactions found for ${item.code}`,
+        quantityIn: 0,
+        quantityOut: 0,
+        unitCost: unitCost,
+        runningQuantityBalance: currentBalance,
+        runningCostBalance: currentBalance * unitCost,
+        previousBalance: 0,
+        newBalance: currentBalance,
+        transactionType: null,
+        referenceType: null,
+        storeName: currentBalanceRecord?.store?.name || null,
+        groupName: currentBalanceRecord?.group?.name || null,
+        updatedBy: null,
+        _raw: null,
+      });
+    }
+
     // ============================================================
     // 7. BUILD RESPONSE
     // ============================================================
@@ -294,29 +269,9 @@ const getStockCard = async (req, res) => {
           codeNo: item.code || '',
         },
 
-        rows: formattedRows.length > 0 ? formattedRows : [
-          {
-            date: '',
-            grn: '',
-            siv: '',
-            particulars: `No transactions found for ${item.code}`,
-            quantityIn: 0,
-            quantityOut: 0,
-            unitCost: unitCost,
-            runningQuantityBalance: currentBalance,
-            runningCostBalance: currentBalance * unitCost,
-            previousBalance: 0,
-            newBalance: currentBalance,
-            transactionType: null,
-            referenceType: null,
-            storeName: currentBalanceRecord?.store?.name || null,
-            groupName: currentBalanceRecord?.group?.name || null,
-            updatedBy: null,
-            _raw: null,
-          },
-        ],
+        rows: formattedRows,
 
-        // ✅ CURRENT BALANCE from StoreBalance table
+        // ✅ CURRENT BALANCE from StoreBalance table (SOURCE OF TRUTH)
         currentBalance: currentBalance,
 
         currentBalanceContext: currentBalanceRecord
@@ -358,6 +313,7 @@ const getStockCard = async (req, res) => {
           totalQuantityOut: totalQuantityOut,
           totalCostIn: totalCostIn,
           totalCostOut: totalCostOut,
+          // ✅ CURRENT BALANCE from StoreBalance table
           currentBalance: currentBalance,
           currentCostBalance: currentBalance * unitCost,
           unitCost: unitCost,
@@ -442,7 +398,7 @@ const getStockCardOptimized = async (req, res) => {
       : 0;
 
     // ============================================================
-    // SQL QUERY - Use newBalance directly
+    // ✅ SQL QUERY - Calculate running balance from transactions (starts at 0)
     // ============================================================
 
     let query = `
@@ -464,9 +420,14 @@ const getStockCardOptimized = async (req, res) => {
         g.name AS group_name,
         g.code AS group_code,
         u.full_name AS updated_by,
-        -- ✅ Use newBalance as the running balance
-        sbh.new_balance AS running_quantity_balance,
-        sbh.new_balance * :unitCost AS running_cost_balance
+        -- ✅ Calculate running balance from transactions (starts at 0)
+        SUM(
+          CASE 
+            WHEN sbh.transaction_type = 'Stock In' THEN sbh.change_amount
+            WHEN sbh.transaction_type = 'Stock Out' THEN -sbh.change_amount
+            ELSE 0
+          END
+        ) OVER (ORDER BY sbh.created_at ASC, sbh.id ASC) AS running_quantity_balance
       FROM store_balance_histories sbh
       LEFT JOIN stores s ON sbh.store_id = s.id
       LEFT JOIN groups g ON sbh.group_id = g.id
@@ -515,7 +476,7 @@ const getStockCardOptimized = async (req, res) => {
       const isStockIn = row.transaction_type === 'Stock In';
       const quantity = parseFloat(row.change_amount || 0);
       const runningQuantity = parseFloat(row.running_quantity_balance || 0);
-      const runningCost = parseFloat(row.running_cost_balance || 0);
+      const runningCost = runningQuantity * unitCost;
 
       if (isStockIn) {
         totalQuantityIn += quantity;
@@ -523,20 +484,8 @@ const getStockCardOptimized = async (req, res) => {
         totalQuantityOut += quantity;
       }
 
-      // ✅ USE THE buildParticulars FUNCTION - SHORT VERSION
-      // We need to create a tx object for the helper
-      const tx = {
-        remark: row.remark,
-        referenceType: row.reference_type,
-        sourceStore: row.sourceStore ? { name: row.sourceStore.name } : null,
-        destinationStore: row.destinationStore ? { name: row.destinationStore.name } : null,
-      };
-      
-      // Since we don't have sourceStore/destinationStore objects in SQL result,
-      // we need to handle transfers differently
       let particulars = '';
       if (row.remark) {
-        // Extract REQ, GRN, or SIV from remark
         const reqMatch = row.remark.match(/REQ-\d{6}-\d{3}/);
         if (reqMatch) {
           particulars = reqMatch[0];
@@ -576,7 +525,7 @@ const getStockCardOptimized = async (req, res) => {
         quantityIn: isStockIn ? quantity : 0,
         quantityOut: isStockIn ? 0 : quantity,
         unitCost: unitCost,
-        // ✅ BALANCE = newBalance from history
+        // ✅ RUNNING BALANCE from transactions (starts at 0)
         runningQuantityBalance: runningQuantity,
         runningCostBalance: runningCost,
         previousBalance: parseFloat(row.previous_balance || 0),
@@ -593,6 +542,29 @@ const getStockCardOptimized = async (req, res) => {
       };
     });
 
+    // ✅ If no transactions, show current balance
+    if (formattedRows.length === 0) {
+      formattedRows.push({
+        date: '',
+        grn: '',
+        siv: '',
+        particulars: `No transactions found for ${item.code}`,
+        quantityIn: 0,
+        quantityOut: 0,
+        unitCost: unitCost,
+        runningQuantityBalance: currentBalance,
+        runningCostBalance: currentBalance * unitCost,
+        previousBalance: 0,
+        newBalance: currentBalance,
+        storeName: currentBalanceRecord?.store?.name || null,
+        groupName: currentBalanceRecord?.group?.name || null,
+        updatedBy: null,
+        transactionType: null,
+        referenceType: null,
+        _raw: null,
+      });
+    }
+
     // ============================================================
     // BUILD RESPONSE
     // ============================================================
@@ -606,27 +578,8 @@ const getStockCardOptimized = async (req, res) => {
           unitOfMeasurement: item.uom?.code || '',
           codeNo: item.code || '',
         },
-        rows: formattedRows.length > 0 ? formattedRows : [
-          {
-            date: '',
-            grn: '',
-            siv: '',
-            particulars: `No transactions found for ${item.code}`,
-            quantityIn: 0,
-            quantityOut: 0,
-            unitCost: unitCost,
-            runningQuantityBalance: currentBalance,
-            runningCostBalance: currentBalance * unitCost,
-            previousBalance: 0,
-            newBalance: currentBalance,
-            storeName: currentBalanceRecord?.store?.name || null,
-            groupName: currentBalanceRecord?.group?.name || null,
-            updatedBy: null,
-            transactionType: null,
-            referenceType: null,
-            _raw: null,
-          },
-        ],
+        rows: formattedRows,
+        // ✅ CURRENT BALANCE from StoreBalance table
         currentBalance: currentBalance,
         currentBalanceContext: currentBalanceRecord
           ? {
@@ -665,6 +618,7 @@ const getStockCardOptimized = async (req, res) => {
           totalQuantityOut: totalQuantityOut,
           totalCostIn: totalQuantityIn * unitCost,
           totalCostOut: totalQuantityOut * unitCost,
+          // ✅ CURRENT BALANCE from StoreBalance table
           currentBalance: currentBalance,
           currentCostBalance: currentBalance * unitCost,
           unitCost: unitCost,

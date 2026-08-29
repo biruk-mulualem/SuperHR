@@ -831,7 +831,7 @@ const printPage = () => {
           overflow: hidden;
           background: #e4efde;
           color: #293129;
-          font-family: Arial, Helvetica, sans-serif;
+          font-family: 'Times New Roman', Times, serif;
           print-color-adjust: exact;
           -webkit-print-color-adjust: exact;
         }
@@ -848,6 +848,7 @@ const printPage = () => {
           font-size: 9px;
           font-weight: 600;
           text-align: left;
+          font-family: 'Times New Roman', Times, serif;
         }
         .company-name-amharic {
           position: absolute;
@@ -858,7 +859,7 @@ const printPage = () => {
           font-weight: 600;
           line-height: 1.3;
           white-space: nowrap;
-          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
         }
         .company-name-english {
           position: absolute;
@@ -869,6 +870,7 @@ const printPage = () => {
           font-weight: 700;
           line-height: 1.2;
           white-space: nowrap;
+          font-family: 'Times New Roman', Times, serif;
         }
         .stock-title {
           position: absolute;
@@ -878,6 +880,7 @@ const printPage = () => {
           font-size: 13px;
           font-weight: 600;
           text-decoration: underline;
+          font-family: 'Times New Roman', Times, serif;
         }
         .page-number {
           position: absolute;
@@ -887,16 +890,18 @@ const printPage = () => {
           align-items: center;
           gap: 3mm;
           font-size: 7.8px;
+          font-family: 'Times New Roman', Times, serif;
         }
         .page-amharic {
           position: absolute;
           right: 0;
           top: -4mm;
           font-size: 7px;
-          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
         }
         .page-english {
           font-size: 7.8px;
+          font-family: 'Times New Roman', Times, serif;
         }
         .page-value {
           min-width: 14mm;
@@ -905,6 +910,7 @@ const printPage = () => {
           border-bottom: 1px solid #414941;
           font-size: 7.8px;
           text-align: left;
+          font-family: 'Times New Roman', Times, serif;
         }
         .information {
           position: relative;
@@ -919,6 +925,7 @@ const printPage = () => {
           gap: 1.5mm;
           white-space: nowrap;
           font-size: 7.8px;
+          font-family: 'Times New Roman', Times, serif;
         }
         .maximum-stock {
           top: 0;
@@ -949,15 +956,17 @@ const printPage = () => {
           flex-direction: column;
           flex: 0 0 auto;
           line-height: 1.2;
+          font-family: 'Times New Roman', Times, serif;
         }
         .amharic-label {
           font-size: 7.3px;
           font-weight: 500;
-          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
         }
         .english-label {
           font-size: 7.8px;
           white-space: nowrap;
+          font-family: 'Times New Roman', Times, serif;
         }
         .field-value {
           height: 12px;
@@ -967,6 +976,7 @@ const printPage = () => {
           color: #202720;
           font-size: 7.8px;
           line-height: 12px;
+          font-family: 'Times New Roman', Times, serif;
         }
         .stock-table {
           width: 100%;
@@ -974,6 +984,7 @@ const printPage = () => {
           table-layout: fixed;
           font-size: 6.8px;
           color: #293129;
+          font-family: 'Times New Roman', Times, serif;
         }
         .col-date { width: 8%; }
         .col-grn { width: 11%; }
@@ -988,6 +999,7 @@ const printPage = () => {
           text-align: center;
           vertical-align: middle;
           height: 7.5mm;
+          font-family: 'Times New Roman', Times, serif;
         }
         .stock-table thead th {
           padding: 1.5px;
@@ -995,6 +1007,7 @@ const printPage = () => {
           vertical-align: middle;
           font-weight: 500;
           line-height: 1.1;
+          font-family: 'Times New Roman', Times, serif;
         }
         .stock-table thead tr:first-child th {
           height: 12mm;
@@ -1009,14 +1022,14 @@ const printPage = () => {
           font-weight: 500;
           line-height: 1.3;
           white-space: nowrap;
-          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
         }
         .th-amharic.small {
           font-size: 6.5px;
         }
         .th-english {
           display: block;
-          font-family: Arial, Helvetica, sans-serif;
+          font-family: 'Times New Roman', Times, serif;
           font-size: 6.6px;
           font-weight: 500;
           line-height: 1.1;
@@ -1026,7 +1039,7 @@ const printPage = () => {
           width: 100%;
           padding: 1px 2px;
           color: #293129;
-          font-family: Arial, Helvetica, sans-serif;
+          font-family: 'Times New Roman', Times, serif;
           font-size: 6.8px;
           text-align: center;
           white-space: nowrap;
@@ -1040,21 +1053,24 @@ const printPage = () => {
           text-align: center;
           font-size: 6.8px;
           white-space: nowrap;
+          font-family: 'Times New Roman', Times, serif;
         }
         .total-row td {
           height: 7.5mm;
           font-size: 6.8px;
           font-weight: 500;
           text-align: center;
+          font-family: 'Times New Roman', Times, serif;
         }
         .total-label {
           text-align: left !important;
           padding-left: 2px !important;
           font-size: 7px !important;
           font-weight: 600 !important;
+          font-family: 'Times New Roman', Times, serif;
         }
         [lang="am"] {
-          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+          font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
           font-style: normal;
           font-synthesis: none;
           text-rendering: optimizeLegibility;
@@ -2004,6 +2020,7 @@ if (typeof document !== 'undefined') {
    A4 STOCK CARD
 ========================================================= */
 
+/* ✅ ADDED FONT to all text in stock card */
 .stock-card {
   position: relative;
   width: 100%;
@@ -2014,7 +2031,7 @@ if (typeof document !== 'undefined') {
   overflow: visible;
   background: #e4efde;
   color: #293129;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 
@@ -2027,7 +2044,7 @@ if (typeof document !== 'undefined') {
 .company-name-amharic,
 .th-amharic,
 .page-amharic {
-  font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", sans-serif;
+  font-family: "Noto Sans Ethiopic", "Nyala", "Abyssinica SIL", 'Times New Roman', serif;
   font-style: normal;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -2053,6 +2070,7 @@ if (typeof document !== 'undefined') {
   font-size: 9px;
   font-weight: 600;
   text-align: left;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .company-name-amharic {
@@ -2075,6 +2093,7 @@ if (typeof document !== 'undefined') {
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .stock-title {
@@ -2085,6 +2104,7 @@ if (typeof document !== 'undefined') {
   font-size: 15px;
   font-weight: 600;
   text-decoration: underline;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .page-number {
@@ -2095,6 +2115,7 @@ if (typeof document !== 'undefined') {
   align-items: center;
   gap: 3mm;
   font-size: 8px;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .page-amharic {
@@ -2106,6 +2127,7 @@ if (typeof document !== 'undefined') {
 
 .page-english {
   font-size: 8px;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .page-value {
@@ -2115,6 +2137,7 @@ if (typeof document !== 'undefined') {
   border-bottom: 1px solid #414941;
   font-size: 8px;
   text-align: left;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 
@@ -2136,6 +2159,7 @@ if (typeof document !== 'undefined') {
   gap: 2mm;
   white-space: nowrap;
   font-size: 8px;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .maximum-stock {
@@ -2172,6 +2196,7 @@ if (typeof document !== 'undefined') {
   flex-direction: column;
   flex: 0 0 auto;
   line-height: 1.3;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .amharic-label {
@@ -2182,6 +2207,7 @@ if (typeof document !== 'undefined') {
 .english-label {
   font-size: 8px;
   white-space: nowrap;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .field-value {
@@ -2192,6 +2218,7 @@ if (typeof document !== 'undefined') {
   color: #202720;
   font-size: 8px;
   line-height: 14px;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 
@@ -2205,6 +2232,7 @@ if (typeof document !== 'undefined') {
   table-layout: fixed;
   font-size: 7px;
   color: #293129;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .col-date { width: 9%; }
@@ -2222,6 +2250,7 @@ if (typeof document !== 'undefined') {
   text-align: center;
   vertical-align: middle;
   height: 8mm;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .stock-table thead th {
@@ -2230,6 +2259,7 @@ if (typeof document !== 'undefined') {
   vertical-align: middle;
   font-weight: 500;
   line-height: 1.2;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .stock-table thead tr:first-child th {
@@ -2255,7 +2285,7 @@ if (typeof document !== 'undefined') {
 
 .th-english {
   display: block;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
   font-size: 6.8px;
   font-weight: 500;
   line-height: 1.1;
@@ -2273,7 +2303,7 @@ if (typeof document !== 'undefined') {
   width: 100%;
   padding: 1px 2px;
   color: #293129;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Times New Roman', Times, serif;
   font-size: 7px;
   text-align: center;
   white-space: nowrap;
@@ -2289,6 +2319,7 @@ if (typeof document !== 'undefined') {
   text-align: center;
   font-size: 7px;
   white-space: nowrap;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .total-row td {
@@ -2296,6 +2327,7 @@ if (typeof document !== 'undefined') {
   font-size: 7px;
   font-weight: 500;
   text-align: center;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .total-label {
@@ -2303,6 +2335,7 @@ if (typeof document !== 'undefined') {
   padding-left: 4px !important;
   font-size: 7.5px !important;
   font-weight: 600 !important;
+  font-family: 'Times New Roman', Times, serif;
 }
 
 

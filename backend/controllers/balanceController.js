@@ -1299,14 +1299,13 @@ exports.getApprovedRequests = async (req, res) => {
 
 
 // ================================================================
-// PROCESS REQUESTS - WITH GRN/SIV SUPPORT
+// PROCESS REQUESTS - BATCH WITH CORRECT BALANCE
 // ================================================================
 
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    // ✅ ADDED: documentRefs to payload
     const { storeId, groupId, requestIds, documentRefs } = req.body;
 
     console.log("📤 Processing requests payload:", {
@@ -1320,6 +1319,7 @@ exports.processRequests = async (req, res) => {
     // 1. VALIDATE INPUTS
     // ================================================================
     if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "Store ID, Group ID, and Request IDs are required",
@@ -1328,6 +1328,7 @@ exports.processRequests = async (req, res) => {
 
     const validRequestIds = requestIds.filter((id) => id != null && id !== "");
     if (validRequestIds.length === 0) {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "No valid request IDs provided",
@@ -1540,7 +1541,7 @@ exports.processRequests = async (req, res) => {
       }
 
       // ================================================================
-      // 5c. DETERMINE ACTION (Stock In or Stock Out)
+      // 5c. DETERMINE ACTION
       // ================================================================
       let action, transactionType, changeMultiplier, actionLabel;
       if (request.askingStoreId === parseInt(storeId)) {
@@ -1564,7 +1565,7 @@ exports.processRequests = async (req, res) => {
       console.log(`📋 Action: ${action} for request ${request.requestCode}`);
 
       // ================================================================
-      // 5d. PROCESS EACH ITEM IN THE REQUEST
+      // 5d. PROCESS EACH ITEM - WITH CORRECT BALANCE
       // ================================================================
       const requestResults = [];
       const requestErrors = [];
@@ -1605,7 +1606,7 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // Check if balance exists, auto-initialize if not
+          // ✅ GET THE BALANCE RECORD
           let balance = await StoreBalance.findOne({
             where: {
               storeId: parseInt(storeId),
@@ -1614,6 +1615,7 @@ exports.processRequests = async (req, res) => {
             },
           });
 
+          // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
           if (!balance) {
             console.log(
               `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
@@ -1664,7 +1666,7 @@ exports.processRequests = async (req, res) => {
             });
           }
 
-          // Check if balance is active
+          // ✅ CHECK IF BALANCE IS ACTIVE
           if (balance.status !== "Active") {
             requestErrors.push(
               `Balance for item "${item.item.code}" is ${balance.status}`,
@@ -1672,13 +1674,13 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // Update balance
+          // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
           const previousBalance = parseFloat(balance.balance);
           const quantity = parseFloat(item.quantity);
           const changeAmount = quantity * changeMultiplier;
           const newBalance = previousBalance + changeAmount;
 
-          // Check for negative balance on stock out
+          // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
           if (action === "STOCK_OUT" && newBalance < 0) {
             requestErrors.push(
               `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
@@ -1686,20 +1688,20 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // Save the updated balance
+          // ✅ UPDATE THE BALANCE
           balance.balance = newBalance;
           await balance.save({ transaction });
 
-          // ✅ CREATE HISTORY RECORD WITH GRN/SIV
+          // ✅ CREATE HISTORY RECORD WITH CORRECT VALUES
           await StoreBalanceHistory.create(
             {
               balanceId: balance.id,
               storeId: parseInt(storeId),
               groupId: parseInt(groupId),
               itemId: item.itemId,
-              previousBalance: previousBalance,
-              newBalance: newBalance,
-              changeAmount: Math.abs(changeAmount),
+              previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
+              newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
+              changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
               transactionType: transactionType,
               sourceStoreId:
                 action === "STOCK_IN" ? request.supplyingStoreId : null,
@@ -1708,7 +1710,6 @@ exports.processRequests = async (req, res) => {
               referenceType: "request",
               referenceId: request.requestId,
               changedBy: userId,
-              // ✅ GRN and SIV from documentRefs
               grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
               sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
               remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
@@ -1877,7 +1878,6 @@ exports.processRequests = async (req, res) => {
         userId: userId,
         userFullName: user.fullName,
         totalRequests: requests.length,
-        // ✅ Return document references for verification
         documentRefs: documentRefs || {},
       },
     });
@@ -3758,16 +3758,10 @@ exports.getRequestGroupStatus = async (req, res) => {
 };
 
 
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP
-// ============================================
-
-// ============================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - FIXED
-// ============================================
+// balanceController.js - processRequestForGroup
 
 // ================================================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH GRN/SIV SUPPORT
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH CORRECT BALANCE
 // ================================================================
 
 exports.processRequestForGroup = async (req, res) => {
@@ -3775,7 +3769,6 @@ exports.processRequestForGroup = async (req, res) => {
 
   try {
     const { requestId } = req.params;
-    // ✅ ADDED: grnNumber and sivNumber to body
     const { groupId, storeId, grnNumber, sivNumber } = req.body;
     const userId = req.user?.userId || 1;
 
@@ -3803,6 +3796,7 @@ exports.processRequestForGroup = async (req, res) => {
     // ================================================================
     const group = await Group.findByPk(parseInt(groupId));
     if (!group) {
+      await transaction.rollback();
       return res.status(404).json({
         success: false,
         error: "Group not found",
@@ -3810,6 +3804,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     if (group.status !== "Active") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
@@ -3821,6 +3816,7 @@ exports.processRequestForGroup = async (req, res) => {
     // ================================================================
     const store = await Store.findByPk(parseInt(storeId));
     if (!store) {
+      await transaction.rollback();
       return res.status(404).json({
         success: false,
         error: "Store not found",
@@ -3828,6 +3824,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     if (store.status !== "Active") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
@@ -3845,6 +3842,7 @@ exports.processRequestForGroup = async (req, res) => {
     });
 
     if (!storeGroupRelation) {
+      await transaction.rollback();
       return res.status(403).json({
         success: false,
         error: `Group "${group.name}" does not have access to store "${store.name}"`,
@@ -3864,7 +3862,7 @@ exports.processRequestForGroup = async (req, res) => {
               model: Item,
               as: "item",
               attributes: [
-                "id",
+                "itemId",
                 "code",
                 "name",
                 "standardName",
@@ -3878,6 +3876,7 @@ exports.processRequestForGroup = async (req, res) => {
     });
 
     if (!request) {
+      await transaction.rollback();
       return res.status(404).json({
         success: false,
         error: "Request not found",
@@ -3885,6 +3884,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     if (request.status !== "approved") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: `Request is ${request.status}. Only approved requests can be processed.`,
@@ -3892,6 +3892,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     if (request.status === "finalized") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "This request has already been finalized",
@@ -3901,6 +3902,7 @@ exports.processRequestForGroup = async (req, res) => {
     // ================================================================
     // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
     // ================================================================
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
     const existingRecord = await RequestGroupProcessing.findOne({
       where: {
         requestId: parseInt(requestId),
@@ -3909,6 +3911,7 @@ exports.processRequestForGroup = async (req, res) => {
     });
 
     if (existingRecord && existingRecord.status === "processed") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "This group has already processed this request",
@@ -3916,6 +3919,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     if (existingRecord && existingRecord.status === "skipped") {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "This group has been skipped for this request by an administrator",
@@ -3929,6 +3933,7 @@ exports.processRequestForGroup = async (req, res) => {
       request.askingStoreId !== parseInt(storeId) &&
       request.supplyingStoreId !== parseInt(storeId)
     ) {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "This store is neither the asking nor supplying store for this request",
@@ -3950,6 +3955,7 @@ exports.processRequestForGroup = async (req, res) => {
       changeMultiplier = -1;
       actionLabel = "SENT";
     } else {
+      await transaction.rollback();
       return res.status(400).json({
         success: false,
         error: "Store is neither the asking nor supplying store for this request",
@@ -3965,20 +3971,45 @@ exports.processRequestForGroup = async (req, res) => {
       attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
     });
 
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "User account is inactive"
+      });
+    }
+
     // ================================================================
-    // 10. PROCESS ITEMS
+    // 10. PROCESS ITEMS - WITH CORRECT BALANCE CALCULATION
     // ================================================================
     const autoInitializedItems = [];
     const results = [];
     const errors = [];
+    let totalProcessed = 0;
 
     for (const item of request.items) {
       try {
-        if (!item.item || item.item.status !== "Active") {
-          errors.push(`Item "${item.item?.name || item.itemId}" is not active`);
+        // Check if item exists
+        if (!item.item) {
+          errors.push(`Item ID ${item.itemId} not found in database`);
           continue;
         }
 
+        // Check if item is active
+        if (item.item.status !== "Active") {
+          errors.push(`Item "${item.item.code}" is ${item.item.status}`);
+          continue;
+        }
+
+        // ✅ GET THE BALANCE RECORD
         let balance = await StoreBalance.findOne({
           where: {
             storeId: parseInt(storeId),
@@ -3987,6 +4018,7 @@ exports.processRequestForGroup = async (req, res) => {
           },
         });
 
+        // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
         if (!balance) {
           console.log(`📦 Auto-initializing balance for item: ${item.item.code}`);
           
@@ -4002,6 +4034,7 @@ exports.processRequestForGroup = async (req, res) => {
             { transaction },
           );
 
+          // ✅ CREATE INITIAL HISTORY RECORD
           await StoreBalanceHistory.create(
             {
               balanceId: balance.id,
@@ -4027,41 +4060,47 @@ exports.processRequestForGroup = async (req, res) => {
           });
         }
 
+        // ✅ CHECK IF BALANCE IS ACTIVE
         if (balance.status !== "Active") {
           errors.push(`Balance for item "${item.item.code}" is ${balance.status}`);
           continue;
         }
 
+        // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
         const previousBalance = parseFloat(balance.balance);
         const quantity = parseFloat(item.quantity);
         const changeAmount = quantity * changeMultiplier;
         const newBalance = previousBalance + changeAmount;
 
+        // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
         if (action === "STOCK_OUT" && newBalance < 0) {
-          errors.push(`Insufficient balance for "${item.item.code}"`);
+          errors.push(
+            `Insufficient balance for "${item.item.code}". ` +
+            `Current balance: ${previousBalance}, Requested: ${quantity}`
+          );
           continue;
         }
 
+        // ✅ UPDATE THE BALANCE
         balance.balance = newBalance;
         await balance.save({ transaction });
 
-        // ✅ CREATE HISTORY RECORD WITH GRN/SIV
+        // ✅ CREATE HISTORY RECORD WITH CORRECT previousBalance AND newBalance
         await StoreBalanceHistory.create(
           {
             balanceId: balance.id,
             storeId: parseInt(storeId),
             groupId: parseInt(groupId),
             itemId: item.itemId,
-            previousBalance: previousBalance,
-            newBalance: newBalance,
-            changeAmount: Math.abs(changeAmount),
+            previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
+            newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
+            changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
             transactionType: action === "STOCK_IN" ? "Stock In" : "Stock Out",
             sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
             destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
             referenceType: "request",
             referenceId: request.requestId,
             changedBy: userId,
-            // ✅ GRN and SIV from body
             grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
             sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
             remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
@@ -4080,7 +4119,11 @@ exports.processRequestForGroup = async (req, res) => {
           wasAutoInitialized: autoInitializedItems.some(ai => ai.itemId === item.itemId),
         });
 
-        console.log(`✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code}`);
+        totalProcessed++;
+        console.log(
+          `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
+          `(Balance: ${previousBalance} → ${newBalance})`
+        );
       } catch (itemError) {
         console.error(`❌ Error processing item ${item.itemId}:`, itemError);
         errors.push(`Error processing item ${item.itemId}: ${itemError.message}`);
@@ -4140,10 +4183,10 @@ exports.processRequestForGroup = async (req, res) => {
       autoInitializedItems: autoInitializedItems,
       processedItems: results,
       errors: errors,
+      totalProcessed: totalProcessed,
       isFullyProcessed: request.status === 'finalized',
       logs: logs,
       finalizedRequests: finalizedRequests,
-      // ✅ Return document references for verification
       grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
       sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
     };
