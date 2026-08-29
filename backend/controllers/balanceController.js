@@ -1298,599 +1298,7 @@ exports.getApprovedRequests = async (req, res) => {
 
 
 
-// ================================================================
-// PROCESS REQUESTS - BATCH WITH CORRECT BALANCE
-// ================================================================
 
-exports.processRequests = async (req, res) => {
-  const transaction = await sequelize.transaction();
-
-  try {
-    const { storeId, groupId, requestIds, documentRefs } = req.body;
-
-    console.log("📤 Processing requests payload:", {
-      storeId,
-      groupId,
-      requestIds,
-      documentRefs,
-    });
-
-    // ================================================================
-    // 1. VALIDATE INPUTS
-    // ================================================================
-    if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Store ID, Group ID, and Request IDs are required",
-      });
-    }
-
-    const validRequestIds = requestIds.filter((id) => id != null && id !== "");
-    if (validRequestIds.length === 0) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "No valid request IDs provided",
-      });
-    }
-
-    console.log("✅ Valid request IDs:", validRequestIds);
-
-    // ================================================================
-    // 2. GET USER ID
-    // ================================================================
-    const userId = req.user?.userId;
-    
-    console.log("👤 User from request:", {
-      userId: req.user?.userId,
-      username: req.user?.username,
-      fullName: req.user?.fullName,
-      role: req.user?.role
-    });
-    
-    if (!userId) {
-      await transaction.rollback();
-      return res.status(401).json({
-        success: false,
-        error: "Unauthorized. Please log in."
-      });
-    }
-
-    const user = await User.findByPk(userId, {
-      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
-    });
-    
-    if (!user) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "User not found"
-      });
-    }
-    
-    if (!user.isActive) {
-      await transaction.rollback();
-      return res.status(403).json({
-        success: false,
-        error: "User account is inactive"
-      });
-    }
-
-    console.log("👤 Using userId:", userId);
-    console.log("👤 User fullName:", user.fullName);
-
-    // ================================================================
-    // 3. VALIDATE GROUP AND STORE
-    // ================================================================
-    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
-    if (!RequestGroupProcessing) {
-      throw new Error("RequestGroupProcessing model not found");
-    }
-
-    const group = await Group.findByPk(parseInt(groupId));
-    if (!group) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Group not found",
-      });
-    }
-
-    if (group.status !== "Active") {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
-      });
-    }
-
-    const store = await Store.findByPk(parseInt(storeId));
-    if (!store) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Store not found",
-      });
-    }
-
-    if (store.status !== "Active") {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
-      });
-    }
-
-    const storeGroupRelation = await StoreGroupRelation.findOne({
-      where: {
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId),
-      },
-    });
-
-    if (!storeGroupRelation) {
-      await transaction.rollback();
-      return res.status(403).json({
-        success: false,
-        error: `Group "${group.name}" does not have access to store "${store.name}"`,
-      });
-    }
-
-    // ================================================================
-    // 4. GET THE REQUESTS
-    // ================================================================
-    const requests = await ItemRequest.findAll({
-      where: {
-        requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
-        status: "approved",
-      },
-      include: [
-        {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              attributes: [
-                "itemId",
-                "code",
-                "name",
-                "standardName",
-                "conversionValue",
-                "status",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    console.log(`✅ Found ${requests.length} requests to process`);
-
-    if (requests.length === 0) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "No approved requests found with the provided IDs",
-      });
-    }
-
-    // ================================================================
-    // 5. PROCESS EACH REQUEST
-    // ================================================================
-    let processedCount = 0;
-    let failedCount = 0;
-    const logs = [];
-    const missingItems = [];
-    const processedItems = [];
-    const allAutoInitializedItems = [];
-    const allSkippedGroups = [];
-    const processedRequestIds = [];
-    const finalizedRequests = [];
-
-    for (const request of requests) {
-      console.log(`📋 Processing request: ${request.requestCode}`);
-
-      // ================================================================
-      // 5a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-      // ================================================================
-      const existingRecord = await RequestGroupProcessing.findOne({
-        where: {
-          requestId: request.requestId,
-          groupId: parseInt(groupId),
-        },
-      });
-
-      if (existingRecord && existingRecord.status === "processed") {
-        logs.push(
-          `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
-        );
-        processedRequestIds.push(request.requestId);
-        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
-        continue;
-      }
-
-      if (existingRecord && existingRecord.status === "skipped") {
-        logs.push(
-          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`,
-        );
-        allSkippedGroups.push({
-          requestCode: request.requestCode,
-          groupName: group.name,
-          reason: existingRecord.remark || "Skipped by admin",
-        });
-        processedRequestIds.push(request.requestId);
-        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
-        continue;
-      }
-
-      // ================================================================
-      // 5b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-      // ================================================================
-      if (
-        request.askingStoreId !== parseInt(storeId) &&
-        request.supplyingStoreId !== parseInt(storeId)
-      ) {
-        logs.push(
-          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`,
-        );
-        failedCount++;
-        continue;
-      }
-
-      // ================================================================
-      // 5c. DETERMINE ACTION
-      // ================================================================
-      let action, transactionType, changeMultiplier, actionLabel;
-      if (request.askingStoreId === parseInt(storeId)) {
-        action = "STOCK_IN";
-        transactionType = "Stock In";
-        changeMultiplier = 1;
-        actionLabel = "RECEIVED";
-      } else if (request.supplyingStoreId === parseInt(storeId)) {
-        action = "STOCK_OUT";
-        transactionType = "Stock Out";
-        changeMultiplier = -1;
-        actionLabel = "SENT";
-      } else {
-        logs.push(
-          `❌ Request ${request.requestCode}: Store is neither asking nor supplying`,
-        );
-        failedCount++;
-        continue;
-      }
-
-      console.log(`📋 Action: ${action} for request ${request.requestCode}`);
-
-      // ================================================================
-      // 5d. PROCESS EACH ITEM - WITH CORRECT BALANCE
-      // ================================================================
-      const requestResults = [];
-      const requestErrors = [];
-      const requestAutoInitialized = [];
-
-      for (const item of request.items) {
-        try {
-          // Check if item exists
-          if (!item.item) {
-            requestErrors.push(`Item ID ${item.itemId} not found in database`);
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: "N/A",
-              itemName: "Unknown Item (deleted)",
-              reason: "Item not found in database",
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-            });
-            continue;
-          }
-
-          // Check if item is active
-          if (item.item.status !== "Active") {
-            requestErrors.push(
-              `Item "${item.item.code}" is ${item.item.status}`,
-            );
-            missingItems.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-              reason: `Item status is ${item.item.status}`,
-              requestCode: request.requestCode,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-            });
-            continue;
-          }
-
-          // ✅ GET THE BALANCE RECORD
-          let balance = await StoreBalance.findOne({
-            where: {
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-            },
-          });
-
-          // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
-          if (!balance) {
-            console.log(
-              `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
-            );
-
-            balance = await StoreBalance.create(
-              {
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                balance: 0,
-                minStockAlert: 0,
-                status: "Active",
-              },
-              { transaction },
-            );
-
-            await StoreBalanceHistory.create(
-              {
-                balanceId: balance.id,
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                previousBalance: 0,
-                newBalance: 0,
-                changeAmount: 0,
-                transactionType: "Stock In",
-                referenceType: "auto_initialization",
-                referenceId: request.requestId,
-                changedBy: userId,
-                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
-              },
-              { transaction },
-            );
-
-            requestAutoInitialized.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
-
-            allAutoInitializedItems.push({
-              requestCode: request.requestCode,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
-          }
-
-          // ✅ CHECK IF BALANCE IS ACTIVE
-          if (balance.status !== "Active") {
-            requestErrors.push(
-              `Balance for item "${item.item.code}" is ${balance.status}`,
-            );
-            continue;
-          }
-
-          // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
-          const previousBalance = parseFloat(balance.balance);
-          const quantity = parseFloat(item.quantity);
-          const changeAmount = quantity * changeMultiplier;
-          const newBalance = previousBalance + changeAmount;
-
-          // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
-          if (action === "STOCK_OUT" && newBalance < 0) {
-            requestErrors.push(
-              `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
-            );
-            continue;
-          }
-
-          // ✅ UPDATE THE BALANCE
-          balance.balance = newBalance;
-          await balance.save({ transaction });
-
-          // ✅ CREATE HISTORY RECORD WITH CORRECT VALUES
-          await StoreBalanceHistory.create(
-            {
-              balanceId: balance.id,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
-              newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
-              changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
-              transactionType: transactionType,
-              sourceStoreId:
-                action === "STOCK_IN" ? request.supplyingStoreId : null,
-              destinationStoreId:
-                action === "STOCK_OUT" ? request.askingStoreId : null,
-              referenceType: "request",
-              referenceId: request.requestId,
-              changedBy: userId,
-              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
-              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
-              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
-            },
-            { transaction },
-          );
-
-          // Track results
-          requestResults.push({
-            itemId: item.itemId,
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            itemCode: item.item?.code || "N/A",
-            previousBalance,
-            newBalance,
-            changeAmount: Math.abs(changeAmount),
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            wasAutoInitialized: requestAutoInitialized.some(
-              (ai) => ai.itemId === item.itemId,
-            ),
-          });
-
-          processedCount++;
-          processedItems.push({
-            requestCode: request.requestCode,
-            itemId: item.itemId,
-            itemCode: item.item?.code || "N/A",
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            quantity: Math.abs(changeAmount),
-            previousBalance,
-            newBalance,
-          });
-
-          console.log(
-            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`,
-          );
-        } catch (itemError) {
-          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
-          requestErrors.push(
-            `Error processing item ${item.itemId}: ${itemError.message}`,
-          );
-        }
-      }
-
-      // ================================================================
-      // 5e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-      // ================================================================
-      if (requestResults.length > 0 || requestErrors.length > 0) {
-        const remark =
-          requestResults.length > 0
-            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""} - By: ${user.fullName}`
-            : `No items processed - errors occurred - By: ${user.fullName}`;
-
-        if (existingRecord) {
-          existingRecord.status = "processed";
-          existingRecord.processedAt = new Date();
-          existingRecord.processedBy = userId;
-          existingRecord.remark = remark;
-          await existingRecord.save({ transaction });
-        } else {
-          await RequestGroupProcessing.create(
-            {
-              requestId: request.requestId,
-              groupId: parseInt(groupId),
-              storeId: parseInt(storeId),
-              processedAt: new Date(),
-              status: "processed",
-              processedBy: userId,
-              remark: remark,
-            },
-            { transaction },
-          );
-        }
-
-        if (requestResults.length > 0) {
-          logs.push(
-            `✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`,
-          );
-        }
-      }
-
-      if (requestErrors.length > 0) {
-        logs.push(
-          `⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`,
-        );
-        requestErrors.forEach((err) => logs.push(`   - ${err}`));
-        failedCount += requestErrors.length;
-      }
-
-      processedRequestIds.push(request.requestId);
-
-      // ================================================================
-      // 5f. CHECK IF ALL GROUPS FROM BOTH STORES HAVE PROCESSED
-      // ================================================================
-      await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
-    }
-
-    // ================================================================
-    // 6. COMMIT TRANSACTION
-    // ================================================================
-    await transaction.commit();
-
-    // ================================================================
-    // 7. PREPARE RESPONSE
-    // ================================================================
-    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
-
-    const detailedLogs = [...logs];
-
-    if (allAutoInitializedItems.length > 0) {
-      detailedLogs.unshift(
-        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}" by ${user.fullName}:`,
-      );
-      allAutoInitializedItems.forEach((item) => {
-        detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (from request ${item.requestCode})`,
-        );
-      });
-      detailedLogs.push(
-        `\n💡 Items were initialized with 0 balance and activated automatically.`,
-      );
-    }
-
-    if (allSkippedGroups.length > 0) {
-      detailedLogs.push(`\n⏭️ Skipped groups:`);
-      allSkippedGroups.forEach((item) => {
-        detailedLogs.push(`   - ${item.groupName}: ${item.reason}`);
-      });
-    }
-
-    if (missingItems.length > 0) {
-      detailedLogs.push(`\n📋 Missing or inactive items:`);
-      missingItems.forEach((item) => {
-        detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`,
-        );
-      });
-      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
-    }
-
-    if (finalizedRequests.length > 0) {
-      detailedLogs.push(`\n✅ Finalized requests:`);
-      finalizedRequests.forEach((req) => {
-        detailedLogs.push(`   - ${req.requestCode}: All groups from both stores have processed`);
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: responseMessage,
-      data: {
-        processed: processedCount,
-        failed: failedCount,
-        logs: detailedLogs,
-        missingItems: missingItems,
-        processedItems: processedItems,
-        autoInitializedItems: allAutoInitializedItems,
-        skippedGroups: allSkippedGroups,
-        finalizedRequests: finalizedRequests,
-        requestIds: validRequestIds,
-        processedRequestIds: processedRequestIds,
-        storeId: parseInt(storeId),
-        groupId: parseInt(groupId),
-        storeName: store.name,
-        groupName: group.name,
-        userId: userId,
-        userFullName: user.fullName,
-        totalRequests: requests.length,
-        documentRefs: documentRefs || {},
-      },
-    });
-
-  } catch (error) {
-    await transaction.rollback();
-    console.error("❌ Process requests error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to process requests",
-    });
-  }
-};
 // ============================================
 // 11. GET ALL STORES
 // ============================================
@@ -3758,10 +3166,8 @@ exports.getRequestGroupStatus = async (req, res) => {
 };
 
 
-// balanceController.js - processRequestForGroup
-
 // ================================================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH CORRECT BALANCE
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH CORRECT BALANCE & LOCKING
 // ================================================================
 
 exports.processRequestForGroup = async (req, res) => {
@@ -3988,7 +3394,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     // ================================================================
-    // 10. PROCESS ITEMS - WITH CORRECT BALANCE CALCULATION
+    // 10. PROCESS ITEMS - WITH CORRECT BALANCE CALCULATION & LOCKING
     // ================================================================
     const autoInitializedItems = [];
     const results = [];
@@ -4009,13 +3415,15 @@ exports.processRequestForGroup = async (req, res) => {
           continue;
         }
 
-        // ✅ GET THE BALANCE RECORD
+        // ✅ FIX: GET THE BALANCE RECORD WITH LOCK
         let balance = await StoreBalance.findOne({
           where: {
             storeId: parseInt(storeId),
             groupId: parseInt(groupId),
             itemId: item.itemId,
           },
+          lock: transaction.LOCK.UPDATE, // 🔥 THIS PREVENTS RACE CONDITIONS
+          transaction: transaction,
         });
 
         // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
@@ -4211,6 +3619,602 @@ exports.processRequestForGroup = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to process request for group",
+    });
+  }
+};
+
+// ================================================================
+// PROCESS REQUESTS - BATCH WITH CORRECT BALANCE & LOCKING
+// ================================================================
+
+exports.processRequests = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { storeId, groupId, requestIds, documentRefs } = req.body;
+
+    console.log("📤 Processing requests payload:", {
+      storeId,
+      groupId,
+      requestIds,
+      documentRefs,
+    });
+
+    // ================================================================
+    // 1. VALIDATE INPUTS
+    // ================================================================
+    if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Store ID, Group ID, and Request IDs are required",
+      });
+    }
+
+    const validRequestIds = requestIds.filter((id) => id != null && id !== "");
+    if (validRequestIds.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "No valid request IDs provided",
+      });
+    }
+
+    console.log("✅ Valid request IDs:", validRequestIds);
+
+    // ================================================================
+    // 2. GET USER ID
+    // ================================================================
+    const userId = req.user?.userId;
+    
+    console.log("👤 User from request:", {
+      userId: req.user?.userId,
+      username: req.user?.username,
+      fullName: req.user?.fullName,
+      role: req.user?.role
+    });
+    
+    if (!userId) {
+      await transaction.rollback();
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized. Please log in."
+      });
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+    });
+    
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+    
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "User account is inactive"
+      });
+    }
+
+    console.log("👤 Using userId:", userId);
+    console.log("👤 User fullName:", user.fullName);
+
+    // ================================================================
+    // 3. VALIDATE GROUP AND STORE
+    // ================================================================
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    if (!RequestGroupProcessing) {
+      throw new Error("RequestGroupProcessing model not found");
+    }
+
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Group not found",
+      });
+    }
+
+    if (group.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
+      });
+    }
+
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Store not found",
+      });
+    }
+
+    if (store.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
+      });
+    }
+
+    const storeGroupRelation = await StoreGroupRelation.findOne({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+      },
+    });
+
+    if (!storeGroupRelation) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: `Group "${group.name}" does not have access to store "${store.name}"`,
+      });
+    }
+
+    // ================================================================
+    // 4. GET THE REQUESTS
+    // ================================================================
+    const requests = await ItemRequest.findAll({
+      where: {
+        requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
+        status: "approved",
+      },
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: "items",
+          include: [
+            {
+              model: Item,
+              as: "item",
+              attributes: [
+                "itemId",
+                "code",
+                "name",
+                "standardName",
+                "conversionValue",
+                "status",
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    console.log(`✅ Found ${requests.length} requests to process`);
+
+    if (requests.length === 0) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "No approved requests found with the provided IDs",
+      });
+    }
+
+    // ================================================================
+    // 5. PROCESS EACH REQUEST
+    // ================================================================
+    let processedCount = 0;
+    let failedCount = 0;
+    const logs = [];
+    const missingItems = [];
+    const processedItems = [];
+    const allAutoInitializedItems = [];
+    const allSkippedGroups = [];
+    const processedRequestIds = [];
+    const finalizedRequests = [];
+
+    for (const request of requests) {
+      console.log(`📋 Processing request: ${request.requestCode}`);
+
+      // ================================================================
+      // 5a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
+      // ================================================================
+      const existingRecord = await RequestGroupProcessing.findOne({
+        where: {
+          requestId: request.requestId,
+          groupId: parseInt(groupId),
+        },
+      });
+
+      if (existingRecord && existingRecord.status === "processed") {
+        logs.push(
+          `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
+        );
+        processedRequestIds.push(request.requestId);
+        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        continue;
+      }
+
+      if (existingRecord && existingRecord.status === "skipped") {
+        logs.push(
+          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`,
+        );
+        allSkippedGroups.push({
+          requestCode: request.requestCode,
+          groupName: group.name,
+          reason: existingRecord.remark || "Skipped by admin",
+        });
+        processedRequestIds.push(request.requestId);
+        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        continue;
+      }
+
+      // ================================================================
+      // 5b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
+      // ================================================================
+      if (
+        request.askingStoreId !== parseInt(storeId) &&
+        request.supplyingStoreId !== parseInt(storeId)
+      ) {
+        logs.push(
+          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`,
+        );
+        failedCount++;
+        continue;
+      }
+
+      // ================================================================
+      // 5c. DETERMINE ACTION
+      // ================================================================
+      let action, transactionType, changeMultiplier, actionLabel;
+      if (request.askingStoreId === parseInt(storeId)) {
+        action = "STOCK_IN";
+        transactionType = "Stock In";
+        changeMultiplier = 1;
+        actionLabel = "RECEIVED";
+      } else if (request.supplyingStoreId === parseInt(storeId)) {
+        action = "STOCK_OUT";
+        transactionType = "Stock Out";
+        changeMultiplier = -1;
+        actionLabel = "SENT";
+      } else {
+        logs.push(
+          `❌ Request ${request.requestCode}: Store is neither asking nor supplying`,
+        );
+        failedCount++;
+        continue;
+      }
+
+      console.log(`📋 Action: ${action} for request ${request.requestCode}`);
+
+      // ================================================================
+      // 5d. PROCESS EACH ITEM - WITH CORRECT BALANCE & LOCKING
+      // ================================================================
+      const requestResults = [];
+      const requestErrors = [];
+      const requestAutoInitialized = [];
+
+      for (const item of request.items) {
+        try {
+          // Check if item exists
+          if (!item.item) {
+            requestErrors.push(`Item ID ${item.itemId} not found in database`);
+            missingItems.push({
+              itemId: item.itemId,
+              itemCode: "N/A",
+              itemName: "Unknown Item (deleted)",
+              reason: "Item not found in database",
+              requestCode: request.requestCode,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+            });
+            continue;
+          }
+
+          // Check if item is active
+          if (item.item.status !== "Active") {
+            requestErrors.push(
+              `Item "${item.item.code}" is ${item.item.status}`,
+            );
+            missingItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName:
+                item.item.standardName || item.item.name || "Unknown Item",
+              reason: `Item status is ${item.item.status}`,
+              requestCode: request.requestCode,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+            });
+            continue;
+          }
+
+          // ✅ FIX: GET THE BALANCE RECORD WITH LOCK
+          let balance = await StoreBalance.findOne({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+            },
+            lock: transaction.LOCK.UPDATE, // 🔥 THIS PREVENTS RACE CONDITIONS
+            transaction: transaction,
+          });
+
+          // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
+          if (!balance) {
+            console.log(
+              `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
+            );
+
+            balance = await StoreBalance.create(
+              {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                balance: 0,
+                minStockAlert: 0,
+                status: "Active",
+              },
+              { transaction },
+            );
+
+            await StoreBalanceHistory.create(
+              {
+                balanceId: balance.id,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance: 0,
+                newBalance: 0,
+                changeAmount: 0,
+                transactionType: "Stock In",
+                referenceType: "auto_initialization",
+                referenceId: request.requestId,
+                changedBy: userId,
+                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+              },
+              { transaction },
+            );
+
+            requestAutoInitialized.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName:
+                item.item.standardName || item.item.name || "Unknown Item",
+            });
+
+            allAutoInitializedItems.push({
+              requestCode: request.requestCode,
+              itemCode: item.item.code || "N/A",
+              itemName:
+                item.item.standardName || item.item.name || "Unknown Item",
+            });
+          }
+
+          // ✅ CHECK IF BALANCE IS ACTIVE
+          if (balance.status !== "Active") {
+            requestErrors.push(
+              `Balance for item "${item.item.code}" is ${balance.status}`,
+            );
+            continue;
+          }
+
+          // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
+          const previousBalance = parseFloat(balance.balance);
+          const quantity = parseFloat(item.quantity);
+          const changeAmount = quantity * changeMultiplier;
+          const newBalance = previousBalance + changeAmount;
+
+          // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
+          if (action === "STOCK_OUT" && newBalance < 0) {
+            requestErrors.push(
+              `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
+            );
+            continue;
+          }
+
+          // ✅ UPDATE THE BALANCE
+          balance.balance = newBalance;
+          await balance.save({ transaction });
+
+          // ✅ CREATE HISTORY RECORD WITH CORRECT VALUES
+          await StoreBalanceHistory.create(
+            {
+              balanceId: balance.id,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
+              newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
+              changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
+              transactionType: transactionType,
+              sourceStoreId:
+                action === "STOCK_IN" ? request.supplyingStoreId : null,
+              destinationStoreId:
+                action === "STOCK_OUT" ? request.askingStoreId : null,
+              referenceType: "request",
+              referenceId: request.requestId,
+              changedBy: userId,
+              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
+              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
+              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
+            },
+            { transaction },
+          );
+
+          // Track results
+          requestResults.push({
+            itemId: item.itemId,
+            itemName: item.item?.standardName || item.item?.name || "Unknown",
+            itemCode: item.item?.code || "N/A",
+            previousBalance,
+            newBalance,
+            changeAmount: Math.abs(changeAmount),
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            wasAutoInitialized: requestAutoInitialized.some(
+              (ai) => ai.itemId === item.itemId,
+            ),
+          });
+
+          processedCount++;
+          processedItems.push({
+            requestCode: request.requestCode,
+            itemId: item.itemId,
+            itemCode: item.item?.code || "N/A",
+            itemName: item.item?.standardName || item.item?.name || "Unknown",
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            quantity: Math.abs(changeAmount),
+            previousBalance,
+            newBalance,
+          });
+
+          console.log(
+            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`,
+          );
+        } catch (itemError) {
+          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
+          requestErrors.push(
+            `Error processing item ${item.itemId}: ${itemError.message}`,
+          );
+        }
+      }
+
+      // ================================================================
+      // 5e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
+      // ================================================================
+      if (requestResults.length > 0 || requestErrors.length > 0) {
+        const remark =
+          requestResults.length > 0
+            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""} - By: ${user.fullName}`
+            : `No items processed - errors occurred - By: ${user.fullName}`;
+
+        if (existingRecord) {
+          existingRecord.status = "processed";
+          existingRecord.processedAt = new Date();
+          existingRecord.processedBy = userId;
+          existingRecord.remark = remark;
+          await existingRecord.save({ transaction });
+        } else {
+          await RequestGroupProcessing.create(
+            {
+              requestId: request.requestId,
+              groupId: parseInt(groupId),
+              storeId: parseInt(storeId),
+              processedAt: new Date(),
+              status: "processed",
+              processedBy: userId,
+              remark: remark,
+            },
+            { transaction },
+          );
+        }
+
+        if (requestResults.length > 0) {
+          logs.push(
+            `✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`,
+          );
+        }
+      }
+
+      if (requestErrors.length > 0) {
+        logs.push(
+          `⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`,
+        );
+        requestErrors.forEach((err) => logs.push(`   - ${err}`));
+        failedCount += requestErrors.length;
+      }
+
+      processedRequestIds.push(request.requestId);
+
+      // ================================================================
+      // 5f. CHECK IF ALL GROUPS FROM BOTH STORES HAVE PROCESSED
+      // ================================================================
+      await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+    }
+
+    // ================================================================
+    // 6. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 7. PREPARE RESPONSE
+    // ================================================================
+    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
+
+    const detailedLogs = [...logs];
+
+    if (allAutoInitializedItems.length > 0) {
+      detailedLogs.unshift(
+        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}" by ${user.fullName}:`,
+      );
+      allAutoInitializedItems.forEach((item) => {
+        detailedLogs.push(
+          `   - ${item.itemCode}: ${item.itemName} (from request ${item.requestCode})`,
+        );
+      });
+      detailedLogs.push(
+        `\n💡 Items were initialized with 0 balance and activated automatically.`,
+      );
+    }
+
+    if (allSkippedGroups.length > 0) {
+      detailedLogs.push(`\n⏭️ Skipped groups:`);
+      allSkippedGroups.forEach((item) => {
+        detailedLogs.push(`   - ${item.groupName}: ${item.reason}`);
+      });
+    }
+
+    if (missingItems.length > 0) {
+      detailedLogs.push(`\n📋 Missing or inactive items:`);
+      missingItems.forEach((item) => {
+        detailedLogs.push(
+          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`,
+        );
+      });
+      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
+    }
+
+    if (finalizedRequests.length > 0) {
+      detailedLogs.push(`\n✅ Finalized requests:`);
+      finalizedRequests.forEach((req) => {
+        detailedLogs.push(`   - ${req.requestCode}: All groups from both stores have processed`);
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: responseMessage,
+      data: {
+        processed: processedCount,
+        failed: failedCount,
+        logs: detailedLogs,
+        missingItems: missingItems,
+        processedItems: processedItems,
+        autoInitializedItems: allAutoInitializedItems,
+        skippedGroups: allSkippedGroups,
+        finalizedRequests: finalizedRequests,
+        requestIds: validRequestIds,
+        processedRequestIds: processedRequestIds,
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+        storeName: store.name,
+        groupName: group.name,
+        userId: userId,
+        userFullName: user.fullName,
+        totalRequests: requests.length,
+        documentRefs: documentRefs || {},
+      },
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Process requests error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to process requests",
     });
   }
 };
