@@ -1,29 +1,662 @@
--- ============================================================
--- ADD GRN AND SIV COLUMNS TO store_balance_histories
--- ============================================================
+-- ================================================================
+-- FINISHED GOODS TABLE
+-- ================================================================
+CREATE TABLE finished_goods (
+    id SERIAL PRIMARY KEY,
+    fg_code VARCHAR(20) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('Paint', 'Fiber')),
+    status VARCHAR(20) DEFAULT 'Active' CHECK (status IN ('Active', 'Inactive', 'Discontinued')),
+    
+    -- Audit Fields
+    created_by INTEGER REFERENCES users(user_id),
+    updated_by INTEGER REFERENCES users(user_id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 
--- Add GRN Number column
-ALTER TABLE store_balance_histories 
-ADD COLUMN grn_number VARCHAR(100) NULL;
+-- ================================================================
+-- INDEXES
+-- ================================================================
+CREATE INDEX idx_finished_goods_code ON finished_goods(fg_code);
+CREATE INDEX idx_finished_goods_type ON finished_goods(type);
+CREATE INDEX idx_finished_goods_status ON finished_goods(status);
+CREATE INDEX idx_finished_goods_name ON finished_goods(name);
 
--- Add SIV Number column
-ALTER TABLE store_balance_histories 
-ADD COLUMN siv_number VARCHAR(100) NULL;
+-- ================================================================
+-- SEQUENCE FOR FG CODE
+-- ================================================================
+CREATE SEQUENCE finished_goods_code_seq START 1;
 
--- Add indexes for better query performance
-CREATE INDEX idx_grn_number ON store_balance_histories(grn_number);
-CREATE INDEX idx_siv_number ON store_balance_histories(siv_number);
+-- ================================================================
+-- FUNCTION TO AUTO-GENERATE FG CODE
+-- ================================================================
+CREATE OR REPLACE FUNCTION generate_fg_code()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.fg_code := 'FG-' || LPAD(nextval('finished_goods_code_seq')::TEXT, 3, '0');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- ============================================================
--- VERIFY
--- ============================================================
+-- ================================================================
+-- TRIGGER TO AUTO-GENERATE FG CODE ON INSERT
+-- ================================================================
+CREATE TRIGGER trigger_generate_fg_code
+BEFORE INSERT ON finished_goods
+FOR EACH ROW
+WHEN (NEW.fg_code IS NULL)
+EXECUTE FUNCTION generate_fg_code();
 
-SELECT 
-    column_name, 
-    data_type, 
-    is_nullable
-FROM 
-    information_schema.columns 
-WHERE 
-    table_name = 'store_balance_histories' 
-    AND column_name IN ('grn_number', 'siv_number');
+-- ================================================================
+-- SAMPLE DATA
+-- ================================================================
+INSERT INTO finished_goods (name, type, status) VALUES
+('Gloss White Paint', 'Paint', 'Active'),
+('Matte Blue Paint', 'Paint', 'Active'),
+('Epoxy Red Paint', 'Paint', 'Active'),
+('Satin Yellow Paint', 'Paint', 'Active'),
+('Polyurethane Clear Coat', 'Paint', 'Active'),
+('Textured Grey Paint', 'Paint', 'Inactive'),
+('Water Tanker 200L', 'Fiber', 'Active'),
+('Water Tanker 1000L', 'Fiber', 'Active'),
+('Water Tanker 5000L', 'Fiber', 'Active'),
+('Water Tanker 10000L', 'Fiber', 'Active'),
+('Water Tanker 25000L', 'Fiber', 'Active'),
+('Water Tanker 500L', 'Fiber', 'Discontinued');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ================================================================
+-- CREATE FORMULATIONS TABLE
+-- ================================================================
+
+CREATE TABLE formulations (
+    id SERIAL PRIMARY KEY,
+    finished_good_id INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Draft',
+    description TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_by INTEGER,
+    updated_by INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 🔥 Foreign Key Constraints
+    CONSTRAINT fk_formulations_finished_good 
+        FOREIGN KEY (finished_good_id) 
+        REFERENCES finished_goods(id) 
+        ON UPDATE CASCADE 
+        ON DELETE RESTRICT,
+    
+    CONSTRAINT fk_formulations_created_by 
+        FOREIGN KEY (created_by) 
+        REFERENCES users(user_id) 
+        ON UPDATE CASCADE 
+        ON DELETE SET NULL,
+    
+    CONSTRAINT fk_formulations_updated_by 
+        FOREIGN KEY (updated_by) 
+        REFERENCES users(user_id) 
+        ON UPDATE CASCADE 
+        ON DELETE SET NULL,
+    
+    -- 🔥 Check Constraints
+    CONSTRAINT chk_formulations_status 
+        CHECK (status IN ('Draft', 'Active', 'Inactive')),
+    
+    CONSTRAINT chk_formulations_version 
+        CHECK (version >= 1)
+);
+
+-- ================================================================
+-- INDEXES FOR PERFORMANCE
+-- ================================================================
+
+-- For finding formulations by finished good
+CREATE INDEX idx_formulations_finished_good_id 
+    ON formulations(finished_good_id);
+
+-- For filtering by status
+CREATE INDEX idx_formulations_status 
+    ON formulations(status);
+
+-- For sorting and version tracking
+CREATE INDEX idx_formulations_version 
+    ON formulations(version);
+
+-- For date range queries
+CREATE INDEX idx_formulations_created_at 
+    ON formulations(created_at);
+
+-- Composite index for common queries (finished good + status)
+CREATE INDEX idx_formulations_finished_good_status 
+    ON formulations(finished_good_id, status);
+
+-- For searching by description (if you want full-text search later)
+CREATE INDEX idx_formulations_description_gin 
+    ON formulations USING GIN (to_tsvector('english', description));
+
+-- ================================================================
+-- TRIGGER FOR AUTO-UPDATE UPDATED_AT
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION update_formulations_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_formulations_updated_at
+    BEFORE UPDATE ON formulations
+    FOR EACH ROW
+    EXECUTE FUNCTION update_formulations_updated_at();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    -- ================================================================
+-- CREATE FORMULATION DETAILS TABLE
+-- ================================================================
+
+CREATE TABLE formulation_details (
+    id SERIAL PRIMARY KEY,
+    formulation_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    quantity DECIMAL(20, 4) NOT NULL DEFAULT 0,
+    uom_id INTEGER NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 🔥 Foreign Key Constraints
+    CONSTRAINT fk_formulation_details_formulation 
+        FOREIGN KEY (formulation_id) 
+        REFERENCES formulations(id) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE,
+    
+    CONSTRAINT fk_formulation_details_item 
+        FOREIGN KEY (item_id) 
+        REFERENCES items(id) 
+        ON UPDATE CASCADE 
+        ON DELETE RESTRICT,
+    
+    CONSTRAINT fk_formulation_details_uom 
+        FOREIGN KEY (uom_id) 
+        REFERENCES uom(id) 
+        ON UPDATE CASCADE 
+        ON DELETE RESTRICT,
+    
+    -- 🔥 Check Constraints
+    CONSTRAINT chk_formulation_details_quantity 
+        CHECK (quantity > 0),
+    
+    CONSTRAINT chk_formulation_details_quantity_precision 
+        CHECK (quantity >= 0)
+);
+
+-- ================================================================
+-- INDEXES FOR PERFORMANCE
+-- ================================================================
+
+-- For finding details by formulation
+CREATE INDEX idx_formulation_details_formulation_id 
+    ON formulation_details(formulation_id);
+
+-- For finding formulations by item (raw material)
+CREATE INDEX idx_formulation_details_item_id 
+    ON formulation_details(item_id);
+
+-- For filtering by UOM
+CREATE INDEX idx_formulation_details_uom_id 
+    ON formulation_details(uom_id);
+
+-- Composite index for unique constraint (discussed below)
+CREATE INDEX idx_formulation_details_formulation_item 
+    ON formulation_details(formulation_id, item_id);
+
+-- For quantity calculations
+CREATE INDEX idx_formulation_details_quantity 
+    ON formulation_details(quantity);
+
+-- ================================================================
+-- UNIQUE CONSTRAINT - Prevent duplicate items in same formulation
+-- ================================================================
+
+ALTER TABLE formulation_details
+    ADD CONSTRAINT unique_item_per_formulation 
+    UNIQUE (formulation_id, item_id);
+
+-- ================================================================
+-- TRIGGER FOR AUTO-UPDATE UPDATED_AT
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION update_formulation_details_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_formulation_details_updated_at
+    BEFORE UPDATE ON formulation_details
+    FOR EACH ROW
+    EXECUTE FUNCTION update_formulation_details_updated_at();
+
+-- ================================================================
+-- TRIGGER - Prevent adding details to inactive formulations
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION check_formulation_status_for_detail()
+RETURNS TRIGGER AS $$
+DECLARE
+    formulation_status VARCHAR;
+BEGIN
+    -- Get the status of the parent formulation
+    SELECT status INTO formulation_status 
+    FROM formulations 
+    WHERE id = NEW.formulation_id;
+    
+    -- Check if formulation is editable
+    IF formulation_status NOT IN ('Draft', 'Active') THEN
+        RAISE EXCEPTION 'Cannot add details to a % formulation', formulation_status;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_check_formulation_status_before_insert
+    BEFORE INSERT ON formulation_details
+    FOR EACH ROW
+    EXECUTE FUNCTION check_formulation_status_for_detail();
+
+-- Also check on update
+CREATE TRIGGER trigger_check_formulation_status_before_update
+    BEFORE UPDATE ON formulation_details
+    FOR EACH ROW
+    EXECUTE FUNCTION check_formulation_status_for_detail();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ================================================================
+-- ORDERS TABLE
+-- ================================================================
+
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    order_number VARCHAR(50) NOT NULL UNIQUE,
+    product_id INTEGER NOT NULL,
+    quantity DECIMAL(20,4) NOT NULL,
+    uom VARCHAR(20) NOT NULL,
+    packaging VARCHAR(50) NOT NULL,
+    sales_person_id INTEGER NOT NULL,
+    priority VARCHAR(10) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'accepted', 'rejected', 'completed', 'cancelled')),
+    created_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    sent_at TIMESTAMP,
+    accepted_at TIMESTAMP,
+    accepted_by VARCHAR(100),
+    rejected_at TIMESTAMP,
+    rejected_by VARCHAR(100),
+    rejection_reason TEXT,
+    completed_at TIMESTAMP,
+    completed_by VARCHAR(100),
+    cancelled_at TIMESTAMP,
+    cancelled_by VARCHAR(100),
+    restored_from_cancelled BOOLEAN DEFAULT FALSE,
+    restored_at TIMESTAMP,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================================================================
+-- INDEXES FOR ORDERS TABLE
+-- ================================================================
+
+CREATE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_product_id ON orders(product_id);
+CREATE INDEX idx_orders_sales_person_id ON orders(sales_person_id);
+CREATE INDEX idx_orders_priority ON orders(priority);
+CREATE INDEX idx_orders_due_date ON orders(due_date);
+CREATE INDEX idx_orders_created_date ON orders(created_date);
+
+-- ================================================================
+-- ORDERS TABLE - AUTO UPDATE UPDATED_AT TRIGGER
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION update_orders_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_orders_updated_at
+BEFORE UPDATE ON orders
+FOR EACH ROW
+EXECUTE FUNCTION update_orders_updated_at();
+
+-- ================================================================
+-- ORDERS TABLE - AUTO GENERATE ORDER NUMBER
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION generate_order_number()
+RETURNS TRIGGER AS $$
+DECLARE
+    year TEXT;
+    next_id INTEGER;
+    order_num TEXT;
+BEGIN
+    IF NEW.order_number IS NULL OR NEW.order_number = '' THEN
+        year := EXTRACT(YEAR FROM CURRENT_DATE)::TEXT;
+        SELECT COALESCE(MAX(id), 0) + 1 INTO next_id FROM orders;
+        order_num := 'ORD-' || year || '-' || LPAD(next_id::TEXT, 3, '0');
+        NEW.order_number := order_num;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_orders_generate_order_number
+BEFORE INSERT ON orders
+FOR EACH ROW
+EXECUTE FUNCTION generate_order_number();
+
+-- ================================================================
+-- INSERT SAMPLE DATA INTO ORDERS
+-- ================================================================
+
+INSERT INTO orders (
+    product_id,
+    quantity,
+    uom,
+    packaging,
+    sales_person_id,
+    priority,
+    status,
+    created_date,
+    due_date,
+    sent_at,
+    notes
+) VALUES 
+(1, 150, 'Gallon', 'Gallon', 19, 'high', 'sent', '2024-01-15', '2024-01-30', '2024-01-15 10:30:00', 'Urgent order for large project'),
+(4, 500, 'KG', 'KG', 19, 'medium', 'draft', '2024-01-16', '2024-02-05', NULL, 'Regular restock order'),
+(2, 200, 'Gallon', '5 Liter', 19, 'high', 'completed', '2024-01-10', '2024-01-25', '2024-01-10 09:00:00', 'Special color matching required'),
+(5, 300, 'KG', 'Bale', 19, 'low', 'accepted', '2024-01-17', '2024-02-10', '2024-01-17 14:00:00', 'New customer - first order'),
+(3, 75, 'Gallon', '20 Liter', 19, 'high', 'rejected', '2024-01-18', '2024-02-01', '2024-01-18 11:00:00', 'Rush order - production shutdown pending'),
+(6, 200, 'KG', 'Carton', 19, 'medium', 'cancelled', '2024-01-12', '2024-01-28', '2024-01-12 13:00:00', 'Customer cancelled due to budget constraints');
+
+
+
+
+-- Add sales_person_name and sales_person_phone columns
+ALTER TABLE orders ADD COLUMN sales_person_name VARCHAR(255);
+ALTER TABLE orders ADD COLUMN sales_person_phone VARCHAR(50);
+
+-- Update existing orders to have empty strings instead of null
+UPDATE orders SET sales_person_name = '' WHERE sales_person_name IS NULL;
+UPDATE orders SET sales_person_phone = '' WHERE sales_person_phone IS NULL;
+
+-- Make the columns NOT NULL with default empty string (optional)
+ALTER TABLE orders ALTER COLUMN sales_person_name SET NOT NULL;
+ALTER TABLE orders ALTER COLUMN sales_person_name SET DEFAULT '';
+ALTER TABLE orders ALTER COLUMN sales_person_phone SET NOT NULL;
+ALTER TABLE orders ALTER COLUMN sales_person_phone SET DEFAULT '';
+
+
+
+-- ================================================================
+-- ADD SALES PERSON NAME AND PHONE COLUMNS
+-- ================================================================
+
+-- Add columns
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS sales_person_name VARCHAR(255);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS sales_person_phone VARCHAR(50);
+
+-- Set default values
+ALTER TABLE orders ALTER COLUMN sales_person_name SET DEFAULT '';
+ALTER TABLE orders ALTER COLUMN sales_person_phone SET DEFAULT '';
+
+-- Update existing records
+UPDATE orders SET sales_person_name = '' WHERE sales_person_name IS NULL;
+UPDATE orders SET sales_person_phone = '' WHERE sales_person_phone IS NULL;
+
+-- Make columns NOT NULL if you want (optional)
+-- ALTER TABLE orders ALTER COLUMN sales_person_name SET NOT NULL;
+-- ALTER TABLE orders ALTER COLUMN sales_person_phone SET NOT NULL;
+
+-- Remove NOT NULL constraint from sales_person_id
+ALTER TABLE orders ALTER COLUMN sales_person_id DROP NOT NULL;
+
+
+
+
+
+
+
+
+
+
+
+-- ================================================================
+-- ORDER ITEMS TABLE
+-- ================================================================
+
+CREATE TABLE order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    quantity DECIMAL(20,4) NOT NULL,
+    uom VARCHAR(20) NOT NULL,
+    packaging VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+
+-- ================================================================
+-- INDEXES FOR ORDER ITEMS TABLE
+-- ================================================================
+
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+
+-- ================================================================
+-- ORDER ITEMS TABLE - AUTO UPDATE UPDATED_AT TRIGGER
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION update_order_items_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_order_items_updated_at
+BEFORE UPDATE ON order_items
+FOR EACH ROW
+EXECUTE FUNCTION update_order_items_updated_at();
+
+-- ================================================================
+-- INSERT SAMPLE DATA INTO ORDER ITEMS
+-- ================================================================
+
+INSERT INTO order_items (order_id, item_name, description, quantity, uom, packaging) VALUES
+(1, 'Premium Interior Paint - White', 'High quality interior paint', 150, 'Gallon', 'Gallon'),
+(2, 'Polyester Fiber - White', 'White polyester fiber for textiles', 500, 'KG', 'KG'),
+(3, 'Exterior Weather Shield Paint', 'Weather resistant exterior paint', 200, 'Gallon', '5 Liter'),
+(4, 'Nylon Fiber - Black', 'Black nylon fiber for industrial use', 300, 'KG', 'Bale'),
+(5, 'Industrial Epoxy Coating', 'Heavy duty epoxy coating', 75, 'Gallon', '20 Liter'),
+(6, 'Acrylic Fiber - Red', 'Red acrylic fiber for textiles', 200, 'KG', 'Carton');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ================================================================
+-- ORDER NOTIFICATIONS TABLE - COMPLETE
+-- ================================================================
+
+-- 1. CREATE TABLE
+CREATE TABLE order_notifications (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    store_id INTEGER NOT NULL,
+    product_name VARCHAR(255) NOT NULL,
+    product_type VARCHAR(50) NOT NULL,
+    quantity DECIMAL(20,4) NOT NULL,
+    uom VARCHAR(20) NOT NULL,
+    packaging VARCHAR(50) NOT NULL,
+    priority VARCHAR(10) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'completed')),
+    due_date DATE NOT NULL,
+    sent_at TIMESTAMP NOT NULL,
+    responded_at TIMESTAMP,
+    responded_by INTEGER,
+    rejection_reason TEXT,
+    notes TEXT,
+    items JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. ADD FOREIGN KEYS
+ALTER TABLE order_notifications 
+    ADD CONSTRAINT fk_order_notifications_order 
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE;
+
+ALTER TABLE order_notifications 
+    ADD CONSTRAINT fk_order_notifications_store 
+    FOREIGN KEY (store_id) REFERENCES stores(id);
+
+ALTER TABLE order_notifications 
+    ADD CONSTRAINT fk_order_notifications_responded_by 
+    FOREIGN KEY (responded_by) REFERENCES users(user_id);
+
+-- 3. ADD INDEXES
+CREATE INDEX idx_order_notifications_order_id ON order_notifications(order_id);
+CREATE INDEX idx_order_notifications_store_id ON order_notifications(store_id);
+CREATE INDEX idx_order_notifications_status ON order_notifications(status);
+CREATE INDEX idx_order_notifications_sent_at ON order_notifications(sent_at);
+CREATE INDEX idx_order_notifications_due_date ON order_notifications(due_date);
+
+-- 4. ADD TRIGGER
+CREATE OR REPLACE FUNCTION update_order_notifications_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_order_notifications_updated_at
+BEFORE UPDATE ON order_notifications
+FOR EACH ROW
+EXECUTE FUNCTION update_order_notifications_updated_at();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Add columns to orders table
+ALTER TABLE orders ADD COLUMN sent_by VARCHAR(100);
+ALTER TABLE orders ADD COLUMN sent_by_id INTEGER;
+
+-- Add columns to order_notifications table (if tracking there too)
+ALTER TABLE order_notifications ADD COLUMN sent_by VARCHAR(100);
+ALTER TABLE order_notifications ADD COLUMN sent_by_id INTEGER;

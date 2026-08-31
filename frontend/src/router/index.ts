@@ -33,6 +33,8 @@ const router = createRouter({
               "store_it",
               "checker",
               "nebret",
+               "formulation_manager",
+               "production_order",
             ],
           },
         },
@@ -381,7 +383,7 @@ const router = createRouter({
         },
         
 {
-  path: "pending-request",  // ✅ Correct spelling
+  path: "pending-request", 
   name: "pending-request",
   component: () =>
     import("@/views/storemanagement/notifications/NotificationManagement.vue"),
@@ -391,6 +393,27 @@ const router = createRouter({
   },
 },
 
+        
+{
+  path: "productions",  
+  name: "productions",
+  component: () =>
+    import("@/views/storemanagement/production/productions.vue"),
+  meta: {
+    title: "productions",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager"],
+  },
+},
+{
+  path: "formulation",  
+  name: "formulation",
+  component: () =>
+    import("@/views/storemanagement/formulations/formulation.vue"),
+  meta: {
+    title: "formulation",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager"],
+  },
+},
         {
           path: "/cost-calculation-rules",
           name: "CostCalculationRules",
@@ -540,6 +563,27 @@ const router = createRouter({
             roles: ["admin", "storekeeper", "store_it", "checker"],
           },
         },
+          {
+          path: "finished-goods",
+          name: "finished-goods",
+          component: () =>
+            import("@/views/storemanagement/finishedgood/finishedGood.vue"),
+          meta: {
+            title: "finished goods ",
+            roles: ["admin", "storekeeper", "store_it", "checker","formulation_manager"],
+          },
+        },
+   {
+          path: "converted-balance",
+          name: "converted-balance",
+          component: () =>
+            import("@/views/storemanagement/storebalance/convertedBalance.vue"),
+          meta: {
+            title: "converted balance ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
+        
 
         {
           path: "store-transaction/print",
@@ -560,7 +604,29 @@ const router = createRouter({
             import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
+          },
+        },
+
+            {
+          path: "orders",
+          name: "orders",
+          component: () =>
+            import("@/views/storemanagement/orders/orders.vue"),
+          meta: {
+            title: "item requests ",
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
+          },
+        },
+
+           {
+          path: "order-notifications",
+          name: "order-notifications",
+          component: () =>
+            import("@/views/storemanagement/orders/OrderNotifications.vue"),
+          meta: {
+            title: "order-notifications ",
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
           },
         },
 

@@ -3,13 +3,12 @@
     <!-- User Profile Section - Fixed -->
     <div class="user-section" :class="{ 'collapsed-user': isCollapsed }">
       <div class="user-avatar">
-        <img :src="userAvatar" alt="User">
+        <img :src="userAvatar" alt="User" />
         <span class="online-dot"></span>
       </div>
       <div v-show="!isCollapsed" class="user-info">
         <h4>{{ userDisplayName }}</h4>
         <p>{{ roleTitle }}</p>
-       
       </div>
     </div>
 
@@ -33,8 +32,18 @@
     <!-- Bottom Section with Status - Fixed -->
     <div class="sidebar-footer">
       <button class="logout-btn" @click="handleLogout">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="1.5"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+          />
         </svg>
         <span v-show="!isCollapsed">Logout</span>
       </button>
@@ -43,189 +52,394 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import * as icons from '@heroicons/vue/24/outline'
+import { ref, computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import * as icons from "@heroicons/vue/24/outline";
 
 const props = defineProps({
   collapsed: {
     type: Boolean,
-    default: false
-  }
-})
+    default: false,
+  },
+});
 
-const emit = defineEmits(['update:collapsed'])
+const emit = defineEmits(["update:collapsed"]);
 
-const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
-const userRole = computed(() => authStore.user?.role || 'employee')
-const isCollapsed = ref(props.collapsed)
+const route = useRoute();
+const router = useRouter();
+const authStore = useAuthStore();
+const userRole = computed(() => authStore.user?.role || "employee");
+const isCollapsed = ref(props.collapsed);
 
 const userDisplayName = computed(() => {
-  return authStore.user?.fullEmployeeName || authStore.user?.fullName || 'User'
-})
+  return authStore.user?.fullEmployeeName || authStore.user?.fullName || "User";
+});
 
 const userAvatar = computed(() => {
-  return authStore.user?.profilePicture || 
-         authStore.user?.profilePictureUrl || 
-         `https://ui-avatars.com/api/?background=6a11cb&color=fff&bold=true&name=${encodeURIComponent(userDisplayName.value)}`
-})
+  return (
+    authStore.user?.profilePicture ||
+    authStore.user?.profilePictureUrl ||
+    `https://ui-avatars.com/api/?background=6a11cb&color=fff&bold=true&name=${encodeURIComponent(userDisplayName.value)}`
+  );
+});
 
 const roleTitle = computed(() => {
   const titles = {
-    admin: 'Administrator',
-    hr: 'HR Manager',
-    finance: 'Finance Officer',
-    employee: 'Employee',
-    attendance: 'Attendance Manager',
-    storekeeper: 'StoreKeeper',
-    store_it:'Store IT',
-    checker: 'checker',
-    cost:"Cost analyst",
-    nebret: 'Asset Manager'
-  }
-  return titles[userRole.value] || 'User'
-})
+    admin: "Administrator",
+    hr: "HR Manager",
+    finance: "Finance Officer",
+    employee: "Employee",
+    attendance: "Attendance Manager",
+    storekeeper: "StoreKeeper",
+    store_it: "Store IT",
+    checker: "checker",
+    cost: "Cost analyst",
+    nebret: "Asset Manager",
+    formulation_manager:"formulation manager",
+    production_order:"production_order",
+  };
+  return titles[userRole.value] || "User";
+});
 
 const roleMenus = {
   admin: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'Users', path: '/users', icon: 'UsersIcon', badge: null },
-    { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
-    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
-    { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
-    { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
-    { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
-    { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-    { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-    { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
-    { name: 'balance-corrections ', path: '/store-balance-corrections', icon: 'UserIcon', badge: null },
-    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
-    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
-    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
-    { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
-    { name: 'Settings', path: '/settings', icon: 'CogIcon', badge: null },
-        { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-   { name: 'fleet Management', path: '/fleet-Management', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-    { name: 'pending-request', path: '/pending-requestt', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-      
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    { name: "Users", path: "/users", icon: "UsersIcon", badge: null },
+    {
+      name: "Employees",
+      path: "/employees",
+      icon: "UserGroupIcon",
+      badge: null,
+    },
+    { name: "Attendance", path: "/attendance", icon: "ClockIcon", badge: null },
+    {
+      name: "Leave Requests",
+      path: "/leaves",
+      icon: "CalendarIcon",
+      badge: null,
+    },
+    {
+      name: "payroll",
+      path: "/payroll",
+      icon: "CurrencyDollarIcon",
+      badge: null,
+    },
+    {
+      name: "inventory",
+      path: "/inventory",
+      icon: "ChartBarIcon",
+      badge: null,
+    },
+    {
+      name: "stores List",
+      path: "/store-management",
+      icon: "ClockIcon",
+      badge: null,
+    },
+    {
+      name: "store groups",
+      path: "/group-management",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "store-to-store ",
+      path: "/store-to-store",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "store-balance ",
+      path: "/store-balance",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "balance-corrections ",
+      path: "/store-balance-corrections",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "store-transaction ",
+      path: "/store-transaction",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+    { name: "audit", path: "/audit", icon: "ClockIcon", badge: null },
+    { name: "item-cost", path: "/item-cost", icon: "CogIcon", badge: null },
+    { name: "Settings", path: "/settings", icon: "CogIcon", badge: null },
+     { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
+          { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+           { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+           { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
+           { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
+           
+           
+    // {
+    //   name: "Asset Management",
+    //   path: "/Asset-Management",
+    //   icon: "CogIcon",
+    //   badge: null,
+    // }, // ← Primary menu for Asset Manager
+    // {
+    //   name: "fleet Management",
+    //   path: "/fleet-Management",
+    //   icon: "CogIcon",
+    //   badge: null,
+    // }, // ← Primary menu for Asset Manager
+    {
+      name: "pending-request",
+      path: "/pending-request",
+      icon: "CogIcon",
+      badge: null,
+    }, // ← Primary menu for Asset Manager
   ],
   hr: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
-    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
-    { name: 'Leave Requests', path: '/leaves', icon: 'CalendarIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "Employees",
+      path: "/employees",
+      icon: "UserGroupIcon",
+      badge: null,
+    },
+    { name: "Attendance", path: "/attendance", icon: "ClockIcon", badge: null },
+    {
+      name: "Leave Requests",
+      path: "/leaves",
+      icon: "CalendarIcon",
+      badge: null,
+    },
   ],
   finance: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },
-    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
-    { name: 'payroll', path: '/payroll', icon: 'CurrencyDollarIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "Employees",
+      path: "/employees",
+      icon: "UserGroupIcon",
+      badge: null,
+    },
+    { name: "Attendance", path: "/attendance", icon: "ClockIcon", badge: null },
+    {
+      name: "payroll",
+      path: "/payroll",
+      icon: "CurrencyDollarIcon",
+      badge: null,
+    },
   ],
   employee: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'My Attendance', path: '/my-attendance', icon: 'ClockIcon', badge: null },
     // { name: 'My Leaves', path: '/my-leaves', icon: 'CalendarIcon', badge: null },
     // { name: 'My payroll', path: '/my-payroll', icon: 'CurrencyDollarIcon', badge: null },
-     { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null }
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
   ],
   attendance: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'Attendance', path: '/attendance', icon: 'ClockIcon', badge: null },
-    { name: 'Leave List', path: '/approved-leaves-list', icon: 'CalendarIcon', badge: null },
-     { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    { name: "Attendance", path: "/attendance", icon: "ClockIcon", badge: null },
+    {
+      name: "Leave List",
+      path: "/approved-leaves-list",
+      icon: "CalendarIcon",
+      badge: null,
+    },
+    { name: "My Profile", path: "/profile", icon: "UserIcon", badge: null },
   ],
   storekeeper: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
-    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
-    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+    {
+      name: "store-balance ",
+      path: "/store-balance",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "store-transaction ",
+      path: "/store-transaction",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+
+      // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+       
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
-    store_it: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
+  store_it: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-     
-    { name: 'store-balance ', path: '/store-balance', icon: 'UserIcon', badge: null },
-    { name: 'store-transaction ', path: '/store-transaction', icon: 'UserIcon', badge: null },
-    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "store-balance ",
+      path: "/store-balance",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+       { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+       
+    {
+      name: "store-transaction ",
+      path: "/store-transaction",
+      icon: "UserIcon",
+      badge: null,
+    },
+  
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
   checker: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-      { name: 'Users', path: '/users', icon: 'UsersIcon', badge: null },
-         { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
-            { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
-     { name: 'inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    { name: "Users", path: "/users", icon: "UsersIcon", badge: null },
+    {
+      name: "stores List",
+      path: "/store-management",
+      icon: "ClockIcon",
+      badge: null,
+    },
+    {
+      name: "store groups",
+      path: "/group-management",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "inventory",
+      path: "/inventory",
+      icon: "ChartBarIcon",
+      badge: null,
+    },
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
-    
-    { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
-     
-  
-      { name: 'balance-corrections ', path: '/store-balance-corrections', icon: 'UserIcon', badge: null },
-       { name: 'pending-request', path: '/pending-request', icon: 'CogIcon', badge: null },  // ← Primary menu for Asset Manager
-    
+
+    { name: "audit", path: "/audit", icon: "ClockIcon", badge: null },
+
+    {
+      name: "balance-corrections ",
+      path: "/store-balance-corrections",
+      icon: "UserIcon",
+      badge: null,
+    },
+    {
+      name: "pending-request",
+      path: "/pending-request",
+      icon: "CogIcon",
+      badge: null,
+    }, // ← Primary menu for Asset Manager
   ],
   cost: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'item-cost', path: '/item-cost', icon: 'CogIcon', badge: null },
-        { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    { name: "item-cost", path: "/item-cost", icon: "CogIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
   ],
-    nebret: [
-    { name: 'Dashboard', path: '/dashboard', icon: 'HomeIcon', badge: null },
-    { name: 'item-requests ', path: '/item-requests', icon: 'UserIcon', badge: null },
-    // { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null }, 
+  nebret: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+    // { name: 'Asset Management', path: '/Asset-Management', icon: 'CogIcon', badge: null },
     // { name: 'Employees', path: '/employees', icon: 'UserGroupIcon', badge: null },  // ← Added for reference
     // { name: 'Inventory', path: '/inventory', icon: 'ChartBarIcon', badge: null },  // ← Added for reference
-  ]
-}
+  ],
+    formulation_manager: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
+          // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+          //  { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+           { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
+  ],
+
+    production_order: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
+
+  ],
+};
 
 const menuItems = computed(() => {
-  return roleMenus[userRole.value] || roleMenus.employee
-})
+  return roleMenus[userRole.value] || roleMenus.employee;
+});
 
 const getIcon = (iconName) => {
-  return icons[iconName] || icons.HomeIcon
-}
+  return icons[iconName] || icons.HomeIcon;
+};
 
 const isActiveRoute = (path) => {
-  const currentPath = route.path
-  if (path === '/dashboard') {
-    return currentPath === '/dashboard'
+  const currentPath = route.path;
+  if (path === "/dashboard") {
+    return currentPath === "/dashboard";
   }
-  return currentPath === path || currentPath.startsWith(path + '/')
-}
+  return currentPath === path || currentPath.startsWith(path + "/");
+};
 
 const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value
-  emit('update:collapsed', isCollapsed.value)
-  localStorage.setItem('sidebarCollapsed', isCollapsed.value)
-}
+  isCollapsed.value = !isCollapsed.value;
+  emit("update:collapsed", isCollapsed.value);
+  localStorage.setItem("sidebarCollapsed", isCollapsed.value);
+};
 
 const handleLogout = async () => {
-  await authStore.logout()
-  router.push('/login')
-}
+  await authStore.logout();
+  router.push("/login");
+};
 
 // Load saved state
-const savedState = localStorage.getItem('sidebarCollapsed')
+const savedState = localStorage.getItem("sidebarCollapsed");
 if (savedState !== null) {
-  isCollapsed.value = savedState === 'true'
-  emit('update:collapsed', isCollapsed.value)
+  isCollapsed.value = savedState === "true";
+  emit("update:collapsed", isCollapsed.value);
 }
 </script>
 
@@ -285,8 +499,15 @@ if (savedState !== null) {
 }
 
 @keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.7; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
 }
 
 .user-info {
@@ -448,12 +669,12 @@ if (savedState !== null) {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
   }
-  
+
   .sidebar.collapsed {
     transform: translateX(0);
     width: 260px;
   }
-  
+
   .sidebar.collapsed .nav-text {
     display: inline;
   }
