@@ -150,6 +150,7 @@
                     :disabled="isItemAlreadySelected(item)"
                   >
                     {{ item.code }} - {{ item.standardName || item.name }}
+                    <span class="uom-label">[ {{ getItemUOM(getItemId(item)) }}]</span>
                     <span v-if="isItemAlreadySelected(item)" class="added-label">(added)</span>
                   </option>
                 </select>
@@ -180,6 +181,7 @@
                   <div class="item-info">
                     <span class="item-code">{{ item.code }}</span>
                     <span class="item-name">{{ item.name }}</span>
+                    <span class="item-uom">[{{ getItemUOM(item.itemId) }}]</span>
                   </div>
                   <div class="item-controls">
                     <div class="quantity-control">
@@ -206,6 +208,7 @@
                       >
                         +
                       </button>
+                      <span class="qty-uom">{{ getItemUOM(item.itemId) }}</span>
                     </div>
                     <input
                       type="text"
@@ -242,7 +245,6 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Requested By *</label>
-                <!-- ✅ EDITED: Editable input -->
                 <input
                   v-model="form.requestedBy"
                   type="text"
@@ -556,6 +558,20 @@ const getItemCode = (itemId: number): string => {
   return item ? item.code : "N/A";
 };
 
+// ✅ NEW: Get UOM for an item
+const getItemUOM = (itemId: number): string => {
+  const item = items.value.find((i) => Number(i.itemId ?? i.id) === itemId);
+  if (!item) return 'N/A';
+  
+  // Check if uom exists and get its name/code
+  if (item.uom) {
+    if (typeof item.uom === 'string') return item.uom;
+    if (typeof item.uom === 'object' && item.uom.code) return item.uom.code;
+    if (typeof item.uom === 'object' && item.uom.name) return item.uom.name;
+  }
+  return 'N/A';
+};
+
 const getCurrentUser = (): string => {
   return (
     authStore.user?.fullName ||
@@ -701,7 +717,6 @@ const saveRequest = async (): Promise<void> => {
   try {
     const userId = getCurrentUserId();
     
-    // ✅ FIXED: Send the edited requestedBy value from the form
     const requestData = {
       askingStoreId: Number(form.value.askingStoreId),
       supplyingStoreId: Number(form.value.supplyingStoreId),
@@ -711,7 +726,7 @@ const saveRequest = async (): Promise<void> => {
         remark: item.remark || "",
       })),
       requestedById: userId,
-      requestedBy: form.value.requestedBy, // ✅ USES THE EDITED VALUE
+      requestedBy: form.value.requestedBy,
       requestedDate: form.value.requestedDate,
       status: form.value.status as "pending" | "approved" | "rejected",
       remark: form.value.remark,
@@ -811,7 +826,7 @@ const initializeForm = () => {
       askingStoreId: String(userAssignedStoreId.value || ""),
       supplyingStoreId: "",
       items: [],
-      requestedBy: getCurrentUser(), // ✅ Sets initial value to logged-in user
+      requestedBy: getCurrentUser(),
       requestedDate: today,
       status: "pending",
       remark: "",
@@ -1336,6 +1351,32 @@ watch(
   font-size: 13px;
   color: #1e293b;
   font-weight: 500;
+}
+
+/* ✅ NEW: UOM styles */
+.item-uom {
+  font-size: 11px;
+  color: #059669;
+  font-weight: 500;
+  background: #ecfdf5;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid #bbf7d0;
+}
+
+.uom-label {
+  font-size: 10px;
+  color: #059669;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.qty-uom {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+  margin-left: 2px;
+  min-width: 30px;
 }
 
 .item-controls {
