@@ -283,7 +283,7 @@ const roleMenus = {
       badge: null,
     },
 
-      { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+      // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
        
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
@@ -315,7 +315,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-    { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+    // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
