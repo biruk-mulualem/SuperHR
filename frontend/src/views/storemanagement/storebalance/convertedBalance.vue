@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-title">
         <h2>⚖️ Converted Balance</h2>
-        <span class="total-badge">{{ filteredItems.length }} Items</span>
+        <span class="total-badge">{{ totalItems }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -37,8 +37,8 @@
         <option value="">All Categories</option>
         <option
           v-for="cat in categories"
-          :key="cat.id"
-          :value="cat.id"
+          :key="cat.id || cat.categoryId"
+          :value="cat.id || cat.categoryId"
         >
           {{ cat.name }}
         </option>
@@ -50,10 +50,13 @@
         @change="onFilterChange"
       >
         <option value="">All UOM</option>
-        <option value="kg">kg</option>
-        <option value="pcs">pcs</option>
-        <option value="m">m</option>
-        <option value="L">L</option>
+        <option
+          v-for="uom in uoms"
+          :key="uom.id || uom.uomId"
+          :value="uom.code"
+        >
+          {{ uom.code }} - {{ uom.name }}
+        </option>
       </select>
 
       <button
@@ -108,12 +111,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="isLoading">
-            <td colspan="6" class="text-center">
-              <div class="loading-spinner">Loading...</div>
-            </td>
-          </tr>
-          <tr v-else-if="paginatedItems.length === 0">
+          <tr v-if="paginatedItems.length === 0">
             <td colspan="6" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">⚖️</span>
@@ -126,15 +124,11 @@
               {{ (currentPage - 1) * pageSize + index + 1 }}
             </td>
             <td>
-              <div class="item-code">
-                {{ item.itemCode }}
-              </div>
+              <div class="item-code">{{ item.itemCode }}</div>
             </td>
             <td>
               <div class="item-name-wrapper">
-                <div class="item-common-name">
-                  {{ item.itemName }}
-                </div>
+                <div class="item-common-name">{{ item.itemName }}</div>
               </div>
             </td>
             <td>
@@ -151,9 +145,9 @@
               <div class="balance-wrapper">
                 <div
                   class="balance-value"
-                  :class="getBalanceClass(item.balance)"
+                  :class="getBalanceClass(item.convertedBalance)"
                 >
-                  {{ formatNumber(item.balance) }}
+                  {{ formatNumber(item.convertedBalance) }}
                 </div>
               </div>
             </td>
@@ -163,7 +157,7 @@
     </div>
 
     <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="filteredItems.length > 0">
+    <div class="pagination" v-if="totalItems > 0">
       <button
         class="page-btn"
         :disabled="currentPage === 1"
@@ -212,30 +206,37 @@
                 type="text"
                 v-model="convertSearchQuery"
                 placeholder="Search items..."
-                @input="refreshConvertableItems"
+                @input="refreshAvailableItems"
               />
             </div>
           </div>
 
           <div class="convert-filters">
-            <select v-model="convertFilterCategory" class="filter-select" @change="refreshConvertableItems">
+            <select v-model="convertFilterCategory" class="filter-select" @change="refreshAvailableItems">
               <option value="">All Categories</option>
-              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+              <option
+                v-for="cat in categories"
+                :key="cat.id || cat.categoryId"
+                :value="cat.id || cat.categoryId"
+              >
                 {{ cat.name }}
               </option>
             </select>
-            <select v-model="convertFilterUom" class="filter-select" @change="refreshConvertableItems">
+            <select v-model="convertFilterUom" class="filter-select" @change="refreshAvailableItems">
               <option value="">All UOM</option>
-              <option value="Drum">Drum</option>
-              <option value="Bag">Bag</option>
-              <option value="Roll">Roll</option>
-              <option value="Packet">Packet</option>
+              <option
+                v-for="uom in uoms"
+                :key="uom.id || uom.uomId"
+                :value="uom.code"
+              >
+                {{ uom.code }} - {{ uom.name }}
+              </option>
             </select>
           </div>
 
           <div class="convert-item-list">
             <div
-              v-for="item in filteredConvertableItems"
+              v-for="item in filteredAvailableItems"
               :key="item.id"
               class="convert-item"
             >
@@ -274,8 +275,8 @@
                 <span class="convert-max">(Max: {{ formatNumber(item.balance) }})</span>
               </div>
             </div>
-            <div v-if="filteredConvertableItems.length === 0" class="no-convert-items">
-              No items available for conversion. All items are already converted or have zero balance.
+            <div v-if="filteredAvailableItems.length === 0" class="no-convert-items">
+              No items available for conversion.
             </div>
           </div>
         </div>
@@ -362,9 +363,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeExportModal">
-            Cancel
-          </button>
+          <button class="btn-secondary" @click="closeExportModal">Cancel</button>
           <button
             class="btn-primary"
             @click="exportSelectedReport"
@@ -384,7 +383,34 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import convertedBalanceService from '@/stores/convertedBalanceService'
+import itemService from '@/stores/itemService'
+
+// ================================================================
+// PINIA STORES
+// ================================================================
+const authStore = useAuthStore()
+
+// ================================================================
+// TOAST SYSTEM
+// ================================================================
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('success')
+let toastTimeout = null
+
+const showToastMessage = (msg, type = 'success') => {
+  if (toastTimeout) clearTimeout(toastTimeout)
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  toastTimeout = setTimeout(() => {
+    showToast.value = false
+    toastTimeout = null
+  }, 4000)
+}
 
 // ================================================================
 // STATE
@@ -406,290 +432,41 @@ const pageSize = ref(10)
 const convertFilterCategory = ref('')
 const convertFilterUom = ref('')
 const convertSearchQuery = ref('')
-const convertableItems = ref([])
+const availableItems = ref([])
 const selectedItemsForConfirmation = ref([])
 
-const showToast = ref(false)
-const toastMessage = ref('')
-const toastType = ref('success')
-
-// ================================================================
-// DEMO DATA - CATEGORIES
-// ================================================================
-const categories = ref([
-  { id: 1, name: 'Raw Materials' },
-  { id: 2, name: 'Chemicals' },
-  { id: 3, name: 'Packaging' },
-  { id: 4, name: 'Additives' }
-])
-
-// ================================================================
-// DEMO DATA - CONVERTED BALANCE ITEMS
-// ================================================================
-const convertedItems = ref([
-  // Raw Materials - kg (already converted)
-  {
-    id: 1,
-    itemCode: 'SDT000001',
-    itemName: 'Cement',
-    categoryName: 'Raw Materials',
-    uomCode: 'kg',
-    balance: 25000,
-    isConverted: true,
-    status: 'Converted'
-  },
-  {
-    id: 2,
-    itemCode: 'SDT000002',
-    itemName: 'Sand',
-    categoryName: 'Raw Materials',
-    uomCode: 'kg',
-    balance: 45000,
-    isConverted: true,
-    status: 'Converted'
-  },
-  {
-    id: 3,
-    itemCode: 'SDT000003',
-    itemName: 'Gravel',
-    categoryName: 'Raw Materials',
-    uomCode: 'kg',
-    balance: 120000,
-    isConverted: true,
-    status: 'Converted'
-  },
-
-  // Drum items - NOT converted yet
-  {
-    id: 4,
-    itemCode: 'SDT000004',
-    itemName: 'Homopolymer Glue',
-    categoryName: 'Chemicals',
-    uomCode: 'Drum',
-    balance: 12,
-    convertToUom: 'kg',
-    conversionRate: 200,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 5,
-    itemCode: 'SDT000005',
-    itemName: 'Epoxy Resin',
-    categoryName: 'Chemicals',
-    uomCode: 'Drum',
-    balance: 42,
-    convertToUom: 'kg',
-    conversionRate: 200,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 6,
-    itemCode: 'SDT000006',
-    itemName: 'Hardener',
-    categoryName: 'Chemicals',
-    uomCode: 'Drum',
-    balance: 6,
-    convertToUom: 'kg',
-    conversionRate: 200,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 7,
-    itemCode: 'SDT000007',
-    itemName: 'Solvent',
-    categoryName: 'Chemicals',
-    uomCode: 'Drum',
-    balance: 17,
-    convertToUom: 'kg',
-    conversionRate: 200,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-
-  // Bag items - NOT converted yet
-  {
-    id: 8,
-    itemCode: 'SDT000008',
-    itemName: 'Cement Bag',
-    categoryName: 'Raw Materials',
-    uomCode: 'Bag',
-    balance: 500,
-    convertToUom: 'kg',
-    conversionRate: 50,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 9,
-    itemCode: 'SDT000009',
-    itemName: 'Lime Powder',
-    categoryName: 'Raw Materials',
-    uomCode: 'Bag',
-    balance: 300,
-    convertToUom: 'kg',
-    conversionRate: 50,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-
-  // Roll items - NOT converted yet
-  {
-    id: 10,
-    itemCode: 'SDT000010',
-    itemName: 'Fiberglass Roll',
-    categoryName: 'Packaging',
-    uomCode: 'Roll',
-    balance: 25,
-    convertToUom: 'm',
-    conversionRate: 50,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 11,
-    itemCode: 'SDT000011',
-    itemName: 'Pallet Wrap Roll',
-    categoryName: 'Packaging',
-    uomCode: 'Roll',
-    balance: 40,
-    convertToUom: 'm',
-    conversionRate: 100,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-
-  // Packet items - NOT converted yet
-  {
-    id: 12,
-    itemCode: 'SDT000012',
-    itemName: 'Plastic Bags',
-    categoryName: 'Packaging',
-    uomCode: 'Packet',
-    balance: 150,
-    convertToUom: 'pcs',
-    conversionRate: 100,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-  {
-    id: 13,
-    itemCode: 'SDT000013',
-    itemName: 'Cardboard Boxes',
-    categoryName: 'Packaging',
-    uomCode: 'Packet',
-    balance: 85,
-    convertToUom: 'pcs',
-    conversionRate: 50,
-    canConvert: true,
-    isConverted: false,
-    status: 'Pending'
-  },
-
-  // Additives - kg (already converted)
-  {
-    id: 14,
-    itemCode: 'SDT000014',
-    itemName: 'Plasticizer',
-    categoryName: 'Additives',
-    uomCode: 'kg',
-    balance: 450,
-    isConverted: true,
-    status: 'Converted'
-  },
-  {
-    id: 15,
-    itemCode: 'SDT000015',
-    itemName: 'Accelerator',
-    categoryName: 'Additives',
-    uomCode: 'kg',
-    balance: 280,
-    isConverted: true,
-    status: 'Converted'
-  },
-  {
-    id: 16,
-    itemCode: 'SDT000016',
-    itemName: 'Fly Ash',
-    categoryName: 'Raw Materials',
-    uomCode: 'kg',
-    balance: 0,
-    isConverted: true,
-    status: 'Converted'
-  }
-])
-
-// ================================================================
-// COMPUTED
-// ================================================================
-
-const displayItems = computed(() => {
-  return convertedItems.value.filter(item => item.isConverted === true)
+// Data
+const convertedItems = ref([])
+const totalItems = ref(0)
+const totalPages = ref(1)
+const stats = ref({
+  totalItems: 0,
+  convertibleItems: 0,
+  zeroStock: 0
 })
+
+// Categories & UOMs from API
+const categories = ref([])
+const uoms = ref([])
+
+// ================================================================
+// COMPUTED - User Store/Group from Auth
+// ================================================================
+const userStoreId = computed(() => authStore.userStoreId)
+const userGroupId = computed(() => authStore.userGroupId)
+
+// ================================================================
+// COMPUTED - Data
+// ================================================================
+const paginatedItems = computed(() => convertedItems.value)
 
 const hasActiveFilters = computed(() => {
   return filterCategory.value || filterUom.value || searchQuery.value
 })
 
-const filteredItems = computed(() => {
-  let result = [...displayItems.value]
-
-  if (filterCategory.value) {
-    const category = categories.value.find(c => c.id === Number(filterCategory.value))
-    result = result.filter(item => item.categoryName === category?.name)
-  }
-
-  if (filterUom.value) {
-    result = result.filter(item => item.uomCode === filterUom.value)
-  }
-
-  if (searchQuery.value) {
-    const search = searchQuery.value.toLowerCase()
-    result = result.filter(item =>
-      item.itemCode.toLowerCase().includes(search) ||
-      item.itemName.toLowerCase().includes(search)
-    )
-  }
-
-  return result
-})
-
-const paginatedItems = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredItems.value.slice(start, end)
-})
-
-const totalPages = computed(() => {
-  return Math.ceil(filteredItems.value.length / pageSize.value) || 1
-})
-
-const stats = computed(() => {
-  const total = filteredItems.value.length
-  const convertible = convertedItems.value.filter(item => item.canConvert && item.balance > 0 && item.isConverted === false).length
-  const zeroStock = filteredItems.value.filter(item => item.balance === 0).length
-
-  return {
-    totalItems: total,
-    convertibleItems: convertible,
-    zeroStock: zeroStock
-  }
-})
-
-const filteredConvertableItems = computed(() => {
-  let items = convertableItems.value
-
+const filteredAvailableItems = computed(() => {
+  let items = availableItems.value
+  
   if (convertSearchQuery.value) {
     const search = convertSearchQuery.value.toLowerCase()
     items = items.filter(item =>
@@ -697,40 +474,202 @@ const filteredConvertableItems = computed(() => {
       item.itemName.toLowerCase().includes(search)
     )
   }
-
+  
   return items
 })
 
 const hasSelectedItems = computed(() => {
-  return convertableItems.value.some(item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance)
+  return availableItems.value.some(item => 
+    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
+  )
 })
 
 const selectedCount = computed(() => {
-  return convertableItems.value.filter(item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance).length
+  return availableItems.value.filter(item => 
+    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
+  ).length
 })
 
 // ================================================================
-// METHODS
+// METHODS - Data Fetching
 // ================================================================
 
-const formatNumber = (num) => {
-  if (num === undefined || num === null) return '0'
-  return new Intl.NumberFormat().format(num)
+/**
+ * Fetch categories and UOMs from API
+ */
+const fetchCategoriesAndUOMs = async () => {
+  try {
+    // Fetch categories
+    const catResponse = await itemService.getActiveCategories?.() || await itemService.getCategories?.()
+    if (catResponse?.success) {
+      categories.value = catResponse.data.map(cat => ({
+        id: cat.categoryId || cat.id,
+        name: cat.name
+      }))
+    } else {
+      // Fallback categories
+      categories.value = [
+        { id: 1, name: 'Raw Materials' },
+        { id: 2, name: 'Chemicals' },
+        { id: 3, name: 'Packaging' },
+        { id: 4, name: 'Additives' }
+      ]
+    }
+
+    // Fetch UOMs
+    const uomResponse = await itemService.getUOMs?.()
+    if (uomResponse?.success) {
+      uoms.value = uomResponse.data.map(uom => ({
+        id: uom.uomId || uom.id,
+        code: uom.code,
+        name: uom.name
+      }))
+    } else {
+      // Fallback UOMs
+      uoms.value = [
+        { id: 1, code: 'kg', name: 'Kilogram' },
+        { id: 2, code: 'Drum', name: 'Drum' },
+        { id: 3, code: 'Bag', name: 'Bag' },
+        { id: 4, code: 'Roll', name: 'Roll' },
+        { id: 5, code: 'Packet', name: 'Packet' },
+        { id: 6, code: 'pcs', name: 'Pieces' },
+        { id: 7, code: 'm', name: 'Meters' },
+        { id: 8, code: 'L', name: 'Liters' }
+      ]
+    }
+  } catch (error) {
+    console.error('Error fetching categories/UOMs:', error)
+    // Fallback data
+    categories.value = [
+      { id: 1, name: 'Raw Materials' },
+      { id: 2, name: 'Chemicals' },
+      { id: 3, name: 'Packaging' },
+      { id: 4, name: 'Additives' }
+    ]
+    uoms.value = [
+      { id: 1, code: 'kg', name: 'Kilogram' },
+      { id: 2, code: 'Drum', name: 'Drum' },
+      { id: 3, code: 'Bag', name: 'Bag' },
+      { id: 4, code: 'Roll', name: 'Roll' },
+      { id: 5, code: 'Packet', name: 'Packet' },
+      { id: 6, code: 'pcs', name: 'Pieces' },
+      { id: 7, code: 'm', name: 'Meters' },
+      { id: 8, code: 'L', name: 'Liters' }
+    ]
+  }
 }
 
-const getBalanceClass = (balance) => {
-  if (balance === 0) return 'zero'
-  if (balance < 100) return 'low'
-  if (balance < 500) return 'medium'
-  return 'normal'
+/**
+ * Fetch converted balances from API
+ */
+const fetchConvertedBalances = async () => {
+  isLoading.value = true
+  try {
+    const storeId = userStoreId.value
+    const groupId = userGroupId.value
+
+    if (!storeId || !groupId) {
+      console.warn('No store or group found for user')
+      isLoading.value = false
+      return
+    }
+
+    const response = await convertedBalanceService.getConvertedBalances({
+      storeId,
+      groupId,
+      categoryId: filterCategory.value || undefined,
+      uomId: filterUom.value || undefined,
+      search: searchQuery.value || undefined,
+      page: currentPage.value,
+      limit: pageSize.value
+    })
+
+    if (response.success) {
+      convertedItems.value = response.data
+      totalItems.value = response.pagination.total
+      totalPages.value = response.pagination.totalPages
+    } else {
+      showToastMessage('Failed to fetch converted balances', 'error')
+    }
+  } catch (error) {
+    console.error('Error fetching converted balances:', error)
+    showToastMessage('Failed to fetch converted balances', 'error')
+  } finally {
+    isLoading.value = false
+  }
 }
+
+/**
+ * Fetch statistics
+ */
+const fetchStats = async () => {
+  try {
+    const storeId = userStoreId.value
+    const groupId = userGroupId.value
+
+    if (!storeId || !groupId) {
+      return
+    }
+
+    const response = await convertedBalanceService.getStats({
+      storeId,
+      groupId
+    })
+
+    if (response.success) {
+      stats.value = response.data
+    }
+  } catch (error) {
+    console.error('Error fetching stats:', error)
+  }
+}
+
+/**
+ * Fetch available items for conversion (dropdown)
+ */
+const fetchAvailableItems = async () => {
+  try {
+    const storeId = userStoreId.value
+    const groupId = userGroupId.value
+
+    if (!storeId || !groupId) {
+      showToastMessage('No store or group assigned to your account', 'warning')
+      return
+    }
+
+    const response = await convertedBalanceService.getAvailableItems({
+      storeId,
+      groupId,
+      categoryId: convertFilterCategory.value || undefined,
+      uomId: convertFilterUom.value || undefined,
+      search: convertSearchQuery.value || undefined
+    })
+
+    if (response.success) {
+      availableItems.value = response.data.map(item => ({
+        ...item,
+        selected: false,
+        convertQty: 1
+      }))
+    }
+  } catch (error) {
+    console.error('Error fetching available items:', error)
+    showToastMessage('Failed to fetch available items', 'error')
+  }
+}
+
+// ================================================================
+// METHODS - UI Interactions
+// ================================================================
 
 const onSearchChange = () => {
   currentPage.value = 1
+  fetchConvertedBalances()
 }
 
 const onFilterChange = () => {
   currentPage.value = 1
+  fetchConvertedBalances()
 }
 
 const clearFilters = () => {
@@ -738,54 +677,41 @@ const clearFilters = () => {
   filterUom.value = ''
   searchQuery.value = ''
   currentPage.value = 1
+  fetchConvertedBalances()
   showToastMessage('Filters cleared', 'info')
 }
 
 const changePage = (page) => {
   if (page >= 1 && page <= totalPages.value) {
     currentPage.value = page
+    fetchConvertedBalances()
   }
 }
 
 const changePageSize = () => {
   currentPage.value = 1
+  fetchConvertedBalances()
 }
 
 // ================================================================
-// CONVERT MODAL
+// METHODS - Convert Modal
 // ================================================================
 
-const refreshConvertableItems = () => {
-  let items = convertedItems.value.filter(item => item.canConvert && item.balance > 0 && item.isConverted === false)
-
-  if (convertFilterCategory.value) {
-    const category = categories.value.find(c => c.id === Number(convertFilterCategory.value))
-    items = items.filter(item => item.categoryName === category?.name)
-  }
-
-  if (convertFilterUom.value) {
-    items = items.filter(item => item.uomCode === convertFilterUom.value)
-  }
-
-  convertableItems.value = items.map(item => ({
-    ...item,
-    selected: false,
-    convertQty: 1
-  }))
+const refreshAvailableItems = () => {
+  fetchAvailableItems()
 }
 
-const openConvertModal = () => {
+const openConvertModal = async () => {
   convertFilterCategory.value = ''
   convertFilterUom.value = ''
   convertSearchQuery.value = ''
-  refreshConvertableItems()
+  await fetchAvailableItems()
   showConvertModal.value = true
 }
 
 const closeConvertModal = () => {
   showConvertModal.value = false
-  convertableItems.value = []
-  convertSearchQuery.value = ''
+  availableItems.value = []
 }
 
 const toggleItemSelection = (item, event) => {
@@ -796,7 +722,6 @@ const toggleItemSelection = (item, event) => {
   } else {
     item.convertQty = 0
   }
-  convertableItems.value = [...convertableItems.value]
 }
 
 const selectAllText = (event) => {
@@ -810,19 +735,26 @@ const validateQty = (item) => {
   if (item.convertQty < 0) {
     item.convertQty = 0
   }
+  if (item.convertQty === 0) {
+    item.selected = false
+  }
 }
 
 // ================================================================
-// CONFIRMATION MODAL
+// METHODS - Confirmation Modal
 // ================================================================
 
 const openConfirmationModal = () => {
-  const selectedItems = convertableItems.value.filter(item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance)
-  if (selectedItems.length === 0) {
+  const selected = availableItems.value.filter(
+    item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance
+  )
+  
+  if (selected.length === 0) {
     showToastMessage('No valid items selected for conversion', 'warning')
     return
   }
-  selectedItemsForConfirmation.value = selectedItems
+  
+  selectedItemsForConfirmation.value = selected
   showConfirmationModal.value = true
 }
 
@@ -831,6 +763,9 @@ const closeConfirmationModal = () => {
   selectedItemsForConfirmation.value = []
 }
 
+/**
+ * Perform conversion - calls API
+ */
 const confirmConversion = async () => {
   const selectedItems = selectedItemsForConfirmation.value
 
@@ -842,75 +777,49 @@ const confirmConversion = async () => {
   converting.value = true
 
   try {
-    let conversionLog = []
+    const items = selectedItems.map(item => ({
+      balanceId: item.balanceId,
+      itemId: item.id,
+      quantity: item.convertQty,
+      conversionRate: item.conversionRate,
+      sourceUomId: item.sourceUomId,
+      targetUomId: item.targetUomId,
+      itemCode: item.itemCode,
+      itemName: item.itemName,
+      uomCode: item.uomCode,
+      convertToUom: item.convertToUom
+    }))
 
-    for (const item of selectedItems) {
-      const qtyToConvert = item.convertQty
-      const convertedAmount = qtyToConvert * item.conversionRate
+    const response = await convertedBalanceService.convert(items)
 
-      // Find the source item
-      const mainItem = convertedItems.value.find(i => i.id === item.id)
-      if (mainItem) {
-        // Reduce source balance
-        mainItem.balance = mainItem.balance - qtyToConvert
-
-        // If balance becomes 0, mark as no longer convertible
-        if (mainItem.balance === 0) {
-          mainItem.isConverted = false
-        }
-
-        // Check if the converted item already exists in the table
-        const existingConvertedItem = convertedItems.value.find(
-          i => i.itemCode === item.itemCode && 
-               i.uomCode === item.convertToUom && 
-               i.isConverted === true
-        )
-
-        if (existingConvertedItem) {
-          // Add to existing converted item
-          existingConvertedItem.balance = existingConvertedItem.balance + convertedAmount
-          conversionLog.push(
-            `${item.itemCode}: ${qtyToConvert} ${item.uomCode} → ${convertedAmount} ${item.convertToUom} (Added to existing balance)`
-          )
-        } else {
-          // Create new converted item
-          const newItem = {
-            id: Date.now() + Math.random(),
-            itemCode: item.itemCode,
-            itemName: item.itemName,
-            categoryName: item.categoryName,
-            uomCode: item.convertToUom,
-            balance: convertedAmount,
-            isConverted: true,
-            status: 'Converted'
-          }
-          convertedItems.value.push(newItem)
-          conversionLog.push(
-            `${item.itemCode}: ${qtyToConvert} ${item.uomCode} → ${convertedAmount} ${item.convertToUom} (New entry created)`
-          )
-        }
+    if (response.success) {
+      showToastMessage(response.message || `Successfully converted ${selectedItems.length} item(s)`, 'success')
+      
+      // ✅ Refresh data
+      await fetchConvertedBalances()
+      await fetchStats()
+      
+      // ✅ Close modals
+      closeConfirmationModal()
+      closeConvertModal()
+    } else {
+      showToastMessage(response.message || 'Conversion failed', 'error')
+      if (response.data?.errors) {
+        response.data.errors.forEach(err => {
+          showToastMessage(`${err.itemCode}: ${err.error}`, 'error')
+        })
       }
     }
-
-    // Close both modals
-    closeConfirmationModal()
-    closeConvertModal()
-    
-    showToastMessage(
-      `✅ Converted ${selectedItems.length} item(s) successfully!\n${conversionLog.join('\n')}`,
-      'success'
-    )
-
   } catch (error) {
     console.error('Conversion error:', error)
-    showToastMessage('Failed to process conversion', 'error')
+    showToastMessage('Failed to perform conversion', 'error')
   } finally {
     converting.value = false
   }
 }
 
 // ================================================================
-// EXPORT
+// METHODS - Export
 // ================================================================
 
 const openExportModal = () => {
@@ -925,18 +834,34 @@ const closeExportModal = () => {
 const exportSelectedReport = async () => {
   exporting.value = true
   try {
-    const data = filteredItems.value.map(item => ({
-      'Item Code': item.itemCode,
-      'Item Name': item.itemName,
-      'Category': item.categoryName,
-      'UOM': item.uomCode,
-      'Balance': item.balance
-    }))
+    const storeId = userStoreId.value
+    const groupId = userGroupId.value
 
-    const csv = [
-      Object.keys(data[0]).join(','),
-      ...data.map(row => Object.values(row).join(','))
-    ].join('\n')
+    if (!storeId || !groupId) {
+      showToastMessage('No store or group assigned', 'warning')
+      return
+    }
+
+    const response = await convertedBalanceService.getConvertedBalances({
+      storeId,
+      groupId,
+      categoryId: filterCategory.value || undefined,
+      uomId: filterUom.value || undefined,
+      search: searchQuery.value || undefined,
+      page: 1,
+      limit: 99999
+    })
+
+    if (!response.success) {
+      showToastMessage('Failed to fetch data for export', 'error')
+      return
+    }
+
+    let csv = 'Item Code,Item Name,Category,UOM,Converted Balance\n'
+    
+    response.data.forEach(item => {
+      csv += `${item.itemCode},"${item.itemName}","${item.categoryName || 'Uncategorized'}","${item.uomCode}",${item.convertedBalance}\n`
+    })
 
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -946,7 +871,7 @@ const exportSelectedReport = async () => {
     a.click()
     URL.revokeObjectURL(url)
 
-    showToastMessage('✅ Export completed successfully!', 'success')
+    showToastMessage('Export completed successfully!', 'success')
     closeExportModal()
   } catch (error) {
     console.error('Export error:', error)
@@ -956,23 +881,57 @@ const exportSelectedReport = async () => {
   }
 }
 
-const showToastMessage = (msg, type = 'success') => {
-  toastMessage.value = msg
-  toastType.value = type
-  showToast.value = true
-  setTimeout(() => {
-    showToast.value = false
-  }, 4000)
+// ================================================================
+// METHODS - Utility
+// ================================================================
+
+const formatNumber = (num) => {
+  if (num === undefined || num === null) return '0'
+  return new Intl.NumberFormat().format(num)
 }
+
+const getBalanceClass = (balance) => {
+  if (balance === 0) return 'zero'
+  if (balance < 100) return 'low'
+  if (balance < 500) return 'medium'
+  return 'normal'
+}
+
+// ================================================================
+// WATCHERS
+// ================================================================
+
+watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
+  if (newStoreId && newGroupId) {
+    fetchConvertedBalances()
+    fetchStats()
+  }
+}, { immediate: true })
 
 // ================================================================
 // LIFECYCLE
 // ================================================================
-onMounted(() => {
+
+onMounted(async () => {
   isLoading.value = true
-  setTimeout(() => {
-    isLoading.value = false
-  }, 500)
+  
+  // ✅ Load categories and UOMs
+  await fetchCategoriesAndUOMs()
+  
+  if (authStore.isAuthenticated) {
+    await fetchConvertedBalances()
+    await fetchStats()
+  } else {
+    const unwatch = watch(() => authStore.isAuthenticated, async (isAuth) => {
+      if (isAuth) {
+        await fetchConvertedBalances()
+        await fetchStats()
+        unwatch()
+      }
+    })
+  }
+  
+  isLoading.value = false
 })
 </script>
 
@@ -1823,16 +1782,16 @@ onMounted(() => {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  padding: 10px 16px;
+  padding: 12px 20px;
   border-radius: 8px;
   background: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 3px solid #10b981;
   max-width: 90vw;
   font-size: 13px;
   white-space: pre-line;
+  border-left: 3px solid #10b981;
+  animation: slideIn 0.3s ease;
 }
 
 .toast.error {
@@ -1943,7 +1902,8 @@ onMounted(() => {
   .btn-export,
   .search-box,
   .filter-bar,
-  .pagination {
+  .pagination,
+  .toast {
     display: none !important;
   }
 

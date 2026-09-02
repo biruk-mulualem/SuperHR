@@ -26,28 +26,28 @@
     <!-- Stats Row -->
     <div class="stats-row">
       <div class="stat-card pending" @click="filterStatus = 'pending'">
-        <span class="stat-icon">⏳</span>
+      
         <div class="stat-info">
           <span class="stat-label">Pending</span>
           <span class="stat-value">{{ pendingCount }}</span>
         </div>
       </div>
       <div class="stat-card accepted" @click="filterStatus = 'accepted'">
-        <span class="stat-icon">✅</span>
+   
         <div class="stat-info">
           <span class="stat-label">Accepted</span>
           <span class="stat-value">{{ acceptedCount }}</span>
         </div>
       </div>
       <div class="stat-card rejected" @click="filterStatus = 'rejected'">
-        <span class="stat-icon">❌</span>
+      
         <div class="stat-info">
           <span class="stat-label">Rejected</span>
           <span class="stat-value">{{ rejectedCount }}</span>
         </div>
       </div>
       <div class="stat-card completed" @click="filterStatus = 'completed'">
-        <span class="stat-icon">🏁</span>
+     
         <div class="stat-info">
           <span class="stat-label">Completed</span>
           <span class="stat-value">{{ completedCount }}</span>
@@ -59,10 +59,10 @@
     <div class="filter-bar">
       <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
         <option value="all">All Status</option>
-        <option value="pending">⏳ Pending</option>
-        <option value="accepted">✅ Accepted</option>
-        <option value="rejected">❌ Rejected</option>
-        <option value="completed">🏁 Completed</option>
+        <option value="pending"> Pending</option>
+        <option value="accepted"> Accepted</option>
+        <option value="rejected"> Rejected</option>
+        <option value="completed"> Completed</option>
       </select>
 
       <select v-model="filterPriority" class="filter-select" @change="onFilterChange">

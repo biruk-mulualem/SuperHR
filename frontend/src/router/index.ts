@@ -35,6 +35,7 @@ const router = createRouter({
               "nebret",
                "formulation_manager",
                "production_order",
+               "chemist",
             ],
           },
         },
@@ -401,7 +402,7 @@ const router = createRouter({
     import("@/views/storemanagement/production/productions.vue"),
   meta: {
     title: "productions",
-    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager"],
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
   },
 },
 {
@@ -411,7 +412,7 @@ const router = createRouter({
     import("@/views/storemanagement/formulations/formulation.vue"),
   meta: {
     title: "formulation",
-    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager"],
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
   },
 },
         {
@@ -604,7 +605,7 @@ const router = createRouter({
             import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist"],
           },
         },
 
@@ -615,7 +616,7 @@ const router = createRouter({
             import("@/views/storemanagement/orders/orders.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist"],
           },
         },
 
@@ -626,7 +627,7 @@ const router = createRouter({
             import("@/views/storemanagement/orders/OrderNotifications.vue"),
           meta: {
             title: "order-notifications ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist"],
           },
         },
 

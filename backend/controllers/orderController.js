@@ -7,181 +7,87 @@ class OrderController {
     // ================================================================
     // GET ALL ORDERS
     // ================================================================
-    static async getAll(req, res) {
-        try {
-            const {
-                search,
-                status,
-                priority,
-                productType,
-                page = 1,
-                limit = 20,
-                sortBy = 'createdAt',
-                sortOrder = 'DESC'
-            } = req.query;
+ 
+static async getAll(req, res) {
+    try {
+        const {
+            search,
+            status,
+            priority,
+            productType,
+            page = 1,
+            limit = 20,
+            sortBy = 'createdAt',
+            sortOrder = 'DESC'
+        } = req.query;
 
-            const where = {};
-            if (status) where.status = status;
-            if (priority) where.priority = priority;
+        const where = {};
+        if (status) where.status = status;
+        if (priority) where.priority = priority;
 
-            const productInclude = {
-                model: FinishedGood,
-                as: 'product',
-                attributes: ['id', 'fgCode', 'name', 'type']
-            };
+        // ✅ Get the logged-in user
+        const user = req.user;
+        const userId = user?.userId || user?.id;
 
-            if (productType) {
-                productInclude.where = { type: productType };
-            }
-
-            if (search) {
-                productInclude.where = {
-                    ...productInclude.where,
-                    [Op.or]: [
-                        { fgCode: { [Op.iLike]: `%${search}%` } },
-                        { name: { [Op.iLike]: `%${search}%` } }
-                    ]
-                };
-                where[Op.or] = [
-                    { orderNumber: { [Op.iLike]: `%${search}%` } },
-                    { packaging: { [Op.iLike]: `%${search}%` } },
-                    { salesPersonName: { [Op.iLike]: `%${search}%` } }
-                ];
-            }
-
-            const include = [
-                productInclude,
-                {
-                    model: User,
-                    as: 'salesPerson',
-                    attributes: ['userId', 'username', 'fullName']
-                },
-                {
-                    model: OrderItem,
-                    as: 'items'
-                }
-            ];
-
-            const offset = (parseInt(page) - 1) * parseInt(limit);
-            const order = [[sortBy, sortOrder.toUpperCase()]];
-
-            const { count, rows } = await Order.findAndCountAll({
-                where,
-                include,
-                order,
-                offset,
-                limit: parseInt(limit),
-                distinct: true
-            });
-
-            const formattedData = rows.map(order => {
-                const fullOrder = order.toJSON();
-                return {
-                    id: fullOrder.id,
-                    orderNumber: fullOrder.orderNumber,
-                    productId: fullOrder.productId,
-                    productName: fullOrder.product?.name || null,
-                    productType: fullOrder.product?.type || null,
-                    fgCode: fullOrder.product?.fgCode || null,
-                    quantity: parseFloat(fullOrder.quantity),
-                    uom: fullOrder.uom,
-                    packaging: fullOrder.packaging,
-                    salesPersonId: fullOrder.salesPersonId || null,
-                    salesPersonName: fullOrder.salesPersonName || '',
-                    salesPersonPhone: fullOrder.salesPersonPhone || '',
-                    priority: fullOrder.priority,
-                    status: fullOrder.status,
-                    createdDate: fullOrder.createdDate,
-                    dueDate: fullOrder.dueDate,
-                    sentAt: fullOrder.sentAt,
-          
-sentBy: fullOrder.sentBy || null,
-sentById: fullOrder.sentById || null,
-                    acceptedAt: fullOrder.acceptedAt,
-                    acceptedBy: fullOrder.acceptedBy,
-                    rejectedAt: fullOrder.rejectedAt,
-                    rejectedBy: fullOrder.rejectedBy,
-                    rejectionReason: fullOrder.rejectionReason,
-                    completedAt: fullOrder.completedAt,
-                    completedBy: fullOrder.completedBy,
-                    cancelledAt: fullOrder.cancelledAt,
-                    cancelledBy: fullOrder.cancelledBy,
-                    restoredFromCancelled: fullOrder.restoredFromCancelled,
-                    restoredAt: fullOrder.restoredAt,
-                    storeId: fullOrder.storeId || null,
-                    storeName: fullOrder.storeName || null,
-                    notes: fullOrder.notes,
-                    
-                    items: fullOrder.items?.map(item => ({
-                        id: item.id,
-                        orderId: item.orderId,
-                        itemName: item.itemName,
-                        description: item.description,
-                        quantity: parseFloat(item.quantity),
-                        uom: item.uom,
-                        packaging: item.packaging
-                    })) || [],
-                    createdAt: fullOrder.createdAt,
-                    updatedAt: fullOrder.updatedAt
-                };
-            });
-
-            res.status(200).json({
-                success: true,
-                data: formattedData,
-                pagination: {
-                    total: count,
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    totalPages: Math.ceil(count / parseInt(limit))
-                }
-            });
-
-        } catch (error) {
-            console.error('Error getting orders:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to get orders',
-                error: error.message
-            });
+        // ✅ Filter: Only show orders created by the logged-in user
+        // Unless the user is admin, then show all
+        if (user?.role !== 'admin' && user?.role !== 'Admin') {
+            where.createdById = userId;
         }
-    }
 
-    // ================================================================
-    // GET ORDER BY ID
-    // ================================================================
-    static async getById(req, res) {
-        try {
-            const { id } = req.params;
+        const productInclude = {
+            model: FinishedGood,
+            as: 'product',
+            attributes: ['id', 'fgCode', 'name', 'type']
+        };
 
-            const order = await Order.findByPk(id, {
-                include: [
-                    {
-                        model: FinishedGood,
-                        as: 'product',
-                        attributes: ['id', 'fgCode', 'name', 'type']
-                    },
-                    {
-                        model: User,
-                        as: 'salesPerson',
-                        attributes: ['userId', 'username', 'fullName']
-                    },
-                    {
-                        model: OrderItem,
-                        as: 'items'
-                    }
+        if (productType) {
+            productInclude.where = { type: productType };
+        }
+
+        if (search) {
+            productInclude.where = {
+                ...productInclude.where,
+                [Op.or]: [
+                    { fgCode: { [Op.iLike]: `%${search}%` } },
+                    { name: { [Op.iLike]: `%${search}%` } }
                 ]
-            });
+            };
+            where[Op.or] = [
+                { orderNumber: { [Op.iLike]: `%${search}%` } },
+                { packaging: { [Op.iLike]: `%${search}%` } },
+                { salesPersonName: { [Op.iLike]: `%${search}%` } }
+            ];
+        }
 
-            if (!order) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Order not found'
-                });
+        const include = [
+            productInclude,
+            {
+                model: User,
+                as: 'salesPerson',
+                attributes: ['userId', 'username', 'fullName']
+            },
+            {
+                model: OrderItem,
+                as: 'items'
             }
+        ];
 
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        const order = [[sortBy, sortOrder.toUpperCase()]];
+
+        const { count, rows } = await Order.findAndCountAll({
+            where,
+            include,
+            order,
+            offset,
+            limit: parseInt(limit),
+            distinct: true
+        });
+
+        const formattedData = rows.map(order => {
             const fullOrder = order.toJSON();
-            const formattedData = {
+            return {
                 id: fullOrder.id,
                 orderNumber: fullOrder.orderNumber,
                 productId: fullOrder.productId,
@@ -199,6 +105,10 @@ sentById: fullOrder.sentById || null,
                 createdDate: fullOrder.createdDate,
                 dueDate: fullOrder.dueDate,
                 sentAt: fullOrder.sentAt,
+                createdBy: fullOrder.createdBy || null,
+                createdById: fullOrder.createdById || null,
+                sentBy: fullOrder.sentBy || null,
+                sentById: fullOrder.sentById || null,
                 acceptedAt: fullOrder.acceptedAt,
                 acceptedBy: fullOrder.acceptedBy,
                 rejectedAt: fullOrder.rejectedAt,
@@ -225,165 +135,298 @@ sentById: fullOrder.sentById || null,
                 createdAt: fullOrder.createdAt,
                 updatedAt: fullOrder.updatedAt
             };
+        });
 
-            res.status(200).json({
-                success: true,
-                data: formattedData
-            });
+        res.status(200).json({
+            success: true,
+            data: formattedData,
+            pagination: {
+                total: count,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(count / parseInt(limit))
+            }
+        });
 
-        } catch (error) {
-            console.error('Error getting order:', error);
-            res.status(500).json({
+    } catch (error) {
+        console.error('Error getting orders:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get orders',
+            error: error.message
+        });
+    }
+}
+
+    // ================================================================
+    // GET ORDER BY ID
+    // ================================================================
+  // controllers/orderController.js - Updated getById
+
+static async getById(req, res) {
+    try {
+        const { id } = req.params;
+        const user = req.user;
+        const userId = user?.userId || user?.id;
+
+        const order = await Order.findByPk(id, {
+            include: [
+                {
+                    model: FinishedGood,
+                    as: 'product',
+                    attributes: ['id', 'fgCode', 'name', 'type']
+                },
+                {
+                    model: User,
+                    as: 'salesPerson',
+                    attributes: ['userId', 'username', 'fullName']
+                },
+                {
+                    model: OrderItem,
+                    as: 'items'
+                }
+            ]
+        });
+
+        if (!order) {
+            return res.status(404).json({
                 success: false,
-                message: 'Failed to get order',
-                error: error.message
+                message: 'Order not found'
             });
         }
+
+        // ✅ Check if user owns this order (unless admin)
+        if (user?.role !== 'admin' && user?.role !== 'Admin') {
+            if (order.createdById !== userId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to view this order'
+                });
+            }
+        }
+
+        const fullOrder = order.toJSON();
+        const formattedData = {
+            id: fullOrder.id,
+            orderNumber: fullOrder.orderNumber,
+            productId: fullOrder.productId,
+            productName: fullOrder.product?.name || null,
+            productType: fullOrder.product?.type || null,
+            fgCode: fullOrder.product?.fgCode || null,
+            quantity: parseFloat(fullOrder.quantity),
+            uom: fullOrder.uom,
+            packaging: fullOrder.packaging,
+            salesPersonId: fullOrder.salesPersonId || null,
+            salesPersonName: fullOrder.salesPersonName || '',
+            salesPersonPhone: fullOrder.salesPersonPhone || '',
+            priority: fullOrder.priority,
+            status: fullOrder.status,
+            createdDate: fullOrder.createdDate,
+            dueDate: fullOrder.dueDate,
+            sentAt: fullOrder.sentAt,
+            createdBy: fullOrder.createdBy || null,
+            createdById: fullOrder.createdById || null,
+            sentBy: fullOrder.sentBy || null,
+            sentById: fullOrder.sentById || null,
+            acceptedAt: fullOrder.acceptedAt,
+            acceptedBy: fullOrder.acceptedBy,
+            rejectedAt: fullOrder.rejectedAt,
+            rejectedBy: fullOrder.rejectedBy,
+            rejectionReason: fullOrder.rejectionReason,
+            completedAt: fullOrder.completedAt,
+            completedBy: fullOrder.completedBy,
+            cancelledAt: fullOrder.cancelledAt,
+            cancelledBy: fullOrder.cancelledBy,
+            restoredFromCancelled: fullOrder.restoredFromCancelled,
+            restoredAt: fullOrder.restoredAt,
+            storeId: fullOrder.storeId || null,
+            storeName: fullOrder.storeName || null,
+            notes: fullOrder.notes,
+            items: fullOrder.items?.map(item => ({
+                id: item.id,
+                orderId: item.orderId,
+                itemName: item.itemName,
+                description: item.description,
+                quantity: parseFloat(item.quantity),
+                uom: item.uom,
+                packaging: item.packaging
+            })) || [],
+            createdAt: fullOrder.createdAt,
+            updatedAt: fullOrder.updatedAt
+        };
+
+        res.status(200).json({
+            success: true,
+            data: formattedData
+        });
+
+    } catch (error) {
+        console.error('Error getting order:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get order',
+            error: error.message
+        });
     }
+}
 
     // ================================================================
     // CREATE ORDER
     // ================================================================
-    static async create(req, res) {
-        const transaction = await sequelize.transaction();
+ 
+static async create(req, res) {
+    const transaction = await sequelize.transaction();
 
-        try {
-            const {
-                productId,
-                quantity,
-                uom,
-                packaging,
-                priority = 'medium',
-                dueDate,
-                notes,
-                salesPersonName,
-                salesPersonPhone,
-                items
-            } = req.body;
+    try {
+        const {
+            productId,
+            quantity,
+            uom,
+            packaging,
+            priority = 'medium',
+            dueDate,
+            notes,
+            salesPersonName,
+            salesPersonPhone,
+            items
+        } = req.body;
 
-            if (!productId || !quantity || !uom || !packaging || !dueDate) {
-                await transaction.rollback();
-                return res.status(400).json({
-                    success: false,
-                    message: 'Missing required fields: productId, quantity, uom, packaging, dueDate'
-                });
-            }
-
-            const product = await FinishedGood.findByPk(productId);
-            if (!product) {
-                await transaction.rollback();
-                return res.status(404).json({
-                    success: false,
-                    message: 'Product not found'
-                });
-            }
-
-            const year = new Date().getFullYear();
-            const lastOrder = await Order.findOne({
-                order: [['id', 'DESC']],
-                attributes: ['id']
-            });
-            const nextId = (lastOrder?.id || 0) + 1;
-            const orderNumber = `ORD-${year}-${String(nextId).padStart(3, '0')}`;
-
-            const order = await Order.create({
-                orderNumber,
-                productId,
-                quantity,
-                uom,
-                packaging,
-                salesPersonId: null,
-                salesPersonName: salesPersonName || '',
-                salesPersonPhone: salesPersonPhone || '',
-                priority,
-                dueDate,
-                notes,
-                status: 'draft',
-                createdDate: new Date().toISOString().split('T')[0]
-            }, { transaction });
-
-            if (items && items.length > 0) {
-                const orderItems = items.map(item => ({
-                    orderId: order.id,
-                    itemName: item.itemName || product.name,
-                    description: item.description,
-                    quantity: item.quantity || quantity,
-                    uom: item.uom || uom,
-                    packaging: item.packaging || packaging
-                }));
-
-                await OrderItem.bulkCreate(orderItems, { transaction });
-            }
-
-            await transaction.commit();
-
-            const created = await Order.findByPk(order.id, {
-                include: [
-                    { model: FinishedGood, as: 'product' },
-                    { model: OrderItem, as: 'items' }
-                ]
-            });
-
-            const fullOrder = created.toJSON();
-            const formattedData = {
-                id: fullOrder.id,
-                orderNumber: fullOrder.orderNumber,
-                productId: fullOrder.productId,
-                productName: fullOrder.product?.name || null,
-                productType: fullOrder.product?.type || null,
-                fgCode: fullOrder.product?.fgCode || null,
-                quantity: parseFloat(fullOrder.quantity),
-                uom: fullOrder.uom,
-                packaging: fullOrder.packaging,
-                salesPersonId: null,
-                salesPersonName: fullOrder.salesPersonName || '',
-                salesPersonPhone: fullOrder.salesPersonPhone || '',
-                priority: fullOrder.priority,
-                status: fullOrder.status,
-                createdDate: fullOrder.createdDate,
-                dueDate: fullOrder.dueDate,
-                sentAt: fullOrder.sentAt,
-                acceptedAt: fullOrder.acceptedAt,
-                acceptedBy: fullOrder.acceptedBy,
-                rejectedAt: fullOrder.rejectedAt,
-                rejectedBy: fullOrder.rejectedBy,
-                rejectionReason: fullOrder.rejectionReason,
-                completedAt: fullOrder.completedAt,
-                completedBy: fullOrder.completedBy,
-                cancelledAt: fullOrder.cancelledAt,
-                cancelledBy: fullOrder.cancelledBy,
-                restoredFromCancelled: fullOrder.restoredFromCancelled,
-                restoredAt: fullOrder.restoredAt,
-                notes: fullOrder.notes,
-                items: fullOrder.items?.map(item => ({
-                    id: item.id,
-                    orderId: item.orderId,
-                    itemName: item.itemName,
-                    description: item.description,
-                    quantity: parseFloat(item.quantity),
-                    uom: item.uom,
-                    packaging: item.packaging
-                })) || [],
-                createdAt: fullOrder.createdAt,
-                updatedAt: fullOrder.updatedAt
-            };
-
-            res.status(201).json({
-                success: true,
-                message: 'Order created successfully',
-                data: formattedData
-            });
-
-        } catch (error) {
+        if (!productId || !quantity || !uom || !packaging || !dueDate) {
             await transaction.rollback();
-            console.error('Error creating order:', error);
-            res.status(500).json({
+            return res.status(400).json({
                 success: false,
-                message: 'Failed to create order',
-                error: error.message
+                message: 'Missing required fields: productId, quantity, uom, packaging, dueDate'
             });
         }
+
+        const product = await FinishedGood.findByPk(productId);
+        if (!product) {
+            await transaction.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        // ✅ Get the logged-in user who is creating the order
+        const user = req.user;
+        const createdBy = user?.fullName || user?.username || 'Unknown User';
+        const createdById = user?.userId || user?.id || null;
+
+        const year = new Date().getFullYear();
+        const lastOrder = await Order.findOne({
+            order: [['id', 'DESC']],
+            attributes: ['id']
+        });
+        const nextId = (lastOrder?.id || 0) + 1;
+        const orderNumber = `ORD-${year}-${String(nextId).padStart(3, '0')}`;
+
+        const order = await Order.create({
+            orderNumber,
+            productId,
+            quantity,
+            uom,
+            packaging,
+            salesPersonId: null,
+            salesPersonName: salesPersonName || '',
+            salesPersonPhone: salesPersonPhone || '',
+            priority,
+            dueDate,
+            notes,
+            status: 'draft',
+            createdDate: new Date().toISOString().split('T')[0],
+            // ✅ Save who created the order
+            createdBy: createdBy,
+            createdById: createdById
+        }, { transaction });
+
+        if (items && items.length > 0) {
+            const orderItems = items.map(item => ({
+                orderId: order.id,
+                itemName: item.itemName || product.name,
+                description: item.description,
+                quantity: item.quantity || quantity,
+                uom: item.uom || uom,
+                packaging: item.packaging || packaging
+            }));
+
+            await OrderItem.bulkCreate(orderItems, { transaction });
+        }
+
+        await transaction.commit();
+
+        const created = await Order.findByPk(order.id, {
+            include: [
+                { model: FinishedGood, as: 'product' },
+                { model: OrderItem, as: 'items' }
+            ]
+        });
+
+        const fullOrder = created.toJSON();
+        const formattedData = {
+            id: fullOrder.id,
+            orderNumber: fullOrder.orderNumber,
+            productId: fullOrder.productId,
+            productName: fullOrder.product?.name || null,
+            productType: fullOrder.product?.type || null,
+            fgCode: fullOrder.product?.fgCode || null,
+            quantity: parseFloat(fullOrder.quantity),
+            uom: fullOrder.uom,
+            packaging: fullOrder.packaging,
+            salesPersonId: null,
+            salesPersonName: fullOrder.salesPersonName || '',
+            salesPersonPhone: fullOrder.salesPersonPhone || '',
+            priority: fullOrder.priority,
+            status: fullOrder.status,
+            createdDate: fullOrder.createdDate,
+            dueDate: fullOrder.dueDate,
+            // ✅ Include createdBy in response
+            createdBy: fullOrder.createdBy || null,
+            createdById: fullOrder.createdById || null,
+            sentAt: fullOrder.sentAt,
+            sentBy: fullOrder.sentBy || null,
+            sentById: fullOrder.sentById || null,
+            acceptedAt: fullOrder.acceptedAt,
+            acceptedBy: fullOrder.acceptedBy,
+            rejectedAt: fullOrder.rejectedAt,
+            rejectedBy: fullOrder.rejectedBy,
+            rejectionReason: fullOrder.rejectionReason,
+            completedAt: fullOrder.completedAt,
+            completedBy: fullOrder.completedBy,
+            cancelledAt: fullOrder.cancelledAt,
+            cancelledBy: fullOrder.cancelledBy,
+            restoredFromCancelled: fullOrder.restoredFromCancelled,
+            restoredAt: fullOrder.restoredAt,
+            notes: fullOrder.notes,
+            items: fullOrder.items?.map(item => ({
+                id: item.id,
+                orderId: item.orderId,
+                itemName: item.itemName,
+                description: item.description,
+                quantity: parseFloat(item.quantity),
+                uom: item.uom,
+                packaging: item.packaging
+            })) || [],
+            createdAt: fullOrder.createdAt,
+            updatedAt: fullOrder.updatedAt
+        };
+
+        res.status(201).json({
+            success: true,
+            message: 'Order created successfully',
+            data: formattedData
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error creating order:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create order',
+            error: error.message
+        });
     }
+}
 
     // ================================================================
     // UPDATE ORDER

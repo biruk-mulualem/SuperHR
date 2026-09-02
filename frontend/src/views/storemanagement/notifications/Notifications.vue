@@ -184,23 +184,23 @@
               </div>
 
               <!-- Items -->
-              <div class="items-section">
-                <div class="items-header">
-                  <span class="items-label">📦 Items ({{ getTotalItems(notif.request?.items) }})</span>
-                  <span class="items-total">Total: {{ getTotalQuantity(notif.request?.items) }} units</span>
-                </div>
-                <div class="items-list">
-                  <div 
-                    v-for="(item, idx) in notif.request?.items || []" 
-                    :key="idx" 
-                    class="item-row"
-                  >
-                    <span class="item-name">{{ item.item?.name || 'Unknown Item' }}</span>
-                    <span class="item-quantity">{{ item.quantity }} units</span>
-                    <span v-if="item.remark" class="item-remark">💬 {{ item.remark }}</span>
-                  </div>
-                </div>
-              </div>
+            <div class="items-section">
+  <div class="items-header">
+    <span class="items-label">📦 Items ({{ getTotalItems(notif.request?.items) }})</span>
+   <span class="items-total">Total: {{ Number(getTotalQuantity(notif.request?.items)).toFixed(2) }} {{ notif.request?.items?.[0]?.item?.uom?.name || 'units' }}</span>
+  </div>
+  <div class="items-list">
+    <div 
+      v-for="(item, idx) in notif.request?.items || []" 
+      :key="idx" 
+      class="item-row"
+    >
+      <span class="item-name">{{ item.item?.name || 'Unknown Item' }}</span>
+      <span class="item-quantity">{{ Number(item.quantity).toFixed(2) }} {{ item.item?.uom?.name || 'units' }}</span>
+      <span v-if="item.remark" class="item-remark">💬 {{ item.remark }}</span>
+    </div>
+  </div>
+</div>
 
               <!-- Request Remark - Full Display -->
               <div v-if="notif.request?.remark" class="remark-section">
@@ -321,7 +321,7 @@
             </div>
             <div class="detail-item-modal">
               <span class="detail-label-modal">Items</span>
-              <span class="detail-value-modal">{{ getTotalItems(currentNotification?.request?.items) }} items ({{ getTotalQuantity(currentNotification?.request?.items) }} units)</span>
+           <span class="detail-value-modal">{{ getTotalItems(currentNotification?.request?.items) }} items ({{ Number(getTotalQuantity(currentNotification?.request?.items)).toFixed(2) }} {{ currentNotification?.request?.items?.[0]?.item?.uom?.name || 'units' }})</span>
             </div>
             <div class="detail-item-modal">
               <span class="detail-label-modal">From</span>

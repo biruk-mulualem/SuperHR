@@ -112,21 +112,21 @@
                     requested items from
                     <strong>{{ notif.request?.askingStore?.name || "Unknown" }}</strong>
                   </p>
-                  <div class="notification-items">
-                    <span
-                      v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
-                      :key="idx"
-                      class="item-tag"
-                    >
-                      {{ item.item?.name || "Unknown" }} ({{ item.quantity }})
-                    </span>
-                    <span
-                      v-if="(notif.request?.items || []).length > 2"
-                      class="item-more"
-                    >
-                      +{{ (notif.request?.items || []).length - 2 }} more
-                    </span>
-                  </div>
+               <div class="notification-items">
+  <span
+    v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
+    :key="idx"
+    class="item-tag"
+  >
+    {{ item.item?.name || "Unknown" }} ({{ Number(item.quantity).toFixed(2) }} {{ item.item?.uom?.name || 'units' }})
+  </span>
+  <span
+    v-if="(notif.request?.items || []).length > 2"
+    class="item-more"
+  >
+    +{{ (notif.request?.items || []).length - 2 }} more
+  </span>
+</div>
                   <div class="notification-actions">
                     <button
                       class="btn-accept-small"
@@ -251,14 +251,14 @@
       from <strong>{{ order.sentBy || 'Unknown' }}</strong>
     
     </p>
-    <div class="notification-items">
-      <span class="item-tag">
-        {{ order.quantity }}  {{ order.packaging }}
-      </span>
-      <span v-if="order.items && order.items.length > 0" class="item-tag">
-        {{ order.items.length }} item(s)
-      </span>
-    </div>
+<div class="notification-items">
+  <span class="item-tag">
+    {{ Number(order.quantity).toFixed(2) }}  {{ order.packaging || order.uom || 'units' }}
+  </span>
+  <span v-if="order.items && order.items.length > 0" class="item-tag">
+    {{ order.items.length }} item(s)
+  </span>
+</div>
     <div class="notification-actions">
       <button
         class="btn-accept-small"

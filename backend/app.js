@@ -102,6 +102,7 @@ const checkerDashboardRoutes=require('./routes/checkerDashboardRoutes');
 const costDashboardRoutes = require('./routes/costDashboardRoutes');
 const stockCardRoutes = require('./routes/stockCardRoutes');
 const finishedGoodRoutes = require('./routes/finishedGoodRoutes');
+const convertedBalanceRoutes = require('./routes/convertedBalanceRoutes');
 
 const formulationRoutes = require('./routes/formulationRoutes');
 const orderRoutes = require('./routes/orderRoutes');
@@ -168,6 +169,7 @@ app.use('/api/stock-card', stockCardRoutes);
 app.use('/api/finished-goods', finishedGoodRoutes);
 app.use('/api/formulations', formulationRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/converted-balances', convertedBalanceRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
 

@@ -86,6 +86,17 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         field: 'created_date'
       },
+        createdBy: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'created_by'
+      },
+      createdById: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'created_by_id'
+      },
+      
       dueDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,

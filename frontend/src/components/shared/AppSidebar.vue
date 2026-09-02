@@ -98,6 +98,7 @@ const roleTitle = computed(() => {
     nebret: "Asset Manager",
     formulation_manager:"formulation manager",
     production_order:"production_order",
+    chemist:"chemist",
   };
   return titles[userRole.value] || "User";
 });
@@ -282,7 +283,7 @@ const roleMenus = {
       badge: null,
     },
 
-      // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+      { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
        
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
@@ -314,7 +315,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-  
+    { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
     // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
@@ -383,12 +384,12 @@ const roleMenus = {
   ],
     formulation_manager: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
-    {
-      name: "item-requests ",
-      path: "/item-requests",
-      icon: "UserIcon",
-      badge: null,
-    },
+    // {
+    //   name: "item-requests ",
+    //   path: "/item-requests",
+    //   icon: "UserIcon",
+    //   badge: null,
+    // },
       { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
           // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
           //  { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
@@ -406,6 +407,23 @@ const roleMenus = {
       { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
 
   ],
+   chemist: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    // {
+    //   name: "item-requests ",
+    //   path: "/item-requests",
+    //   icon: "UserIcon",
+    //   badge: null,
+    // },
+      // { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
+          // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+          //  { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+           { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
+                { name: "order-notifications", path: "/order-notifications", icon: "CogIcon", badge: null },
+                  { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+  ],
+
+  
 };
 
 const menuItems = computed(() => {
