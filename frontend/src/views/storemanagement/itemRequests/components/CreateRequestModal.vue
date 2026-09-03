@@ -128,41 +128,40 @@
             <div class="add-item-area">
               <div class="search-wrapper">
                 <span class="search-icon-small">🔍</span>
-                <input
-                  type="text"
-                  v-model="itemSearch"
-                  placeholder="Search items by code or name..."
-                  class="search-input"
-                  @input="onSearchInput"
-                />
+               <input
+  type="text"
+  v-model="itemSearch"
+  placeholder="Search items by code or name..."
+  class="search-input"
+/>
               </div>
-              <div class="add-wrapper">
-                <select 
-                  v-model="selectedItemId" 
-                  class="item-select" 
-                  @change="onItemSelect"
-                >
-                  <option value="">Select an item...</option>
-                  <option
-                    v-for="item in filteredItems"
-                    :key="getItemId(item)"
-                    :value="getItemId(item)"
-                    :disabled="isItemAlreadySelected(item)"
-                  >
-                    {{ item.code }} - {{ item.standardName || item.name }}
-                    <span class="uom-label">[ {{ getItemUOM(getItemId(item)) }}]</span>
-                    <span v-if="isItemAlreadySelected(item)" class="added-label">(added)</span>
-                  </option>
-                </select>
-                <button
-                  type="button"
-                  class="btn-add-item"
-                  @click="addSelectedItem"
-                  :disabled="!selectedItemId || isItemAlreadySelectedById(selectedItemId)"
-                >
-                  ➕ Add
-                </button>
-              </div>
+             <div class="add-wrapper">
+  <select 
+    v-model="selectedItemId" 
+    class="item-select" 
+    @change="onItemSelect"
+  >
+    <option value="">
+      {{ itemSearch ? (filteredItems.length === 0 ? 'No matching items found' : 'Select an item...') : 'Type to search for items...' }}
+    </option>
+    <option
+      v-for="item in filteredItems"
+      :key="getItemId(item)"
+      :value="getItemId(item)"
+      :disabled="isItemAlreadySelected(item)"
+    >
+      {{ item.code }} - {{ item.standardName || item.name }} [ {{ getItemUOM(getItemId(item)) }}] {{ isItemAlreadySelected(item) ? '(added)' : '' }}
+    </option>
+  </select>
+  <button
+    type="button"
+    class="btn-add-item"
+    @click="addSelectedItem"
+    :disabled="!selectedItemId || isItemAlreadySelectedById(selectedItemId)"
+  >
+    ➕ Add
+  </button>
+</div>
             </div>
 
             <div class="selected-items-container" v-if="selectedItemsList.length > 0">
@@ -418,16 +417,21 @@ const filteredSupplyingStores = computed(() => {
 const filteredItems = computed(() => {
   let list = items.value;
   const query = itemSearch.value.toLowerCase().trim();
-  if (query) {
-    list = list.filter(
-      (item) =>
-        item.code?.toLowerCase().includes(query) ||
-        item.name?.toLowerCase().includes(query) ||
-        item.standardName?.toLowerCase().includes(query) ||
-        item.brand?.toLowerCase().includes(query) ||
-        item.model?.toLowerCase().includes(query),
-    );
+  
+  // If no search query, return empty array (don't load everything)
+  if (!query) {
+    return [];
   }
+  
+  // Filter based on search query
+  list = list.filter(
+    (item) =>
+      item.code?.toLowerCase().includes(query) ||
+      item.name?.toLowerCase().includes(query) ||
+      item.standardName?.toLowerCase().includes(query) ||
+      item.brand?.toLowerCase().includes(query) ||
+      item.model?.toLowerCase().includes(query),
+  );
   return list.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 });
 
