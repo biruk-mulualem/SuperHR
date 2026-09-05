@@ -1118,6 +1118,7 @@ exports.getRequests = async (req, res) => {
 // ================================================================
 // 3. GET SINGLE REQUEST BY ID
 // ================================================================
+
 exports.getRequestById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1131,7 +1132,10 @@ exports.getRequestById = async (req, res) => {
             {
               model: Item,
               as: "item",
-              include: [{ model: UOM, as: "uom" }],
+              include: [
+                { model: UOM, as: "uom" },
+                { model: UOM, as: "conversionUom" }
+              ],
             },
           ],
         },
@@ -1154,12 +1158,21 @@ exports.getRequestById = async (req, res) => {
             "roleId",
             "departmentId",
           ],
+          // ✅ ADD DEPARTMENT INCLUDE
+          include: [
+            {
+              model: db.Department,
+              as: "Department",
+              attributes: ["department_id", "name", "code", "description"],
+            },
+          ],
         },
         {
           model: RequestNotification,
           as: "notifications",
           include: [
-            { model: Group, as: "group" },
+            { model: db.Group, as: "group" },
+            { model: db.Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
