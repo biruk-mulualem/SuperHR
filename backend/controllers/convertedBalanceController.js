@@ -688,54 +688,87 @@ static async convert(req, res) {
         }
     }
 
-    /**
-     * DELETE /api/converted-balances/:id
-     * Delete converted balance
-     */
-    static async delete(req, res) {
-        try {
-            const { id } = req.params;
-            const storeId = req.query.storeId;
-            const groupId = req.query.groupId;
+  // controllers/convertedBalanceController.js - Updated delete method (NO history deletion)
 
-            if (!storeId || !groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Store ID and Group ID are required'
-                });
-            }
+/**
+ * DELETE /api/converted-balances/:id
+ * Delete converted balance only - does NOT delete history records
+ */
+static async delete(req, res) {
+    try {
+        const { id } = req.params;
+        const storeId = req.query.storeId;
+        const groupId = req.query.groupId;
 
-            const balance = await ConvertedBalance.findOne({
-                where: {
-                    id: parseInt(id),
-                    storeId: parseInt(storeId),
-                    groupId: parseInt(groupId)
-                }
-            });
+        console.log('🗑️ Delete converted balance:', { id, storeId, groupId });
 
-            if (!balance) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Converted balance not found or unauthorized'
-                });
-            }
-
-            await balance.destroy();
-
-            res.json({
-                success: true,
-                message: 'Converted balance deleted successfully'
-            });
-
-        } catch (error) {
-            console.error('Error deleting converted balance:', error);
-            res.status(500).json({
+        if (!storeId || !groupId) {
+            return res.status(400).json({
                 success: false,
-                error: 'Failed to delete converted balance',
-                details: error.message
+                error: 'Store ID and Group ID are required'
             });
         }
+
+        // Find the converted balance
+        const balance = await ConvertedBalance.findOne({
+            where: {
+                id: parseInt(id),
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId)
+            },
+            include: [
+                {
+                    model: Item,
+                    as: 'item',
+                    include: [
+                        { model: UOM, as: 'uom' },
+                        { model: UOM, as: 'conversionUom' }
+                    ]
+                }
+            ]
+        });
+
+        if (!balance) {
+            return res.status(404).json({
+                success: false,
+                error: 'Converted balance not found or unauthorized'
+            });
+        }
+
+        // Get item info for response
+        const itemName = balance.item?.name || 'Unknown';
+        const itemCode = balance.item?.code || 'N/A';
+        const convertedBalanceAmount = parseFloat(balance.convertedBalance || 0);
+
+        // 🔥 ONLY delete the converted balance - history records are preserved
+        await balance.destroy();
+
+        console.log(`🗑️ Deleted converted balance ${id} for item "${itemName}" (${itemCode})`);
+
+        res.json({
+            success: true,
+            message: `Converted balance for "${itemName}" (${itemCode}) deleted successfully`,
+            data: {
+                id: balance.id,
+                itemCode: itemCode,
+                itemName: itemName,
+                convertedBalance: convertedBalanceAmount,
+                storeId: balance.storeId,
+                groupId: balance.groupId,
+                // ✅ History records are preserved - they will show "deleted" reference
+                note: 'History records have been preserved for audit purposes'
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error deleting converted balance:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete converted balance',
+            details: error.message
+        });
     }
+}
 
 
 

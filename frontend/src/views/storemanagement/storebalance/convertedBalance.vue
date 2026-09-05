@@ -131,11 +131,12 @@
             <th>Category</th>
             <th>UOM</th>
             <th>Balance</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="paginatedItems.length === 0">
-            <td colspan="6" class="empty-state">
+            <td colspan="7" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">⚖️</span>
                 <p>No converted balances found</p>
@@ -177,6 +178,15 @@
                 </div>
               </div>
             </td>
+            <td>
+              <button
+                class="btn-delete"
+                @click="openDeleteModal(item)"
+                title="Delete converted balance"
+              >
+                🗑️
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -208,23 +218,23 @@
     </div>
 
     <!-- ==================== INITIALIZE MODAL ==================== -->
-<InitializeConvertedBalanceModal
-  v-if="showInitializeModal"
-  :is-admin="isAdmin"
-  :user-data="userData"
-  :store-id="userStoreId"
-  :group-id="userGroupId"
-  :store-name="userData?.assignedStore?.name || ''"
-  :group-name="userData?.assignedGroup?.name || ''"
-  :stores="availableStores"          
-  :groups="availableGroups"           
-  :categories="availableCategories"
-  :inventory-items="inventoryItems"
-  :visible="showInitializeModal"
-  @update:visible="showInitializeModal = $event"
-  @close="closeInitializeModal"
-  @success="onInitializeSuccess"
-/>
+    <InitializeConvertedBalanceModal
+      v-if="showInitializeModal"
+      :is-admin="isAdmin"
+      :user-data="userData"
+      :store-id="userStoreId"
+      :group-id="userGroupId"
+      :store-name="userData?.assignedStore?.name || ''"
+      :group-name="userData?.assignedGroup?.name || ''"
+      :stores="availableStores"          
+      :groups="availableGroups"           
+      :categories="availableCategories"
+      :inventory-items="inventoryItems"
+      :visible="showInitializeModal"
+      @update:visible="showInitializeModal = $event"
+      @close="closeInitializeModal"
+      @success="onInitializeSuccess"
+    />
 
     <!-- ==================== CONVERT MODAL ==================== -->
     <ConvertModal
@@ -237,6 +247,42 @@
       @success="onConvertSuccess"
       @error="onConvertError"
     />
+
+    <!-- ==================== DELETE CONFIRMATION MODAL ==================== -->
+    <div
+      v-if="showDeleteModal"
+      class="modal-overlay"
+      @click.self="closeDeleteModal"
+    >
+      <div class="modal-container delete-modal">
+        <div class="modal-header">
+          <h3>🗑️ Confirm Delete</h3>
+          <button class="modal-close" @click="closeDeleteModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="delete-icon">⚠️</div>
+          <p class="delete-question">
+            Are you sure you want to delete this converted balance?
+          </p>
+          <div class="delete-details">
+            <p><strong>Item:</strong> {{ deleteTarget?.itemName || 'Unknown' }}</p>
+            <p><strong>Code:</strong> {{ deleteTarget?.itemCode || 'N/A' }}</p>
+            <p><strong>Balance:</strong> {{ formatNumber(deleteTarget?.convertedBalance || 0) }} {{ deleteTarget?.uomCode || '' }}</p>
+            <p><strong>Store:</strong> {{ deleteTarget?.storeName || 'N/A' }}</p>
+            <p><strong>Group:</strong> {{ deleteTarget?.groupName || 'N/A' }}</p>
+          </div>
+          <p class="delete-warning">⚠️ This action cannot be undone!</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeDeleteModal" :disabled="deleting">
+            Cancel
+          </button>
+          <button class="btn-danger" @click="confirmDelete" :disabled="deleting">
+            {{ deleting ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ==================== EXPORT MODAL ==================== -->
     <div
@@ -328,10 +374,13 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 const isLoading = ref(false)
 const exporting = ref(false)
+const deleting = ref(false)
 const exportType = ref('full')
 const showExportModal = ref(false)
 const showInitializeModal = ref(false)
 const showConvertModal = ref(false)
+const showDeleteModal = ref(false)
+const deleteTarget = ref(null)
 const searchQuery = ref('')
 const filterStore = ref('')
 const filterGroup = ref('')
@@ -364,12 +413,7 @@ const storeName = ref('')
 // COMPUTED - Available data based on role
 // ================================================================
 
-// ================================================================
-// COMPUTED - Available data based on role
-// ================================================================
-
 const availableStores = computed(() => {
-  // ✅ Safely check if stores.value is an array
   if (!Array.isArray(stores.value)) {
     return []
   }
@@ -383,7 +427,6 @@ const availableStores = computed(() => {
 })
 
 const availableGroups = computed(() => {
-  // ✅ Safely check if allGroups.value is an array
   if (!Array.isArray(allGroups.value)) {
     return []
   }
@@ -397,7 +440,6 @@ const availableGroups = computed(() => {
 })
 
 const availableCategories = computed(() => {
-  // ✅ Safely check if categories.value is an array
   if (!Array.isArray(categories.value)) {
     return []
   }
@@ -415,7 +457,6 @@ const hasActiveFilters = computed(() => {
 const filteredItems = computed(() => {
   let result = [...convertedItems.value]
 
-  // Apply user access restrictions
   if (!isAdmin.value && userData.value?.hasAccess) {
     const assignedStoreId = userData.value.assignedStore?.id
     const assignedGroupId = userData.value.assignedGroup?.id
@@ -428,7 +469,6 @@ const filteredItems = computed(() => {
     }
   }
 
-  // Search
   if (searchQuery.value) {
     const s = searchQuery.value.toLowerCase()
     result = result.filter((item) => {
@@ -439,7 +479,6 @@ const filteredItems = computed(() => {
     })
   }
 
-  // Filters
   if (filterStore.value && filterStore.value !== '') {
     const storeId = Number(filterStore.value)
     if (!isNaN(storeId)) {
@@ -494,24 +533,22 @@ const fetchCategories = async () => {
 const fetchStores = async () => {
   try {
     const response = await itemService.getStores?.() || { data: [] }
-    // ✅ Ensure we always set an array
     stores.value = Array.isArray(response.data) ? response.data : []
     console.log('✅ Stores loaded:', stores.value.length)
   } catch (error) {
     console.error('Error fetching stores:', error)
-    stores.value = []  // ✅ Always set to array on error
+    stores.value = []
   }
 }
 
 const fetchGroups = async () => {
   try {
     const response = await itemService.getGroups?.() || { data: [] }
-    // ✅ Ensure we always set an array
     allGroups.value = Array.isArray(response.data) ? response.data : []
     console.log('✅ Groups loaded:', allGroups.value.length)
   } catch (error) {
     console.error('Error fetching groups:', error)
-    allGroups.value = []  // ✅ Always set to array on error
+    allGroups.value = []
   }
 }
 
@@ -660,6 +697,48 @@ const onConvertError = (errors) => {
 }
 
 // ================================================================
+// METHODS - Delete
+// ================================================================
+
+const openDeleteModal = (item) => {
+  deleteTarget.value = item
+  showDeleteModal.value = true
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  deleteTarget.value = null
+  deleting.value = false
+}
+
+const confirmDelete = async () => {
+  if (!deleteTarget.value) return
+  
+  deleting.value = true
+  
+  try {
+    const response = await convertedBalanceService.delete(deleteTarget.value.id)
+    
+    if (response.success) {
+      showToastMessage(
+        `✅ Converted balance for "${deleteTarget.value.itemName}" deleted successfully!`,
+        'success'
+      )
+      closeDeleteModal()
+      await fetchConvertedBalances()
+      await fetchStats()
+    } else {
+      showToastMessage(response.error || 'Failed to delete converted balance', 'error')
+      deleting.value = false
+    }
+  } catch (error) {
+    console.error('Error deleting converted balance:', error)
+    showToastMessage('Failed to delete converted balance', 'error')
+    deleting.value = false
+  }
+}
+
+// ================================================================
 // METHODS - Export
 // ================================================================
 
@@ -738,7 +817,7 @@ const getBalanceClass = (balance) => {
 }
 
 // ================================================================
-// WATCHERS - Auto-fetch on user data changes
+// WATCHERS
 // ================================================================
 
 watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
@@ -748,13 +827,11 @@ watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
   }
 }, { immediate: true })
 
-// Watch for user data changes in localStorage
 watch(
   () => localStorage.getItem('user'),
   (newVal) => {
     if (newVal) {
       userData.value = getUserData()
-      // Update store/group filters for non-admin
       if (!isAdmin.value) {
         if (userData.value?.assignedStore?.id) {
           filterStore.value = String(userData.value.assignedStore.id)
@@ -776,11 +853,9 @@ watch(
 onMounted(async () => {
   isLoading.value = true
   
-  // Get user data
   userData.value = getUserData()
   storeName.value = userData.value.assignedStore?.name || ''
   
-  // Set default filters for non-admin
   if (!isAdmin.value) {
     if (userData.value?.assignedStore?.id) {
       filterStore.value = String(userData.value.assignedStore.id)
@@ -790,7 +865,6 @@ onMounted(async () => {
     }
   }
   
-  // Load master data
   await Promise.all([
     fetchCategories(),
     fetchStores(),
@@ -798,7 +872,6 @@ onMounted(async () => {
     fetchInventoryItems()
   ])
   
-  // Load converted balances
   if (userStoreId.value && userGroupId.value) {
     await fetchConvertedBalances()
     await fetchStats()
@@ -809,6 +882,118 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ================================================================ */
+/* SECTION CARD */
+/* ================================================================ */
+.section-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+/* ... keep all existing styles ... */
+
+/* ================================================================ */
+/* DELETE BUTTON */
+/* ================================================================ */
+.btn-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: #94a3b8;
+}
+
+.btn-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ================================================================ */
+/* DELETE MODAL */
+/* ================================================================ */
+.delete-modal .modal-container {
+  max-width: 450px;
+}
+
+.delete-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.delete-question {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+.delete-details {
+  background: #f8fafc;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.delete-details p {
+  margin: 4px 0;
+}
+
+.delete-warning {
+  color: #dc2626;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 7px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ================================================================ */
+/* TABLE ACTIONS COLUMN */
+/* ================================================================ */
+.balance-table th:last-child,
+.balance-table td:last-child {
+  text-align: center;
+  width: 60px;
+}
+
+
 /* ================================================================ */
 /* SECTION CARD */
 /* ================================================================ */

@@ -339,10 +339,26 @@ async createBalance(data: {
      * DELETE CONVERTED BALANCE
      * ================================================================
      */
-    async delete(id: number): Promise<{ success: boolean; message: string }> {
-        const response = await api.delete(`/converted-balances/${id}`);
-        return response.data;
+
+/**
+ * ================================================================
+ * DELETE CONVERTED BALANCE
+ * ================================================================
+ */
+async delete(id: number): Promise<{ success: boolean; message: string }> {
+    // 🔥 Get store/group from auth store
+    const authStore = useAuthStore();
+    const storeId = authStore.userStoreId;
+    const groupId = authStore.userGroupId;
+
+    if (!storeId || !groupId) {
+        throw new Error('User store or group not found. Please re-login.');
     }
+
+    // 🔥 Pass storeId and groupId as query parameters
+    const response = await api.delete(`/converted-balances/${id}?storeId=${storeId}&groupId=${groupId}`);
+    return response.data;
+}
 
     // ================================================================
     // UTILITY METHODS
