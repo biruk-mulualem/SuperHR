@@ -45,7 +45,10 @@
         <tr v-for="(item, index) in requestData.items" :key="index">
           <td>{{ index + 1 }}</td>
           <td class="text-left">{{ getItemNameOnly(item.itemId) }}</td> 
-          <td>{{ getItemUOM(item.itemId) || 'Pcs' }}</td>
+          <td>
+  {{ (item as any).uom_code || getItemUOM(item.itemId) || 'Pcs' }}
+  
+</td>
           <td class="font-bold">{{ formatQuantity(item.quantity) }}</td>
           <td>{{ getItemBrand(item.itemId) || '-' }}</td>
           <td>{{ stripHtml(getItemSpecification(item.itemId)) || '-' }}</td>
@@ -189,33 +192,91 @@ const getStoreCode = (storeId: number): string => {
   return store ? store.code : 'N/A'
 }
 
-const getItemNameOnly = (itemId: number): string => {
+
+
+// ================================================================
+// HELPER METHODS - UPDATED TO USE REQUEST DATA FIRST
+// ================================================================
+
+const getItemNameOnly = (itemId: number, requestItems?: any[]): string => {
+  // 🔥 First: Check if the item data is in the request
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.name) return found.item.name
+      if (found.item?.standardName) return found.item.standardName
+      if (found.itemName) return found.itemName
+      if (found.name) return found.name
+    }
+  }
+  
+  // Fallback to global items list
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   if (!item) return 'Unknown Item'
   return item.standardName || item.name || 'Unknown Item'
 }
 
-const getItemName = (itemId: number): string => {
+const getItemName = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.name) return found.item.name
+      if (found.item?.standardName) return found.item.standardName
+      if (found.itemName) return found.itemName
+      if (found.name) return found.name
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   return item ? item.name : 'Unknown Item'
 }
 
-const getItemCode = (itemId: number): string => {
+const getItemCode = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.code) return found.item.code
+      if (found.itemCode) return found.itemCode
+      if (found.code) return found.code
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   return item ? item.code : 'N/A'
 }
 
-const getItemBrand = (itemId: number): string => {
+const getItemBrand = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.brand) return found.item.brand
+      if (found.brand) return found.brand
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   return item?.brand || ''
 }
 
-const getItemModel = (itemId: number): string => {
+const getItemModel = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.model) return found.item.model
+      if (found.model) return found.model
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   return item?.model || ''
 }
 
-const getItemUOM = (itemId: number): string => {
+const getItemUOM = (itemId: number, requestItems?: any[]): string => {
+  // 🔥 First check the request item's uom_code
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.uom_code) return found.uom_code
+      if (found.item?.uom?.code) return found.item.uom.code
+      if (found.uomCode) return found.uomCode
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   if (item?.uom) {
     if (typeof item.uom === 'string') return item.uom
@@ -224,7 +285,14 @@ const getItemUOM = (itemId: number): string => {
   return ''
 }
 
-const getItemSpecification = (itemId: number): string => {
+const getItemSpecification = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
+    if (found) {
+      if (found.item?.specText) return found.item.specText
+      if (found.specText) return found.specText
+    }
+  }
   const item = items.value.find(i => (i.itemId || i.id) === itemId)
   return item?.specText || ''
 }

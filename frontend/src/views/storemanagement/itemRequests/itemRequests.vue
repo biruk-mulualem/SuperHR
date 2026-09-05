@@ -130,7 +130,7 @@
                   <span class="item-count"
                     >{{ req.items?.length || 0 }} item(s)</span
                   >
-                  <span class="item-names">{{ getItemNames(req.items) }}</span>
+                 <span class="item-names">{{ getItemNames(req.items) }}</span>
                 </div>
               </td>
               <td class="store-name">{{ getStoreName(req.askingStoreId) }}</td>
@@ -305,19 +305,30 @@
                               No items in this request
                             </td>
                           </tr>
-                          <tr v-for="(item, index) in req.items" :key="index">
-                            <td class="text-center">{{ index + 1 }}</td>
-                            <td>{{ getItemName(item.itemId) }}</td>
-                            <td>{{ getItemCode(item.itemId) }}</td>
-                            <td>{{ getItemBrand(item.itemId) || "N/A" }}</td>
-                            <td>{{ getItemModel(item.itemId) || "N/A" }}</td>
-                            <td>{{ getItemUOM(item.itemId) || "N/A" }}</td>
-                            <td class="text-center">{{ item.quantity }}</td>
-                            <td class="spec-cell">
-                              {{ getItemSpecification(item.itemId) || "N/A" }}
-                            </td>
-                            <td>{{ item.remark || "-" }}</td>
-                          </tr>
+                    <!-- ✅ CORRECT - Passing request items -->
+<tr v-for="(item, index) in req.items" :key="index">
+  <td class="text-center">{{ index + 1 }}</td>
+  <td>{{ getItemName(item.itemId, req.items) }}</td>
+  <td>{{ getItemCode(item.itemId, req.items) }}</td>
+  <td>{{ getItemBrand(item.itemId, req.items) || " " }}</td>
+  <td>{{ getItemModel(item.itemId, req.items) || " " }}</td>
+  <td>
+    <span class="uom-display">
+      {{ item.uom_code || getItemUOM(item.itemId, req.items) || " " }}
+      <span v-if="item.selected_uom === 'conversion'" class="uom-badge conversion">
+        Conv
+      </span>
+      <span v-else-if="item.selected_uom === 'base' || !item.selected_uom" class="uom-badge base">
+        Base
+      </span>
+    </span>
+  </td>
+  <td class="text-center">{{ Number(item.quantity).toFixed(2) }}</td>
+  <td class="spec-cell">
+    {{ getItemSpecification(item.itemId, req.items) || " " }}
+  </td>
+  <td>{{ item.remark || " " }}</td>
+</tr>
                           <tr class="total-row">
                             <td colspan="8" class="text-right">
                               <strong>Total Items:</strong>
@@ -927,48 +938,102 @@ const getStoreCode = (storeId: number): string => {
   return store ? store.code : "N/A";
 };
 
-const getItemName = (itemId: number): string => {
+// ================================================================
+// HELPER METHODS - FULLY UPDATED
+// ================================================================
+
+const getItemName = (itemId: number, requestItems?: any[]): string => {
+  // 1. Check request's own items first
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.item?.name) return found.item.name;
+      if (found.item?.standardName) return found.item.standardName;
+      if (found.itemName) return found.itemName;
+      if (found.name) return found.name;
+    }
+  }
+  
+  // 2. Fallback to global items list
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  return item ? item.name : "Unknown Item";
+  if (item) {
+    return item.standardName || item.name || "Unknown Item";
+  }
+  
+  return "Unknown Item";
 };
 
-const getItemCode = (itemId: number): string => {
+const getItemCode = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.item?.code) return found.item.code;
+      if (found.itemCode) return found.itemCode;
+      if (found.code) return found.code;
+    }
+  }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   return item ? item.code : "N/A";
 };
 
-const getItemBrand = (itemId: number): string => {
+const getItemBrand = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.item?.brand) return found.item.brand;
+      if (found.brand) return found.brand;
+    }
+  }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   return item?.brand || "";
 };
 
-const getItemModel = (itemId: number): string => {
+const getItemModel = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.item?.model) return found.item.model;
+      if (found.model) return found.model;
+    }
+  }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   return item?.model || "";
 };
 
-const getItemStandardName = (itemId: number): string => {
-  const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  return item?.standardName || "";
-};
-
-const getItemUOM = (itemId: number): string => {
+const getItemUOM = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.uom_code) return found.uom_code;
+      if (found.item?.uom?.code) return found.item.uom.code;
+      if (found.uomCode) return found.uomCode;
+    }
+  }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   if (item?.uom) {
-    if (typeof item.uom === "string") return item.uom;
     if (typeof item.uom === "object" && item.uom.code) return item.uom.code;
+    if (typeof item.uom === "string") return item.uom;
   }
   return "";
 };
 
-const getItemSpecification = (itemId: number): string => {
+const getItemSpecification = (itemId: number, requestItems?: any[]): string => {
+  if (requestItems) {
+    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
+    if (found) {
+      if (found.item?.specText) return found.item.specText;
+      if (found.specText) return found.specText;
+    }
+  }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   return item?.specText || "";
 };
 
 const getItemNames = (items: RequestItem[] | undefined): string => {
   if (!items || items.length === 0) return "";
-  const names = items.map((i) => getItemName(Number(i.itemId)));
+  const names = items.map((i) => {
+    return getItemName(Number(i.itemId), items);
+  });
   return names.join(", ");
 };
 
@@ -1220,6 +1285,31 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+
+/* UOM Display */
+.uom-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.uom-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+}
+
+.uom-badge.base {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.uom-badge.conversion {
+  background: #ede9fe;
+  color: #5b21b6;
+}
 /* ================================================================
    NOTIFICATION STATUS STYLES
    ================================================================ */

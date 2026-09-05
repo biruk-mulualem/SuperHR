@@ -12,7 +12,7 @@ router.use(authMiddleware());
 // ================================================================
 // CONVERTED BALANCE ROUTES
 // ================================================================
-
+router.post('/', ConvertedBalanceController.create);  // ✅ Add this
 // GET /api/converted-balances
 router.get('/', ConvertedBalanceController.getAll);
 

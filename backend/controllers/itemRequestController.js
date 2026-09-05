@@ -79,6 +79,9 @@ async function getApprovalDepartmentConfig() {
 }
 
 
+// ================================================================
+// HELPER: Validate stock availability with dual UOM support
+// ================================================================
 const validateStockAvailability = async (supplyingStoreId, items) => {
   const errors = [];
   const stockInfo = [];
@@ -92,14 +95,16 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
+  // Skip validation for exempt stores
   if (shouldSkipStockValidation(store.code)) {
-    console.log(
-      `⚠️ Skipping stock validation for store: ${store.code} (${store.name})`,
-    );
+    console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
 
     for (const item of items) {
       const itemRecord = await Item.findByPk(item.itemId, {
-        include: [{ model: UOM, as: "uom" }],
+        include: [
+          { model: UOM, as: "uom" },
+          { model: UOM, as: "conversionUom" }
+        ],
       });
 
       if (!itemRecord) {
@@ -133,49 +138,285 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
+  // ================================================================
+  // NORMAL STOCK VALIDATION - CHECK BOTH TABLES
+  // ================================================================
+  
   for (const item of items) {
-    const balance = await StoreBalance.findOne({
-      where: {
-        storeId: supplyingStoreId,
-        itemId: item.itemId,
-        status: "Active",
-      },
+    // 1. Get full item details with UOMs
+    const itemRecord = await Item.findByPk(item.itemId, {
+      include: [
+        { model: UOM, as: "uom" },          // Base UOM (DRUM, ROLL)
+        { model: UOM, as: "conversionUom" } // Conversion UOM (KG, MTR)
+      ],
     });
 
-    if (!balance) {
+    if (!itemRecord) {
       errors.push({
         itemId: item.itemId,
         requestedQuantity: item.quantity,
-        availableQuantity: 0,
-        message: `This item is not available in the selected supplying store`,
+        message: `Item with ID ${item.itemId} not found`,
       });
       continue;
     }
 
-    const availableQuantity = parseFloat(balance.balance);
-    const requestedQuantity = parseFloat(item.quantity);
+    // 2. Determine if user requested base UOM or conversion UOM
+    const isBaseUom = item.isBaseUom !== false; // true = DRUM, false = KG
+    const userUomCode = item.uomCode || itemRecord.uom?.code || "Units";
+    const userQuantity = parseFloat(item.quantity);
 
-    stockInfo.push({
-      itemId: item.itemId,
-      itemName: item.itemName || "Unknown",
-      itemCode: item.itemCode || "N/A",
-      uomCode: item.uomCode || "Units",
-      availableQuantity,
-      requestedQuantity,
-      balance: balance,
-    });
+    // Get base UOM and conversion UOM info
+    const baseUomCode = itemRecord.uom?.code || "Units";
+    const conversionUomCode = itemRecord.conversionUom?.code || null;
+    const conversionValue = itemRecord.conversionValue ? parseFloat(itemRecord.conversionValue) : null;
 
-    if (requestedQuantity > availableQuantity) {
-      errors.push({
-        itemId: item.itemId,
-        itemName: item.itemName || "Unknown",
-        itemCode: item.itemCode || "N/A",
-        requestedQuantity,
-        availableQuantity,
-        shortage: requestedQuantity - availableQuantity,
-        uomCode: item.uomCode || "Units",
-        message: `Insufficient stock.`,
-      });
+    console.log(`📦 Checking item: ${itemRecord.code}`);
+    console.log(`   User wants: ${userQuantity} ${userUomCode}`);
+    console.log(`   Base UOM: ${baseUomCode}, Conversion UOM: ${conversionUomCode}`);
+
+    // 3. Query BOTH balance tables
+    const [storeBalance, convertedBalance] = await Promise.all([
+      // Check StoreBalance (Base UOM - DRUM, ROLL)
+      StoreBalance.findOne({
+        where: {
+          storeId: supplyingStoreId,
+          itemId: item.itemId,
+          status: "Active",
+        },
+      }),
+      // Check ConvertedBalance (Conversion UOM - KG, MTR)
+      db.ConvertedBalance ? db.ConvertedBalance.findOne({
+        where: {
+          storeId: supplyingStoreId,
+          itemId: item.itemId,
+        },
+      }) : null,
+    ]);
+
+    const hasBaseBalance = storeBalance !== null;
+    const hasConversionBalance = convertedBalance !== null;
+    
+    let baseBalance = hasBaseBalance ? parseFloat(storeBalance.balance) : 0;
+    let conversionBalance = hasConversionBalance ? parseFloat(convertedBalance.convertedBalance) : 0;
+
+    console.log(`   StoreBalance (${baseUomCode}): ${baseBalance}`);
+    console.log(`   ConvertedBalance (${conversionUomCode}): ${conversionBalance}`);
+
+    // 4. CHECK BASED ON USER'S REQUESTED UOM
+    
+    if (isBaseUom) {
+      // ============================================================
+      // USER REQUESTED IN BASE UOM (DRUM, ROLL)
+      // ============================================================
+      
+      if (hasBaseBalance) {
+        // ✅ FOUND in Base UOM - Check quantity
+        const availableQuantity = baseBalance;
+        
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: baseUomCode,
+          availableQuantity: availableQuantity,
+          requestedQuantity: userQuantity,
+          balance: storeBalance,
+          balanceType: 'base',
+          isBaseUom: true,
+          hasBaseBalance: true,
+          hasConversionBalance: hasConversionBalance,
+          conversionBalance: conversionBalance,
+          conversionUomCode: conversionUomCode,
+          conversionValue: conversionValue,
+        });
+
+        if (userQuantity > availableQuantity) {
+          // ❌ Insufficient stock in Base UOM
+          errors.push({
+            itemId: item.itemId,
+            itemName: itemRecord.name,
+            itemCode: itemRecord.code,
+            requestedQuantity: userQuantity,
+            availableQuantity: availableQuantity,
+            shortage: userQuantity - availableQuantity,
+            uomCode: baseUomCode,
+            balanceType: 'base',
+            message: `Insufficient stock in ${baseUomCode}.  Requested: ${userQuantity} ${baseUomCode}`,
+          });
+        }
+        
+      } else if (hasConversionBalance) {
+        // ⚠️ NOT FOUND in Base UOM, but FOUND in Conversion UOM
+        // Tell user to request in Conversion UOM instead
+        
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: baseUomCode,
+          availableQuantity: 0,
+          requestedQuantity: userQuantity,
+          balance: null,
+          balanceType: 'none',
+          isBaseUom: true,
+          hasBaseBalance: false,
+          hasConversionBalance: true,
+          conversionBalance: conversionBalance,
+          conversionUomCode: conversionUomCode,
+          conversionValue: conversionValue,
+          availableInOtherUom: conversionBalance,
+          otherUomCode: conversionUomCode,
+        });
+
+        errors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          requestedUom: baseUomCode,
+          availableQuantity: 0,
+          uomCode: baseUomCode,
+          balanceType: 'none',
+          message: `This item is available in ${conversionUomCode} only . Please request in ${conversionUomCode} instead.`,
+          suggestion: `Request in ${conversionUomCode}`,
+          availableInOtherUom: conversionBalance,
+          otherUomCode: conversionUomCode,
+        });
+        
+      } else {
+        // ❌ NOT FOUND in either table
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: baseUomCode,
+          availableQuantity: 0,
+          requestedQuantity: userQuantity,
+          balance: null,
+          balanceType: 'none',
+          isBaseUom: true,
+          hasBaseBalance: false,
+          hasConversionBalance: false,
+        });
+
+        errors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          uomCode: baseUomCode,
+          availableQuantity: 0,
+          balanceType: 'none',
+          message: `Item not available in this store`,
+        });
+      }
+      
+    } else {
+      // ============================================================
+      // USER REQUESTED IN CONVERSION UOM (KG, MTR)
+      // ============================================================
+      
+      if (hasConversionBalance) {
+        // ✅ FOUND in Conversion UOM - Check quantity
+        const availableQuantity = conversionBalance;
+        
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: conversionUomCode,
+          availableQuantity: availableQuantity,
+          requestedQuantity: userQuantity,
+          balance: convertedBalance,
+          balanceType: 'conversion',
+          isBaseUom: false,
+          hasBaseBalance: hasBaseBalance,
+          hasConversionBalance: true,
+          baseBalance: baseBalance,
+          baseUomCode: baseUomCode,
+          conversionValue: conversionValue,
+        });
+
+        if (userQuantity > availableQuantity) {
+          // ❌ Insufficient stock in Conversion UOM
+          errors.push({
+            itemId: item.itemId,
+            itemName: itemRecord.name,
+            itemCode: itemRecord.code,
+            requestedQuantity: userQuantity,
+            availableQuantity: availableQuantity,
+            shortage: userQuantity - availableQuantity,
+            uomCode: conversionUomCode,
+            balanceType: 'conversion',
+            message: `Insufficient stock in ${conversionUomCode}.Requested: ${userQuantity} ${conversionUomCode}`,
+          });
+        }
+        
+      } else if (hasBaseBalance) {
+        // ⚠️ NOT FOUND in Conversion UOM, but FOUND in Base UOM
+        // Tell user to request in Base UOM instead
+        
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: conversionUomCode,
+          availableQuantity: 0,
+          requestedQuantity: userQuantity,
+          balance: null,
+          balanceType: 'none',
+          isBaseUom: false,
+          hasBaseBalance: true,
+          hasConversionBalance: false,
+          baseBalance: baseBalance,
+          baseUomCode: baseUomCode,
+          conversionValue: conversionValue,
+          availableInOtherUom: baseBalance,
+          otherUomCode: baseUomCode,
+        });
+
+        errors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          requestedUom: conversionUomCode,
+          availableQuantity: 0,
+          uomCode: conversionUomCode,
+          balanceType: 'none',
+          message: `This item is available in ${baseUomCode} only . Please request in ${baseUomCode} instead.`,
+          suggestion: `Request in ${baseUomCode}`,
+          availableInOtherUom: baseBalance,
+          otherUomCode: baseUomCode,
+        });
+        
+      } else {
+        // ❌ NOT FOUND in either table
+        stockInfo.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode: conversionUomCode || baseUomCode,
+          availableQuantity: 0,
+          requestedQuantity: userQuantity,
+          balance: null,
+          balanceType: 'none',
+          isBaseUom: false,
+          hasBaseBalance: false,
+          hasConversionBalance: false,
+        });
+
+        errors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          uomCode: conversionUomCode || baseUomCode,
+          availableQuantity: 0,
+          balanceType: 'none',
+          message: `Item not available in this store`,
+        });
+      }
     }
   }
 
@@ -959,7 +1200,7 @@ exports.createRequest = async (req, res) => {
       requestedDate,
       status = "pending",
       remark,
-      isAsset = false,  // ✅ Read isAsset from request body
+      isAsset = false,
     } = req.body;
 
     // ================================================================
@@ -1052,7 +1293,10 @@ exports.createRequest = async (req, res) => {
 
     const itemRecords = await Item.findAll({
       where: { itemId: { [Op.in]: itemIds } },
-      include: [{ model: UOM, as: "uom" }],
+      include: [
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" },
+      ],
     });
 
     const itemMap = {};
@@ -1095,12 +1339,29 @@ exports.createRequest = async (req, res) => {
         continue;
       }
 
+      // ✅ Get UOM info from the request (sent from frontend)
+      const selectedUom = item.selectedUom || 'base';
+      
+      // ✅ Use the uomCode from the frontend, fallback to base UOM if not provided
+      let uomCode = item.uomCode;
+      
+      // If uomCode is not provided or is empty, use the base UOM
+      if (!uomCode || uomCode === '') {
+        uomCode = itemRecord.uom?.code || 'Units';
+      }
+      
+      const isBaseUom = item.isBaseUom !== false;
+
+      console.log(`📦 Item ${itemRecord.code}: selectedUom=${selectedUom}, uomCode=${uomCode}, isBaseUom=${isBaseUom}`);
+
       validatedItems.push({
         ...item,
         itemRecord,
         itemName: itemRecord.name,
         itemCode: itemRecord.code,
-        uomCode: itemRecord.uom?.code || "Units",
+        uomCode: uomCode,
+        selectedUom: selectedUom,
+        isBaseUom: isBaseUom,
       });
     }
 
@@ -1159,23 +1420,22 @@ exports.createRequest = async (req, res) => {
     // ================================================================
     // 8. CREATE THE REQUEST (with isAsset)
     // ================================================================
-  // In createRequest, when creating the request:
-const request = await ItemRequest.create(
-  {
-    requestCode,
-    askingStoreId: parseInt(askingStoreId),
-    supplyingStoreId: parseInt(supplyingStoreId),
-    requestedById: requestedById || null,
-    requestedDate: requestedDate || new Date().toISOString().split("T")[0],
-    status: status || "pending",
-    remark: remark || null,
-    isAsset: isAsset || false,  // ✅ This is already in your code
-  },
-  { transaction: t },
-);
+    const request = await ItemRequest.create(
+      {
+        requestCode,
+        askingStoreId: parseInt(askingStoreId),
+        supplyingStoreId: parseInt(supplyingStoreId),
+        requestedById: requestedById || null,
+        requestedDate: requestedDate || new Date().toISOString().split("T")[0],
+        status: status || "pending",
+        remark: remark || null,
+        isAsset: isAsset || false,
+      },
+      { transaction: t },
+    );
 
     // ================================================================
-    // 9. CREATE ITEM DETAILS
+    // 9. CREATE ITEM DETAILS with UOM
     // ================================================================
     await Promise.all(
       validatedItems.map(async (item) => {
@@ -1185,6 +1445,10 @@ const request = await ItemRequest.create(
             itemId: item.itemId,
             quantity: item.quantity,
             remark: item.remark || null,
+            // ✅ Save UOM fields from the validated item
+            selected_uom: item.selectedUom || 'base',
+            uom_code: item.uomCode || item.itemRecord?.uom?.code || 'Units',
+            is_base_uom: item.isBaseUom !== false,
           },
           { transaction: t },
         );
@@ -1206,7 +1470,7 @@ const request = await ItemRequest.create(
           request.requestId,
           supplyingStoreId,
           askingStoreId,
-          isAsset,  // ✅ Pass isAsset flag
+          isAsset,
           t
         );
       } catch (notifError) {
@@ -1235,7 +1499,10 @@ const request = await ItemRequest.create(
             {
               model: Item,
               as: "item",
-              include: [{ model: UOM, as: "uom" }],
+              include: [
+                { model: UOM, as: "uom" },
+                { model: UOM, as: "conversionUom" },
+              ],
             },
           ],
         },
@@ -1400,22 +1667,32 @@ exports.updateRequest = async (req, res) => {
     });
 
     // ✅ Update items
-    if (items && items.length > 0) {
-      await ItemRequestDetail.destroy({
-        where: { requestId: id },
-      });
+   // ✅ Update items with UOM
+if (items && items.length > 0) {
+  await ItemRequestDetail.destroy({
+    where: { requestId: id },
+  });
 
-      await Promise.all(
-        items.map(async (item) => {
-          return ItemRequestDetail.create({
-            requestId: request.requestId,
-            itemId: item.itemId,
-            quantity: item.quantity,
-            remark: item.remark || null,
-          });
-        }),
-      );
-    }
+  await Promise.all(
+    items.map(async (item) => {
+      // ✅ Get UOM info
+      const selectedUom = item.selectedUom || 'base';
+      const uomCode = item.uomCode || 'Units';
+      const isBaseUom = item.isBaseUom !== false;
+
+      return ItemRequestDetail.create({
+        requestId: request.requestId,
+        itemId: item.itemId,
+        quantity: item.quantity,
+        remark: item.remark || null,
+        // ✅ Save UOM fields
+        selected_uom: selectedUom,
+        uom_code: uomCode,
+        is_base_uom: isBaseUom,
+      });
+    }),
+  );
+}
 
     // ✅ Delete existing notifications
     console.log(`🗑️ Deleting existing notifications for request ${id}`);
@@ -2468,10 +2745,32 @@ exports.getActiveStores = async (req, res) => {
 // ================================================================
 // 20. GET ACTIVE ITEMS
 // ================================================================
+// controllers/itemRequestController.js
+
+// ================================================================
+// 20. GET ACTIVE ITEMS (with search support)
+// ================================================================
 exports.getActiveItems = async (req, res) => {
   try {
-    const items = await Item.findAll({
-      where: { status: "Active" },
+    const { search, limit = 20, page = 1 } = req.query;
+    
+    const where = { status: "Active" };
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // ✅ Add search filter if provided
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toLowerCase();
+      where[Op.or] = [
+        { code: { [Op.iLike]: `%${searchTerm}%` } },
+        { name: { [Op.iLike]: `%${searchTerm}%` } },
+        { standardName: { [Op.iLike]: `%${searchTerm}%` } },
+        { brand: { [Op.iLike]: `%${searchTerm}%` } },
+        { model: { [Op.iLike]: `%${searchTerm}%` } },
+      ];
+    }
+
+    const { count, rows } = await Item.findAndCountAll({
+      where,
       attributes: [
         "itemId",
         "code",
@@ -2480,6 +2779,8 @@ exports.getActiveItems = async (req, res) => {
         "brand",
         "model",
         "uomId",
+        "conversionUomId",
+        "conversionValue",
         "specText",
       ],
       include: [
@@ -2488,13 +2789,26 @@ exports.getActiveItems = async (req, res) => {
           as: "uom",
           attributes: ["uomId", "code", "name"],
         },
+        {
+          model: UOM,
+          as: "conversionUom",
+          attributes: ["uomId", "code", "name"],
+        },
       ],
-      order: [["name", "ASC"]],
+      order: [["code", "ASC"]],
+      limit: parseInt(limit),
+      offset: offset,
     });
 
     res.json({
       success: true,
-      data: items,
+      data: rows,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(count / parseInt(limit)),
+      },
     });
   } catch (error) {
     console.error("Get active items error:", error);

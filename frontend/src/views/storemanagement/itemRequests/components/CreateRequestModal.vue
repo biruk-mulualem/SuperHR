@@ -115,7 +115,7 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- ITEMS SECTION - DROPDOWN SELECTION -->
+          <!-- ITEMS SECTION - SERVER-SIDE SEARCH -->
           <!-- ============================================================ -->
           <div class="form-section">
             <div class="form-section-title">
@@ -128,40 +128,74 @@
             <div class="add-item-area">
               <div class="search-wrapper">
                 <span class="search-icon-small">🔍</span>
-               <input
-  type="text"
-  v-model="itemSearch"
-  placeholder="Search items by code or name..."
-  class="search-input"
-/>
+                <input
+                  type="text"
+                  v-model="itemSearch"
+                  placeholder="Search items by code or name..."
+                  class="search-input"
+                  :class="{ 'searching': isSearching }"
+                  @keydown.esc="clearSearch"
+                />
+                <!-- Loading spinner -->
+                <span v-if="isSearching" class="search-spinner">⏳</span>
+                <!-- Result count -->
+                <span 
+                  v-else-if="itemSearch && items.length > 0 && !isSearching" 
+                  class="search-results-count"
+                >
+                  {{ items.length }} results
+                </span>
               </div>
-             <div class="add-wrapper">
-  <select 
-    v-model="selectedItemId" 
-    class="item-select" 
-    @change="onItemSelect"
-  >
-    <option value="">
-      {{ itemSearch ? (filteredItems.length === 0 ? 'No matching items found' : 'Select an item...') : 'Type to search for items...' }}
-    </option>
-    <option
-      v-for="item in filteredItems"
-      :key="getItemId(item)"
-      :value="getItemId(item)"
-      :disabled="isItemAlreadySelected(item)"
-    >
-      {{ item.code }} - {{ item.standardName || item.name }} [ {{ getItemUOM(getItemId(item)) }}] {{ isItemAlreadySelected(item) ? '(added)' : '' }}
-    </option>
-  </select>
-  <button
-    type="button"
-    class="btn-add-item"
-    @click="addSelectedItem"
-    :disabled="!selectedItemId || isItemAlreadySelectedById(selectedItemId)"
-  >
-    ➕ Add
-  </button>
-</div>
+              
+              <div class="add-wrapper">
+                <select 
+                  v-model="selectedItemId" 
+                  class="item-select" 
+                  @change="onItemSelect"
+                  :disabled="isSearching"
+                >
+                  <option value="">
+                    {{
+                      isSearching ? 'Searching...' :
+                      itemSearch ? (items.length === 0 ? 'No matching items found' : `Select an item (${items.length} results)`) :
+                      'Type to search for items...'
+                    }}
+                  </option>
+                  <option
+                    v-for="item in items"
+                    :key="getItemId(item)"
+                    :value="getItemId(item)"
+                    :disabled="isItemAlreadySelected(item)"
+                  >
+                    {{ item.code }} - {{ item.standardName || item.name }}
+                    [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
+                    {{ isItemAlreadySelected(item) ? '(added)' : '' }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="btn-add-item"
+                  @click="addSelectedItem"
+                  :disabled="!selectedItemId || isItemAlreadySelectedById(selectedItemId) || isSearching"
+                >
+                  ➕ Add
+                </button>
+              </div>
+
+              <!-- Load more trigger -->
+              <div 
+                v-if="hasMoreItems && items.length > 0 && itemSearch" 
+                class="load-more-trigger"
+              >
+                <button 
+                  type="button" 
+                  class="btn-load-more"
+                  @click="loadMoreItems"
+                  :disabled="isLoadingMore"
+                >
+                  {{ isLoadingMore ? 'Loading...' : `Load more (${items.length}/${totalItems})` }}
+                </button>
+              </div>
             </div>
 
             <div class="selected-items-container" v-if="selectedItemsList.length > 0">
@@ -180,9 +214,27 @@
                   <div class="item-info">
                     <span class="item-code">{{ item.code }}</span>
                     <span class="item-name">{{ item.name }}</span>
-                    <span class="item-uom">[{{ getItemUOM(item.itemId) }}]</span>
                   </div>
                   <div class="item-controls">
+                    <!-- UOM Selector -->
+                   <!-- UOM Selector -->
+<div class="uom-selector-wrapper">
+  <select 
+    v-model="item.selectedUom" 
+    @change="onUomChange(item)"
+    class="uom-select"
+  >
+    <option value="base">{{ getBaseUOM(item) }}</option>
+    <option 
+      v-if="getConversionUOM(item) !== 'N/A'" 
+      value="conversion"
+      :disabled="getConversionUOM(item) === getBaseUOM(item)"
+    >
+      {{ getConversionUOM(item) }} {{ getConversionUOM(item) === getBaseUOM(item) ? '(Same as Base)' : '' }}
+    </option>
+  </select>
+</div>
+                    
                     <div class="quantity-control">
                       <button
                         type="button"
@@ -207,7 +259,9 @@
                       >
                         +
                       </button>
-                      <span class="qty-uom">{{ getItemUOM(item.itemId) }}</span>
+                      <span class="qty-uom">
+                        {{ getSelectedUomLabel(item) }}
+                      </span>
                     </div>
                     <input
                       type="text"
@@ -321,7 +375,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import itemRequestService from "@/stores/itemRequestService";
 import type {
@@ -354,6 +408,15 @@ const authStore = useAuthStore();
 const stores = ref<Store[]>([]);
 const items = ref<Item[]>([]);
 const saving = ref(false);
+const isSearching = ref(false);
+const isLoadingMore = ref(false);
+const hasMoreItems = ref(true);
+const totalItems = ref(0);
+const searchPage = ref(1);
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Search cache for better performance
+const searchCache = ref<Map<string, { items: Item[]; total: number; page: number }>>(new Map());
 
 const userAssignedStoreId = ref<number | null>(null);
 const userAssignedStoreName = ref<string | null>(null);
@@ -366,7 +429,11 @@ const showValidationErrors = ref(false);
 const form = ref({
   askingStoreId: "",
   supplyingStoreId: "",
-  items: [] as RequestItem[],
+  items: [] as (RequestItem & { 
+    selectedUom?: 'base' | 'conversion';
+    uomCode?: string;
+    isBaseUom?: boolean;
+  })[],
   requestedBy: "",
   requestedDate: "",
   status: "pending" as "pending" | "approved" | "rejected",
@@ -385,7 +452,21 @@ const selectedItems = ref<Map<number, {
   name: string; 
   quantity: number;
   remark: string;
+  conversionValue?: number;
+  selectedUom?: 'base' | 'conversion';
+  _baseUom?: string;
+  _convUom?: string;
 }>>(new Map());
+
+// Item map for quick lookups
+const itemMap = computed(() => {
+  const map = new Map<number, Item>();
+  items.value.forEach(item => {
+    const id = Number(item.itemId ?? item.id);
+    map.set(id, item);
+  });
+  return map;
+});
 
 // ================================================================
 // HELPER: Get consistent item ID
@@ -414,27 +495,6 @@ const filteredSupplyingStores = computed(() => {
   return result;
 });
 
-const filteredItems = computed(() => {
-  let list = items.value;
-  const query = itemSearch.value.toLowerCase().trim();
-  
-  // If no search query, return empty array (don't load everything)
-  if (!query) {
-    return [];
-  }
-  
-  // Filter based on search query
-  list = list.filter(
-    (item) =>
-      item.code?.toLowerCase().includes(query) ||
-      item.name?.toLowerCase().includes(query) ||
-      item.standardName?.toLowerCase().includes(query) ||
-      item.brand?.toLowerCase().includes(query) ||
-      item.model?.toLowerCase().includes(query),
-  );
-  return list.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
-});
-
 const selectedItemsList = computed(() => {
   return Array.from(selectedItems.value.values());
 });
@@ -443,12 +503,243 @@ const isFormValid = computed(() => {
   if (selectedItemsList.value.length === 0) return false;
   const allValid = selectedItemsList.value.every(item => item.quantity > 0);
   if (!allValid) return false;
-  return !!(
+  return !!((( 
     form.value.askingStoreId &&
     form.value.supplyingStoreId &&
     form.value.requestedBy &&
     form.value.requestedDate
-  );
+  )));
+});
+
+// ================================================================
+// UOM HELPER METHODS - WITH STORED VALUES SUPPORT
+// ================================================================
+
+// Get base UOM name/code
+const getBaseUOM = (item: any): string => {
+  if (!item) return 'N/A';
+  
+  // ✅ Check if the item has stored UOM info
+  if (item._baseUom) return item._baseUom;
+  if (item.baseUom) return item.baseUom;
+  
+  // Otherwise try to look up from itemMap
+  let target = item;
+  if (item.itemId) {
+    const cachedItem = itemMap.value.get(item.itemId);
+    if (cachedItem) {
+      target = cachedItem;
+    }
+  }
+  
+  if (target.uom) {
+    if (typeof target.uom === 'object' && target.uom.code) {
+      return target.uom.code;
+    }
+    if (typeof target.uom === 'string') return target.uom;
+  }
+  
+  if (target.uomCode) return target.uomCode;
+  return 'N/A';
+};
+
+// Get conversion UOM name/code
+const getConversionUOM = (item: any): string => {
+  if (!item) return 'N/A';
+  
+  // ✅ Check if the item has stored UOM info
+  if (item._convUom) return item._convUom;
+  if (item.convUom) return item.convUom;
+  
+  // Otherwise try to look up from itemMap
+  let target = item;
+  if (item.itemId) {
+    const cachedItem = itemMap.value.get(item.itemId);
+    if (cachedItem) {
+      target = cachedItem;
+    }
+  }
+  
+  if (target.conversionUom) {
+    if (typeof target.conversionUom === 'object' && target.conversionUom.code) {
+      return target.conversionUom.code;
+    }
+    if (typeof target.conversionUom === 'string') return target.conversionUom;
+  }
+  
+  if (target.conversionUomCode) return target.conversionUomCode;
+  
+  // If conversionUomId exists but no data, try to find from items list
+  if (target.conversionUomId) {
+    for (const i of items.value) {
+      if (i.uom && i.uom.uomId === target.conversionUomId) {
+        return i.uom.code || i.uom.name || 'N/A';
+      }
+      if (i.conversionUom && i.conversionUom.uomId === target.conversionUomId) {
+        return i.conversionUom.code || i.conversionUom.name || 'N/A';
+      }
+    }
+  }
+  
+  return 'N/A';
+};
+
+// Get conversion value
+const getConversionValue = (item: any): number => {
+  if (!item) return 1;
+  const cachedItem = item.itemId ? itemMap.value.get(item.itemId) : null;
+  const target = cachedItem || item;
+  return target.conversionValue || 1;
+};
+
+// Get selected UOM label
+const getSelectedUomLabel = (item: any): string => {
+  if (item.selectedUom === 'conversion') {
+    const convUom = getConversionUOM(item);
+    return convUom !== 'N/A' ? convUom : getBaseUOM(item);
+  }
+  return getBaseUOM(item);
+};
+
+// ================================================================
+// SERVER-SIDE SEARCH WITH DEBOUNCE
+// ================================================================
+
+// Load items with server-side search
+const loadItems = async (searchQuery: string = "", page: number = 1, append: boolean = false) => {
+  try {
+    const trimmedQuery = searchQuery.trim();
+    
+    // Don't search if query is empty and not loading more
+    if (!trimmedQuery && !append) {
+      items.value = [];
+      hasMoreItems.value = false;
+      totalItems.value = 0;
+      searchPage.value = 1;
+      return;
+    }
+
+    if (page === 1) {
+      isSearching.value = true;
+    } else {
+      isLoadingMore.value = true;
+    }
+
+    // Check cache for first page results
+    const cacheKey = `${trimmedQuery}_${page}`;
+    if (page === 1 && searchCache.value.has(cacheKey) && !append) {
+      const cached = searchCache.value.get(cacheKey)!;
+      items.value = cached.items;
+      totalItems.value = cached.total;
+      searchPage.value = cached.page;
+      hasMoreItems.value = cached.items.length < cached.total;
+      isSearching.value = false;
+      return;
+    }
+
+    const response = await itemRequestService.getActiveItems({
+      search: trimmedQuery,
+      page: page,
+      limit: 20
+    });
+
+    if (response.success) {
+      const responseItems = response.data || [];
+      const pagination = response.pagination;
+      
+      if (append) {
+        // Append to existing items (for load more)
+        // Avoid duplicates
+        const existingIds = new Set(items.value.map(i => Number(i.itemId ?? i.id)));
+        const newItems = responseItems.filter(i => !existingIds.has(Number(i.itemId ?? i.id)));
+        items.value = [...items.value, ...newItems];
+      } else {
+        // Replace items
+        items.value = responseItems;
+        // Cache the result
+        searchCache.value.set(cacheKey, {
+          items: responseItems,
+          total: pagination?.total || 0,
+          page: page
+        });
+      }
+
+      // Update pagination info
+      if (pagination) {
+        totalItems.value = pagination.total;
+        searchPage.value = pagination.page;
+        hasMoreItems.value = pagination.page < pagination.pages;
+      } else {
+        hasMoreItems.value = false;
+      }
+    } else {
+      if (!append) {
+        items.value = [];
+        hasMoreItems.value = false;
+        totalItems.value = 0;
+      }
+    }
+  } catch (error) {
+    console.error("Load items error:", error);
+    if (!append) {
+      items.value = [];
+      hasMoreItems.value = false;
+      totalItems.value = 0;
+    }
+  } finally {
+    if (page === 1) {
+      isSearching.value = false;
+    } else {
+      isLoadingMore.value = false;
+    }
+  }
+};
+
+// Load more items (infinite scroll / pagination)
+const loadMoreItems = async () => {
+  if (isLoadingMore.value || !hasMoreItems.value) return;
+  
+  const nextPage = searchPage.value + 1;
+  const trimmedQuery = itemSearch.value.trim();
+  
+  if (!trimmedQuery) return;
+  
+  await loadItems(trimmedQuery, nextPage, true);
+};
+
+// Clear search
+const clearSearch = () => {
+  itemSearch.value = "";
+  selectedItemId.value = "";
+};
+
+// ================================================================
+// WATCH: Search with Debounce
+// ================================================================
+
+watch(itemSearch, (newQuery) => {
+  // Clear previous timeout
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+    searchTimeout = null;
+  }
+
+  const trimmedQuery = newQuery.trim();
+
+  // If query is empty, clear results
+  if (!trimmedQuery) {
+    items.value = [];
+    hasMoreItems.value = false;
+    totalItems.value = 0;
+    searchPage.value = 1;
+    searchCache.value.clear();
+    return;
+  }
+
+  // Debounce search by 500ms
+  searchTimeout = setTimeout(() => {
+    loadItems(trimmedQuery, 1, false);
+  }, 500);
 });
 
 // ================================================================
@@ -469,35 +760,48 @@ const isItemAlreadySelectedById = (id: string | number): boolean => {
 };
 
 const onItemSelect = (): void => {
-  console.log('🎯 Selected item ID from dropdown:', selectedItemId.value);
+  // Triggered when user selects from dropdown
 };
 
-const onSearchInput = (): void => {
-  selectedItemId.value = "";
+const onUomChange = (item: any): void => {
+  // Reset quantity to 1 when UOM changes
+  item.quantity = 1;
+  const existing = selectedItems.value.get(item.itemId);
+  if (existing) {
+    // ✅ Preserve UOM info when changing UOM
+    selectedItems.value.set(item.itemId, { 
+      ...existing, 
+      selectedUom: item.selectedUom,
+      quantity: 1,
+      _baseUom: existing._baseUom || getBaseUOM(item),
+      _convUom: existing._convUom || getConversionUOM(item),
+    });
+  }
 };
+
+// ================================================================
+// ADD SELECTED ITEM - WITH UOM INFO STORED
+// ================================================================
 
 const addSelectedItem = (): void => {
-  if (!selectedItemId.value) {
-    return;
-  }
+  if (!selectedItemId.value) return;
 
   const id = Number(selectedItemId.value);
+  if (!Number.isFinite(id) || id <= 0) return;
+  if (selectedItems.value.has(id)) return;
 
-  if (!Number.isFinite(id) || id <= 0) {
-    return;
-  }
-
-  if (selectedItems.value.has(id)) {
-    return;
-  }
-
+  // Find item from the current items list
   const item = items.value.find(
     i => Number(i.itemId ?? i.id) === id
   );
 
-  if (!item) {
-    return;
-  }
+  if (!item) return;
+
+  const itemConversionValue = (item as any).conversionValue ?? 1;
+  
+  // ✅ Get UOM info and store it directly on the selected item
+  const baseUom = getBaseUOM(item);
+  const convUom = getConversionUOM(item);
 
   selectedItems.value.set(id, {
     itemId: id,
@@ -505,10 +809,19 @@ const addSelectedItem = (): void => {
     name: item.standardName || item.name || "Unknown",
     quantity: 1,
     remark: "",
+    conversionValue: itemConversionValue,
+    selectedUom: 'base',
+    // ✅ Store UOM info directly on the item to prevent "N/A" issues
+    _baseUom: baseUom,
+    _convUom: convUom,
   });
 
   selectedItemId.value = "";
 };
+
+// ================================================================
+// ITEM MANAGEMENT METHODS
+// ================================================================
 
 const adjustQuantity = (itemId: number, delta: number): void => {
   const item = selectedItems.value.get(itemId);
@@ -539,13 +852,40 @@ const clearAllItems = (): void => {
   }
 };
 
+// ================================================================
+// SYNC SELECTED ITEMS TO FORM
+// ================================================================
+
 const syncSelectedItemsToForm = (): void => {
-  const items = Array.from(selectedItems.value.values()).map(item => ({
-    itemId: item.itemId,
-    quantity: item.quantity,
-    remark: item.remark || "",
-  }));
-  form.value.items = items;
+  const items = Array.from(selectedItems.value.values()).map(item => {
+    // Get the base UOM code
+    const baseUom = getBaseUOM(item);
+    // Get the conversion UOM code (if available)
+    const convUom = getConversionUOM(item);
+    
+    // Determine which UOM code to save
+    let uomCode = '';
+    let isBaseUom = true;
+    
+    if (item.selectedUom === 'conversion' && convUom !== 'N/A') {
+      uomCode = convUom;
+      isBaseUom = false;
+    } else {
+      uomCode = baseUom;
+      isBaseUom = true;
+    }
+    
+    return {
+      itemId: item.itemId,
+      quantity: item.quantity,
+      remark: item.remark || "",
+      selectedUom: item.selectedUom || 'base',
+      uomCode: uomCode,
+      isBaseUom: isBaseUom,
+    };
+  });
+  
+  form.value.items = items as any;
 };
 
 // ================================================================
@@ -553,27 +893,13 @@ const syncSelectedItemsToForm = (): void => {
 // ================================================================
 
 const getItemName = (itemId: number): string => {
-  const item = items.value.find((i) => Number(i.itemId ?? i.id) === itemId);
+  const item = itemMap.value.get(itemId);
   return item ? item.name : "Unknown Item";
 };
 
 const getItemCode = (itemId: number): string => {
-  const item = items.value.find((i) => Number(i.itemId ?? i.id) === itemId);
+  const item = itemMap.value.get(itemId);
   return item ? item.code : "N/A";
-};
-
-// ✅ NEW: Get UOM for an item
-const getItemUOM = (itemId: number): string => {
-  const item = items.value.find((i) => Number(i.itemId ?? i.id) === itemId);
-  if (!item) return 'N/A';
-  
-  // Check if uom exists and get its name/code
-  if (item.uom) {
-    if (typeof item.uom === 'string') return item.uom;
-    if (typeof item.uom === 'object' && item.uom.code) return item.uom.code;
-    if (typeof item.uom === 'object' && item.uom.name) return item.uom.name;
-  }
-  return 'N/A';
 };
 
 const getCurrentUser = (): string => {
@@ -631,17 +957,6 @@ const loadStores = async () => {
     }
   } catch (error) {
     console.error("Load stores error:", error);
-  }
-};
-
-const loadItems = async () => {
-  try {
-    const response = await itemRequestService.getActiveItems();
-    if (response.success) {
-      items.value = response.data;
-    }
-  } catch (error) {
-    console.error("Load items error:", error);
   }
 };
 
@@ -724,10 +1039,13 @@ const saveRequest = async (): Promise<void> => {
     const requestData = {
       askingStoreId: Number(form.value.askingStoreId),
       supplyingStoreId: Number(form.value.supplyingStoreId),
-      items: form.value.items.map((item) => ({
+      items: form.value.items.map((item: any) => ({
         itemId: Number(item.itemId),
         quantity: item.quantity,
         remark: item.remark || "",
+        selectedUom: item.selectedUom || 'base',
+        uomCode: item.uomCode || '',
+        isBaseUom: item.selectedUom !== 'conversion',
       })),
       requestedById: userId,
       requestedBy: form.value.requestedBy,
@@ -738,6 +1056,13 @@ const saveRequest = async (): Promise<void> => {
     };
 
     console.log('📤 Saving request with requestedBy:', requestData.requestedBy);
+    console.log('📦 Items with UOM selections:', requestData.items.map((item: any) => ({
+      itemId: item.itemId,
+      quantity: item.quantity,
+      selectedUom: item.selectedUom,
+      uomCode: item.uomCode,
+      isBaseUom: item.isBaseUom
+    })));
 
     let response;
     
@@ -758,6 +1083,9 @@ const saveRequest = async (): Promise<void> => {
         showValidationErrors.value = true;
       } else {
         const errorMsg = response.error || response.message || 'Failed to save request';
+        if (errorMsg) {
+          console.error('Save error:', errorMsg);
+        }
         emit('update:visible', false);
       }
     }
@@ -769,6 +1097,8 @@ const saveRequest = async (): Promise<void> => {
       validationErrors.value = errorData.errors;
       validationMessage.value = errorData.message || "Validation failed. Please fix the issues below.";
       showValidationErrors.value = true;
+    } else {
+      formErrors.value.push(errorData?.error || error.message || 'Failed to save request');
     }
   } finally {
     saving.value = false;
@@ -784,8 +1114,18 @@ const closeModal = (): void => {
 };
 
 // ================================================================
-// LIFECYCLE
+// CLEANUP
 // ================================================================
+
+onBeforeUnmount(() => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+    searchTimeout = null;
+  }
+});
+
+// ================================================================
+// LIFECYCLE// ================================================================
 
 const initializeForm = () => {
   const today: string = new Date().toISOString().split("T")[0] || "";
@@ -798,14 +1138,21 @@ const initializeForm = () => {
     if (req.items) {
       req.items.forEach((item: any) => {
         const itemId = Number(item.itemId || item.id || 0);
-        const itemData = items.value.find(i => Number(i.itemId ?? i.id) === itemId);
+        const itemData = itemMap.value.get(itemId) as any;
         if (itemData && itemId > 0) {
+          const baseUom = getBaseUOM(itemData);
+          const convUom = getConversionUOM(itemData);
+          
           selectedItems.value.set(itemId, {
             itemId: itemId,
             code: itemData.code || '',
             name: itemData.standardName || itemData.name || "Unknown",
             quantity: item.quantity || 1,
             remark: item.remark || "",
+            conversionValue: itemData.conversionValue ?? 1,
+            selectedUom: 'base',
+            _baseUom: baseUom,
+            _convUom: convUom,
           });
         }
       });
@@ -841,6 +1188,11 @@ const initializeForm = () => {
   
   selectedItemId.value = "";
   itemSearch.value = "";
+  items.value = [];
+  searchCache.value.clear();
+  hasMoreItems.value = false;
+  totalItems.value = 0;
+  searchPage.value = 1;
   formErrors.value = [];
   closeValidationErrors();
 };
@@ -851,7 +1203,6 @@ watch(
     if (newVal) {
       loadUserData();
       loadStores();
-      loadItems();
       initializeForm();
     }
   },
@@ -1166,7 +1517,7 @@ watch(
 }
 
 /* ================================================================
-   ADD ITEM AREA
+   ADD ITEM AREA - ENHANCED
    ================================================================ */
 .add-item-area {
   display: flex;
@@ -1186,6 +1537,7 @@ watch(
   transform: translateY(-50%);
   font-size: 14px;
   color: #94a3b8;
+  z-index: 1;
 }
 
 .search-input {
@@ -1203,6 +1555,38 @@ watch(
   border-color: #3b82f6;
   background: white;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-input.searching {
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-spinner {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  animation: spin 1s linear infinite;
+}
+
+.search-results-count {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+
+@keyframes spin {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to { transform: translateY(-50%) rotate(360deg); }
 }
 
 .add-wrapper {
@@ -1227,14 +1611,13 @@ watch(
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.item-select option:disabled {
-  color: #94a3b8;
+.item-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.added-label {
-  color: #22c55e;
-  font-size: 11px;
-  margin-left: 4px;
+.item-select option:disabled {
+  color: #94a3b8;
 }
 
 .btn-add-item {
@@ -1259,6 +1642,33 @@ watch(
   opacity: 0.5;
   cursor: not-allowed;
   background: #94a3b8;
+}
+
+/* Load More Button */
+.load-more-trigger {
+  text-align: center;
+  padding: 4px 0;
+}
+
+.btn-load-more {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  padding: 4px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.btn-load-more:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ================================================================
@@ -1357,37 +1767,40 @@ watch(
   font-weight: 500;
 }
 
-/* ✅ NEW: UOM styles */
-.item-uom {
-  font-size: 11px;
-  color: #059669;
-  font-weight: 500;
-  background: #ecfdf5;
-  padding: 1px 8px;
-  border-radius: 4px;
-  border: 1px solid #bbf7d0;
-}
-
-.uom-label {
-  font-size: 10px;
-  color: #059669;
-  font-weight: 500;
-  margin-left: 4px;
-}
-
-.qty-uom {
-  font-size: 10px;
-  color: #64748b;
-  font-weight: 500;
-  margin-left: 2px;
-  min-width: 30px;
-}
-
 .item-controls {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.uom-selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  padding: 2px 6px;
+}
+
+.uom-select {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  min-width: 60px;
+}
+
+.uom-select:focus {
+  outline: none;
+}
+
+.uom-select option {
+  font-size: 11px;
 }
 
 .quantity-control {
@@ -1434,6 +1847,14 @@ watch(
 
 .qty-input:focus {
   outline: none;
+}
+
+.qty-uom {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+  margin-left: 2px;
+  min-width: 30px;
 }
 
 .remark-input {
@@ -1719,6 +2140,11 @@ watch(
     width: 100%;
     justify-content: center;
   }
+
+  .search-results-count {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1764,6 +2190,31 @@ watch(
 
   .selected-items-list {
     max-height: 180px;
+  }
+
+  .search-input {
+    font-size: 12px;
+    padding: 5px 10px 5px 30px;
+  }
+
+  .search-icon-small {
+    font-size: 12px;
+    left: 8px;
+  }
+
+  .search-spinner {
+    font-size: 12px;
+    right: 8px;
+  }
+
+  .search-results-count {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+
+  .btn-load-more {
+    font-size: 11px;
+    padding: 3px 12px;
   }
 }
 </style>

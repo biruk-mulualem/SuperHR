@@ -23,6 +23,10 @@ module.exports = (sequelize, DataTypes) => {
         item: this.item,
         quantity: this.quantity,
         remark: this.remark,
+        // ✅ Include UOM fields
+        selectedUom: this.selected_uom,
+        uomCode: this.uom_code,
+        isBaseUom: this.is_base_uom,
         createdAt: this.createdAt,
         updatedAt: this.updatedAt,
       };
@@ -73,6 +77,22 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      // ✅ ADD UOM FIELDS
+      selected_uom: {
+        type: DataTypes.ENUM('base', 'conversion'),
+        defaultValue: 'base',
+        allowNull: false,
+      },
+      uom_code: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      is_base_uom: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
+      },
+      // ✅ END UOM FIELDS
       createdAt: {
         type: DataTypes.DATE,
         allowNull: false,

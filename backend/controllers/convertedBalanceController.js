@@ -141,97 +141,108 @@ class ConvertedBalanceController {
      * GET /api/converted-balances/available
      * Get items available for conversion - ✅ Uses query params for storeId/groupId
      */
-    static async getAvailableForConversion(req, res) {
-        try {
-            const storeId = req.query.storeId;
-            const groupId = req.query.groupId;
+   // controllers/convertedBalanceController.js
 
-            console.log('🔍 getAvailableForConversion - storeId:', storeId, 'groupId:', groupId);
+static async getAvailableForConversion(req, res) {
+    try {
+        const storeId = req.query.storeId;
+        const groupId = req.query.groupId;
 
-            if (!storeId || !groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Store ID and Group ID are required'
-                });
-            }
+        console.log('🔍 getAvailableForConversion - storeId:', storeId, 'groupId:', groupId);
 
-            const { categoryId, uomId, search } = req.query;
-
-            const balanceWhere = {
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                balance: { [Op.gt]: 0 },
-                status: 'Active'
-            };
-
-            const itemInclude = {
-                model: Item,
-                as: 'item',
-                required: true,
-                include: [
-                    { model: Category, as: 'category' },
-                    { model: UOM, as: 'uom' },
-                    { model: UOM, as: 'conversionUom' }
-                ]
-            };
-
-            const itemWhere = {
-                conversionUomId: { [Op.ne]: null },
-                conversionValue: { [Op.gt]: 0 },
-                status: 'Active'
-            };
-
-            if (categoryId) itemWhere.categoryId = parseInt(categoryId);
-            
-            if (search) {
-                const searchTerm = search.toLowerCase();
-                itemWhere[Op.or] = [
-                    { code: { [Op.iLike]: `%${searchTerm}%` } },
-                    { name: { [Op.iLike]: `%${searchTerm}%` } },
-                    { standardName: { [Op.iLike]: `%${searchTerm}%` } }
-                ];
-            }
-
-            itemInclude.where = itemWhere;
-
-            const balances = await StoreBalance.findAll({
-                where: balanceWhere,
-                include: [itemInclude],
-                order: [[{ model: Item, as: 'item' }, 'code', 'ASC']]
-            });
-
-            const items = balances.map(balance => ({
-                id: balance.itemId,
-                balanceId: balance.id,
-                storeId: balance.storeId,
-                groupId: balance.groupId,
-                itemCode: balance.item?.code || 'N/A',
-                itemName: balance.item?.name || 'N/A',
-                categoryName: balance.item?.category?.name || 'Uncategorized',
-                uomCode: balance.item?.uom?.code || 'N/A',
-                balance: parseFloat(balance.balance || 0),
-                convertToUom: balance.item?.conversionUom?.code || 'N/A',
-                conversionRate: parseFloat(balance.item?.conversionValue || 0),
-                canConvert: parseFloat(balance.balance) > 0,
-                isConverted: false,
-                sourceUomId: balance.item?.uomId,
-                targetUomId: balance.item?.conversionUomId
-            }));
-
-            res.json({
-                success: true,
-                data: items
-            });
-
-        } catch (error) {
-            console.error('Error fetching available items:', error);
-            res.status(500).json({
+        if (!storeId || !groupId) {
+            return res.status(400).json({
                 success: false,
-                error: 'Failed to fetch available items',
-                details: error.message
+                error: 'Store ID and Group ID are required'
             });
         }
+
+        const { categoryId, uomId, search } = req.query;
+
+        const balanceWhere = {
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            balance: { [Op.gt]: 0 },
+            status: 'Active'
+        };
+
+        const itemInclude = {
+            model: Item,
+            as: 'item',
+            required: true,
+            include: [
+                { model: Category, as: 'category' },
+                { model: UOM, as: 'uom' },
+                { model: UOM, as: 'conversionUom' }
+            ]
+        };
+
+        const itemWhere = {
+            conversionUomId: { [Op.ne]: null },
+            conversionValue: { [Op.gt]: 0 },
+            status: 'Active'
+        };
+
+        // 🔥 ADD VALIDATION: Base UOM must be different from Conversion UOM
+        // This ensures we only show items where uomId != conversionUomId
+        // Using Sequelize literal for column comparison
+        itemWhere[Op.and] = [
+            { uomId: { [Op.ne]: null } },  // Base UOM exists
+            { conversionUomId: { [Op.ne]: null } },  // Conversion UOM exists
+            sequelize.literal('"item"."uom_id" != "item"."conversion_uom_id"')  // Different UOMs
+        ];
+
+        if (categoryId) itemWhere.categoryId = parseInt(categoryId);
+        
+        if (search) {
+            const searchTerm = search.toLowerCase();
+            itemWhere[Op.or] = [
+                { code: { [Op.iLike]: `%${searchTerm}%` } },
+                { name: { [Op.iLike]: `%${searchTerm}%` } },
+                { standardName: { [Op.iLike]: `%${searchTerm}%` } }
+            ];
+        }
+
+        itemInclude.where = itemWhere;
+
+        const balances = await StoreBalance.findAll({
+            where: balanceWhere,
+            include: [itemInclude],
+            order: [[{ model: Item, as: 'item' }, 'code', 'ASC']]
+        });
+
+        const items = balances.map(balance => ({
+            id: balance.itemId,
+            balanceId: balance.id,
+            storeId: balance.storeId,
+            groupId: balance.groupId,
+            itemCode: balance.item?.code || 'N/A',
+            itemName: balance.item?.name || 'N/A',
+            categoryName: balance.item?.category?.name || 'Uncategorized',
+            uomCode: balance.item?.uom?.code || 'N/A',
+            balance: parseFloat(balance.balance || 0),
+            convertToUom: balance.item?.conversionUom?.code || 'N/A',
+            conversionRate: parseFloat(balance.item?.conversionValue || 0),
+            canConvert: parseFloat(balance.balance) > 0,
+            isConverted: false,
+            sourceUomId: balance.item?.uomId,
+            targetUomId: balance.item?.conversionUomId
+        }));
+
+        res.json({
+            success: true,
+            data: items
+        });
+
+    } catch (error) {
+        console.error('Error fetching available items:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch available items',
+            details: error.message
+        });
     }
+}
 
    /**
  * POST /api/converted-balances/convert
@@ -725,6 +736,199 @@ static async convert(req, res) {
             });
         }
     }
-}
 
+
+
+
+static async create(req, res) {
+    try {
+        const { storeId, groupId, itemId, convertedBalance } = req.body;
+        const userId = req.user?.userId || req.user?.id;
+
+        console.log('📦 Create converted balance:', { 
+            storeId, 
+            groupId, 
+            itemId, 
+            convertedBalance, 
+            userId 
+        });
+
+        // Validate required fields
+        if (!storeId || !groupId || !itemId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Store ID, Group ID, and Item ID are required'
+            });
+        }
+
+        // Fetch item with all UOM relationships
+        const item = await Item.findByPk(parseInt(itemId), {
+            include: [
+                { model: UOM, as: 'uom' },
+                { model: UOM, as: 'conversionUom' }
+            ]
+        });
+
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                error: 'Item not found'
+            });
+        }
+
+        // Check if converted balance already exists
+        const existing = await ConvertedBalance.findOne({
+            where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId)
+            }
+        });
+
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                error: 'Converted balance already initialized for this item',
+                message: `Item "${item.name || 'Unknown'}" (${item.code || 'N/A'}) already has a converted balance record.`
+            });
+        }
+
+        // Start transaction
+        const transaction = await sequelize.transaction();
+
+        try {
+            const convertedBalanceAmount = parseFloat(convertedBalance || 0);
+
+            // Create new converted balance
+            const result = await ConvertedBalance.create({
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId),
+                convertedBalance: convertedBalanceAmount
+            }, { transaction });
+
+            // Get the source store balance
+            const sourceBalance = await StoreBalance.findOne({
+                where: {
+                    storeId: parseInt(storeId),
+                    groupId: parseInt(groupId),
+                    itemId: parseInt(itemId)
+                },
+                transaction
+            });
+
+            // Get UOM information
+            const baseUom = item.uom;
+            const conversionUom = item.conversionUom;
+            
+            const baseUomCode = baseUom?.code || 'N/A';
+            const conversionUomCode = conversionUom?.code || 'N/A';
+            const conversionValue = parseFloat(item.conversionValue || 0);
+
+            const itemName = item.name || 'Unknown';
+            const itemCode = item.code || 'N/A';
+
+            // Build remark
+            let remark = `📦 CONVERTED BALANCE INITIALIZED: "${itemName}" (${itemCode})`;
+            remark += ` - Added ${convertedBalanceAmount} ${conversionUomCode}`;
+            
+            if (conversionValue > 0 && baseUomCode !== 'N/A' && conversionUomCode !== 'N/A') {
+                remark += ` (Conversion: 1 ${baseUomCode} = ${conversionValue} ${conversionUomCode})`;
+            }
+
+            // 🔥 FIX: The source balance doesn't change, but we're adding a converted balance
+            // So changeAmount should be the converted balance amount (positive)
+            // and transaction type should be 'Stock In' (adding)
+            const previousBalance = sourceBalance ? parseFloat(sourceBalance.balance) : 0;
+            const newBalance = previousBalance; // Source balance stays the same
+
+            // Create history record with CORRECT values
+            const historyData = {
+                convertedBalanceId: result.id,
+                balanceId: sourceBalance?.id || null,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId),
+                
+                // 🔥 FIX: These should reflect the source balance (no change)
+                previousBalance: previousBalance,
+                newBalance: newBalance,
+                
+                // 🔥 FIX: Change amount should be the converted balance (positive)
+                changeAmount: convertedBalanceAmount,  // The amount added to converted balance
+                
+                // 🔥 FIX: 'Stock In' because we're adding converted balance
+                transactionType: 'Stock In',
+                
+                sourceStoreId: parseInt(storeId),
+                destinationStoreId: null,
+                referenceType: 'initialization',
+                referenceId: result.id,
+                changedBy: userId,
+                remark: remark,
+                grnNumber: null,
+                sivNumber: null,
+                uomUsed: conversionUomCode,
+                isBaseUom: false
+            };
+
+            console.log('📝 Creating history record:', historyData);
+
+            await StoreBalanceHistory.create(historyData, { transaction });
+
+            await transaction.commit();
+
+            // Fetch full record with associations
+            const created = await ConvertedBalance.findOne({
+                where: { id: result.id },
+                include: [
+                    { 
+                        model: Item, 
+                        as: 'item',
+                        include: [
+                            { model: Category, as: 'category' },
+                            { model: UOM, as: 'uom' },
+                            { model: UOM, as: 'conversionUom' }
+                        ]
+                    },
+                    { model: Store, as: 'store' },
+                    { model: Group, as: 'group' }
+                ]
+            });
+
+            res.json({
+                success: true,
+                message: 'Converted balance initialized successfully',
+                data: {
+                    id: created.id,
+                    storeId: created.storeId,
+                    groupId: created.groupId,
+                    itemId: created.itemId,
+                    itemCode: created.item?.code || 'N/A',
+                    itemName: created.item?.name || 'N/A',
+                    categoryName: created.item?.category?.name || 'Uncategorized',
+                    uomCode: created.item?.conversionUom?.code || created.item?.uom?.code || 'N/A',
+                    convertedBalance: parseFloat(created.convertedBalance || 0),
+                    storeName: created.store?.name || 'N/A',
+                    groupName: created.group?.name || 'N/A',
+                    createdAt: created.createdAt,
+                    updatedAt: created.updatedAt
+                }
+            });
+
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+
+    } catch (error) {
+        console.error('❌ Error creating converted balance:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create converted balance',
+            details: error.message
+        });
+    }
+}
+}
 module.exports = ConvertedBalanceController;

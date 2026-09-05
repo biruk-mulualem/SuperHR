@@ -112,13 +112,13 @@
                     requested items from
                     <strong>{{ notif.request?.askingStore?.name || "Unknown" }}</strong>
                   </p>
-               <div class="notification-items">
+<div class="notification-items">
   <span
     v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
     :key="idx"
     class="item-tag"
   >
-    {{ item.item?.name || "Unknown" }} ({{ Number(item.quantity).toFixed(2) }} {{ item.item?.uom?.name || 'units' }})
+    {{ item.item?.name || "Unknown" }} ({{ Number(item.quantity).toFixed(2) }} {{ getUomDisplay(item) }})
   </span>
   <span
     v-if="(notif.request?.items || []).length > 2"
@@ -800,6 +800,29 @@ const hasGroupAccess = computed(() => {
 // ================================================================
 // EXISTING METHODS - UNTOUCHED
 // ================================================================
+// Add this function in the <script setup> section
+
+/**
+ * Get the correct UOM display for an item
+ * Uses the stored uom_code from the request detail if available
+ * Falls back to base UOM if not
+ */
+const getUomDisplay = (item) => {
+  // ✅ Check if we have a stored uom_code (this is the UOM the user requested in)
+  if (item.uom_code) {
+    return item.uom_code;
+  }
+  
+  // Fallback: try to get from item's base UOM
+  if (item.item?.uom?.code) {
+    return item.item.uom.code;
+  }
+  
+  // Last resort
+  return 'units';
+};
+
+
 
 const loadNotifications = async (reset = true) => {
   try {

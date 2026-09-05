@@ -1,10 +1,11 @@
+<!-- views/storemanagement/convertedbalance/convertedbalance.vue -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
         <h2>⚖️ Converted Balance</h2>
-        <span class="total-badge">{{ totalItems }} Items</span>
+        <span class="total-badge">{{ filteredItems.length }} Items</span>
       </div>
       <div class="header-actions">
         <div class="search-box">
@@ -16,6 +17,9 @@
             @input="onSearchChange"
           />
         </div>
+        <button class="btn-add" @click="openInitializeModal">
+          📦 Initialize Balance
+        </button>
         <button class="btn-convert" @click="openConvertModal">
           🔄 Convert
         </button>
@@ -29,6 +33,40 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="filter-bar">
+      <!-- Store filter - only for admin -->
+      <select
+        v-if="isAdmin"
+        v-model="filterStore"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Stores</option>
+        <option
+          v-for="store in availableStores"
+          :key="store.id"
+          :value="store.id"
+        >
+          🏪 {{ store.name }}
+        </option>
+      </select>
+
+      <!-- Group filter - only for admin -->
+      <select
+        v-if="isAdmin"
+        v-model="filterGroup"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="">All Groups</option>
+        <option
+          v-for="group in availableGroups"
+          :key="group.id"
+          :value="group.id"
+        >
+          👥 {{ group.name }}
+        </option>
+      </select>
+
       <select
         v-model="filterCategory"
         class="filter-select"
@@ -36,26 +74,11 @@
       >
         <option value="">All Categories</option>
         <option
-          v-for="cat in categories"
+          v-for="cat in availableCategories"
           :key="cat.id || cat.categoryId"
           :value="cat.id || cat.categoryId"
         >
           {{ cat.name }}
-        </option>
-      </select>
-
-      <select
-        v-model="filterUom"
-        class="filter-select"
-        @change="onFilterChange"
-      >
-        <option value="">All UOM</option>
-        <option
-          v-for="uom in uoms"
-          :key="uom.id || uom.uomId"
-          :value="uom.code"
-        >
-          {{ uom.code }} - {{ uom.name }}
         </option>
       </select>
 
@@ -116,6 +139,9 @@
               <div class="empty-content">
                 <span class="empty-icon">⚖️</span>
                 <p>No converted balances found</p>
+                <button class="btn-secondary" @click="openInitializeModal">
+                  Initialize First Balance
+                </button>
               </div>
             </td>
           </tr>
@@ -181,164 +207,36 @@
       </select>
     </div>
 
+    <!-- ==================== INITIALIZE MODAL ==================== -->
+<InitializeConvertedBalanceModal
+  v-if="showInitializeModal"
+  :is-admin="isAdmin"
+  :user-data="userData"
+  :store-id="userStoreId"
+  :group-id="userGroupId"
+  :store-name="userData?.assignedStore?.name || ''"
+  :group-name="userData?.assignedGroup?.name || ''"
+  :stores="availableStores"          
+  :groups="availableGroups"           
+  :categories="availableCategories"
+  :inventory-items="inventoryItems"
+  :visible="showInitializeModal"
+  @update:visible="showInitializeModal = $event"
+  @close="closeInitializeModal"
+  @success="onInitializeSuccess"
+/>
+
     <!-- ==================== CONVERT MODAL ==================== -->
-    <div
+    <ConvertModal
       v-if="showConvertModal"
-      class="modal-overlay"
-      @click.self="closeConvertModal"
-    >
-      <div class="modal-container convert-modal">
-        <div class="modal-header">
-          <h3>🔄 Convert</h3>
-          <button class="modal-close" @click="closeConvertModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="convert-info">
-            Select items and enter quantity to convert from their current UOM to the base UOM.
-            Once converted, the balance will be added to the existing item in the table.
-          </p>
-
-          <!-- Search Bar -->
-          <div class="convert-search">
-            <div class="search-box-small">
-              <span class="search-icon-small">🔍</span>
-              <input
-                type="text"
-                v-model="convertSearchQuery"
-                placeholder="Search items..."
-                @input="refreshAvailableItems"
-              />
-            </div>
-          </div>
-
-          <div class="convert-filters">
-            <select v-model="convertFilterCategory" class="filter-select" @change="refreshAvailableItems">
-              <option value="">All Categories</option>
-              <option
-                v-for="cat in categories"
-                :key="cat.id || cat.categoryId"
-                :value="cat.id || cat.categoryId"
-              >
-                {{ cat.name }}
-              </option>
-            </select>
-            <select v-model="convertFilterUom" class="filter-select" @change="refreshAvailableItems">
-              <option value="">All UOM</option>
-              <option
-                v-for="uom in uoms"
-                :key="uom.id || uom.uomId"
-                :value="uom.code"
-              >
-                {{ uom.code }} - {{ uom.name }}
-              </option>
-            </select>
-          </div>
-
-          <div class="convert-item-list">
-            <div
-              v-for="item in filteredAvailableItems"
-              :key="item.id"
-              class="convert-item"
-            >
-              <div class="convert-item-info">
-                <input
-                  type="checkbox"
-                  :checked="item.selected"
-                  @change="toggleItemSelection(item, $event)"
-                  :disabled="item.balance <= 0"
-                />
-                <span class="convert-item-code">{{ item.itemCode }}</span>
-                <span class="convert-item-name">{{ item.itemName }}</span>
-                <span class="convert-item-uom">{{ item.uomCode }}</span>
-                <span class="convert-item-balance">{{ formatNumber(item.balance) }}</span>
-                <span class="convert-item-target">→ {{ item.convertToUom }}</span>
-                <span class="convert-item-rate">(1 {{ item.uomCode }} = {{ item.conversionRate }} {{ item.convertToUom }})</span>
-              </div>
-              <div class="convert-item-input" v-if="item.selected">
-                <label>Quantity to convert:</label>
-                <input
-                  type="number"
-                  v-model.number="item.convertQty"
-                  :max="item.balance"
-                  min="1"
-                  step="1"
-                  class="convert-qty-input"
-                  @focus="selectAllText($event)"
-                  @input="validateQty(item)"
-                />
-                <span class="convert-result" v-if="item.convertQty > 0 && item.convertQty <= item.balance">
-                  → {{ formatNumber(item.convertQty * item.conversionRate) }} {{ item.convertToUom }}
-                </span>
-                <span class="convert-error" v-if="item.convertQty > item.balance">
-                  ⚠️ Exceeds max ({{ formatNumber(item.balance) }})
-                </span>
-                <span class="convert-max">(Max: {{ formatNumber(item.balance) }})</span>
-              </div>
-            </div>
-            <div v-if="filteredAvailableItems.length === 0" class="no-convert-items">
-              No items available for conversion.
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeConvertModal">Cancel</button>
-          <button
-            class="btn-primary"
-            @click="openConfirmationModal"
-            :disabled="!hasSelectedItems || converting"
-          >
-            {{ converting ? 'Processing...' : `Convert ${selectedCount} Item(s)` }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== CONFIRMATION MODAL ==================== -->
-    <div
-      v-if="showConfirmationModal"
-      class="modal-overlay"
-      @click.self="closeConfirmationModal"
-    >
-      <div class="modal-container confirmation-modal">
-        <div class="modal-header">
-          <h3>⚠️ Confirm Conversion</h3>
-          <button class="modal-close" @click="closeConfirmationModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="confirmation-icon">🔄</div>
-          <p class="confirmation-text">
-            Are you sure you want to convert the following items?
-          </p>
-          <div class="confirmation-list">
-            <div
-              v-for="item in selectedItemsForConfirmation"
-              :key="item.id"
-              class="confirmation-item"
-            >
-              <span class="conf-item-code">{{ item.itemCode }}</span>
-              <span class="conf-item-name">{{ item.itemName }}</span>
-              <span class="conf-item-detail">
-                {{ item.convertQty }} {{ item.uomCode }} → 
-                {{ formatNumber(item.convertQty * item.conversionRate) }} {{ item.convertToUom }}
-              </span>
-            </div>
-          </div>
-          <p class="confirmation-warning">
-            ⚠️ This action cannot be undone. The source balance will be reduced.
-          </p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeConfirmationModal">Cancel</button>
-          <button
-            class="btn-danger"
-            @click="confirmConversion"
-            :disabled="converting"
-          >
-            {{ converting ? 'Processing...' : 'Yes, Convert' }}
-          </button>
-        </div>
-      </div>
-    </div>
+      v-model:visible="showConvertModal"
+      :store-id="userStoreId"
+      :group-id="userGroupId"
+      :store-name="storeName"
+      :categories="categories"
+      @success="onConvertSuccess"
+      @error="onConvertError"
+    />
 
     <!-- ==================== EXPORT MODAL ==================== -->
     <div
@@ -384,14 +282,27 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import convertedBalanceService from '@/stores/convertedBalanceService'
 import itemService from '@/stores/itemService'
+import InitializeConvertedBalanceModal from './components/InitializeConvertedBalanceModal.vue'
+import ConvertModal from './components/ConvertModal.vue'
 
 // ================================================================
-// PINIA STORES
+// USER DATA
 // ================================================================
-const authStore = useAuthStore()
+
+const getUserData = () => {
+  try {
+    const data = JSON.parse(localStorage.getItem('user') || '{}')
+    return data
+  } catch (error) {
+    console.error('Error parsing user data:', error)
+    return {}
+  }
+}
+
+const userData = ref(getUserData())
+const isAdmin = computed(() => userData.value?.isAdmin || false)
 
 // ================================================================
 // TOAST SYSTEM
@@ -417,23 +328,16 @@ const showToastMessage = (msg, type = 'success') => {
 // ================================================================
 const isLoading = ref(false)
 const exporting = ref(false)
-const converting = ref(false)
 const exportType = ref('full')
 const showExportModal = ref(false)
+const showInitializeModal = ref(false)
 const showConvertModal = ref(false)
-const showConfirmationModal = ref(false)
 const searchQuery = ref('')
+const filterStore = ref('')
+const filterGroup = ref('')
 const filterCategory = ref('')
-const filterUom = ref('')
 const currentPage = ref(1)
 const pageSize = ref(10)
-
-// Convert modal filters
-const convertFilterCategory = ref('')
-const convertFilterUom = ref('')
-const convertSearchQuery = ref('')
-const availableItems = ref([])
-const selectedItemsForConfirmation = ref([])
 
 // Data
 const convertedItems = ref([])
@@ -445,123 +349,182 @@ const stats = ref({
   zeroStock: 0
 })
 
-// Categories & UOMs from API
+// Master data
+const stores = ref([])
+const allGroups = ref([])
 const categories = ref([])
-const uoms = ref([])
+const inventoryItems = ref([])
+
+// Store/Group from user data
+const userStoreId = computed(() => userData.value?.assignedStore?.id || null)
+const userGroupId = computed(() => userData.value?.assignedGroup?.id || null)
+const storeName = ref('')
 
 // ================================================================
-// COMPUTED - User Store/Group from Auth
+// COMPUTED - Available data based on role
 // ================================================================
-const userStoreId = computed(() => authStore.userStoreId)
-const userGroupId = computed(() => authStore.userGroupId)
 
 // ================================================================
-// COMPUTED - Data
+// COMPUTED - Available data based on role
 // ================================================================
-const paginatedItems = computed(() => convertedItems.value)
+
+const availableStores = computed(() => {
+  // ✅ Safely check if stores.value is an array
+  if (!Array.isArray(stores.value)) {
+    return []
+  }
+  if (isAdmin.value) {
+    return stores.value
+  }
+  if (userData.value?.assignedStore) {
+    return stores.value.filter((s) => s.id === userData.value.assignedStore.id)
+  }
+  return []  
+})
+
+const availableGroups = computed(() => {
+  // ✅ Safely check if allGroups.value is an array
+  if (!Array.isArray(allGroups.value)) {
+    return []
+  }
+  if (isAdmin.value) {
+    return allGroups.value
+  }
+  if (userData.value?.assignedGroup) {
+    return allGroups.value.filter((g) => g.id === userData.value.assignedGroup.id)
+  }
+  return []
+})
+
+const availableCategories = computed(() => {
+  // ✅ Safely check if categories.value is an array
+  if (!Array.isArray(categories.value)) {
+    return []
+  }
+  return categories.value.filter((c) => c.status === 'Active' || c.status === undefined)
+})
+
+// ================================================================
+// COMPUTED - Filtered items
+// ================================================================
 
 const hasActiveFilters = computed(() => {
-  return filterCategory.value || filterUom.value || searchQuery.value
+  return filterStore.value || filterGroup.value || filterCategory.value || searchQuery.value
 })
 
-const filteredAvailableItems = computed(() => {
-  let items = availableItems.value
-  
-  if (convertSearchQuery.value) {
-    const search = convertSearchQuery.value.toLowerCase()
-    items = items.filter(item =>
-      item.itemCode.toLowerCase().includes(search) ||
-      item.itemName.toLowerCase().includes(search)
-    )
+const filteredItems = computed(() => {
+  let result = [...convertedItems.value]
+
+  // Apply user access restrictions
+  if (!isAdmin.value && userData.value?.hasAccess) {
+    const assignedStoreId = userData.value.assignedStore?.id
+    const assignedGroupId = userData.value.assignedGroup?.id
+
+    if (assignedStoreId) {
+      result = result.filter((item) => item.storeId === assignedStoreId)
+    }
+    if (assignedGroupId) {
+      result = result.filter((item) => item.groupId === assignedGroupId)
+    }
   }
-  
-  return items
+
+  // Search
+  if (searchQuery.value) {
+    const s = searchQuery.value.toLowerCase()
+    result = result.filter((item) => {
+      const itemName = (item.itemName || '').toLowerCase()
+      const itemCode = (item.itemCode || '').toLowerCase()
+      const categoryName = (item.categoryName || '').toLowerCase()
+      return itemName.includes(s) || itemCode.includes(s) || categoryName.includes(s)
+    })
+  }
+
+  // Filters
+  if (filterStore.value && filterStore.value !== '') {
+    const storeId = Number(filterStore.value)
+    if (!isNaN(storeId)) {
+      result = result.filter((item) => item.storeId === storeId)
+    }
+  }
+
+  if (filterGroup.value && filterGroup.value !== '') {
+    const groupId = Number(filterGroup.value)
+    if (!isNaN(groupId)) {
+      result = result.filter((item) => item.groupId === groupId)
+    }
+  }
+
+  if (filterCategory.value && filterCategory.value !== '') {
+    const categoryId = Number(filterCategory.value)
+    if (!isNaN(categoryId)) {
+      result = result.filter((item) => item.categoryId === categoryId)
+    }
+  }
+
+  return result
 })
 
-const hasSelectedItems = computed(() => {
-  return availableItems.value.some(item => 
-    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  )
-})
-
-const selectedCount = computed(() => {
-  return availableItems.value.filter(item => 
-    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  ).length
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredItems.value.slice(start, end)
 })
 
 // ================================================================
 // METHODS - Data Fetching
 // ================================================================
 
-/**
- * Fetch categories and UOMs from API
- */
-const fetchCategoriesAndUOMs = async () => {
+const fetchCategories = async () => {
   try {
-    // Fetch categories
-    const catResponse = await itemService.getActiveCategories?.() || await itemService.getCategories?.()
-    if (catResponse?.success) {
-      categories.value = catResponse.data.map(cat => ({
+    const response = await itemService.getActiveCategories?.() || await itemService.getCategories?.()
+    if (response?.success) {
+      categories.value = response.data.map(cat => ({
         id: cat.categoryId || cat.id,
-        name: cat.name
+        name: cat.name,
+        status: cat.status || 'Active'
       }))
     } else {
-      // Fallback categories
-      categories.value = [
-        { id: 1, name: 'Raw Materials' },
-        { id: 2, name: 'Chemicals' },
-        { id: 3, name: 'Packaging' },
-        { id: 4, name: 'Additives' }
-      ]
-    }
-
-    // Fetch UOMs
-    const uomResponse = await itemService.getUOMs?.()
-    if (uomResponse?.success) {
-      uoms.value = uomResponse.data.map(uom => ({
-        id: uom.uomId || uom.id,
-        code: uom.code,
-        name: uom.name
-      }))
-    } else {
-      // Fallback UOMs
-      uoms.value = [
-        { id: 1, code: 'kg', name: 'Kilogram' },
-        { id: 2, code: 'Drum', name: 'Drum' },
-        { id: 3, code: 'Bag', name: 'Bag' },
-        { id: 4, code: 'Roll', name: 'Roll' },
-        { id: 5, code: 'Packet', name: 'Packet' },
-        { id: 6, code: 'pcs', name: 'Pieces' },
-        { id: 7, code: 'm', name: 'Meters' },
-        { id: 8, code: 'L', name: 'Liters' }
-      ]
+      categories.value = []
     }
   } catch (error) {
-    console.error('Error fetching categories/UOMs:', error)
-    // Fallback data
-    categories.value = [
-      { id: 1, name: 'Raw Materials' },
-      { id: 2, name: 'Chemicals' },
-      { id: 3, name: 'Packaging' },
-      { id: 4, name: 'Additives' }
-    ]
-    uoms.value = [
-      { id: 1, code: 'kg', name: 'Kilogram' },
-      { id: 2, code: 'Drum', name: 'Drum' },
-      { id: 3, code: 'Bag', name: 'Bag' },
-      { id: 4, code: 'Roll', name: 'Roll' },
-      { id: 5, code: 'Packet', name: 'Packet' },
-      { id: 6, code: 'pcs', name: 'Pieces' },
-      { id: 7, code: 'm', name: 'Meters' },
-      { id: 8, code: 'L', name: 'Liters' }
-    ]
+    console.error('Error fetching categories:', error)
   }
 }
 
-/**
- * Fetch converted balances from API
- */
+const fetchStores = async () => {
+  try {
+    const response = await itemService.getStores?.() || { data: [] }
+    // ✅ Ensure we always set an array
+    stores.value = Array.isArray(response.data) ? response.data : []
+    console.log('✅ Stores loaded:', stores.value.length)
+  } catch (error) {
+    console.error('Error fetching stores:', error)
+    stores.value = []  // ✅ Always set to array on error
+  }
+}
+
+const fetchGroups = async () => {
+  try {
+    const response = await itemService.getGroups?.() || { data: [] }
+    // ✅ Ensure we always set an array
+    allGroups.value = Array.isArray(response.data) ? response.data : []
+    console.log('✅ Groups loaded:', allGroups.value.length)
+  } catch (error) {
+    console.error('Error fetching groups:', error)
+    allGroups.value = []  // ✅ Always set to array on error
+  }
+}
+
+const fetchInventoryItems = async () => {
+  try {
+    const response = await itemService.getActiveItems?.() || { data: [] }
+    inventoryItems.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching inventory items:', error)
+    inventoryItems.value = []
+  }
+}
+
 const fetchConvertedBalances = async () => {
   isLoading.value = true
   try {
@@ -578,7 +541,6 @@ const fetchConvertedBalances = async () => {
       storeId,
       groupId,
       categoryId: filterCategory.value || undefined,
-      uomId: filterUom.value || undefined,
       search: searchQuery.value || undefined,
       page: currentPage.value,
       limit: pageSize.value
@@ -599,9 +561,6 @@ const fetchConvertedBalances = async () => {
   }
 }
 
-/**
- * Fetch statistics
- */
 const fetchStats = async () => {
   try {
     const storeId = userStoreId.value
@@ -624,40 +583,6 @@ const fetchStats = async () => {
   }
 }
 
-/**
- * Fetch available items for conversion (dropdown)
- */
-const fetchAvailableItems = async () => {
-  try {
-    const storeId = userStoreId.value
-    const groupId = userGroupId.value
-
-    if (!storeId || !groupId) {
-      showToastMessage('No store or group assigned to your account', 'warning')
-      return
-    }
-
-    const response = await convertedBalanceService.getAvailableItems({
-      storeId,
-      groupId,
-      categoryId: convertFilterCategory.value || undefined,
-      uomId: convertFilterUom.value || undefined,
-      search: convertSearchQuery.value || undefined
-    })
-
-    if (response.success) {
-      availableItems.value = response.data.map(item => ({
-        ...item,
-        selected: false,
-        convertQty: 1
-      }))
-    }
-  } catch (error) {
-    console.error('Error fetching available items:', error)
-    showToastMessage('Failed to fetch available items', 'error')
-  }
-}
-
 // ================================================================
 // METHODS - UI Interactions
 // ================================================================
@@ -673,8 +598,9 @@ const onFilterChange = () => {
 }
 
 const clearFilters = () => {
+  filterStore.value = ''
+  filterGroup.value = ''
   filterCategory.value = ''
-  filterUom.value = ''
   searchQuery.value = ''
   currentPage.value = 1
   fetchConvertedBalances()
@@ -694,127 +620,42 @@ const changePageSize = () => {
 }
 
 // ================================================================
+// METHODS - Initialize Modal
+// ================================================================
+
+const openInitializeModal = () => {
+  showInitializeModal.value = true
+}
+
+const closeInitializeModal = () => {
+  showInitializeModal.value = false
+}
+
+const onInitializeSuccess = () => {
+  showToastMessage('Converted balance initialized successfully!', 'success')
+  fetchConvertedBalances()
+  fetchStats()
+}
+
+// ================================================================
 // METHODS - Convert Modal
 // ================================================================
 
-const refreshAvailableItems = () => {
-  fetchAvailableItems()
-}
-
-const openConvertModal = async () => {
-  convertFilterCategory.value = ''
-  convertFilterUom.value = ''
-  convertSearchQuery.value = ''
-  await fetchAvailableItems()
+const openConvertModal = () => {
   showConvertModal.value = true
 }
 
-const closeConvertModal = () => {
-  showConvertModal.value = false
-  availableItems.value = []
+const onConvertSuccess = () => {
+  showToastMessage('Conversion completed successfully!', 'success')
+  fetchConvertedBalances()
+  fetchStats()
 }
 
-const toggleItemSelection = (item, event) => {
-  const isChecked = event.target.checked
-  item.selected = isChecked
-  if (isChecked) {
-    item.convertQty = 1
-  } else {
-    item.convertQty = 0
-  }
-}
-
-const selectAllText = (event) => {
-  event.target.select()
-}
-
-const validateQty = (item) => {
-  if (item.convertQty > item.balance) {
-    item.convertQty = item.balance
-  }
-  if (item.convertQty < 0) {
-    item.convertQty = 0
-  }
-  if (item.convertQty === 0) {
-    item.selected = false
-  }
-}
-
-// ================================================================
-// METHODS - Confirmation Modal
-// ================================================================
-
-const openConfirmationModal = () => {
-  const selected = availableItems.value.filter(
-    item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  )
-  
-  if (selected.length === 0) {
-    showToastMessage('No valid items selected for conversion', 'warning')
-    return
-  }
-  
-  selectedItemsForConfirmation.value = selected
-  showConfirmationModal.value = true
-}
-
-const closeConfirmationModal = () => {
-  showConfirmationModal.value = false
-  selectedItemsForConfirmation.value = []
-}
-
-/**
- * Perform conversion - calls API
- */
-const confirmConversion = async () => {
-  const selectedItems = selectedItemsForConfirmation.value
-
-  if (selectedItems.length === 0) {
-    showToastMessage('No items selected for conversion', 'warning')
-    return
-  }
-
-  converting.value = true
-
-  try {
-    const items = selectedItems.map(item => ({
-      balanceId: item.balanceId,
-      itemId: item.id,
-      quantity: item.convertQty,
-      conversionRate: item.conversionRate,
-      sourceUomId: item.sourceUomId,
-      targetUomId: item.targetUomId,
-      itemCode: item.itemCode,
-      itemName: item.itemName,
-      uomCode: item.uomCode,
-      convertToUom: item.convertToUom
-    }))
-
-    const response = await convertedBalanceService.convert(items)
-
-    if (response.success) {
-      showToastMessage(response.message || `Successfully converted ${selectedItems.length} item(s)`, 'success')
-      
-      // ✅ Refresh data
-      await fetchConvertedBalances()
-      await fetchStats()
-      
-      // ✅ Close modals
-      closeConfirmationModal()
-      closeConvertModal()
-    } else {
-      showToastMessage(response.message || 'Conversion failed', 'error')
-      if (response.data?.errors) {
-        response.data.errors.forEach(err => {
-          showToastMessage(`${err.itemCode}: ${err.error}`, 'error')
-        })
-      }
-    }
-  } catch (error) {
-    console.error('Conversion error:', error)
-    showToastMessage('Failed to perform conversion', 'error')
-  } finally {
-    converting.value = false
+const onConvertError = (errors) => {
+  if (errors && errors.length > 0) {
+    errors.forEach(err => {
+      showToastMessage(err.error || 'Conversion failed', 'error')
+    })
   }
 }
 
@@ -846,7 +687,6 @@ const exportSelectedReport = async () => {
       storeId,
       groupId,
       categoryId: filterCategory.value || undefined,
-      uomId: filterUom.value || undefined,
       search: searchQuery.value || undefined,
       page: 1,
       limit: 99999
@@ -898,7 +738,7 @@ const getBalanceClass = (balance) => {
 }
 
 // ================================================================
-// WATCHERS
+// WATCHERS - Auto-fetch on user data changes
 // ================================================================
 
 watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
@@ -908,6 +748,27 @@ watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
   }
 }, { immediate: true })
 
+// Watch for user data changes in localStorage
+watch(
+  () => localStorage.getItem('user'),
+  (newVal) => {
+    if (newVal) {
+      userData.value = getUserData()
+      // Update store/group filters for non-admin
+      if (!isAdmin.value) {
+        if (userData.value?.assignedStore?.id) {
+          filterStore.value = String(userData.value.assignedStore.id)
+        }
+        if (userData.value?.assignedGroup?.id) {
+          filterGroup.value = String(userData.value.assignedGroup.id)
+        }
+      }
+      fetchConvertedBalances()
+      fetchStats()
+    }
+  }
+)
+
 // ================================================================
 // LIFECYCLE
 // ================================================================
@@ -915,20 +776,32 @@ watch([userStoreId, userGroupId], ([newStoreId, newGroupId]) => {
 onMounted(async () => {
   isLoading.value = true
   
-  // ✅ Load categories and UOMs
-  await fetchCategoriesAndUOMs()
+  // Get user data
+  userData.value = getUserData()
+  storeName.value = userData.value.assignedStore?.name || ''
   
-  if (authStore.isAuthenticated) {
+  // Set default filters for non-admin
+  if (!isAdmin.value) {
+    if (userData.value?.assignedStore?.id) {
+      filterStore.value = String(userData.value.assignedStore.id)
+    }
+    if (userData.value?.assignedGroup?.id) {
+      filterGroup.value = String(userData.value.assignedGroup.id)
+    }
+  }
+  
+  // Load master data
+  await Promise.all([
+    fetchCategories(),
+    fetchStores(),
+    fetchGroups(),
+    fetchInventoryItems()
+  ])
+  
+  // Load converted balances
+  if (userStoreId.value && userGroupId.value) {
     await fetchConvertedBalances()
     await fetchStats()
-  } else {
-    const unwatch = watch(() => authStore.isAuthenticated, async (isAuth) => {
-      if (isAuth) {
-        await fetchConvertedBalances()
-        await fetchStats()
-        unwatch()
-      }
-    })
   }
   
   isLoading.value = false
@@ -1017,6 +890,25 @@ onMounted(async () => {
   color: #94a3b8;
 }
 
+.btn-add {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-add:hover {
+  background: #2563eb;
+}
+
 .btn-convert {
   background: #8b5cf6;
   color: white;
@@ -1059,28 +951,18 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 7px 15px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
+.spinner-small {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
 }
 
-.btn-danger:hover:not(:disabled) {
-  background: #dc2626;
-}
-.btn-danger:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ================================================================ */
@@ -1254,7 +1136,7 @@ onMounted(async () => {
 }
 
 /* ================================================================ */
-/* LOADING */
+/* LOADING & EMPTY */
 /* ================================================================ */
 .loading-state {
   display: flex;
@@ -1272,12 +1154,6 @@ onMounted(async () => {
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .empty-state {
@@ -1383,14 +1259,6 @@ onMounted(async () => {
   animation: slideUp 0.3s ease;
 }
 
-.convert-modal .modal-container {
-  max-width: 750px;
-}
-
-.confirmation-modal .modal-container {
-  max-width: 750px;
-}
-
 .export-modal .modal-container {
   max-width: 400px;
 }
@@ -1449,12 +1317,8 @@ onMounted(async () => {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
@@ -1511,247 +1375,6 @@ onMounted(async () => {
   background: #e2e8f0;
 }
 
-/* ================================================================ */
-/* CONVERT MODAL */
-/* ================================================================ */
-.convert-info {
-  font-size: 13px;
-  color: #475569;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border-radius: 8px;
-  border: 1px solid #bbf7d0;
-}
-
-.convert-search {
-  margin-bottom: 12px;
-}
-
-.search-box-small {
-  position: relative;
-}
-
-.search-box-small input {
-  width: 100%;
-  padding: 8px 12px 8px 32px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  background: #f8fafc;
-  transition: all 0.2s;
-}
-
-.search-box-small input:focus {
-  outline: none;
-  border-color: #8b5cf6;
-  background: white;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.convert-filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.convert-item-list {
-  max-height: 350px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-}
-
-.convert-item {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  gap: 6px;
-}
-
-.convert-item:last-child {
-  border-bottom: none;
-}
-
-.convert-item-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.convert-item-info input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.convert-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-size: 12px;
-  min-width: 90px;
-}
-
-.convert-item-name {
-  flex: 1;
-  font-weight: 500;
-  color: #1e293b;
-  min-width: 120px;
-}
-
-.convert-item-uom {
-  background: #f1f5f9;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  color: #475569;
-}
-
-.convert-item-balance {
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.convert-item-target {
-  background: #dbeafe;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  color: #1e40af;
-}
-
-.convert-item-rate {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.convert-item-input {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-left: 28px;
-  flex-wrap: wrap;
-}
-
-.convert-item-input label {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.convert-qty-input {
-  width: 80px;
-  padding: 4px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.convert-qty-input:focus {
-  outline: none;
-  border-color: #8b5cf6;
-}
-
-.convert-result {
-  font-weight: 600;
-  color: #8b5cf6;
-  font-size: 13px;
-}
-
-.convert-error {
-  font-weight: 600;
-  color: #dc2626;
-  font-size: 12px;
-}
-
-.convert-max {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.no-convert-items {
-  padding: 20px;
-  text-align: center;
-  color: #94a3b8;
-}
-
-/* ================================================================ */
-/* CONFIRMATION MODAL */
-/* ================================================================ */
-.confirmation-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.confirmation-text {
-  text-align: center;
-  font-size: 14px;
-  color: #1e293b;
-  margin-bottom: 16px;
-}
-
-.confirmation-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.confirmation-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 13px;
-}
-
-.confirmation-item:last-child {
-  border-bottom: none;
-}
-
-.conf-item-code {
-  font-weight: 600;
-  color: #2563eb;
-  min-width: 90px;
-}
-
-.conf-item-name {
-  flex: 1;
-  color: #1e293b;
-}
-
-.conf-item-detail {
-  color: #8b5cf6;
-  font-weight: 500;
-}
-
-.confirmation-warning {
-  padding: 8px 12px;
-  background: #fef2f2;
-  border-radius: 6px;
-  border: 1px solid #fecaca;
-  font-size: 13px;
-  color: #991b1b;
-  text-align: center;
-}
-
-/* ================================================================ */
-/* EXPORT MODAL */
-/* ================================================================ */
 .export-options {
   display: flex;
   flex-direction: column;
@@ -1865,18 +1488,6 @@ onMounted(async () => {
     margin: 10px;
     max-width: 100% !important;
   }
-
-  .convert-item-info {
-    flex-wrap: wrap;
-  }
-
-  .convert-item-input {
-    padding-left: 0;
-  }
-
-  .confirmation-item {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 480px) {
@@ -1888,16 +1499,13 @@ onMounted(async () => {
   .stats-grid {
     grid-template-columns: 1fr;
   }
-
-  .convert-filters {
-    flex-direction: column;
-  }
 }
 
 /* ================================================================ */
 /* PRINT STYLES */
 /* ================================================================ */
 @media print {
+  .btn-add,
   .btn-convert,
   .btn-export,
   .search-box,

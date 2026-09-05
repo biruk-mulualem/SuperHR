@@ -9,6 +9,10 @@ export interface RequestItem {
   itemId: number;
   quantity: number;
   remark?: string;
+  // ✅ Add these UOM fields
+  selected_uom?: 'base' | 'conversion';
+  uom_code?: string;
+  is_base_uom?: boolean;
 }
 
 export interface User {
@@ -47,6 +51,13 @@ export interface Item {
     code: string;
     name: string;
   };
+  conversionUomId?: number;  // ✅ Add this
+  conversionUom?: {          // ✅ Add this
+    uomId: number;
+    code: string;
+    name: string;
+  };
+  conversionValue?: number;  // ✅ Add this
   specText?: string;
 }
 
@@ -240,6 +251,9 @@ export interface CreateRequestData {
     itemId: number;
     quantity: number;
     remark?: string;
+    selectedUom?: 'base' | 'conversion';
+    uomCode?: string;
+    isBaseUom?: boolean;
   }[];
   requestedById?: number;
   requestedDate: string;
@@ -255,6 +269,9 @@ export interface UpdateRequestData {
     itemId: number;
     quantity: number;
     remark?: string;
+    selectedUom?: 'base' | 'conversion';
+    uomCode?: string;
+    isBaseUom?: boolean;
   }[];
   requestedById?: number;
   requestedDate?: string;
@@ -359,23 +376,49 @@ class ItemRequestService {
    * Get active items for dropdown
    * GET /api/item-requests/active-items
    */
-  async getActiveItems(): Promise<{
-    success: boolean;
-    data: Item[];
-    error?: string;
-  }> {
-    try {
-      const response = await api.get('/item-requests/active-items');
-      return response.data;
-    } catch (error: any) {
-      console.error('Get active items error:', error);
-      return {
-        success: false,
-        data: [],
-        error: error.response?.data?.error || 'Failed to fetch active items'
-      };
-    }
+ // stores/itemRequestService.ts
+
+/**
+ * Get active items for dropdown (with search support)
+ * GET /api/item-requests/active-items
+ */
+async getActiveItems(params?: {
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{
+  success: boolean;
+  data: Item[];
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  error?: string;
+}> {
+  try {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    const url = queryParams.toString() 
+      ? `/item-requests/active-items?${queryParams.toString()}`
+      : '/item-requests/active-items';
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error: any) {
+    console.error('Get active items error:', error);
+    return {
+      success: false,
+      data: [],
+      error: error.response?.data?.error || 'Failed to fetch active items'
+    };
   }
+}
 
   // ================================================================
   // STORE GROUPS METHOD

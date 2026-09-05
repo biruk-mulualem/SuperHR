@@ -206,16 +206,16 @@
                   </div>
 
                   <!-- Request Items -->
-                  <div class="preview-request-items">
-                    <span
-                      v-for="item in req.items"
-                      :key="item.itemId"
-                      class="preview-item"
-                    >
-                      {{ getItemCommonName(item.itemId) }}
-                      <span class="preview-qty">×{{ item.quantity }}</span>
-                    </span>
-                  </div>
+               <div class="preview-request-items">
+  <span
+    v-for="item in req.items"
+    :key="item.itemId"
+    class="preview-item"
+  >
+    {{ getItemCommonName(item.itemId) }}
+    <span class="preview-qty">×{{ Number(item.quantity).toFixed(2) }} {{ getUomDisplay(item) }}</span>
+  </span>
+</div>
 
                   <!-- ✅ PER-REQUEST INPUT - GRN for ADD / SIV for REMOVE -->
                   <div class="preview-request-doc">
@@ -510,8 +510,27 @@ const getGroupName = (groupId) => {
 };
 
 const getItemCommonName = (itemId) => {
-  const item = props.inventoryItems.find((i) => i.id === itemId);
-  return item ? item.name || item.standardName || `Item ${itemId}` : `Item ${itemId}`;
+  // First try to find the item in the inventory items list
+  const item = props.inventoryItems.find((i) => i.id === itemId || i.itemId === itemId);
+  if (item) {
+    return item.name || item.standardName || item.itemName || `Item ${itemId}`;
+  }
+  
+  // If not found in inventory, check if we have it in the request data
+  // Look through all requests to find this item
+  for (const req of storeRequests.value) {
+    const foundItem = req.items?.find(i => i.itemId === itemId || i.id === itemId);
+    if (foundItem) {
+      // Check for item name in various possible locations
+      return foundItem.itemName || 
+             foundItem.item?.standardName || 
+             foundItem.item?.name || 
+             foundItem.name ||
+             `Item ${itemId}`;
+    }
+  }
+  
+  return `Item ${itemId}`;
 };
 
 const getItemActionLabel = (req) => {
@@ -745,6 +764,71 @@ const processRequests = async () => {
     processing.value = false;
     showConfirmation.value = false;
   }
+};
+
+
+// ================================================================
+// UOM HELPER - Get the correct UOM display
+// ================================================================
+
+/**
+ * Get the correct UOM display for an item
+ * Uses the stored uom_code from the request detail if available
+ * Falls back to base UOM if not
+ */
+// ================================================================
+// UOM HELPER - Get the correct UOM display
+// ================================================================
+
+/**
+ * Get the correct UOM display for an item
+ * Uses the stored uom_code from the request detail if available
+ * Falls back to base UOM if not
+ */
+// ================================================================
+// UOM HELPER - Get the correct UOM display
+// ================================================================
+
+/**
+ * Get the correct UOM display for an item
+ * Uses the stored uom_code from the request detail if available
+ * Falls back to base UOM if not
+ */
+const getUomDisplay = (item) => {
+  // ✅ First, check if we have uomCode directly on the item (from API response)
+  if (item.uomCode) {
+    return item.uomCode;
+  }
+  
+  // ✅ Check if we have a stored uom_code (this is the UOM the user requested in)
+  if (item.uom_code) {
+    return item.uom_code;
+  }
+  
+  // ✅ Check if selectedUom indicates which UOM to use
+  if (item.selectedUom === 'conversion' && item.conversionUomCode) {
+    return item.conversionUomCode;
+  }
+  
+  // ✅ If base UOM is selected or no selection, use base UOM
+  if (item.baseUomCode) {
+    return item.baseUomCode;
+  }
+  
+  // Fallback: try to get from item's base UOM (nested)
+  if (item.item?.uom?.code) {
+    return item.item.uom.code;
+  }
+  
+  // Fallback: try item's uom object
+  if (item.item?.uom) {
+    if (typeof item.item.uom === 'string') return item.item.uom;
+    if (item.item.uom.code) return item.item.uom.code;
+    if (item.item.uom.name) return item.item.uom.name;
+  }
+  
+  // Last resort - use a generic label
+  return 'Qty';
 };
 
 // ================================================================

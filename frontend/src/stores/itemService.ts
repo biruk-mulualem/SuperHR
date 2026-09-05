@@ -121,6 +121,28 @@ export interface BulkCreateResponse {
   };
 }
 
+// ✅ Add Store interface
+export interface Store {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  status?: 'Active' | 'Inactive';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ✅ Add Group interface
+export interface Group {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  status?: 'Active' | 'Inactive';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ImportResponse {
   success: boolean;
   message: string;
@@ -222,6 +244,50 @@ class ItemService {
       };
     }
   }
+
+  // ================================================================
+// STORE METHODS
+// ================================================================
+
+/**
+ * Get all stores
+ * GET /api/stores
+ */
+async getStores(): Promise<{ success: boolean; data: any[]; error?: string }> {
+  try {
+    const response = await api.get('/stores');
+    return response.data;
+  } catch (error: any) {
+    console.error('Get stores error:', error);
+    return {
+      success: false,
+      data: [],
+      error: error.response?.data?.error || 'Failed to fetch stores'
+    };
+  }
+}
+
+// ================================================================
+// GROUP METHODS
+// ================================================================
+
+/**
+ * Get all groups
+ * GET /api/groups
+ */
+async getGroups(): Promise<{ success: boolean; data: any[]; error?: string }> {
+  try {
+    const response = await api.get('/groups');
+    return response.data;
+  } catch (error: any) {
+    console.error('Get groups error:', error);
+    return {
+      success: false,
+      data: [],
+      error: error.response?.data?.error || 'Failed to fetch groups'
+    };
+  }
+}
 
   // ================================================================
   // UOM METHODS

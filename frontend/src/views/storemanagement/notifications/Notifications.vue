@@ -187,19 +187,19 @@
             <div class="items-section">
   <div class="items-header">
     <span class="items-label">📦 Items ({{ getTotalItems(notif.request?.items) }})</span>
-   <span class="items-total">Total: {{ Number(getTotalQuantity(notif.request?.items)).toFixed(2) }} {{ notif.request?.items?.[0]?.item?.uom?.name || 'units' }}</span>
+<span class="items-total">Total: {{ Number(getTotalQuantity(notif.request?.items)).toFixed(2) }} {{ getFirstItemUom(notif.request?.items) }}</span>
   </div>
-  <div class="items-list">
-    <div 
-      v-for="(item, idx) in notif.request?.items || []" 
-      :key="idx" 
-      class="item-row"
-    >
-      <span class="item-name">{{ item.item?.name || 'Unknown Item' }}</span>
-      <span class="item-quantity">{{ Number(item.quantity).toFixed(2) }} {{ item.item?.uom?.name || 'units' }}</span>
-      <span v-if="item.remark" class="item-remark">💬 {{ item.remark }}</span>
-    </div>
+<div class="items-list">
+  <div 
+    v-for="(item, idx) in notif.request?.items || []" 
+    :key="idx" 
+    class="item-row"
+  >
+    <span class="item-name">{{ item.item?.name || 'Unknown Item' }}</span>
+    <span class="item-quantity">{{ Number(item.quantity).toFixed(2) }} {{ getUomDisplay(item) }}</span>
+    <span v-if="item.remark" class="item-remark">💬 {{ item.remark }}</span>
   </div>
+</div>
 </div>
 
               <!-- Request Remark - Full Display -->
@@ -321,8 +321,12 @@
             </div>
             <div class="detail-item-modal">
               <span class="detail-label-modal">Items</span>
-           <span class="detail-value-modal">{{ getTotalItems(currentNotification?.request?.items) }} items ({{ Number(getTotalQuantity(currentNotification?.request?.items)).toFixed(2) }} {{ currentNotification?.request?.items?.[0]?.item?.uom?.name || 'units' }})</span>
-            </div>
+          <span class="detail-value-modal">
+  {{ getTotalItems(currentNotification?.request?.items) }} items 
+  ({{ Number(getTotalQuantity(currentNotification?.request?.items)).toFixed(2) }} 
+  {{ getFirstItemUom(currentNotification?.request?.items) }})
+</span>
+          </div>
             <div class="detail-item-modal">
               <span class="detail-label-modal">From</span>
               <span class="detail-value-modal">{{ currentNotification?.request?.askingStore?.name || 'Unknown' }}</span>
@@ -600,6 +604,52 @@ const formatTimeOnly = (date) => {
     hour12: false
   })
 }
+
+
+
+
+
+
+
+// Add these functions in the <script setup> section
+
+/**
+ * Get the correct UOM display for an item
+ */
+const getUomDisplay = (item) => {
+  // ✅ Check if we have a stored uom_code (this is the UOM the user requested in)
+  if (item.uom_code) {
+    return item.uom_code;
+  }
+  
+  // Fallback: try to get from item's base UOM
+  if (item.item?.uom?.code) {
+    return item.item.uom.code;
+  }
+  
+  // Last resort
+  return 'units';
+};
+
+/**
+ * Get the UOM from the first item (for total display)
+ */
+const getFirstItemUom = (items) => {
+  if (!items || items.length === 0) return 'units';
+  const firstItem = items[0];
+  return getUomDisplay(firstItem);
+};
+
+
+
+
+
+
+
+
+
+
+
 
 // ================================================================
 // METHODS

@@ -929,8 +929,6 @@ exports.getApprovedRequests = async (req, res) => {
 // ================================================================
 // 6. GET RECENT TRANSACTIONS
 // ================================================================
-// controllers/storeDashboardController.js
-
 exports.getRecentTransactions = async (req, res) => {
     try {
         const userAccess = await getUserStoreAndGroupFromRequest(req);
@@ -946,7 +944,8 @@ exports.getRecentTransactions = async (req, res) => {
         const { balanceWhereClause } = filters;
         const { limit = 10 } = req.query;
         
-        // ✅ RAW SQL - Gets BOTH Stock In AND Stock Out with correct transaction_type
+        // ✅ RAW SQL - Gets BOTH Stock In AND Stock Out with complete UOM info
+        // 🔥 Filter out transactions with change_amount = 0
         const transactions = await sequelize.query(
             `SELECT 
                 sbh.id,
@@ -961,19 +960,29 @@ exports.getRecentTransactions = async (req, res) => {
                 sbh.reference_id,
                 sbh.remark,
                 sbh.created_at,
+                sbh.uom_used,
+                sbh.is_base_uom,
                 i.code AS item_code,
                 i.name AS item_name,
                 i.standard_name AS item_standard_name,
-                uom.code AS uom_code,
+                i.uom_id,
+                i.conversion_uom_id,
+                i.conversion_value,
+                buom.code AS base_uom_code,
+                buom.name AS base_uom_name,
+                cuom.code AS conversion_uom_code,
+                cuom.name AS conversion_uom_name,
                 s.name AS store_name,
                 u.full_name AS created_by_name
             FROM store_balance_histories sbh
             LEFT JOIN items i ON sbh.item_id = i.id
-            LEFT JOIN uom uom ON i.uom_id = uom.id
+            LEFT JOIN uom buom ON i.uom_id = buom.id
+            LEFT JOIN uom cuom ON i.conversion_uom_id = cuom.id
             LEFT JOIN stores s ON sbh.store_id = s.id
             LEFT JOIN users u ON sbh.changed_by = u.user_id
             WHERE sbh.store_id = :storeId
               AND sbh.group_id = :groupId
+              AND sbh.change_amount != 0  -- 🔥 EXCLUDE zero quantity transactions
             ORDER BY sbh.created_at DESC
             LIMIT :limit`,
             {
@@ -986,36 +995,77 @@ exports.getRecentTransactions = async (req, res) => {
             }
         );
         
-        console.log(`✅ Found ${transactions.length} recent transactions`);
+        console.log(`✅ Found ${transactions.length} recent transactions (excluding zero quantity)`);
         
-        // ✅ Map results - transaction_type comes directly from the database
-        const result = transactions.map(tx => ({
-            id: tx.id,
-            itemName: tx.item_standard_name || tx.item_name || 'Unknown Item',
-            itemCode: tx.item_code || 'N/A',
-            storeId: tx.store_id,
-            storeName: tx.store_name || null,
-            // ✅ CORRECT: transaction_type from database
-            type: tx.transaction_type || 'Stock In',
-            quantity: Math.abs(parseFloat(tx.change_amount || 0)),
-            previousBalance: parseFloat(tx.previous_balance || 0),
-            newBalance: parseFloat(tx.new_balance || 0),
-            uom: tx.uom_code || 'PCS',
-            referenceType: tx.reference_type,
-            referenceId: tx.reference_id,
-            remark: tx.remark,
-            createdBy: tx.created_by_name || 'System',
-            createdAt: tx.created_at
-        }));
+        // ✅ Map results with full UOM information
+        const result = transactions.map(tx => {
+            // Determine which UOM to display
+            let displayUomCode = tx.uom_used || tx.base_uom_code || 'N/A';
+            let displayUomName = '';
+            
+            // If uom_used is stored in history, use it
+            if (tx.uom_used) {
+                // Try to find the UOM name from either base or conversion
+                if (tx.uom_used === tx.base_uom_code) {
+                    displayUomName = tx.base_uom_name || '';
+                } else if (tx.uom_used === tx.conversion_uom_code) {
+                    displayUomName = tx.conversion_uom_name || '';
+                } else {
+                    displayUomName = tx.uom_used;
+                }
+            } else {
+                // Fallback to base UOM
+                displayUomCode = tx.base_uom_code || 'N/A';
+                displayUomName = tx.base_uom_name || '';
+            }
+            
+            return {
+                id: tx.id,
+                itemName: tx.item_standard_name || tx.item_name || 'Unknown Item',
+                itemCode: tx.item_code || 'N/A',
+                storeId: tx.store_id,
+                storeName: tx.store_name || null,
+                type: tx.transaction_type || 'Stock In',
+                quantity: Math.abs(parseFloat(tx.change_amount || 0)),
+                previousBalance: parseFloat(tx.previous_balance || 0),
+                newBalance: parseFloat(tx.new_balance || 0),
+                uom: displayUomCode,
+                uomName: displayUomName,
+                baseUom: {
+                    code: tx.base_uom_code || 'N/A',
+                    name: tx.base_uom_name || 'N/A'
+                },
+                conversionUom: {
+                    code: tx.conversion_uom_code || 'N/A',
+                    name: tx.conversion_uom_name || 'N/A'
+                },
+                conversionValue: parseFloat(tx.conversion_value || 0),
+                isBaseUom: tx.is_base_uom !== undefined ? tx.is_base_uom : true,
+                uomUsed: tx.uom_used || 'N/A',
+                referenceType: tx.reference_type,
+                referenceId: tx.reference_id,
+                remark: tx.remark,
+                createdBy: tx.created_by_name || 'System',
+                createdAt: tx.created_at
+            };
+        });
         
         // ✅ Log the types being returned
         const types = result.map(r => r.type);
         console.log(`📊 Stock In: ${types.filter(t => t === 'Stock In').length}`);
         console.log(`📊 Stock Out: ${types.filter(t => t === 'Stock Out').length}`);
+        console.log(`📊 UOMs used: ${result.map(r => r.uom).join(', ')}`);
+        
+        // 🔥 Additional filter: Remove any transactions with quantity 0 (safety net)
+        const filteredResult = result.filter(r => r.quantity > 0);
+        
+        if (filteredResult.length !== result.length) {
+            console.log(`⚠️ Removed ${result.length - filteredResult.length} transactions with zero quantity`);
+        }
         
         res.status(200).json({
             success: true,
-            data: result
+            data: filteredResult
         });
     } catch (error) {
         console.error('❌ Error getting recent transactions:', error);

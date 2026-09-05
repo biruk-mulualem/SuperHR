@@ -14,6 +14,7 @@ const {
   StoreBalanceHistory,
   ItemRequest,
   ItemRequestDetail,
+  ConvertedBalance,
   Store,
   Group,
   Role,
@@ -1167,6 +1168,10 @@ exports.deleteBalance = async (req, res) => {
 // GET APPROVED REQUESTS - Shows requests for the specific group
 // ================================================================
 
+// ================================================================
+// GET APPROVED REQUESTS - Shows requests for the specific group
+// ================================================================
+
 exports.getApprovedRequests = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -1174,7 +1179,6 @@ exports.getApprovedRequests = async (req, res) => {
 
     console.log("🔍 Fetching approved requests for storeId:", storeId, "groupId:", groupId);
 
-    // 🔥 Get ALL approved requests for this store (both asking and supplying)
     const whereClause = {
       status: "approved",
       [Op.or]: [
@@ -1208,11 +1212,24 @@ exports.getApprovedRequests = async (req, res) => {
             {
               model: Item,
               as: "item",
-              attributes: ["id", "code", "name", "standardName"],
+              attributes: [
+                "id",
+                "code",
+                "name",
+                "standardName",
+                "conversionValue",
+                "uomId",
+                "conversionUomId",
+              ],
               include: [
                 {
                   model: UOM,
                   as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
                   attributes: ["id", "code", "name"],
                 },
               ],
@@ -1229,7 +1246,6 @@ exports.getApprovedRequests = async (req, res) => {
     let filteredRequests = requests;
     if (groupId) {
       const requestIds = requests.map((r) => r.requestId);
-
       const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
 
       if (RequestGroupProcessing) {
@@ -1243,7 +1259,6 @@ exports.getApprovedRequests = async (req, res) => {
           attributes: ["requestId", "status"],
         });
 
-        // 🔥 Exclude if status is 'processed' or 'skipped'
         const excludedRequestIds = new Set(
           processingRecords
             .filter((r) => r.status === "processed" || r.status === "skipped")
@@ -1269,6 +1284,7 @@ exports.getApprovedRequests = async (req, res) => {
       requestedDate: request.requestedDate,
       status: request.status,
       remark: request.remark,
+      isAsset: request.isAsset || false,
       items:
         request.items?.map((item) => ({
           id: item.id,
@@ -1276,7 +1292,14 @@ exports.getApprovedRequests = async (req, res) => {
           itemName: item.item?.standardName || item.item?.name || null,
           itemCode: item.item?.code || null,
           quantity: parseFloat(item.quantity),
-          uomCode: item.item?.uom?.code || null,
+          remark: item.remark || null,
+          // ✅ FIX: Include UOM fields from the request detail
+          uomCode: item.uom_code || item.item?.uom?.code || null,
+          selectedUom: item.selected_uom || 'base',
+          isBaseUom: item.is_base_uom !== false,
+          baseUomCode: item.item?.uom?.code || null,
+          conversionUomCode: item.item?.conversionUom?.code || null,
+          conversionValue: parseFloat(item.item?.conversionValue) || 1,
         })) || [],
     }));
 
@@ -3170,6 +3193,10 @@ exports.getRequestGroupStatus = async (req, res) => {
 // PROCESS REQUEST FOR A SPECIFIC GROUP - WITH CORRECT BALANCE & LOCKING
 // ================================================================
 
+// ================================================================
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH BASE & CONVERTED UOM SUPPORT
+// ================================================================
+
 exports.processRequestForGroup = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -3274,6 +3301,20 @@ exports.processRequestForGroup = async (req, res) => {
                 "standardName",
                 "conversionValue",
                 "status",
+                "uomId",
+                "conversionUomId",
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
               ],
             },
           ],
@@ -3394,7 +3435,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     // ================================================================
-    // 10. PROCESS ITEMS - WITH CORRECT BALANCE CALCULATION & LOCKING
+    // 10. PROCESS ITEMS - WITH BASE & CONVERTED UOM SUPPORT
     // ================================================================
     const autoInitializedItems = [];
     const results = [];
@@ -3415,36 +3456,44 @@ exports.processRequestForGroup = async (req, res) => {
           continue;
         }
 
-        // ✅ FIX: GET THE BALANCE RECORD WITH LOCK
-        let balance = await StoreBalance.findOne({
-          where: {
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            itemId: item.itemId,
-          },
-          lock: transaction.LOCK.UPDATE, // 🔥 THIS PREVENTS RACE CONDITIONS
-          transaction: transaction,
-        });
+        // ✅ DETERMINE IF BASE OR CONVERTED UOM
+        const isBaseUom = item.isBaseUom !== false; // Default to true
+        
+        // Get the UOM code to use
+        const uomCode = isBaseUom 
+          ? (item.item.uom?.code || "PCS")
+          : (item.conversionUomCode || item.item?.conversionUom?.code || "KG");
 
-        // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
-        if (!balance) {
-          console.log(`📦 Auto-initializing balance for item: ${item.item.code}`);
+        if (isBaseUom) {
+          // ================================================================
+          // BASE UOM OPERATION - store_balances table
+          // ================================================================
           
-          balance = await StoreBalance.create(
-            {
+          let balance = await StoreBalance.findOne({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+            },
+            lock: transaction.LOCK.UPDATE,
+            transaction: transaction,
+          });
+
+          // Auto-initialize if not exists
+          if (!balance) {
+            console.log(`📦 Auto-initializing BASE balance for item: ${item.item.code}`);
+            
+            balance = await StoreBalance.create({
               storeId: parseInt(storeId),
               groupId: parseInt(groupId),
               itemId: item.itemId,
               balance: 0,
               minStockAlert: 0,
               status: "Active",
-            },
-            { transaction },
-          );
+            }, { transaction });
 
-          // ✅ CREATE INITIAL HISTORY RECORD
-          await StoreBalanceHistory.create(
-            {
+            // ✅ CREATE INITIAL HISTORY RECORD FOR BASE UOM
+            await StoreBalanceHistory.create({
               balanceId: balance.id,
               storeId: parseInt(storeId),
               groupId: parseInt(groupId),
@@ -3456,53 +3505,53 @@ exports.processRequestForGroup = async (req, res) => {
               referenceType: "auto_initialization",
               referenceId: request.requestId,
               changedBy: userId,
-              remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name}`,
-            },
-            { transaction },
-          );
+              uomUsed: uomCode,
+              isBaseUom: true,
+              remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name}`,
+            }, { transaction });
 
-          autoInitializedItems.push({
-            itemId: item.itemId,
-            itemCode: item.item.code || "N/A",
-            itemName: item.item.standardName || item.item.name || "Unknown Item",
-          });
-        }
+            autoInitializedItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName: item.item.standardName || item.item.name || "Unknown Item",
+              uomType: "Base UOM",
+              uomCode: uomCode,
+            });
+          }
 
-        // ✅ CHECK IF BALANCE IS ACTIVE
-        if (balance.status !== "Active") {
-          errors.push(`Balance for item "${item.item.code}" is ${balance.status}`);
-          continue;
-        }
+          // Check if balance is active
+          if (balance.status !== "Active") {
+            errors.push(`Balance for item "${item.item.code}" is ${balance.status}`);
+            continue;
+          }
 
-        // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
-        const previousBalance = parseFloat(balance.balance);
-        const quantity = parseFloat(item.quantity);
-        const changeAmount = quantity * changeMultiplier;
-        const newBalance = previousBalance + changeAmount;
+          const previousBalance = parseFloat(balance.balance);
+          const quantity = parseFloat(item.quantity);
+          const changeAmount = quantity * changeMultiplier;
+          const newBalance = previousBalance + changeAmount;
 
-        // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
-        if (action === "STOCK_OUT" && newBalance < 0) {
-          errors.push(
-            `Insufficient balance for "${item.item.code}". ` +
-            `Current balance: ${previousBalance}, Requested: ${quantity}`
-          );
-          continue;
-        }
+          // Stock Out validation
+          if (action === "STOCK_OUT" && newBalance < 0) {
+            errors.push(
+              `Insufficient balance for "${item.item.code}". ` +
+              `Current balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`
+            );
+            continue;
+          }
 
-        // ✅ UPDATE THE BALANCE
-        balance.balance = newBalance;
-        await balance.save({ transaction });
+          // Update balance
+          balance.balance = newBalance;
+          await balance.save({ transaction });
 
-        // ✅ CREATE HISTORY RECORD WITH CORRECT previousBalance AND newBalance
-        await StoreBalanceHistory.create(
-          {
+          // ✅ CREATE HISTORY RECORD FOR BASE UOM
+          await StoreBalanceHistory.create({
             balanceId: balance.id,
             storeId: parseInt(storeId),
             groupId: parseInt(groupId),
             itemId: item.itemId,
-            previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
-            newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
-            changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
+            previousBalance: previousBalance,
+            newBalance: newBalance,
+            changeAmount: Math.abs(changeAmount),
             transactionType: action === "STOCK_IN" ? "Stock In" : "Stock Out",
             sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
             destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
@@ -3511,27 +3560,145 @@ exports.processRequestForGroup = async (req, res) => {
             changedBy: userId,
             grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
             sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
-            remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""}`,
-          },
-          { transaction },
-        );
+            uomUsed: uomCode,
+            isBaseUom: true,
+            remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name}`,
+          }, { transaction });
 
-        results.push({
-          itemId: item.itemId,
-          itemName: item.item.standardName || item.item.name || "Unknown",
-          itemCode: item.item.code || "N/A",
-          previousBalance,
-          newBalance,
-          changeAmount: Math.abs(changeAmount),
-          action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-          wasAutoInitialized: autoInitializedItems.some(ai => ai.itemId === item.itemId),
-        });
+          results.push({
+            itemId: item.itemId,
+            itemCode: item.item.code,
+            itemName: item.item.standardName || item.item.name,
+            previousBalance,
+            newBalance,
+            changeAmount: Math.abs(changeAmount),
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            uomUsed: uomCode,
+            isBaseUom: true,
+            table: "store_balances",
+            balanceId: balance.id,
+          });
+
+          console.log(
+            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
+            `(Base UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`
+          );
+
+        } else {
+          // ================================================================
+          // CONVERTED UOM OPERATION - converted_balances table
+          // ================================================================
+          
+          let convertedBalance = await ConvertedBalance.findOne({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+            },
+            lock: transaction.LOCK.UPDATE,
+            transaction: transaction,
+          });
+
+          // Auto-initialize if not exists
+          if (!convertedBalance) {
+            console.log(`📦 Auto-initializing CONVERTED balance for item: ${item.item.code}`);
+            
+            convertedBalance = await ConvertedBalance.create({
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              convertedBalance: 0,
+            }, { transaction });
+
+            // ✅ CREATE INITIAL HISTORY RECORD FOR CONVERTED UOM
+            await StoreBalanceHistory.create({
+              balanceId: null, // No balanceId for converted balances
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: 0,
+              newBalance: 0,
+              changeAmount: 0,
+              transactionType: "Stock In",
+              referenceType: "auto_initialization",
+              referenceId: request.requestId,
+              changedBy: userId,
+              uomUsed: uomCode,
+              isBaseUom: false,
+              remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name}`,
+            }, { transaction });
+
+            autoInitializedItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName: item.item.standardName || item.item.name || "Unknown Item",
+              uomType: "Converted UOM",
+              uomCode: uomCode,
+            });
+          }
+
+          const previousBalance = parseFloat(convertedBalance.convertedBalance);
+          const quantity = parseFloat(item.quantity);
+          const changeAmount = quantity * changeMultiplier;
+          const newBalance = previousBalance + changeAmount;
+
+          // Stock Out validation
+          if (action === "STOCK_OUT" && newBalance < 0) {
+            errors.push(
+              `Insufficient converted balance for "${item.item.code}". ` +
+              `Current balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`
+            );
+            continue;
+          }
+
+          // Update converted balance
+          convertedBalance.convertedBalance = newBalance;
+          await convertedBalance.save({ transaction });
+
+          // ✅ CREATE HISTORY RECORD FOR CONVERTED UOM
+          await StoreBalanceHistory.create({
+            balanceId: null, // No balanceId for converted balances
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: item.itemId,
+            previousBalance: previousBalance,
+            newBalance: newBalance,
+            changeAmount: Math.abs(changeAmount),
+            transactionType: action === "STOCK_IN" ? "Stock In" : "Stock Out",
+            sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+            destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+            referenceType: "request",
+            referenceId: request.requestId,
+            changedBy: userId,
+            grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+            sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
+            uomUsed: uomCode,
+            isBaseUom: false,
+            remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name}`,
+          }, { transaction });
+
+          results.push({
+            itemId: item.itemId,
+            itemCode: item.item.code,
+            itemName: item.item.standardName || item.item.name,
+            previousBalance,
+            newBalance,
+            changeAmount: Math.abs(changeAmount),
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            uomUsed: uomCode,
+            isBaseUom: false,
+            table: "converted_balances",
+            convertedBalanceId: convertedBalance.id,
+          });
+
+          console.log(
+            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
+            `(Converted UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`
+          );
+        }
 
         totalProcessed++;
-        console.log(
-          `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
-          `(Balance: ${previousBalance} → ${newBalance})`
-        );
+        
       } catch (itemError) {
         console.error(`❌ Error processing item ${item.itemId}:`, itemError);
         errors.push(`Error processing item ${item.itemId}: ${itemError.message}`);
@@ -3626,6 +3793,7 @@ exports.processRequestForGroup = async (req, res) => {
 // ================================================================
 // PROCESS REQUESTS - BATCH WITH CORRECT BALANCE & LOCKING
 // ================================================================
+
 
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -3785,6 +3953,20 @@ exports.processRequests = async (req, res) => {
                 "standardName",
                 "conversionValue",
                 "status",
+                "uomId",
+                "conversionUomId",
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
               ],
             },
           ],
@@ -3890,7 +4072,7 @@ exports.processRequests = async (req, res) => {
       console.log(`📋 Action: ${action} for request ${request.requestCode}`);
 
       // ================================================================
-      // 5d. PROCESS EACH ITEM - WITH CORRECT BALANCE & LOCKING
+      // 5d. PROCESS EACH ITEM - WITH BASE & CONVERTED UOM SUPPORT
       // ================================================================
       const requestResults = [];
       const requestErrors = [];
@@ -3931,37 +4113,48 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // ✅ FIX: GET THE BALANCE RECORD WITH LOCK
-          let balance = await StoreBalance.findOne({
-            where: {
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-            },
-            lock: transaction.LOCK.UPDATE, // 🔥 THIS PREVENTS RACE CONDITIONS
-            transaction: transaction,
-          });
+          // ================================================================
+          // ✅ FIX: DETERMINE IF BASE OR CONVERTED UOM
+          // Check is_base_uom from the request detail
+          // ================================================================
+          const isBaseUom = item.is_base_uom !== false; // Default to true if not specified
+          
+          // Get the UOM code to use
+          const uomCode = isBaseUom 
+            ? (item.uom_code || item.item?.uom?.code || "PCS")
+            : (item.uom_code || item.item?.conversionUom?.code || "KG");
 
-          // ✅ AUTO-INITIALIZE IF BALANCE DOESN'T EXIST
-          if (!balance) {
-            console.log(
-              `📦 Auto-initializing balance for item: ${item.item.code} (Group: ${group.name})`,
-            );
+          console.log(`📋 Item: ${item.item.code}, isBaseUom: ${isBaseUom}, uomCode: ${uomCode}`);
 
-            balance = await StoreBalance.create(
-              {
+          if (isBaseUom) {
+            // ================================================================
+            // ✅ BASE UOM OPERATION - store_balances table
+            // ================================================================
+            
+            let balance = await StoreBalance.findOne({
+              where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+              },
+              lock: transaction.LOCK.UPDATE,
+              transaction: transaction,
+            });
+
+            // Auto-initialize if not exists
+            if (!balance) {
+              console.log(`📦 Auto-initializing BASE balance for item: ${item.item.code}`);
+              
+              balance = await StoreBalance.create({
                 storeId: parseInt(storeId),
                 groupId: parseInt(groupId),
                 itemId: item.itemId,
                 balance: 0,
                 minStockAlert: 0,
                 status: "Active",
-              },
-              { transaction },
-            );
+              }, { transaction });
 
-            await StoreBalanceHistory.create(
-              {
+              await StoreBalanceHistory.create({
                 balanceId: balance.id,
                 storeId: parseInt(storeId),
                 groupId: parseInt(groupId),
@@ -3973,106 +4166,247 @@ exports.processRequests = async (req, res) => {
                 referenceType: "auto_initialization",
                 referenceId: request.requestId,
                 changedBy: userId,
-                remark: `Auto-initialized for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
-              },
-              { transaction },
-            );
+                uomUsed: uomCode,
+                isBaseUom: true,
+                remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+              }, { transaction });
 
-            requestAutoInitialized.push({
-              itemId: item.itemId,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
+              requestAutoInitialized.push({
+                itemId: item.itemId,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Base UOM",
+                uomCode: uomCode,
+              });
 
-            allAutoInitializedItems.push({
-              requestCode: request.requestCode,
-              itemCode: item.item.code || "N/A",
-              itemName:
-                item.item.standardName || item.item.name || "Unknown Item",
-            });
-          }
+              allAutoInitializedItems.push({
+                requestCode: request.requestCode,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Base UOM",
+                uomCode: uomCode,
+              });
+            }
 
-          // ✅ CHECK IF BALANCE IS ACTIVE
-          if (balance.status !== "Active") {
-            requestErrors.push(
-              `Balance for item "${item.item.code}" is ${balance.status}`,
-            );
-            continue;
-          }
+            // Check if balance is active
+            if (balance.status !== "Active") {
+              requestErrors.push(
+                `Balance for item "${item.item.code}" is ${balance.status}`,
+              );
+              continue;
+            }
 
-          // ✅ GET THE PREVIOUS BALANCE (BEFORE ANY CHANGES)
-          const previousBalance = parseFloat(balance.balance);
-          const quantity = parseFloat(item.quantity);
-          const changeAmount = quantity * changeMultiplier;
-          const newBalance = previousBalance + changeAmount;
+            const previousBalance = parseFloat(balance.balance);
+            const quantity = parseFloat(item.quantity);
+            const changeAmount = quantity * changeMultiplier;
+            const newBalance = previousBalance + changeAmount;
 
-          // ✅ CHECK FOR NEGATIVE BALANCE ON STOCK OUT
-          if (action === "STOCK_OUT" && newBalance < 0) {
-            requestErrors.push(
-              `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance}, Requested: ${quantity}`,
-            );
-            continue;
-          }
+            // Stock Out validation
+            if (action === "STOCK_OUT" && newBalance < 0) {
+              requestErrors.push(
+                `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+              );
+              continue;
+            }
 
-          // ✅ UPDATE THE BALANCE
-          balance.balance = newBalance;
-          await balance.save({ transaction });
+            // Update balance
+            balance.balance = newBalance;
+            await balance.save({ transaction });
 
-          // ✅ CREATE HISTORY RECORD WITH CORRECT VALUES
-          await StoreBalanceHistory.create(
-            {
+            // ✅ CREATE HISTORY RECORD FOR BASE UOM
+            await StoreBalanceHistory.create({
               balanceId: balance.id,
               storeId: parseInt(storeId),
               groupId: parseInt(groupId),
               itemId: item.itemId,
-              previousBalance: previousBalance,      // ✅ CORRECT: Balance BEFORE
-              newBalance: newBalance,                // ✅ CORRECT: Balance AFTER
-              changeAmount: Math.abs(changeAmount),  // ✅ CORRECT: Absolute change
+              previousBalance: previousBalance,
+              newBalance: newBalance,
+              changeAmount: Math.abs(changeAmount),
               transactionType: transactionType,
-              sourceStoreId:
-                action === "STOCK_IN" ? request.supplyingStoreId : null,
-              destinationStoreId:
-                action === "STOCK_OUT" ? request.askingStoreId : null,
+              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
               referenceType: "request",
               referenceId: request.requestId,
               changedBy: userId,
               grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
               sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
-              remark: `Processed request ${request.requestCode} for group ${group.name} - ${actionLabel} ${quantity} ${item.item?.code || ""} - By: ${user.fullName}`,
-            },
-            { transaction },
-          );
+              uomUsed: uomCode,
+              isBaseUom: true,
+              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+            }, { transaction });
 
-          // Track results
-          requestResults.push({
-            itemId: item.itemId,
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            itemCode: item.item?.code || "N/A",
-            previousBalance,
-            newBalance,
-            changeAmount: Math.abs(changeAmount),
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            wasAutoInitialized: requestAutoInitialized.some(
-              (ai) => ai.itemId === item.itemId,
-            ),
-          });
+            // Track results
+            requestResults.push({
+              itemId: item.itemId,
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              itemCode: item.item?.code || "N/A",
+              previousBalance,
+              newBalance,
+              changeAmount: Math.abs(changeAmount),
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              uomUsed: uomCode,
+              isBaseUom: true,
+              table: "store_balances",
+              balanceId: balance.id,
+              wasAutoInitialized: requestAutoInitialized.some(
+                (ai) => ai.itemId === item.itemId,
+              ),
+            });
 
-          processedCount++;
-          processedItems.push({
-            requestCode: request.requestCode,
-            itemId: item.itemId,
-            itemCode: item.item?.code || "N/A",
-            itemName: item.item?.standardName || item.item?.name || "Unknown",
-            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
-            quantity: Math.abs(changeAmount),
-            previousBalance,
-            newBalance,
-          });
+            processedCount++;
+            processedItems.push({
+              requestCode: request.requestCode,
+              itemId: item.itemId,
+              itemCode: item.item?.code || "N/A",
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              quantity: Math.abs(changeAmount),
+              uomUsed: uomCode,
+              isBaseUom: true,
+              previousBalance,
+              newBalance,
+            });
 
-          console.log(
-            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Balance: ${previousBalance} → ${newBalance})`,
-          );
+            console.log(
+              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Base UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
+            );
+
+          } else {
+            // ================================================================
+            // ✅ CONVERTED UOM OPERATION - converted_balances table
+            // ================================================================
+            
+            let convertedBalance = await ConvertedBalance.findOne({
+              where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+              },
+              lock: transaction.LOCK.UPDATE,
+              transaction: transaction,
+            });
+
+            // Auto-initialize if not exists
+            if (!convertedBalance) {
+              console.log(`📦 Auto-initializing CONVERTED balance for item: ${item.item.code}`);
+              
+              convertedBalance = await ConvertedBalance.create({
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                convertedBalance: 0,
+              }, { transaction });
+
+              await StoreBalanceHistory.create({
+                balanceId: null, // No balanceId for converted balances
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance: 0,
+                newBalance: 0,
+                changeAmount: 0,
+                transactionType: "Stock In",
+                referenceType: "auto_initialization",
+                referenceId: request.requestId,
+                changedBy: userId,
+                uomUsed: uomCode,
+                isBaseUom: false,
+                remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+              }, { transaction });
+
+              requestAutoInitialized.push({
+                itemId: item.itemId,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Converted UOM",
+                uomCode: uomCode,
+              });
+
+              allAutoInitializedItems.push({
+                requestCode: request.requestCode,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Converted UOM",
+                uomCode: uomCode,
+              });
+            }
+
+            const previousBalance = parseFloat(convertedBalance.convertedBalance);
+            const quantity = parseFloat(item.quantity);
+            const changeAmount = quantity * changeMultiplier;
+            const newBalance = previousBalance + changeAmount;
+
+            // Stock Out validation
+            if (action === "STOCK_OUT" && newBalance < 0) {
+              requestErrors.push(
+                `Insufficient converted balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+              );
+              continue;
+            }
+
+            // Update converted balance
+            convertedBalance.convertedBalance = newBalance;
+            await convertedBalance.save({ transaction });
+
+            // ✅ CREATE HISTORY RECORD FOR CONVERTED UOM
+            await StoreBalanceHistory.create({
+              balanceId: null, // No balanceId for converted balances
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: previousBalance,
+              newBalance: newBalance,
+              changeAmount: Math.abs(changeAmount),
+              transactionType: transactionType,
+              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+              referenceType: "request",
+              referenceId: request.requestId,
+              changedBy: userId,
+              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
+              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
+              uomUsed: uomCode,
+              isBaseUom: false,
+              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+            }, { transaction });
+
+            // Track results
+            requestResults.push({
+              itemId: item.itemId,
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              itemCode: item.item?.code || "N/A",
+              previousBalance,
+              newBalance,
+              changeAmount: Math.abs(changeAmount),
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              uomUsed: uomCode,
+              isBaseUom: false,
+              table: "converted_balances",
+              convertedBalanceId: convertedBalance.id,
+              wasAutoInitialized: requestAutoInitialized.some(
+                (ai) => ai.itemId === item.itemId,
+              ),
+            });
+
+            processedCount++;
+            processedItems.push({
+              requestCode: request.requestCode,
+              itemId: item.itemId,
+              itemCode: item.item?.code || "N/A",
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              quantity: Math.abs(changeAmount),
+              uomUsed: uomCode,
+              isBaseUom: false,
+              previousBalance,
+              newBalance,
+            });
+
+            console.log(
+              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Converted UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
+            );
+          }
+
         } catch (itemError) {
           console.error(`❌ Error processing item ${item.itemId}:`, itemError);
           requestErrors.push(
@@ -4152,7 +4486,7 @@ exports.processRequests = async (req, res) => {
       );
       allAutoInitializedItems.forEach((item) => {
         detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (from request ${item.requestCode})`,
+          `   - ${item.itemCode}: ${item.itemName} (${item.uomType}: ${item.uomCode}) from request ${item.requestCode}`,
         );
       });
       detailedLogs.push(

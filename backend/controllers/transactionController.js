@@ -1,4 +1,4 @@
-// controllers/transactionController.js - COMPLETE WITH GRN & SIV SUPPORT
+// controllers/transactionController.js - COMPLETE WITH UOM SUPPORT
 
 'use strict';
 
@@ -20,18 +20,35 @@ const {
 // HELPER FUNCTIONS
 // ================================================================
 
+
 const formatTransactionResponse = (record) => {
+  // ✅ SKIP auto-initialization records with 0 quantity
+  if (record.referenceType === 'auto_initialization' && parseFloat(record.changeAmount || 0) === 0) {
+    return null;
+  }
+
   const item = record.item;
   const category = item?.category;
   const uom = item?.uom;
+  const conversionUom = item?.conversionUom;
   
   // Get name values
   const itemName = item?.name || null;
   const standardName = item?.standardName || null;
 
+  // ✅ Determine which UOM to display
+  let displayUomCode = uom?.code || null;
+  let displayUomName = uom?.name || null;
+  
+  if (record.isBaseUom === false && record.uomUsed) {
+    displayUomCode = record.uomUsed;
+    displayUomName = record.uomUsed;
+  }
+
   return {
     id: record.id,
     balanceId: record.balanceId,
+    convertedBalanceId: record.convertedBalanceId || null,
     storeId: record.storeId,
     storeName: record.store?.name || null,
     storeCode: record.store?.code || null,
@@ -40,15 +57,18 @@ const formatTransactionResponse = (record) => {
     groupCode: record.group?.code || null,
     itemId: record.itemId,
     itemCode: item?.code || null,
-    // Name fields
     itemStandardName: standardName,
     itemCommonName: itemName || standardName || null,
-    // Category fields
     categoryId: category?.categoryId || null,
     categoryName: category?.name || null,
-    // UOM fields
-    uomCode: uom?.code || null,
-    uomName: uom?.name || null,
+    uomCode: displayUomCode,
+    uomName: displayUomName,
+    baseUomCode: uom?.code || null,
+    baseUomName: uom?.name || null,
+    conversionUomCode: conversionUom?.code || null,
+    conversionUomName: conversionUom?.name || null,
+    uomUsed: record.uomUsed || null,
+    isBaseUom: record.isBaseUom !== false,
     type: record.transactionType,
     quantity: parseFloat(record.changeAmount || 0),
     previousBalance: parseFloat(record.previousBalance || 0),
@@ -61,7 +81,6 @@ const formatTransactionResponse = (record) => {
     referenceId: record.referenceId,
     updatedBy: record.changedByUser?.fullName || record.changedByUser?.username || null,
     remark: record.remark,
-    // ✅ ADDED: Document References
     grnNumber: record.grnNumber || null,
     sivNumber: record.sivNumber || null,
     createdAt: record.createdAt,
@@ -82,13 +101,20 @@ exports.getTransactions = async (req, res) => {
       startDate,
       endDate,
       search,
-      grnNumber,      // ✅ ADDED: Filter by GRN
-      sivNumber,      // ✅ ADDED: Filter by SIV
+      grnNumber,
+      sivNumber,
+      isBaseUom,      // ✅ NEW: Filter by UOM type
       page = 1,
       limit = 20,
     } = req.query;
 
     const whereClause = {};
+  // ✅ EXCLUDE auto-initialization records with 0 quantity
+    whereClause[Op.or] = [
+      { referenceType: { [Op.ne]: 'auto_initialization' } },
+      { changeAmount: { [Op.gt]: 0 } },
+    ];
+
     const include = [
       {
         model: Store,
@@ -103,7 +129,7 @@ exports.getTransactions = async (req, res) => {
       {
         model: Item,
         as: 'item',
-        attributes: ['id', 'code', 'name', 'standardName', 'categoryId'],
+        attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
         include: [
           {
             model: Category,
@@ -113,6 +139,11 @@ exports.getTransactions = async (req, res) => {
           {
             model: UOM,
             as: 'uom',
+            attributes: ['id', 'code', 'name'],
+          },
+          {
+            model: UOM,
+            as: 'conversionUom',
             attributes: ['id', 'code', 'name'],
           },
         ],
@@ -147,11 +178,13 @@ exports.getTransactions = async (req, res) => {
     if (transactionType) {
       whereClause.transactionType = transactionType;
     }
-    // ✅ ADDED: GRN Number filter
+    // ✅ Filter by UOM type
+    if (isBaseUom !== undefined && isBaseUom !== null && isBaseUom !== '') {
+      whereClause.isBaseUom = isBaseUom === 'true' || isBaseUom === true;
+    }
     if (grnNumber) {
       whereClause.grnNumber = { [Op.iLike]: `%${grnNumber}%` };
     }
-    // ✅ ADDED: SIV Number filter
     if (sivNumber) {
       whereClause.sivNumber = { [Op.iLike]: `%${sivNumber}%` };
     }
@@ -172,6 +205,11 @@ exports.getTransactions = async (req, res) => {
           {
             model: UOM,
             as: 'uom',
+            attributes: ['id', 'code', 'name'],
+          },
+          {
+            model: UOM,
+            as: 'conversionUom',
             attributes: ['id', 'code', 'name'],
           },
         ],
@@ -201,8 +239,9 @@ exports.getTransactions = async (req, res) => {
         { '$item.category.name$': { [Op.iLike]: searchTerm } },
         { '$store.name$': { [Op.iLike]: searchTerm } },
         { remark: { [Op.iLike]: searchTerm } },
-        { grnNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
-        { sivNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
+        { grnNumber: { [Op.iLike]: searchTerm } },
+        { sivNumber: { [Op.iLike]: searchTerm } },
+        { uomUsed: { [Op.iLike]: searchTerm } }, // ✅ NEW
       ];
     }
 
@@ -355,7 +394,7 @@ exports.getTransactionById = async (req, res) => {
         {
           model: Item,
           as: 'item',
-          attributes: ['id', 'code', 'name', 'standardName', 'categoryId'],
+          attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
           include: [
             {
               model: Category,
@@ -365,6 +404,11 @@ exports.getTransactionById = async (req, res) => {
             {
               model: UOM,
               as: 'uom',
+              attributes: ['id', 'code', 'name'],
+            },
+            {
+              model: UOM,
+              as: 'conversionUom',
               attributes: ['id', 'code', 'name'],
             },
           ],
@@ -432,7 +476,7 @@ exports.getTransactionsByBalance = async (req, res) => {
         {
           model: Item,
           as: 'item',
-          attributes: ['id', 'code', 'name', 'standardName', 'categoryId'],
+          attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
           include: [
             {
               model: Category,
@@ -442,6 +486,11 @@ exports.getTransactionsByBalance = async (req, res) => {
             {
               model: UOM,
               as: 'uom',
+              attributes: ['id', 'code', 'name'],
+            },
+            {
+              model: UOM,
+              as: 'conversionUom',
               attributes: ['id', 'code', 'name'],
             },
           ],
@@ -486,7 +535,94 @@ exports.getTransactionsByBalance = async (req, res) => {
 };
 
 // ================================================================
-// EXPORT TRANSACTIONS AS EXCEL (.xlsx)
+// GET CONVERTED TRANSACTIONS BY CONVERTED BALANCE ID
+// ================================================================
+exports.getTransactionsByConvertedBalance = async (req, res) => {
+  try {
+    const { convertedBalanceId } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await StoreBalanceHistory.findAndCountAll({
+      where: { 
+        convertedBalanceId: parseInt(convertedBalanceId),
+        isBaseUom: false // ✅ Only converted UOM transactions
+      },
+      include: [
+        {
+          model: Store,
+          as: 'store',
+          attributes: ['id', 'name', 'code'],
+        },
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['id', 'name', 'code'],
+        },
+        {
+          model: Item,
+          as: 'item',
+          attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
+          include: [
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['categoryId', 'name', 'status'],
+            },
+            {
+              model: UOM,
+              as: 'uom',
+              attributes: ['id', 'code', 'name'],
+            },
+            {
+              model: UOM,
+              as: 'conversionUom',
+              attributes: ['id', 'code', 'name'],
+            },
+          ],
+        },
+        {
+          model: Store,
+          as: 'sourceStore',
+          attributes: ['id', 'name', 'code'],
+        },
+        {
+          model: Store,
+          as: 'destinationStore',
+          attributes: ['id', 'name', 'code'],
+        },
+        {
+          model: User,
+          as: 'changedByUser',
+          attributes: ['userId', 'username', 'fullName'],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: offset,
+    });
+
+    const formattedTransactions = rows.map(formatTransactionResponse);
+
+    res.status(200).json({
+      success: true,
+      data: formattedTransactions,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error('❌ Get transactions by converted balance error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ================================================================
+// EXPORT TRANSACTIONS AS EXCEL (.xlsx) - UPDATED
 // ================================================================
 exports.exportTransactions = async (req, res) => {
   try {
@@ -518,7 +654,7 @@ exports.exportTransactions = async (req, res) => {
       {
         model: Item,
         as: 'item',
-        attributes: ['id', 'code', 'name', 'standardName', 'categoryId'],
+        attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
         include: [
           {
             model: Category,
@@ -528,6 +664,11 @@ exports.exportTransactions = async (req, res) => {
           {
             model: UOM,
             as: 'uom',
+            attributes: ['id', 'code', 'name'],
+          },
+          {
+            model: UOM,
+            as: 'conversionUom',
             attributes: ['id', 'code', 'name'],
           },
         ],
@@ -563,6 +704,11 @@ exports.exportTransactions = async (req, res) => {
             as: 'uom',
             attributes: ['id', 'code', 'name'],
           },
+          {
+            model: UOM,
+            as: 'conversionUom',
+            attributes: ['id', 'code', 'name'],
+          },
         ],
       });
     }
@@ -586,8 +732,9 @@ exports.exportTransactions = async (req, res) => {
         { '$item.category.name$': { [Op.iLike]: searchTerm } },
         { '$store.name$': { [Op.iLike]: searchTerm } },
         { remark: { [Op.iLike]: searchTerm } },
-        { grnNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
-        { sivNumber: { [Op.iLike]: searchTerm } },   // ✅ ADDED
+        { grnNumber: { [Op.iLike]: searchTerm } },
+        { sivNumber: { [Op.iLike]: searchTerm } },
+        { uomUsed: { [Op.iLike]: searchTerm } }, // ✅ NEW
       ];
     }
 
@@ -613,7 +760,7 @@ exports.exportTransactions = async (req, res) => {
     // ============================================================
 
     // Row 1: Company Name
-    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:K${currentRow}`);
     const companyCell = sheet.getCell(`A${currentRow}`);
     companyCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
     companyCell.font = { bold: true, size: 18, color: { argb: 'FF1A56DB' } };
@@ -622,7 +769,7 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // Row 2: Slogan
-    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:K${currentRow}`);
     const sloganCell = sheet.getCell(`A${currentRow}`);
     sloganCell.value = 'WE TRUST IN GOD!!!  እግዚአብሔር ይባረክ!!!';
     sloganCell.font = { bold: true, size: 12, color: { argb: 'FF4B5563' } };
@@ -634,7 +781,7 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // Row 4: Report Title
-    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:K${currentRow}`);
     const titleCell = sheet.getCell(`A${currentRow}`);
     titleCell.value = 'STORE TRANSACTIONS REPORT';
     titleCell.font = { bold: true, size: 16, color: { argb: 'FF1A56DB' } };
@@ -709,7 +856,7 @@ exports.exportTransactions = async (req, res) => {
     });
 
     // Summary Title
-    sheet.mergeCells(`A${currentRow}:J${currentRow}`);
+    sheet.mergeCells(`A${currentRow}:K${currentRow}`);
     const summaryTitleCell = sheet.getCell(`A${currentRow}`);
     summaryTitleCell.value = 'SUMMARY';
     summaryTitleCell.font = { bold: true, size: 14, color: { argb: 'FF1A56DB' } };
@@ -741,12 +888,12 @@ exports.exportTransactions = async (req, res) => {
     currentRow++;
 
     // ============================================================
-    // DATA TABLE SECTION - UPDATED WITH GRN & SIV
+    // DATA TABLE SECTION - UPDATED WITH UOM INFO
     // ============================================================
 
     // Table Header
     const headerRow = sheet.getRow(currentRow);
-    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM', 'Type', 'Quantity', 'GRN No.', 'SIV No.', 'Date & Time'];
+    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM Used', 'Type', 'Quantity', 'GRN No.', 'SIV No.', 'Date & Time', 'Base UOM'];
     headers.forEach((header, index) => {
       const col = index + 1;
       headerRow.getCell(col).value = header;
@@ -772,22 +919,33 @@ exports.exportTransactions = async (req, res) => {
     sheet.getColumn(2).width = 18;   // Item Code
     sheet.getColumn(3).width = 45;   // Item Name
     sheet.getColumn(4).width = 25;   // Category
-    sheet.getColumn(5).width = 12;   // UOM
+    sheet.getColumn(5).width = 14;   // UOM Used
     sheet.getColumn(6).width = 14;   // Type
     sheet.getColumn(7).width = 14;   // Quantity
     sheet.getColumn(8).width = 20;   // GRN No.
     sheet.getColumn(9).width = 20;   // SIV No.
     sheet.getColumn(10).width = 20;  // Date & Time
+    sheet.getColumn(11).width = 14;  // Base UOM
 
     // Add data rows
     let rowCounter = 1;
     transactions.forEach((record) => {
       const item = record.item;
+      
+      // ✅ Determine which UOM to display
+      let displayUom = item?.uom?.code || 'PCS';
+      let baseUom = item?.uom?.code || 'PCS';
+      
+      if (record.isBaseUom === false && record.uomUsed) {
+        displayUom = record.uomUsed; // Show the actual UOM used
+      }
+
       const formatted = {
         itemCode: item?.code || 'N/A',
         itemCommonName: item?.name || item?.standardName || 'Unnamed',
         categoryName: item?.category?.name || 'Uncategorized',
-        uomCode: item?.uom?.code || 'PCS',
+        uomUsed: displayUom,
+        baseUom: baseUom,
         type: record.transactionType,
         quantity: parseFloat(record.changeAmount || 0),
         grnNumber: record.grnNumber || '',
@@ -800,12 +958,13 @@ exports.exportTransactions = async (req, res) => {
       row.getCell(2).value = formatted.itemCode;
       row.getCell(3).value = formatted.itemCommonName;
       row.getCell(4).value = formatted.categoryName;
-      row.getCell(5).value = formatted.uomCode;
+      row.getCell(5).value = formatted.uomUsed;
       row.getCell(6).value = formatted.type === 'Stock In' ? '📥 Stock In' : '📤 Stock Out';
       row.getCell(7).value = formatted.type === 'Stock In' ? `+${formatted.quantity}` : `-${formatted.quantity}`;
       row.getCell(8).value = formatted.grnNumber;
       row.getCell(9).value = formatted.sivNumber;
       row.getCell(10).value = formatted.createdAt ? new Date(formatted.createdAt).toLocaleString() : '';
+      row.getCell(11).value = formatted.baseUom;
 
       // Color the Type cell
       const typeCell = row.getCell(6);
@@ -834,7 +993,7 @@ exports.exportTransactions = async (req, res) => {
       }
 
       // Add borders to all cells
-      for (let col = 1; col <= 10; col++) {
+      for (let col = 1; col <= 11; col++) {
         row.getCell(col).border = {
           top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -853,7 +1012,7 @@ exports.exportTransactions = async (req, res) => {
     const headerRowNumber = headerRow.number;
     sheet.autoFilter = {
       from: `A${headerRowNumber}`,
-      to: `J${headerRowNumber}`
+      to: `K${headerRowNumber}`
     };
 
     // ============================================================
@@ -896,7 +1055,7 @@ exports.getRecentTransactions = async (req, res) => {
         {
           model: Item,
           as: 'item',
-          attributes: ['id', 'code', 'name', 'standardName', 'categoryId'],
+          attributes: ['id', 'code', 'name', 'standardName', 'categoryId', 'uomId', 'conversionUomId'],
           include: [
             {
               model: Category,
@@ -906,6 +1065,11 @@ exports.getRecentTransactions = async (req, res) => {
             {
               model: UOM,
               as: 'uom',
+              attributes: ['id', 'code', 'name'],
+            },
+            {
+              model: UOM,
+              as: 'conversionUom',
               attributes: ['id', 'code', 'name'],
             },
           ],

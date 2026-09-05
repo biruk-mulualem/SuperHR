@@ -4,10 +4,19 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
   class StoreBalanceHistory extends Model {
     static associate(models) {
+      
+      // ✅ Base UOM relationship
       StoreBalanceHistory.belongsTo(models.StoreBalance, {
         foreignKey: 'balanceId',
         as: 'balance',
       });
+
+      // ✅ NEW: Converted UOM relationship
+      StoreBalanceHistory.belongsTo(models.ConvertedBalance, {
+        foreignKey: 'convertedBalanceId',
+        as: 'convertedBalance',
+      });
+
       StoreBalanceHistory.belongsTo(models.Store, {
         foreignKey: 'storeId',
         as: 'store',
@@ -40,6 +49,7 @@ module.exports = (sequelize, DataTypes) => {
       return {
         id: this.id,
         balanceId: this.balanceId,
+        convertedBalanceId: this.convertedBalanceId, // ✅ NEW
         store: this.store,
         group: this.group,
         item: this.item,
@@ -55,6 +65,8 @@ module.exports = (sequelize, DataTypes) => {
         remark: this.remark,
         grnNumber: this.grnNumber,
         sivNumber: this.sivNumber,
+        uomUsed: this.uomUsed,           // ✅ NEW
+        isBaseUom: this.isBaseUom,       // ✅ NEW
         createdAt: this.createdAt,
       };
     }
@@ -78,11 +90,21 @@ module.exports = (sequelize, DataTypes) => {
         autoIncrement: true,
         primaryKey: true,
       },
+
+      // ✅ FIXED: allowNull: false → true
       balanceId: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,  // ← THIS IS THE CHANGE
         field: 'balance_id',
       },
+
+      // ✅ NEW FIELD: For converted balances
+      convertedBalanceId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'converted_balance_id',
+      },
+
       storeId: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -150,7 +172,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      // ✅ NEW FIELDS: Document References
+      // Document References
       grnNumber: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -161,6 +183,20 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'siv_number',
       },
+
+      // ✅ NEW UOM TRACKING FIELDS
+      uomUsed: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        field: 'uom_used',
+      },
+      isBaseUom: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+        field: 'is_base_uom',
+      },
+
       createdAt: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -177,13 +213,15 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: false,
       indexes: [
         { fields: ['balance_id'], name: 'idx_balance_id' },
+        { fields: ['converted_balance_id'], name: 'idx_converted_balance_id' }, // ✅ NEW
         { fields: ['store_id'], name: 'idx_store_id' },
         { fields: ['item_id'], name: 'idx_item_id' },
         { fields: ['created_at'], name: 'idx_created_at' },
         { fields: ['transaction_type'], name: 'idx_transaction_type' },
-        // ✅ NEW INDEXES
         { fields: ['grn_number'], name: 'idx_grn_number' },
         { fields: ['siv_number'], name: 'idx_siv_number' },
+        { fields: ['uom_used'], name: 'idx_uom_used' },      // ✅ NEW
+        { fields: ['is_base_uom'], name: 'idx_is_base_uom' }, // ✅ NEW
       ],
     }
   );
@@ -202,6 +240,7 @@ module.exports = (sequelize, DataTypes) => {
         as: 'item',
         include: [
           { model: sequelize.models.UOM, as: 'uom' },
+          { model: sequelize.models.UOM, as: 'conversionUom' }, // ✅ NEW
         ]
       },
       { model: sequelize.models.Store, as: 'sourceStore' },
@@ -218,14 +257,19 @@ module.exports = (sequelize, DataTypes) => {
     if (filters.itemId) where.itemId = filters.itemId;
     if (filters.transactionType) where.transactionType = filters.transactionType;
 
-    // ✅ Filter by GRN Number
+    // Filter by GRN Number
     if (filters.grnNumber) {
       where.grnNumber = { [Op.iLike]: `%${filters.grnNumber}%` };
     }
 
-    // ✅ Filter by SIV Number
+    // Filter by SIV Number
     if (filters.sivNumber) {
       where.sivNumber = { [Op.iLike]: `%${filters.sivNumber}%` };
+    }
+
+    // ✅ Filter by UOM type
+    if (filters.isBaseUom !== undefined && filters.isBaseUom !== null) {
+      where.isBaseUom = filters.isBaseUom === 'true' || filters.isBaseUom === true;
     }
 
     // Date range filter
@@ -248,6 +292,7 @@ module.exports = (sequelize, DataTypes) => {
         { remark: { [Op.iLike]: searchTerm } },
         { grnNumber: { [Op.iLike]: searchTerm } },
         { sivNumber: { [Op.iLike]: searchTerm } },
+        { uomUsed: { [Op.iLike]: searchTerm } }, // ✅ NEW
       ];
       
       include.push({

@@ -186,6 +186,69 @@ class ConvertedBalanceService {
         return response.data;
     }
 
+
+// stores/convertedBalanceService.ts
+
+/**
+ * ================================================================
+ * CREATE/INITIALIZE CONVERTED BALANCE
+ * ================================================================
+ */
+async createBalance(data: {
+    storeId: number;
+    groupId: number;
+    itemId: number;
+    convertedBalance: number;
+}): Promise<{ 
+    success: boolean; 
+    data?: ConvertedBalanceRecord; 
+    error?: string;
+    message?: string;
+    alreadyExists?: boolean;
+}> {
+    try {
+        const authStore = useAuthStore();
+        
+        console.log('📦 Creating converted balance:', {
+            storeId: data.storeId,
+            groupId: data.groupId,
+            itemId: data.itemId,
+            convertedBalance: data.convertedBalance,
+            user: authStore.user?.username
+        });
+
+        const response = await api.post('/converted-balances', {
+            storeId: data.storeId,
+            groupId: data.groupId,
+            itemId: data.itemId,
+            convertedBalance: data.convertedBalance
+        });
+
+        return {
+            success: true,
+            data: response.data?.data,
+            message: response.data?.message || 'Converted balance initialized successfully'
+        };
+    } catch (error: any) {
+        console.error('❌ Create converted balance error:', error);
+        
+        // 🔥 Handle 409 Conflict - Already exists
+        if (error.response?.status === 409) {
+            return {
+                success: false,
+                error: error.response?.data?.error || 'Converted balance already exists',
+                message: error.response?.data?.message || 'This item already has a converted balance record.',
+                alreadyExists: true,
+                data: error.response?.data?.data
+            };
+        }
+        
+        return {
+            success: false,
+            error: error.response?.data?.error || 'Failed to create converted balance'
+        };
+    }
+}
     /**
      * ================================================================
      * GET STATISTICS

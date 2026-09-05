@@ -270,20 +270,21 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-    {
-      name: "store-transaction ",
-      path: "/store-transaction",
-      icon: "UserIcon",
-      badge: null,
-    },
+    { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+   
     {
       name: "item-requests ",
       path: "/item-requests",
       icon: "UserIcon",
       badge: null,
     },
-
-      // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+ {
+      name: "store-transaction ",
+      path: "/store-transaction",
+      icon: "UserIcon",
+      badge: null,
+    },
+      
        
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
@@ -293,6 +294,13 @@ const roleMenus = {
     // { name: 'stores List', path: '/store-management', icon: 'ClockIcon', badge: null },
     // { name: 'store groups', path: '/group-management', icon: 'UserIcon', badge: null },
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
+    {
+      name: "store-balance ",
+      path: "/store-balance",
+      icon: "UserIcon",
+      badge: null,
+    },
+     { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
 
     {
       name: "item-requests ",
@@ -300,23 +308,15 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-    {
-      name: "store-balance ",
-      path: "/store-balance",
-      icon: "UserIcon",
-      badge: null,
-    },
-      // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
-      //  { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
-       
-    {
+
+      {
       name: "store-transaction ",
       path: "/store-transaction",
       icon: "UserIcon",
       badge: null,
     },
-    // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
-    // { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
+       
+    //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
   checker: [
@@ -423,7 +423,6 @@ const roleMenus = {
                   { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
   ],
 
-  
 };
 
 const menuItems = computed(() => {

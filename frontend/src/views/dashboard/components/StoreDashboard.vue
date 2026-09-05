@@ -199,28 +199,35 @@
   <thead>
     <tr>
       <th>Date</th>
-      <th>Item Code</th>  <!-- ✅ Added -->
+      <th>Item Code</th>
       <th>Item</th>
       <th>Type</th>
+         <th>UOM</th>  
       <th>Quantity</th>
+   
     </tr>
   </thead>
   <tbody>
     <tr v-if="recentTransactions.length === 0">
-      <td colspan="5" class="empty-state-small">No recent transactions</td>
+      <td colspan="6" class="empty-state-small">No recent transactions</td>
     </tr>
     <tr v-for="tx in recentTransactions" :key="tx.id">
       <td>{{ formatDateShort(tx.createdAt) }}</td>
-      <td><span class="item-code-tag">{{ tx.itemCode || 'N/A' }}</span></td>  <!-- ✅ Added -->
+      <td><span class="item-code-tag">{{ tx.itemCode || 'N/A' }}</span></td>
       <td>{{ tx.itemName }}</td>
       <td>
         <span :class="['type-badge', tx.type === 'Stock In' ? 'stock-in' : 'stock-out']">
           {{ tx.type === 'Stock In' ? '📥 In' : '📤 Out' }}
         </span>
       </td>
+      <td>
+        <span class="uom-badge">{{ tx.uom || 'N/A' }}</span>
+      
+      </td>
       <td :class="tx.type === 'Stock In' ? 'positive' : 'negative'">
         {{ tx.type === 'Stock In' ? '+' : '-' }}{{ formatNumber(tx.quantity) }}
       </td>
+      
     </tr>
   </tbody>
 </table>
