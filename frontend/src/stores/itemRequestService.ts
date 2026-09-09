@@ -9,7 +9,7 @@ export interface RequestItem {
   itemId: number;
   quantity: number;
   remark?: string;
-  // ✅ Add these UOM fields
+  // ✅ UOM Fields
   selected_uom?: 'base' | 'conversion';
   uom_code?: string;
   is_base_uom?: boolean;

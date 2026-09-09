@@ -405,6 +405,55 @@ const router = createRouter({
     roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
   },
 },
+
+
+
+
+
+// In router/index.js
+{
+  path: "foreign-purchase",
+  name: "foreign-purchase",
+  component: () => import("@/views/storemanagement/forignPurchase/foreignpurchase.vue"), 
+  meta: {
+    title: "Foreign Purchase",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost", "formulation_manager", "chemist"],
+  },
+},
+
+
+{
+  path: "local-purchase",  
+  name: "local-purchase",
+  component: () =>
+    import("@/views/storemanagement/localPurchase/localpurchase.vue"),
+  meta: {
+    title: "local-purchase",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
+  },
+},
+
+
+{
+  path: "approved-requests",  
+  name: "approved-requests",
+  component: () =>
+    import("@/views/storemanagement/localPurchase/components/GetApprovedPurchaseRequests.vue"),
+  meta: {
+    title: "approved-requests",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
+  },
+},
+
+
+
+
+
+
+
+
+
+
 {
   path: "formulation",  
   name: "formulation",
@@ -508,6 +557,25 @@ const router = createRouter({
           component: () => import("@/views/storemanagement/audit/audit.vue"),
           meta: {
             title: "audit ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
+         {
+          path: "converted-audit",
+          name: "converted-audit",
+          component: () => import("@/views/storemanagement/audit/convertedAudit.vue"),
+          meta: {
+            title: "converted audit ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
+
+          {
+          path: "store-cleanup",
+          name: "store-cleanup",
+          component: () => import("@/views/storemanagement/storebalance/StoreCleanup.vue"),
+          meta: {
+            title: "store cleanup ",
             roles: ["admin", "storekeeper", "store_it", "checker"],
           },
         },

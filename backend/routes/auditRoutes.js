@@ -12,6 +12,21 @@ router.use(authMiddleware());
 // ============================================
 router.get('/user/access', auditController.getUserAuditAccess);
 
+
+// Get converted balance audit for a store
+router.get('/converted/store/:storeId', auditController.getConvertedAudit);
+
+// Get converted balance transactions for a group
+router.get('/converted/store/:storeId/group/:groupId/transactions', auditController.getConvertedGroupTransactions);
+
+// Get converted balance transactions for an item
+router.get('/converted/store/:storeId/item/:itemId/transactions', auditController.getConvertedItemTransactions);
+
+// Export converted audit data
+router.get('/converted/store/:storeId/export', auditController.exportConvertedAudit);
+
+
+
 // ============================================
 // STORE AUDIT
 // ============================================

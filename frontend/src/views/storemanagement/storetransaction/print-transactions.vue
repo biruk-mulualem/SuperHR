@@ -1,6 +1,8 @@
+<!-- views/storemanagement/stockCard/stockCard.vue -->
+
 <template>
   <!-- =========================================================
-       TOP ACTIONS - NO GENERATE BUTTON
+       TOP ACTIONS
   ========================================================== -->
 
   <div class="top-actions no-print">
@@ -27,30 +29,46 @@
           <span class="item-dropdown-code">{{ item.code }}</span>
           <span class="item-dropdown-name">{{ item.name || item.standardName || 'Unnamed' }}</span>
           <span class="item-dropdown-uom">{{ item.uomCode || 'Pcs' }}</span>
+          <span v-if="item.conversionUomCode" class="item-dropdown-conversion">
+            → {{ item.conversionUomCode }}
+          </span>
         </div>
       </div>
     </div>
 
-    <!-- ✅ Only Print button remains -->
-    <button class="btn-print-top" @click="printPage" :disabled="!hasStockData">
-      🖨️ Print
-    </button>
+    <!-- ✅ UOM Selection Dropdown -->
+    <div v-if="selectedItem" class="uom-select-wrapper no-print">
+      <label for="stockCardUom">UOM:</label>
+      <select id="stockCardUom" v-model="selectedUom" @change="onUomChange" class="uom-select">
+        <option value="base">Base ({{ selectedItem.uomCode || 'Pcs' }})</option>
+        <option v-if="selectedItem.conversionUomCode" value="converted">
+          Converted ({{ selectedItem.conversionUomCode }})
+        </option>
+      </select>
+      <span v-if="generating" class="loading-small">⏳</span>
+    </div>
+
+  <!-- ✅ IMPROVED PRINT BUTTON -->
+<button 
+  class="btn-print-top" 
+  @click="printPage" 
+  :disabled="!hasStockData || generating"
+>
+  <svg class="print-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M6 9V3h12v6"/>
+    <path d="M6 21h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+    <path d="M18 9V7H6v2"/>
+    <path d="M8 13h8"/>
+    <path d="M8 17h4"/>
+  </svg>
+  <span class="print-text">Print</span>
+  <span v-if="generating" class="print-loading">⏳</span>
+</button>
   </div>
 
-  <!-- Selected Item Display -->
-  <div v-if="selectedItem" class="selected-item-display no-print">
-    <span class="selected-badge">✅ Selected:</span>
-    <span class="selected-code">{{ selectedItem.code }}</span>
-    <span class="selected-name">{{ selectedItem.name || selectedItem.standardName }}</span>
-    <span class="selected-uom">{{ selectedItem.uomCode || 'Pcs' }}</span>
-    <span v-if="selectedItem.costPrice" class="selected-cost">
-      Cost: {{ displayMoney(selectedItem.costPrice) }}
-    </span>
-    <span v-if="generating" class="generating-indicator">⏳ Loading...</span>
-    <button class="clear-selection" @click="clearSelectedItem">✕</button>
-  </div>
+ 
 
-  <!-- ✅ Only Date Range Filters - No Store/Group -->
+  <!-- Date Range Filters -->
   <div v-if="selectedItem" class="filter-options no-print">
     <div class="filter-group">
       <label>📅 From:</label>
@@ -59,6 +77,12 @@
     <div class="filter-group">
       <label>📅 To:</label>
       <input type="date" v-model="filterEndDate" @change="onFilterChange" />
+    </div>
+    <!-- ✅ Show which UOM is being displayed - REMOVED conversion text -->
+    <div v-if="hasStockData" class="filter-info">
+      <span class="filter-badge">
+        📊 Showing: {{ displayUom }}
+      </span>
     </div>
   </div>
 
@@ -70,14 +94,25 @@
 
     <!-- Loading State -->
     <div v-if="generating" class="loading-overlay">
-      <div class="loading-spinner">⏳</div>
-      <p>Generating stock card...</p>
+      
+      <p>Loading stock card for {{ displayUom }}...</p>
+    </div>
+
+    <!-- No Data State -->
+    <div v-if="!generating && hasStockData && filteredRows.length === 0" class="no-data-state">
+      <div class="no-data-content">
+        <span class="no-data-icon">📭</span>
+        <h3>No Transactions Found</h3>
+        <p>No transactions found for <strong>{{ selectedItem?.code }}</strong> in <strong>{{ displayUom }}</strong></p>
+        <p class="no-data-hint">Try selecting a different UOM or adjust the date range</p>
+      </div>
     </div>
 
     <div
       v-for="(pageRows, pageIndex) in paginatedRows"
       :key="pageIndex"
       class="page-wrapper"
+      v-show="!generating && filteredRows.length > 0"
     >
 
       <div class="page">
@@ -89,56 +124,28 @@
 
           <header class="header">
 
-            <!-- TRUST - TOP LEFT -->
-
             <div class="trust-english">
               We trust in God !!!
             </div>
 
-
-            <!-- COMPANY NAME - AMHARIC -->
-
-            <div
-              class="company-name-amharic"
-              lang="am"
-            >
+            <div class="company-name-amharic" lang="am">
               ሱፐር ዳብል ቲ ጄኔራል ትሬዲንግ ኃላፊነቱ የተወሰነ የግል ማህበር
             </div>
-
-
-            <!-- COMPANY NAME - ENGLISH -->
 
             <div class="company-name-english">
               SUPER DOUBLE 'T' GENERAL TRADING P.L.C.
             </div>
 
-
-            <!-- STOCK CARD -->
-
             <div class="stock-title">
               STOCK CARD
             </div>
 
-
-            <!-- PAGE -->
+          
 
             <div class="page-number">
-
-              <div
-                class="page-amharic"
-                lang="am"
-              >
-                ገጽ
-              </div>
-
-              <div class="page-english">
-                Page
-              </div>
-
-              <div class="page-value">
-                {{ pageIndex + 1 }}
-              </div>
-
+              <div class="page-amharic" lang="am">ገጽ</div>
+              <div class="page-english">Page</div>
+              <div class="page-value">{{ pageIndex + 1 }}</div>
             </div>
 
           </header>
@@ -150,111 +157,41 @@
 
           <section class="information">
 
-            <!-- MAXIMUM STOCK LEVEL -->
-
             <div class="maximum-stock field">
-
               <div class="field-label">
-
-                <span
-                  class="amharic-label"
-                  lang="am"
-                >
-                  ከፍተኛ የእቃ ደረጃ
-                </span>
-
-                <span class="english-label">
-                  Maximum Stock Level
-                </span>
-
+                <span class="amharic-label" lang="am">ከፍተኛ የእቃ ደረጃ</span>
+                <span class="english-label">Maximum Stock Level</span>
               </div>
-
-              <div class="field-value">
-                {{ form.maximumStockLevel }}
-              </div>
-
+              <div class="field-value">{{ form.maximumStockLevel }}</div>
             </div>
-
-
-            <!-- THREE FIELDS -->
 
             <div class="three-fields">
 
-              <!-- MERCHANDISE -->
-
               <div class="field merchandise">
-
                 <div class="field-label">
-
-                  <span
-                    class="amharic-label"
-                    lang="am"
-                  >
-                    እቃ
-                  </span>
-
-                  <span class="english-label">
-                    Merchandise
-                  </span>
-
+                  <span class="amharic-label" lang="am">እቃ</span>
+                  <span class="english-label">Merchandise</span>
                 </div>
-
-                <div class="field-value">
-                  {{ form.merchandise }}
-                </div>
-
+                <div class="field-value">{{ form.merchandise }}</div>
               </div>
 
-
-              <!-- UNIT OF MEASUREMENT -->
-
+              <!-- ✅ Show selected UOM -->
               <div class="field unit-measurement">
-
                 <div class="field-label">
-
-                  <span
-                    class="amharic-label"
-                    lang="am"
-                  >
-                    መለኪያ
-                  </span>
-
-                  <span class="english-label">
-                    Unit of Measurement
-                  </span>
-
+                  <span class="amharic-label" lang="am">መለኪያ</span>
+                  <span class="english-label">Unit of Measurement</span>
                 </div>
-
                 <div class="field-value">
-                  {{ form.unitOfMeasurement }}
+                  {{ displayUom }}
                 </div>
-
               </div>
-
-
-              <!-- CODE NUMBER -->
 
               <div class="field code-number">
-
                 <div class="field-label">
-
-                  <span
-                    class="amharic-label"
-                    lang="am"
-                  >
-                    ኮድ ቁጥር
-                  </span>
-
-                  <span class="english-label">
-                    Code No.
-                  </span>
-
+                  <span class="amharic-label" lang="am">ኮድ ቁጥር</span>
+                  <span class="english-label">Code No.</span>
                 </div>
-
-                <div class="field-value">
-                  {{ form.codeNo }}
-                </div>
-
+                <div class="field-value">{{ form.codeNo }}</div>
               </div>
 
             </div>
@@ -269,448 +206,132 @@
           <table class="stock-table">
 
             <colgroup>
-
               <col class="col-date" />
               <col class="col-grn" />
               <col class="col-siv" />
               <col class="col-particulars" />
-
               <col class="col-quantity" />
               <col class="col-quantity" />
               <col class="col-quantity" />
-
               <col class="col-unit-cost" />
-
               <col class="col-total" />
               <col class="col-total" />
               <col class="col-total" />
-
             </colgroup>
 
-
-            <!-- TABLE HEADER -->
-
             <thead>
-
               <tr>
-
-                <!-- DATE -->
-
                 <th rowspan="2">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    ቀን
-                  </div>
-
-                  <div class="th-english">
-                    DATE
-                  </div>
-
+                  <div class="th-amharic" lang="am">ቀን</div>
+                  <div class="th-english">DATE</div>
                 </th>
-
-
-                <!-- GRN -->
-
                 <th rowspan="2">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    የመግቢያ ደረሰኝ ቁጥር
-                  </div>
-
-                  <div class="th-english">
-                    Rep. GRN No.
-                  </div>
-
+                  <div class="th-amharic" lang="am">የመግቢያ ደረሰኝ ቁጥር</div>
+                  <div class="th-english">Rep. GRN No.</div>
                 </th>
-
-
-                <!-- SIV -->
-
                 <th rowspan="2">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    የዕቃ መውጫ ደረሰኝ ቁጥር
-                  </div>
-
-                  <div class="th-english">
-                    S.I.V No.
-                  </div>
-
+                  <div class="th-amharic" lang="am">የዕቃ መውጫ ደረሰኝ ቁጥር</div>
+                  <div class="th-english">S.I.V No.</div>
                 </th>
-
-
-                <!-- PARTICULARS -->
-
                 <th rowspan="2">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    ማብራሪያ
-                  </div>
-
-                  <div class="th-english">
-                    Particulars
-                  </div>
-
+                  <div class="th-amharic" lang="am">ማብራሪያ</div>
+                  <div class="th-english">Particulars</div>
                 </th>
-
-
-                <!-- QUANTITY -->
-
                 <th colspan="3">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    ብዛት
-                  </div>
-
-                  <div class="th-english">
-                    QUANTITY
-                  </div>
-
+                  <div class="th-amharic" lang="am">ብዛት</div>
+                  <div class="th-english">QUANTITY</div>
                 </th>
-
-
-                <!-- UNIT COST -->
-
                 <th rowspan="2">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    የአንዱ ዋጋ
-                  </div>
-
-                  <div class="th-english">
-                    UNIT COST
-                  </div>
-
+                  <div class="th-amharic" lang="am">የአንዱ ዋጋ</div>
+                  <div class="th-english">UNIT COST</div>
                 </th>
-
-
-                <!-- TOTAL COST -->
-
                 <th colspan="3">
-
-                  <div
-                    class="th-amharic"
-                    lang="am"
-                  >
-                    ጠቅላላ ዋጋ
-                  </div>
-
-                  <div class="th-english">
-                    TOTAL COST
-                  </div>
-
+                  <div class="th-amharic" lang="am">ጠቅላላ ዋጋ</div>
+                  <div class="th-english">TOTAL COST</div>
                 </th>
-
               </tr>
 
-
-              <!-- SECOND HEADER ROW -->
-
               <tr>
-
-                <!-- QUANTITY IN -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ገቢ
-                  </div>
-
-                  <div class="th-english">
-                    IN
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ገቢ</div>
+                  <div class="th-english">IN</div>
                 </th>
-
-
-                <!-- QUANTITY OUT -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ወጪ
-                  </div>
-
-                  <div class="th-english">
-                    OUT
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ወጪ</div>
+                  <div class="th-english">OUT</div>
                 </th>
-
-
-                <!-- QUANTITY BALANCE -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ቀሪ
-                  </div>
-
-                  <div class="th-english">
-                    BALANCE
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ቀሪ</div>
+                  <div class="th-english">BALANCE</div>
                 </th>
-
-
-                <!-- TOTAL COST IN -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ገቢ
-                  </div>
-
-                  <div class="th-english">
-                    IN
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ገቢ</div>
+                  <div class="th-english">IN</div>
                 </th>
-
-
-                <!-- TOTAL COST OUT -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ወጪ
-                  </div>
-
-                  <div class="th-english">
-                    OUT
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ወጪ</div>
+                  <div class="th-english">OUT</div>
                 </th>
-
-
-                <!-- TOTAL COST BALANCE -->
-
                 <th>
-
-                  <div
-                    class="th-amharic small"
-                    lang="am"
-                  >
-                    ቀሪ
-                  </div>
-
-                  <div class="th-english">
-                    BALANCE
-                  </div>
-
+                  <div class="th-amharic small" lang="am">ቀሪ</div>
+                  <div class="th-english">BALANCE</div>
                 </th>
-
               </tr>
-
             </thead>
 
-
-            <!-- TABLE BODY -->
-
             <tbody>
-
               <tr
                 v-for="(row, localIndex) in pageRows"
                 :key="`${pageIndex}-${localIndex}`"
               >
-
-                <!-- DATE -->
-
-                <td>
-                  <span class="table-value">
-                    {{ row.date }}
-                  </span>
-                </td>
-
-
-                <!-- GRN -->
-
-                <td>
-                  <span class="table-value">
-                    {{ row.grn }}
-                  </span>
-                </td>
-
-
-                <!-- SIV -->
-
-                <td>
-                  <span class="table-value">
-                    {{ row.siv }}
-                  </span>
-                </td>
-
-
-                <!-- PARTICULARS -->
-
+                <td><span class="table-value">{{ row.date }}</span></td>
+                <td><span class="table-value">{{ row.grn }}</span></td>
+                <td><span class="table-value">{{ row.siv }}</span></td>
                 <td>
                   <span class="table-value text-left">
                     {{ row.particulars }}
+                    <!-- ✅ Show UOM used for this transaction -->
+                    <span v-if="row.uomUsed" class="uom-badge-print">
+                      ({{ row.uomUsed }})
+                    </span>
                   </span>
                 </td>
-
-
-                <!-- QUANTITY IN -->
-
-                <td>
-                  <span class="table-value">
-                    {{ displayNumber(row.quantityIn) }}
-                  </span>
-                </td>
-
-
-                <!-- QUANTITY OUT -->
-
-                <td>
-                  <span class="table-value">
-                    {{ displayNumber(row.quantityOut) }}
-                  </span>
-                </td>
-
-
-                <!-- QUANTITY BALANCE -->
-
+                <td><span class="table-value">{{ displayNumber(row.quantityIn) }}</span></td>
+                <td><span class="table-value">{{ displayNumber(row.quantityOut) }}</span></td>
                 <td class="calculated">
-
-                  <span
-                    v-if="hasRowData(row)"
-                  >
+                  <span v-if="hasRowData(row)">
                     {{ displayNumber(row.runningQuantityBalance) }}
                   </span>
-
                 </td>
-
-
-                <!-- UNIT COST -->
-
-                <td>
-                  <span class="table-value">
-                    {{ displayMoney(row.unitCost) }}
+                <td><span class="table-value">{{ displayMoney(row.unitCost) }}</span></td>
+                <td class="calculated">
+                  <span v-if="hasRowData(row)">
+                    {{ displayMoney(Number(row.quantityIn || 0) * Number(row.unitCost || 0)) }}
                   </span>
                 </td>
-
-
-                <!-- TOTAL COST IN -->
-
                 <td class="calculated">
-
-                  <span
-                    v-if="hasRowData(row)"
-                  >
-                    {{ displayMoney(
-                      Number(row.quantityIn || 0) *
-                      Number(row.unitCost || 0)
-                    ) }}
+                  <span v-if="hasRowData(row)">
+                    {{ displayMoney(Number(row.quantityOut || 0) * Number(row.unitCost || 0)) }}
                   </span>
-
                 </td>
-
-
-                <!-- TOTAL COST OUT -->
-
                 <td class="calculated">
-
-                  <span
-                    v-if="hasRowData(row)"
-                  >
-                    {{ displayMoney(
-                      Number(row.quantityOut || 0) *
-                      Number(row.unitCost || 0)
-                    ) }}
-                  </span>
-
-                </td>
-
-
-                <!-- TOTAL COST BALANCE -->
-
-                <td class="calculated">
-
-                  <span
-                    v-if="hasRowData(row)"
-                  >
+                  <span v-if="hasRowData(row)">
                     {{ displayMoney(row.runningCostBalance) }}
                   </span>
-
                 </td>
-
               </tr>
 
-
-              <!-- TOTAL C/F -->
-
-              <tr
-                v-if="pageIndex === paginatedRows.length - 1"
-                class="total-row"
-              >
-
+              <tr v-if="pageIndex === paginatedRows.length - 1 && filteredRows.length > 0" class="total-row">
                 <td colspan="3"></td>
-
-                <td class="total-label">
-                  TOTAL C/F
-                </td>
-
-                <td>
-                  {{ totalQuantityIn || '' }}
-                </td>
-
-                <td>
-                  {{ totalQuantityOut || '' }}
-                </td>
-
-                <td>
-                  {{ totalQuantityBalance || '' }}
-                </td>
-
+                <td class="total-label">TOTAL C/F</td>
+                <td>{{ totalQuantityIn || '' }}</td>
+                <td>{{ totalQuantityOut || '' }}</td>
+                <td>{{ totalQuantityBalance || '' }}</td>
                 <td></td>
-
-                <td>
-                  {{ displayMoney(totalCostIn) }}
-                </td>
-
-                <td>
-                  {{ displayMoney(totalCostOut) }}
-                </td>
-
-                <td>
-                  {{ displayMoney(totalCostBalance) }}
-                </td>
-
+                <td>{{ displayMoney(totalCostIn) }}</td>
+                <td>{{ displayMoney(totalCostOut) }}</td>
+                <td>{{ displayMoney(totalCostBalance) }}</td>
               </tr>
-
             </tbody>
 
           </table>
@@ -733,7 +354,7 @@
 </template>
 
 
-<script setup>
+<script setup lang="ts">
 
 import {
   computed,
@@ -765,7 +386,35 @@ const goBack = () => {
 }
 
 
+// =========================================================
+// UOM SELECTION STATE
+// =========================================================
+
+const selectedUom = ref<'base' | 'converted'>('base')
+
+const displayUom = computed(() => {
+  if (selectedUom.value === 'converted' && selectedItem.value?.conversionUomCode) {
+    return selectedItem.value.conversionUomCode
+  }
+  return selectedItem.value?.uomCode || 'Pcs'
+})
+
+
+// =========================================================
+// PRINT FUNCTION
+// =========================================================
+
 const printPage = () => {
+  if (generating.value) {
+    showToastMessage('Please wait for data to load', 'warning')
+    return
+  }
+  
+  if (!hasStockData.value || filteredRows.value.length === 0) {
+    showToastMessage('No data to print', 'warning')
+    return
+  }
+  
   const printWindow = window.open('', '_blank', 'width=1200,height=800')
   if (!printWindow) {
     window.print()
@@ -779,7 +428,7 @@ const printPage = () => {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Stock Card Print</title>
+      <title>Stock Card Print - ${displayUom.value}</title>
       <style>
         @page {
           size: A4 portrait;
@@ -838,7 +487,7 @@ const printPage = () => {
         .header {
           position: relative;
           width: 100%;
-          height: 35mm;
+          height: 38mm;
           text-align: center;
         }
         .trust-english {
@@ -881,6 +530,22 @@ const printPage = () => {
           font-weight: 600;
           text-decoration: underline;
           font-family: 'Times New Roman', Times, serif;
+        }
+        .stock-uom-header {
+          position: absolute;
+          top: 26mm;
+          left: 0;
+          right: 0;
+          font-size: 10px;
+          font-weight: 500;
+          font-family: 'Times New Roman', Times, serif;
+        }
+        .uom-header-label {
+          font-weight: 600;
+        }
+        .uom-header-value {
+          font-weight: 700;
+          text-decoration: underline;
         }
         .page-number {
           position: absolute;
@@ -1049,6 +714,11 @@ const printPage = () => {
         .table-value.text-left {
           text-align: left;
         }
+        .uom-badge-print {
+          font-size: 5.5px;
+          color: #475569;
+          font-weight: 500;
+        }
         .calculated {
           text-align: center;
           font-size: 6.8px;
@@ -1108,15 +778,15 @@ const printPage = () => {
 
 const itemSearchQuery = ref('')
 const showItemDropdown = ref(false)
-const selectedItem = ref(null)
-const inventoryItems = ref([])
+const selectedItem = ref<any>(null)
+const inventoryItems = ref<any[]>([])
 const generating = ref(false)
 const hasStockData = ref(false)
-const stockCardData = ref(null)
+const stockCardData = ref<any>(null)
 
 
 // =========================================================
-// FILTER STATE - Only Date Range
+// FILTER STATE
 // =========================================================
 
 const filterStartDate = ref('')
@@ -1147,20 +817,46 @@ const filteredItems = computed(() => {
 
 
 // =========================================================
-// ITEM SELECTION METHODS - AUTO-GENERATE
+// ✅ FILTERED ROWS - Only transactions with selected UOM
+// =========================================================
+
+const filteredRows = computed(() => {
+  return rows.filter(row => {
+    // Skip empty rows
+    if (!hasRowData(row)) return false
+    
+    // ✅ If showing base UOM, show only base UOM transactions
+    if (selectedUom.value === 'base') {
+      return row.isBaseUom !== false
+    }
+    
+    // ✅ If showing converted UOM, show only converted UOM transactions
+    if (selectedUom.value === 'converted') {
+      return row.isBaseUom === false
+    }
+    
+    return true
+  })
+})
+
+
+// =========================================================
+// ITEM SELECTION METHODS
 // =========================================================
 
 const onItemSearch = () => {
   showItemDropdown.value = true
 }
 
-// ✅ AUTO-GENERATE when item is selected
-const selectItem = (item) => {
+const selectItem = (item: any) => {
   selectedItem.value = item
   itemSearchQuery.value = item.code || item.name || ''
   showItemDropdown.value = false
   
-  // Auto-generate with a small delay to let UI update
+  // ✅ Reset UOM selection to base
+  selectedUom.value = 'base'
+  
+  // Auto-generate
   setTimeout(() => {
     generateStockCard()
   }, 300)
@@ -1173,11 +869,30 @@ const clearSelectedItem = () => {
   stockCardData.value = null
   loadBlankStockCard()
   hasStockData.value = false
+  selectedUom.value = 'base'
 }
 
 
 // =========================================================
-// FETCH ITEMS - Filtered by User's Store and Group
+// ✅ UOM CHANGE HANDLER - Refresh data with new UOM filter
+// =========================================================
+
+const onUomChange = () => {
+  if (selectedItem.value) {
+    // Clear current data and show loading
+    hasStockData.value = false
+    loadBlankStockCard()
+    
+    // Regenerate with new UOM filter
+    setTimeout(() => {
+      generateStockCard()
+    }, 300)
+  }
+}
+
+
+// =========================================================
+// FETCH ITEMS
 // =========================================================
 
 const fetchItems = async () => {
@@ -1219,7 +934,9 @@ const loadBlankStockCard = () => {
       quantityOut: 0,
       unitCost: 0,
       runningQuantityBalance: 0,
-      runningCostBalance: 0
+      runningCostBalance: 0,
+      uomUsed: null,
+      isBaseUom: true
     })
   }
   
@@ -1231,7 +948,7 @@ const loadBlankStockCard = () => {
 
 
 // =========================================================
-// GENERATE STOCK CARD FOR SELECTED ITEM
+// ✅ GENERATE STOCK CARD - WITH UOM FILTER
 // =========================================================
 
 const generateStockCard = async () => {
@@ -1249,16 +966,26 @@ const generateStockCard = async () => {
   }
   
   generating.value = true
+  hasStockData.value = false
   
   try {
-    const filters = {
+    const filters: any = {
       storeId: storeId,
       groupId: groupId,
-      limit: 100
+      limit: 500
     }
     
     if (filterStartDate.value) filters.startDate = filterStartDate.value
     if (filterEndDate.value) filters.endDate = filterEndDate.value
+    
+    // ✅ CRITICAL: Add UOM filter based on selection
+    if (selectedUom.value === 'base') {
+      filters.isBaseUom = true
+    } else if (selectedUom.value === 'converted') {
+      filters.isBaseUom = false
+    }
+    
+    console.log(`📊 Fetching stock card for ${selectedItem.value.code} with UOM: ${selectedUom.value} (isBaseUom: ${filters.isBaseUom})`)
     
     const response = await stockCardService.getStockCard(
       selectedItem.value.id,
@@ -1279,18 +1006,23 @@ const generateStockCard = async () => {
 
     rows.splice(0, rows.length)
 
-    if (!dataRows || dataRows.length === 0 || 
-        (dataRows.length === 1 && dataRows[0].particulars?.includes('No transactions'))) {
+    if (!dataRows || dataRows.length === 0) {
+      const uomDisplay = selectedUom.value === 'base' 
+        ? (selectedItem.value.uomCode || 'PCS')
+        : (selectedItem.value.conversionUomCode || 'Converted')
+      
       rows.push({
         date: '',
         grn: '',
         siv: '',
-        particulars: `No transactions found for ${selectedItem.value.code}`,
+        particulars: `No ${uomDisplay} transactions found for ${selectedItem.value.code}`,
         quantityIn: 0,
         quantityOut: 0,
         unitCost: item?.costPrice || 0,
-        runningQuantityBalance: response.data.currentBalance || 0,
-        runningCostBalance: (response.data.currentBalance || 0) * (item?.costPrice || 0)
+        runningQuantityBalance: 0,
+        runningCostBalance: 0,
+        uomUsed: uomDisplay,
+        isBaseUom: selectedUom.value === 'base'
       })
       
       while (rows.length % 27 !== 0) {
@@ -1303,13 +1035,16 @@ const generateStockCard = async () => {
           quantityOut: 0,
           unitCost: 0,
           runningQuantityBalance: 0,
-          runningCostBalance: 0
+          runningCostBalance: 0,
+          uomUsed: null,
+          isBaseUom: true
         })
       }
       
-      showToastMessage(`⚠️ No transactions found for ${selectedItem.value.code}`, 'info')
+      showToastMessage(`⚠️ No ${displayUom.value} transactions found for ${selectedItem.value.code}`, 'info')
     } else {
-      dataRows.forEach(row => {
+      // ✅ Process rows - they are already filtered by the API
+      dataRows.forEach((row: any) => {
         rows.push({
           date: row.date || '',
           grn: row.grn || '',
@@ -1319,7 +1054,9 @@ const generateStockCard = async () => {
           quantityOut: row.quantityOut || 0,
           unitCost: row.unitCost || 0,
           runningQuantityBalance: row.runningQuantityBalance || 0,
-          runningCostBalance: row.runningCostBalance || 0
+          runningCostBalance: row.runningCostBalance || 0,
+          uomUsed: row.uomUsed || displayUom.value,
+          isBaseUom: row.isBaseUom !== false
         })
       })
       
@@ -1333,20 +1070,21 @@ const generateStockCard = async () => {
           quantityOut: 0,
           unitCost: 0,
           runningQuantityBalance: 0,
-          runningCostBalance: 0
-        })
+          runningCostBalance: 0,
+          uomUsed: null,
+          isBaseUom: true        })
       }
 
-      const totalTx = summary?.totalTransactions || dataRows.filter(r => r.date).length
+      const totalTx = summary?.totalTransactions || dataRows.filter((r: any) => r.date).length
       showToastMessage(
-        `✅ Loaded ${totalTx} transactions for ${selectedItem.value.code}`,
+        `✅ Loaded ${totalTx} ${displayUom.value} transactions for ${selectedItem.value.code}`,
         'success'
       )
     }
 
     hasStockData.value = true
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error generating stock card:', error)
     showToastMessage(error.message || 'Failed to load stock card data', 'error')
     loadBlankStockCard()
@@ -1358,13 +1096,18 @@ const generateStockCard = async () => {
 
 
 // =========================================================
-// FILTER CHANGE - Auto-refresh
+// FILTER CHANGE
 // =========================================================
+
+let filterTimeout: ReturnType<typeof setTimeout> | null = null
 
 const onFilterChange = () => {
   if (selectedItem.value) {
-    clearTimeout(window._filterTimeout)
-    window._filterTimeout = setTimeout(() => {
+    if (filterTimeout) {
+      clearTimeout(filterTimeout)
+    }
+
+    filterTimeout = setTimeout(() => {
       generateStockCard()
     }, 500)
   }
@@ -1387,7 +1130,20 @@ const form = reactive({
 // STOCK ROWS
 // =========================================================
 
-const rows = reactive([])
+const rows = reactive<Array<{
+  date: string;
+  grn: string;
+  siv: string;
+  particulars: string;
+  quantityIn: number;
+  quantityOut: number;
+  unitCost: number;
+  runningQuantityBalance: number;
+  runningCostBalance: number;
+  uomUsed: string | null;
+  isBaseUom: boolean;
+  originalIndex?: number;
+}>>([])
 
 
 /* =========================================================
@@ -1410,14 +1166,15 @@ const ROWS_PER_PAGE = 27
 
 
 /* =========================================================
-   PAGINATE DATA
+   ✅ PAGINATE DATA - Use filtered rows
 ========================================================= */
 
 const paginatedRows = computed(() => {
   const result = []
+  const dataToPaginate = filteredRows.value
 
-  for (let i = 0; i < indexedRows.value.length; i += ROWS_PER_PAGE) {
-    const pageRows = indexedRows.value.slice(i, i + ROWS_PER_PAGE)
+  for (let i = 0; i < dataToPaginate.length; i += ROWS_PER_PAGE) {
+    const pageRows = dataToPaginate.slice(i, i + ROWS_PER_PAGE)
 
     while (pageRows.length < ROWS_PER_PAGE) {
       pageRows.push({
@@ -1430,6 +1187,8 @@ const paginatedRows = computed(() => {
         unitCost: 0,
         runningQuantityBalance: 0,
         runningCostBalance: 0,
+        uomUsed: null,
+        isBaseUom: true,
         originalIndex: -1
       })
     }
@@ -1445,7 +1204,7 @@ const paginatedRows = computed(() => {
    CHECK WHETHER ROW ACTUALLY HAS DATA
 ========================================================= */
 
-function hasRowData(row) {
+function hasRowData(row: any): boolean {
   if (!row) return false
 
   return (
@@ -1464,7 +1223,7 @@ function hasRowData(row) {
    DISPLAY NUMBER
 ========================================================= */
 
-function displayNumber(value) {
+function displayNumber(value: number): string {
   const number = Number(value || 0)
   if (number === 0) return ''
   return number.toLocaleString('en-US')
@@ -1475,7 +1234,7 @@ function displayNumber(value) {
    DISPLAY MONEY
 ========================================================= */
 
-function displayMoney(value) {
+function displayMoney(value: number): string {
   const number = Number(value || 0)
   if (number === 0) return ''
   return number.toLocaleString('en-US', {
@@ -1486,61 +1245,15 @@ function displayMoney(value) {
 
 
 /* =========================================================
-   RUNNING QUANTITY BALANCE
-========================================================= */
-
-function quantityBalance(index) {
-  if (index < 0) return ''
-  
-  const row = rows[index]
-  if (row && row.runningQuantityBalance !== undefined) {
-    const balance = Number(row.runningQuantityBalance || 0)
-    return balance === 0 ? '' : balance.toLocaleString('en-US')
-  }
-  
-  let balance = 0
-  for (let i = 0; i <= index; i++) {
-    balance += Number(rows[i].quantityIn || 0)
-    balance -= Number(rows[i].quantityOut || 0)
-  }
-  return balance === 0 ? '' : balance.toLocaleString('en-US')
-}
-
-
-/* =========================================================
-   RUNNING COST BALANCE
-========================================================= */
-
-function runningCostBalance(index) {
-  if (index < 0) return 0
-  
-  const row = rows[index]
-  if (row && row.runningCostBalance !== undefined) {
-    return Number(row.runningCostBalance || 0)
-  }
-  
-  let balance = 0
-  for (let i = 0; i <= index; i++) {
-    const quantityIn = Number(rows[i].quantityIn || 0)
-    const quantityOut = Number(rows[i].quantityOut || 0)
-    const unitCost = Number(rows[i].unitCost || 0)
-    balance += quantityIn * unitCost
-    balance -= quantityOut * unitCost
-  }
-  return balance
-}
-
-
-/* =========================================================
-   TOTALS
+   TOTALS - Using filtered rows
 ========================================================= */
 
 const totalQuantityIn = computed(() => {
-  return rows.reduce((total, row) => total + Number(row.quantityIn || 0), 0)
+  return filteredRows.value.reduce((total, row) => total + Number(row.quantityIn || 0), 0)
 })
 
 const totalQuantityOut = computed(() => {
-  return rows.reduce((total, row) => total + Number(row.quantityOut || 0), 0)
+  return filteredRows.value.reduce((total, row) => total + Number(row.quantityOut || 0), 0)
 })
 
 const totalQuantityBalance = computed(() => {
@@ -1548,11 +1261,11 @@ const totalQuantityBalance = computed(() => {
 })
 
 const totalCostIn = computed(() => {
-  return rows.reduce((total, row) => total + Number(row.quantityIn || 0) * Number(row.unitCost || 0), 0)
+  return filteredRows.value.reduce((total, row) => total + Number(row.quantityIn || 0) * Number(row.unitCost || 0), 0)
 })
 
 const totalCostOut = computed(() => {
-  return rows.reduce((total, row) => total + Number(row.quantityOut || 0) * Number(row.unitCost || 0), 0)
+  return filteredRows.value.reduce((total, row) => total + Number(row.quantityOut || 0) * Number(row.unitCost || 0), 0)
 })
 
 const totalCostBalance = computed(() => {
@@ -1566,9 +1279,9 @@ const totalCostBalance = computed(() => {
 
 const showToast = ref(false)
 const toastMessage = ref('')
-const toastType = ref('success')
+const toastType = ref<'success' | 'error' | 'warning' | 'info'>('success')
 
-const showToastMessage = (msg, type = 'success') => {
+const showToastMessage = (msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
   toastMessage.value = msg
   toastType.value = type
   showToast.value = true
@@ -1617,7 +1330,9 @@ watch(
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
     const wrapper = document.querySelector('.item-select-wrapper')
-    if (wrapper && !wrapper.contains(e.target)) {
+    const target = e.target as Node | null
+
+    if (wrapper && target && !wrapper.contains(target)) {
       showItemDropdown.value = false
     }
   })
@@ -1627,7 +1342,110 @@ if (typeof document !== 'undefined') {
 
 
 <style scoped>
+/* =========================================================
+   PRINT BUTTON - STYLED
+========================================================= */
 
+.btn-print-top {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: #1e293b;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  min-width: 120px;
+  box-shadow: 0 2px 8px rgba(30, 41, 59, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-print-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-print-top:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.btn-print-top:hover:not(:disabled) {
+  background: #0f172a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(30, 41, 59, 0.35);
+}
+
+.btn-print-top:active:not(:disabled) {
+  transform: translateY(0px);
+  box-shadow: 0 2px 8px rgba(30, 41, 59, 0.2);
+}
+
+.btn-print-top:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Print Icon */
+.btn-print-top .print-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.btn-print-top .print-text {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Loading State */
+.btn-print-top .print-loading {
+  display: inline-block;
+  font-size: 16px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media screen and (max-width: 768px) {
+  .btn-print-top {
+    padding: 8px 16px;
+    font-size: 13px;
+    min-width: 100px;
+  }
+  
+  .btn-print-top .print-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .btn-print-top {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+  }
+}
 /* =========================================================
    RESET
 ========================================================= */
@@ -1693,7 +1511,53 @@ if (typeof document !== 'undefined') {
 
 
 /* =========================================================
-   TOP ACTIONS - NO GENERATE BUTTON
+   NO DATA STATE
+========================================================= */
+
+.no-data-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  width: 100%;
+  max-width: 210mm;
+  margin: 0 auto;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 40px;
+}
+
+.no-data-content {
+  text-align: center;
+}
+
+.no-data-icon {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.no-data-content h3 {
+  font-size: 20px;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.no-data-content p {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.no-data-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+
+/* =========================================================
+   TOP ACTIONS
 ========================================================= */
 
 .top-actions {
@@ -1807,24 +1671,55 @@ if (typeof document !== 'undefined') {
   border-radius: 12px;
 }
 
-.btn-print-top {
-  background: #2563eb;
-  color: white;
-  border: none;
-  padding: 8px 18px;
+.item-dropdown-conversion {
+  font-size: 10px;
+  color: #7c3aed;
+  background: #ede9fe;
+  padding: 1px 10px;
+  border-radius: 12px;
+}
+
+
+/* =========================================================
+   UOM SELECTION
+========================================================= */
+
+.uom-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: #f8fafc;
   border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
+  border: 1px solid #e2e8f0;
+}
+
+.uom-select-wrapper label {
+  font-size: 12px;
   font-weight: 500;
-  transition: all 0.2s;
+  color: #475569;
   white-space: nowrap;
 }
-.btn-print-top:hover:not(:disabled) {
-  background: #1d4ed8;
+
+.uom-select {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+  min-width: 120px;
 }
-.btn-print-top:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+
+.uom-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.loading-small {
+  font-size: 14px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
 }
 
 
@@ -1871,6 +1766,14 @@ if (typeof document !== 'undefined') {
   border-radius: 12px;
 }
 
+.selected-conversion {
+  font-size: 12px;
+  color: #7c3aed;
+  background: #ede9fe;
+  padding: 1px 12px;
+  border-radius: 12px;
+}
+
 .selected-cost {
   font-size: 12px;
   color: #166534;
@@ -1907,7 +1810,7 @@ if (typeof document !== 'undefined') {
 
 
 /* =========================================================
-   FILTER OPTIONS - Only Date Range
+   FILTER OPTIONS
 ========================================================= */
 
 .filter-options {
@@ -1948,6 +1851,20 @@ if (typeof document !== 'undefined') {
 .filter-group input:focus {
   outline: none;
   border-color: #3b82f6;
+}
+
+.filter-info {
+  margin-left: auto;
+}
+
+.filter-badge {
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
 }
 
 
@@ -2020,7 +1937,6 @@ if (typeof document !== 'undefined') {
    A4 STOCK CARD
 ========================================================= */
 
-/* ✅ ADDED FONT to all text in stock card */
 .stock-card {
   position: relative;
   width: 100%;
@@ -2059,7 +1975,7 @@ if (typeof document !== 'undefined') {
 .header {
   position: relative;
   width: 100%;
-  height: 38mm;
+  height: 40mm;
   text-align: center;
 }
 
@@ -2105,6 +2021,25 @@ if (typeof document !== 'undefined') {
   font-weight: 600;
   text-decoration: underline;
   font-family: 'Times New Roman', Times, serif;
+}
+
+.stock-uom-header {
+  position: absolute;
+  top: 28mm;
+  left: 0;
+  right: 0;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.uom-header-label {
+  font-weight: 600;
+}
+
+.uom-header-value {
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .page-number {
@@ -2315,6 +2250,12 @@ if (typeof document !== 'undefined') {
   text-align: left;
 }
 
+.uom-badge-print {
+  font-size: 5.5px;
+  color: #475569;
+  font-weight: 500;
+}
+
 .calculated {
   text-align: center;
   font-size: 7px;
@@ -2359,6 +2300,10 @@ if (typeof document !== 'undefined') {
     max-width: 100%;
   }
 
+  .uom-select-wrapper {
+    max-width: 100%;
+  }
+
   .filter-options {
     flex-direction: column;
     align-items: stretch;
@@ -2372,6 +2317,10 @@ if (typeof document !== 'undefined') {
   .filter-group input {
     flex: 1;
     min-width: 0;
+  }
+
+  .filter-info {
+    margin-left: 0;
   }
 
   .page-wrapper {

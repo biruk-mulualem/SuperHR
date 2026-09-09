@@ -19,6 +19,9 @@ export interface StockCardRow {
   updatedBy: string | null;
   transactionType: string | null;
   referenceType: string | null;
+  // ✅ UOM Fields
+  uomUsed?: string;
+  isBaseUom?: boolean;
 }
 
 export interface StockCardResponse {
@@ -46,6 +49,8 @@ export interface StockCardResponse {
       standardName: string | null;
       uomCode: string;
       uomName: string;
+      conversionUomCode?: string | null;
+      conversionUomName?: string | null;
       categoryName: string | null;
       costPrice: number;
     };
@@ -65,13 +70,15 @@ export interface StockCardResponse {
       startDate: string | null;
       endDate: string | null;
       limit: number;
+      isBaseUom?: boolean | null;
     };
   };
+  error?: string;
 }
 
 class StockCardService {
   /**
-   * Get stock card for an item
+   * Get stock card for an item with UOM support
    */
   async getStockCard(
     itemId: number,
@@ -81,14 +88,23 @@ class StockCardService {
       startDate?: string;
       endDate?: string;
       limit?: number;
+      isBaseUom?: boolean;
     } = {}
   ): Promise<StockCardResponse> {
     const params = new URLSearchParams();
+    
     if (filters.storeId) params.append('storeId', filters.storeId.toString());
     if (filters.groupId) params.append('groupId', filters.groupId.toString());
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
     if (filters.limit) params.append('limit', filters.limit?.toString() || '100');
+    
+    // ✅ CRITICAL: Add UOM filter
+    if (filters.isBaseUom !== undefined && filters.isBaseUom !== null) {
+      params.append('isBaseUom', String(filters.isBaseUom));
+    }
+
+    console.log(`📊 Stock card request: /stock-card/${itemId}?${params.toString()}`);
 
     const response = await api.get(
       `/stock-card/${itemId}?${params.toString()}`
@@ -107,6 +123,7 @@ class StockCardService {
       startDate?: string;
       endDate?: string;
       limit?: number;
+      isBaseUom?: boolean;
     } = {}
   ): Promise<StockCardResponse> {
     const params = new URLSearchParams();
@@ -115,6 +132,12 @@ class StockCardService {
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
     if (filters.limit) params.append('limit', filters.limit?.toString() || '100');
+    
+    if (filters.isBaseUom !== undefined && filters.isBaseUom !== null) {
+      params.append('isBaseUom', String(filters.isBaseUom));
+    }
+
+    console.log(`📊 Optimized stock card request: /stock-card/${itemId}/optimized?${params.toString()}`);
 
     const response = await api.get(
       `/stock-card/${itemId}/optimized?${params.toString()}`

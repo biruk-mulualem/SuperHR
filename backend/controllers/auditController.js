@@ -1,4 +1,5 @@
-// auditController.js - Complete Audit Controller with OUTLIER REMOVED
+// auditController.js - Clean Version (NO Converted Balance)
+// Only uses StoreBalance table
 
 const { Op } = require("sequelize");
 const { getUserStoreAndGroup } = require("../utils/userAccess");
@@ -26,7 +27,8 @@ const formatBalance = (record) => {
   const conversionValue = item?.conversionValue !== undefined && item?.conversionValue !== null 
     ? parseFloat(item.conversionValue) 
     : 1;
-  const balance = parseFloat(record.balance);
+  
+  const balance = parseFloat(record.balance) || 0;
   const minStock = parseFloat(record.minStockAlert) || 0;
 
   return {
@@ -47,7 +49,7 @@ const formatBalance = (record) => {
     balance: balance,
     minStock: minStock,
     baseBalance: balance * conversionValue,
-    status: record.status,
+    status: record.status || 'Active',
     statusClass: balance === 0 ? 'zero' : (balance <= minStock ? 'low' : 'normal'),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -104,16 +106,11 @@ const calculateGroupSummary = (balances) => {
 // HELPER: Get last transaction dates
 // ============================================
 
-/**
- * Get last transaction dates for each item per group
- */
 const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
   try {
     if (!groupIds.length || !itemIds.length) {
       return {};
     }
-
-    console.log(`🔍 Getting last transaction dates for ${itemIds.length} items across ${groupIds.length} groups`);
 
     const query = `
       SELECT DISTINCT ON (sbh."item_id", sbh."group_id") 
@@ -136,8 +133,6 @@ const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
       type: sequelize.QueryTypes.SELECT
     });
 
-    console.log(`✅ Found ${results.length} last transaction records`);
-
     const lastTxMap = {};
     results.forEach(row => {
       const key = `${row.itemId}_${row.groupId}`;
@@ -152,38 +147,6 @@ const getLastTransactionDates = async (storeId, groupIds, itemIds) => {
   }
 };
 
-/**
- * Determine comparison status - SIMPLIFIED (No Outlier)
- */
-const determineStatus = (values, totalGroups) => {
-  // Filter out null/undefined values
-  const validValues = values.filter(v => v !== null && v !== undefined)
-  const missingCount = totalGroups - validValues.length
-  
-  // If no data at all
-  if (validValues.length === 0) {
-    return 'No Data'
-  }
-  
-  // If some groups have missing data
-  if (missingCount > 0) {
-    return 'Conflict' // Missing data is a conflict!
-  }
-  
-  // All groups have data, check if they match
-  const uniqueValues = [...new Set(validValues)]
-  
-  if (uniqueValues.length === 1) {
-    return 'Matched'
-  } else {
-    // Any difference = Conflict (whether 2 or 3+ different values)
-    return 'Conflict'
-  }
-}
-
-/**
- * Get status class for frontend - SIMPLIFIED
- */
 const getStatusClass = (status) => {
   const map = {
     'Matched': 'matched',
@@ -193,10 +156,10 @@ const getStatusClass = (status) => {
   return map[status] || 'unknown';
 };
 
-/**
- * 1. GET STORE AUDIT - MAIN ENDPOINT
- * GET /api/audit/store/:storeId
- */
+// ============================================
+// GET STORE AUDIT - MAIN ENDPOINT (CLEAN)
+// ============================================
+
 exports.getStoreAudit = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -204,7 +167,6 @@ exports.getStoreAudit = async (req, res) => {
 
     console.log(`🔍 Getting audit data for store: ${storeId}`);
 
-    // Validate store exists
     const store = await Store.findByPk(parseInt(storeId), {
       attributes: ['storeId', 'name', 'code', 'location', 'status'],
     });
@@ -216,7 +178,6 @@ exports.getStoreAudit = async (req, res) => {
       });
     }
 
-    // Get all groups for this store
     const storeGroups = await StoreGroupRelation.findAll({
       where: { storeId: parseInt(storeId) },
       include: [
@@ -235,7 +196,9 @@ exports.getStoreAudit = async (req, res) => {
 
     console.log(`📋 Found ${groups.length} groups for store ${storeId}`);
 
-    // Get all balances for this store
+    // ============================================================
+    // ✅ GET BALANCES (StoreBalance only - NO ConvertedBalance)
+    // ============================================================
     const allBalances = await StoreBalance.findAll({
       where: {
         storeId: parseInt(storeId),
@@ -279,6 +242,49 @@ exports.getStoreAudit = async (req, res) => {
 
     console.log(`✅ Found ${allBalances.length} balances for store ${storeId}`);
 
+    // ============================================================
+    // ✅ GROUP BALANCES
+    // ============================================================
+    const groupedBalances = {};
+    const groupSummaries = {};
+    const groupBalanceCounts = {};
+
+    groups.forEach((group) => {
+      const groupId = group.groupId;
+      groupedBalances[groupId] = [];
+      groupBalanceCounts[groupId] = 0;
+    });
+
+    // Process balances
+    allBalances.forEach((balance) => {
+      const groupId = balance.groupId;
+      if (!groupId) return;
+      
+      const groupExists = groups.some(g => g.groupId === groupId);
+      if (!groupExists) return;
+      
+      if (!groupedBalances[groupId]) {
+        groupedBalances[groupId] = [];
+      }
+      
+      const formattedBalance = formatBalance(balance);
+      
+      groupedBalances[groupId].push(formattedBalance);
+      groupBalanceCounts[groupId] = (groupBalanceCounts[groupId] || 0) + 1;
+    });
+
+    groups.forEach((group) => {
+      const groupId = group.groupId;
+      const balances = groupedBalances[groupId] || [];
+      groupSummaries[groupId] = calculateGroupSummary(balances);
+    });
+
+    console.log(`📊 Group balance counts:`, groupBalanceCounts);
+
+    // ============================================================
+    // ✅ BUILD COMPARISON DATA
+    // ============================================================
+    
     // Get all unique categories
     const categorySet = new Set();
     allBalances.forEach(balance => {
@@ -288,185 +294,117 @@ exports.getStoreAudit = async (req, res) => {
     });
     const categories = Array.from(categorySet);
 
-    // STEP 1: Get last transaction dates for each item per group
+    // Get last transaction dates
     const groupIds = groups.map(g => g.groupId);
     const itemIds = [...new Set(allBalances.map(b => b.itemId))];
     const lastTxMap = await getLastTransactionDates(storeId, groupIds, itemIds);
 
-    // If no balances found, return empty data
-    if (allBalances.length === 0) {
-      console.log(`⚠️ No balances found for store ${storeId}`);
-      
-      const formattedGroups = groups.map(group => ({
-        groupId: group.groupId,
-        name: group.name,
-        code: group.code || '',
-        description: group.description || '',
-        status: group.status || 'Active',
-        balanceCount: 0,
-        summary: {
-          totalItems: 0,
-          totalBalance: 0,
-          totalBaseBalance: 0,
-          activeItems: 0,
-          inactiveItems: 0,
-          lowStockItems: 0,
-          zeroStockItems: 0,
-          averageBalance: 0,
-          lowStockPercentage: 0,
-          zeroStockPercentage: 0,
-        },
-        balances: [],
-        transactions: [],
-      }));
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          store: {
-            id: store.storeId,
-            name: store.name,
-            code: store.code,
-            location: store.location,
-            status: store.status,
-          },
-          groups: formattedGroups,
-          categories: categories,
-          summary: {
-            totalGroups: groups.length,
-            totalItems: 0,
-            totalBalance: 0,
-            totalBaseBalance: 0,
-            activeItems: 0,
-            inactiveItems: 0,
-            matchedItems: 0,
-            conflictItems: 0,
-            dateDiffItems: 0,
-            totalProducts: 0,
-            categories: categories,
-          },
-          comparison: {
-            items: [],
-            summary: {
-              total: 0,
-              matched: 0,
-              conflict: 0,
-              dateDiff: 0,
-              matchedPercentage: "0",
-              conflictPercentage: "0",
-              dateDiffPercentage: "0",
-            },
-          },
-        },
-      });
-    }
-
-    // Group balances by group
-    const groupedBalances = {};
-    const groupSummaries = {};
-
-    groups.forEach((group) => {
-      const groupBalances = allBalances.filter((b) => b.groupId === group.groupId);
-      groupedBalances[group.groupId] = groupBalances;
-      groupSummaries[group.groupId] = calculateGroupSummary(groupBalances);
-    });
-
-    // STEP 2: Build comparison data with last transaction dates
+    // Build item comparison map
     const itemMap = new Map();
-    
+
     allBalances.forEach((balance) => {
       const itemId = balance.itemId;
+      const groupId = balance.groupId;
+      
+      if (!groupId) return;
+      if (!groups.some(g => g.groupId === groupId)) return;
+      
       if (!itemMap.has(itemId)) {
+        const item = balance.item;
         itemMap.set(itemId, {
           itemId: itemId,
-          code: balance.item?.code || null,
-          itemName: balance.item?.standardName || balance.item?.name || null,
-          commonName: balance.item?.standardName || balance.item?.name || null,
-          standardName: balance.item?.standardName || null,
-          category: balance.item?.category?.name || null,
-          uomCode: balance.item?.uom?.code || null,
-          uomName: balance.item?.uom?.name || null,
-          conversionValue: parseFloat(balance.item?.conversionValue) || 1,
+          code: item?.code || null,
+          itemName: item?.standardName || item?.name || null,
+          commonName: item?.standardName || item?.name || null,
+          standardName: item?.standardName || null,
+          category: item?.category?.name || null,
+          uomCode: item?.uom?.code || null,
+          uomName: item?.uom?.name || null,
+          conversionUomCode: item?.conversionUom?.code || null,
+          conversionValue: parseFloat(item?.conversionValue) || 1,
           groupBalances: {},
           groupLastTxDates: {},
         });
       }
-      const item = itemMap.get(itemId);
-      item.groupBalances[balance.groupId] = parseFloat(balance.balance);
       
-      const key = `${itemId}_${balance.groupId}`;
+      const item = itemMap.get(itemId);
+      item.groupBalances[groupId] = parseFloat(balance.balance || 0);
+      
+      const key = `${itemId}_${groupId}`;
       if (lastTxMap[key]) {
-        item.groupLastTxDates[balance.groupId] = lastTxMap[key];
+        item.groupLastTxDates[groupId] = lastTxMap[key];
       }
     });
 
-    // STEP 3: Determine status and detect date differences
+    // Determine status for each item
     const comparisonItems = [];
     let matchedCount = 0;
     let conflictCount = 0;
     let dateDiffCount = 0;
 
     itemMap.forEach((item) => {
-      const values = Object.values(item.groupBalances).filter(v => v !== undefined && v !== null);
-      const totalGroups = groups.length;
-      const status = determineStatus(values, totalGroups);
+      const groupIds = Object.keys(item.groupBalances);
+      const values = groupIds.map(gid => item.groupBalances[gid] || 0);
       
-      // Check for date differences
+      const uniqueValues = [...new Set(values)];
+      
+      let status = 'No Data';
+      if (values.length === 0) {
+        status = 'No Data';
+      } else if (uniqueValues.length === 1) {
+        status = 'Matched';
+        matchedCount++;
+      } else {
+        status = 'Conflict';
+        conflictCount++;
+      }
+      
       const dates = Object.values(item.groupLastTxDates || {}).filter(d => d !== undefined && d !== null);
       const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))];
       const hasDateDiff = uniqueDateStrings.length > 1;
       
-      // Calculate date diff details
-      let dateDiffDetails = null;
-      if (hasDateDiff && dates.length > 1) {
-        const dateObjects = dates.map(d => new Date(d));
-        const latestDate = new Date(Math.max(...dateObjects.map(d => d.getTime())));
-        const earliestDate = new Date(Math.min(...dateObjects.map(d => d.getTime())));
-        const diffMs = latestDate - earliestDate;
-        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-        
-        dateDiffDetails = {
-          latestDate: latestDate.toISOString(),
-          earliestDate: earliestDate.toISOString(),
-          diffDays: diffDays,
-          diffHours: Math.round(diffMs / (1000 * 60 * 60)),
-          uniqueDates: uniqueDateStrings,
-        };
-      }
-      
-      // Count statuses - SIMPLIFIED: No Outlier
-      if (status === 'Matched') {
-        matchedCount++;
-        if (hasDateDiff) {
-          dateDiffCount++;
-        }
-      } else if (status === 'Conflict') {
-        conflictCount++; // Now includes all discrepancies
+      if (hasDateDiff && status === 'Matched') {
+        dateDiffCount++;
       }
 
       comparisonItems.push({
-        ...item,
+        itemId: item.itemId,
+        code: item.code,
+        itemName: item.itemName,
+        commonName: item.commonName,
+        standardName: item.standardName,
+        category: item.category,
+        uomCode: item.uomCode,
+        uomName: item.uomName,
+        conversionUomCode: item.conversionUomCode,
+        conversionValue: item.conversionValue,
+        groupBalances: item.groupBalances,
+        groupLastTxDates: item.groupLastTxDates,
         status,
         statusClass: getStatusClass(status),
         values,
-        groupLastTxDates: item.groupLastTxDates || {},
-        hasDateDiff: hasDateDiff,
-        dateDiffDetails: dateDiffDetails,
+        hasDateDiff,
+        dateDiffDetails: hasDateDiff ? {
+          uniqueDates: uniqueDateStrings,
+          diffDays: dates.length > 1 ? Math.round((new Date(Math.max(...dates.map(d => new Date(d).getTime()))) - new Date(Math.min(...dates.map(d => new Date(d).getTime())))) / (1000 * 60 * 60 * 24)) : 0,
+        } : null,
       });
     });
 
-    // STEP 4: Build group audit data with transactions
+    // ============================================================
+    // ✅ BUILD GROUP AUDIT DATA
+    // ============================================================
     const groupAuditData = await Promise.all(groups.map(async (group) => {
-      const balances = groupedBalances[group.groupId] || [];
-      const formattedBalances = balances.map((b) => formatBalance(b));
-
+      const groupId = group.groupId;
+      const balances = groupedBalances[groupId] || [];
+      
       let transactions = [];
       if (includeTransactions === 'true') {
         try {
           const allTransactions = await StoreBalanceHistory.findAll({
             where: {
               storeId: parseInt(storeId),
-              groupId: group.groupId,
+              groupId: groupId,
             },
             include: [
               {
@@ -492,16 +430,6 @@ exports.getStoreAudit = async (req, res) => {
                 ],
               },
               {
-                model: Store,
-                as: "sourceStore",
-                attributes: ["storeId", "name", "code"],
-              },
-              {
-                model: Store,
-                as: "destinationStore",
-                attributes: ["storeId", "name", "code"],
-              },
-              {
                 model: User,
                 as: "changedByUser",
                 attributes: ["userId", "username", "fullName"],
@@ -523,27 +451,23 @@ exports.getStoreAudit = async (req, res) => {
             newBalance: parseFloat(t.newBalance),
             changeAmount: parseFloat(t.changeAmount),
             transactionType: t.transactionType,
-            sourceStore: t.sourceStore?.name || null,
-            destinationStore: t.destinationStore?.name || null,
-            referenceType: t.referenceType,
-            referenceId: t.referenceId,
             changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
             remark: t.remark,
             createdAt: t.createdAt,
           }));
         } catch (txError) {
-          console.error(`⚠️ Error fetching transactions for group ${group.groupId}:`, txError);
+          console.error(`⚠️ Error fetching transactions for group ${groupId}:`, txError);
         }
       }
 
       return {
-        groupId: group.groupId,
+        groupId: groupId,
         name: group.name,
         code: group.code || '',
         description: group.description || '',
         status: group.status || 'Active',
         balanceCount: balances.length,
-        summary: groupSummaries[group.groupId] || {
+        summary: groupSummaries[groupId] || {
           totalItems: 0,
           totalBalance: 0,
           totalBaseBalance: 0,
@@ -555,30 +479,45 @@ exports.getStoreAudit = async (req, res) => {
           lowStockPercentage: 0,
           zeroStockPercentage: 0,
         },
-        balances: formattedBalances,
+        balances: balances,
         transactions: transactions,
       };
     }));
 
-    // STEP 5: Calculate overall summary
+    // ============================================================
+    // ✅ BUILD OVERALL SUMMARY
+    // ============================================================
+    let totalItems = 0;
+    let totalBalance = 0;
+    let activeItems = 0;
+    let inactiveItems = 0;
+    
+    groupAuditData.forEach(g => {
+      totalItems += g.balances.length;
+      g.balances.forEach(b => {
+        totalBalance += b.balance || 0;
+        if (b.status === 'Active') activeItems++;
+        else inactiveItems++;
+      });
+    });
+
     const overallSummary = {
       totalGroups: groups.length,
-      totalItems: allBalances.length,
-      totalBalance: allBalances.reduce((sum, b) => sum + parseFloat(b.balance), 0),
-      totalBaseBalance: allBalances.reduce((sum, b) => {
-        const cv = parseFloat(b.item?.conversionValue) || 1;
-        return sum + (parseFloat(b.balance) * cv);
-      }, 0),
-      activeItems: allBalances.filter(b => b.status === 'Active').length,
-      inactiveItems: allBalances.filter(b => b.status !== 'Active').length,
+      totalItems: totalItems,
+      totalBalance: totalBalance,
+      totalBaseBalance: totalBalance,
+      activeItems: activeItems,
+      inactiveItems: inactiveItems,
       matchedItems: matchedCount,
-      conflictItems: conflictCount, // Combined: all discrepancies
+      conflictItems: conflictCount,
       dateDiffItems: dateDiffCount,
       totalProducts: itemMap.size,
       categories: categories,
     };
 
-    // STEP 6: Build final response - SIMPLIFIED
+    // ============================================================
+    // ✅ BUILD FINAL RESPONSE
+    // ============================================================
     const responseData = {
       store: {
         id: store.storeId,
@@ -595,7 +534,7 @@ exports.getStoreAudit = async (req, res) => {
         summary: {
           total: itemMap.size,
           matched: matchedCount,
-          conflict: conflictCount, // No more outlier
+          conflict: conflictCount,
           dateDiff: dateDiffCount,
           matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : "0",
           conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : "0",
@@ -604,7 +543,7 @@ exports.getStoreAudit = async (req, res) => {
       },
     };
 
-    console.log(`✅ Audit completed: ${overallSummary.totalProducts} products, ${conflictCount} conflicts, ${dateDiffCount} with date differences`);
+    console.log(`✅ Audit completed: ${overallSummary.totalItems} items, ${overallSummary.totalProducts} products, ${conflictCount} conflicts`);
 
     return res.status(200).json({
       success: true,
@@ -759,7 +698,7 @@ exports.getCategories = async (req, res) => {
 };
 
 // ============================================
-// 4. GET GROUP COMPARISON - UPDATED (No Outlier)
+// 4. GET GROUP COMPARISON
 // ============================================
 exports.getGroupComparison = async (req, res) => {
   try {
@@ -831,7 +770,6 @@ exports.getGroupComparison = async (req, res) => {
       order: [["itemId", "ASC"]],
     });
 
-    // Build comparison items - SIMPLIFIED
     const itemMap = new Map();
     allBalances.forEach((balance) => {
       const itemId = balance.itemId;
@@ -868,7 +806,7 @@ exports.getGroupComparison = async (req, res) => {
         status = 'Matched';
         matchedItems++;
       } else {
-        status = 'Conflict'; // Any difference = Conflict
+        status = 'Conflict';
         conflictItems++;
       }
 
@@ -1135,7 +1073,9 @@ exports.getItemTransactions = async (req, res) => {
       };
     }
 
-    const balances = await StoreBalance.findAll({
+    // Get current balances
+    const balanceMap = {};
+    const baseBalances = await StoreBalance.findAll({
       where: {
         storeId: parseInt(storeId),
         itemId: parseInt(itemId),
@@ -1148,9 +1088,8 @@ exports.getItemTransactions = async (req, res) => {
         },
       ],
     });
-
-    const balanceMap = {};
-    balances.forEach((b) => {
+    
+    baseBalances.forEach((b) => {
       balanceMap[b.groupId] = {
         balance: parseFloat(b.balance),
         minStock: parseFloat(b.minStockAlert) || 0,
@@ -1257,12 +1196,11 @@ exports.getUserAuditAccess = async (req, res) => {
 };
 
 // ============================================
-// 8. EXPORT AUDIT DATA - UPDATED
+// 8. EXPORT AUDIT DATA
 // ============================================
 exports.exportAuditData = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const { format = 'excel' } = req.query;
 
     console.log(`📤 Exporting audit data for store: ${storeId}`);
 
@@ -1364,31 +1302,7 @@ exports.exportAuditData = async (req, res) => {
     worksheet.addRow(['Category:', categories, '', 'Status:', 'All']);
     worksheet.addRow(['Generated By:', generatedBy, '', 'Date/Time:', `${dateStr} at ${timeStr}`]);
 
-    const infoRows = [6, 7, 8, 9];
-    infoRows.forEach(rowNum => {
-      const row = worksheet.getRow(rowNum);
-      row.eachCell((cell, colNumber) => {
-        if (colNumber % 2 === 1) {
-          cell.font = { name: 'Arial', size: 10, bold: true };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFF0F0F0' }
-          };
-        } else {
-          cell.font = { name: 'Arial', size: 10 };
-        }
-        cell.alignment = { horizontal: 'left', vertical: 'middle' };
-        cell.border = {
-          top: { style: 'thin', color: { argb: colors.border } },
-          bottom: { style: 'thin', color: { argb: colors.border } },
-          left: { style: 'thin', color: { argb: colors.border } },
-          right: { style: 'thin', color: { argb: colors.border } }
-        };
-      });
-    });
-
-    // Summary Section - UPDATED
+    // Summary Section
     worksheet.addRow([]);
     
     const totalItems = data.summary.totalItems || 0;
@@ -1396,7 +1310,7 @@ exports.exportAuditData = async (req, res) => {
     const zeroStockItems = data.summary.zeroStockItems || 0;
     const lowStockItems = data.summary.lowStockItems || 0;
     const matchedItems = data.comparison?.summary?.matched || 0;
-    const conflictItems = data.comparison?.summary?.conflict || 0; // Combined
+    const conflictItems = data.comparison?.summary?.conflict || 0;
 
     worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
     const summaryTitle = worksheet.getCell(`A${worksheet.rowCount}`);
@@ -1412,7 +1326,7 @@ exports.exportAuditData = async (req, res) => {
       ['', '', 'Zero Balance Items:', zeroStockItems],
       ['', '', 'Low Stock Items:', lowStockItems],
       ['', '', 'Matched Items:', matchedItems],
-      ['', '', 'Items with Conflict:', conflictItems] // Renamed
+      ['', '', 'Items with Conflict:', conflictItems]
     ];
 
     summaryData.forEach(rowData => {
@@ -1438,8 +1352,14 @@ exports.exportAuditData = async (req, res) => {
       });
     });
 
-    // Main Data Table - Updated
+    // Main Data Table
     worksheet.addRow([]);
+    
+    // Build headers with group columns
+    const groupHeaders = [];
+    data.groups.forEach(g => {
+      groupHeaders.push(g.name);
+    });
     
     const headers = [
       '#',
@@ -1447,7 +1367,7 @@ exports.exportAuditData = async (req, res) => {
       'Item Name',
       'Category',
       'UOM',
-      ...data.groups.map(g => `${g.name} (Balance)`),
+      ...groupHeaders,
       'Status',
       'Balance Conflict'
     ];
@@ -1479,6 +1399,7 @@ exports.exportAuditData = async (req, res) => {
       };
     });
 
+    // Build items map
     const allItems = new Map();
     data.groups.forEach(group => {
       group.balances.forEach(balance => {
@@ -1490,20 +1411,20 @@ exports.exportAuditData = async (req, res) => {
             itemName: balance.itemName,
             category: balance.category?.name || 'N/A',
             uomCode: balance.uomCode || 'PCS',
-            balances: {},
+            groupBalances: {},
             status: 'Active',
             hasConflict: false
           });
         }
         const item = allItems.get(itemKey);
-        item.balances[group.groupId] = balance.balance;
+        item.groupBalances[group.groupId] = balance.balance;
+        
+        // Update status from comparison
         if (data.comparison && data.comparison.items) {
           const compItem = data.comparison.items.find(ci => ci.itemId === balance.itemId);
           if (compItem) {
             item.status = compItem.status || 'Active';
-            if (compItem.status === 'Conflict') {
-              item.hasConflict = true;
-            }
+            item.hasConflict = compItem.status === 'Conflict';
           }
         }
       });
@@ -1516,22 +1437,15 @@ exports.exportAuditData = async (req, res) => {
     let rowIndex = 0;
     
     itemsArray.forEach((item) => {
-      const balances = data.groups.map(g => item.balances[g.groupId]).filter(b => b !== undefined);
-      const uniqueBalances = [...new Set(balances)];
-      const hasConflict = uniqueBalances.length > 1;
-      
       const rowData = [
         rowNumber++,
         item.itemCode || '',
         item.itemName || '',
         item.category || '',
         item.uomCode || '',
-        ...data.groups.map(g => {
-          const balance = item.balances[g.groupId];
-          return balance !== undefined ? balance : '-';
-        }),
+        ...data.groups.map(g => item.groupBalances[g.groupId] !== undefined ? item.groupBalances[g.groupId] : '-'),
         item.status || 'No Data',
-        hasConflict ? 'Yes' : 'No'
+        item.hasConflict ? 'Yes' : 'No'
       ];
       
       const row = worksheet.addRow(rowData);
@@ -1556,43 +1470,12 @@ exports.exportAuditData = async (req, res) => {
         };
       });
       
-      const statusCell = row.getCell(headers.length - 1);
-      const status = item.status || 'No Data';
-      let statusColor = colors.black;
-      if (status === 'Matched') statusColor = colors.green;
-      else if (status === 'Conflict') statusColor = colors.red;
-      
-      statusCell.font = {
-        name: 'Arial',
-        size: 9,
-        bold: true,
-        color: { argb: statusColor }
-      };
-      
-      const conflictCell = row.getCell(headers.length);
-      if (hasConflict) {
-        conflictCell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: true,
-          color: { argb: colors.red }
-        };
-        conflictCell.value = '⚠ Yes';
-      } else {
-        conflictCell.font = {
-          name: 'Arial',
-          size: 9,
-          color: { argb: colors.green }
-        };
-        conflictCell.value = '✓ No';
-      }
-      
       rowIndex++;
     });
 
     // Footer
     worksheet.addRow([]);
-    const footerRow = worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
+    worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
     worksheet.addRow(['SUPER DOUBLE "T" GENERAL TRADING PLC - Stock Audit Report']);
     worksheet.addRow(['WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!']);
 
@@ -1608,11 +1491,11 @@ exports.exportAuditData = async (req, res) => {
         }
       });
       if (i === 0) {
-        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
       } else if (i === 1) {
-        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
       } else if (i === 2) {
-        worksheet.mergeCells(`A${footerStartRow + i}:G${footerStartRow + i}`);
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
       }
     }
 
@@ -1648,7 +1531,7 @@ exports.exportAuditData = async (req, res) => {
 };
 
 // ============================================
-// 9. GET AUDIT SUMMARY - UPDATED
+// 9. GET AUDIT SUMMARY
 // ============================================
 exports.getAuditSummary = async (req, res) => {
   try {
@@ -1674,7 +1557,8 @@ exports.getAuditSummary = async (req, res) => {
         activeItems: data.summary.activeItems,
         inactiveItems: data.summary.inactiveItems,
         matchedItems: data.summary.matchedItems,
-        conflictItems: data.summary.conflictItems, // Combined
+        conflictItems: data.summary.conflictItems,
+        dateDiffItems: data.summary.dateDiffItems || 0,
       },
       groups: data.groups.map(g => ({
         groupId: g.groupId,
@@ -1699,7 +1583,7 @@ exports.getAuditSummary = async (req, res) => {
 };
 
 // ============================================
-// 10. GET AUDIT DASHBOARD - UPDATED
+// 10. GET AUDIT DASHBOARD
 // ============================================
 exports.getAuditDashboard = async (req, res) => {
   try {
@@ -1755,7 +1639,8 @@ exports.getAuditDashboard = async (req, res) => {
         activeItems: data.summary.activeItems,
         inactiveItems: data.summary.inactiveItems,
         matchedItems: data.comparison.summary.matched,
-        conflictItems: data.comparison.summary.conflict, // Combined
+        conflictItems: data.comparison.summary.conflict,
+        dateDiffItems: data.comparison.summary.dateDiff || 0,
       },
       groups: data.groups.map(g => ({
         groupId: g.groupId,
@@ -1790,7 +1675,6 @@ exports.updateItemTransactionDates = async (req, res) => {
   try {
     const { storeId, itemId } = req.params
     const { dates } = req.body
-    const userId = req.user?.userId || 1
     
     console.log(`📝 Updating transaction dates for item ${itemId} in store ${storeId}`)
     console.log('📝 Updates:', dates)
@@ -1883,5 +1767,1396 @@ exports.updateItemTransactionDates = async (req, res) => {
     })
   }
 }
+
+
+
+// ============================================
+// CONVERTED BALANCE (KG) AUDIT FUNCTIONS
+// ============================================
+
+
+const getConvertedBalancesForStore = async (storeId) => {
+  try {
+    // ✅ Check if ConvertedBalance model exists
+    let ConvertedBalance;
+    try {
+      ConvertedBalance = require('../models').ConvertedBalance;
+    } catch (e) {
+      console.log('⚠️ ConvertedBalance model not found, returning empty array');
+      return [];
+    }
+
+    if (!ConvertedBalance) {
+      console.log('⚠️ ConvertedBalance model is undefined, returning empty array');
+      return [];
+    }
+
+    const convertedBalances = await ConvertedBalance.findAll({
+      where: {
+        storeId: parseInt(storeId),
+      },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["storeId", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["groupId", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["itemId", "code", "name", "standardName", "conversionValue", "categoryId"],
+          include: [
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: Category,
+              as: "category",
+              attributes: ["categoryId", "name", "description"],
+            },
+          ],
+        },
+      ],
+      order: [["groupId", "ASC"], ["itemId", "ASC"]],
+    });
+
+    return convertedBalances || [];
+  } catch (error) {
+    console.error('❌ Error fetching converted balances:', error.message);
+    return [];
+  }
+};
+
+/**
+ * Format converted balance
+ */
+const formatConvertedBalance = (record) => {
+  const item = record.item;
+  const conversionValue = item?.conversionValue !== undefined && item?.conversionValue !== null 
+    ? parseFloat(item.conversionValue) 
+    : 1;
+  
+  const balance = parseFloat(record.convertedBalance) || 0;
+  const minStock = parseFloat(record.minStockAlert) || 0;
+
+  return {
+    id: record.id,
+    storeId: record.storeId,
+    storeName: record.store?.name || null,
+    groupId: record.groupId,
+    groupName: record.group?.name || null,
+    itemId: record.itemId,
+    itemCode: item?.code || null,
+    itemName: item?.standardName || item?.name || null,
+    itemCommonName: item?.standardName || item?.name || null,
+    category: item?.category || null,
+    uomCode: item?.conversionUom?.code || null,
+    uomName: item?.conversionUom?.name || null,
+    conversionValue: conversionValue,
+    balance: balance,
+    minStock: minStock,
+    baseBalance: balance * conversionValue,
+    status: record.status || 'Active',
+    statusClass: balance === 0 ? 'zero' : (balance <= minStock ? 'low' : 'normal'),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+};
+
+/**
+ * Calculate converted group summary
+ */
+const calculateConvertedGroupSummary = (balances) => {
+  const summary = {
+    totalItems: 0,
+    totalBalance: 0,
+    totalBaseBalance: 0,
+    activeItems: 0,
+    inactiveItems: 0,
+    lowStockItems: 0,
+    zeroStockItems: 0,
+    averageBalance: 0,
+    lowStockPercentage: 0,
+    zeroStockPercentage: 0,
+  };
+
+  balances.forEach((record) => {
+    const balance = parseFloat(record.balance);
+    const conversionValue = parseFloat(record.conversionValue) || 1;
+    const baseBalance = balance * conversionValue;
+    const minStock = parseFloat(record.minStock) || 0;
+
+    summary.totalItems++;
+    summary.totalBalance += balance;
+    summary.totalBaseBalance += baseBalance;
+
+    if (record.status === "Active") {
+      summary.activeItems++;
+      if (balance === 0) {
+        summary.zeroStockItems++;
+      } else if (balance <= minStock) {
+        summary.lowStockItems++;
+      }
+    } else {
+      summary.inactiveItems++;
+    }
+  });
+
+  summary.averageBalance = summary.totalItems > 0 ? summary.totalBalance / summary.totalItems : 0;
+  summary.lowStockPercentage = summary.activeItems > 0 ? ((summary.lowStockItems / summary.activeItems) * 100) : 0;
+  summary.zeroStockPercentage = summary.activeItems > 0 ? ((summary.zeroStockItems / summary.activeItems) * 100) : 0;
+
+  return summary;
+};
+
+/**
+ * Get last transaction dates for converted balances
+ */
+const getConvertedLastTransactionDates = async (storeId, groupIds, itemIds) => {
+  try {
+    if (!groupIds.length || !itemIds.length) {
+      return {};
+    }
+
+    // ✅ Check if ConvertedBalanceHistory model exists
+    let ConvertedBalanceHistory;
+    try {
+      ConvertedBalanceHistory = require('../models').ConvertedBalanceHistory;
+    } catch (e) {
+      console.log('⚠️ ConvertedBalanceHistory model not found');
+      return {};
+    }
+
+    if (!ConvertedBalanceHistory) {
+      return {};
+    }
+
+    const query = `
+      SELECT DISTINCT ON (cbh."item_id", cbh."group_id") 
+        cbh."item_id" as "itemId",
+        cbh."group_id" as "groupId",
+        cbh."created_at" as "lastTransactionDate"
+      FROM "converted_balance_histories" cbh
+      WHERE cbh."store_id" = :storeId
+        AND cbh."group_id" IN (:groupIds)
+        AND cbh."item_id" IN (:itemIds)
+      ORDER BY cbh."item_id", cbh."group_id", cbh."created_at" DESC
+    `;
+
+    const results = await sequelize.query(query, {
+      replacements: {
+        storeId: parseInt(storeId),
+        groupIds: groupIds,
+        itemIds: itemIds
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const lastTxMap = {};
+    results.forEach(row => {
+      const key = `${row.itemId}_${row.groupId}`;
+      lastTxMap[key] = row.lastTransactionDate;
+    });
+
+    return lastTxMap;
+
+  } catch (error) {
+    console.error('❌ Error getting converted last transaction dates:', error.message);
+    return {};
+  }
+};
+
+// ============================================
+// 12. GET CONVERTED BALANCE AUDIT
+// ============================================
+exports.getConvertedAudit = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { includeTransactions = 'true', transactionLimit = 10 } = req.query;
+
+    console.log(`🔍 Getting converted balance audit for store: ${storeId}`);
+
+    // ✅ Check if ConvertedBalance model exists first
+    let ConvertedBalance;
+    try {
+      ConvertedBalance = require('../models').ConvertedBalance;
+    } catch (e) {
+      console.log('⚠️ ConvertedBalance model not found');
+    }
+
+    // If model doesn't exist, return empty response
+    if (!ConvertedBalance) {
+      console.log('⚠️ ConvertedBalance model not available, returning empty response');
+      return res.status(200).json({
+        success: true,
+        data: {
+          store: null,
+          groups: [],
+          summary: {
+            totalGroups: 0,
+            totalItems: 0,
+            totalBalance: 0,
+            totalBaseBalance: 0,
+            activeItems: 0,
+            inactiveItems: 0,
+            matchedItems: 0,
+            conflictItems: 0,
+            dateDiffItems: 0,
+            totalProducts: 0,
+            categories: []
+          },
+          categories: [],
+          comparison: {
+            items: [],
+            summary: {
+              total: 0,
+              matched: 0,
+              conflict: 0,
+              dateDiff: 0,
+              matchedPercentage: "0",
+              conflictPercentage: "0",
+              dateDiffPercentage: "0"
+            }
+          }
+        }
+      });
+    }
+
+    const store = await Store.findByPk(parseInt(storeId), {
+      attributes: ['storeId', 'name', 'code', 'location', 'status'],
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found',
+      });
+    }
+
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code', 'description', 'status'],
+        }
+      ],
+      order: [['createdAt', 'ASC']],
+    });
+
+    const groups = storeGroups
+      .map(sg => sg.group)
+      .filter(g => g !== null);
+
+    console.log(`📋 Found ${groups.length} groups for store ${storeId}`);
+
+    // ============================================================
+    // ✅ GET CONVERTED BALANCES
+    // ============================================================
+    const convertedBalances = await getConvertedBalancesForStore(parseInt(storeId));
+    console.log(`✅ Found ${convertedBalances.length} converted balances for store ${storeId}`);
+
+    // If no converted balances, return empty response
+    if (convertedBalances.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          store: {
+            id: store.storeId,
+            name: store.name,
+            code: store.code,
+            location: store.location,
+            status: store.status,
+          },
+          groups: groups.map(g => ({
+            groupId: g.groupId,
+            name: g.name,
+            code: g.code || '',
+            description: g.description || '',
+            status: g.status || 'Active',
+            balanceCount: 0,
+            summary: {
+              totalItems: 0,
+              totalBalance: 0,
+              totalBaseBalance: 0,
+              activeItems: 0,
+              inactiveItems: 0,
+              lowStockItems: 0,
+              zeroStockItems: 0,
+              averageBalance: 0,
+              lowStockPercentage: 0,
+              zeroStockPercentage: 0,
+            },
+            balances: [],
+            transactions: [],
+          })),
+          summary: {
+            totalGroups: groups.length,
+            totalItems: 0,
+            totalBalance: 0,
+            totalBaseBalance: 0,
+            activeItems: 0,
+            inactiveItems: 0,
+            matchedItems: 0,
+            conflictItems: 0,
+            dateDiffItems: 0,
+            totalProducts: 0,
+            categories: [],
+          },
+          categories: [],
+          comparison: {
+            items: [],
+            summary: {
+              total: 0,
+              matched: 0,
+              conflict: 0,
+              dateDiff: 0,
+              matchedPercentage: "0",
+              conflictPercentage: "0",
+              dateDiffPercentage: "0"
+            }
+          }
+        }
+      });
+    }
+
+    // ============================================================
+    // ✅ GROUP CONVERTED BALANCES
+    // ============================================================
+    const groupedBalances = {};
+    const groupSummaries = {};
+    const groupBalanceCounts = {};
+
+    groups.forEach((group) => {
+      const groupId = group.groupId;
+      groupedBalances[groupId] = [];
+      groupBalanceCounts[groupId] = 0;
+    });
+
+    // Process converted balances
+    convertedBalances.forEach((balance) => {
+      const groupId = balance.groupId;
+      if (!groupId) return;
+      
+      const groupExists = groups.some(g => g.groupId === groupId);
+      if (!groupExists) return;
+      
+      if (!groupedBalances[groupId]) {
+        groupedBalances[groupId] = [];
+      }
+      
+      const formattedBalance = formatConvertedBalance(balance);
+      
+      groupedBalances[groupId].push(formattedBalance);
+      groupBalanceCounts[groupId] = (groupBalanceCounts[groupId] || 0) + 1;
+    });
+
+    groups.forEach((group) => {
+      const groupId = group.groupId;
+      const balances = groupedBalances[groupId] || [];
+      groupSummaries[groupId] = calculateConvertedGroupSummary(balances);
+    });
+
+    console.log(`📊 Group converted balance counts:`, groupBalanceCounts);
+
+    // ============================================================
+    // ✅ BUILD COMPARISON DATA
+    // ============================================================
+    
+    // Get all unique categories
+    const categorySet = new Set();
+    convertedBalances.forEach(balance => {
+      if (balance.item?.category?.name) {
+        categorySet.add(balance.item.category.name);
+      }
+    });
+    const categories = Array.from(categorySet);
+
+    // Get last transaction dates
+    const groupIds = groups.map(g => g.groupId);
+    const itemIds = [...new Set(convertedBalances.map(b => b.itemId))];
+    const lastTxMap = await getConvertedLastTransactionDates(storeId, groupIds, itemIds);
+
+    // Build item comparison map
+    const itemMap = new Map();
+
+    convertedBalances.forEach((balance) => {
+      const itemId = balance.itemId;
+      const groupId = balance.groupId;
+      
+      if (!groupId) return;
+      if (!groups.some(g => g.groupId === groupId)) return;
+      
+      if (!itemMap.has(itemId)) {
+        const item = balance.item;
+        itemMap.set(itemId, {
+          itemId: itemId,
+          code: item?.code || null,
+          itemName: item?.standardName || item?.name || null,
+          commonName: item?.standardName || item?.name || null,
+          standardName: item?.standardName || null,
+          category: item?.category?.name || null,
+          uomCode: item?.conversionUom?.code || null,
+          uomName: item?.conversionUom?.name || null,
+          conversionValue: parseFloat(item?.conversionValue) || 1,
+          groupBalances: {},
+          groupLastTxDates: {},
+        });
+      }
+      
+      const item = itemMap.get(itemId);
+      item.groupBalances[groupId] = parseFloat(balance.convertedBalance || 0);
+      
+      const key = `${itemId}_${groupId}`;
+      if (lastTxMap[key]) {
+        item.groupLastTxDates[groupId] = lastTxMap[key];
+      }
+    });
+
+    // Determine status for each item
+    const comparisonItems = [];
+    let matchedCount = 0;
+    let conflictCount = 0;
+    let dateDiffCount = 0;
+
+    itemMap.forEach((item) => {
+      const groupIds = Object.keys(item.groupBalances);
+      const values = groupIds.map(gid => item.groupBalances[gid] || 0);
+      
+      const uniqueValues = [...new Set(values)];
+      
+      let status = 'No Data';
+      if (values.length === 0) {
+        status = 'No Data';
+      } else if (uniqueValues.length === 1) {
+        status = 'Matched';
+        matchedCount++;
+      } else {
+        status = 'Conflict';
+        conflictCount++;
+      }
+      
+      const dates = Object.values(item.groupLastTxDates || {}).filter(d => d !== undefined && d !== null);
+      const uniqueDateStrings = [...new Set(dates.map(d => new Date(d).toDateString()))];
+      const hasDateDiff = uniqueDateStrings.length > 1;
+      
+      if (hasDateDiff && status === 'Matched') {
+        dateDiffCount++;
+      }
+
+      comparisonItems.push({
+        itemId: item.itemId,
+        code: item.code,
+        itemName: item.itemName,
+        commonName: item.commonName,
+        standardName: item.standardName,
+        category: item.category,
+        uomCode: item.uomCode,
+        uomName: item.uomName,
+        conversionValue: item.conversionValue,
+        groupBalances: item.groupBalances,
+        groupLastTxDates: item.groupLastTxDates,
+        status,
+        statusClass: getStatusClass(status),
+        values,
+        hasDateDiff,
+        dateDiffDetails: hasDateDiff ? {
+          uniqueDates: uniqueDateStrings,
+          diffDays: dates.length > 1 ? Math.round((new Date(Math.max(...dates.map(d => new Date(d).getTime()))) - new Date(Math.min(...dates.map(d => new Date(d).getTime())))) / (1000 * 60 * 60 * 24)) : 0,
+        } : null,
+      });
+    });
+
+    // ============================================================
+    // ✅ BUILD GROUP AUDIT DATA
+    // ============================================================
+    const groupAuditData = await Promise.all(groups.map(async (group) => {
+      const groupId = group.groupId;
+      const balances = groupedBalances[groupId] || [];
+      
+      let transactions = [];
+      if (includeTransactions === 'true') {
+        try {
+          // ✅ Check if ConvertedBalanceHistory exists
+          let ConvertedBalanceHistory;
+          try {
+            ConvertedBalanceHistory = require('../models').ConvertedBalanceHistory;
+          } catch (e) {
+            console.log('⚠️ ConvertedBalanceHistory model not found');
+          }
+
+          if (ConvertedBalanceHistory) {
+            const allTransactions = await ConvertedBalanceHistory.findAll({
+              where: {
+                storeId: parseInt(storeId),
+                groupId: groupId,
+              },
+              include: [
+                {
+                  model: Store,
+                  as: "store",
+                  attributes: ["storeId", "name", "code"],
+                },
+                {
+                  model: Group,
+                  as: "group",
+                  attributes: ["groupId", "name", "code"],
+                },
+                {
+                  model: Item,
+                  as: "item",
+                  attributes: ["itemId", "code", "name", "standardName"],
+                },
+                {
+                  model: User,
+                  as: "changedByUser",
+                  attributes: ["userId", "username", "fullName"],
+                },
+              ],
+              order: [["createdAt", "DESC"]],
+              limit: parseInt(transactionLimit),
+            });
+
+            transactions = allTransactions.map((t) => ({
+              id: t.id,
+              balanceId: t.balanceId,
+              storeName: t.store?.name || null,
+              groupName: t.group?.name || null,
+              itemName: t.item?.standardName || t.item?.name || null,
+              itemCode: t.item?.code || null,
+              uomCode: t.item?.conversionUom?.code || null,
+              previousBalance: parseFloat(t.previousBalance),
+              newBalance: parseFloat(t.newBalance),
+              changeAmount: parseFloat(t.changeAmount),
+              transactionType: t.transactionType,
+              changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+              remark: t.remark,
+              createdAt: t.createdAt,
+            }));
+          }
+        } catch (txError) {
+          console.error(`⚠️ Error fetching converted transactions for group ${groupId}:`, txError.message);
+        }
+      }
+
+      return {
+        groupId: groupId,
+        name: group.name,
+        code: group.code || '',
+        description: group.description || '',
+        status: group.status || 'Active',
+        balanceCount: balances.length,
+        summary: groupSummaries[groupId] || {
+          totalItems: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          activeItems: 0,
+          inactiveItems: 0,
+          lowStockItems: 0,
+          zeroStockItems: 0,
+          averageBalance: 0,
+          lowStockPercentage: 0,
+          zeroStockPercentage: 0,
+        },
+        balances: balances,
+        transactions: transactions,
+      };
+    }));
+
+    // ============================================================
+    // ✅ BUILD OVERALL SUMMARY
+    // ============================================================
+    let totalItems = 0;
+    let totalBalance = 0;
+    let activeItems = 0;
+    let inactiveItems = 0;
+    
+    groupAuditData.forEach(g => {
+      totalItems += g.balances.length;
+      g.balances.forEach(b => {
+        totalBalance += b.balance || 0;
+        if (b.status === 'Active') activeItems++;
+        else inactiveItems++;
+      });
+    });
+
+    const overallSummary = {
+      totalGroups: groups.length,
+      totalItems: totalItems,
+      totalBalance: totalBalance,
+      totalBaseBalance: totalBalance,
+      activeItems: activeItems,
+      inactiveItems: inactiveItems,
+      matchedItems: matchedCount,
+      conflictItems: conflictCount,
+      dateDiffItems: dateDiffCount,
+      totalProducts: itemMap.size,
+      categories: categories,
+    };
+
+    // ============================================================
+    // ✅ BUILD FINAL RESPONSE
+    // ============================================================
+    const responseData = {
+      store: {
+        id: store.storeId,
+        name: store.name,
+        code: store.code,
+        location: store.location,
+        status: store.status,
+      },
+      groups: groupAuditData,
+      summary: overallSummary,
+      categories: categories,
+      comparison: {
+        items: comparisonItems,
+        summary: {
+          total: itemMap.size,
+          matched: matchedCount,
+          conflict: conflictCount,
+          dateDiff: dateDiffCount,
+          matchedPercentage: itemMap.size > 0 ? ((matchedCount / itemMap.size) * 100).toFixed(1) : "0",
+          conflictPercentage: itemMap.size > 0 ? ((conflictCount / itemMap.size) * 100).toFixed(1) : "0",
+          dateDiffPercentage: itemMap.size > 0 ? ((dateDiffCount / itemMap.size) * 100).toFixed(1) : "0",
+        },
+      },
+    };
+
+    console.log(`✅ Converted audit completed: ${overallSummary.totalItems} items, ${overallSummary.totalProducts} products, ${conflictCount} conflicts`);
+
+    return res.status(200).json({
+      success: true,
+      data: responseData,
+    });
+
+  } catch (error) {
+    console.error("❌ Get converted audit error:", error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get converted audit data',
+    });
+  }
+};
+
+// ============================================
+// 13. GET CONVERTED GROUP TRANSACTIONS
+// Uses StoreBalanceHistory with isBaseUom = false
+// ============================================
+exports.getConvertedGroupTransactions = async (req, res) => {
+  try {
+    const { storeId, groupId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    console.log(`🔍 Getting converted group transactions for store ${storeId}, group ${groupId}`);
+
+    // ✅ Use StoreBalanceHistory with isBaseUom = false
+    const transactions = await StoreBalanceHistory.findAll({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+        isBaseUom: false, // ✅ Only converted (KG) transactions
+      },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+        {
+          model: User,
+          as: "changedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+    });
+
+    const total = await StoreBalanceHistory.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+        isBaseUom: false,
+      },
+    });
+
+    const formattedTransactions = transactions.map((t) => ({
+      id: t.id,
+      balanceId: t.balanceId,
+      storeName: t.store?.name || null,
+      groupName: t.group?.name || null,
+      itemName: t.item?.standardName || t.item?.name || null,
+      itemCode: t.item?.code || null,
+      uomCode: t.item?.conversionUom?.code || null,
+      previousBalance: parseFloat(t.previousBalance) || 0,
+      newBalance: parseFloat(t.newBalance) || 0,
+      changeAmount: parseFloat(t.changeAmount) || 0,
+      transactionType: t.transactionType || 'ADJUSTMENT',
+      changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+      remark: t.remark || null,
+      createdAt: t.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        transactions: formattedTransactions,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: total,
+          totalPages: Math.ceil(total / parseInt(limit)),
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Get converted group transactions error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get converted group transactions',
+    });
+  }
+};
+
+// ============================================
+// 14. GET CONVERTED ITEM TRANSACTIONS
+// Uses StoreBalanceHistory with isBaseUom = false
+// ============================================
+exports.getConvertedItemTransactions = async (req, res) => {
+  try {
+    const { storeId, itemId } = req.params;
+    const { limit = 10 } = req.query;
+
+    console.log(`🔍 Getting converted item transactions for item ${itemId} in store ${storeId}`);
+
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      return res.status(404).json({ success: false, error: 'Store not found' });
+    }
+
+    const item = await Item.findByPk(parseInt(itemId));
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Item not found' });
+    }
+
+    const storeGroups = await StoreGroupRelation.findAll({
+      where: { storeId: parseInt(storeId) },
+      include: [
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name', 'code'],
+        }
+      ],
+    });
+
+    const groups = storeGroups.map(sg => sg.group).filter(g => g !== null);
+
+    const groupTransactions = {};
+    
+    // ✅ Use StoreBalanceHistory with isBaseUom = false
+    for (const group of groups) {
+      try {
+        const transactions = await StoreBalanceHistory.findAll({
+          where: {
+            storeId: parseInt(storeId),
+            groupId: group.groupId,
+            itemId: parseInt(itemId),
+            isBaseUom: false, // ✅ Only converted (KG) transactions
+          },
+          include: [
+            {
+              model: Store,
+              as: "store",
+              attributes: ["id", "name", "code"],
+            },
+            {
+              model: Group,
+              as: "group",
+              attributes: ["id", "name", "code"],
+            },
+            {
+              model: Item,
+              as: "item",
+              attributes: ["id", "code", "name", "standardName"],
+              include: [
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
+              ],
+            },
+            {
+              model: User,
+              as: "changedByUser",
+              attributes: ["userId", "username", "fullName"],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+          limit: parseInt(limit),
+        });
+
+        groupTransactions[group.groupId] = {
+          group: {
+            id: group.groupId,
+            name: group.name,
+            code: group.code,
+          },
+          transactions: transactions.map((t) => ({
+            id: t.id,
+            balanceId: t.balanceId,
+            storeName: t.store?.name || null,
+            groupName: t.group?.name || null,
+            itemName: t.item?.standardName || t.item?.name || null,
+            itemCode: t.item?.code || null,
+            uomCode: t.item?.conversionUom?.code || null,
+            previousBalance: parseFloat(t.previousBalance) || 0,
+            newBalance: parseFloat(t.newBalance) || 0,
+            changeAmount: parseFloat(t.changeAmount) || 0,
+            transactionType: t.transactionType || 'ADJUSTMENT',
+            changedBy: t.changedByUser?.fullName || t.changedByUser?.username || null,
+            remark: t.remark || null,
+            createdAt: t.createdAt,
+          })),
+          count: transactions.length,
+        };
+      } catch (err) {
+        console.log(`⚠️ Error fetching converted transactions for group ${group.groupId}:`, err.message);
+        groupTransactions[group.groupId] = {
+          group: {
+            id: group.groupId,
+            name: group.name,
+            code: group.code,
+          },
+          transactions: [],
+          count: 0,
+        };
+      }
+    }
+
+    // ✅ Get current converted balances (using ConvertedBalance if it exists)
+    let ConvertedBalance;
+    try {
+      ConvertedBalance = require('../models').ConvertedBalance;
+    } catch (e) {
+      console.log('⚠️ ConvertedBalance model not found');
+    }
+
+    const balanceMap = {};
+    if (ConvertedBalance) {
+      try {
+        const convertedBalances = await ConvertedBalance.findAll({
+          where: {
+            storeId: parseInt(storeId),
+            itemId: parseInt(itemId),
+          },
+          include: [
+            {
+              model: Group,
+              as: "group",
+              attributes: ["id", "name", "code"],
+            },
+          ],
+        });
+        
+        convertedBalances.forEach((b) => {
+          balanceMap[b.groupId] = {
+            balance: parseFloat(b.convertedBalance) || 0,
+            minStock: parseFloat(b.minStockAlert) || 0,
+            status: b.status || 'Active',
+          };
+        });
+      } catch (err) {
+        console.log('⚠️ Error fetching converted balances:', err.message);
+      }
+    }
+
+    const totalTransactions = Object.values(groupTransactions).reduce((sum, g) => sum + g.count, 0);
+    console.log(`✅ Found ${totalTransactions} converted transactions for item ${itemId}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        store: {
+          id: store.id,
+          name: store.name,
+          code: store.code,
+        },
+        item: {
+          id: item.itemId || item.id,
+          code: item.code,
+          name: item.name,
+          standardName: item.standardName || null,
+          uomCode: item.conversionUom?.code || null,
+        },
+        currentBalances: balanceMap,
+        groupTransactions,
+        summary: {
+          totalGroups: groups.length,
+          totalTransactions: totalTransactions,
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Get converted item transactions error:", error.message);
+    console.error("❌ Stack trace:", error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get converted item transactions',
+    });
+  }
+};
+
+// ============================================
+// 15. EXPORT CONVERTED AUDIT DATA
+// ============================================
+exports.exportConvertedAudit = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+
+    console.log(`📤 Exporting converted audit data for store: ${storeId}`);
+
+    // ✅ Check if ConvertedBalance model exists
+    let ConvertedBalance;
+    try {
+      ConvertedBalance = require('../models').ConvertedBalance;
+    } catch (e) {
+      console.log('⚠️ ConvertedBalance model not found');
+      return res.status(200).json({
+        success: true,
+        message: 'No converted balance data available for export',
+        data: null,
+      });
+    }
+
+    if (!ConvertedBalance) {
+      return res.status(200).json({
+        success: true,
+        message: 'No converted balance data available for export',
+        data: null,
+      });
+    }
+
+    // Check if there's any data first
+    const count = await ConvertedBalance.count({
+      where: { storeId: parseInt(storeId) },
+    });
+
+    if (count === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No converted balance data available for this store',
+        data: null,
+      });
+    }
+
+    const mockReq = {
+      params: { storeId },
+      query: { includeTransactions: 'false' },
+    };
+
+    let auditResult = null;
+    const mockRes = {
+      status: function(code) {
+        return {
+          json: function(data) {
+            auditResult = data;
+            return this;
+          }
+        };
+      }
+    };
+
+    await exports.getConvertedAudit(mockReq, mockRes);
+
+    if (!auditResult || !auditResult.success) {
+      console.error('❌ Failed to get converted audit data:', auditResult?.error || 'Unknown error');
+      return res.status(500).json({ 
+        success: false, 
+        error: auditResult?.error || 'Failed to get converted audit data for export' 
+      });
+    }
+
+    const data = auditResult.data;
+
+    // If no data, return empty response
+    if (!data.groups || data.groups.length === 0 || data.groups.every(g => g.balances.length === 0)) {
+      return res.status(200).json({
+        success: true,
+        message: 'No converted balance data available for export',
+        data: null,
+      });
+    }
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const timeStr = now.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    workbook.created = now;
+    
+    const worksheet = workbook.addWorksheet('Converted Stock Audit', {
+      properties: { tabColor: { argb: 'FF6A1B9A' } },
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
+    });
+
+    const colors = {
+      primary: 'FF6A1B9A',
+      secondary: 'FF8E24AA',
+      lightGray: 'FFF5F5F5',
+      border: 'FFE0E0E0',
+      green: 'FF2E7D32',
+      red: 'FFD32F2F',
+      white: 'FFFFFFFF',
+      black: 'FF000000'
+    };
+
+    // ============================================================
+    // COMPANY HEADER
+    // ============================================================
+    worksheet.mergeCells('A1:G1');
+    const headerCell = worksheet.getCell('A1');
+    headerCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    headerCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    worksheet.mergeCells('A2:G2');
+    const subHeaderCell = worksheet.getCell('A2');
+    subHeaderCell.value = 'WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!';
+    subHeaderCell.font = { name: 'Arial', size: 12, color: { argb: 'FF000000' } };
+    subHeaderCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // ============================================================
+    // REPORT TITLE
+    // ============================================================
+    worksheet.addRow([]);
+    worksheet.mergeCells('A4:G4');
+    const titleCell = worksheet.getCell('A4');
+    titleCell.value = 'CONVERTED BALANCE (KG) AUDIT REPORT';
+    titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: colors.primary } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // ============================================================
+    // STORE AND GROUP INFO
+    // ============================================================
+    worksheet.addRow([]);
+    
+    const firstGroup = data.groups[0] || {};
+    const groupName = firstGroup.name || 'N/A';
+    const groupCode = firstGroup.code || 'N/A';
+    const categories = (data.categories && data.categories.length > 0) 
+      ? data.categories.join(', ') 
+      : 'All';
+    const generatedBy = req.user?.fullName || req.user?.username || 'Admin';
+
+    worksheet.addRow(['Store:', data.store.name, '', 'Group:', groupName]);
+    worksheet.addRow(['Store Code:', data.store.code, '', 'Group Code:', groupCode]);
+    worksheet.addRow(['Category:', categories, '', 'Status:', 'All']);
+    worksheet.addRow(['Generated By:', generatedBy, '', 'Date/Time:', `${dateStr} at ${timeStr}`]);
+
+    // ============================================================
+    // SUMMARY SECTION
+    // ============================================================
+    worksheet.addRow([]);
+    
+    const totalItems = data.summary.totalItems || 0;
+    const activeItems = data.summary.activeItems || 0;
+    const zeroStockItems = data.summary.zeroStockItems || 0;
+    const lowStockItems = data.summary.lowStockItems || 0;
+    const matchedItems = data.comparison?.summary?.matched || 0;
+    const conflictItems = data.comparison?.summary?.conflict || 0;
+
+    worksheet.mergeCells(`A${worksheet.rowCount}:G${worksheet.rowCount}`);
+    const summaryTitle = worksheet.getCell(`A${worksheet.rowCount}`);
+    summaryTitle.value = 'SUMMARY';
+    summaryTitle.font = { name: 'Arial', size: 12, bold: true, color: { argb: colors.primary }, underline: true };
+    summaryTitle.alignment = { horizontal: 'left', vertical: 'middle' };
+
+    worksheet.addRow([]);
+    
+    const summaryData = [
+      ['Store:', data.store.name, 'Total Items:', totalItems],
+      ['Group:', groupName, 'Active Items:', activeItems],
+      ['', '', 'Zero Balance Items:', zeroStockItems],
+      ['', '', 'Low Stock Items:', lowStockItems],
+      ['', '', 'Matched Items:', matchedItems],
+      ['', '', 'Items with Conflict:', conflictItems]
+    ];
+
+    summaryData.forEach(rowData => {
+      const row = worksheet.addRow(rowData);
+      row.eachCell((cell, colNumber) => {
+        if (colNumber % 2 === 1 && rowData[colNumber - 1] !== '') {
+          cell.font = { name: 'Arial', size: 10, bold: true };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0F0F0' }
+          };
+        } else if (colNumber % 2 === 0 && rowData[colNumber - 1] !== '') {
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        }
+        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+      });
+    });
+
+    // ============================================================
+    // MAIN DATA TABLE
+    // ============================================================
+    worksheet.addRow([]);
+    
+    // Build headers with group columns
+    const groupHeaders = [];
+    data.groups.forEach(g => {
+      groupHeaders.push(g.name);
+    });
+    
+    const headers = [
+      '#',
+      'Item Code',
+      'Item Name',
+      'Category',
+      'UOM (KG)',
+      ...groupHeaders,
+      'Status',
+      'Balance Conflict'
+    ];
+
+    const headerRow = worksheet.addRow(headers);
+    
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: colors.primary }
+      };
+      cell.font = {
+        name: 'Arial',
+        size: 10,
+        bold: true,
+        color: { argb: colors.white }
+      };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: true
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: colors.border } },
+        bottom: { style: 'thin', color: { argb: colors.border } },
+        left: { style: 'thin', color: { argb: colors.border } },
+        right: { style: 'thin', color: { argb: colors.border } }
+      };
+    });
+
+    // ============================================================
+    // BUILD ITEMS MAP
+    // ============================================================
+    const allItems = new Map();
+    data.groups.forEach(group => {
+      group.balances.forEach(balance => {
+        const itemKey = balance.itemId;
+        if (!allItems.has(itemKey)) {
+          allItems.set(itemKey, {
+            itemId: balance.itemId,
+            itemCode: balance.itemCode,
+            itemName: balance.itemName,
+            category: balance.category?.name || balance.category || 'N/A',
+            uomCode: balance.uomCode || 'KG',
+            groupBalances: {},
+            status: 'Active',
+            hasConflict: false
+          });
+        }
+        const item = allItems.get(itemKey);
+        item.groupBalances[group.groupId] = balance.balance;
+        
+        // Update status from comparison
+        if (data.comparison && data.comparison.items) {
+          const compItem = data.comparison.items.find(ci => ci.itemId === balance.itemId);
+          if (compItem) {
+            item.status = compItem.status || 'Active';
+            item.hasConflict = compItem.status === 'Conflict';
+          }
+        }
+      });
+    });
+
+    const itemsArray = Array.from(allItems.values())
+      .sort((a, b) => (a.itemCode || '').localeCompare(b.itemCode || ''));
+
+    // ============================================================
+    // POPULATE TABLE DATA
+    // ============================================================
+    let rowNumber = 1;
+    let rowIndex = 0;
+    
+    itemsArray.forEach((item) => {
+      const rowData = [
+        rowNumber++,
+        item.itemCode || '',
+        item.itemName || '',
+        item.category || '',
+        item.uomCode || 'KG',
+        ...data.groups.map(g => item.groupBalances[g.groupId] !== undefined ? item.groupBalances[g.groupId] : '-'),
+        item.status || 'No Data',
+        item.hasConflict ? 'Yes' : 'No'
+      ];
+      
+      const row = worksheet.addRow(rowData);
+      
+      // Style the row
+      const bgColor = rowIndex % 2 === 0 ? colors.white : colors.lightGray;
+      row.eachCell((cell, colNumber) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: bgColor }
+        };
+        cell.font = { name: 'Arial', size: 9 };
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle'
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: colors.border } },
+          bottom: { style: 'thin', color: { argb: colors.border } },
+          left: { style: 'thin', color: { argb: colors.border } },
+          right: { style: 'thin', color: { argb: colors.border } }
+        };
+        
+        // Highlight conflict rows
+        if (item.hasConflict) {
+          cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: colors.red } };
+        }
+      });
+      
+      rowIndex++;
+    });
+
+    // ============================================================
+    // FOOTER
+    // ============================================================
+    worksheet.addRow([]);
+    worksheet.addRow([`Report generated on ${dateStr} at ${timeStr}`]);
+    worksheet.addRow(['SUPER DOUBLE "T" GENERAL TRADING PLC - Converted Balance Audit Report']);
+    worksheet.addRow(['WE TRUST IN GOD!!! እግዚአብሔር ይባረክ!!!']);
+
+    const footerStartRow = worksheet.rowCount - 2;
+    for (let i = 0; i < 3; i++) {
+      const row = worksheet.getRow(footerStartRow + i);
+      row.eachCell((cell) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        if (i === 1) {
+          cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: colors.primary } };
+        } else {
+          cell.font = { name: 'Arial', size: 9, color: { argb: 'FF666666' } };
+        }
+      });
+      if (i === 0) {
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
+      } else if (i === 1) {
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
+      } else if (i === 2) {
+        worksheet.mergeCells(`A${footerStartRow + i}:${String.fromCharCode(64 + headers.length)}${footerStartRow + i}`);
+      }
+    }
+
+    // ============================================================
+    // AUTO-FIT COLUMNS
+    // ============================================================
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? String(cell.value).length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = Math.min(Math.max(maxLength + 2, 10), 30);
+    });
+
+    // ============================================================
+    // GENERATE AND SEND FILE
+    // ============================================================
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const fileName = `converted_audit_${data.store.code}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    
+    return res.send(buffer);
+
+  } catch (error) {
+    console.error("❌ Export converted audit error:", error.message);
+    console.error("❌ Stack trace:", error.stack);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to export converted audit data' 
+    });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 module.exports = exports;

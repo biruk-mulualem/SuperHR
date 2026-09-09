@@ -9,8 +9,9 @@ const {
     UOM, 
     Store, 
     Group,
-    StoreBalanceHistory,  // ✅ Add this
-    sequelize             // ✅ Add this - IMPORTANT!
+    StoreBalanceHistory,
+    User,
+    sequelize
 } = require('../models');
 const { Op } = require('sequelize');
 
@@ -21,15 +22,12 @@ const { Op } = require('sequelize');
 class ConvertedBalanceController {
     /**
      * GET /api/converted-balances
-     * Get converted balances - ✅ Uses query params for storeId/groupId
+     * Get converted balances
      */
     static async getAll(req, res) {
         try {
             const storeId = req.query.storeId;
             const groupId = req.query.groupId;
-            const userId = req.user?.id;
-
-            console.log('🔍 getAll - storeId:', storeId, 'groupId:', groupId, 'userId:', userId);
 
             if (!storeId || !groupId) {
                 return res.status(400).json({
@@ -139,114 +137,109 @@ class ConvertedBalanceController {
 
     /**
      * GET /api/converted-balances/available
-     * Get items available for conversion - ✅ Uses query params for storeId/groupId
+     * Get items available for conversion
      */
-   // controllers/convertedBalanceController.js
+    static async getAvailableForConversion(req, res) {
+        try {
+            const storeId = req.query.storeId;
+            const groupId = req.query.groupId;
 
-static async getAvailableForConversion(req, res) {
-    try {
-        const storeId = req.query.storeId;
-        const groupId = req.query.groupId;
+            if (!storeId || !groupId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Store ID and Group ID are required'
+                });
+            }
 
-        console.log('🔍 getAvailableForConversion - storeId:', storeId, 'groupId:', groupId);
+            const { categoryId, uomId, search } = req.query;
 
-        if (!storeId || !groupId) {
-            return res.status(400).json({
+            const balanceWhere = {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                balance: { [Op.gt]: 0 },
+                status: 'Active'
+            };
+
+            const itemInclude = {
+                model: Item,
+                as: 'item',
+                required: true,
+                include: [
+                    { model: Category, as: 'category' },
+                    { model: UOM, as: 'uom' },
+                    { model: UOM, as: 'conversionUom' }
+                ]
+            };
+
+            const itemWhere = {
+                conversionUomId: { [Op.ne]: null },
+                conversionValue: { [Op.gt]: 0 },
+                status: 'Active'
+            };
+
+            itemWhere[Op.and] = [
+                { uomId: { [Op.ne]: null } },
+                { conversionUomId: { [Op.ne]: null } },
+                sequelize.literal('"item"."uom_id" != "item"."conversion_uom_id"')
+            ];
+
+            if (categoryId) itemWhere.categoryId = parseInt(categoryId);
+            
+            if (search) {
+                const searchTerm = search.toLowerCase();
+                itemWhere[Op.or] = [
+                    { code: { [Op.iLike]: `%${searchTerm}%` } },
+                    { name: { [Op.iLike]: `%${searchTerm}%` } },
+                    { standardName: { [Op.iLike]: `%${searchTerm}%` } }
+                ];
+            }
+
+            itemInclude.where = itemWhere;
+
+            const balances = await StoreBalance.findAll({
+                where: balanceWhere,
+                include: [itemInclude],
+                order: [[{ model: Item, as: 'item' }, 'code', 'ASC']]
+            });
+
+            const items = balances.map(balance => ({
+                id: balance.itemId,
+                balanceId: balance.id,
+                storeId: balance.storeId,
+                groupId: balance.groupId,
+                itemCode: balance.item?.code || 'N/A',
+                itemName: balance.item?.name || 'N/A',
+                categoryName: balance.item?.category?.name || 'Uncategorized',
+                uomCode: balance.item?.uom?.code || 'N/A',
+                balance: parseFloat(balance.balance || 0),
+                convertToUom: balance.item?.conversionUom?.code || 'N/A',
+                conversionRate: parseFloat(balance.item?.conversionValue || 0),
+                canConvert: parseFloat(balance.balance) > 0,
+                isConverted: false,
+                sourceUomId: balance.item?.uomId,
+                targetUomId: balance.item?.conversionUomId
+            }));
+
+            res.json({
+                success: true,
+                data: items
+            });
+
+        } catch (error) {
+            console.error('Error fetching available items:', error);
+            res.status(500).json({
                 success: false,
-                error: 'Store ID and Group ID are required'
+                error: 'Failed to fetch available items',
+                details: error.message
             });
         }
-
-        const { categoryId, uomId, search } = req.query;
-
-        const balanceWhere = {
-            storeId: parseInt(storeId),
-            groupId: parseInt(groupId),
-            balance: { [Op.gt]: 0 },
-            status: 'Active'
-        };
-
-        const itemInclude = {
-            model: Item,
-            as: 'item',
-            required: true,
-            include: [
-                { model: Category, as: 'category' },
-                { model: UOM, as: 'uom' },
-                { model: UOM, as: 'conversionUom' }
-            ]
-        };
-
-        const itemWhere = {
-            conversionUomId: { [Op.ne]: null },
-            conversionValue: { [Op.gt]: 0 },
-            status: 'Active'
-        };
-
-        // 🔥 ADD VALIDATION: Base UOM must be different from Conversion UOM
-        // This ensures we only show items where uomId != conversionUomId
-        // Using Sequelize literal for column comparison
-        itemWhere[Op.and] = [
-            { uomId: { [Op.ne]: null } },  // Base UOM exists
-            { conversionUomId: { [Op.ne]: null } },  // Conversion UOM exists
-            sequelize.literal('"item"."uom_id" != "item"."conversion_uom_id"')  // Different UOMs
-        ];
-
-        if (categoryId) itemWhere.categoryId = parseInt(categoryId);
-        
-        if (search) {
-            const searchTerm = search.toLowerCase();
-            itemWhere[Op.or] = [
-                { code: { [Op.iLike]: `%${searchTerm}%` } },
-                { name: { [Op.iLike]: `%${searchTerm}%` } },
-                { standardName: { [Op.iLike]: `%${searchTerm}%` } }
-            ];
-        }
-
-        itemInclude.where = itemWhere;
-
-        const balances = await StoreBalance.findAll({
-            where: balanceWhere,
-            include: [itemInclude],
-            order: [[{ model: Item, as: 'item' }, 'code', 'ASC']]
-        });
-
-        const items = balances.map(balance => ({
-            id: balance.itemId,
-            balanceId: balance.id,
-            storeId: balance.storeId,
-            groupId: balance.groupId,
-            itemCode: balance.item?.code || 'N/A',
-            itemName: balance.item?.name || 'N/A',
-            categoryName: balance.item?.category?.name || 'Uncategorized',
-            uomCode: balance.item?.uom?.code || 'N/A',
-            balance: parseFloat(balance.balance || 0),
-            convertToUom: balance.item?.conversionUom?.code || 'N/A',
-            conversionRate: parseFloat(balance.item?.conversionValue || 0),
-            canConvert: parseFloat(balance.balance) > 0,
-            isConverted: false,
-            sourceUomId: balance.item?.uomId,
-            targetUomId: balance.item?.conversionUomId
-        }));
-
-        res.json({
-            success: true,
-            data: items
-        });
-
-    } catch (error) {
-        console.error('Error fetching available items:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch available items',
-            details: error.message
-        });
     }
-}
 
-   /**
+/**
+ * ================================================================
+ * ✅ CONVERT - Convert from base UOM to converted UOM
  * POST /api/converted-balances/convert
- * Perform conversion - ✅ Single history record with detailed remark
+ * ================================================================
  */
 static async convert(req, res) {
     const { items, storeId: bodyStoreId, groupId: bodyGroupId } = req.body;
@@ -258,13 +251,6 @@ static async convert(req, res) {
     const finalStoreId = bodyStoreId || userStoreId;
     const finalGroupId = bodyGroupId || userGroupId;
     const finalUserId = userId;
-
-    console.log('🔐 Conversion request:', {
-        userId: finalUserId,
-        storeId: finalStoreId,
-        groupId: finalGroupId,
-        itemCount: items?.length || 0
-    });
 
     if (!finalUserId || !finalStoreId || !finalGroupId) {
         return res.status(401).json({
@@ -282,7 +268,6 @@ static async convert(req, res) {
 
     const results = [];
     const errors = [];
-
     const transaction = await sequelize.transaction();
 
     try {
@@ -310,7 +295,9 @@ static async convert(req, res) {
                     continue;
                 }
 
-                // 1. Get source balance with lock
+                // ============================================================
+                // 1. GET AND VALIDATE SOURCE BALANCE (Base Balance)
+                // ============================================================
                 const sourceBalance = await StoreBalance.findByPk(balanceId, {
                     transaction,
                     lock: true
@@ -333,27 +320,32 @@ static async convert(req, res) {
                     continue;
                 }
 
-                const currentBalance = parseFloat(sourceBalance.balance);
+                const currentBaseBalance = parseFloat(sourceBalance.balance);
 
-                if (qtyToConvert > currentBalance) {
+                if (qtyToConvert > currentBaseBalance) {
                     errors.push({
                         itemCode: itemCode || 'Unknown',
-                        error: `Insufficient balance. Available: ${currentBalance}, Requested: ${qtyToConvert}`
+                        error: `Insufficient balance. Available: ${currentBaseBalance}, Requested: ${qtyToConvert}`
                     });
                     continue;
                 }
 
-                // 2. Calculate converted amount
+                // ============================================================
+                // 2. CALCULATE CONVERTED AMOUNT
+                // ============================================================
                 const convertedAmount = qtyToConvert * parseFloat(conversionRate);
+                const newBaseBalance = currentBaseBalance - qtyToConvert;
+                const previousBaseBalance = currentBaseBalance;
 
-                // 3. Reduce source balance
-                const newBalance = currentBalance - qtyToConvert;
-                const previousBalance = currentBalance;
-                
-                sourceBalance.balance = newBalance;
+                // ============================================================
+                // 3. UPDATE SOURCE BALANCE (Reduce base UOM)
+                // ============================================================
+                sourceBalance.balance = newBaseBalance;
                 await sourceBalance.save({ transaction });
 
-                // 4. Register/Update converted balance
+                // ============================================================
+                // 4. GET OR CREATE CONVERTED BALANCE
+                // ============================================================
                 const [convertedRecord, created] = await ConvertedBalance.findOrCreate({
                     where: {
                         storeId: parseInt(finalStoreId),
@@ -374,47 +366,83 @@ static async convert(req, res) {
                 convertedRecord.convertedBalance = newConvertedBalance;
                 await convertedRecord.save({ transaction });
 
-                // ================================================================
-                // ✅ SINGLE HISTORY RECORD WITH DETAILED REMARK
-                // ================================================================
-                // Create a detailed description of the conversion
-                const remark = ` CONVERSION: ${qtyToConvert} ${uomCode} of "${itemName}" (${itemCode}) was converted to ${convertedAmount} ${convertToUom}. ` +
-                              `Source balance: ${previousBalance} → ${newBalance} ${uomCode}. ` +
-                              `Converted balance updated from ${oldConvertedBalance} → ${newConvertedBalance} ${convertToUom}. ` +
-                              `Rate: 1 ${uomCode} = ${conversionRate} ${convertToUom}.`;
+                const itemDisplayName = itemName || 'Unknown Item';
+                const itemCodeDisplay = itemCode || 'N/A';
+
+                // ============================================================
+                // 5. HISTORY RECORD FOR BASE BALANCE (Stock Out)
+                // ✅ transaction_type: 'Stock Out' (allowed)
+                // ✅ reference_type: 'adjustment' (allowed)
+                // ============================================================
+                const baseRemark = `🔄 CONVERSION: ${qtyToConvert} ${uomCode} of "${itemDisplayName}" (${itemCodeDisplay}) converted to ${convertedAmount} ${convertToUom}. ` +
+                                  `Balance: ${previousBaseBalance} → ${newBaseBalance} ${uomCode}. ` +
+                                  `Rate: 1 ${uomCode} = ${conversionRate} ${convertToUom}.`;
 
                 await StoreBalanceHistory.create({
                     balanceId: sourceBalance.id,
+                    convertedBalanceId: null,
                     storeId: parseInt(finalStoreId),
                     groupId: parseInt(finalGroupId),
                     itemId: parseInt(itemId),
-                    previousBalance: previousBalance,
-                    newBalance: newBalance,
+                    previousBalance: previousBaseBalance,
+                    newBalance: newBaseBalance,
                     changeAmount: qtyToConvert,
-                    transactionType: 'Stock Out',  // Source is Stock Out
+                    transactionType: 'Stock Out', // ✅ Allowed
                     sourceStoreId: parseInt(finalStoreId),
-                    destinationStoreId: null,
-                    referenceType: 'adjustment',
-                    referenceId: null,
+                    destinationStoreId: parseInt(finalStoreId),
+                    referenceType: 'adjustment', // ✅ Allowed
+                    referenceId: convertedRecord.id,
                     changedBy: finalUserId,
-                    remark: remark,  // ✅ Detailed remark
+                    remark: baseRemark,
                     grnNumber: null,
-                    sivNumber: null
+                    sivNumber: null,
+                    uomUsed: uomCode,
+                    isBaseUom: true
+                }, { transaction });
+
+                // ============================================================
+                // 6. HISTORY RECORD FOR CONVERTED BALANCE (Stock In)
+                // ✅ transaction_type: 'Stock In' (allowed)
+                // ✅ reference_type: 'adjustment' (allowed)
+                // ============================================================
+                const convertedRemark = `🔄 CONVERSION: ${convertedAmount} ${convertToUom} of "${itemDisplayName}" (${itemCodeDisplay}) from ${qtyToConvert} ${uomCode}. ` +
+                                       `Converted balance: ${oldConvertedBalance} → ${newConvertedBalance} ${convertToUom}. ` +
+                                       `Rate: 1 ${uomCode} = ${conversionRate} ${convertToUom}.`;
+
+                await StoreBalanceHistory.create({
+                    convertedBalanceId: convertedRecord.id,
+                    balanceId: null,
+                    storeId: parseInt(finalStoreId),
+                    groupId: parseInt(finalGroupId),
+                    itemId: parseInt(itemId),
+                    previousBalance: oldConvertedBalance,
+                    newBalance: newConvertedBalance,
+                    changeAmount: convertedAmount,
+                    transactionType: 'Stock In', // ✅ Allowed
+                    sourceStoreId: parseInt(finalStoreId),
+                    destinationStoreId: parseInt(finalStoreId),
+                    referenceType: 'adjustment', // ✅ Allowed
+                    referenceId: convertedRecord.id,
+                    changedBy: finalUserId,
+                    remark: convertedRemark,
+                    grnNumber: null,
+                    sivNumber: null,
+                    uomUsed: convertToUom,
+                    isBaseUom: false
                 }, { transaction });
 
                 results.push({
-                    itemCode: itemCode || 'Unknown',
-                    itemName: itemName || 'Unknown',
+                    itemCode: itemCodeDisplay,
+                    itemName: itemDisplayName,
                     sourceUom: uomCode || 'Unknown',
                     targetUom: convertToUom || 'Unknown',
                     quantityConverted: qtyToConvert,
                     convertedAmount: convertedAmount,
-                    sourceBalanceBefore: currentBalance,
-                    sourceBalanceAfter: newBalance,
+                    sourceBalanceBefore: previousBaseBalance,
+                    sourceBalanceAfter: newBaseBalance,
                     convertedBalanceBefore: oldConvertedBalance,
                     convertedBalanceAfter: newConvertedBalance,
                     status: 'success',
-                    // ✅ Add remark to response
                     remark: `Converted ${qtyToConvert} ${uomCode} → ${convertedAmount} ${convertToUom}`
                 });
 
@@ -457,105 +485,330 @@ static async convert(req, res) {
         });
     }
 }
+/**
+ * ================================================================
+ * ✅ STOCK IN - Add stock to converted balance (creates if not exists)
+ * POST /api/converted-balances/stock-in
+ * ================================================================
+ */
+static async stockIn(req, res) {
+    const transaction = await sequelize.transaction();
+    
+    try {
+        const {
+            storeId,
+            groupId,
+            itemId,
+            itemCode,
+            itemName,
+            uomCode,
+            quantity,
+            conversionRate,
+            sourceUomId,
+            targetUomId,
+            reason
+        } = req.body;
 
-    /**
-     * POST /api/converted-balances/preview
-     * Preview conversion without executing (dry run)
-     */
-    static async previewConversion(req, res) {
-        try {
-            const { items } = req.body;
-            const storeId = req.query.storeId;
-            const groupId = req.query.groupId;
+        const userId = req.user?.userId || req.user?.id;
 
-            console.log('🔍 previewConversion - storeId:', storeId, 'groupId:', groupId);
+        console.log('📥 Stock In:', {
+            storeId,
+            groupId,
+            itemId,
+            itemCode,
+            quantity,
+            uomCode,
+            userId,
+            reason
+        });
 
-            if (!storeId || !groupId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Store ID and Group ID are required'
-                });
-            }
-
-            const previews = [];
-
-            for (const item of items) {
-                const sourceBalance = await StoreBalance.findByPk(item.balanceId, {
-                    include: [
-                        { 
-                            model: Item, 
-                            as: 'item',
-                            include: [
-                                { model: UOM, as: 'uom' },
-                                { model: UOM, as: 'conversionUom' }
-                            ]
-                        }
-                    ]
-                });
-
-                if (!sourceBalance) {
-                    previews.push({
-                        itemCode: item.itemCode || 'Unknown',
-                        error: 'Balance not found'
-                    });
-                    continue;
-                }
-
-                const currentBalance = parseFloat(sourceBalance.balance);
-                const qtyToConvert = parseFloat(item.quantity);
-                const convertedAmount = qtyToConvert * parseFloat(item.conversionRate);
-
-                const existingConverted = await ConvertedBalance.findOne({
-                    where: {
-                        storeId: parseInt(storeId),
-                        groupId: parseInt(groupId),
-                        itemId: parseInt(item.itemId)
-                    }
-                });
-
-                const currentConvertedBalance = existingConverted ? 
-                    parseFloat(existingConverted.convertedBalance) : 0;
-
-                previews.push({
-                    itemCode: sourceBalance.item?.code || 'N/A',
-                    itemName: sourceBalance.item?.name || 'N/A',
-                    sourceUom: item.uomCode || 'N/A',
-                    targetUom: item.convertToUom || 'N/A',
-                    currentBalance: currentBalance,
-                    quantityToConvert: qtyToConvert,
-                    convertedAmount: convertedAmount,
-                    balanceAfter: currentBalance - qtyToConvert,
-                    currentConvertedBalance: currentConvertedBalance,
-                    convertedBalanceAfter: currentConvertedBalance + convertedAmount,
-                    hasExistingConverted: !!existingConverted
-                });
-            }
-
-            res.json({
-                success: true,
-                data: previews
-            });
-
-        } catch (error) {
-            console.error('Preview error:', error);
-            res.status(500).json({
+        // Validate required fields
+        if (!storeId || !groupId || !itemId || !quantity) {
+            return res.status(400).json({
                 success: false,
-                error: 'Failed to preview conversion',
-                details: error.message
+                error: 'Missing required fields: storeId, groupId, itemId, quantity'
             });
         }
+
+        const qty = parseFloat(quantity);
+        if (qty <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        // Get or create converted balance
+        let convertedBalance = await ConvertedBalance.findOne({
+            where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId)
+            },
+            transaction,
+            lock: true
+        });
+
+        const isNew = !convertedBalance;
+        const oldBalance = convertedBalance ? parseFloat(convertedBalance.convertedBalance) : 0;
+        const newBalance = oldBalance + qty;
+
+        // Create or update converted balance
+        if (isNew) {
+            convertedBalance = await ConvertedBalance.create({
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId),
+                convertedBalance: newBalance
+            }, { transaction });
+        } else {
+            convertedBalance.convertedBalance = newBalance;
+            await convertedBalance.save({ transaction });
+        }
+
+        // Build detailed remark
+        const itemDisplayName = itemName || 'Unknown Item';
+        const itemCodeDisplay = itemCode || 'N/A';
+        const uomDisplay = uomCode || 'N/A';
+        
+        let remark = `📥 STOCK IN: ${qty} ${uomDisplay} of "${itemDisplayName}" (${itemCodeDisplay})`;
+
+        if (reason && reason.trim()) {
+            remark += ` - Reason: ${reason.trim()}`;
+        }
+        
+        remark += ` | Balance: ${oldBalance} → ${newBalance} ${uomDisplay}`;
+
+        if (userId) {
+            const user = await User.findByPk(userId);
+            if (user) {
+                remark += ` | By: ${user.fullName || user.username}`;
+            }
+        }
+
+        // ✅ Create history record with ALLOWED ENUM values
+        await StoreBalanceHistory.create({
+            convertedBalanceId: convertedBalance.id,
+            balanceId: null,
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: parseInt(itemId),
+            previousBalance: oldBalance,
+            newBalance: newBalance,
+            changeAmount: qty,
+            transactionType: 'Stock In', // ✅ Allowed: 'Stock In' or 'Stock Out'
+            sourceStoreId: parseInt(storeId),
+            destinationStoreId: null,
+            referenceType: 'adjustment', // ✅ Allowed: 'purchase', 'transfer', 'adjustment', 'return', 'sale', 'initialization', 'request'
+            referenceId: convertedBalance.id,
+            changedBy: userId || null,
+            remark: remark,
+            grnNumber: null,
+            sivNumber: null,
+            uomUsed: uomDisplay,
+            isBaseUom: false
+        }, { transaction });
+
+        await transaction.commit();
+
+        res.json({
+            success: true,
+            message: isNew ? '✅ Converted balance initialized and stock added successfully' : '✅ Stock added successfully',
+            data: {
+                id: convertedBalance.id,
+                itemCode: itemCodeDisplay,
+                itemName: itemDisplayName,
+                uomCode: uomDisplay,
+                previousBalance: oldBalance,
+                newBalance: newBalance,
+                changeAmount: qty,
+                operation: 'in',
+                reason: reason || null,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                isNew: isNew
+            }
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('❌ Stock In error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to add stock',
+            details: error.message
+        });
     }
+}
+
+/**
+ * ================================================================
+ * ✅ STOCK OUT - Remove stock from converted balance
+ * POST /api/converted-balances/stock-out
+ * ================================================================
+ */
+static async stockOut(req, res) {
+    const transaction = await sequelize.transaction();
+    
+    try {
+        const {
+            storeId,
+            groupId,
+            itemId,
+            itemCode,
+            itemName,
+            uomCode,
+            quantity,
+            conversionRate,
+            sourceUomId,
+            targetUomId,
+            reason
+        } = req.body;
+
+        const userId = req.user?.userId || req.user?.id;
+
+        console.log('📤 Stock Out:', {
+            storeId,
+            groupId,
+            itemId,
+            itemCode,
+            quantity,
+            uomCode,
+            userId,
+            reason
+        });
+
+        // Validate required fields
+        if (!storeId || !groupId || !itemId || !quantity) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: storeId, groupId, itemId, quantity'
+            });
+        }
+
+        const qty = parseFloat(quantity);
+        if (qty <= 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Quantity must be greater than 0'
+            });
+        }
+
+        // Get converted balance
+        const convertedBalance = await ConvertedBalance.findOne({
+            where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: parseInt(itemId)
+            },
+            transaction,
+            lock: true
+        });
+
+        if (!convertedBalance) {
+            await transaction.rollback();
+            return res.status(404).json({
+                success: false,
+                error: 'Converted balance not found for this item. Please add stock first.'
+            });
+        }
+
+        const oldBalance = parseFloat(convertedBalance.convertedBalance);
+        
+        if (qty > oldBalance) {
+            await transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                error: `Insufficient balance. Current: ${oldBalance}, Requested: ${qty}`
+            });
+        }
+
+        const newBalance = oldBalance - qty;
+        convertedBalance.convertedBalance = newBalance;
+        await convertedBalance.save({ transaction });
+
+        // Build detailed remark
+        const itemDisplayName = itemName || 'Unknown Item';
+        const itemCodeDisplay = itemCode || 'N/A';
+        const uomDisplay = uomCode || 'N/A';
+        
+        let remark = `📤 STOCK OUT: ${qty} ${uomDisplay} of "${itemDisplayName}" (${itemCodeDisplay})`;
+
+        if (reason && reason.trim()) {
+            remark += ` - Reason: ${reason.trim()}`;
+        }
+        
+        remark += ` | Balance: ${oldBalance} → ${newBalance} ${uomDisplay}`;
+
+        if (userId) {
+            const user = await User.findByPk(userId);
+            if (user) {
+                remark += ` | By: ${user.fullName || user.username}`;
+            }
+        }
+
+        // ✅ Create history record with ALLOWED ENUM values
+        await StoreBalanceHistory.create({
+            convertedBalanceId: convertedBalance.id,
+            balanceId: null,
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: parseInt(itemId),
+            previousBalance: oldBalance,
+            newBalance: newBalance,
+            changeAmount: qty,
+            transactionType: 'Stock Out', // ✅ Allowed: 'Stock In' or 'Stock Out'
+            sourceStoreId: parseInt(storeId),
+            destinationStoreId: null,
+            referenceType: 'adjustment', // ✅ Allowed: 'purchase', 'transfer', 'adjustment', 'return', 'sale', 'initialization', 'request'
+            referenceId: convertedBalance.id,
+            changedBy: userId || null,
+            remark: remark,
+            grnNumber: null,
+            sivNumber: null,
+            uomUsed: uomDisplay,
+            isBaseUom: false
+        }, { transaction });
+
+        await transaction.commit();
+
+        res.json({
+            success: true,
+            message: '✅ Stock removed successfully',
+            data: {
+                id: convertedBalance.id,
+                itemCode: itemCodeDisplay,
+                itemName: itemDisplayName,
+                uomCode: uomDisplay,
+                previousBalance: oldBalance,
+                newBalance: newBalance,
+                changeAmount: qty,
+                operation: 'out',
+                reason: reason || null,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId)
+            }
+        });
+
+    } catch (error) {
+        await transaction.rollback();
+        console.error('❌ Stock Out error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to remove stock',
+            details: error.message
+        });
+    }
+}
 
     /**
      * GET /api/converted-balances/stats
-     * Get statistics - ✅ Uses query params for storeId/groupId
+     * Get statistics
      */
     static async getStats(req, res) {
         try {
             const storeId = req.query.storeId;
             const groupId = req.query.groupId;
-
-            console.log('🔍 getStats - storeId:', storeId, 'groupId:', groupId);
 
             if (!storeId || !groupId) {
                 return res.status(400).json({
@@ -644,7 +897,7 @@ static async convert(req, res) {
                         include: [
                             { model: Category, as: 'category' },
                             { model: UOM, as: 'uom' },
-                            { model: UOM, as: 'conversionUom' }  // ✅ Added
+                            { model: UOM, as: 'conversionUom' }
                         ]
                     },
                     { model: Store, as: 'store' },
@@ -688,280 +941,147 @@ static async convert(req, res) {
         }
     }
 
-  // controllers/convertedBalanceController.js - Updated delete method (NO history deletion)
-
-/**
- * DELETE /api/converted-balances/:id
- * Delete converted balance only - does NOT delete history records
- */
-static async delete(req, res) {
-    try {
-        const { id } = req.params;
-        const storeId = req.query.storeId;
-        const groupId = req.query.groupId;
-
-        console.log('🗑️ Delete converted balance:', { id, storeId, groupId });
-
-        if (!storeId || !groupId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Store ID and Group ID are required'
-            });
-        }
-
-        // Find the converted balance
-        const balance = await ConvertedBalance.findOne({
-            where: {
-                id: parseInt(id),
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId)
-            },
-            include: [
-                {
-                    model: Item,
-                    as: 'item',
-                    include: [
-                        { model: UOM, as: 'uom' },
-                        { model: UOM, as: 'conversionUom' }
-                    ]
-                }
-            ]
-        });
-
-        if (!balance) {
-            return res.status(404).json({
-                success: false,
-                error: 'Converted balance not found or unauthorized'
-            });
-        }
-
-        // Get item info for response
-        const itemName = balance.item?.name || 'Unknown';
-        const itemCode = balance.item?.code || 'N/A';
-        const convertedBalanceAmount = parseFloat(balance.convertedBalance || 0);
-
-        // 🔥 ONLY delete the converted balance - history records are preserved
-        await balance.destroy();
-
-        console.log(`🗑️ Deleted converted balance ${id} for item "${itemName}" (${itemCode})`);
-
-        res.json({
-            success: true,
-            message: `Converted balance for "${itemName}" (${itemCode}) deleted successfully`,
-            data: {
-                id: balance.id,
-                itemCode: itemCode,
-                itemName: itemName,
-                convertedBalance: convertedBalanceAmount,
-                storeId: balance.storeId,
-                groupId: balance.groupId,
-                // ✅ History records are preserved - they will show "deleted" reference
-                note: 'History records have been preserved for audit purposes'
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error deleting converted balance:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to delete converted balance',
-            details: error.message
-        });
-    }
-}
-
-
-
-
-static async create(req, res) {
-    try {
-        const { storeId, groupId, itemId, convertedBalance } = req.body;
-        const userId = req.user?.userId || req.user?.id;
-
-        console.log('📦 Create converted balance:', { 
-            storeId, 
-            groupId, 
-            itemId, 
-            convertedBalance, 
-            userId 
-        });
-
-        // Validate required fields
-        if (!storeId || !groupId || !itemId) {
-            return res.status(400).json({
-                success: false,
-                error: 'Store ID, Group ID, and Item ID are required'
-            });
-        }
-
-        // Fetch item with all UOM relationships
-        const item = await Item.findByPk(parseInt(itemId), {
-            include: [
-                { model: UOM, as: 'uom' },
-                { model: UOM, as: 'conversionUom' }
-            ]
-        });
-
-        if (!item) {
-            return res.status(404).json({
-                success: false,
-                error: 'Item not found'
-            });
-        }
-
-        // Check if converted balance already exists
-        const existing = await ConvertedBalance.findOne({
-            where: {
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: parseInt(itemId)
-            }
-        });
-
-        if (existing) {
-            return res.status(409).json({
-                success: false,
-                error: 'Converted balance already initialized for this item',
-                message: `Item "${item.name || 'Unknown'}" (${item.code || 'N/A'}) already has a converted balance record.`
-            });
-        }
-
-        // Start transaction
-        const transaction = await sequelize.transaction();
-
+    /**
+     * DELETE /api/converted-balances/:id
+     * Delete converted balance only - does NOT delete history records
+     */
+    static async delete(req, res) {
         try {
-            const convertedBalanceAmount = parseFloat(convertedBalance || 0);
+            const { id } = req.params;
+            const storeId = req.query.storeId;
+            const groupId = req.query.groupId;
 
-            // Create new converted balance
-            const result = await ConvertedBalance.create({
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: parseInt(itemId),
-                convertedBalance: convertedBalanceAmount
-            }, { transaction });
-
-            // Get the source store balance
-            const sourceBalance = await StoreBalance.findOne({
-                where: {
-                    storeId: parseInt(storeId),
-                    groupId: parseInt(groupId),
-                    itemId: parseInt(itemId)
-                },
-                transaction
-            });
-
-            // Get UOM information
-            const baseUom = item.uom;
-            const conversionUom = item.conversionUom;
-            
-            const baseUomCode = baseUom?.code || 'N/A';
-            const conversionUomCode = conversionUom?.code || 'N/A';
-            const conversionValue = parseFloat(item.conversionValue || 0);
-
-            const itemName = item.name || 'Unknown';
-            const itemCode = item.code || 'N/A';
-
-            // Build remark
-            let remark = `📦 CONVERTED BALANCE INITIALIZED: "${itemName}" (${itemCode})`;
-            remark += ` - Added ${convertedBalanceAmount} ${conversionUomCode}`;
-            
-            if (conversionValue > 0 && baseUomCode !== 'N/A' && conversionUomCode !== 'N/A') {
-                remark += ` (Conversion: 1 ${baseUomCode} = ${conversionValue} ${conversionUomCode})`;
+            if (!storeId || !groupId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Store ID and Group ID are required'
+                });
             }
 
-            // 🔥 FIX: The source balance doesn't change, but we're adding a converted balance
-            // So changeAmount should be the converted balance amount (positive)
-            // and transaction type should be 'Stock In' (adding)
-            const previousBalance = sourceBalance ? parseFloat(sourceBalance.balance) : 0;
-            const newBalance = previousBalance; // Source balance stays the same
-
-            // Create history record with CORRECT values
-            const historyData = {
-                convertedBalanceId: result.id,
-                balanceId: sourceBalance?.id || null,
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: parseInt(itemId),
-                
-                // 🔥 FIX: These should reflect the source balance (no change)
-                previousBalance: previousBalance,
-                newBalance: newBalance,
-                
-                // 🔥 FIX: Change amount should be the converted balance (positive)
-                changeAmount: convertedBalanceAmount,  // The amount added to converted balance
-                
-                // 🔥 FIX: 'Stock In' because we're adding converted balance
-                transactionType: 'Stock In',
-                
-                sourceStoreId: parseInt(storeId),
-                destinationStoreId: null,
-                referenceType: 'initialization',
-                referenceId: result.id,
-                changedBy: userId,
-                remark: remark,
-                grnNumber: null,
-                sivNumber: null,
-                uomUsed: conversionUomCode,
-                isBaseUom: false
-            };
-
-            console.log('📝 Creating history record:', historyData);
-
-            await StoreBalanceHistory.create(historyData, { transaction });
-
-            await transaction.commit();
-
-            // Fetch full record with associations
-            const created = await ConvertedBalance.findOne({
-                where: { id: result.id },
+            const balance = await ConvertedBalance.findOne({
+                where: {
+                    id: parseInt(id),
+                    storeId: parseInt(storeId),
+                    groupId: parseInt(groupId)
+                },
                 include: [
-                    { 
-                        model: Item, 
+                    {
+                        model: Item,
                         as: 'item',
                         include: [
-                            { model: Category, as: 'category' },
                             { model: UOM, as: 'uom' },
                             { model: UOM, as: 'conversionUom' }
                         ]
-                    },
-                    { model: Store, as: 'store' },
-                    { model: Group, as: 'group' }
+                    }
                 ]
             });
 
+            if (!balance) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Converted balance not found or unauthorized'
+                });
+            }
+
+            const itemName = balance.item?.name || 'Unknown';
+            const itemCode = balance.item?.code || 'N/A';
+            const convertedBalanceAmount = parseFloat(balance.convertedBalance || 0);
+
+            await balance.destroy();
+
             res.json({
                 success: true,
-                message: 'Converted balance initialized successfully',
+                message: `Converted balance for "${itemName}" (${itemCode}) deleted successfully`,
                 data: {
-                    id: created.id,
-                    storeId: created.storeId,
-                    groupId: created.groupId,
-                    itemId: created.itemId,
-                    itemCode: created.item?.code || 'N/A',
-                    itemName: created.item?.name || 'N/A',
-                    categoryName: created.item?.category?.name || 'Uncategorized',
-                    uomCode: created.item?.conversionUom?.code || created.item?.uom?.code || 'N/A',
-                    convertedBalance: parseFloat(created.convertedBalance || 0),
-                    storeName: created.store?.name || 'N/A',
-                    groupName: created.group?.name || 'N/A',
-                    createdAt: created.createdAt,
-                    updatedAt: created.updatedAt
+                    id: balance.id,
+                    itemCode: itemCode,
+                    itemName: itemName,
+                    convertedBalance: convertedBalanceAmount,
+                    storeId: balance.storeId,
+                    groupId: balance.groupId,
+                    note: 'History records have been preserved for audit purposes'
                 }
             });
 
         } catch (error) {
-            await transaction.rollback();
-            throw error;
+            console.error('❌ Error deleting converted balance:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete converted balance',
+                details: error.message
+            });
         }
+    }
 
-    } catch (error) {
-        console.error('❌ Error creating converted balance:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to create converted balance',
-            details: error.message
-        });
+    /**
+     * POST /api/converted-balances/preview
+     * Preview conversion (Dry Run)
+     */
+    static async previewConversion(req, res) {
+        try {
+            const { items } = req.body;
+
+            if (!items || !Array.isArray(items) || items.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No items provided for preview'
+                });
+            }
+
+            const previewResults = [];
+
+            for (const item of items) {
+                const {
+                    itemId,
+                    itemCode,
+                    itemName,
+                    uomCode,
+                    convertToUom,
+                    quantity,
+                    conversionRate,
+                    currentBalance,
+                    currentConvertedBalance
+                } = item;
+
+                const qtyToConvert = parseFloat(quantity) || 0;
+                const rate = parseFloat(conversionRate) || 0;
+                const currentBal = parseFloat(currentBalance) || 0;
+                const currentConvBal = parseFloat(currentConvertedBalance) || 0;
+
+                const convertedAmount = qtyToConvert * rate;
+                const balanceAfter = currentBal - qtyToConvert;
+                const convertedBalanceAfter = currentConvBal + convertedAmount;
+
+                previewResults.push({
+                    itemCode: itemCode || 'N/A',
+                    itemName: itemName || 'Unknown',
+                    sourceUom: uomCode || 'N/A',
+                    targetUom: convertToUom || 'N/A',
+                    currentBalance: currentBal,
+                    quantityToConvert: qtyToConvert,
+                    convertedAmount: convertedAmount,
+                    balanceAfter: balanceAfter,
+                    currentConvertedBalance: currentConvBal,
+                    convertedBalanceAfter: convertedBalanceAfter,
+                    hasExistingConverted: true,
+                    isValid: qtyToConvert > 0 && qtyToConvert <= currentBal && rate > 0
+                });
+            }
+
+            res.json({
+                success: true,
+                data: previewResults
+            });
+
+        } catch (error) {
+            console.error('Preview conversion error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to preview conversion',
+                details: error.message
+            });
+        }
     }
 }
-}
+
 module.exports = ConvertedBalanceController;

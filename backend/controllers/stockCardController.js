@@ -1,4 +1,4 @@
-// controllers/stockCardController.js - FIXED: Use balance from StoreBalance table only
+// controllers/stockCardController.js - FIXED: Added isBaseUom filter
 
 'use strict';
 
@@ -55,10 +55,8 @@ function buildParticulars(tx) {
 }
 
 // ================================================================
-// GET STOCK CARD
+// GET STOCK CARD - WITH UOM FILTER
 // ================================================================
-
-// controllers/stockCardController.js - FIXED VERSION
 
 const getStockCard = async (req, res) => {
   try {
@@ -69,7 +67,11 @@ const getStockCard = async (req, res) => {
       startDate,
       endDate,
       limit = 100,
+      // ✅ ADD UOM FILTER PARAMETER
+      isBaseUom,
     } = req.query;
+
+    console.log(`📊 Stock card request: itemId=${itemId}, storeId=${storeId}, groupId=${groupId}, isBaseUom=${isBaseUom}`);
 
     // ============================================================
     // 1. VALIDATE REQUIRED FILTERS
@@ -83,12 +85,13 @@ const getStockCard = async (req, res) => {
     }
 
     // ============================================================
-    // 2. GET ITEM WITH UNIT COST
+    // 2. GET ITEM WITH UNIT COST AND UOM INFO
     // ============================================================
 
     const item = await Item.findByPk(itemId, {
       include: [
         { model: UOM, as: 'uom', attributes: ['id', 'code', 'name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['id', 'code', 'name'] },
         { model: Category, as: 'category', attributes: ['categoryId', 'name'] },
       ],
     });
@@ -103,8 +106,7 @@ const getStockCard = async (req, res) => {
     const unitCost = parseFloat(item.costPrice || 0);
 
     // ============================================================
-    // 3. ✅ GET CURRENT BALANCE FROM STORE_BALANCE TABLE
-    //    This is the SOURCE OF TRUTH for the CURRENT balance
+    // 3. GET CURRENT BALANCE FROM STORE_BALANCE TABLE
     // ============================================================
 
     const balanceWhere = {
@@ -122,13 +124,12 @@ const getStockCard = async (req, res) => {
       ],
     });
 
-    // ✅ CURRENT BALANCE from StoreBalance table (SOURCE OF TRUTH)
     const currentBalance = currentBalanceRecord
       ? parseFloat(currentBalanceRecord.balance || 0)
       : 0;
 
     // ============================================================
-    // 4. BUILD TRANSACTION QUERY
+    // 4. BUILD TRANSACTION QUERY WITH UOM FILTER
     // ============================================================
 
     const whereClause = {
@@ -139,6 +140,13 @@ const getStockCard = async (req, res) => {
         [Op.in]: ['Stock In', 'Stock Out'],
       },
     };
+
+    // ✅ ADD UOM FILTER
+    if (isBaseUom === 'true' || isBaseUom === true) {
+      whereClause.isBaseUom = true;
+    } else if (isBaseUom === 'false' || isBaseUom === false) {
+      whereClause.isBaseUom = false;
+    }
 
     if (startDate) {
       whereClause.createdAt = {
@@ -151,6 +159,8 @@ const getStockCard = async (req, res) => {
         [Op.lte]: new Date(endDate + 'T23:59:59'),
       };
     }
+
+    console.log(`📊 WHERE clause:`, JSON.stringify(whereClause, null, 2));
 
     // ============================================================
     // 5. FETCH TRANSACTIONS
@@ -172,9 +182,10 @@ const getStockCard = async (req, res) => {
       limit: parseInt(limit),
     });
 
+    console.log(`✅ Found ${transactions.length} transactions`);
+
     // ============================================================
-    // 6. ✅ CALCULATE BALANCE USING CURRENT BALANCE FROM STORE_BALANCE
-    //    START FROM 0 AND ADD TRANSACTIONS, OR USE newBalance
+    // 6. FORMAT ROWS
     // ============================================================
 
     let totalQuantityIn = 0;
@@ -182,13 +193,10 @@ const getStockCard = async (req, res) => {
     let totalCostIn = 0;
     let totalCostOut = 0;
 
-    // ✅ Option A: Use newBalance from history (should be correct)
-    //    This assumes your history table has correct newBalance values
     const formattedRows = transactions.map((tx) => {
       const isStockIn = tx.transactionType === 'Stock In';
       const quantity = parseFloat(tx.changeAmount || 0);
       
-      // ✅ USE newBalance from history (which should equal StoreBalance at that point)
       const runningQuantityBalance = parseFloat(tx.newBalance || 0);
       const runningCostBalance = runningQuantityBalance * unitCost;
 
@@ -214,7 +222,6 @@ const getStockCard = async (req, res) => {
         quantityIn: isStockIn ? quantity : 0,
         quantityOut: isStockIn ? 0 : quantity,
         unitCost: unitCost,
-        // ✅ BALANCE from history (should match StoreBalance at this point)
         runningQuantityBalance: runningQuantityBalance,
         runningCostBalance: runningCostBalance,
         previousBalance: parseFloat(tx.previousBalance || 0),
@@ -224,6 +231,9 @@ const getStockCard = async (req, res) => {
         storeName: tx.store?.name,
         groupName: tx.group?.name,
         updatedBy: tx.changedByUser?.fullName || tx.changedByUser?.username,
+        // ✅ ADD UOM FIELDS TO RESPONSE
+        uomUsed: tx.uomUsed || item.uom?.code || 'PCS',
+        isBaseUom: tx.isBaseUom !== false,
         _raw: {
           id: tx.id,
           balanceId: tx.balanceId,
@@ -232,31 +242,16 @@ const getStockCard = async (req, res) => {
       };
     });
 
-    // ✅ If no transactions, show current balance from StoreBalance
-    if (formattedRows.length === 0) {
-      formattedRows.push({
-        date: '',
-        grn: '',
-        siv: '',
-        particulars: `No transactions found for ${item.code}`,
-        quantityIn: 0,
-        quantityOut: 0,
-        unitCost: unitCost,
-        runningQuantityBalance: currentBalance,
-        runningCostBalance: currentBalance * unitCost,
-        previousBalance: 0,
-        newBalance: currentBalance,
-        transactionType: null,
-        referenceType: null,
-        storeName: currentBalanceRecord?.store?.name || null,
-        groupName: currentBalanceRecord?.group?.name || null,
-        updatedBy: null,
-        _raw: null,
-      });
-    }
+    // ============================================================
+    // 7. DETERMINE DISPLAY UOM
+    // ============================================================
+
+    const displayUom = isBaseUom === 'false' 
+      ? (item.conversionUom?.code || item.uom?.code || 'PCS')
+      : (item.uom?.code || 'PCS');
 
     // ============================================================
-    // 7. BUILD RESPONSE
+    // 8. BUILD RESPONSE
     // ============================================================
 
     const response = {
@@ -265,13 +260,12 @@ const getStockCard = async (req, res) => {
         form: {
           maximumStockLevel: '',
           merchandise: item.name || item.standardName || '',
-          unitOfMeasurement: item.uom?.code || '',
+          unitOfMeasurement: displayUom,
           codeNo: item.code || '',
         },
 
         rows: formattedRows,
 
-        // ✅ CURRENT BALANCE from StoreBalance table (SOURCE OF TRUTH)
         currentBalance: currentBalance,
 
         currentBalanceContext: currentBalanceRecord
@@ -303,6 +297,8 @@ const getStockCard = async (req, res) => {
           standardName: item.standardName,
           uomCode: item.uom?.code,
           uomName: item.uom?.name,
+          conversionUomCode: item.conversionUom?.code,
+          conversionUomName: item.conversionUom?.name,
           categoryName: item.category?.name,
           costPrice: unitCost,
         },
@@ -313,7 +309,6 @@ const getStockCard = async (req, res) => {
           totalQuantityOut: totalQuantityOut,
           totalCostIn: totalCostIn,
           totalCostOut: totalCostOut,
-          // ✅ CURRENT BALANCE from StoreBalance table
           currentBalance: currentBalance,
           currentCostBalance: currentBalance * unitCost,
           unitCost: unitCost,
@@ -325,6 +320,8 @@ const getStockCard = async (req, res) => {
           startDate: startDate || null,
           endDate: endDate || null,
           limit: parseInt(limit),
+          // ✅ INCLUDE UOM FILTER IN RESPONSE
+          isBaseUom: isBaseUom !== undefined ? isBaseUom : null,
         },
       },
     };
@@ -340,7 +337,7 @@ const getStockCard = async (req, res) => {
 };
 
 // ================================================================
-// GET STOCK CARD WITH SQL OPTIMIZATION
+// GET STOCK CARD WITH SQL OPTIMIZATION - WITH UOM FILTER
 // ================================================================
 
 const getStockCardOptimized = async (req, res) => {
@@ -352,6 +349,8 @@ const getStockCardOptimized = async (req, res) => {
       startDate,
       endDate,
       limit = 100,
+      // ✅ ADD UOM FILTER PARAMETER
+      isBaseUom,
     } = req.query;
 
     if (!storeId || !groupId) {
@@ -364,6 +363,7 @@ const getStockCardOptimized = async (req, res) => {
     const item = await Item.findByPk(itemId, {
       include: [
         { model: UOM, as: 'uom', attributes: ['id', 'code', 'name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['id', 'code', 'name'] },
         { model: Category, as: 'category', attributes: ['categoryId', 'name'] },
       ],
     });
@@ -377,7 +377,7 @@ const getStockCardOptimized = async (req, res) => {
 
     const unitCost = parseFloat(item.costPrice || 0);
 
-    // ✅ GET CURRENT BALANCE FROM STORE_BALANCE TABLE
+    // GET CURRENT BALANCE
     const balanceWhere = {
       itemId: parseInt(itemId),
       storeId: parseInt(storeId),
@@ -398,7 +398,7 @@ const getStockCardOptimized = async (req, res) => {
       : 0;
 
     // ============================================================
-    // ✅ SQL QUERY - Calculate running balance from transactions (starts at 0)
+    // SQL QUERY WITH UOM FILTER
     // ============================================================
 
     let query = `
@@ -415,12 +415,13 @@ const getStockCardOptimized = async (req, res) => {
         sbh.reference_type,
         sbh.store_id,
         sbh.group_id,
+        sbh.uom_used,
+        sbh.is_base_uom,
         s.name AS store_name,
         s.code AS store_code,
         g.name AS group_name,
         g.code AS group_code,
         u.full_name AS updated_by,
-        -- ✅ Calculate running balance from transactions (starts at 0)
         SUM(
           CASE 
             WHEN sbh.transaction_type = 'Stock In' THEN sbh.change_amount
@@ -437,6 +438,13 @@ const getStockCardOptimized = async (req, res) => {
         AND sbh.group_id = :groupId
         AND sbh.transaction_type IN ('Stock In', 'Stock Out')
     `;
+
+    // ✅ ADD UOM FILTER
+    if (isBaseUom === 'true' || isBaseUom === true) {
+      query += ` AND sbh.is_base_uom = true`;
+    } else if (isBaseUom === 'false' || isBaseUom === false) {
+      query += ` AND sbh.is_base_uom = false`;
+    }
 
     const replacements = {
       itemId: parseInt(itemId),
@@ -465,10 +473,7 @@ const getStockCardOptimized = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // ============================================================
-    // FORMAT ROWS
-    // ============================================================
-
+    // Format rows...
     let totalQuantityIn = 0;
     let totalQuantityOut = 0;
 
@@ -525,7 +530,6 @@ const getStockCardOptimized = async (req, res) => {
         quantityIn: isStockIn ? quantity : 0,
         quantityOut: isStockIn ? 0 : quantity,
         unitCost: unitCost,
-        // ✅ RUNNING BALANCE from transactions (starts at 0)
         runningQuantityBalance: runningQuantity,
         runningCostBalance: runningCost,
         previousBalance: parseFloat(row.previous_balance || 0),
@@ -535,6 +539,9 @@ const getStockCardOptimized = async (req, res) => {
         updatedBy: row.updated_by,
         transactionType: row.transaction_type,
         referenceType: row.reference_type,
+        // ✅ ADD UOM FIELDS
+        uomUsed: row.uom_used || item.uom?.code || 'PCS',
+        isBaseUom: row.is_base_uom !== false,
         _raw: {
           id: row.id,
           referenceId: row.reference_id,
@@ -542,32 +549,9 @@ const getStockCardOptimized = async (req, res) => {
       };
     });
 
-    // ✅ If no transactions, show current balance
-    if (formattedRows.length === 0) {
-      formattedRows.push({
-        date: '',
-        grn: '',
-        siv: '',
-        particulars: `No transactions found for ${item.code}`,
-        quantityIn: 0,
-        quantityOut: 0,
-        unitCost: unitCost,
-        runningQuantityBalance: currentBalance,
-        runningCostBalance: currentBalance * unitCost,
-        previousBalance: 0,
-        newBalance: currentBalance,
-        storeName: currentBalanceRecord?.store?.name || null,
-        groupName: currentBalanceRecord?.group?.name || null,
-        updatedBy: null,
-        transactionType: null,
-        referenceType: null,
-        _raw: null,
-      });
-    }
-
-    // ============================================================
-    // BUILD RESPONSE
-    // ============================================================
+    const displayUom = isBaseUom === 'false' 
+      ? (item.conversionUom?.code || item.uom?.code || 'PCS')
+      : (item.uom?.code || 'PCS');
 
     res.status(200).json({
       success: true,
@@ -575,11 +559,10 @@ const getStockCardOptimized = async (req, res) => {
         form: {
           maximumStockLevel: '',
           merchandise: item.name || item.standardName || '',
-          unitOfMeasurement: item.uom?.code || '',
+          unitOfMeasurement: displayUom,
           codeNo: item.code || '',
         },
         rows: formattedRows,
-        // ✅ CURRENT BALANCE from StoreBalance table
         currentBalance: currentBalance,
         currentBalanceContext: currentBalanceRecord
           ? {
@@ -609,6 +592,8 @@ const getStockCardOptimized = async (req, res) => {
           standardName: item.standardName,
           uomCode: item.uom?.code,
           uomName: item.uom?.name,
+          conversionUomCode: item.conversionUom?.code,
+          conversionUomName: item.conversionUom?.name,
           categoryName: item.category?.name,
           costPrice: unitCost,
         },
@@ -618,7 +603,6 @@ const getStockCardOptimized = async (req, res) => {
           totalQuantityOut: totalQuantityOut,
           totalCostIn: totalQuantityIn * unitCost,
           totalCostOut: totalQuantityOut * unitCost,
-          // ✅ CURRENT BALANCE from StoreBalance table
           currentBalance: currentBalance,
           currentCostBalance: currentBalance * unitCost,
           unitCost: unitCost,
@@ -629,6 +613,7 @@ const getStockCardOptimized = async (req, res) => {
           startDate: startDate || null,
           endDate: endDate || null,
           limit: parseInt(limit),
+          isBaseUom: isBaseUom !== undefined ? isBaseUom : null,
         },
       },
     });
@@ -670,6 +655,7 @@ const getStockCardSummary = async (req, res) => {
       as: 'item',
       include: [
         { model: UOM, as: 'uom', attributes: ['id', 'code', 'name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['id', 'code', 'name'] },
         { model: Category, as: 'category', attributes: ['categoryId', 'name'] },
       ],
     };
@@ -699,6 +685,7 @@ const getStockCardSummary = async (req, res) => {
         itemCode: item?.code || 'N/A',
         itemName: item?.name || item?.standardName || 'Unnamed',
         uomCode: item?.uom?.code || 'PCS',
+        conversionUomCode: item?.conversionUom?.code || null,
         categoryName: item?.category?.name || 'Uncategorized',
         storeName: balance.store?.name || 'Unknown',
         storeCode: balance.store?.code || '',

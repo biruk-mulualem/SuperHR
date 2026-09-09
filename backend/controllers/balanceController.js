@@ -5021,3 +5021,186 @@ exports.correctBalance = async (req, res) => {
     });
   }
 };
+
+
+
+
+// ============================================
+// DELETE ALL BALANCES AND HISTORY FOR STORE-GROUP
+// ============================================
+exports.deleteStoreGroupData = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { storeId, groupId } = req.body;
+    const userId = req.user?.userId;
+
+    // ================================================================
+    // 1. VALIDATE INPUT
+    // ================================================================
+    if (!storeId || !groupId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Store ID and Group ID are required'
+      });
+    }
+
+    // ================================================================
+    // 2. GET USER FOR AUDIT
+    // ================================================================
+    let user = null;
+    if (userId) {
+      user = await User.findByPk(userId, {
+        attributes: ['userId', 'username', 'fullName']
+      });
+    }
+
+    const userName = user?.fullName || user?.username || 'System';
+
+    // ================================================================
+    // 3. VALIDATE STORE EXISTS
+    // ================================================================
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found'
+      });
+    }
+
+    // ================================================================
+    // 4. VALIDATE GROUP EXISTS
+    // ================================================================
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        error: 'Group not found'
+      });
+    }
+
+    // ================================================================
+    // 5. CHECK IF STORE-GROUP RELATION EXISTS
+    // ================================================================
+    const relation = await StoreGroupRelation.findOne({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    if (!relation) {
+      return res.status(404).json({
+        success: false,
+        error: `Group "${group.name}" is not associated with Store "${store.name}"`
+      });
+    }
+
+    // ================================================================
+    // 6. GET COUNT OF BALANCES BEFORE DELETE
+    // ================================================================
+    const balanceCount = await StoreBalance.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    const historyCount = await StoreBalanceHistory.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    const convertedBalanceCount = ConvertedBalance ? await ConvertedBalance.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    }) : 0;
+
+    // ================================================================
+    // 7. DELETE HISTORIES FIRST (FOREIGN KEY CONSTRAINT)
+    // ================================================================
+    // Delete from StoreBalanceHistory
+    const deletedHistory = await StoreBalanceHistory.destroy({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      },
+      transaction
+    });
+
+    // ================================================================
+    // 8. DELETE CONVERTED BALANCES (if exists)
+    // ================================================================
+    let deletedConverted = 0;
+    if (ConvertedBalance) {
+      deletedConverted = await ConvertedBalance.destroy({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: parseInt(groupId)
+        },
+        transaction
+      });
+    }
+
+    // ================================================================
+    // 9. DELETE STORE BALANCES
+    // ================================================================
+    const deletedBalances = await StoreBalance.destroy({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      },
+      transaction
+    });
+
+    // ================================================================
+    // 10. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 11. RETURN RESPONSE
+    // ================================================================
+    res.status(200).json({
+      success: true,
+      message: `✅ Successfully deleted all data for ${store.name} - ${group.name}`,
+      data: {
+        store: {
+          id: store.id,
+          name: store.name,
+          code: store.code
+        },
+        group: {
+          id: group.id,
+          name: group.name,
+          code: group.code
+        },
+        deleted: {
+          storeBalances: deletedBalances,
+          storeBalanceHistory: deletedHistory,
+          convertedBalances: deletedConverted,
+          total: deletedBalances + deletedHistory + deletedConverted
+        },
+        countsBeforeDelete: {
+          storeBalances: balanceCount,
+          storeBalanceHistory: historyCount,
+          convertedBalances: convertedBalanceCount,
+          total: balanceCount + historyCount + convertedBalanceCount
+        },
+        deletedBy: userName
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Delete store-group data error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete store-group data'
+    });
+  }
+};

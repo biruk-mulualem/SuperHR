@@ -1,5 +1,5 @@
 // stores/convertedBalanceService.ts
-// COMPLETE SERVICE WITH AUTH STORE INTEGRATION - NO MIDDLEWARE CHANGES
+// COMPLETE SERVICE WITH AUTH STORE INTEGRATION
 
 import api from "./interceptor";
 import { useAuthStore } from '@/stores/auth';
@@ -86,6 +86,7 @@ export interface ConversionResult {
     convertedBalanceBefore: number;
     convertedBalanceAfter: number;
     status: string;
+    remark?: string;
 }
 
 export interface ConversionResponse {
@@ -125,6 +126,53 @@ export interface PaginatedResponse<T> {
     };
 }
 
+export interface StockInData {
+    storeId: number;
+    groupId: number;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    uomCode: string;
+    quantity: number;
+    conversionRate?: number;
+    sourceUomId?: number;
+    targetUomId?: number;
+    reason?: string | null;
+}
+
+export interface StockOutData {
+    storeId: number;
+    groupId: number;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    uomCode: string;
+    quantity: number;
+    conversionRate?: number;
+    sourceUomId?: number;
+    targetUomId?: number;
+    reason?: string | null;
+}
+
+export interface StockResponse {
+    success: boolean;
+    message?: string;
+    data?: {
+        id: number;
+        itemCode: string;
+        itemName: string;
+        uomCode: string;
+        previousBalance: number;
+        newBalance: number;
+        changeAmount: number;
+        operation: string;
+        reason: string | null;
+        storeId: number;
+        groupId: number;
+    };
+    error?: string;
+}
+
 // ============================================
 // CONVERTED BALANCE SERVICE CLASS
 // ============================================
@@ -136,7 +184,6 @@ class ConvertedBalanceService {
      * ================================================================
      */
     async getConvertedBalances(filters: ConvertedBalanceFilters = {}): Promise<PaginatedResponse<ConvertedBalanceRecord>> {
-        // 🔥 Get store/group from auth store
         const authStore = useAuthStore();
         const storeId = filters.storeId || authStore.userStoreId;
         const groupId = filters.groupId || authStore.userGroupId;
@@ -169,7 +216,6 @@ class ConvertedBalanceService {
         uomId?: number;
         search?: string;
     } = {}): Promise<{ success: boolean; data: AvailableItem[] }> {
-        // 🔥 Get store/group from auth store
         const authStore = useAuthStore();
         const storeId = filters.storeId || authStore.userStoreId;
         const groupId = filters.groupId || authStore.userGroupId;
@@ -186,69 +232,114 @@ class ConvertedBalanceService {
         return response.data;
     }
 
+    /**
+     * ================================================================
+     * ✅ STOCK IN - Add stock to converted balance (creates if not exists)
+     * ================================================================
+     */
+    async stockIn(data: StockInData): Promise<StockResponse> {
+        try {
+            const authStore = useAuthStore();
+            
+            console.log('📥 Stock In:', {
+                itemCode: data.itemCode,
+                quantity: data.quantity,
+                uomCode: data.uomCode,
+                storeId: data.storeId,
+                groupId: data.groupId,
+                reason: data.reason,
+                user: authStore.user?.username
+            });
 
-// stores/convertedBalanceService.ts
+            if (!data.storeId || !data.groupId || !data.itemId || !data.quantity) {
+                return {
+                    success: false,
+                    error: 'Missing required fields: storeId, groupId, itemId, quantity'
+                };
+            }
 
-/**
- * ================================================================
- * CREATE/INITIALIZE CONVERTED BALANCE
- * ================================================================
- */
-async createBalance(data: {
-    storeId: number;
-    groupId: number;
-    itemId: number;
-    convertedBalance: number;
-}): Promise<{ 
-    success: boolean; 
-    data?: ConvertedBalanceRecord; 
-    error?: string;
-    message?: string;
-    alreadyExists?: boolean;
-}> {
-    try {
-        const authStore = useAuthStore();
-        
-        console.log('📦 Creating converted balance:', {
-            storeId: data.storeId,
-            groupId: data.groupId,
-            itemId: data.itemId,
-            convertedBalance: data.convertedBalance,
-            user: authStore.user?.username
-        });
-
-        const response = await api.post('/converted-balances', {
-            storeId: data.storeId,
-            groupId: data.groupId,
-            itemId: data.itemId,
-            convertedBalance: data.convertedBalance
-        });
-
-        return {
-            success: true,
-            data: response.data?.data,
-            message: response.data?.message || 'Converted balance initialized successfully'
-        };
-    } catch (error: any) {
-        console.error('❌ Create converted balance error:', error);
-        
-        // 🔥 Handle 409 Conflict - Already exists
-        if (error.response?.status === 409) {
+            const response = await api.post('/converted-balances/stock-in', {
+                storeId: data.storeId,
+                groupId: data.groupId,
+                itemId: data.itemId,
+                itemCode: data.itemCode,
+                itemName: data.itemName,
+                uomCode: data.uomCode,
+                quantity: data.quantity,
+                conversionRate: data.conversionRate || 1,
+                sourceUomId: data.sourceUomId || null,
+                targetUomId: data.targetUomId || null,
+                reason: data.reason || null
+            });
+            
+            return {
+                success: true,
+                message: response.data?.message || 'Stock added successfully',
+                data: response.data?.data
+            };
+        } catch (error: any) {
+            console.error('❌ Stock In error:', error);
             return {
                 success: false,
-                error: error.response?.data?.error || 'Converted balance already exists',
-                message: error.response?.data?.message || 'This item already has a converted balance record.',
-                alreadyExists: true,
-                data: error.response?.data?.data
+                error: error.response?.data?.error || 'Failed to add stock'
             };
         }
-        
-        return {
-            success: false,
-            error: error.response?.data?.error || 'Failed to create converted balance'
-        };
     }
-}
+
+    /**
+     * ================================================================
+     * ✅ STOCK OUT - Remove stock from converted balance
+     * ================================================================
+     */
+    async stockOut(data: StockOutData): Promise<StockResponse> {
+        try {
+            const authStore = useAuthStore();
+            
+            console.log('📤 Stock Out:', {
+                itemCode: data.itemCode,
+                quantity: data.quantity,
+                uomCode: data.uomCode,
+                storeId: data.storeId,
+                groupId: data.groupId,
+                reason: data.reason,
+                user: authStore.user?.username
+            });
+
+            if (!data.storeId || !data.groupId || !data.itemId || !data.quantity) {
+                return {
+                    success: false,
+                    error: 'Missing required fields: storeId, groupId, itemId, quantity'
+                };
+            }
+
+            const response = await api.post('/converted-balances/stock-out', {
+                storeId: data.storeId,
+                groupId: data.groupId,
+                itemId: data.itemId,
+                itemCode: data.itemCode,
+                itemName: data.itemName,
+                uomCode: data.uomCode,
+                quantity: data.quantity,
+                conversionRate: data.conversionRate || 1,
+                sourceUomId: data.sourceUomId || null,
+                targetUomId: data.targetUomId || null,
+                reason: data.reason || null
+            });
+            
+            return {
+                success: true,
+                message: response.data?.message || 'Stock removed successfully',
+                data: response.data?.data
+            };
+        } catch (error: any) {
+            console.error('❌ Stock Out error:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || 'Failed to remove stock'
+            };
+        }
+    }
+
     /**
      * ================================================================
      * GET STATISTICS
@@ -258,7 +349,6 @@ async createBalance(data: {
         storeId?: number;
         groupId?: number;
     } = {}): Promise<{ success: boolean; data: ConvertedBalanceStats }> {
-        // 🔥 Get store/group from auth store
         const authStore = useAuthStore();
         const storeId = filters.storeId || authStore.userStoreId;
         const groupId = filters.groupId || authStore.userGroupId;
@@ -284,16 +374,14 @@ async createBalance(data: {
 
     /**
      * ================================================================
-     * PERFORM CONVERSION - 🔥 SEND storeId/groupId IN BODY
+     * PERFORM CONVERSION
      * ================================================================
      */
     async convert(items: ConversionItem[]): Promise<ConversionResponse> {
-        // 🔥 Get store/group from auth store
         const authStore = useAuthStore();
         const storeId = authStore.userStoreId;
         const groupId = authStore.userGroupId;
 
-        // 🔥 Log for debugging
         console.log('🔐 Conversion request:', {
             storeId,
             groupId,
@@ -302,14 +390,11 @@ async createBalance(data: {
             user: authStore.user?.username
         });
 
-        // 🔥 Validate we have store/group
         if (!storeId || !groupId) {
             console.error('❌ Missing store or group for conversion');
             throw new Error('User store or group not found. Please re-login.');
         }
 
-        // 🔥 Send EVERYTHING in the request body
-        // The backend will use these values directly
         const response = await api.post('/converted-balances/convert', { 
             items,
             storeId: Number(storeId),
@@ -339,26 +424,79 @@ async createBalance(data: {
      * DELETE CONVERTED BALANCE
      * ================================================================
      */
+    async delete(id: number): Promise<{ success: boolean; message: string }> {
+        const authStore = useAuthStore();
+        const storeId = authStore.userStoreId;
+        const groupId = authStore.userGroupId;
 
-/**
- * ================================================================
- * DELETE CONVERTED BALANCE
- * ================================================================
- */
-async delete(id: number): Promise<{ success: boolean; message: string }> {
-    // 🔥 Get store/group from auth store
-    const authStore = useAuthStore();
-    const storeId = authStore.userStoreId;
-    const groupId = authStore.userGroupId;
+        if (!storeId || !groupId) {
+            throw new Error('User store or group not found. Please re-login.');
+        }
 
-    if (!storeId || !groupId) {
-        throw new Error('User store or group not found. Please re-login.');
+        const response = await api.delete(`/converted-balances/${id}?storeId=${storeId}&groupId=${groupId}`);
+        return response.data;
     }
 
-    // 🔥 Pass storeId and groupId as query parameters
-    const response = await api.delete(`/converted-balances/${id}?storeId=${storeId}&groupId=${groupId}`);
-    return response.data;
-}
+    /**
+     * ================================================================
+     * BULK DELETE CONVERTED BALANCES
+     * ================================================================
+     */
+    async bulkDelete(ids: number[]): Promise<{ success: boolean; message: string; data?: any }> {
+        const authStore = useAuthStore();
+        const storeId = authStore.userStoreId;
+        const groupId = authStore.userGroupId;
+
+        if (!storeId || !groupId) {
+            throw new Error('User store or group not found. Please re-login.');
+        }
+
+        const response = await api.delete(`/converted-balances/bulk`, {
+            data: { ids, storeId, groupId }
+        });
+        return response.data;
+    }
+
+    /**
+     * ================================================================
+     * GET CONVERTED BALANCE BY ITEM
+     * ================================================================
+     */
+    async getByItemId(itemId: number, filters: {
+        storeId?: number;
+        groupId?: number;
+    } = {}): Promise<{ success: boolean; data: ConvertedBalanceRecord | null }> {
+        const authStore = useAuthStore();
+        const storeId = filters.storeId || authStore.userStoreId;
+        const groupId = filters.groupId || authStore.userGroupId;
+
+        const params = new URLSearchParams();
+        if (storeId) params.append('storeId', storeId.toString());
+        if (groupId) params.append('groupId', groupId.toString());
+
+        const response = await api.get(`/converted-balances/item/${itemId}?${params.toString()}`);
+        return response.data;
+    }
+
+    /**
+     * ================================================================
+     * UPDATE CONVERTED BALANCE
+     * ================================================================
+     */
+    async update(id: number, data: {
+        convertedBalance?: number;
+    }): Promise<{ success: boolean; data?: ConvertedBalanceRecord; error?: string }> {
+        try {
+            const response = await api.put(`/converted-balances/${id}`, data);
+            return response.data;
+        } catch (error: any) {
+            console.error('❌ Update converted balance error:', error);
+            return {
+                success: false,
+                error: error.response?.data?.error || 'Failed to update converted balance'
+            };
+        }
+    }
 
     // ================================================================
     // UTILITY METHODS
@@ -423,6 +561,81 @@ async delete(id: number): Promise<{ success: boolean; message: string }> {
             'pending': 'status-pending'
         };
         return classes[status] || '';
+    }
+
+    /**
+     * ================================================================
+     * VALIDATION HELPERS
+     * ================================================================
+     */
+
+    validateBalance(balance: number): boolean {
+        return balance !== undefined && balance !== null && balance >= 0;
+    }
+
+    validateQuantity(quantity: number): boolean {
+        return quantity !== undefined && quantity !== null && quantity > 0;
+    }
+
+    validateStoreGroup(storeId: number, groupId: number): boolean {
+        return storeId !== undefined && storeId !== null && 
+               groupId !== undefined && groupId !== null;
+    }
+
+    /**
+     * ================================================================
+     * CALCULATION HELPERS
+     * ================================================================
+     */
+
+    calculateConvertedAmount(quantity: number, conversionRate: number): number {
+        return quantity * conversionRate;
+    }
+
+    calculateNewBalance(currentBalance: number, changeAmount: number, operation: 'add' | 'subtract'): number {
+        if (operation === 'add') {
+            return currentBalance + changeAmount;
+        } else {
+            return Math.max(0, currentBalance - changeAmount);
+        }
+    }
+
+    /**
+     * ================================================================
+     * DISPLAY HELPERS
+     * ================================================================
+     */
+
+    getUomDisplay(uomCode: string | null): string {
+        return uomCode || 'N/A';
+    }
+
+    getItemDisplay(itemCode: string, itemName: string): string {
+        return `${itemCode} - ${itemName}`;
+    }
+
+    getBalanceDisplay(balance: number, uomCode: string): string {
+        return `${this.formatNumber(balance)} ${this.getUomDisplay(uomCode)}`;
+    }
+
+    getOperationDisplay(operation: 'add' | 'subtract' | 'in' | 'out'): string {
+        const map: Record<string, string> = {
+            'add': '📥 Stock In',
+            'in': '📥 Stock In',
+            'subtract': '📤 Stock Out',
+            'out': '📤 Stock Out'
+        };
+        return map[operation] || operation;
+    }
+
+    getOperationEmoji(operation: 'add' | 'subtract' | 'in' | 'out'): string {
+        const map: Record<string, string> = {
+            'add': '📥',
+            'in': '📥',
+            'subtract': '📤',
+            'out': '📤'
+        };
+        return map[operation] || '🔄';
     }
 }
 

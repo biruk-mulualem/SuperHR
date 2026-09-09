@@ -182,6 +182,10 @@ const roleMenus = {
            { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
            { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
            { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
+            { name: "foreign-purchase", path: "/foreign-purchase", icon: "CogIcon", badge: null },
+             { name: "local-purchase", path: "/local-purchase", icon: "CogIcon", badge: null },
+             { name: "converted-audit", path: "/converted-audit", icon: "CogIcon", badge: null },
+               { name: "store-cleanup", path: "/store-cleanup", icon: "CogIcon", badge: null },
            
            
     // {
@@ -346,7 +350,7 @@ const roleMenus = {
     // { name: 'store-to-store ', path: '/store-to-store', icon: 'UserIcon', badge: null },
 
     { name: "audit", path: "/audit", icon: "ClockIcon", badge: null },
-
+  { name: "converted-audit", path: "/converted-audit", icon: "CogIcon", badge: null },
     {
       name: "balance-corrections ",
       path: "/store-balance-corrections",
@@ -359,6 +363,8 @@ const roleMenus = {
       icon: "CogIcon",
       badge: null,
     }, // ← Primary menu for Asset Manager
+
+      // { name: "store-cleanup", path: "/store-cleanup", icon: "CogIcon", badge: null },
   ],
   cost: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },

@@ -18,7 +18,7 @@
           />
         </div>
         <button class="btn-add" @click="openInitializeModal">
-          📦 Initialize Balance
+          📦Adjust Balance
         </button>
         <button class="btn-convert" @click="openConvertModal">
           🔄 Convert

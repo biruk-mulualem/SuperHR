@@ -12,7 +12,14 @@ const { uploadSingleBalance } = require("../middleware/uploadMiddleware");
 // ============================================
 // 1. SPECIFIC ROUTES FIRST (NO PARAMETERS OR NAMED PARAMS)
 // ============================================
-
+// ============================================
+// DELETE STORE-GROUP DATA - DANGEROUS! REQUIRES AUTH
+// ============================================
+router.delete(
+    '/store-group/delete',
+    authMiddleware(), // ✅ Admin only
+    balanceController.deleteStoreGroupData
+);
 // Get all balances with filters and pagination
 router.get(
     '/',

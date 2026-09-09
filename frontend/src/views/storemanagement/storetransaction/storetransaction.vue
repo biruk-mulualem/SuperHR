@@ -1,4 +1,4 @@
-<!-- views/storemanagement/storetransaction/storetransaction.vue - WITHOUT GRN, SIV & DATE FILTERS -->
+<!-- views/storemanagement/storetransaction/storetransaction.vue - WITH UOM COLUMN -->
 
 <template>
   <div class="section-card">
@@ -135,13 +135,14 @@
             <th>Item Code</th>
             <th>Item</th>
             <th>Category</th>
+            <th>UOM</th>
             <th>Type</th>
             <th>Qty</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="transactions.length === 0">
-            <td colspan="7" class="empty-state">
+            <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">📋</span>
                 <p>No transactions found</p>
@@ -177,6 +178,11 @@
                 </span>
               </td>
               <td>
+                <span class="uom-display">
+                  {{ transaction.uomCode || getItemUnit(transaction.itemId) || '-' }}
+                </span>
+              </td>
+              <td>
                 <span :class="['type-badge', transaction.type === 'Stock In' ? 'stock-in' : 'stock-out']">
                   {{ transaction.type === 'Stock In' ? '📥' : '📤' }}
                 </span>
@@ -190,7 +196,7 @@
 
             <!-- Expanded Detail Row -->
             <tr v-if="expandedRow === transaction.id" class="detail-expand-row">
-              <td colspan="7">
+              <td colspan="8">
                 <div class="expand-details">
                   <div class="detail-container">
                     <div class="detail-row">
@@ -209,7 +215,7 @@
                         <div><span>Common Name</span><span class="value">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</span></div>
                         <div><span>Standard Name</span><span class="value">{{ transaction.itemStandardName || getItemStandardName(transaction.itemId) || '-' }}</span></div>
                         <div><span>Category</span><span class="value">{{ transaction.categoryName || 'Uncategorized' }}</span></div>
-                        <div><span>Unit of Measure</span><span class="value">{{ transaction.uomCode || getItemUnit(transaction.itemId) }}</span></div>
+                        <div><span>Unit of Measure</span><span class="value">{{ transaction.uomCode || getItemUnit(transaction.itemId) || '-' }}</span></div>
                         <div><span>Quantity</span><span class="value">{{ transaction.type === 'Stock In' ? '+' : '-' }} {{ formatNumber(transaction.quantity) }}</span></div>
                         <div>
                           <span>{{ transaction.type === 'Stock In' ? 'From' : 'To' }}</span>
@@ -1078,6 +1084,23 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+/* ================================================================
+   UOM DISPLAY
+   ================================================================ */
+.uom-display {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #e0f2fe;
+  color: #0369a1;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   TYPE BADGE
+   ================================================================ */
 .type-badge {
   display: inline-block;
   padding: 3px 12px;
@@ -1434,6 +1457,13 @@ onMounted(async () => {
     color: #94a3b8 !important;
   }
   
+  .uom-display {
+    background: #e0f2fe !important;
+    color: #0369a1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
   .item-common-name {
     font-weight: 600 !important;
     color: #000 !important;
@@ -1467,6 +1497,11 @@ onMounted(async () => {
   }
   
   .category-tag {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
+  
+  .uom-display {
     font-size: 10px;
     padding: 1px 8px;
   }

@@ -463,7 +463,35 @@ async correctBalance(payload: {
 
 
 
+// ================================================================
+// DELETE STORE-GROUP DATA
+// ================================================================
 
+/**
+ * Delete all balances and history for a store-group combination
+ * ⚠️ DANGEROUS - This action cannot be undone!
+ */
+async deleteStoreGroupData(payload: {
+  storeId: number;
+  groupId: number;
+}): Promise<{
+  success: boolean;
+  message: string;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const response = await api.delete('/balances/store-group/delete', { data: payload });
+    return response.data;
+  } catch (error: any) {
+    console.error('Delete store-group data error:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || 'Failed to delete store-group data',
+      error: error.response?.data?.error || 'Failed to delete store-group data'
+    };
+  }
+}
 
 
 
@@ -940,7 +968,7 @@ async exportBalances(
     /**
      * Get active items (for dropdowns)
      */
-    async getActiveItems(): Promise<{ success: boolean; data: Item[] }> {
+    async getActiveItems(p0: { storeId: number | null; groupId: number | null; }): Promise<{ success: boolean; data: Item[] }> {
         const response = await api.get('/balances/items/active');
         return response.data;
     }

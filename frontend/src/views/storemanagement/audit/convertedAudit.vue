@@ -1,11 +1,12 @@
-<!-- views/storemanagement/audit/audit.vue - BASE AUDIT -->
+<!-- views/storemanagement/audit/convertedAudit.vue -->
+<!-- CONVERTED BALANCE (KG) AUDIT - SAME STRUCTURE AS BASE AUDIT -->
 
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
     <div class="card-header">
       <div class="header-title">
-        <h2> Audit & Reconciliation</h2>
+        <h2>📊 Converted Balance  Audit</h2>
         <span class="total-badge">{{ filteredAuditData.length }} Products</span>
       </div>
       <div class="header-actions">
@@ -26,8 +27,8 @@
         <button class="btn-export" @click="openExportModal" :disabled="exporting || filteredAuditData.length === 0">
           📊 {{ exporting ? 'Exporting...' : 'Export' }}
         </button>
-        <router-link to="/converted-audit" class="btn-link-audit">
-          📊 Converted Balance Audit
+        <router-link to="/audit" class="btn-link-audit">
+          📦 Main balance Audit
         </router-link>
       </div>
     </div>
@@ -78,7 +79,7 @@
       <!-- Loading State -->
       <div v-if="loading || refreshing" class="loading-state">
         <div class="spinner-large"></div>
-        <p class="loading-text">{{ loading ? 'Loading audit data...' : 'Refreshing data...' }}</p>
+        <p class="loading-text">{{ loading ? 'Loading converted audit data...' : 'Refreshing data...' }}</p>
         <p class="loading-subtext">Please wait while we fetch the data</p>
       </div>
 
@@ -99,16 +100,16 @@
       <!-- No Data State -->
       <div v-else-if="storeStockData.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">📦</div>
-        <h3>No Products Found</h3>
+        <h3>No Converted Balances Found</h3>
         <p v-if="selectedStore">
-          No products are currently tracked in <strong>{{ selectedStore.name }}</strong>
+          No converted balances  are currently tracked in <strong>{{ selectedStore.name }}</strong>
         </p>
-        <p v-else>Please select a store to view audit data</p>
+        <p v-else>Please select a store to view converted audit data</p>
         <div class="empty-actions">
-          <p class="empty-hint">💡 To add products, you need to:</p>
+          <p class="empty-hint">💡 Converted balances are created when:</p>
           <ul class="empty-list">
-            <li>1. Create items in the Items module</li>
-            <li>2. Initialize balances for each store-group combination</li>
+            <li>1. Items with conversion UOM  are created</li>
+            <li>2. Stock transactions are processed with KG as the converted UOM</li>
           </ul>
         </div>
       </div>
@@ -148,7 +149,7 @@
               </div>
             </td>
             <td>{{ item.category || '-' }}</td>
-            <td>{{ item.uom || item.uomCode || '-' }}</td>
+            <td>{{ item.uom || item.uomCode || 'KG' }}</td>
             <td v-for="group in activeGroups" :key="'val-'+group.id" :class="getCellClass(item, group.id)">
               {{ getGroupValue(item, group.id) }}
             </td>
@@ -192,7 +193,7 @@
     <div v-if="showTransactionModal" class="modal-overlay" @click.self="closeTransactionModal">
       <div class="modal-container transaction-modal">
         <div class="modal-header">
-          <h3>📋 Transaction History</h3>
+          <h3>📋 Converted Balance Transaction History</h3>
           <button class="modal-close" @click="closeTransactionModal">✕</button>
         </div>
         <div class="modal-body">
@@ -228,7 +229,7 @@
             </div>
             <div v-else-if="getGroupTransactions(selectedGroupTab).length === 0" class="no-transactions">
               <div class="empty-icon-small">📭</div>
-              <p>No transactions found for this group</p>
+              <p>No converted balance transactions found for this group</p>
             </div>
             <div v-else class="transaction-items">
               <div
@@ -244,7 +245,7 @@
                   </span>
                   <span class="tx-reference" v-if="tx.referenceId || tx.reference">Ref: {{ tx.referenceId || tx.reference }}</span>
                 </div>
-               <!-- Replace the tx-quantity div with this -->
+              <!-- Replace the tx-quantity div with this -->
 <div class="tx-details">
   <span 
     class="tx-quantity" 
@@ -270,7 +271,7 @@
     <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
       <div class="modal-container export-modal">
         <div class="modal-header">
-          <h3>📊 Export Audit Report</h3>
+          <h3>📊 Export Converted Audit Report</h3>
           <button class="modal-close" @click="closeExportModal">✕</button>
         </div>
         <div class="modal-body">
@@ -460,7 +461,7 @@ const getCellClass = (item, groupId) => {
 }
 
 // ================================================================
-// ✅ TRANSFORM AUDIT DATA - BASE UOM
+// ✅ TRANSFORM CONVERTED AUDIT DATA
 // ================================================================
 const transformAuditData = (data) => {
   if (!data) return []
@@ -501,8 +502,8 @@ const transformAuditData = (data) => {
         itemName: item.itemName || 'Unknown',
         standardName: item.standardName || '',
         category: item.category || 'General',
-        uom: item.uomCode || item.uom || '',
-        uomCode: item.uomCode || item.uom || '',
+        uom: item.uomCode || item.uom || 'KG',
+        uomCode: item.uomCode || item.uom || 'KG',
         groupBalances: groupBalances,
         groupLastTxDates: groupLastTxDates,
         status: status,
@@ -530,8 +531,8 @@ const transformAuditData = (data) => {
           itemName: balance.itemName || 'Unknown',
           standardName: balance.itemCommonName || '',
           category: balance.category || 'General',
-          uom: balance.uomCode || '',
-          uomCode: balance.uomCode || '',
+          uom: balance.uomCode || 'KG',
+          uomCode: balance.uomCode || 'KG',
           groupBalances: {},
           groupLastTxDates: {},
           status: 'Matched'
@@ -635,7 +636,7 @@ const autoSelectStore = async () => {
 
   for (const store of storesToCheck) {
     try {
-      const result = await auditService.getStoreAudit(store.id, {
+      const result = await auditService.getConvertedAudit(store.id, {
         includeTransactions: false,
         transactionLimit: 1
       });
@@ -663,7 +664,7 @@ const autoSelectStore = async () => {
   }
 }
 
-// -- Load Store Data --
+// -- Load Store Data (Converted) --
 const loadStoreData = async (storeId) => {
   if (!storeId) {
     storeStockData.value = []
@@ -674,7 +675,7 @@ const loadStoreData = async (storeId) => {
   error.value = null
 
   try {
-    const result = await auditService.getStoreAudit(storeId, {
+    const result = await auditService.getConvertedAudit(storeId, {
       includeTransactions: true,
       transactionLimit: 10
     })
@@ -706,17 +707,17 @@ const loadStoreData = async (storeId) => {
       if (transformedData.length === 0) {
         // No products found
       } else {
-        showToastMessage(`Loaded ${transformedData.length} products`, 'success')
+        showToastMessage(`Loaded ${transformedData.length} converted products`, 'success')
       }
     } else {
-      console.error('Failed to load audit data:', result)
-      error.value = result.error || 'Failed to load audit data'
-      showToastMessage('Failed to load audit data', 'error')
+      console.error('Failed to load converted audit data:', result)
+      error.value = result.error || 'Failed to load converted audit data'
+      showToastMessage('Failed to load converted audit data', 'error')
     }
   } catch (err) {
-    console.error('❌ Error loading store audit:', err)
-    error.value = err.message || 'Failed to load audit data'
-    showToastMessage('Failed to load audit data', 'error')
+    console.error('❌ Error loading converted store audit:', err)
+    error.value = err.message || 'Failed to load converted audit data'
+    showToastMessage('Failed to load converted audit data', 'error')
   } finally {
     loading.value = false
   }
@@ -750,7 +751,7 @@ const openTransactionModal = async (item) => {
   loadingTransactions.value = true
 
   try {
-    const result = await auditService.getItemTransactions(
+    const result = await auditService.getConvertedItemTransactions(
       selectedStoreId.value,
       item.itemId,
       20
@@ -775,12 +776,12 @@ const openTransactionModal = async (item) => {
       }
 
       if (Object.keys(groupTransactions.value).length === 0) {
-        showToastMessage('No transactions found for this item', 'info')
+        showToastMessage('No converted transactions found for this item', 'info')
       }
     } else {
       for (const group of groups) {
         try {
-          const groupResult = await auditService.getGroupTransactions(
+          const groupResult = await auditService.getConvertedGroupTransactions(
             selectedStoreId.value,
             group.id,
             { page: 1, limit: 20 }
@@ -801,13 +802,13 @@ const openTransactionModal = async (item) => {
             }))
           }
         } catch (err) {
-          console.warn(`Failed to load transactions for group ${group.id}:`, err)
+          console.warn(`Failed to load converted transactions for group ${group.id}:`, err)
         }
       }
     }
   } catch (error) {
-    console.error('❌ Failed to load transactions:', error)
-    showToastMessage('Failed to load transactions', 'error')
+    console.error('❌ Failed to load converted transactions:', error)
+    showToastMessage('Failed to load converted transactions', 'error')
   } finally {
     loadingTransactions.value = false
   }
@@ -889,12 +890,12 @@ const closeExportModal = () => {
 const exportSelectedReport = async () => {
   exporting.value = true
   try {
-    const blob = await auditService.exportAuditData(selectedStoreId.value, {
+    const blob = await auditService.exportConvertedAudit(selectedStoreId.value, {
       includeTransactions: exportType.value === 'full' || exportType.value === 'summary',
       filterBy: exportType.value
     })
 
-    const filename = `audit_report_${selectedStoreName.value || 'store'}_${new Date().toISOString().split('T')[0]}.csv`
+    const filename = `converted_audit_${selectedStoreName.value || 'store'}_${new Date().toISOString().split('T')[0]}.xlsx`
     auditService.downloadFile(blob, filename)
 
     showToastMessage('Export completed successfully!', 'success')

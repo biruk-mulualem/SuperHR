@@ -16,31 +16,31 @@
       </div>
 
       <div class="modal-body">
-        <!-- Tabs -->
+        <!-- Tabs: Stock In / Stock Out -->
         <div class="init-tabs">
           <button
             class="init-tab"
-            :class="{ active: activeTab === 'manual' }"
-            @click="activeTab = 'manual'"
+            :class="{ active: activeTab === 'in' }"
+            @click="activeTab = 'in'"
           >
-            ✍️ Manual
+            📥 Stock In
           </button>
           <button
             class="init-tab"
-            :class="{ active: activeTab === 'import' }"
-            @click="activeTab = 'import'"
+            :class="{ active: activeTab === 'out' }"
+            @click="activeTab = 'out'"
           >
-            📥 Import
+            📤 Stock Out
           </button>
         </div>
 
         <!-- ============================================================ -->
-        <!-- MANUAL TAB -->
+        <!-- STOCK IN TAB -->
         <!-- ============================================================ -->
-        <div v-if="activeTab === 'manual'">
+        <div v-if="activeTab === 'in'">
           <div class="init-info">
             <span class="info-icon">ℹ️</span>
-            <span>Set up initial converted stock balance for a specific item in a store.</span>
+            <span>Add stock to the converted balance for a specific item.</span>
           </div>
 
           <form @submit.prevent="saveBalance" class="balance-form">
@@ -53,6 +53,7 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': form.storeId }"
+                  @change="onStoreOrGroupChange"
                 >
                   <option value="">Select Store</option>
                   <option
@@ -75,6 +76,7 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': form.groupId }"
+                  @change="onStoreOrGroupChange"
                 >
                   <option value="">Select Group</option>
                   <option
@@ -100,7 +102,6 @@
               <div class="form-group full-width">
                 <label>Item *</label>
 
-                <!-- 🔥 Search using itemRequestService -->
                 <div class="item-search-wrapper">
                   <input
                     type="text"
@@ -178,31 +179,239 @@
               </div>
             </div>
 
-            <!-- Balance -->
+            <!-- Current Balance Display -->
+            <div v-if="selectedItemDisplay && currentBalance !== null" class="current-balance-display">
+              <span class="label">Current Converted Balance:</span>
+              <span class="value balance">{{ currentBalance }} {{ getConvertedUOMDisplay(selectedItemDisplay) }}</span>
+            </div>
+            <div v-else-if="selectedItemDisplay && currentBalance === null" class="current-balance-display loading">
+              <span class="label">Loading balance...</span>
+            </div>
+
+            <!-- Quantity -->
             <div class="form-row">
               <div class="form-group">
-                <label>Converted Balance ({{ getConvertedUOM(form.itemId) }}) *</label>
+                <label>Quantity ({{ getConvertedUOMDisplay(selectedItemDisplay) }}) *</label>
                 <input
                   v-model.number="form.convertedBalance"
                   type="number"
                   required
                   placeholder="0"
                   min="0"
-                  step="1"
+                  step="0.01"
                 />
                 <span class="hint" v-if="form.itemId">
-                  In {{ getConvertedUOM(form.itemId) }}
+                  In {{ getConvertedUOMDisplay(selectedItemDisplay) }}
                 </span>
+              </div>
+            </div>
+
+            <!-- Remark Input -->
+            <div class="form-row">
+              <div class="form-group full-width">
+                <label>Remark <span class="optional">(Optional)</span></label>
+                <textarea
+                  v-model="form.remark"
+                  class="form-textarea"
+                  rows="2"
+                  placeholder="Enter a remark for this transaction..."
+                />
+                <span class="hint">This will be displayed in the history</span>
               </div>
             </div>
           </form>
         </div>
 
         <!-- ============================================================ -->
-        <!-- IMPORT TAB -->
+        <!-- STOCK OUT TAB -->
         <!-- ============================================================ -->
-        <div v-if="activeTab === 'import'">
-          <!-- ... import tab content ... -->
+        <div v-if="activeTab === 'out'">
+          <div class="init-info warning">
+            <span class="info-icon">⚠️</span>
+            <span>Remove stock from the converted balance for a specific item.</span>
+          </div>
+
+          <form @submit.prevent="saveBalanceOut" class="balance-form">
+            <!-- Store and Group Selection -->
+            <div v-if="isAdmin" class="form-row">
+              <div class="form-group">
+                <label>Store *</label>
+                <select
+                  v-model="formOut.storeId"
+                  required
+                  class="form-select"
+                  :class="{ 'has-value': formOut.storeId }"
+                  @change="onStoreOrGroupChangeOut"
+                >
+                  <option value="">Select Store</option>
+                  <option
+                    v-for="store in stores"
+                    :key="store.id"
+                    :value="Number(store.id)"
+                  >
+                    🏪 {{ store.name }}
+                  </option>
+                </select>
+                <span v-if="formOut.storeId" class="hint">
+                  ✅ Selected: {{ getStoreName(formOut.storeId) }}
+                </span>
+              </div>
+
+              <div class="form-group">
+                <label>Group *</label>
+                <select
+                  v-model="formOut.groupId"
+                  required
+                  class="form-select"
+                  :class="{ 'has-value': formOut.groupId }"
+                  @change="onStoreOrGroupChangeOut"
+                >
+                  <option value="">Select Group</option>
+                  <option
+                    v-for="group in groups"
+                    :key="group.id"
+                    :value="Number(group.id)"
+                  >
+                    👥 {{ group.name }}
+                  </option>
+                </select>
+                <span v-if="formOut.groupId" class="hint">
+                  ✅ Selected: {{ getGroupName(formOut.groupId) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Hidden inputs for non-admin -->
+            <input v-if="!isAdmin" type="hidden" v-model="formOut.storeId" />
+            <input v-if="!isAdmin" type="hidden" v-model="formOut.groupId" />
+
+            <!-- Item Selection -->
+            <div class="form-row">
+              <div class="form-group full-width">
+                <label>Item *</label>
+
+                <div class="item-search-wrapper">
+                  <input
+                    type="text"
+                    v-model="itemSearchQueryOut"
+                    placeholder="Search items by code or name..."
+                    @input="onSearchInputOut"
+                    class="item-search-input"
+                  />
+                  <span v-if="isSearchingOut" class="search-spinner">⏳</span>
+                  <span v-else-if="itemSearchQueryOut && itemsOut.length > 0" class="search-results-count">
+                    {{ itemsOut.length }} results
+                  </span>
+                </div>
+
+                <!-- Item List -->
+                <div v-if="itemSearchQueryOut" class="item-select-container" ref="itemSelectContainerOut">
+                  <div class="item-select-scroll" @scroll="onItemScrollOut">
+                    <div v-if="isSearchingOut" class="item-loading">
+                      <div class="spinner-small"></div>
+                      Searching items...
+                    </div>
+
+                    <div
+                      v-else-if="itemsOut.length > 0"
+                      v-for="item in displayedItemsOut"
+                      :key="item.id"
+                      class="item-option"
+                      :class="{ selected: formOut.itemId === item.id }"
+                      @click="selectItemOut(item)"
+                    >
+                      <div class="item-option-content">
+                        <span class="item-option-code">{{ item.code }}</span>
+                        <span class="item-option-name">{{ item.name || item.standardName || 'Unnamed' }}</span>
+                        <span class="item-option-uom">{{ getItemUOM(item) }}</span>
+                        <span v-if="item.conversionUomId" class="item-option-conversion">
+                          🔄 {{ getConversionDisplay(item) }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div v-else-if="!isSearchingOut" class="item-no-results">
+                      No items found matching your search
+                    </div>
+
+                    <div
+                      v-if="hasMoreItemsOut && !isSearchingOut && itemsOut.length > 0"
+                      class="item-load-more"
+                    >
+                      Scroll for more items...
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Selected Item Display -->
+                <div v-if="selectedItemDisplayOut" class="selected-item-display">
+                  <span class="selected-badge">✅ Selected:</span>
+                  <span class="selected-item-code">{{ selectedItemDisplayOut.code }}</span>
+                  <span class="selected-item-name">
+                    {{ selectedItemDisplayOut.name || selectedItemDisplayOut.standardName || 'Unnamed' }}
+                  </span>
+                  <span class="selected-item-uom">
+                    ({{ getItemUOM(selectedItemDisplayOut) }})
+                  </span>
+                  <span v-if="selectedItemDisplayOut.conversionUomId" class="selected-item-conversion">
+                    🔄 {{ getConversionDisplay(selectedItemDisplayOut) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="clear-selection"
+                    @click="clearItemSelectionOut"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Current Balance Display -->
+            <div v-if="selectedItemDisplayOut && currentBalanceOut !== null" class="current-balance-display">
+              <span class="label">Current Converted Balance:</span>
+              <span class="value balance">{{ currentBalanceOut }} {{ getConvertedUOMDisplay(selectedItemDisplayOut) }}</span>
+              <span v-if="currentBalanceOut === 0" class="warning-text">⚠️ Balance is zero</span>
+            </div>
+            <div v-else-if="selectedItemDisplayOut && currentBalanceOut === null" class="current-balance-display loading">
+              <span class="label">Loading balance...</span>
+            </div>
+
+            <!-- Quantity -->
+            <div class="form-row">
+              <div class="form-group">
+                <label>Quantity ({{ getConvertedUOMDisplay(selectedItemDisplayOut) }}) *</label>
+                <input
+                  v-model.number="formOut.convertedBalance"
+                  type="number"
+                  required
+                  placeholder="0"
+                  min="0"
+                  step="0.01"
+                  @input="validateStockOut"
+                  @change="validateStockOut"
+                />
+                <span class="hint" v-if="formOut.itemId">
+                  In {{ getConvertedUOMDisplay(selectedItemDisplayOut) }}
+                </span>
+                <span v-if="stockOutError" class="error-text">{{ stockOutError }}</span>
+              </div>
+            </div>
+
+            <!-- Remark Input -->
+            <div class="form-row">
+              <div class="form-group full-width">
+                <label>Remark <span class="optional">(Optional)</span></label>
+                <textarea
+                  v-model="formOut.remark"
+                  class="form-textarea"
+                  rows="2"
+                  placeholder="Enter a remark for this transaction..."
+                />
+                <span class="hint">This will be displayed in the history</span>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -212,20 +421,20 @@
           Cancel
         </button>
         <button
-          v-if="activeTab === 'manual'"
+          v-if="activeTab === 'in'"
           class="btn-primary"
           @click="saveBalance"
-          :disabled="saving || !form.itemId || importing"
+          :disabled="saving || !form.itemId || importing || form.convertedBalance <= 0"
         >
-          {{ saving ? 'Saving...' : 'Initialize' }}
+          {{ saving ? 'Saving...' : '📥 Stock In' }}
         </button>
         <button
-          v-if="activeTab === 'import'"
+          v-if="activeTab === 'out'"
           class="btn-primary"
-          @click="processImport"
-          :disabled="!csvFile || importing || importPreviewData.length === 0"
+          @click="saveBalanceOut"
+          :disabled="saving || !formOut.itemId || importing || formOut.convertedBalance <= 0 || stockOutError || currentBalanceOut === null || currentBalanceOut === 0"
         >
-          {{ importing ? 'Importing...' : 'Import Balances' }}
+          {{ saving ? 'Saving...' : '📤 Stock Out' }}
         </button>
       </div>
     </div>
@@ -303,44 +512,55 @@ const emit = defineEmits(['close', 'success', 'update:visible']);
 // STATE
 // ================================================================
 
-const activeTab = ref('manual');
+const activeTab = ref('in');
 const saving = ref(false);
 const importing = ref(false);
 const isDragOver = ref(false);
-const isSearching = ref(false);
 
+// Stock In State
+const isSearching = ref(false);
 const form = ref({
   storeId: null,
   groupId: null,
   itemId: '',
   convertedBalance: 0,
+  remark: '',
 });
-
 const itemSearchQuery = ref('');
 const items = ref([]);
 const itemDisplayLimit = ref(10);
 const selectedItemDisplay = ref(null);
 const itemSelectContainer = ref(null);
-
 let searchTimeout = null;
 let searchPage = ref(1);
 let hasMoreItems = ref(false);
 let totalItemsCount = ref(0);
 let searchTotal = ref(0);
+const currentBalance = ref(null);
+let isFetchingBalance = ref(false);
 
-// Import State
-const csvFile = ref(null);
-const csvFileInput = ref(null);
-const importPreviewData = ref([]);
-const importResults = ref(null);
-const importProgress = ref({
-  total: 0,
-  processed: 0,
-  success: 0,
-  failed: 0,
-  remaining: 0,
-  percentage: 0,
+// Stock Out State
+const isSearchingOut = ref(false);
+const formOut = ref({
+  storeId: null,
+  groupId: null,
+  itemId: '',
+  convertedBalance: 0,
+  remark: '',
 });
+const itemSearchQueryOut = ref('');
+const itemsOut = ref([]);
+const itemDisplayLimitOut = ref(10);
+const selectedItemDisplayOut = ref(null);
+const itemSelectContainerOut = ref(null);
+let searchTimeoutOut = null;
+let searchPageOut = ref(1);
+let hasMoreItemsOut = ref(false);
+let totalItemsCountOut = ref(0);
+let searchTotalOut = ref(0);
+const currentBalanceOut = ref(null);
+const stockOutError = ref('');
+let isFetchingBalanceOut = ref(false);
 
 // Toast State
 const showToast = ref(false);
@@ -356,12 +576,15 @@ const displayedItems = computed(() => {
   return items.value.slice(0, itemDisplayLimit.value);
 });
 
+const displayedItemsOut = computed(() => {
+  return itemsOut.value.slice(0, itemDisplayLimitOut.value);
+});
+
 // ================================================================
 // METHODS - Toast
 // ================================================================
 
 const showToastMessage = (msg, type = 'success') => {
-  // Clear any existing toast timeout
   if (toastTimeout) {
     clearTimeout(toastTimeout);
     toastTimeout = null;
@@ -371,7 +594,6 @@ const showToastMessage = (msg, type = 'success') => {
   toastType.value = type;
   showToast.value = true;
   
-  // Auto-hide toast after 4 seconds
   toastTimeout = setTimeout(() => {
     showToast.value = false;
     toastTimeout = null;
@@ -385,7 +607,6 @@ const showToastMessage = (msg, type = 'success') => {
 const closeModal = () => {
   if (importing.value) return;
   
-  // Clear toast
   if (toastTimeout) {
     clearTimeout(toastTimeout);
     toastTimeout = null;
@@ -405,7 +626,7 @@ const handleOverlayClick = () => {
 };
 
 // ================================================================
-// METHODS - Search Items
+// METHODS - Search Items (Stock In)
 // ================================================================
 
 const onSearchInput = () => {
@@ -474,16 +695,16 @@ const onItemScroll = (event) => {
   }
 };
 
-// ================================================================
-// METHODS - Item Selection
-// ================================================================
-
-const selectItem = (item) => {
+const selectItem = async (item) => {
   form.value.itemId = item.id || item.itemId;
   selectedItemDisplay.value = item;
   itemSearchQuery.value = item.code || item.name || '';
   items.value = [];
   searchTotal.value = 0;
+  
+  // Reset and fetch current balance
+  currentBalance.value = null;
+  await fetchCurrentBalance();
 };
 
 const clearItemSelection = () => {
@@ -492,6 +713,231 @@ const clearItemSelection = () => {
   itemSearchQuery.value = '';
   items.value = [];
   searchTotal.value = 0;
+  currentBalance.value = null;
+};
+
+// ================================================================
+// METHODS - Search Items (Stock Out)
+// ================================================================
+
+const onSearchInputOut = () => {
+  if (searchTimeoutOut) clearTimeout(searchTimeoutOut);
+  
+  const query = itemSearchQueryOut.value.trim();
+  
+  if (!query) {
+    itemsOut.value = [];
+    selectedItemDisplayOut.value = null;
+    searchTotalOut.value = 0;
+    return;
+  }
+  
+  searchPageOut.value = 1;
+  itemsOut.value = [];
+  
+  searchTimeoutOut = setTimeout(() => {
+    searchItemsOut(query);
+  }, 300);
+};
+
+const searchItemsOut = async (query) => {
+  if (!query) return;
+  
+  isSearchingOut.value = true;
+  
+  try {
+    const response = await itemRequestService.getActiveItems({
+      search: query,
+      page: searchPageOut.value,
+      limit: 20
+    });
+    
+    if (response.success) {
+      const itemsData = response.data || [];
+      
+      if (searchPageOut.value === 1) {
+        itemsOut.value = itemsData;
+      } else {
+        itemsOut.value = [...itemsOut.value, ...itemsData];
+      }
+      
+      searchTotalOut.value = response.pagination?.total || itemsData.length;
+      hasMoreItemsOut.value = itemsData.length === 20 && (searchPageOut.value * 20) < searchTotalOut.value;
+      totalItemsCountOut.value = searchTotalOut.value;
+    } else {
+      itemsOut.value = [];
+      showToastMessage(response.error || 'Failed to search items', 'error');
+    }
+  } catch (error) {
+    console.error('Error searching items:', error);
+    showToastMessage('Failed to search items', 'error');
+  } finally {
+    isSearchingOut.value = false;
+  }
+};
+
+const onItemScrollOut = (event) => {
+  const element = event.target;
+  if (element.scrollTop + element.clientHeight >= element.scrollHeight - 50) {
+    if (hasMoreItemsOut.value && !isSearchingOut.value) {
+      searchPageOut.value++;
+      searchItemsOut(itemSearchQueryOut.value.trim());
+    }
+  }
+};
+
+const selectItemOut = async (item) => {
+  formOut.value.itemId = item.id || item.itemId;
+  selectedItemDisplayOut.value = item;
+  itemSearchQueryOut.value = item.code || item.name || '';
+  itemsOut.value = [];
+  searchTotalOut.value = 0;
+  stockOutError.value = '';
+  
+  // Reset and fetch current balance
+  currentBalanceOut.value = null;
+  await fetchCurrentBalanceOut();
+};
+
+const clearItemSelectionOut = () => {
+  formOut.value.itemId = '';
+  selectedItemDisplayOut.value = null;
+  itemSearchQueryOut.value = '';
+  itemsOut.value = [];
+  searchTotalOut.value = 0;
+  currentBalanceOut.value = null;
+  stockOutError.value = '';
+};
+
+// ================================================================
+// METHODS - Fetch Current Balance
+// ================================================================
+
+const onStoreOrGroupChange = async () => {
+  if (selectedItemDisplay.value) {
+    currentBalance.value = null;
+    await fetchCurrentBalance();
+  }
+};
+
+const onStoreOrGroupChangeOut = async () => {
+  if (selectedItemDisplayOut.value) {
+    currentBalanceOut.value = null;
+    stockOutError.value = '';
+    await fetchCurrentBalanceOut();
+  }
+};
+
+const fetchCurrentBalance = async () => {
+  const storeId = form.value.storeId || props.storeId;
+  const groupId = form.value.groupId || props.groupId;
+  
+  if (!storeId || !groupId || !selectedItemDisplay.value) {
+    currentBalance.value = null;
+    return;
+  }
+  
+  if (isFetchingBalance.value) return;
+  isFetchingBalance.value = true;
+  
+  try {
+    console.log('🔍 Fetching balance for item:', selectedItemDisplay.value.code, 'Store:', storeId, 'Group:', groupId);
+    
+    const response = await convertedBalanceService.getConvertedBalances({
+      storeId: Number(storeId),
+      groupId: Number(groupId),
+      itemId: Number(selectedItemDisplay.value.id),
+      limit: 1
+    });
+    
+    console.log('📊 Balance response:', response);
+    
+    if (response.success && response.data && response.data.length > 0) {
+      currentBalance.value = parseFloat(response.data[0].convertedBalance || 0);
+      console.log('✅ Balance found:', currentBalance.value);
+    } else {
+      currentBalance.value = 0;
+      console.log('ℹ️ No balance found, setting to 0');
+    }
+  } catch (error) {
+    console.error('❌ Error fetching current balance:', error);
+    currentBalance.value = 0;
+  } finally {
+    isFetchingBalance.value = false;
+  }
+};
+
+const fetchCurrentBalanceOut = async () => {
+  const storeId = formOut.value.storeId || props.storeId;
+  const groupId = formOut.value.groupId || props.groupId;
+  
+  if (!storeId || !groupId || !selectedItemDisplayOut.value) {
+    currentBalanceOut.value = null;
+    return;
+  }
+  
+  if (isFetchingBalanceOut.value) return;
+  isFetchingBalanceOut.value = true;
+  
+  try {
+    console.log('🔍 Fetching balance for item (out):', selectedItemDisplayOut.value.code, 'Store:', storeId, 'Group:', groupId);
+    
+    const response = await convertedBalanceService.getConvertedBalances({
+      storeId: Number(storeId),
+      groupId: Number(groupId),
+      itemId: Number(selectedItemDisplayOut.value.id),
+      limit: 1
+    });
+    
+    console.log('📊 Balance response (out):', response);
+    
+    if (response.success && response.data && response.data.length > 0) {
+      currentBalanceOut.value = parseFloat(response.data[0].convertedBalance || 0);
+      console.log('✅ Balance found (out):', currentBalanceOut.value);
+    } else {
+      currentBalanceOut.value = 0;
+      console.log('ℹ️ No balance found (out), setting to 0');
+    }
+  } catch (error) {
+    console.error('❌ Error fetching current balance (out):', error);
+    currentBalanceOut.value = 0;
+  } finally {
+    isFetchingBalanceOut.value = false;
+  }
+};
+
+// ================================================================
+// METHODS - Validate Stock Out
+// ================================================================
+
+const validateStockOut = () => {
+  stockOutError.value = '';
+  
+  if (!selectedItemDisplayOut.value) {
+    return;
+  }
+  
+  const qty = parseFloat(formOut.value.convertedBalance) || 0;
+  
+  if (qty <= 0) {
+    return;
+  }
+  
+  if (currentBalanceOut.value === null || currentBalanceOut.value === undefined) {
+    stockOutError.value = '⚠️ Please wait for balance to load';
+    return;
+  }
+  
+  if (currentBalanceOut.value === 0) {
+    stockOutError.value = '⚠️ Balance is zero. Cannot remove stock.';
+    return;
+  }
+  
+  if (qty > currentBalanceOut.value) {
+    stockOutError.value = `⚠️ Insufficient balance. Available: ${currentBalanceOut.value}`;
+  } else {
+    stockOutError.value = '';
+  }
 };
 
 // ================================================================
@@ -506,6 +952,12 @@ const getItemUOM = (item) => {
   return 'N/A';
 };
 
+// ✅ Get the CONVERTED UOM (the one shown in the balance)
+const getConvertedUOMDisplay = (item) => {
+  if (!item) return 'N/A';
+  return item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'N/A';
+};
+
 const getConversionDisplay = (item) => {
   if (!item) return '';
   const conversionValue = item.conversionValue || item.conversion_value || 1;
@@ -518,18 +970,6 @@ const getConversionDisplay = (item) => {
   return '';
 };
 
-const getItemCommonName = (itemId) => {
-  if (!itemId) return null;
-  const item = items.value.find((i) => i.id === itemId || i.itemId === itemId);
-  return item ? item.name || item.standardName || null : null;
-};
-
-const getItemNameByCode = (itemCode) => {
-  if (!itemCode) return null;
-  const item = items.value.find((i) => i.code === itemCode);
-  return item ? item.name || item.standardName || null : null;
-};
-
 const getStoreName = (storeId) => {
   if (!storeId) return 'Unknown';
   const store = props.stores.find((s) => Number(s.id) === Number(storeId));
@@ -540,20 +980,6 @@ const getGroupName = (groupId) => {
   if (!groupId) return 'Unknown';
   const group = props.groups.find((g) => Number(g.id) === Number(groupId));
   return group ? group.name : 'Unknown';
-};
-
-const getConvertedUOM = (itemId) => {
-  if (!itemId) return '';
-  const allItems = getInventoryItemsArray();
-  const item = allItems.find((i) => i.id === itemId || i.itemId === itemId);
-  if (item) {
-    return item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || '';
-  }
-  const searchedItem = items.value.find((i) => i.id === itemId || i.itemId === itemId);
-  if (searchedItem) {
-    return getItemUOM(searchedItem);
-  }
-  return '';
 };
 
 const getInventoryItemsArray = () => {
@@ -573,21 +999,8 @@ const formatNumber = (num) => {
   return new Intl.NumberFormat().format(num);
 };
 
-const formatFileSize = (bytes) => {
-  if (!bytes) return '0 B';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-};
-
 // ================================================================
-// IMPORT METHODS
-// ================================================================
-
-// ... import methods remain the same ...
-
-// ================================================================
-// SAVE BALANCE
+// ✅ SAVE BALANCE - Stock In (Uses stockIn API)
 // ================================================================
 
 const saveBalance = async () => {
@@ -604,50 +1017,140 @@ const saveBalance = async () => {
     showToastMessage('Please select an item', 'error');
     return;
   }
-  if (form.value.convertedBalance < 0) {
-    showToastMessage('Balance cannot be negative', 'error');
+  if (form.value.convertedBalance <= 0) {
+    showToastMessage('Quantity must be greater than 0', 'error');
     return;
   }
 
   saving.value = true;
 
   try {
-    const response = await convertedBalanceService.createBalance({
+    const item = selectedItemDisplay.value;
+    
+    // Get the CORRECT converted UOM
+    const convertedUom = item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'KG';
+    const conversionValue = item.conversionValue || item.conversion_value || 1;
+    
+    console.log('📥 Stock In - Item:', item.code, 'Qty:', form.value.convertedBalance, 'UOM:', convertedUom);
+
+    // ✅ Use the new stockIn method
+    const response = await convertedBalanceService.stockIn({
       storeId: Number(form.value.storeId),
       groupId: Number(form.value.groupId),
       itemId: Number(form.value.itemId),
-      convertedBalance: Number(form.value.convertedBalance)
+      itemCode: item.code || '',
+      itemName: item.name || item.standardName || 'Unknown',
+      uomCode: convertedUom,
+      quantity: Number(form.value.convertedBalance),
+      conversionRate: conversionValue,
+      sourceUomId: item.uomId,
+      targetUomId: item.conversionUomId,
+      reason: form.value.remark || 'Stock In'
     });
 
     if (response.success) {
-      showToastMessage('✅ Converted balance initialized successfully!', 'success');
+      showToastMessage('✅ Stock added successfully!', 'success');
       emit('success', response.data);
       
-      // Close modal after delay
+      // Refresh balance after successful operation
+      await fetchCurrentBalance();
+      
       setTimeout(() => {
         saving.value = false;
         closeModal();
       }, 1500);
-    } else if (response.alreadyExists) {
-      showToastMessage(response.message || '⚠️ This item already has a converted balance record.', 'warning');
-      saving.value = false;
     } else {
-      showToastMessage(response.error || '❌ Failed to initialize converted balance', 'error');
+      showToastMessage(response.error || '❌ Failed to add stock', 'error');
       saving.value = false;
     }
   } catch (error) {
-    console.error('Error saving converted balance:', error);
-    showToastMessage('❌ Failed to initialize converted balance', 'error');
+    console.error('Error adding stock:', error);
+    showToastMessage('❌ Failed to add stock', 'error');
     saving.value = false;
   }
 };
 
 // ================================================================
-// PROCESS IMPORT
+// ✅ SAVE BALANCE - Stock Out (Uses stockOut API)
 // ================================================================
 
-const processImport = async () => {
-  // ... processImport remains the same ...
+const saveBalanceOut = async () => {
+  // Validation
+  if (!formOut.value.storeId) {
+    showToastMessage('Please select a store', 'error');
+    return;
+  }
+  if (!formOut.value.groupId) {
+    showToastMessage('Please select a group', 'error');
+    return;
+  }
+  if (!formOut.value.itemId) {
+    showToastMessage('Please select an item', 'error');
+    return;
+  }
+  if (formOut.value.convertedBalance <= 0) {
+    showToastMessage('Quantity must be greater than 0', 'error');
+    return;
+  }
+  if (currentBalanceOut.value === null || currentBalanceOut.value === undefined) {
+    showToastMessage('Please wait for balance to load', 'error');
+    return;
+  }
+  if (currentBalanceOut.value === 0) {
+    showToastMessage('⚠️ Balance is zero. Cannot remove stock.', 'error');
+    return;
+  }
+  if (formOut.value.convertedBalance > currentBalanceOut.value) {
+    showToastMessage(`⚠️ Insufficient balance. Available: ${currentBalanceOut.value}`, 'error');
+    return;
+  }
+
+  saving.value = true;
+
+  try {
+    const item = selectedItemDisplayOut.value;
+    
+    // Get the CORRECT converted UOM
+    const convertedUom = item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'KG';
+    const conversionValue = item.conversionValue || item.conversion_value || 1;
+    
+    console.log('📤 Stock Out - Item:', item.code, 'Qty:', formOut.value.convertedBalance, 'UOM:', convertedUom);
+
+    // ✅ Use the new stockOut method
+    const response = await convertedBalanceService.stockOut({
+      storeId: Number(formOut.value.storeId),
+      groupId: Number(formOut.value.groupId),
+      itemId: Number(formOut.value.itemId),
+      itemCode: item.code || '',
+      itemName: item.name || item.standardName || 'Unknown',
+      uomCode: convertedUom,
+      quantity: Number(formOut.value.convertedBalance),
+      conversionRate: conversionValue,
+      sourceUomId: item.uomId,
+      targetUomId: item.conversionUomId,
+      reason: formOut.value.remark || 'Stock Out'
+    });
+
+    if (response.success) {
+      showToastMessage('✅ Stock removed successfully!', 'success');
+      emit('success', response.data);
+      
+      // Refresh balance after successful operation
+      await fetchCurrentBalanceOut();
+      
+      setTimeout(() => {
+        saving.value = false;
+        closeModal();
+      }, 1500);
+    } else {
+      showToastMessage(response.error || '❌ Failed to remove stock', 'error');
+      saving.value = false;
+    }
+  } catch (error) {
+    console.error('Error removing stock:', error);
+    showToastMessage('❌ Failed to remove stock', 'error');
+    saving.value = false;
+  }
 };
 
 // ================================================================
@@ -655,33 +1158,17 @@ const processImport = async () => {
 // ================================================================
 
 const initializeForm = () => {
-  console.log('🔧 Initializing form...');
-  console.log('props.storeId:', props.storeId);
-  console.log('props.groupId:', props.groupId);
-  console.log('props.storeName:', props.storeName);
-  console.log('props.groupName:', props.groupName);
-  
   if (!props.isAdmin) {
     if (props.storeId) {
       form.value.storeId = Number(props.storeId);
-      console.log('✅ Set storeId from prop:', form.value.storeId);
+      formOut.value.storeId = Number(props.storeId);
     }
     
     if (props.groupId) {
       form.value.groupId = Number(props.groupId);
-      console.log('✅ Set groupId from prop:', form.value.groupId);
+      formOut.value.groupId = Number(props.groupId);
     }
   }
-  
-  console.log('📋 Final form values:', { 
-    storeId: form.value.storeId, 
-    groupId: form.value.groupId 
-  });
-};
-
-const forceSelectUpdate = async () => {
-  await nextTick();
-  console.log('🔄 Select updated - storeId:', form.value.storeId, 'groupId:', form.value.groupId);
 };
 
 // ================================================================
@@ -689,19 +1176,30 @@ const forceSelectUpdate = async () => {
 // ================================================================
 
 watch(() => props.visible, async (newVal) => {
-  console.log('👀 visible changed:', newVal);
   if (newVal) {
+    // Reset Stock In form
     form.value.itemId = '';
     form.value.convertedBalance = 0;
+    form.value.remark = '';
     selectedItemDisplay.value = null;
     itemSearchQuery.value = '';
     items.value = [];
     searchTotal.value = 0;
+    currentBalance.value = null;
+    
+    // Reset Stock Out form
+    formOut.value.itemId = '';
+    formOut.value.convertedBalance = 0;
+    formOut.value.remark = '';
+    selectedItemDisplayOut.value = null;
+    itemSearchQueryOut.value = '';
+    itemsOut.value = [];
+    searchTotalOut.value = 0;
+    currentBalanceOut.value = null;
+    stockOutError.value = '';
     
     initializeForm();
-    await forceSelectUpdate();
   } else {
-    // Clear toast when modal closes
     if (toastTimeout) {
       clearTimeout(toastTimeout);
       toastTimeout = null;
@@ -711,17 +1209,44 @@ watch(() => props.visible, async (newVal) => {
 }, { immediate: true });
 
 watch(() => [props.storeId, props.groupId], async () => {
-  console.log('👀 storeId/groupId props changed');
   if (props.visible) {
     initializeForm();
-    await forceSelectUpdate();
+  }
+});
+
+// Watch for changes to form values that should trigger balance refresh
+watch(() => form.value.storeId, () => {
+  if (selectedItemDisplay.value && props.visible) {
+    currentBalance.value = null;
+    fetchCurrentBalance();
+  }
+});
+
+watch(() => form.value.groupId, () => {
+  if (selectedItemDisplay.value && props.visible) {
+    currentBalance.value = null;
+    fetchCurrentBalance();
+  }
+});
+
+watch(() => formOut.value.storeId, () => {
+  if (selectedItemDisplayOut.value && props.visible) {
+    currentBalanceOut.value = null;
+    stockOutError.value = '';
+    fetchCurrentBalanceOut();
+  }
+});
+
+watch(() => formOut.value.groupId, () => {
+  if (selectedItemDisplayOut.value && props.visible) {
+    currentBalanceOut.value = null;
+    stockOutError.value = '';
+    fetchCurrentBalanceOut();
   }
 });
 
 onMounted(async () => {
-  console.log('🚀 Modal mounted');
   initializeForm();
-  await forceSelectUpdate();
 });
 </script>
 
@@ -870,6 +1395,11 @@ onMounted(async () => {
   color: #1e293b;
 }
 
+.init-info.warning {
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
 .info-icon {
   font-size: 16px;
 }
@@ -940,6 +1470,45 @@ onMounted(async () => {
 }
 
 /* ================================================================ */
+/* CURRENT BALANCE DISPLAY */
+/* ================================================================ */
+.current-balance-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border-radius: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.current-balance-display.loading {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.current-balance-display .label {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.current-balance-display .value {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.current-balance-display .value.balance {
+  color: #2563eb;
+}
+
+.current-balance-display .warning-text {
+  color: #d97706;
+  font-weight: 600;
+}
+
+/* ================================================================ */
 /* ITEM SEARCH */
 /* ================================================================ */
 .item-search-wrapper {
@@ -947,15 +1516,6 @@ onMounted(async () => {
   flex: 1;
   min-width: 150px;
   margin-bottom: 4px;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
 }
 
 .item-search-input {
@@ -1180,6 +1740,40 @@ onMounted(async () => {
 
 .clear-selection:hover {
   color: #dc2626;
+}
+
+/* ================================================================ */
+/* TEXTAREA */
+/* ================================================================ */
+.form-textarea {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 50px;
+  background: white;
+  transition: all 0.2s;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.optional {
+  font-weight: 400;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.error-text {
+  color: #ef4444;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* ================================================================ */

@@ -1172,6 +1172,91 @@ class AuditService {
             uniqueDates: uniqueDateStrings,
         };
     }
+
+
+
+
+
+
+
+// ================================================================
+// CONVERTED BALANCE (KG) AUDIT METHODS
+// ================================================================
+
+/**
+ * Get converted balance audit for a store
+ */
+async getConvertedAudit(
+    storeId: number,
+    options: AuditOptions = { includeTransactions: true, transactionLimit: 10 }
+): Promise<{ success: boolean; data: StoreAuditResponse }> {
+    const params = new URLSearchParams();
+    if (options.includeTransactions !== undefined) {
+        params.append('includeTransactions', String(options.includeTransactions));
+    }
+    if (options.transactionLimit) {
+        params.append('transactionLimit', String(options.transactionLimit));
+    }
+
+    const url = `/audit/converted/store/${storeId}${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await api.get(url);
+    return response.data;
+}
+
+/**
+ * Get converted balance transactions for a specific group
+ */
+async getConvertedGroupTransactions(
+    storeId: number,
+    groupId: number,
+    options: PaginationOptions = { page: 1, limit: 10 }
+): Promise<{ success: boolean; data: any }> {
+    const params = new URLSearchParams();
+    if (options.page) params.append('page', String(options.page));
+    if (options.limit) params.append('limit', String(options.limit));
+
+    const url = `/audit/converted/store/${storeId}/group/${groupId}/transactions${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await api.get(url);
+    return response.data;
+}
+
+/**
+ * Get converted balance transactions for a specific item across all groups
+ */
+async getConvertedItemTransactions(
+    storeId: number,
+    itemId: number,
+    limit: number = 10
+): Promise<{ success: boolean; data: any }> {
+    const response = await api.get(`/audit/converted/store/${storeId}/item/${itemId}/transactions?limit=${limit}`);
+    return response.data;
+}
+
+/**
+ * Export converted audit data
+ */
+async exportConvertedAudit(
+    storeId: number,
+    options: ExportOptions = { includeTransactions: true }
+): Promise<Blob> {
+    const params = new URLSearchParams();
+    params.append('format', 'excel');
+    if (options.includeTransactions !== undefined) {
+        params.append('includeTransactions', String(options.includeTransactions));
+    }
+
+    const response = await api.get(`/audit/converted/store/${storeId}/export?${params.toString()}`, {
+        responseType: 'blob'
+    });
+    return response.data;
+}
+
+
+
+
+
+
+    
 }
 
 // ============================================
