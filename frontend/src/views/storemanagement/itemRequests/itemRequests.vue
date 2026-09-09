@@ -130,7 +130,7 @@
                   <span class="item-count"
                     >{{ req.items?.length || 0 }} item(s)</span
                   >
-                 <span class="item-names">{{ getItemNames(req.items) }}</span>
+                  <span class="item-names">{{ getItemNames(req.items) }}</span>
                 </div>
               </td>
               <td class="store-name">{{ getStoreName(req.askingStoreId) }}</td>
@@ -305,30 +305,30 @@
                               No items in this request
                             </td>
                           </tr>
-                    <!-- ✅ CORRECT - Passing request items -->
-<tr v-for="(item, index) in req.items" :key="index">
-  <td class="text-center">{{ index + 1 }}</td>
-  <td>{{ getItemName(item.itemId, req.items) }}</td>
-  <td>{{ getItemCode(item.itemId, req.items) }}</td>
-  <td>{{ getItemBrand(item.itemId, req.items) || " " }}</td>
-  <td>{{ getItemModel(item.itemId, req.items) || " " }}</td>
-  <td>
-    <span class="uom-display">
-      {{ item.uom_code || getItemUOM(item.itemId, req.items) || " " }}
-      <span v-if="item.selected_uom === 'conversion'" class="uom-badge conversion">
-        Conv
-      </span>
-      <span v-else-if="item.selected_uom === 'base' || !item.selected_uom" class="uom-badge base">
-        Base
-      </span>
-    </span>
-  </td>
-  <td class="text-center">{{ Number(item.quantity).toFixed(2) }}</td>
-  <td class="spec-cell">
-    {{ getItemSpecification(item.itemId, req.items) || " " }}
-  </td>
-  <td>{{ item.remark || " " }}</td>
-</tr>
+                          <!-- ✅ FIXED: Using req.items directly -->
+                          <tr v-for="(item, index) in req.items" :key="index">
+                            <td class="text-center">{{ index + 1 }}</td>
+                            <td>{{ getItemNameFromRequest(item) }}</td>
+                            <td>{{ getItemCodeFromRequest(item) }}</td>
+                            <td>{{ getItemBrandFromRequest(item) || "-" }}</td>
+                            <td>{{ getItemModelFromRequest(item) || "-" }}</td>
+                            <td>
+                              <span class="uom-display">
+                                {{ item.uom_code || getItemUOMFromRequest(item) || "-" }}
+                                <span v-if="item.selected_uom === 'conversion'" class="uom-badge conversion">
+                                  Conv
+                                </span>
+                                <span v-else-if="item.selected_uom === 'base' || !item.selected_uom" class="uom-badge base">
+                                  Base
+                                </span>
+                              </span>
+                            </td>
+                            <td class="text-center">{{ Number(item.quantity).toFixed(2) }}</td>
+                            <td class="spec-cell">
+                              {{ getItemSpecificationFromRequest(item) || "-" }}
+                            </td>
+                            <td>{{ item.remark || "-" }}</td>
+                          </tr>
                           <tr class="total-row">
                             <td colspan="8" class="text-right">
                               <strong>Total Items:</strong>
@@ -435,7 +435,7 @@
       >
         Next →
       </button>
-      <select v-model="pageSize" @change="changePageSize" class="limit-select">
+      <select v-model="pageSize" @click="changePageSize" class="limit-select">
         <option :value="5">5 per page</option>
         <option :value="10">10 per page</option>
         <option :value="20">20 per page</option>
@@ -733,9 +733,6 @@ const getAcceptanceSummary = (req: ItemRequest): string => {
   const rejected = req.notifications.filter((n: { status: string; }) => n.status === 'rejected').length;
   const pending = req.notifications.filter((n: { status: string; }) => n.status === 'pending').length;
   
-  const hasDepartment = req.notifications.some((n: any) => n.approval_type === 'department' || n.is_department_approval);
-  const hasGroups = req.notifications.some((n: any) => n.approval_type === 'group' || !n.approval_type);
-  
   let summary = '';
   
   if (rejected > 0) {
@@ -925,7 +922,84 @@ const loadRequests = async () => {
 };
 
 // ================================================================
-// HELPER METHODS
+// HELPER METHODS - REQUEST ITEM SPECIFIC (UPDATED)
+// ================================================================
+
+/**
+ * Get item name from a request item
+ */
+const getItemNameFromRequest = (item: any): string => {
+  if (item.item?.name) return item.item.name;
+  if (item.item?.standardName) return item.item.standardName;
+  if (item.itemName) return item.itemName;
+  if (item.name) return item.name;
+  return "Unknown Item";
+};
+
+/**
+ * Get item code from a request item
+ */
+const getItemCodeFromRequest = (item: any): string => {
+  if (item.item?.code) return item.item.code;
+  if (item.itemCode) return item.itemCode;
+  if (item.code) return item.code;
+  return "N/A";
+};
+
+/**
+ * Get item brand from a request item (checks request detail first, then item)
+ */
+const getItemBrandFromRequest = (item: any): string => {
+  // Check if brand is stored directly on the request detail
+  if (item.brand) return item.brand;
+  // Check if brand is on the nested item
+  if (item.item?.brand) return item.item.brand;
+  // Fallback to global items list
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
+  if (globalItem?.brand) return globalItem.brand;
+  return "";
+};
+
+/**
+ * Get item model from a request item (checks request detail first, then item)
+ */
+const getItemModelFromRequest = (item: any): string => {
+  // Check if model is stored directly on the request detail
+  if (item.model) return item.model;
+  // Check if model is on the nested item
+  if (item.item?.model) return item.item.model;
+  // Fallback to global items list
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
+  if (globalItem?.model) return globalItem.model;
+  return "";
+};
+
+/**
+ * Get item specification from a request item (checks request detail first, then item)
+ */
+const getItemSpecificationFromRequest = (item: any): string => {
+  // Check if specification is stored directly on the request detail
+  if (item.specification) return item.specification;
+  // Check if specText is on the nested item
+  if (item.item?.specText) return item.item.specText;
+  // Fallback to global items list
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
+  if (globalItem?.specText) return globalItem.specText;
+  return "";
+};
+
+/**
+ * Get item UOM from a request item
+ */
+const getItemUOMFromRequest = (item: any): string => {
+  if (item.uom_code) return item.uom_code;
+  if (item.item?.uom?.code) return item.item.uom.code;
+  if (item.uomCode) return item.uomCode;
+  return "";
+};
+
+// ================================================================
+// HELPER METHODS - GLOBAL
 // ================================================================
 
 const getStoreName = (storeId: number): string => {
@@ -938,12 +1012,8 @@ const getStoreCode = (storeId: number): string => {
   return store ? store.code : "N/A";
 };
 
-// ================================================================
-// HELPER METHODS - FULLY UPDATED
-// ================================================================
-
+// Legacy methods for backward compatibility (used in the table)
 const getItemName = (itemId: number, requestItems?: any[]): string => {
-  // 1. Check request's own items first
   if (requestItems) {
     const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
     if (found) {
@@ -953,14 +1023,8 @@ const getItemName = (itemId: number, requestItems?: any[]): string => {
       if (found.name) return found.name;
     }
   }
-  
-  // 2. Fallback to global items list
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  if (item) {
-    return item.standardName || item.name || "Unknown Item";
-  }
-  
-  return "Unknown Item";
+  return item ? item.standardName || item.name || "Unknown Item" : "Unknown Item";
 };
 
 const getItemCode = (itemId: number, requestItems?: any[]): string => {
@@ -974,59 +1038,6 @@ const getItemCode = (itemId: number, requestItems?: any[]): string => {
   }
   const item = items.value.find((i) => (i.itemId || i.id) === itemId);
   return item ? item.code : "N/A";
-};
-
-const getItemBrand = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
-    if (found) {
-      if (found.item?.brand) return found.item.brand;
-      if (found.brand) return found.brand;
-    }
-  }
-  const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  return item?.brand || "";
-};
-
-const getItemModel = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
-    if (found) {
-      if (found.item?.model) return found.item.model;
-      if (found.model) return found.model;
-    }
-  }
-  const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  return item?.model || "";
-};
-
-const getItemUOM = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
-    if (found) {
-      if (found.uom_code) return found.uom_code;
-      if (found.item?.uom?.code) return found.item.uom.code;
-      if (found.uomCode) return found.uomCode;
-    }
-  }
-  const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  if (item?.uom) {
-    if (typeof item.uom === "object" && item.uom.code) return item.uom.code;
-    if (typeof item.uom === "string") return item.uom;
-  }
-  return "";
-};
-
-const getItemSpecification = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
-    if (found) {
-      if (found.item?.specText) return found.item.specText;
-      if (found.specText) return found.specText;
-    }
-  }
-  const item = items.value.find((i) => (i.itemId || i.id) === itemId);
-  return item?.specText || "";
 };
 
 const getItemNames = (items: RequestItem[] | undefined): string => {
@@ -1283,6 +1294,7 @@ onMounted(async () => {
   await Promise.all([loadStores(), loadItems(), loadRequests()]);
 });
 </script>
+
 
 <style scoped>
 

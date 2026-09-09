@@ -13,6 +13,10 @@ export interface RequestItem {
   selected_uom?: 'base' | 'conversion';
   uom_code?: string;
   is_base_uom?: boolean;
+  // ✅ NEW: Spec Fields
+  specification?: string;
+  brand?: string;
+  model?: string;
 }
 
 export interface User {
@@ -45,20 +49,20 @@ export interface Item {
   standardName?: string;
   brand?: string;
   model?: string;
+  specText?: string;
   uomId?: number;
   uom?: {
     uomId: number;
     code: string;
     name: string;
   };
-  conversionUomId?: number;  // ✅ Add this
-  conversionUom?: {          // ✅ Add this
+  conversionUomId?: number;
+  conversionUom?: {
     uomId: number;
     code: string;
     name: string;
   };
-  conversionValue?: number;  // ✅ Add this
-  specText?: string;
+  conversionValue?: number;
 }
 
 export interface Group {
@@ -244,6 +248,7 @@ export interface StatsResponse {
   error?: string;
 }
 
+// ✅ UPDATED: CreateRequestData with spec fields
 export interface CreateRequestData {
   askingStoreId: number;
   supplyingStoreId: number;
@@ -254,6 +259,10 @@ export interface CreateRequestData {
     selectedUom?: 'base' | 'conversion';
     uomCode?: string;
     isBaseUom?: boolean;
+    // ✅ NEW: Spec fields
+    specification?: string;
+    brand?: string;
+    model?: string;
   }[];
   requestedById?: number;
   requestedDate: string;
@@ -262,6 +271,7 @@ export interface CreateRequestData {
   isAsset?: boolean;
 }
 
+// ✅ UPDATED: UpdateRequestData with spec fields
 export interface UpdateRequestData {
   askingStoreId?: number;
   supplyingStoreId?: number;
@@ -272,6 +282,10 @@ export interface UpdateRequestData {
     selectedUom?: 'base' | 'conversion';
     uomCode?: string;
     isBaseUom?: boolean;
+    // ✅ NEW: Spec fields
+    specification?: string;
+    brand?: string;
+    model?: string;
   }[];
   requestedById?: number;
   requestedDate?: string;
@@ -373,52 +387,46 @@ class ItemRequestService {
   }
 
   /**
-   * Get active items for dropdown
+   * Get active items for dropdown (with search support)
    * GET /api/item-requests/active-items
    */
- // stores/itemRequestService.ts
-
-/**
- * Get active items for dropdown (with search support)
- * GET /api/item-requests/active-items
- */
-async getActiveItems(params?: {
-  search?: string;
-  page?: number;
-  limit?: number;
-}): Promise<{
-  success: boolean;
-  data: Item[];
-  pagination?: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
-  error?: string;
-}> {
-  try {
-    const queryParams = new URLSearchParams();
-    
-    if (params?.search) queryParams.append('search', params.search);
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-
-    const url = queryParams.toString() 
-      ? `/item-requests/active-items?${queryParams.toString()}`
-      : '/item-requests/active-items';
-
-    const response = await api.get(url);
-    return response.data;
-  } catch (error: any) {
-    console.error('Get active items error:', error);
-    return {
-      success: false,
-      data: [],
-      error: error.response?.data?.error || 'Failed to fetch active items'
+  async getActiveItems(params?: {
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    data: Item[];
+    pagination?: {
+      total: number;
+      page: number;
+      limit: number;
+      pages: number;
     };
+    error?: string;
+  }> {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (params?.search) queryParams.append('search', params.search);
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+      const url = queryParams.toString() 
+        ? `/item-requests/active-items?${queryParams.toString()}`
+        : '/item-requests/active-items';
+
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get active items error:', error);
+      return {
+        success: false,
+        data: [],
+        error: error.response?.data?.error || 'Failed to fetch active items'
+      };
+    }
   }
-}
 
   // ================================================================
   // STORE GROUPS METHOD
@@ -827,10 +835,6 @@ async getActiveItems(params?: {
   /**
    * Get notifications for a specific group in a specific store
    * GET /api/item-requests/notifications/:storeId/:groupId
-   * 
-   * @param storeId - The ID of the store
-   * @param groupId - The ID of the group
-   * @param params - Optional pagination and status filters
    */
   async getGroupNotifications(
     storeId: number, 
@@ -869,9 +873,6 @@ async getActiveItems(params?: {
   /**
    * Get notifications for a specific department (ASSET requests only)
    * GET /api/item-requests/notifications/department/:departmentId
-   * 
-   * @param departmentId - The ID of the department
-   * @param params - Optional pagination and status filters
    */
   async getDepartmentNotifications(
     departmentId: number,
@@ -924,7 +925,6 @@ async getActiveItems(params?: {
     error?: string;
   }> {
     try {
-      // Validate departmentId
       if (!departmentId || isNaN(departmentId) || departmentId <= 0) {
         return {
           success: false,
@@ -956,14 +956,12 @@ async getActiveItems(params?: {
   }
 
   // ================================================================
-  // 🔥 PENDING NOTIFICATIONS (Combined - Group + Department)
+  // PENDING NOTIFICATIONS (Combined - Group + Department)
   // ================================================================
 
   /**
    * Get all pending notifications for the current user (Group + Department)
    * GET /api/item-requests/notifications/pending
-   * 
-   * @param params - Optional pagination filters
    */
   async getPendingNotifications(params?: {
     page?: number;
@@ -1050,8 +1048,6 @@ async getActiveItems(params?: {
   /**
    * Get request with notification status and group responses
    * GET /api/item-requests/:id/notifications
-   * 
-   * @param id - The request ID
    */
   async getRequestWithNotifications(id: number | string): Promise<{
     success: boolean;
@@ -1076,8 +1072,6 @@ async getActiveItems(params?: {
   /**
    * Check if all groups have accepted/rejected the request
    * GET /api/item-requests/:id/notifications/status
-   * 
-   * @param requestId - The request ID
    */
   async checkRequestNotificationStatus(requestId: number): Promise<{
     success: boolean;
@@ -1106,8 +1100,6 @@ async getActiveItems(params?: {
   /**
    * Get all rejection reasons for a request
    * GET /api/item-requests/notifications/requests/:requestId/rejections
-   * 
-   * @param requestId - The request ID
    */
   async getRejectionReasons(requestId: number): Promise<{
     success: boolean;
@@ -1135,8 +1127,6 @@ async getActiveItems(params?: {
   /**
    * Accept a notification (group or department accepts the request)
    * POST /api/item-requests/notifications/:notificationId/accept
-   * 
-   * @param notificationId - The notification ID
    */
   async acceptNotification(notificationId: number): Promise<{
     success: boolean;
@@ -1159,9 +1149,6 @@ async getActiveItems(params?: {
   /**
    * Reject a notification with reason
    * POST /api/item-requests/notifications/:notificationId/reject
-   * 
-   * @param notificationId - The notification ID
-   * @param reason - The rejection reason
    */
   async rejectNotification(notificationId: number, reason: string): Promise<{
     success: boolean;

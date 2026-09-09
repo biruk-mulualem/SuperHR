@@ -28,29 +28,27 @@
       <thead>
         <tr>
           <th style="width: 5%;">No</th>
-          <th style="width: 22%;">Item</th>
+          <th style="width: 25%;">Item</th>
           <th style="width: 8%;">U.O.M</th>
           <th style="width: 8%;">Qty</th>
-          <th style="width: 10%;">Brand</th>
-          <th style="width: 17%;">Specification</th>
-          <th style="width: 10%;">Location</th>
-          <th style="width: 8%;">Store Balance</th>
-          <th style="width: 12%;">Remark</th>
+          <th style="width: 12%;">Brand</th>
+          <th style="width: 12%;">Model</th>
+          <th style="width: 20%;">Specification</th>
+          <th style="width: 10%;">Remark</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="!requestData.items || requestData.items.length === 0">
-          <td colspan="9" class="no-items">No items in this request</td>
+          <td colspan="8" class="no-items">No items in this request</td>
         </tr>
         <tr v-for="(item, index) in requestData.items" :key="index">
           <td>{{ index + 1 }}</td>
-          <td class="text-left">{{ getItemNameOnly(item.itemId, requestData.items) }}</td>
-          <td>{{ getItemUOM(item.itemId, requestData.items) || 'Pcs' }}</td>
+          <td class="text-left">{{ getItemNameOnly(item) }}</td>
+          <td>{{ getItemUOM(item) || 'Pcs' }}</td>
           <td class="font-bold">{{ formatQuantity(item.quantity) }}</td>
-          <td>{{ getItemBrand(item.itemId, requestData.items) || '-' }}</td>
-          <td class="spec-cell">{{ stripHtml(getItemSpecification(item.itemId, requestData.items)) || '-' }}</td>
-          <td>{{ getItemModel(item.itemId, requestData.items) || '-' }}</td>
-          <td>-</td>
+          <td>{{ getItemBrand(item) || '-' }}</td>
+          <td>{{ getItemModel(item) || '-' }}</td>
+          <td class="spec-cell">{{ stripHtml(getItemSpecification(item)) || '-' }}</td>
           <td>{{ item.remark || '-' }}</td>
         </tr>
       </tbody>
@@ -129,7 +127,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import itemRequestService from '@/stores/itemRequestService'
-import employeesService from '@/stores/employee'  // ✅ Import employee service
+import employeesService from '@/stores/employee'
 import type { ItemRequest, Store, Item } from '@/stores/itemRequestService'
 
 // ================================================================
@@ -170,7 +168,6 @@ const loadItems = async () => {
   }
 }
 
-// ✅ Use employeesService.getDepartments()
 const loadDepartments = async () => {
   try {
     const response = await employeesService.getDepartments()
@@ -190,6 +187,7 @@ const loadRequest = async (requestId: string) => {
     const response = await itemRequestService.getRequestById(Number(requestId))
     if (response.success) {
       requestData.value = response.data
+      console.log('✅ Request loaded:', requestData.value)
     }
   } catch (error) {
     console.error('Load request error:', error)
@@ -208,7 +206,6 @@ const getRequestingDepartment = (): string => {
   const req = requestData.value as any
   const user = req.requestedByUser
   
-  // 1. If department object is already included in the response
   if (user?.department) {
     if (typeof user.department === 'string') return user.department
     if (typeof user.department === 'object' && user.department.name) {
@@ -216,7 +213,6 @@ const getRequestingDepartment = (): string => {
     }
   }
   
-  // 2. Look up by departmentId from departments list
   if (user?.departmentId) {
     const dept = departments.value.find(d => 
       d.departmentId === user.departmentId || 
@@ -242,8 +238,6 @@ const getRequesterName = (): string => {
     const userData = user as any
     if (user.fullName) return user.fullName
     if (user.full_name) return user.full_name
-    // if (user.username) return user.username
-    // if (userData.name) return userData.name
   }
   
   if (req.requestedBy) {
@@ -266,73 +260,81 @@ const getStoreName = (storeId: number): string => {
 // ITEM HELPERS
 // ================================================================
 
-const getItemNameOnly = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
-    if (found) {
-      if (found.item?.name) return found.item.name
-      if (found.item?.standardName) return found.item.standardName
-      if (found.itemName) return found.itemName
-      if (found.name) return found.name
-    }
-  }
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
+const getItemNameOnly = (item: any): string => {
   if (!item) return 'Unknown Item'
-  return item.standardName || item.name || 'Unknown Item'
+  
+  // Check for nested item data
+  if (item.item) {
+    if (item.item.name) return item.item.name
+    if (item.item.standardName) return item.item.standardName
+  }
+  
+  // Check direct properties
+  if (item.itemName) return item.itemName
+  if (item.name) return item.name
+  
+  return 'Unknown Item'
 }
 
-const getItemBrand = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
-    if (found) {
-      if (found.item?.brand) return found.item.brand
-      if (found.brand) return found.brand
-    }
-  }
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
-  return item?.brand || ''
-}
-
-const getItemModel = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
-    if (found) {
-      if (found.item?.model) return found.item.model
-      if (found.model) return found.model
-    }
-  }
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
-  return item?.model || ''
-}
-
-const getItemUOM = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
-    if (found) {
-      if (found.uom_code) return found.uom_code
-      if (found.uomCode) return found.uomCode
-      if (found.item?.uom?.code) return found.item.uom.code
-      if (found.item?.uom) return found.item.uom
-    }
-  }
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
-  if (item?.uom) {
-    if (typeof item.uom === 'string') return item.uom
-    if (typeof item.uom === 'object' && item.uom.code) return item.uom.code
-  }
+const getItemBrand = (item: any): string => {
+  if (!item) return ''
+  
+  // Check for brand in the request detail (user-entered)
+  if (item.brand) return item.brand
+  
+  // Check nested item
+  if (item.item?.brand) return item.item.brand
+  
+  // Fallback to global items list
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId)
+  if (globalItem?.brand) return globalItem.brand
+  
   return ''
 }
 
-const getItemSpecification = (itemId: number, requestItems?: any[]): string => {
-  if (requestItems) {
-    const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId)
-    if (found) {
-      if (found.item?.specText) return found.item.specText
-      if (found.specText) return found.specText
-    }
+const getItemModel = (item: any): string => {
+  if (!item) return ''
+  
+  // Check for model in the request detail (user-entered)
+  if (item.model) return item.model
+  
+  // Check nested item
+  if (item.item?.model) return item.item.model
+  
+  // Fallback to global items list
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId)
+  if (globalItem?.model) return globalItem.model
+  
+  return ''
+}
+
+const getItemUOM = (item: any): string => {
+  if (!item) return ''
+  
+  // Check for UOM in the request detail
+  if (item.uom_code) return item.uom_code
+  if (item.uomCode) return item.uomCode
+  
+  // Check nested item
+  if (item.item?.uom?.code) return item.item.uom.code
+  if (item.item?.uom) {
+    if (typeof item.item.uom === 'string') return item.item.uom
   }
-  const item = items.value.find(i => (i.itemId || i.id) === itemId)
-  return item?.specText || ''
+  
+  return ''
+}
+
+const getItemSpecification = (item: any): string => {
+  if (!item) return ''
+  
+  // Check for specification in the request detail (user-entered)
+  if (item.specification) return item.specification
+  
+  // Check nested item
+  if (item.item?.specText) return item.item.specText
+  if (item.specText) return item.specText
+  
+  return ''
 }
 
 // ================================================================
@@ -363,6 +365,9 @@ const stripHtml = (htmlContent: string): string => {
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/<p[^>]*>/g, '')
+    .replace(/<\/p>/g, '')
+    .replace(/<br\s*\/?>/g, ' ')
     .trim()
 }
 
@@ -388,7 +393,7 @@ onMounted(async () => {
     await Promise.all([
       loadStores(),
       loadItems(),
-      loadDepartments()  // ✅ Uses employeesService.getDepartments()
+      loadDepartments()
     ])
     await loadRequest(requestId)
   } else {
@@ -492,7 +497,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   TABLE CONFIGURATION - ENHANCED FOR PRINT
+   TABLE CONFIGURATION
    ================================================================ */
 .items-table {
   width: 100%;
@@ -540,7 +545,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   META GRID - DEPARTMENT CENTERED
+   META GRID
    ================================================================ */
 .meta-grid {
   display: flex;
@@ -571,7 +576,6 @@ onMounted(async () => {
   min-height: 80px;
 }
 
-/* Department Block - Centered */
 .dept-body {
   padding: 10px 12px;
   display: flex;
@@ -593,7 +597,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   DYNAMIC INPUT ROWS WITH PRINT-FRIENDLY BACKGROUNDS
+   FOOTER SECTIONS
    ================================================================ */
 .footer-sections {
   display: flex;
@@ -673,7 +677,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   LOADING & ERROR LAYOUT SYSTEM
+   LOADING & ERROR
    ================================================================ */
 .loading-state, .error-state {
   display: flex;
@@ -723,7 +727,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   CRITICAL PRINT DRIVER OVERRIDES
+   PRINT OVERRIDES
    ================================================================ */
 @media print {
   .no-print {
@@ -740,7 +744,6 @@ onMounted(async () => {
     margin: 0 !important;
   }
   
-  /* Force exact colors for print */
   .gray-label, 
   .block-header, 
   .items-table th {
@@ -802,7 +805,6 @@ onMounted(async () => {
     font-size: 18px !important;
   }
   
-  /* Page break control */
   .meta-grid {
     page-break-inside: avoid !important;
   }
@@ -811,7 +813,6 @@ onMounted(async () => {
     page-break-inside: avoid !important;
   }
   
-  /* Ensure no page breaks inside table rows */
   .items-table tr {
     page-break-inside: avoid !important;
   }
@@ -822,7 +823,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   RESPONSIVE ADJUSTMENTS
+   RESPONSIVE
    ================================================================ */
 @media (max-width: 768px) {
   .print-page {

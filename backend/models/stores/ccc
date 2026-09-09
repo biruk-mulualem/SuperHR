@@ -1,54 +1,41 @@
--- Add UOM columns to item_request_details
+-- ================================================================
+-- ADD SPECIFICATION, BRAND, AND MODEL FIELDS TO ITEM_REQUEST_DETAILS
+-- ================================================================
+
+-- Add the columns
 ALTER TABLE item_request_details 
-ADD COLUMN IF NOT EXISTS selected_uom VARCHAR(20) DEFAULT 'base';
+ADD COLUMN specification TEXT NULL,
+ADD COLUMN brand VARCHAR(100) NULL,
+ADD COLUMN model VARCHAR(100) NULL;
 
-ALTER TABLE item_request_details 
-ADD COLUMN IF NOT EXISTS uom_code VARCHAR(50) DEFAULT NULL;
+-- ================================================================
+-- VERIFY THE COLUMNS WERE ADDED
+-- ================================================================
 
-ALTER TABLE item_request_details 
-ADD COLUMN IF NOT EXISTS is_base_uom BOOLEAN DEFAULT TRUE;
+-- Check table structure
+DESCRIBE item_request_details;
 
+-- Or use this for PostgreSQL
+SELECT 
+    column_name, 
+    data_type, 
+    is_nullable
+FROM information_schema.columns 
+WHERE table_name = 'item_request_details' 
+ORDER BY ordinal_position;
 
+-- ================================================================
+-- OPTIONAL: ADD INDEXES FOR BETTER PERFORMANCE
+-- ================================================================
 
+-- Add indexes if you plan to search by these fields frequently
+CREATE INDEX idx_item_request_details_brand ON item_request_details(brand);
+CREATE INDEX idx_item_request_details_model ON item_request_details(model);
 
--- 1. Add the converted_balance_id column (NOT NULL)
-ALTER TABLE store_balance_histories 
-ADD COLUMN converted_balance_id INTEGER NOT NULL DEFAULT 0;
+-- ================================================================
+-- OPTIONAL: ADD COMMENTS FOR DOCUMENTATION
+-- ================================================================
 
--- 2. Add foreign key constraint
-ALTER TABLE store_balance_histories 
-ADD CONSTRAINT fk_converted_balance 
-FOREIGN KEY (converted_balance_id) REFERENCES converted_balances(id);
-
--- 3. Add check constraint to ensure only one FK is used (optional but recommended)
-ALTER TABLE store_balance_histories 
-ADD CONSTRAINT chk_only_one_balance 
-CHECK (
-  (balance_id IS NOT NULL AND converted_balance_id = 0) OR
-  (balance_id = 0 AND converted_balance_id IS NOT NULL)
-);
-
--- 4. Add indexes
-CREATE INDEX idx_converted_balance_id ON store_balance_histories(converted_balance_id);
-CREATE INDEX idx_uom_used ON store_balance_histories(uom_used);
-CREATE INDEX idx_is_base_uom ON store_balance_histories(is_base_uom);
-
-
--- Make balance_id nullable
-ALTER TABLE store_balance_histories 
-ALTER COLUMN balance_id DROP NOT NULL;
-
--- Add converted_balance_id column
-ALTER TABLE store_balance_histories 
-ADD COLUMN IF NOT EXISTS converted_balance_id INTEGER;
-
--- Add UOM tracking columns
-ALTER TABLE store_balance_histories 
-ADD COLUMN IF NOT EXISTS uom_used VARCHAR(50);
-
-ALTER TABLE store_balance_histories 
-ADD COLUMN IF NOT EXISTS is_base_uom BOOLEAN DEFAULT true;
-
-CREATE INDEX IF NOT EXISTS idx_converted_balance_id ON store_balance_histories(converted_balance_id);
-CREATE INDEX IF NOT EXISTS idx_uom_used ON store_balance_histories(uom_used);
-CREATE INDEX IF NOT EXISTS idx_is_base_uom ON store_balance_histories(is_base_uom);
+COMMENT ON COLUMN item_request_details.specification IS 'User-entered specification for this request item';
+COMMENT ON COLUMN item_request_details.brand IS 'User-entered brand for this request item';
+COMMENT ON COLUMN item_request_details.model IS 'User-entered model for this request item';

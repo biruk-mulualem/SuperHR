@@ -88,7 +88,7 @@
           v-show="!showValidationErrors"
         >
           <!-- ============================================================ -->
-          <!-- STORE SELECTION - Asking Store HIDDEN -->
+          <!-- STORE SELECTION -->
           <!-- ============================================================ -->
           <div class="form-section">
             <div class="form-section-title">🏪 Store Selection</div>
@@ -114,7 +114,7 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- ITEMS SECTION - SERVER-SIDE SEARCH -->
+          <!-- ITEMS SECTION -->
           <!-- ============================================================ -->
           <div class="form-section">
             <div class="form-section-title">
@@ -194,6 +194,9 @@
               </div>
             </div>
 
+            <!-- ============================================================ -->
+            <!-- SELECTED ITEMS - UOM & QTY Always Visible -->
+            <!-- ============================================================ -->
             <div class="selected-items-container" v-if="selectedItemsList.length > 0">
               <div class="selected-header">
                 <span class="selected-title">✅ Selected Items</span>
@@ -205,71 +208,136 @@
                 <div
                   v-for="item in selectedItemsList"
                   :key="item.itemId"
-                  class="selected-item-row"
+                  class="selected-item-wrapper"
                 >
-                  <div class="item-info">
-                    <span class="item-code">{{ item.code }}</span>
-                    <span class="item-name">{{ item.name }}</span>
-                  </div>
-                  <div class="item-controls">
-                    <div class="uom-selector-wrapper">
-                      <select 
-                        v-model="item.selectedUom" 
-                        @change="onUomChange(item)"
-                        class="uom-select"
-                      >
-                        <option value="base">{{ getBaseUOM(item) }}</option>
-                        <option 
-                          v-if="getConversionUOM(item) !== 'N/A'" 
-                          value="conversion"
-                          :disabled="getConversionUOM(item) === getBaseUOM(item)"
-                        >
-                          {{ getConversionUOM(item) }} {{ getConversionUOM(item) === getBaseUOM(item) ? '(Same as Base)' : '' }}
-                        </option>
-                      </select>
-                    </div>
-                    
-    <div class="quantity-control">
-  <button
-    type="button"
-    class="qty-btn"
-    @click="adjustQuantity(item.itemId, -0.01)"
-    :disabled="item.quantity <= 0.01"
-  >
-    −
-  </button>
-  <input
-    type="number"
-    v-model.number="item.quantity"
-    @change="validateQuantity(item)"
-    @input="formatQuantity(item)"
-    min="0.01"
-    step="0.01"
-    class="qty-input"
-  />
-  <button
-    type="button"
-    class="qty-btn"
-    @click="adjustQuantity(item.itemId, 0.01)"
-  >
-    +
-  </button>
-  <span class="qty-uom">{{ getSelectedUomLabel(item) }}</span>
-</div>
-                    <input
-                      type="text"
-                      v-model="item.remark"
-                      placeholder="Add remark..."
-                      class="remark-input"
-                    />
-                    <button
-                      type="button"
-                      class="remove-btn"
-                      @click="removeSelectedItem(item.itemId)"
-                      title="Remove item"
+                  <!-- ========================================================== -->
+                  <!-- COMPACT VIEW - UOM & QTY always visible -->
+                  <!-- ========================================================== -->
+                  <div class="selected-item-compact">
+                    <!-- Left: Expand icon + Item info -->
+                    <div 
+                      class="compact-left"
+                      @click="toggleItemExpand(item.itemId)"
                     >
-                      ✕
-                    </button>
+                      <span class="expand-icon">
+                        {{ expandedItems.has(item.itemId) ? '▼' : '▶' }}
+                      </span>
+                      <span class="item-code">{{ item.code }}</span>
+                      <span class="item-name">{{ item.name }}</span>
+                    </div>
+
+                    <!-- Right: UOM + QTY (always visible) -->
+                    <div class="compact-right">
+                      <div class="compact-uom-group">
+                        <select 
+                          v-model="item.selectedUom" 
+                          @change.stop="onUomChange(item)"
+                          class="compact-uom-select"
+                        >
+                          <option value="base">{{ getBaseUOM(item) }}</option>
+                          <option 
+                            v-if="getConversionUOM(item) !== 'N/A'" 
+                            value="conversion"
+                            :disabled="getConversionUOM(item) === getBaseUOM(item)"
+                          >
+                            {{ getConversionUOM(item) }}
+                          </option>
+                        </select>
+                      </div>
+                      
+                      <div class="compact-qty-group">
+                        <button
+                          type="button"
+                          class="compact-qty-btn"
+                          @click.stop="adjustQuantity(item.itemId, -0.01)"
+                          :disabled="item.quantity <= 0.01"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          :value="item.quantity"
+                          @input.stop="updateQuantity(item.itemId, ($event.target as HTMLInputElement)?.value ?? '')"
+                          min="0.01"
+                          step="0.01"
+                          class="compact-qty-input"
+                        />
+                        <button
+                          type="button"
+                          class="compact-qty-btn"
+                          @click.stop="adjustQuantity(item.itemId, 0.01)"
+                        >
+                          +
+                        </button>
+                        <span class="compact-qty-uom">{{ getSelectedUomLabel(item) }}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="remove-btn-compact"
+                        @click.stop="removeSelectedItem(item.itemId)"
+                        title="Remove item"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- ========================================================== -->
+                  <!-- EXPANDED VIEW - Only Spec, Brand, Model, Remark -->
+                  <!-- ========================================================== -->
+                  <div 
+                    v-show="expandedItems.has(item.itemId)"
+                    class="selected-item-expanded"
+                  >
+                    <!-- Remark -->
+                    <div class="expanded-row-remark">
+                      <div class="control-group full-width">
+                        <label class="control-label">REMARK</label>
+                        <input
+                          type="text"
+                          :value="item.remark"
+                         
+                          @input="updateItemField(item.itemId, 'remark', ($event.target as HTMLInputElement)?.value ?? '')"
+                          placeholder="Add remark..."
+                          class="remark-input"
+                        />
+                      </div>
+                    </div>
+
+                    <!-- Specification, Brand, Model -->
+                    <div class="expanded-row-specs">
+                      <div class="spec-field">
+                        <label class="spec-label">SPECIFICATION</label>
+                        <input
+                          type="text"
+                          :value="item.specification"
+                          @input="updateItemField(item.itemId, 'specification', ($event.target as HTMLInputElement)?.value ?? '')"
+                          placeholder="Enter specification..."
+                          class="spec-input"
+                        />
+                      </div>
+                      <div class="spec-field">
+                        <label class="spec-label">BRAND</label>
+                        <input
+                          type="text"
+                          :value="item.brand"
+                          @input="updateItemField(item.itemId, 'brand', ($event.target as HTMLInputElement)?.value ?? '')"
+                          placeholder="Enter brand..."
+                          class="spec-input"
+                        />
+                      </div>
+                      <div class="spec-field">
+                        <label class="spec-label">MODEL</label>
+                        <input
+                          type="text"
+                          :value="item.model"
+                          @input="updateItemField(item.itemId, 'model', ($event.target as HTMLInputElement)?.value ?? '')"
+                          placeholder="Enter model..."
+                          class="spec-input"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -418,6 +486,9 @@ const validationErrors = ref<any[]>([]);
 const validationMessage = ref<string>("");
 const showValidationErrors = ref(false);
 
+// ✅ Track which items are expanded
+const expandedItems = ref<Set<number>>(new Set());
+
 const form = ref({
   askingStoreId: "",
   supplyingStoreId: "",
@@ -425,6 +496,9 @@ const form = ref({
     selectedUom?: 'base' | 'conversion';
     uomCode?: string;
     isBaseUom?: boolean;
+    specification?: string;
+    brand?: string;
+    model?: string;
   })[],
   requestedBy: "",
   requestedDate: "",
@@ -447,6 +521,9 @@ const selectedItems = ref<Map<number, {
   selectedUom?: 'base' | 'conversion';
   _baseUom?: string;
   _convUom?: string;
+  specification?: string;
+  brand?: string;
+  model?: string;
 }>>(new Map());
 
 // ================================================================
@@ -468,15 +545,9 @@ const filteredSupplyingStores = computed(() => {
   return result;
 });
 
-// ✅ FIXED: Item map for quick lookups with fallback for selected items
-// ================================================================
-// COMPUTED - Item map for quick lookups with fallback
-// ================================================================
-
 const itemMap = computed(() => {
   const map = new Map<number, Item>();
   
-  // Add items from the main items list
   items.value.forEach(item => {
     const id = Number(item.itemId ?? item.id);
     if (id > 0) {
@@ -484,7 +555,6 @@ const itemMap = computed(() => {
     }
   });
   
-  // 🔥 Also add items from selected items if they're not in the map
   selectedItems.value.forEach((selected, id) => {
     if (!map.has(id)) {
       map.set(id, {
@@ -496,16 +566,17 @@ const itemMap = computed(() => {
         uom: { code: selected._baseUom || 'N/A' },
         conversionUom: { code: selected._convUom || 'N/A' },
         conversionValue: selected.conversionValue || 1,
+        specText: selected.specification || '',
+        brand: selected.brand || '',
+        model: selected.model || '',
       } as any);
     }
   });
   
-  // 🔥 Also add items from editing request if available
   if (props.editingRequest && props.editingRequest.items) {
     props.editingRequest.items.forEach((item: any) => {
       const id = Number(item.itemId || item.id || 0);
       if (id > 0 && !map.has(id)) {
-        // Create from request item data
         const baseUom = item.uom_code || item.uomCode || item.uom?.code || 'N/A';
         const convUom = item.conversion_uom_code || item.conversionUomCode || item.conversionUom?.code || 'N/A';
         
@@ -518,6 +589,9 @@ const itemMap = computed(() => {
           uom: { code: baseUom },
           conversionUom: { code: convUom },
           conversionValue: item.conversionValue || 1,
+          specText: item.specification || item.specText || '',
+          brand: item.brand || '',
+          model: item.model || '',
         } as any);
       }
     });
@@ -528,18 +602,18 @@ const itemMap = computed(() => {
 
 const selectedItemsList = computed(() => {
   return Array.from(selectedItems.value.values()).map(item => {
-    // Try to get full item data from map
     const fullItem = itemMap.value.get(item.itemId);
     if (fullItem) {
-      // Update the item with full data if available
       const updatedItem = {
         ...item,
         _baseUom: getBaseUOM(fullItem),
         _convUom: getConversionUOM(fullItem),
         conversionValue: fullItem.conversionValue || 1,
+        specification: item.specification || (fullItem as any).specText || '',
+        brand: item.brand || (fullItem as any).brand || '',
+        model: item.model || (fullItem as any).model || '',
       };
       
-      // Also update the code and name if they were 'N/A' or 'Unknown'
       if (fullItem.code && (item.code === 'N/A' || item.code === '')) {
         updatedItem.code = fullItem.code;
       }
@@ -634,19 +708,26 @@ const getConversionUOM = (item: any): string => {
   return 'N/A';
 };
 
-const getConversionValue = (item: any): number => {
-  if (!item) return 1;
-  const cachedItem = item.itemId ? itemMap.value.get(item.itemId) : null;
-  const target = cachedItem || item;
-  return target.conversionValue || 1;
-};
-
 const getSelectedUomLabel = (item: any): string => {
   if (item.selectedUom === 'conversion') {
     const convUom = getConversionUOM(item);
     return convUom !== 'N/A' ? convUom : getBaseUOM(item);
   }
   return getBaseUOM(item);
+};
+
+// ================================================================
+// COLLAPSIBLE FUNCTIONS
+// ================================================================
+
+const toggleItemExpand = (itemId: number): void => {
+  if (expandedItems.value.has(itemId)) {
+    expandedItems.value.delete(itemId);
+  } else {
+    expandedItems.value.add(itemId);
+  }
+  // Trigger reactivity
+  expandedItems.value = new Set(expandedItems.value);
 };
 
 // ================================================================
@@ -797,6 +878,45 @@ const isItemAlreadySelectedById = (id: string | number): boolean => {
 
 const onItemSelect = (): void => {};
 
+// ================================================================
+// UPDATE ITEM FIELD
+// ================================================================
+
+const updateItemField = (itemId: number, field: string, value: string): void => {
+  const item = selectedItems.value.get(itemId);
+  if (!item) {
+    console.warn(`⚠️ Item ${itemId} not found in selectedItems`);
+    return;
+  }
+  
+  const validFields = ['specification', 'brand', 'model', 'remark'];
+  if (!validFields.includes(field)) {
+    console.warn(`⚠️ Invalid field: ${field}`);
+    return;
+  }
+  
+  const updatedItem = {
+    ...item,
+    [field]: value,
+  };
+  
+  selectedItems.value.set(itemId, updatedItem);
+  console.log(`🔄 Updated item ${itemId} ${field}: "${value}"`);
+  syncSelectedItemsToForm();
+};
+
+const updateQuantity = (itemId: number, value: string): void => {
+  const item = selectedItems.value.get(itemId);
+  if (!item) return;
+  
+  let newQty = parseFloat(value);
+  if (isNaN(newQty) || newQty < 0.01) newQty = 0.01;
+  newQty = Math.round(newQty * 100) / 100;
+  
+  selectedItems.value.set(itemId, { ...item, quantity: newQty });
+  syncSelectedItemsToForm();
+};
+
 const onUomChange = (item: any): void => {
   item.quantity = 1;
   const existing = selectedItems.value.get(item.itemId);
@@ -806,6 +926,7 @@ const onUomChange = (item: any): void => {
       selectedUom: item.selectedUom,
       quantity: 1,
     });
+    syncSelectedItemsToForm();
   }
 };
 
@@ -828,6 +949,9 @@ const addSelectedItem = (): void => {
 
   const baseUom = getBaseUOM(item);
   const convUom = getConversionUOM(item);
+  const specText = (item as any).specText || '';
+  const brand = (item as any).brand || '';
+  const model = (item as any).model || '';
 
   selectedItems.value.set(id, {
     itemId: id,
@@ -839,100 +963,42 @@ const addSelectedItem = (): void => {
     selectedUom: 'base',
     _baseUom: baseUom,
     _convUom: convUom,
+    specification: specText || '',
+    brand: brand || '',
+    model: model || '',
   });
 
   selectedItemId.value = "";
+  syncSelectedItemsToForm();
 };
 
 // ================================================================
 // ITEM MANAGEMENT METHODS
-// ================================================================
-// ================================================================
-// ITEM MANAGEMENT METHODS - WITH 2 DECIMAL PLACES
 // ================================================================
 
 const adjustQuantity = (itemId: number, delta: number): void => {
   const item = selectedItems.value.get(itemId);
   if (!item) return;
   
-  // Round to 2 decimal places
   let newQty = Math.round((item.quantity + delta) * 100) / 100;
-  
-  // Ensure minimum is 0.01
   if (newQty < 0.01) newQty = 0.01;
   
   selectedItems.value.set(itemId, { ...item, quantity: newQty });
+  syncSelectedItemsToForm();
 };
-
-const validateQuantity = (item: { itemId: number; quantity: number }): void => {
-  // Round to 2 decimal places
-  let qty = Math.round(item.quantity * 100) / 100;
-  
-  if (qty < 0.01) {
-    qty = 0.01;
-  }
-  
-  item.quantity = qty;
-  
-  const existing = selectedItems.value.get(item.itemId);
-  if (existing) {
-    selectedItems.value.set(item.itemId, { ...existing, quantity: qty });
-  }
-};
-
-// New method to format quantity on input
-const formatQuantity = (item: { itemId: number; quantity: number }): void => {
-  // Round to 2 decimal places on input
-  let qty = Math.round((item.quantity || 0) * 100) / 100;
-  
-  if (qty < 0.01) {
-    qty = 0.01;
-  }
-  
-  item.quantity = qty;
-  
-  const existing = selectedItems.value.get(item.itemId);
-  if (existing) {
-    selectedItems.value.set(item.itemId, { ...existing, quantity: qty });
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const removeSelectedItem = (itemId: number): void => {
   selectedItems.value.delete(itemId);
+  expandedItems.value.delete(itemId);
+  syncSelectedItemsToForm();
 };
 
 const clearAllItems = (): void => {
   if (selectedItemsList.value.length === 0) return;
   if (confirm("Remove all items from this request?")) {
     selectedItems.value.clear();
+    expandedItems.value.clear();
+    syncSelectedItemsToForm();
   }
 };
 
@@ -963,6 +1029,9 @@ const syncSelectedItemsToForm = (): void => {
       selectedUom: item.selectedUom || 'base',
       uomCode: uomCode,
       isBaseUom: isBaseUom,
+      specification: item.specification || "",
+      brand: item.brand || "",
+      model: item.model || "",
     };
   });
   
@@ -1062,9 +1131,7 @@ const saveRequest = async (): Promise<void> => {
       duplicateIds.includes(item.itemId)
     );
     
-    // 🔥 FIX: Get item names and codes from selectedItems or itemMap
     duplicateItems.forEach(item => {
-      // Try to get item details from selectedItems
       const selectedItem = selectedItems.value.get(item.itemId);
       
       let itemName = 'Unknown Item';
@@ -1074,7 +1141,6 @@ const saveRequest = async (): Promise<void> => {
         itemName = selectedItem.name || 'Unknown Item';
         itemCode = selectedItem.code || 'N/A';
       } else {
-        // Try from itemMap
         const fullItem = itemMap.value.get(item.itemId);
         if (fullItem) {
           itemName = fullItem.standardName || fullItem.name || 'Unknown Item';
@@ -1152,6 +1218,9 @@ const saveRequest = async (): Promise<void> => {
         selectedUom: item.selectedUom || 'base',
         uomCode: item.uomCode || '',
         isBaseUom: item.selectedUom !== 'conversion',
+        specification: item.specification || "",
+        brand: item.brand || "",
+        model: item.model || "",
       })),
       requestedById: userId,
       requestedBy: form.value.requestedBy,
@@ -1160,6 +1229,8 @@ const saveRequest = async (): Promise<void> => {
       remark: form.value.remark,
       isAsset: form.value.isAsset,
     };
+
+    console.log('📤 Sending to backend:', JSON.stringify(requestData, null, 2));
 
     let response;
     
@@ -1222,157 +1293,96 @@ onBeforeUnmount(() => {
 });
 
 // ================================================================
-// 🔥 FIXED: INITIALIZE FORM - Properly handles editing with item lookup
+// INITIALIZE FORM
 // ================================================================
 
 const initializeForm = () => {
   const today: string = new Date().toISOString().split("T")[0] || "";
+  
+  selectedItems.value.clear();
+  expandedItems.value.clear();
   
   if (props.editingRequest) {
     const req = props.editingRequest;
     const requestedDate: string = String(req.requestedDate || today);
     
     console.log('📝 Editing request:', req);
-    console.log('📦 Items from request:', req.items);
-    console.log('📦 All items available:', items.value.length);
-    
-    // Clear selected items
-    selectedItems.value.clear();
+    console.log('📝 Items to edit:', req.items);
     
     if (req.items && req.items.length > 0) {
-      req.items.forEach((item: any, index: number) => {
+      req.items.forEach((item: any) => {
         const itemId = Number(item.itemId || item.id || 0);
         
-        console.log(`🔍 Processing item ${index + 1}:`, {
-          itemId,
-          itemCode: item.code || item.itemCode,
-          itemName: item.name || item.itemName,
-          hasItem: !!item.item
-        });
-        
         if (itemId > 0) {
-          // 🔥 FIX: Check if item is already in selectedItems
-          let existingSelected = selectedItems.value.get(itemId);
-          if (existingSelected) {
-            console.log(`✅ Item ${itemId} already in selected items`);
-            return;
-          }
+          const baseUom = item.uom_code || 
+                          item.item?.uom?.code || 
+                          item.uomCode || 
+                          'N/A';
           
-          // 🔥 FIX: Try to find the item in multiple places
-          let itemData = null;
-          let baseUom = 'N/A';
-          let convUom = 'N/A';
-          let itemCode = 'N/A';
-          let itemName = 'Unknown';
+          const convUom = item.conversion_uom_code || 
+                          item.item?.conversionUom?.code || 
+                          item.conversionUomCode || 
+                          'N/A';
           
-          // 1. Try from the request's item object (most reliable for editing)
-          if (item.item) {
-            itemData = item.item;
-            console.log(`✅ Found item from request.item:`, itemData);
-            baseUom = itemData.uom?.code || itemData.uomCode || 'N/A';
-            convUom = itemData.conversionUom?.code || itemData.conversionUomCode || 'N/A';
-            itemCode = itemData.code || item.code || 'N/A';
-            itemName = itemData.standardName || itemData.name || item.name || 'Unknown';
-          }
+          const specification = item.specification || 
+                               item.item?.specText || 
+                               item.specText || 
+                               '';
           
-          // 2. If not found, try from the global items list
-          if (!itemData || itemData.name === 'Unknown') {
-            const foundItem = items.value.find(i => Number(i.itemId || i.id) === itemId);
-            if (foundItem) {
-              itemData = foundItem;
-              console.log(`✅ Found item from items list:`, itemData);
-              baseUom = getBaseUOM(foundItem);
-              convUom = getConversionUOM(foundItem);
-              itemCode = foundItem.code || 'N/A';
-              itemName = foundItem.standardName || foundItem.name || 'Unknown';
-            }
-          }
+          const brand = item.brand || 
+                       item.item?.brand || 
+                       '';
           
-          // 3. If still not found, try from itemMap
-          if (!itemData || itemData.name === 'Unknown') {
-            const mappedItem = itemMap.value.get(itemId);
-            if (mappedItem) {
-              itemData = mappedItem;
-              console.log(`✅ Found item from itemMap:`, itemData);
-              baseUom = getBaseUOM(mappedItem);
-              convUom = getConversionUOM(mappedItem);
-              itemCode = mappedItem.code || 'N/A';
-              itemName = mappedItem.standardName || mappedItem.name || 'Unknown';
-            }
-          }
+          const model = item.model || 
+                       item.item?.model || 
+                       '';
           
-          // 4. Last resort: Create from request data
-          if (!itemData || itemData.name === 'Unknown') {
-            console.log(`⚠️ Item ${itemId} not found in any source, creating from request data`);
-            
-            // Get UOM from request item
-            baseUom = item.uom_code || item.uomCode || item.uom?.code || 'N/A';
-            convUom = item.conversion_uom_code || item.conversionUomCode || item.conversionUom?.code || 'N/A';
-            itemCode = item.code || item.itemCode || 'N/A';
-            itemName = item.name || item.itemName || 'Unknown';
-            
-            // Also check if item has item.uom
-            if (item.item?.uom) {
-              baseUom = item.item.uom.code || baseUom;
-            }
-            if (item.item?.conversionUom) {
-              convUom = item.item.conversionUom.code || convUom;
-            }
-            
-            itemData = {
-              id: itemId,
-              itemId: itemId,
-              code: itemCode,
-              name: itemName,
-              standardName: '',
-              uom: { code: baseUom },
-              conversionUom: { code: convUom },
-              conversionValue: item.conversionValue || item.item?.conversionValue || 1,
-            } as any;
-          }
+          const itemName = item.item?.name || 
+                          item.itemName || 
+                          item.name || 
+                          'Unknown';
           
-          // Get the final values
-          const finalBaseUom = baseUom || getBaseUOM(itemData) || 'N/A';
-          const finalConvUom = convUom || getConversionUOM(itemData) || 'N/A';
-          const finalItemCode = itemData?.code || itemCode || 'N/A';
-          const finalItemName = itemData?.standardName || itemData?.name || itemName || 'Unknown';
+          const itemCode = item.item?.code || 
+                          item.itemCode || 
+                          item.code || 
+                          'N/A';
           
-          console.log(`✅ Adding item ${itemId}:`, {
-            code: finalItemCode,
-            name: finalItemName,
-            baseUom: finalBaseUom,
-            convUom: finalConvUom,
-            quantity: item.quantity,
-            selectedUom: item.selectedUom || 'base'
-          });
-          
-          // Store the selected item
           selectedItems.value.set(itemId, {
             itemId: itemId,
-            code: finalItemCode,
-            name: finalItemName,
-            quantity: item.quantity || 1,
+            code: itemCode,
+            name: itemName,
+            quantity: Number(item.quantity) || 1,
             remark: item.remark || "",
-            conversionValue: itemData?.conversionValue ?? 1,
-            selectedUom: item.selectedUom || 'base',
-            _baseUom: finalBaseUom,
-            _convUom: finalConvUom,
+            conversionValue: item.conversionValue || 1,
+            selectedUom: item.selected_uom || 'base',
+            _baseUom: baseUom,
+            _convUom: convUom,
+            specification: specification,
+            brand: brand,
+            model: model,
           });
         }
       });
     }
     
-    console.log('✅ Final selected items:', Array.from(selectedItems.value.values()));
-    
     form.value = {
-      askingStoreId: String(req.askingStoreId),
-      supplyingStoreId: String(req.supplyingStoreId),
+      askingStoreId: String(req.askingStoreId || userAssignedStoreId.value || ""),
+      supplyingStoreId: String(req.supplyingStoreId || ""),
       items: req.items ? req.items.map((item: any) => ({
-        ...item,
         itemId: Number(item.itemId || item.id || 0),
+        quantity: item.quantity || 1,
         remark: item.remark || "",
+        selectedUom: item.selected_uom || 'base',
+        uomCode: item.uom_code || item.uomCode || '',
+        isBaseUom: item.is_base_uom !== false,
+        specification: item.specification || item.item?.specText || '',
+        brand: item.brand || item.item?.brand || '',
+        model: item.model || item.item?.model || '',
       })) : [],
-      requestedBy: req.requestedByUser?.fullName || req.requestedBy || getCurrentUser(),
+      requestedBy: req.requestedByUser?.fullName || 
+                   req.requestedByUser?.username || 
+                   req.requestedBy || 
+                   getCurrentUser(),
       requestedDate: requestedDate,
       status: "pending",
       remark: req.remark || "",
@@ -1380,7 +1390,6 @@ const initializeForm = () => {
     };
     
   } else {
-    // Create mode
     form.value = {
       askingStoreId: String(userAssignedStoreId.value || ""),
       supplyingStoreId: "",
@@ -1403,28 +1412,29 @@ const initializeForm = () => {
   searchPage.value = 1;
   formErrors.value = [];
   closeValidationErrors();
+  
+  syncSelectedItemsToForm();
 };
 
 // ================================================================
-// LIFECYCLE - Watch visibility
+// LIFECYCLE
 // ================================================================
 
 watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
-      // Load data
       loadUserData();
       loadStores();
       
-      // Load items for search
       if (props.editingRequest) {
-        // For editing, load items first then initialize
-        itemRequestService.getActiveItems({ limit: 1 }).then(() => {
-          initializeForm();
-        }).catch(() => {
-          initializeForm();
-        });
+        itemRequestService.getActiveItems({ limit: 1 })
+          .then(() => {
+            initializeForm();
+          })
+          .catch(() => {
+            initializeForm();
+          });
       } else {
         initializeForm();
       }
@@ -1433,10 +1443,6 @@ watch(
   { immediate: true }
 );
 
-// ================================================================
-// LIFECYCLE - On mounted
-// ================================================================
-
 onMounted(() => {
   loadUserData();
   loadStores();
@@ -1444,95 +1450,300 @@ onMounted(() => {
 </script>
 
 <style scoped>
-
 /* ================================================================ */
-/* QUANTITY CONTROL - ENHANCED SPACING */
+/* COMPACT VIEW - UOM & QTY Always Visible */
 /* ================================================================ */
 
-.quantity-control {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: #f8fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  padding: 10px 2px;
+.selected-item-wrapper {
+  margin-bottom: 6px;
 }
 
-.qty-btn {
+.selected-item-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  min-height: 44px;
+  gap: 8px;
+}
+
+.selected-item-compact:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.compact-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.expand-icon {
+  font-size: 10px;
+  color: #94a3b8;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-family: monospace;
+  font-size: 12px;
+  background: #eff6ff;
+  padding: 2px 10px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.item-name {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 60px;
+}
+
+.compact-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* UOM Select */
+.compact-uom-group {
+  flex-shrink: 0;
+}
+
+.compact-uom-select {
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 11px;
+  background: white;
+  cursor: pointer;
+  min-width: 50px;
+  height: 30px;
+}
+
+.compact-uom-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* Quantity Controls */
+.compact-qty-group {
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  padding: 1px 2px;
+  flex-shrink: 0;
+}
+
+.compact-qty-btn {
   background: transparent;
   border: none;
-  padding: 0 10px;
+  padding: 0 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #64748b;
   transition: all 0.2s;
-  border-radius: 4px;
-  min-width: 28px;
-  height: 28px;
+  border-radius: 3px;
+  min-width: 20px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.qty-btn:hover:not(:disabled) {
+.compact-qty-btn:hover:not(:disabled) {
   background: #f1f5f9;
   color: #0f172a;
 }
 
-.qty-btn:disabled {
+.compact-qty-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
-.qty-input {
-  width: 60px;
+.compact-qty-input {
+  width: 40px;
   text-align: center;
   border: none;
   background: transparent;
-  padding: 4px 2px;
-  font-size: 14px;
+  padding: 2px 2px;
+  font-size: 13px;
   font-weight: 600;
   color: #0f172a;
 }
 
-.qty-input:focus {
+.compact-qty-input:focus {
   outline: none;
   background: #ffffff;
-  border-radius: 4px;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  border-radius: 3px;
 }
 
-/* Hide number input arrows */
-.qty-input::-webkit-inner-spin-button,
-.qty-input::-webkit-outer-spin-button {
+.compact-qty-input::-webkit-inner-spin-button,
+.compact-qty-input::-webkit-outer-spin-button {
   opacity: 0.5;
-  height: 20px;
+  height: 16px;
 }
 
-.qty-input[type="number"] {
+.compact-qty-input[type="number"] {
   -moz-appearance: textfield;
 }
 
-.qty-uom {
-  font-size: 11px;
+.compact-qty-uom {
+  font-size: 9px;
   color: #475569;
   font-weight: 600;
-  padding: 0 10px 0 6px;
-  min-width: 45px;
-  text-align: left;
+  padding: 0 6px;
+  min-width: 28px;
+  text-align: center;
   background: #f1f5f9;
-  border-radius: 4px;
-  padding: 4px 10px;
-  margin: 2px 2px 2px 4px;
-  letter-spacing: 0.5px;
+  border-radius: 3px;
+  padding: 2px 6px;
+  letter-spacing: 0.3px;
   text-transform: uppercase;
 }
 
+/* Remove Button */
+.remove-btn-compact {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 14px;
+  transition: all 0.2s;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.remove-btn-compact:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
 /* ================================================================ */
-/* MODAL OVERLAY */
+/* EXPANDED VIEW - Only Spec, Brand, Model, Remark */
 /* ================================================================ */
+
+.selected-item-expanded {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 10px 14px 14px 14px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.expanded-row-remark {
+  margin-bottom: 10px;
+}
+
+.expanded-row-specs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.control-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.control-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.spec-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.remark-input {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.remark-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
+}
+
+.spec-input {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.spec-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
+}
+
+/* ================================================================ */
+/* MODAL OVERLAY & HEADER */
+/* ================================================================ */
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1575,9 +1786,6 @@ onMounted(() => {
   }
 }
 
-/* ================================================================ */
-/* MODAL HEADER */
-/* ================================================================ */
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -1611,18 +1819,12 @@ onMounted(() => {
   color: #0f172a;
 }
 
-/* ================================================================ */
-/* MODAL BODY */
-/* ================================================================ */
 .modal-body {
   padding: 20px 24px;
   overflow-y: auto;
   max-height: calc(90vh - 130px);
 }
 
-/* ================================================================ */
-/* MODAL FOOTER */
-/* ================================================================ */
 .modal-footer {
   padding: 14px 24px;
   border-top: 1px solid #f1f5f9;
@@ -1635,6 +1837,7 @@ onMounted(() => {
 /* ================================================================ */
 /* BUTTONS */
 /* ================================================================ */
+
 .btn-primary {
   background: #3b82f6;
   color: white;
@@ -1674,6 +1877,7 @@ onMounted(() => {
 /* ================================================================ */
 /* FORM SECTIONS */
 /* ================================================================ */
+
 .request-form {
   display: flex;
   flex-direction: column;
@@ -1708,9 +1912,6 @@ onMounted(() => {
   border-radius: 12px;
 }
 
-/* ================================================================ */
-/* FORM ROWS */
-/* ================================================================ */
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1756,27 +1957,6 @@ onMounted(() => {
   color: #64748b;
 }
 
-.readonly-field {
-  background: #f8fafc !important;
-  color: #475569 !important;
-  cursor: not-allowed;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.status-info-field {
-  background: #f0fdf4 !important;
-  color: #166534 !important;
-  border: 1px solid #bbf7d0 !important;
-  font-weight: 500;
-  cursor: not-allowed;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
 .hint {
   display: block;
   font-size: 11px;
@@ -1802,9 +1982,6 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* ================================================================ */
-/* CHECKBOX */
-/* ================================================================ */
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -1835,9 +2012,21 @@ onMounted(() => {
   color: #1e293b;
 }
 
+.status-info-field {
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+  border: 1px solid #bbf7d0 !important;
+  font-weight: 500;
+  cursor: not-allowed;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
 /* ================================================================ */
-/* ADD ITEM AREA - ENHANCED */
+/* ADD ITEM AREA */
 /* ================================================================ */
+
 .add-item-area {
   display: flex;
   flex-direction: column;
@@ -1935,10 +2124,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.item-select option:disabled {
-  color: #94a3b8;
-}
-
 .btn-add-item {
   padding: 6px 20px;
   background: #3b82f6;
@@ -1963,7 +2148,6 @@ onMounted(() => {
   background: #94a3b8;
 }
 
-/* Load More Button */
 .load-more-trigger {
   text-align: center;
   padding: 4px 0;
@@ -1991,11 +2175,12 @@ onMounted(() => {
 }
 
 /* ================================================================ */
-/* SELECTED ITEMS */
+/* SELECTED ITEMS CONTAINER */
 /* ================================================================ */
+
 .selected-items-container {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 10px 14px;
   margin-top: 6px;
@@ -2005,13 +2190,13 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .selected-title {
   font-size: 13px;
   font-weight: 600;
-  color: #166534;
+  color: #1e293b;
 }
 
 .btn-clear-all {
@@ -2032,8 +2217,8 @@ onMounted(() => {
 .selected-items-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 250px;
+  gap: 4px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
@@ -2051,170 +2236,10 @@ onMounted(() => {
   border-radius: 2px;
 }
 
-.selected-item-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: white;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  padding: 5px 10px;
-  flex-wrap: wrap;
-}
-
-.item-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 130px;
-  flex: 1;
-}
-
-.item-code {
-  font-weight: 600;
-  color: #2563eb;
-  font-family: monospace;
-  font-size: 11px;
-  background: #eff6ff;
-  padding: 1px 8px;
-  border-radius: 4px;
-}
-
-.item-name {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 500;
-}
-
-.item-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.uom-selector-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: #f8fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  padding: 2px 6px;
-}
-
-.uom-select {
-  padding: 2px 4px;
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 500;
-  color: #1e293b;
-  cursor: pointer;
-  min-width: 60px;
-}
-
-.uom-select:focus {
-  outline: none;
-}
-
-.uom-select option {
-  font-size: 11px;
-}
-
-.quantity-control {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: #f8fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  padding: 1px;
-}
-
-.qty-btn {
-  background: transparent;
-  border: none;
-  padding: 0 10px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  transition: all 0.2s;
-  border-radius: 4px;
-}
-
-.qty-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.qty-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.qty-input {
-  width: 42px;
-  text-align: center;
-  border: none;
-  background: transparent;
-  padding: 2px 0;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.qty-input:focus {
-  outline: none;
-}
-
-.qty-uom {
-  font-size: 10px;
-  color: #64748b;
-  font-weight: 500;
-  margin-left: 2px;
-  min-width: 30px;
-}
-
-.remark-input {
-  padding: 3px 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-  background: #fafbfc;
-  min-width: 100px;
-  transition: all 0.2s;
-}
-
-.remark-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: white;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.remark-input::placeholder {
-  color: #94a3b8;
-  font-size: 10px;
-}
-
-.remove-btn {
-  background: transparent;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  padding: 0 4px;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.remove-btn:hover {
-  color: #dc2626;
-}
-
 /* ================================================================ */
 /* EMPTY ITEMS MESSAGE */
 /* ================================================================ */
+
 .empty-items-message {
   text-align: center;
   padding: 16px;
@@ -2241,6 +2266,7 @@ onMounted(() => {
 /* ================================================================ */
 /* VALIDATION ERRORS */
 /* ================================================================ */
+
 .validation-error-box {
   background: #fef2f2;
   border: 2px solid #fecaca;
@@ -2327,60 +2353,6 @@ onMounted(() => {
   padding-left: 24px;
 }
 
-.error-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
-  padding-left: 24px;
-  margin-top: 2px;
-}
-
-.groups-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.group-tag {
-  display: inline-block;
-  padding: 1px 8px;
-  background: #fef3c7;
-  color: #92400e;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.error-balance-details {
-  padding-left: 24px;
-  margin-top: 2px;
-}
-
-.balance-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.balance-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.balance-item {
-  display: inline-block;
-  padding: 1px 8px;
-  background: #dbeafe;
-  color: #1e40af;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-}
-
 .validation-actions {
   display: flex;
   gap: 8px;
@@ -2390,6 +2362,7 @@ onMounted(() => {
 /* ================================================================ */
 /* FORM ERRORS */
 /* ================================================================ */
+
 .form-errors {
   display: flex;
   flex-direction: column;
@@ -2411,6 +2384,7 @@ onMounted(() => {
 /* ================================================================ */
 /* RESPONSIVE */
 /* ================================================================ */
+
 @media (max-width: 768px) {
   .modal-container {
     width: 98%;
@@ -2433,22 +2407,27 @@ onMounted(() => {
     padding: 12px 14px;
   }
 
-  .selected-item-row {
-    flex-direction: column;
-    align-items: stretch;
+  .selected-item-compact {
+    flex-wrap: wrap;
+    padding: 6px 10px;
   }
 
-  .item-info {
-    min-width: auto;
-  }
-
-  .item-controls {
-    justify-content: space-between;
-  }
-
-  .remark-input {
+  .compact-left {
     flex: 1;
-    min-width: 80px;
+    min-width: 100px;
+  }
+
+  .compact-right {
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 100%;
+    justify-content: flex-start;
+    padding-top: 2px;
+  }
+
+  .expanded-row-specs {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .add-wrapper {
@@ -2460,9 +2439,13 @@ onMounted(() => {
     justify-content: center;
   }
 
-  .search-results-count {
+  .compact-qty-input {
+    width: 35px;
+  }
+
+  .compact-uom-select {
+    min-width: 40px;
     font-size: 10px;
-    padding: 1px 8px;
   }
 }
 
@@ -2490,25 +2473,54 @@ onMounted(() => {
     justify-content: center;
   }
 
-  .validation-error-item {
-    padding: 8px 10px;
+  .selected-item-compact {
+    padding: 4px 8px;
   }
 
-  .item-controls {
-    flex-wrap: wrap;
-  }
-
-  .quantity-control {
-    flex: 1;
-  }
-
-  .remark-input {
-    flex: 1;
+  .compact-left {
     min-width: 60px;
   }
 
+  .item-code {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  .item-name {
+    font-size: 11px;
+  }
+
+  .compact-qty-group {
+    padding: 1px;
+  }
+
+  .compact-qty-btn {
+    padding: 0 4px;
+    min-width: 16px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .compact-qty-input {
+    width: 30px;
+    font-size: 11px;
+  }
+
+  .compact-qty-uom {
+    font-size: 8px;
+    padding: 1px 4px;
+    min-width: 20px;
+  }
+
+  .compact-uom-select {
+    font-size: 9px;
+    padding: 2px 4px;
+    min-width: 35px;
+    height: 24px;
+  }
+
   .selected-items-list {
-    max-height: 180px;
+    max-height: 280px;
   }
 
   .search-input {
@@ -2535,5 +2547,51 @@ onMounted(() => {
     font-size: 11px;
     padding: 3px 12px;
   }
+}
+
+/* ================================================================ */
+/* COMPACT VIEW - UOM & QTY Always Visible - WIDER QTY */
+/* ================================================================ */
+
+.compact-qty-input {
+  width: 60px;  /* ✅ Changed from 40px to 60px */
+  text-align: center;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  min-width: 45px;  /* ✅ Added min-width */
+}
+
+.compact-qty-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.compact-qty-input::-webkit-inner-spin-button,
+.compact-qty-input::-webkit-outer-spin-button {
+  opacity: 0.5;
+  height: 20px;
+}
+
+.compact-qty-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.compact-qty-input {
+  width: 100px;  /* ✅ Wider - enough for 8-10 digits */
+  min-width: 70px;
+  max-width: 140px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  padding: 2px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
 }
 </style>

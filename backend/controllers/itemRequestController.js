@@ -241,7 +241,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
             shortage: userQuantity - availableQuantity,
             uomCode: baseUomCode,
             balanceType: 'base',
-            message: `Insufficient stock in ${baseUomCode}.  Requested: ${userQuantity} ${baseUomCode}`,
+            message: `Insufficient stock in ${baseUomCode}. Requested: ${userQuantity} ${baseUomCode}`,
           });
         }
         
@@ -277,7 +277,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
           availableQuantity: 0,
           uomCode: baseUomCode,
           balanceType: 'none',
-          message: `This item is available in ${conversionUomCode} only . Please request in ${conversionUomCode} instead.`,
+          message: `This item is available in ${conversionUomCode} only. Please request in ${conversionUomCode} instead.`,
           suggestion: `Request in ${conversionUomCode}`,
           availableInOtherUom: conversionBalance,
           otherUomCode: conversionUomCode,
@@ -348,7 +348,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
             shortage: userQuantity - availableQuantity,
             uomCode: conversionUomCode,
             balanceType: 'conversion',
-            message: `Insufficient stock in ${conversionUomCode}.Requested: ${userQuantity} ${conversionUomCode}`,
+            message: `Insufficient stock in ${conversionUomCode}. Requested: ${userQuantity} ${conversionUomCode}`,
           });
         }
         
@@ -384,7 +384,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
           availableQuantity: 0,
           uomCode: conversionUomCode,
           balanceType: 'none',
-          message: `This item is available in ${baseUomCode} only . Please request in ${baseUomCode} instead.`,
+          message: `This item is available in ${baseUomCode} only. Please request in ${baseUomCode} instead.`,
           suggestion: `Request in ${baseUomCode}`,
           availableInOtherUom: baseBalance,
           otherUomCode: baseUomCode,
@@ -719,6 +719,10 @@ exports.checkStockAvailability = async (req, res) => {
   }
 };
 
+// ================================================================
+// 2. GET REQUESTS (with pagination, filters, and spec fields)
+// ================================================================
+
 exports.getRequests = async (req, res) => {
   try {
     console.log("=".repeat(80));
@@ -1021,6 +1025,22 @@ exports.getRequests = async (req, res) => {
               include: [{ model: UOM, as: "uom" }],
             },
           ],
+          // ✅ Include spec fields in listing
+          attributes: [
+            'id',
+            'requestId',
+            'itemId',
+            'quantity',
+            'remark',
+            'selected_uom',
+            'uom_code',
+            'is_base_uom',
+            'specification',  // ← ADD
+            'brand',          // ← ADD
+            'model',          // ← ADD
+            'created_at',
+            'updated_at',
+          ],
         },
         {
           model: Store,
@@ -1138,6 +1158,22 @@ exports.getRequestById = async (req, res) => {
               ],
             },
           ],
+          // ✅ Include spec fields
+          attributes: [
+            'id',
+            'requestId',
+            'itemId',
+            'quantity',
+            'remark',
+            'selected_uom',
+            'uom_code',
+            'is_base_uom',
+            'specification',  // ← ADD
+            'brand',          // ← ADD
+            'model',          // ← ADD
+            'created_at',
+            'updated_at',
+          ],
         },
         {
           model: Store,
@@ -1201,6 +1237,7 @@ exports.getRequestById = async (req, res) => {
 // ================================================================
 // 4. CREATE REQUEST - GROUP ONLY (NO DEPARTMENT)
 // ================================================================
+
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -1215,7 +1252,10 @@ exports.createRequest = async (req, res) => {
       remark,
       isAsset = false,
     } = req.body;
-
+    // ✅ ADD THIS LOGGING
+    console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
+    console.log(JSON.stringify(items, null, 2));
+    
     // ================================================================
     // 1. VALIDATE REQUIRED FIELDS
     // ================================================================
@@ -1375,6 +1415,10 @@ exports.createRequest = async (req, res) => {
         uomCode: uomCode,
         selectedUom: selectedUom,
         isBaseUom: isBaseUom,
+        // ✅ Preserve spec fields from the request
+        specification: item.specification || null,
+        brand: item.brand || null,
+        model: item.model || null,
       });
     }
 
@@ -1448,7 +1492,7 @@ exports.createRequest = async (req, res) => {
     );
 
     // ================================================================
-    // 9. CREATE ITEM DETAILS with UOM
+    // 9. CREATE ITEM DETAILS with UOM AND SPEC FIELDS
     // ================================================================
     await Promise.all(
       validatedItems.map(async (item) => {
@@ -1458,10 +1502,14 @@ exports.createRequest = async (req, res) => {
             itemId: item.itemId,
             quantity: item.quantity,
             remark: item.remark || null,
-            // ✅ Save UOM fields from the validated item
+            // ✅ UOM fields
             selected_uom: item.selectedUom || 'base',
             uom_code: item.uomCode || item.itemRecord?.uom?.code || 'Units',
             is_base_uom: item.isBaseUom !== false,
+            // ✅ NEW: Save spec fields from the request
+            specification: item.specification || null,
+            brand: item.brand || null,
+            model: item.model || null,
           },
           { transaction: t },
         );
@@ -1637,6 +1685,7 @@ exports.createRequest = async (req, res) => {
 // 5. UPDATE REQUEST
 // ================================================================
 
+
 exports.updateRequest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1679,33 +1728,36 @@ exports.updateRequest = async (req, res) => {
       isAsset: isAsset !== undefined ? isAsset : request.isAsset,  // ✅ Save isAsset
     });
 
-    // ✅ Update items
-   // ✅ Update items with UOM
-if (items && items.length > 0) {
-  await ItemRequestDetail.destroy({
-    where: { requestId: id },
-  });
-
-  await Promise.all(
-    items.map(async (item) => {
-      // ✅ Get UOM info
-      const selectedUom = item.selectedUom || 'base';
-      const uomCode = item.uomCode || 'Units';
-      const isBaseUom = item.isBaseUom !== false;
-
-      return ItemRequestDetail.create({
-        requestId: request.requestId,
-        itemId: item.itemId,
-        quantity: item.quantity,
-        remark: item.remark || null,
-        // ✅ Save UOM fields
-        selected_uom: selectedUom,
-        uom_code: uomCode,
-        is_base_uom: isBaseUom,
+    // ✅ Update items with UOM AND SPEC FIELDS
+    if (items && items.length > 0) {
+      await ItemRequestDetail.destroy({
+        where: { requestId: id },
       });
-    }),
-  );
-}
+
+      await Promise.all(
+        items.map(async (item) => {
+          // ✅ Get UOM info
+          const selectedUom = item.selectedUom || 'base';
+          const uomCode = item.uomCode || 'Units';
+          const isBaseUom = item.isBaseUom !== false;
+
+          return ItemRequestDetail.create({
+            requestId: request.requestId,
+            itemId: item.itemId,
+            quantity: item.quantity,
+            remark: item.remark || null,
+            // ✅ UOM fields
+            selected_uom: selectedUom,
+            uom_code: uomCode,
+            is_base_uom: isBaseUom,
+            // ✅ NEW: Save spec fields
+            specification: item.specification || null,
+            brand: item.brand || null,
+            model: item.model || null,
+          });
+        }),
+      );
+    }
 
     // ✅ Delete existing notifications
     console.log(`🗑️ Deleting existing notifications for request ${id}`);
@@ -1739,6 +1791,22 @@ if (items && items.length > 0) {
               as: "item",
               include: [{ model: UOM, as: "uom" }],
             },
+          ],
+          // ✅ Include spec fields
+          attributes: [
+            'id',
+            'requestId',
+            'itemId',
+            'quantity',
+            'remark',
+            'selected_uom',
+            'uom_code',
+            'is_base_uom',
+            'specification',  // ← ADD
+            'brand',          // ← ADD
+            'model',          // ← ADD
+            'created_at',
+            'updated_at',
           ],
         },
         {
