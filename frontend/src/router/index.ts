@@ -579,6 +579,25 @@ const router = createRouter({
             roles: ["admin", "storekeeper", "store_it", "checker"],
           },
         },
+          {
+          path: "purchase-requests",
+          name: "purchase-requests",
+          component: () => import("@/views/Purchaser/PurchaseRequest.vue"),
+          meta: {
+            title: "purchase requests ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
+
+            {
+          path: "print-purchase-request",
+          name: "print-purchase-request",
+          component: () => import("@/views/Purchaser/PrintPurchaseRequest.vue"),
+          meta: {
+            title: "print purchase request ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
 
         {
           path: "store-to-store",

@@ -1831,7 +1831,6 @@ exports.downloadTemplate = async (req, res) => {
 // ============================================
 // 18. IMPORT BALANCES FROM CSV
 // ============================================
-
 exports.importBalances = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -1936,7 +1935,14 @@ exports.importBalances = async (req, res) => {
       const row = results[i];
       const rowNumber = i + 2;
 
+      // ✅ Create a SAVEPOINT for this row - so if it fails,
+      //    we roll back only this row, not the entire transaction
+      const savepointName = `sp_row_${rowNumber}`;
+
       try {
+        // ✅ Set the savepoint BEFORE any DB operation for this row
+        await sequelize.query(`SAVEPOINT ${savepointName}`, { transaction });
+
         const storeId = parseInt(row.storeid);
         const groupId = parseInt(row.groupid);
         const itemCode = (row.itemcode || row.itemid || "").trim();
@@ -1957,15 +1963,11 @@ exports.importBalances = async (req, res) => {
         const item = await Item.findOne({
           where: { code: itemCode },
           attributes: ["itemId", "code", "name", "standardName"],
+          transaction,
         });
 
         if (!item) {
-          failedCount++;
-          errors.push(
-            `Row ${rowNumber}: Item with code "${itemCode}" not found`,
-          );
-          console.log(`❌ Row ${rowNumber}: Item not found: ${itemCode}`);
-          continue;
+          throw new Error(`Item with code "${itemCode}" not found`);
         }
 
         const itemId = item.itemId;
@@ -1979,17 +1981,13 @@ exports.importBalances = async (req, res) => {
             groupId: groupId,
             itemId: itemId,
           },
+          transaction,
         });
 
         if (existing) {
-          failedCount++;
-          errors.push(
-            `Row ${rowNumber}: Balance already exists for item "${itemCode}" (${item.standardName || item.name})`,
+          throw new Error(
+            `Balance already exists for item "${itemCode}" (${item.standardName || item.name})`,
           );
-          console.log(
-            `⏭️ Row ${rowNumber}: Balance already exists for ${itemCode}`,
-          );
-          continue;
         }
 
         const balanceRecord = await StoreBalance.create(
@@ -2027,11 +2025,29 @@ exports.importBalances = async (req, res) => {
           );
         }
 
+        // ✅ Release the savepoint — row succeeded
+        await sequelize.query(`RELEASE SAVEPOINT ${savepointName}`, {
+          transaction,
+        });
+
         successCount++;
         console.log(
           `✅ Row ${rowNumber}: Imported ${itemCode} - Balance: ${balance}`,
         );
       } catch (rowError) {
+        // ✅ Roll back to the savepoint — ONLY this row is undone,
+        //    the transaction stays alive and the rest of the rows can import
+        try {
+          await sequelize.query(`ROLLBACK TO SAVEPOINT ${savepointName}`, {
+            transaction,
+          });
+        } catch (rollbackError) {
+          console.error(
+            `❌ Failed to rollback savepoint for row ${rowNumber}:`,
+            rollbackError.message,
+          );
+        }
+
         failedCount++;
         errors.push(`Row ${rowNumber}: ${rowError.message}`);
         console.error(`❌ Row ${rowNumber} error:`, rowError.message);

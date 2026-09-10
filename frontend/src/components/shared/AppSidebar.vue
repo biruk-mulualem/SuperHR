@@ -186,6 +186,7 @@ const roleMenus = {
              { name: "local-purchase", path: "/local-purchase", icon: "CogIcon", badge: null },
              { name: "converted-audit", path: "/converted-audit", icon: "CogIcon", badge: null },
                { name: "store-cleanup", path: "/store-cleanup", icon: "CogIcon", badge: null },
+                   { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
            
            
     // {
