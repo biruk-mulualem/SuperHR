@@ -46,6 +46,10 @@ const createDirectories = () => {
     'uploads/balances/',
     'uploads/balances/imports',
     'uploads/balances/exports',
+
+    // Purchase Requests (approved documents)
+'uploads/purchase-requests',
+'uploads/purchase-requests/approved',
   ];
   dirs.forEach(dir => ensureDirectoryExists(dir));
 };
@@ -570,6 +574,88 @@ const uploadDynamicDocument = (req, res, next) => {
   }
 };
 
+
+// ============================================================================
+// PURCHASE REQUEST — APPROVED DOCUMENTS (FRONT + BACK)
+// ============================================================================
+const purchaseRequestStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = 'uploads/purchase-requests/approved/';
+    ensureDirectoryExists(dir);
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    const sanitized = baseName.replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `pr-approved-${sanitized}-${uniqueSuffix}${ext}`;
+    console.log('📄 Purchase request filename:', filename);
+    cb(null, filename);
+  },
+});
+
+const purchaseRequestFileFilter = (_req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|webp|pdf/;
+  const extname = allowedTypes.test(
+    path.extname(file.originalname).toLowerCase()
+  );
+  const mimetype = allowedTypes.test(file.mimetype);
+
+  if (mimetype && extname) {
+    return cb(null, true);
+  }
+  cb(new Error('Only JPG, PNG, WEBP, or PDF files are allowed'));
+};
+
+const uploadPurchaseRequest = multer({
+  storage: purchaseRequestStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: purchaseRequestFileFilter,
+});
+
+/**
+ * Accepts two files:
+ *   - approvedDocFront
+ *   - approvedDocBack
+ */
+const uploadPurchaseRequestDocs = (req, res, next) => {
+  console.log('=== uploadPurchaseRequestDocs called ===');
+
+  uploadPurchaseRequest.fields([
+    { name: 'approvedDocFront', maxCount: 1 },
+    { name: 'approvedDocBack', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer purchase request error:', err);
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: 'File too large. Maximum size is 5MB.',
+          });
+        }
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+
+    const front = req.files?.approvedDocFront?.[0];
+    const back = req.files?.approvedDocBack?.[0];
+
+    if (!front || !back) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both front and back documents are required',
+      });
+    }
+
+    console.log('✅ Front uploaded:', front.filename);
+    console.log('✅ Back uploaded:', back.filename);
+    next();
+  });
+};
+
 // ============================================================================
 // EXPORT ALL
 // ============================================================================
@@ -597,5 +683,6 @@ module.exports = {
   
   // Utilities
   getDocumentFolder,
-  ensureDirectoryExists
+  ensureDirectoryExists,
+   uploadPurchaseRequestDocs,
 };

@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Super App",
+    "slug": "super-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F0E1",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "package": "com.birukmulualem.superapp"
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aae1d831-cfdf-474f-ac70-e1aef11fdbf0"
+      }
+    }
+  }
+}

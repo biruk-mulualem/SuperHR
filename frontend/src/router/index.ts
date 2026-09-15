@@ -36,6 +36,10 @@ const router = createRouter({
                "formulation_manager",
                "production_order",
                "chemist",
+              "purchase_organizer",
+              "purchasing_checkers",
+              "purchasing_auditor",
+              "purchaser",
             ],
           },
         },
@@ -410,11 +414,11 @@ const router = createRouter({
 
 
 
-// In router/index.js
+
 {
   path: "foreign-purchase",
   name: "foreign-purchase",
-  component: () => import("@/views/storemanagement/forignPurchase/foreignpurchase.vue"), 
+  component: () => import("@/views/Purchaser/forignpurchase/foreignpurchase.vue"), 
   meta: {
     title: "Foreign Purchase",
     roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost", "formulation_manager", "chemist"],
@@ -423,25 +427,25 @@ const router = createRouter({
 
 
 {
-  path: "local-purchase",  
-  name: "local-purchase",
+  path: "purchase-followup",  
+  name: "purchase-followup",
   component: () =>
-    import("@/views/storemanagement/localPurchase/localpurchase.vue"),
+    import("@/views/Purchaser/localpurchase/purchasefollowup.vue"),
   meta: {
-    title: "local-purchase",
-    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
+    title: "Purchase Follow-up",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist", "purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
   },
 },
 
 
 {
-  path: "approved-requests",  
-  name: "approved-requests",
+  path: "dispatch-approved-requests",  
+  name: "dispatch-approved-requests",
   component: () =>
-    import("@/views/storemanagement/localPurchase/components/GetApprovedPurchaseRequests.vue"),
+    import("@/views/Purchaser/localpurchase/dispatchapprovedrequest.vue"),
   meta: {
-    title: "approved-requests",
-    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist"],
+    title: "dispatch-approved-requests",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost","formulation_manager","chemist", "purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
   },
 },
 
@@ -582,22 +586,46 @@ const router = createRouter({
           {
           path: "purchase-requests",
           name: "purchase-requests",
-          component: () => import("@/views/Purchaser/PurchaseRequest.vue"),
+          component: () => import("@/views/Purchaser/localpurchase/PurchaseRequest.vue"),
           meta: {
             title: "purchase requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker"],
+            roles: ["admin", "storekeeper", "store_it", "checker","employee", "nebret", "cost","formulation_manager","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
           },
         },
 
             {
           path: "print-purchase-request",
           name: "print-purchase-request",
-          component: () => import("@/views/Purchaser/PrintPurchaseRequest.vue"),
+          component: () => import("@/views/Purchaser/localpurchase/PrintPurchaseRequest.vue"),
           meta: {
             title: "print purchase request ",
             roles: ["admin", "storekeeper", "store_it", "checker"],
           },
         },
+
+             {
+          path: "purchase-groups",
+          name: "purchase-groups",
+          component: () => import("@/views/Purchaser/localpurchase/PurchasingGroups.vue"),
+          meta: {
+            title: "purchase groups ",
+            roles: ["admin", "storekeeper", "store_it", "checker"],
+          },
+        },
+
+              {
+          path: "approved-purchase-requests",
+          name: "approved-purchase-requests",
+          component: () => import("@/views/Purchaser/localpurchase/ApprovedPurchaseRequests.vue"),
+          meta: {
+            title: "approved purchase requests ",
+            roles: ["admin", "storekeeper", "store_it", "checker","employee", "nebret", "cost","formulation_manager","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
+          },
+        },
+
+        
+
+        
 
         {
           path: "store-to-store",
@@ -692,7 +720,7 @@ const router = createRouter({
             import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
           },
         },
 

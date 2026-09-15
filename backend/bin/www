@@ -87,8 +87,27 @@ function onListening() {
     ? 'pipe ' + addr
     : 'port ' + addr.port;
   debug('Listening on ' + bind);
+
+  // Find the LAN IP
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  let lanIp = 'localhost';
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        lanIp = net.address;
+        break;
+      }
+    }
+    if (lanIp !== 'localhost') break;
+  }
+
   console.log(`=================================`);
-  console.log(`🚀 Server running on http://localhost:${port}`);
-  console.log(`📝 API URL: http://localhost:${port}/api`);
+  console.log(`🚀 Server running`);
+  console.log(`   Local:   http://localhost:${port}`);
+  console.log(`   Network: http://${lanIp}:${port}`);
+  console.log(`   API:     http://${lanIp}:${port}/api`);
+  console.log(`=================================`);
+  console.log(`📱 For mobile .env: EXPO_PUBLIC_API_URL=http://${lanIp}:${port}/api`);
   console.log(`=================================`);
 }

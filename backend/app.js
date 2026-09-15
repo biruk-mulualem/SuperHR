@@ -103,12 +103,16 @@ const costDashboardRoutes = require('./routes/costDashboardRoutes');
 const stockCardRoutes = require('./routes/stockCardRoutes');
 const finishedGoodRoutes = require('./routes/finishedGoodRoutes');
 const convertedBalanceRoutes = require('./routes/convertedBalanceRoutes');
-
+const purchaseFollowUpRoutes = require('./routes/purchaseFollowUpRoutes');
+const mobileManagerDashboardRoutes = require('./routes/mobileManagerDashboardRoutes');
 const formulationRoutes = require('./routes/formulationRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 
 // ========== NEW: BACKUP ROUTES ==========
 const backupRoutes = require("./routes/backupRoutes");
+
+const purchasingGroupRoutes = require("./routes/purchasingGroupRoutes");
+const purchaseRequestRoutes = require('./routes/purchaseRequestRoutes');
 
 // ============================================================================
 // GLOBAL MIDDLEWARE
@@ -170,9 +174,12 @@ app.use('/api/finished-goods', finishedGoodRoutes);
 app.use('/api/formulations', formulationRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/converted-balances', convertedBalanceRoutes);
+app.use('/api/purchasing-groups', purchasingGroupRoutes);
+app.use('/api/purchase-follow-ups', purchaseFollowUpRoutes);
+app.use('/api/mobile/manager-dashboard', mobileManagerDashboardRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
-
+app.use('/api/purchase-requests', purchaseRequestRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

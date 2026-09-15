@@ -99,6 +99,10 @@ const roleTitle = computed(() => {
     formulation_manager:"formulation manager",
     production_order:"production_order",
     chemist:"chemist",
+    purchase_organizer:"purchase_organizer",
+    purchasing_checkers:"purchasing_checkers",
+    purchasing_auditor:"purchasing_auditor",
+    purchaser:"purchaser",
   };
   return titles[userRole.value] || "User";
 });
@@ -177,16 +181,25 @@ const roleMenus = {
     { name: "audit", path: "/audit", icon: "ClockIcon", badge: null },
     { name: "item-cost", path: "/item-cost", icon: "CogIcon", badge: null },
     { name: "Settings", path: "/settings", icon: "CogIcon", badge: null },
-     { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
-          { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
-           { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
-           { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
-           { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
-            { name: "foreign-purchase", path: "/foreign-purchase", icon: "CogIcon", badge: null },
-             { name: "local-purchase", path: "/local-purchase", icon: "CogIcon", badge: null },
-             { name: "converted-audit", path: "/converted-audit", icon: "CogIcon", badge: null },
-               { name: "store-cleanup", path: "/store-cleanup", icon: "CogIcon", badge: null },
-                   { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+    { name: "finished goods", path: "/finished-goods", icon: "CogIcon", badge: null },
+    { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+    { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
+    { name: "formulation", path: "/formulation", icon: "CogIcon", badge: null },
+    { name: "orders", path: "/orders", icon: "CogIcon", badge: null },
+   {
+      name: "pending-request",
+      path: "/pending-request",
+      icon: "CogIcon",
+      badge: null,
+    },
+    { name: "converted-audit", path: "/converted-audit", icon: "CogIcon", badge: null },
+    { name: "store-cleanup", path: "/store-cleanup", icon: "CogIcon", badge: null },
+    { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+    { name: "purchase-groups", path: "/purchase-groups", icon: "CogIcon", badge: null },
+    { name: "approved-requests", path: "/approved-purchase-requests", icon: "CogIcon", badge: null },     
+        
+    { name: "purchase-followup", path: "/purchase-followup", icon: "CogIcon", badge: null },     
+    { name: "foreign-purchase", path: "/foreign-purchase", icon: "CogIcon", badge: null },
            
            
     // {
@@ -201,12 +214,7 @@ const roleMenus = {
     //   icon: "CogIcon",
     //   badge: null,
     // }, // ← Primary menu for Asset Manager
-    {
-      name: "pending-request",
-      path: "/pending-request",
-      icon: "CogIcon",
-      badge: null,
-    }, // ← Primary menu for Asset Manager
+ 
   ],
   hr: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
@@ -429,7 +437,52 @@ const roleMenus = {
                 { name: "order-notifications", path: "/order-notifications", icon: "CogIcon", badge: null },
                   { name: "productions", path: "/productions", icon: "CogIcon", badge: null },
   ],
+ purchase_organizer: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+        { name: "purchase-followup", path: "/purchase-followup", icon: "CogIcon", badge: null }, 
+   
+  ],
+ purchasing_checkers: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+      {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+        { name: "approved-requests", path: "/approved-purchase-requests", icon: "CogIcon", badge: null }, 
+  ],
+   purchasing_auditor: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+      { name: "approved-requests", path: "/approved-purchase-requests", icon: "CogIcon", badge: null },    
+  ],
+   purchaser: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+   { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+  ],
 
+
+  
 };
 
 const menuItems = computed(() => {

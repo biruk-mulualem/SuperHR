@@ -421,7 +421,9 @@
 
       <!-- ==================== FOOTER ==================== -->
       <div class="modal-footer">
+        
         <button class="btn-secondary" @click="closeModal">Cancel</button>
+        
         <button
           v-show="!showValidationErrors"
           class="btn-primary"
@@ -430,6 +432,7 @@
         >
           {{ saving ? "Saving..." : editingRequest ? "Update" : "Create" }}
         </button>
+    
       </div>
     </div>
   </div>

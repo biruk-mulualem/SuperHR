@@ -1,0 +1,410 @@
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, FlatList } from 'react-native';
+
+// Sample data for Pending Approval - grouped by Purchase Order
+const PENDING_ORDERS = [
+  {
+    id: 'PO-2026-001',
+    requestNumber: 'PR-2026-0001',
+    requester: 'Abebe Kebede',
+    department: 'Production',
+    date: '2026-09-05',
+    status: 'pending',
+    totalAmount: 3200.00,
+    itemCount: 3,
+    priority: 'High',
+    reason: 'Urgent replacement for production line equipment',
+    imageUrl: 'https://images.unsplash.com/photo-1581091226033-d5c48150dbaa?w=800&h=600&fit=crop',
+    items: [
+      {
+        id: 1,
+        item: 'Steel Pipe 2 inch',
+        code: 'SP-002',
+        quantity: 50,
+        uom: 'PCS',
+        amount: 1200.00,
+        description: 'Heavy duty steel pipe for production line',
+        bids: [
+          { employee: 'Selam Tesfaye', price: 1250.00, date: '2026-09-04', notes: 'Available in 3 days' },
+          { employee: 'Mekonnen Alemu', price: 1180.00, date: '2026-09-03', notes: 'In stock' },
+          { employee: 'Tigist Hailu', price: 1300.00, date: '2026-09-02', notes: 'Premium quality' },
+        ]
+      },
+      {
+        id: 2,
+        item: 'Industrial Paint',
+        code: 'IP-100',
+        quantity: 30,
+        uom: 'LTR',
+        amount: 450.00,
+        description: 'Industrial grade paint for equipment',
+        bids: [
+          { employee: 'Abebe Kebede', price: 460.00, date: '2026-09-04', notes: 'Premium quality' },
+          { employee: 'Tigist Hailu', price: 440.00, date: '2026-09-03', notes: 'Fast delivery' },
+          { employee: 'Meron Ayele', price: 470.00, date: '2026-09-02', notes: 'Available now' },
+        ]
+      },
+      {
+        id: 3,
+        item: 'Hydraulic Pump',
+        code: 'HP-500',
+        quantity: 2,
+        uom: 'SET',
+        amount: 1550.00,
+        description: 'Hydraulic pump for press machine',
+        bids: [
+          { employee: 'Dawit Solomon', price: 1550.00, date: '2026-09-04', notes: 'In stock' },
+          { employee: 'Meron Ayele', price: 1500.00, date: '2026-09-03', notes: 'Available in 2 days' },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'PO-2026-002',
+    requestNumber: 'PR-2026-0005',
+    requester: 'Selam Tesfaye',
+    department: 'Maintenance',
+    date: '2026-09-03',
+    status: 'pending',
+    totalAmount: 1130.00,
+    itemCount: 2,
+    priority: 'Medium',
+    reason: 'Routine maintenance parts replacement',
+    imageUrl: 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop',
+    items: [
+      {
+        id: 4,
+        item: 'PVC Pipe 50mm',
+        code: 'PVC-050',
+        quantity: 20,
+        uom: 'PCS',
+        amount: 780.00,
+        description: 'PVC pipes for plumbing maintenance',
+        bids: [
+          { employee: 'Mekonnen Alemu', price: 790.00, date: '2026-09-03', notes: 'Available' },
+          { employee: 'Tigist Hailu', price: 770.00, date: '2026-09-02', notes: 'In stock' },
+        ]
+      },
+      {
+        id: 5,
+        item: 'Bolts and Nuts Set',
+        code: 'BN-001',
+        quantity: 10,
+        uom: 'BOX',
+        amount: 350.00,
+        description: 'Standard bolts and nuts for maintenance',
+        bids: [
+          { employee: 'Selam Tesfaye', price: 360.00, date: '2026-09-03', notes: 'Available' },
+          { employee: 'Mekonnen Alemu', price: 345.00, date: '2026-09-02', notes: 'In stock' },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'PO-2026-003',
+    requestNumber: 'PR-2026-0008',
+    requester: 'Mekonnen Alemu',
+    department: 'Quality Control',
+    date: '2026-09-01',
+    status: 'pending',
+    totalAmount: 2100.00,
+    itemCount: 1,
+    priority: 'High',
+    reason: 'New testing equipment for quality control lab',
+    imageUrl: 'https://images.unsplash.com/photo-1581091226033-d5c48150dbaa?w=800&h=600&fit=crop',
+    items: [
+      {
+        id: 6,
+        item: 'Aluminum Sheet',
+        code: 'AS-002',
+        quantity: 25,
+        uom: 'KG',
+        amount: 2100.00,
+        description: 'Aluminum sheets for fabrication',
+        bids: []
+      }
+    ]
+  }
+];
+
+const PendingApprovalPage = ({ onBack, darkMode, textColor, subTextColor, cardBg, borderColor, onNavigateToDetail }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const data = PENDING_ORDERS;
+
+  const filteredData = data.filter(order => 
+    order.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    order.requester.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    order.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    order.id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const getPriorityColor = (priority) => {
+    const colors = {
+      High: '#EF4444',
+      Medium: '#F59E0B',
+      Low: '#10B981',
+      Normal: '#3B82F6',
+    };
+    return colors[priority] || '#64748B';
+  };
+
+  const renderItem = ({ item: order }) => (
+    <TouchableOpacity 
+      style={[styles.listItem, { backgroundColor: cardBg, borderColor }]}
+      activeOpacity={0.7}
+    >
+      <View style={styles.listItemHeader}>
+        <View style={styles.orderTitleContainer}>
+          <Text style={[styles.orderNumber, { color: textColor }]}>{order.requestNumber}</Text>
+          <Text style={[styles.orderId, { color: subTextColor }]}>{order.id}</Text>
+        </View>
+        <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(order.priority) + '20' }]}>
+          <Text style={[styles.priorityText, { color: getPriorityColor(order.priority) }]}>
+            {order.priority || 'Normal'}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={styles.orderInfo}>
+        <Text style={[styles.orderRequester, { color: textColor }]}>👤 {order.requester}</Text>
+        <Text style={[styles.orderDepartment, { color: subTextColor }]}>{order.department}</Text>
+      </View>
+      
+      <View style={styles.orderDetails}>
+        <View style={styles.detailBadge}>
+          <Text style={[styles.detailBadgeText, { color: subTextColor }]}>
+            📦 {order.itemCount || order.items?.length || 0} items
+          </Text>
+        </View>
+        <View style={styles.detailBadge}>
+          <Text style={[styles.detailBadgeText, { color: subTextColor }]}>
+            📅 {order.date}
+          </Text>
+        </View>
+        <View style={styles.detailBadge}>
+          <Text style={[styles.detailBadgeText, { color: '#F59E0B' }]}>
+            💰 ETB {order.totalAmount?.toFixed(2) || '0.00'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity 
+          style={[styles.detailButton, { borderColor: '#3B82F6' }]}
+          onPress={() => {
+            // Make sure we pass the full order object
+            if (onNavigateToDetail) {
+              onNavigateToDetail('pendingDetail', { order });
+            }
+          }}
+        >
+          <Text style={[styles.detailButtonText, { color: '#3B82F6' }]}>📋 View Details</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.approveButton, { backgroundColor: '#10B981' }]}>
+          <Text style={styles.approveButtonText}>✅ Approve All</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={[styles.detailContainer, { backgroundColor: darkMode ? '#0F172A' : '#F8FAFC' }]}>
+      <View style={styles.detailHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.detailTitle, { color: textColor }]}>⏳ Pending Approval</Text>
+        <View style={styles.detailCount}>
+          <Text style={[styles.detailCountText, { color: subTextColor }]}>{filteredData.length} orders</Text>
+        </View>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={[styles.searchInput, { backgroundColor: cardBg, borderColor, color: textColor }]}
+          placeholder="Search by order #, requester, or department..."
+          placeholderTextColor={subTextColor}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
+
+      <FlatList
+        data={filteredData}
+        renderItem={renderItem}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.emptyText, { color: subTextColor }]}>No pending approvals</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  detailContainer: {
+    flex: 1,
+    paddingTop: 10,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 12,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  detailTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  detailCount: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+  },
+  detailCountText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  searchInput: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    fontSize: 14,
+  },
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  listItem: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  listItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  orderTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  orderNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  orderId: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+  },
+  priorityBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  orderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  orderRequester: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  orderDepartment: {
+    fontSize: 13,
+  },
+  orderDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  detailBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+  },
+  detailBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  detailButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  approveButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  approveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+});
+
+export default PendingApprovalPage;
