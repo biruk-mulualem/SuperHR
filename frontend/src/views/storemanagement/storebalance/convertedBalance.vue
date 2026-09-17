@@ -21,7 +21,7 @@
           📦Adjust Balance
         </button>
         <button class="btn-convert" @click="openConvertModal">
-          🔄 Convert
+          🔄 ውስጥ ለውስጥ  
         </button>
         <button class="btn-export" @click="openExportModal" :disabled="exporting">
           <span v-if="exporting" class="spinner-small"></span>
