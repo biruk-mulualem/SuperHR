@@ -678,15 +678,23 @@ const isUserSupplyingStore = (req: ItemRequest): boolean => {
 
 const canEditRequest = (req: ItemRequest): boolean => {
   if (!isUserAskingStore(req)) return false;
+
+  // Editable statuses
   if (req.status === 'rejected') return true;
+  if (req.status === 'approved') return true;   // ← new
+
   if (isSkipStore(req)) return req.status === 'pending';
+
   if (req.status === 'pending') {
     if (req.notifications && req.notifications.length > 0) {
-      const allAccepted = req.notifications.every((n: { status: string; }) => n.status === 'accepted');
+      const allAccepted = req.notifications.every(
+        (n: { status: string }) => n.status === 'accepted'
+      );
       return !allAccepted;
     }
     return true;
   }
+
   return false;
 };
 

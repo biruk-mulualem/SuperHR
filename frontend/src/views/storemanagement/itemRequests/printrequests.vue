@@ -82,32 +82,7 @@
       </div>
     </div>
 
-    <div class="footer-sections">
-      <div class="input-row">
-        <div class="gray-label">Reason</div>
-        <div class="lines-container">
-          <div class="reason-content-text">
-            {{ requestData.remark || '' }}
-          </div>
-        </div>
-      </div>
-
-      <div class="input-row short-width">
-        <div class="gray-label">Comment</div>
-        <div class="lines-container">
-          <div class="write-line"></div>
-          <div class="write-line"></div>
-        </div>
-      </div>
-
-      <div class="checked-by-section">
-        <div class="gray-label inline-label">Checked By</div>
-        <div class="checked-by-body">
-          <p><strong>Name</strong> _____________________________.</p>
-          <p><strong>Signature</strong> _____________________</p>
-        </div>
-      </div>
-    </div>
+  
   </div>
 
   <div v-else-if="loading" class="loading-state">

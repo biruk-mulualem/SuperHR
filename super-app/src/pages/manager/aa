@@ -225,7 +225,7 @@ const PendingApprovalPage = ({ darkMode, textColor, subTextColor, cardBg, border
       <View style={styles.searchContainer}>
         <TextInput
           style={[styles.searchInput, { backgroundColor: cardBg, borderColor, color: textColor }]}
-          placeholder="Search by order #, item, requester ..."
+          placeholder="Search by order #, item, requester, or department..."
           placeholderTextColor={subTextColor}
           value={searchQuery}
           onChangeText={setSearchQuery}
