@@ -23,6 +23,9 @@ router.post('/stock-in', ConvertedBalanceController.stockIn);
 // POST /api/converted-balances/stock-out
 router.post('/stock-out', ConvertedBalanceController.stockOut);
 
+router.get('/items', ConvertedBalanceController.getConvertedBalanceItems);
+
+
 // PERFORM CONVERSION - Reduces base balance, increases converted balance
 // POST /api/converted-balances/convert
 router.post('/convert', ConvertedBalanceController.convert);

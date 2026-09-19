@@ -30,7 +30,11 @@ export function resolveDocUrl(url?: string | null): string {
 // ================================================================
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
-export type FollowUpStatus = 'pending_bids' | 'bidding' | 'submitted';
+export type FollowUpStatus =
+  | 'pending_bids'
+  | 'bidding'
+  | 'submitted'
+  | 'rejected';     // 👈 new
 export type PriceStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface FollowUpPrice {
@@ -64,7 +68,7 @@ export interface FollowUpItem {
   model?: string | null;
   specification?: string | null;
   remark?: string | null;
-  status: 'pending_bids' | 'bidding';
+   status: 'pending_bids' | 'bidding' | 'submitted' | 'rejected';
   hasWinner: boolean;
   winnerManuallySelected: boolean;
   bids: FollowUpPrice[];
@@ -97,6 +101,7 @@ export interface FollowUp {
   requestDate: string;
   priority: Priority;
   status: FollowUpStatus;
+  rawStatus?: string | null;              // 👈 also handy — the actual PR status
   expertName?: string | null;
   preparedBy?: string | null;
   approvedDate?: string | null;
@@ -107,6 +112,12 @@ export interface FollowUp {
   dispatchedTo: DispatchedPerson[];
   items: FollowUpItem[];
   summary: FollowUpSummary;
+
+  // 🆕 Boss decision
+  bossReviewedAt?: string | null;         // null if not yet reviewed
+  bossReviewed?: boolean;                 // convenience boolean
+  bossDecision?: "approved" | "declined" | null;
+  bossDeclineReason?: string | null;      // the boss's reason when declined
 }
 
 export interface ListParams {
@@ -116,6 +127,7 @@ export interface ListParams {
   status?: 'all' | FollowUpStatus;
   department?: string;
   priority?: 'all' | Priority;
+  bossDecision?: 'all' | 'pending' | 'approved' | 'declined';  
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
 }
@@ -203,6 +215,7 @@ class PurchaseFollowUpService {
       if (params.search) qp.append('search', params.search);
       if (params.status) qp.append('status', params.status);
       if (params.department) qp.append('department', params.department);
+      if (params.bossDecision) qp.append('bossDecision', params.bossDecision);  
       if (params.priority) qp.append('priority', params.priority);
       if (params.sortBy) qp.append('sortBy', params.sortBy);
       if (params.sortOrder) qp.append('sortOrder', params.sortOrder);
@@ -468,9 +481,18 @@ async sendToBoss(requestId: number, message: string | null = null) {
       pending_bids: 'Pending',
       bidding: 'Price Collection',
       submitted: 'Submitted',
+      rejected: 'Halted',  
     };
     return map[status] || status;
   }
+
+/** Human-readable boss decision label */
+getBossDecisionLabel(followUp: FollowUp): string {
+  if (!followUp.bossReviewed) return '';
+  if (followUp.bossDecision === 'approved') return 'Boss Approved';
+  if (followUp.bossDecision === 'declined') return 'Halted by Boss';
+  return '';
+}
 
   /** Format a date as "Sep 12, 2026" */
   formatDate(dateString?: string | null): string {

@@ -61,6 +61,48 @@ export interface AvailableItem {
     targetUomId: number;
 }
 
+/**
+ * Item that already has a converted balance row for a given store+group.
+ * Returned by getConvertedBalanceItems().
+ */
+export interface ConvertedBalanceItem {
+    id: number;
+    itemId: number;
+    code: string;
+    name: string;
+    standardName?: string;
+    uomId?: number;
+    uomCode?: string;
+    uomName?: string;
+    conversionUomId?: number;
+    conversionUomCode?: string;
+    conversionUomName?: string;
+    conversionValue?: number;
+    categoryId?: number;
+    categoryName?: string;
+    convertedBalance: number;
+}
+
+export interface ConvertedBalanceItemsParams {
+    storeId?: number;
+    groupId?: number;
+    search?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface ConvertedBalanceItemsResponse {
+    success: boolean;
+    data: ConvertedBalanceItem[];
+    pagination?: {
+        total: number;
+        page: number;
+        totalPages: number;
+        limit: number;
+    };
+    error?: string;
+}
+
 export interface ConversionItem {
     balanceId: number;
     itemId: number;
@@ -230,6 +272,54 @@ class ConvertedBalanceService {
         
         const response = await api.get(`/converted-balances/available?${params.toString()}`);
         return response.data;
+    }
+
+    /**
+     * ================================================================
+     * GET ITEMS THAT HAVE A CONVERTED BALANCE
+     * Used by InitializeConvertedBalanceModal so users can only pick
+     * items that already exist in converted_balances for the given
+     * store+group. Each row carries its own balance — never shared.
+     * ================================================================
+     */
+    async getConvertedBalanceItems(
+        params: ConvertedBalanceItemsParams = {}
+    ): Promise<ConvertedBalanceItemsResponse> {
+        try {
+            const authStore = useAuthStore();
+            const storeId = params.storeId || authStore.userStoreId;
+            const groupId = params.groupId || authStore.userGroupId;
+
+            if (!storeId || !groupId) {
+                return {
+                    success: false,
+                    data: [],
+                    error: 'Store and group are required',
+                };
+            }
+
+            const qp = new URLSearchParams();
+            qp.append('storeId', String(storeId));
+            qp.append('groupId', String(groupId));
+            if (params.search) qp.append('search', params.search);
+            if (params.page) qp.append('page', String(params.page));
+            if (params.limit) qp.append('limit', String(params.limit));
+
+            const response = await api.get(
+                `/converted-balances/items?${qp.toString()}`
+            );
+            return response.data;
+        } catch (error: any) {
+            console.error('Get converted balance items error:', error);
+            return {
+                success: false,
+                data: [],
+                error:
+                    error.response?.data?.error ||
+                    error.response?.data?.message ||
+                    'Failed to fetch converted balance items',
+            };
+        }
     }
 
     /**

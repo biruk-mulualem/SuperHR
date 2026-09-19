@@ -101,13 +101,6 @@ const toFollowUpDto = (pr) => {
 
     const winner = prices.find((p) => p.isWinner) || null;
 
-    // ----------------------------------------------------------
-    // Per-item workflow status
-    //   no prices                        → pending_bids
-    //   prices, but no winner            → bidding
-    //     └─ if all prices rejected      → rejected
-    //   a winner exists                  → submitted
-    // ----------------------------------------------------------
     let itemStatus = 'pending_bids';
     if (prices.length > 0) {
       const allRejected = prices.every((p) => p.status === 'rejected');
@@ -149,14 +142,28 @@ const toFollowUpDto = (pr) => {
 
   let status = 'pending_bids';
   if (itemsWithWinner === totalItems && totalItems > 0) {
-    status = 'submitted';            // fully resolved
+    status = 'submitted';
   } else if (items.some((i) => i.bids.length > 0)) {
-    status = 'bidding';              // at least one price
+    status = 'bidding';
   }
 
-  // 🔥 Force rejected if the underlying PR is rejected
+  // 🔥 Force rejected if the underlying PR is rejected (halted by boss)
   if (plain.status === 'rejected') {
     status = 'rejected';
+  }
+
+  // ------------------------------------------------------------
+  // 🆕 Boss decision fields
+  // ------------------------------------------------------------
+  const bossReviewedAt = plain.bossReviewedAt || null;
+  let bossDecision = null;
+
+  if (bossReviewedAt) {
+    if (plain.status === 'rejected') {
+      bossDecision = 'declined';
+    } else if (plain.status === 'approved') {
+      bossDecision = 'approved';
+    }
   }
 
   return {
@@ -169,7 +176,7 @@ const toFollowUpDto = (pr) => {
     requestDate: plain.requestedDate,
     priority: plain.priority,
     status,
-    rawStatus: plain.status,          // 🔥 expose raw PR status too
+    rawStatus: plain.status,
     expertName: plain.expertName,
     preparedBy: plain.preparedBy,
     approvedDate: plain.approvedAt || plain.updatedAt,
@@ -177,6 +184,12 @@ const toFollowUpDto = (pr) => {
     approvedDocFrontName: plain.approvedDocFrontName,
     approvedDocBack: plain.approvedDocBack,
     approvedDocBackName: plain.approvedDocBackName,
+
+    // 🆕 Boss decision
+    bossReviewedAt,                  // null if not yet reviewed
+    bossReviewed: !!bossReviewedAt,  // convenience boolean
+    bossDecision,                    // 'approved' | 'declined' | null
+    bossDeclineReason: plain.declineReason || null,
 
     // Related data
     dispatchedTo,
@@ -190,16 +203,15 @@ const toFollowUpDto = (pr) => {
       totalBids: items.reduce((sum, i) => sum + i.bids.length, 0),
       totalWinningAmount: items.reduce(
         (sum, i) => sum + (i.bids.find((b) => b.isWinner)?.finalPrice || 0),
-        0
+        0,
       ),
     },
   };
 };
 
 // ================================================================
-// 1. LIST — GET /api/purchase-follow-ups
-//    Lists PRs (approved + submitted + rejected) with their
-//    follow-up data. Honors ?status= filter.
+// 1. LIST
+//    GET /api/purchase-follow-ups
 // ================================================================
 exports.listFollowUps = async (req, res) => {
   try {
@@ -210,6 +222,7 @@ exports.listFollowUps = async (req, res) => {
       status = 'all',
       department = 'all',
       priority = 'all',
+      bossDecision = 'all',   // 🆕 'all' | 'approved' | 'declined' | 'pending'
       sortBy = 'updated_at',
       sortOrder = 'DESC',
     } = req.query;
@@ -220,8 +233,6 @@ exports.listFollowUps = async (req, res) => {
 
     // ------------------------------------------------------------
     // Status filter
-    //   'all' → approved + submitted + rejected
-    //   any single value → that exact status
     // ------------------------------------------------------------
     const where = {};
     if (!status || status === 'all') {
@@ -237,6 +248,17 @@ exports.listFollowUps = async (req, res) => {
 
     if (department && department !== 'all') where.department = department;
     if (priority && priority !== 'all') where.priority = priority;
+
+    // 🆕 Boss decision filter
+    if (bossDecision === 'pending') {
+      where.bossReviewedAt = null;
+    } else if (bossDecision === 'approved') {
+      where.bossReviewedAt = { [Op.ne]: null };
+      where.status = 'approved';
+    } else if (bossDecision === 'declined') {
+      where.bossReviewedAt = { [Op.ne]: null };
+      where.status = 'rejected';
+    }
 
     if (search.trim()) {
       const q = search.trim();
@@ -287,7 +309,7 @@ exports.listFollowUps = async (req, res) => {
 };
 
 // ================================================================
-// 2. GET ONE — GET /api/purchase-follow-ups/:prId
+// 2. GET ONE
 // ================================================================
 exports.getFollowUp = async (req, res) => {
   try {
@@ -322,9 +344,7 @@ exports.getFollowUp = async (req, res) => {
 };
 
 // ================================================================
-// 3. SUBMIT PRICE — POST /api/purchase-follow-ups/items/:itemId/prices
-//    Body: { employee, unitPrice, discount, matchesRequirement,
-//            remark, notes }
+// 3. SUBMIT PRICE
 // ================================================================
 exports.submitPrice = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -340,7 +360,6 @@ exports.submitPrice = async (req, res) => {
       notes = null,
     } = req.body;
 
-    // ---------- Validation ----------
     if (!employee || String(employee).trim() === '') {
       await t.rollback();
       return res.status(400).json({ success: false, error: 'Employee name is required' });
@@ -360,7 +379,6 @@ exports.submitPrice = async (req, res) => {
       });
     }
 
-    // ---------- Find the item + existing prices ----------
     const item = await PurchaseRequestItem.findByPk(itemId, {
       include: [
         {
@@ -378,7 +396,6 @@ exports.submitPrice = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Item not found' });
     }
 
-    // ---------- Compute prices ----------
     const quantity = Number(item.quantity) || 0;
     const disc = Number(discount) || 0;
     const totalPrice = Number((unit * quantity).toFixed(2));
@@ -386,7 +403,6 @@ exports.submitPrice = async (req, res) => {
 
     const existingPrices = item.prices || [];
 
-    // ---------- Auto-winner logic ----------
     const manualWinner = existingPrices.find((p) => p.isWinner && p.winnerManuallySelected);
     let shouldBeWinner = false;
 
@@ -400,7 +416,6 @@ exports.submitPrice = async (req, res) => {
       shouldBeWinner = finalPrice < lowestMatch;
     }
 
-    // ---------- Insert the new price ----------
     const newPrice = await PurchaseFollowUpPrice.create(
       {
         purchaseRequestItemId: item.id,
@@ -421,7 +436,6 @@ exports.submitPrice = async (req, res) => {
       { transaction: t }
     );
 
-    // ---------- If new price became winner, demote the old ----------
     if (shouldBeWinner) {
       await PurchaseFollowUpPrice.update(
         { isWinner: false, status: 'rejected' },
@@ -458,7 +472,7 @@ exports.submitPrice = async (req, res) => {
 };
 
 // ================================================================
-// 4. EDIT PRICE — PUT /api/purchase-follow-ups/prices/:priceId
+// 4. EDIT PRICE
 // ================================================================
 exports.updatePrice = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -957,7 +971,7 @@ exports.removeDispatch = async (req, res) => {
 };
 
 // ================================================================
-// 9. STATS — GET /api/purchase-follow-ups/stats
+// 9. STATS
 // ================================================================
 exports.getFollowUpStats = async (req, res) => {
   try {
@@ -966,18 +980,25 @@ exports.getFollowUpStats = async (req, res) => {
       baseWhere.createdById = req.user?.userId ?? -1;
     }
 
-    // Counts by PR status
-    const [totalPRs, submittedPRs, rejectedPRs] = await Promise.all([
-      PurchaseRequest.count({ where: baseWhere }),
-      PurchaseRequest.count({
-        where: { ...baseWhere, status: 'submitted' },
-      }),
-      PurchaseRequest.count({
-        where: { ...baseWhere, status: 'rejected' },
-      }),
-    ]);
+    const [totalPRs, submittedPRs, rejectedPRs, bossApprovedPRs] =
+      await Promise.all([
+        PurchaseRequest.count({ where: baseWhere }),
+        PurchaseRequest.count({
+          where: { ...baseWhere, status: 'submitted' },
+        }),
+        PurchaseRequest.count({
+          where: { ...baseWhere, status: 'rejected' },
+        }),
+        // 🆕 Boss-approved count
+        PurchaseRequest.count({
+          where: {
+            ...baseWhere,
+            status: 'approved',
+            bossReviewedAt: { [Op.ne]: null },
+          },
+        }),
+      ]);
 
-    // Count items with at least one price (bidding)
     const biddingItemCount = await PurchaseRequestItem.count({
       distinct: true,
       col: 'id',
@@ -998,7 +1019,6 @@ exports.getFollowUpStats = async (req, res) => {
       ],
     });
 
-    // Count items with a winner
     const winnerItemCount = await PurchaseRequestItem.count({
       distinct: true,
       col: 'id',
@@ -1019,7 +1039,6 @@ exports.getFollowUpStats = async (req, res) => {
       ],
     });
 
-    // Total items across the tracked PRs
     const totalItems = await PurchaseRequestItem.count({
       distinct: true,
       col: 'id',
@@ -1038,8 +1057,9 @@ exports.getFollowUpStats = async (req, res) => {
       success: true,
       data: {
         totalRequests: totalPRs,
-        submittedRequests: submittedPRs,   // 🔥 NEW
-        rejectedRequests: rejectedPRs,     // 🔥 NEW
+        submittedRequests: submittedPRs,
+        rejectedRequests: rejectedPRs,
+        bossApprovedRequests: bossApprovedPRs,   // 🆕
         totalItems,
         biddingItems: biddingItemCount,
         winnerItems: winnerItemCount,
@@ -1052,7 +1072,7 @@ exports.getFollowUpStats = async (req, res) => {
 };
 
 // ================================================================
-// 10. SEND TO BOSS — POST /api/purchase-follow-ups/:prId/send-to-boss
+// 10. SEND TO BOSS
 // ================================================================
 exports.sendToBoss = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -1181,9 +1201,14 @@ exports.sendToBoss = async (req, res) => {
       { transaction: t }
     );
 
-    if (pr.status !== 'submitted') {
-      await pr.update({ status: 'submitted' }, { transaction: t });
-    }
+    // 🆕 Reset the boss's review marker — the boss needs to look at this again
+    await pr.update(
+      {
+        status: 'submitted',
+        bossReviewedAt: null,     // 👈 important: any previous approval is invalidated
+      },
+      { transaction: t }
+    );
 
     await t.commit();
 

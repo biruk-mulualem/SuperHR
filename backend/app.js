@@ -113,7 +113,7 @@ const backupRoutes = require("./routes/backupRoutes");
 
 const purchasingGroupRoutes = require("./routes/purchasingGroupRoutes");
 const purchaseRequestRoutes = require('./routes/purchaseRequestRoutes');
-
+const mobileDetailRoutes = require('./routes/mobileDetailRoutes'); // 👈 NEW
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -180,6 +180,7 @@ app.use('/api/mobile/manager-dashboard', mobileManagerDashboardRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);
+app.use('/api/mobile', mobileDetailRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

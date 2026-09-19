@@ -103,10 +103,18 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 'medium',
       },
       status: {
-        type: DataTypes.ENUM('draft', 'approved'),
+         type: DataTypes.ENUM(
+    'draft',
+    'pending',
+    'submitted',
+    'approved',
+    'rejected',
+  ),
         allowNull: false,
         defaultValue: 'draft',
       },
+
+      
 
       // ✅ Who created this request (FK to users.user_id)
       createdById: {
@@ -131,6 +139,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'approved_doc_back',
       },
+      bossReviewedAt: {
+  type: DataTypes.DATE,
+  allowNull: true,
+  field: 'boss_reviewed_at',
+},
+declineReason: {
+  type: DataTypes.TEXT,
+  allowNull: true,
+  field: 'decline_reason',
+},
       approvedDocBackName: {
         type: DataTypes.STRING(255),
         allowNull: true,

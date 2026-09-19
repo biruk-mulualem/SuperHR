@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// pages/manager/PendingDetailPage.js
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,6 +11,7 @@ import {
   Dimensions,
   TextInput,
   Alert,
+  ActivityIndicator,
   TouchableWithoutFeedback,
 } from 'react-native';
 import {
@@ -22,31 +24,19 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
+import mobileManagerDetailService from '../../stores/mobileManagerDetailService';
+import { API_BASE } from '../../constants/config';
 
 const { width, height } = Dimensions.get('window');
 
-// Demo order data
-const DEMO_ORDER = {
-  id: 'PO-2026-001',
-  requestNumber: 'PR-2026-0001',
-  requester: 'Abebe Kebede',
-  employeeId: 'EMP-001',
-  email: 'abebe.kebede@company.com',
-  department: 'Production',
-  date: '2026-09-05',
-  status: 'pending',
-  priority: 'High',
-  reason:
-    'Urgent replacement for production line equipment. The current pipes and pumps are worn out and need immediate replacement to maintain production efficiency.',
-  imageUrl:
-    'https://images.unsplash.com/photo-1581091226033-d5c48150dbaa?w=800&h=600&fit=crop',
-  items: [
-    { id: 1, item: 'Steel Pipe 2 inch', code: 'SP-002', quantity: 50, uom: 'PCS' },
-    { id: 2, item: 'Industrial Paint', code: 'IP-100', quantity: 30, uom: 'LTR' },
-    { id: 3, item: 'Hydraulic Pump', code: 'HP-500', quantity: 2, uom: 'SET' },
-    { id: 4, item: 'Conveyor Belt 10m', code: 'CB-010', quantity: 3, uom: 'ROLL' },
-    { id: 5, item: 'Electrical Cable 100m', code: 'EC-100', quantity: 5, uom: 'ROLL' },
-  ],
+// ================================================================
+// Resolve relative /uploads/... URLs into full URLs
+// ================================================================
+const resolveDocUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/')) return `${API_BASE.replace(/\/api$/, '')}${url}`;
+  return url;
 };
 
 // ================================================================
@@ -173,6 +163,7 @@ const ZoomableImage = ({ uri, onClose, containerWidth, containerHeight }) => {
 // ================================================================
 const PendingDetailPage = ({
   onBack,
+  onActionComplete, // 👈 NEW: called after successful approve/decline
   order,
   darkMode,
   textColor,
@@ -180,69 +171,245 @@ const PendingDetailPage = ({
   cardBg,
   borderColor,
 }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const [fullImageVisible, setFullImageVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [declineModalVisible, setDeclineModalVisible] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
-  const [isApproved, setIsApproved] = useState(false);
-  const [isDeclined, setIsDeclined] = useState(false);
 
-  let data = order;
-  if (!data || !data.items || data.items.length === 0) {
-    data = DEMO_ORDER;
-  }
+  // 👇 per-action in-flight flags (replaces the generic `submitting`)
+  const [approving, setApproving] = useState(false);
+  const [declining, setDeclining] = useState(false);
 
-  const items = Array.isArray(data.items) ? data.items : [];
-  const itemCount = items.length;
+  // 👇 set once the action succeeds → hides the buttons
+  const [actionDone, setActionDone] = useState(null); // 'approved' | 'declined' | null
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      High: '#EF4444',
-      Medium: '#F59E0B',
-      Low: '#10B981',
-      Normal: '#3B82F6',
+  // ----------------------------------------------------------------
+  // Fetch full detail on mount
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const passed = order?.order || order;
+
+        if (passed?.items?.length > 0) {
+          if (!cancelled) {
+            setData(passed);
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (!passed?.id) {
+          if (!cancelled) {
+            setError('No request ID was provided');
+            setLoading(false);
+          }
+          return;
+        }
+
+        const res = await mobileManagerDetailService.getRequestDetail(
+          passed.id,
+        );
+
+        if (cancelled) return;
+
+        if (res.success) {
+          setData(res.data);
+        } else {
+          setError(res.error || 'Failed to load request');
+        }
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Network error');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    return colors[priority] || '#64748B';
+  }, [order]);
+
+  // ----------------------------------------------------------------
+  // Helpers
+  // ----------------------------------------------------------------
+  const getPriorityColor = (priority) => {
+    const p = String(priority || '').toLowerCase();
+    const colors = {
+      urgent: '#EF4444',
+      high: '#EF4444',
+      medium: '#F59E0B',
+      low: '#10B981',
+      normal: '#3B82F6',
+    };
+    return colors[p] || '#64748B';
   };
 
-  const openFullImage = (imageUrl) => {
-    setSelectedImage(imageUrl);
+  const openFullImage = (url) => {
+    setSelectedImage(url);
     setFullImageVisible(true);
   };
 
-  const imageUrl =
-    data.imageUrl ||
-    'https://images.unsplash.com/photo-1581091226033-d5c48150dbaa?w=800&h=600&fit=crop';
+  const busy = approving || declining;
 
-  const openApprovalModal = () => {
-    setApprovalModalVisible(true);
+  // ----------------------------------------------------------------
+  // APPROVE
+  // ----------------------------------------------------------------
+  const handleApprove = async () => {
+    if (!data?.id || busy) return; // guard against double-tap
+    try {
+      setApproving(true);
+      const res = await mobileManagerDetailService.approveRequest(data.id);
+
+      if (res.success) {
+        setActionDone('approved');
+        setApprovalModalVisible(false);
+
+        // Notify the parent list to refresh
+        if (typeof onActionComplete === 'function') {
+          onActionComplete({ type: 'approved', id: data.id });
+        }
+
+        Alert.alert(
+          '✅ Order Approved',
+          `Order "${data.requestNumber}" has been approved successfully.`,
+          [{ text: 'OK', onPress: onBack }],
+        );
+      } else {
+        Alert.alert('Error', res.error || 'Failed to approve');
+      }
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Network error');
+    } finally {
+      setApproving(false);
+    }
   };
 
-  const handleApprove = () => {
-    setIsApproved(true);
-    setApprovalModalVisible(false);
-    Alert.alert(
-      '✅ Order Approved',
-      `Order "${data.requestNumber || 'N/A'}" has been approved successfully.`,
-      [{ text: 'OK', onPress: onBack }],
-    );
-  };
-
-  const handleDecline = () => {
+  // ----------------------------------------------------------------
+  // DECLINE
+  // ----------------------------------------------------------------
+  const handleDecline = async () => {
+    if (!data?.id || busy) return; // guard against double-tap
     if (!declineReason.trim()) {
       Alert.alert('Error', 'Please enter a reason for declining');
       return;
     }
-    setIsDeclined(true);
-    setDeclineModalVisible(false);
-    Alert.alert(
-      '❌ Order Declined',
-      `Order "${data.requestNumber || 'N/A'}" has been declined.\n\nReason: ${declineReason}`,
-      [{ text: 'OK', onPress: onBack }],
-    );
+
+    try {
+      setDeclining(true);
+      const res = await mobileManagerDetailService.declineRequest(
+        data.id,
+        declineReason.trim(),
+      );
+
+      if (res.success) {
+        setActionDone('declined');
+        setDeclineModalVisible(false);
+
+        if (typeof onActionComplete === 'function') {
+          onActionComplete({ type: 'declined', id: data.id });
+        }
+
+        Alert.alert(
+          '❌ Order Declined',
+          `Order "${data.requestNumber}" has been declined.\n\nReason: ${declineReason}`,
+          [{ text: 'OK', onPress: onBack }],
+        );
+      } else {
+        Alert.alert('Error', res.error || 'Failed to decline');
+      }
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Network error');
+    } finally {
+      setDeclining(false);
+    }
   };
 
+  // ----------------------------------------------------------------
+  // Loading / Error states
+  // ----------------------------------------------------------------
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.detailContainer,
+          {
+            backgroundColor: darkMode ? '#0F172A' : '#F8FAFC',
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text
+          style={{
+            fontSize: 13,
+            marginTop: 12,
+            color: darkMode ? '#94A3B8' : '#64748B',
+          }}
+        >
+          Loading request...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <View
+        style={[
+          styles.detailContainer,
+          {
+            backgroundColor: darkMode ? '#0F172A' : '#F8FAFC',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 32,
+          },
+        ]}
+      >
+        <Text style={{ fontSize: 44, marginBottom: 12 }}>⚠️</Text>
+        <Text
+          style={{
+            color: darkMode ? '#94A3B8' : '#64748B',
+            fontSize: 14,
+            textAlign: 'center',
+            marginBottom: 20,
+          }}
+        >
+          {error || 'Request not found'}
+        </Text>
+        <TouchableOpacity
+          style={{
+            paddingHorizontal: 24,
+            paddingVertical: 10,
+            borderRadius: 10,
+            borderWidth: 1.5,
+            borderColor: '#3B82F6',
+          }}
+          onPress={onBack}
+        >
+          <Text style={{ color: '#3B82F6', fontSize: 13, fontWeight: '700' }}>
+            Go Back
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  const itemCount = items.length;
+  const imageUrl = resolveDocUrl(data.approvedDocFront || data.imageUrl);
+
+  // ================================================================
+  // RENDER
+  // ================================================================
   return (
     <View
       style={[
@@ -265,7 +432,7 @@ const PendingDetailPage = ({
                 {data.requestNumber || 'N/A'}
               </Text>
               <Text style={[styles.orderId, { color: subTextColor }]}>
-                {data.id || 'N/A'}
+                {data.poNumber || data.id || 'N/A'}
               </Text>
             </View>
             <View
@@ -325,32 +492,56 @@ const PendingDetailPage = ({
         </View>
 
         {/* Document Image */}
-        <View
-          style={[styles.imageSection, { backgroundColor: cardBg, borderColor }]}
-        >
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            📄 Request Document
-          </Text>
-          <TouchableOpacity
-            style={styles.imageContainer}
-            onPress={() => openFullImage(imageUrl)}
-            activeOpacity={0.8}
+        {imageUrl ? (
+          <View
+            style={[
+              styles.imageSection,
+              { backgroundColor: cardBg, borderColor },
+            ]}
           >
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.requestImage}
-              resizeMode="cover"
-            />
-            <View style={styles.imageOverlay}>
-              <Text style={styles.imageOverlayText}>
-                🔍 Tap to view & zoom
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              📄 Request Document
+            </Text>
+            <TouchableOpacity
+              style={styles.imageContainer}
+              onPress={() => openFullImage(imageUrl)}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.requestImage}
+                resizeMode="cover"
+              />
+              <View style={styles.imageOverlay}>
+                <Text style={styles.imageOverlayText}>
+                  🔍 Tap to view & zoom
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* Message from purchaser */}
+        {data.bossMessage ? (
+          <View
+            style={[
+              styles.messageSection,
+              { backgroundColor: cardBg, borderColor },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              📩 Message from Purchaser
+            </Text>
+            <View style={styles.messageContainer}>
+              <Text style={[styles.messageText, { color: textColor }]}>
+                {data.bossMessage}
               </Text>
             </View>
-          </TouchableOpacity>
-        </View>
+          </View>
+        ) : null}
 
         {/* Reason */}
-        {data.reason && (
+        {data.reason ? (
           <View
             style={[
               styles.reasonSection,
@@ -366,28 +557,83 @@ const PendingDetailPage = ({
               </Text>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* Action Buttons */}
         <View style={styles.actionContainer}>
-          {!isApproved && !isDeclined && (
+          {!actionDone && (
             <>
               <TouchableOpacity
-                style={[styles.declineButton, { borderColor: '#EF4444' }]}
+                style={[
+                  styles.declineButton,
+                  {
+                    borderColor: '#EF4444',
+                    opacity: busy && !declining ? 0.5 : 1,
+                  },
+                ]}
                 onPress={() => setDeclineModalVisible(true)}
+                disabled={busy}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.declineButtonText, { color: '#EF4444' }]}>
+                <Text
+                  style={[styles.declineButtonText, { color: '#EF4444' }]}
+                >
                   ❌ Decline
                 </Text>
               </TouchableOpacity>
+
               <TouchableOpacity
-                style={[styles.approveButton, { backgroundColor: '#10B981' }]}
-                onPress={openApprovalModal}
+                style={[
+                  styles.approveButton,
+                  {
+                    backgroundColor: busy && !approving ? '#94A3B8' : '#10B981',
+                  },
+                ]}
+                onPress={() => setApprovalModalVisible(true)}
+                disabled={busy}
+                activeOpacity={0.85}
               >
-                <Text style={styles.approveButtonText}>✅ Approve</Text>
+                {approving ? (
+                  <View style={styles.buttonLoadingRow}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={[styles.approveButtonText, { marginLeft: 8 }]}>
+                      Approving...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.approveButtonText}>✅ Approve</Text>
+                )}
               </TouchableOpacity>
             </>
           )}
+
+          {actionDone ? (
+            <View
+              style={[
+                styles.doneBox,
+                {
+                  backgroundColor:
+                    actionDone === 'approved' ? '#DCFCE7' : '#FEE2E2',
+                  borderColor:
+                    actionDone === 'approved' ? '#86EFAC' : '#FECACA',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.doneText,
+                  {
+                    color:
+                      actionDone === 'approved' ? '#166534' : '#991B1B',
+                  },
+                ]}
+              >
+                {actionDone === 'approved'
+                  ? '✅ Order approved'
+                  : '❌ Order declined'}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -396,10 +642,10 @@ const PendingDetailPage = ({
         animationType="slide"
         transparent={true}
         visible={approvalModalVisible}
-        onRequestClose={() => setApprovalModalVisible(false)}
+        onRequestClose={() => !approving && setApprovalModalVisible(false)}
       >
         <TouchableWithoutFeedback
-          onPress={() => setApprovalModalVisible(false)}
+          onPress={() => !approving && setApprovalModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
@@ -461,21 +707,37 @@ const PendingDetailPage = ({
                   <TouchableOpacity
                     style={[styles.modalCancelButton, { borderColor }]}
                     onPress={() => setApprovalModalVisible(false)}
+                    disabled={approving}
+                    activeOpacity={0.7}
                   >
                     <Text style={[styles.modalCancelText, { color: textColor }]}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
+
                   <TouchableOpacity
                     style={[
                       styles.modalApproveButton,
-                      { backgroundColor: '#10B981' },
+                      { backgroundColor: approving ? '#94A3B8' : '#10B981' },
                     ]}
                     onPress={handleApprove}
+                    disabled={approving}
+                    activeOpacity={0.85}
                   >
-                    <Text style={styles.modalApproveButtonText}>
-                      ✅ Confirm
-                    </Text>
+                    {approving ? (
+                      <View style={styles.buttonLoadingRow}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text
+                          style={[styles.modalApproveButtonText, { marginLeft: 8 }]}
+                        >
+                          Approving...
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.modalApproveButtonText}>
+                        ✅ Confirm
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -489,9 +751,11 @@ const PendingDetailPage = ({
         animationType="slide"
         transparent={true}
         visible={declineModalVisible}
-        onRequestClose={() => setDeclineModalVisible(false)}
+        onRequestClose={() => !declining && setDeclineModalVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setDeclineModalVisible(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => !declining && setDeclineModalVisible(false)}
+        >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View
@@ -545,6 +809,7 @@ const PendingDetailPage = ({
                     onChangeText={setDeclineReason}
                     multiline={true}
                     numberOfLines={4}
+                    editable={!declining}
                   />
                 </View>
 
@@ -552,13 +817,26 @@ const PendingDetailPage = ({
                   <TouchableOpacity
                     style={[
                       styles.modalDeclineButton,
-                      { backgroundColor: '#EF4444' },
+                      { backgroundColor: declining ? '#94A3B8' : '#EF4444' },
                     ]}
                     onPress={handleDecline}
+                    disabled={declining}
+                    activeOpacity={0.85}
                   >
-                    <Text style={styles.modalDeclineButtonText}>
-                      ❌ Confirm Decline
-                    </Text>
+                    {declining ? (
+                      <View style={styles.buttonLoadingRow}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text
+                          style={[styles.modalDeclineButtonText, { marginLeft: 8 }]}
+                        >
+                          Declining...
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.modalDeclineButtonText}>
+                        ❌ Confirm Decline
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
 
@@ -568,9 +846,14 @@ const PendingDetailPage = ({
                     { backgroundColor: darkMode ? '#334155' : '#F1F5F9' },
                   ]}
                   onPress={() => setDeclineModalVisible(false)}
+                  disabled={declining}
+                  activeOpacity={0.7}
                 >
                   <Text
-                    style={[styles.modalCloseButtonText, { color: subTextColor }]}
+                    style={[
+                      styles.modalCloseButtonText,
+                      { color: subTextColor },
+                    ]}
                   >
                     Cancel
                   </Text>
@@ -603,18 +886,13 @@ const PendingDetailPage = ({
   );
 };
 
+// ================================================================
+// STYLES
+// ================================================================
 const styles = StyleSheet.create({
-  detailContainer: {
-    flex: 1,
-    paddingTop: 0,
-  },
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 30,
-  },
+  detailContainer: { flex: 1, paddingTop: 0 },
+  content: { flex: 1 },
+  contentContainer: { padding: 16, paddingBottom: 30 },
 
   // Order Summary
   orderSummary: {
@@ -629,42 +907,26 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  orderNumber: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  orderId: {
-    fontSize: 13,
-    fontFamily: 'monospace',
-    marginTop: 2,
-  },
+  orderNumber: { fontSize: 20, fontWeight: '800' },
+  orderId: { fontSize: 13, fontFamily: 'monospace', marginTop: 2 },
   priorityBadgeLarge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  priorityTextLarge: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  priorityTextLarge: { fontSize: 12, fontWeight: '700' },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  summaryItem: {
-    flex: 1,
-  },
+  summaryItem: { flex: 1 },
   summaryLabel: {
     fontSize: 11,
     fontWeight: '500',
     textTransform: 'uppercase',
   },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 2,
-  },
+  summaryValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
 
   // Image Section
   imageSection: {
@@ -673,11 +935,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 16,
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
   imageContainer: {
     borderRadius: 10,
     overflow: 'hidden',
@@ -697,13 +955,29 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
   },
-  imageOverlayText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '500',
+  imageOverlayText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
+
+  // Message
+  messageSection: {
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  messageContainer: {
+    backgroundColor: '#F8FAFC',
+    padding: 14,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 22,
+    fontStyle: 'italic',
   },
 
-  // Reason Section
+  // Reason
   reasonSection: {
     borderRadius: 12,
     padding: 16,
@@ -717,10 +991,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#3B82F6',
   },
-  reasonText: {
-    fontSize: 14,
-    lineHeight: 22,
-  },
+  reasonText: { fontSize: 14, lineHeight: 22 },
 
   // Action Buttons
   actionContainer: {
@@ -735,22 +1006,35 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  declineButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  declineButtonText: { fontSize: 15, fontWeight: '700' },
   approveButton: {
     flex: 2,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  approveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
+  approveButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+
+  // Loading row inside buttons
+  buttonLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+
+  // Done state
+  doneBox: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneText: { fontSize: 15, fontWeight: '800' },
 
   // Modal Styles
   modalOverlay: {
@@ -781,9 +1065,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     letterSpacing: 0.3,
   },
-  modalInfoContainer: {
-    marginBottom: 12,
-  },
+  modalInfoContainer: { marginBottom: 12 },
   modalInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -791,41 +1073,30 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F020',
   },
-  modalInfoLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  modalInfoValue: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  modalInfoLabel: { fontSize: 13, fontWeight: '500' },
+  modalInfoValue: { fontSize: 13, fontWeight: '700' },
   modalConfirmText: {
     fontSize: 13,
     textAlign: 'center',
     marginBottom: 16,
     marginTop: 4,
   },
-  modalActionContainer: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
+  modalActionContainer: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   modalCancelButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalCancelText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  modalCancelText: { fontSize: 14, fontWeight: '700' },
   modalApproveButton: {
     flex: 2,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalApproveButtonText: {
     color: '#FFFFFF',
@@ -837,6 +1108,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalDeclineButtonText: {
     color: '#FFFFFF',
@@ -848,18 +1120,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  modalCloseButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  modalSignatureInputContainer: {
-    marginBottom: 12,
-  },
-  modalSignatureLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
+  modalCloseButtonText: { fontSize: 14, fontWeight: '700' },
+  modalSignatureInputContainer: { marginBottom: 12 },
+  modalSignatureLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4 },
   modalSignatureInput: {
     borderWidth: 1,
     borderRadius: 10,
@@ -876,14 +1139,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  zoomContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullImage: {
-    width: '100%',
-    height: '100%',
-  },
+  zoomContainer: { justifyContent: 'center', alignItems: 'center' },
+  fullImage: { width: '100%', height: '100%' },
   fullImageClose: {
     position: 'absolute',
     top: 50,
@@ -896,11 +1153,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullImageCloseText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '600',
-  },
+  fullImageCloseText: { color: '#FFFFFF', fontSize: 24, fontWeight: '600' },
   fullImageReset: {
     position: 'absolute',
     top: 50,
@@ -913,11 +1166,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullImageResetText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '600',
-  },
+  fullImageResetText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600' },
   zoomHint: {
     position: 'absolute',
     bottom: 30,

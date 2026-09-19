@@ -253,7 +253,6 @@ const SignatureModal = ({
     ref.current?.readSignature();
   };
 
-  // Style for the webview — transparent so the image shows through
   const webStyle = `
     .m-signature-pad {
       box-shadow: none;
@@ -287,7 +286,6 @@ const SignatureModal = ({
           { backgroundColor: darkMode ? '#0F172A' : '#F1F5F9' },
         ]}
       >
-        {/* Header */}
         <View style={styles.signatureHeader}>
           <TouchableOpacity
             onPress={onCancel}
@@ -312,7 +310,6 @@ const SignatureModal = ({
           </TouchableOpacity>
         </View>
 
-        {/* The document + signature overlay */}
         <View style={styles.signatureStage}>
           <Image
             source={{ uri: imageUrl }}
@@ -339,7 +336,6 @@ const SignatureModal = ({
           Sign directly on the document with your finger
         </Text>
 
-        {/* Footer */}
         <View style={styles.signatureFooter}>
           <TouchableOpacity
             style={[styles.signatureSaveBtn, { backgroundColor: '#10B981' }]}
@@ -376,7 +372,6 @@ const PendingPaymentPage = ({
   const [isDeclined, setIsDeclined] = useState(false);
   const [signature, setSignature] = useState(null);
 
-  // Load any previously saved signature for this order
   useEffect(() => {
     (async () => {
       try {
@@ -460,7 +455,6 @@ const PendingPaymentPage = ({
 
   const grandTotal = calculateTotal();
 
-  // ---------- Signature flow ----------
   const openSignatureModal = () => {
     setSignatureModalVisible(true);
   };
@@ -478,7 +472,6 @@ const PendingPaymentPage = ({
     }
   };
 
-  // ---------- Approval flow ----------
   const openApprovalModal = () => {
     if (!signature) {
       Alert.alert(
@@ -630,7 +623,6 @@ const PendingPaymentPage = ({
             </View>
           </TouchableOpacity>
 
-          {/* Sign / Re-sign button */}
           <TouchableOpacity
             style={[
               styles.signButton,
@@ -686,6 +678,7 @@ const PendingPaymentPage = ({
           const isExpanded = expandedItem === item.id;
           const itemNumber = index + 1;
           const sortedBids = getSortedBids(item.bids, quantity);
+          const otherBids = sortedBids.slice(1); // exclude winner
 
           return (
             <View
@@ -741,7 +734,9 @@ const PendingPaymentPage = ({
                 )}
               </View>
 
-              {/* Expanded bid list — no sub-texts */}
+             
+
+              {/* Expanded full bid list (winner included, highlighted) */}
               {isExpanded && hasBids && (
                 <View style={styles.expandedContent}>
                   <Text style={[styles.bidListTitle, { color: subTextColor }]}>
@@ -869,7 +864,6 @@ const PendingPaymentPage = ({
                   💵 Confirm Payment
                 </Text>
 
-                {/* Signed document preview */}
                 {signature && (
                   <View style={styles.modalSignedPreview}>
                     <Image
@@ -1225,6 +1219,29 @@ const styles = StyleSheet.create({
   winningValue: { fontSize: 16, fontWeight: '800' },
   winningBy: { fontSize: 11, marginTop: 1 },
 
+  // Other submitted prices (info)
+  otherBidsBlock: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  otherBidsLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  },
+  otherBidRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  otherBidName: { fontSize: 12, fontWeight: '500' },
+  otherBidPrice: { fontSize: 13, fontWeight: '600' },
+
   expandedContent: {
     marginTop: 10,
     paddingTop: 10,
@@ -1299,7 +1316,7 @@ const styles = StyleSheet.create({
   },
   approveButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 
-  // Modals (approve / decline)
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',

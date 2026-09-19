@@ -16,10 +16,8 @@ import LoginPage from '../pages/auth/LoginPage';
 
 // Dashboard Pages
 import DashboardPage from '../pages/dashboard/DashboardPage';
-import ManagerDashboard from '../pages/dashboard/roles/ManagerDashboard';
 
 // Main Pages
-import CatalogPage from '../pages/catalog/CatalogPage';
 import ProfilePage from '../pages/profile/ProfilePage';
 import SettingsPage from '../pages/settings/SettingsPage';
 import NotificationPage from '../pages/notification/NotificationPage';
@@ -29,25 +27,30 @@ import PreferencesPage from '../pages/settings/subpages/PreferencesPage';
 import SystemInfoPage from '../pages/settings/subpages/SystemInfoPage';
 import SecurityPage from '../pages/settings/subpages/SecurityPage';
 
-// Purchase Pages - All in manager folder
+// Purchase Pages (manager)
 import TotalRequestsPage from '../pages/manager/TotalRequestsPage';
 import PendingApprovalPage from '../pages/manager/PendingApprovalPage';
 import ApprovedNotPaidPage from '../pages/manager/ApprovedNotPaidPage';
-import PaidNotArrivedPage from '../pages/manager/PaidNotArrivedPage';
 
 // Pending Detail Page
 import PendingDetailPage from '../pages/manager/PendingDetailPage';
+
+// Purchaser pages
+import PendingSubmissionPage from '../pages/purchaser/PendingSubmissionPage';
+import SubmittedPage from '../pages/purchaser/SubmittedPage';
 
 // 🔥 Auth service + hook
 import authService from '../stores/authService';
 import { useAuth } from '../hooks/useAuth';
 import { setUnauthorizedHandler } from '../stores/interceptor';
 
+// ================================================================
 // MASTER ENTERPRISE PERMISSION CONFIGURATION MATRIX
+// ================================================================
 const ROLE_PERMISSIONS = {
   admin:      { catalog: true,  alerts: true,  purchase: true  },
   manager:    { catalog: true,  alerts: true,  purchase: true  },
-  purchaser:  { catalog: true,  alerts: false, purchase: true  },
+  purchaser:  { catalog: true,  alerts: true,  purchase: true  }, // 🔔 now shown
   sales:      { catalog: true,  alerts: true,  purchase: false },
   banker:     { catalog: false, alerts: true,  purchase: false },
   supervisor: { catalog: true,  alerts: true,  purchase: true  },
@@ -68,7 +71,7 @@ export default function AppRouter() {
 
   // ---------- Derived from auth ----------
   const isLoggedIn = auth.isAuthenticated;
-  const userRole = auth.userRole || 'sales';
+  const userRole = (auth.userRole || 'sales').toLowerCase();
 
   // ================================================================
   // 1) BOOT: initialize auth service from AsyncStorage
@@ -87,12 +90,9 @@ export default function AppRouter() {
 
   // ================================================================
   // 2) Register global 401 handler
-  //    Any API call that returns 401 will trigger this
   // ================================================================
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      // authService already cleared the storage in the interceptor.
-      // Just reset local navigation state.
       setActiveTab('home');
       setSettingsSubView('main');
       setPurchaseSubView(null);
@@ -145,7 +145,7 @@ export default function AppRouter() {
   }, [isLoggedIn, activeTab, settingsSubView, purchaseSubView, pendingOrder]);
 
   // ================================================================
-  // 4) Logout handler (uses authService so token is cleared properly)
+  // 4) Logout handler
   // ================================================================
   const logoutHandler = async () => {
     try {
@@ -153,7 +153,6 @@ export default function AppRouter() {
     } catch (e) {
       console.warn('Logout failed:', e);
     } finally {
-      // Reset all local UI state
       setActiveTab('home');
       setDarkMode(false);
       setSettingsSubView('main');
@@ -177,10 +176,12 @@ export default function AppRouter() {
     setActiveTab('purchase');
   };
 
-  const navigateToPendingDetail = (orderData) => {
-    setPendingOrder(orderData);
-    setActiveTab('pendingDetail');
-  };
+const navigateToPendingDetail = (screen, payload) => {
+  // We're called as navigateToPendingDetail('pendingDetail', { id, requestNumber })
+  const orderData = payload ?? screen;   // handle both calling conventions
+  setPendingOrder(orderData);
+  setActiveTab('pendingDetail');
+};
 
   // ================================================================
   // 7) Theme tokens
@@ -213,7 +214,7 @@ export default function AppRouter() {
       );
     }
 
-    // ---------- Purchase detail pages ----------
+    // ---------- Purchase sub-pages ----------
     if (activeTab === 'purchase' && purchaseSubView !== null) {
       const commonProps = {
         onBack: () => {
@@ -235,8 +236,13 @@ export default function AppRouter() {
           return <PendingApprovalPage {...commonProps} />;
         case 'approvedNotPaid':
           return <ApprovedNotPaidPage {...commonProps} />;
-        case 'paidNotArrived':
-          return <PaidNotArrivedPage {...commonProps} />;
+
+        // ✅ Purchaser pages
+        case 'pendingSubmission':
+          return <PendingSubmissionPage {...commonProps} />;
+        case 'submitted':
+          return <SubmittedPage {...commonProps} />;
+
         default:
           return <TotalRequestsPage {...commonProps} />;
       }
@@ -245,9 +251,32 @@ export default function AppRouter() {
     // ---------- Main tabs ----------
     switch (activeTab) {
       case 'home':
-        if (userRole === 'manager') {
+        // ✅ DashboardPage handles role dispatch internally
+        return (
+          <DashboardPage
+            darkMode={darkMode}
+            setActiveTab={setActiveTab}
+            userRole={userRole}
+            permissions={ROLE_PERMISSIONS[userRole]}
+            onNavigateToPurchase={navigateToPurchasePage}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+          />
+        );
+
+      case 'profile':
+        return <ProfilePage darkMode={darkMode} userRole={userRole} />;
+
+      case 'notification':
+        if (!hasAccess('alerts')) {
+          alert(
+            `🛡️ Access Denied: The '${userRole}' role does not hold Alert Clearance.`
+          );
+          setActiveTab('home');
           return (
-            <ManagerDashboard
+            <DashboardPage
               darkMode={darkMode}
               setActiveTab={setActiveTab}
               userRole={userRole}
@@ -260,55 +289,14 @@ export default function AppRouter() {
             />
           );
         }
-        return (
-          <DashboardPage
-            darkMode={darkMode}
-            setActiveTab={setActiveTab}
-            userRole={userRole}
-            permissions={ROLE_PERMISSIONS[userRole]}
-            onNavigateToPurchase={navigateToPurchasePage}
-          />
-        );
-
-      case 'catalog':
-        if (!hasAccess('catalog')) {
-          alert(`🛡️ Access Denied: The '${userRole}' role cannot view the Product Catalog.`);
-          setActiveTab('home');
-          return (
-            <DashboardPage
-              darkMode={darkMode}
-              setActiveTab={setActiveTab}
-              userRole={userRole}
-              permissions={ROLE_PERMISSIONS[userRole]}
-              onNavigateToPurchase={navigateToPurchasePage}
-            />
-          );
-        }
-        return <CatalogPage darkMode={darkMode} />;
-
-      case 'profile':
-        return <ProfilePage darkMode={darkMode} userRole={userRole} />;
-
-      case 'notification':
-        if (!hasAccess('alerts')) {
-          alert(`🛡️ Access Denied: The '${userRole}' role does not hold Alert Clearance.`);
-          setActiveTab('home');
-          return (
-            <DashboardPage
-              darkMode={darkMode}
-              setActiveTab={setActiveTab}
-              userRole={userRole}
-              permissions={ROLE_PERMISSIONS[userRole]}
-              onNavigateToPurchase={navigateToPurchasePage}
-            />
-          );
-        }
         return <NotificationPage darkMode={darkMode} />;
 
       case 'settings':
         switch (settingsSubView) {
           case 'pref':
-            return <PreferencesPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+            return (
+              <PreferencesPage darkMode={darkMode} setDarkMode={setDarkMode} />
+            );
           case 'sys':
             return <SystemInfoPage darkMode={darkMode} />;
           case 'sec':
@@ -338,6 +326,10 @@ export default function AppRouter() {
             userRole={userRole}
             permissions={ROLE_PERMISSIONS[userRole]}
             onNavigateToPurchase={navigateToPurchasePage}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
           />
         );
     }
@@ -373,17 +365,7 @@ export default function AppRouter() {
         onNavigateToPurchase={navigateToPurchasePage}
       >
         <LoginPage
-          onLoginSuccess={(roleAssigned /* , userId */) => {
-            // authService has already:
-            //   - stored the token + user in AsyncStorage
-            //   - set user / token internally
-            //   - triggered a `_notify()`, which our `useAuth()` hook
-            //     reacts to, flipping isAuthenticated → true
-            //
-            // So we don't need to set role / isLoggedIn here — it's
-            // already reflected through the hook. We only reset the
-            // local navigation state so we land on the correct first
-            // screen.
+          onLoginSuccess={(roleAssigned) => {
             setActiveTab('home');
             setSettingsSubView('main');
             setPurchaseSubView(null);
@@ -403,12 +385,10 @@ export default function AppRouter() {
       showHeader={true}
       activeTab={activeTab}
       setActiveTab={(tab) => {
-        if (tab === 'catalog' && !ROLE_PERMISSIONS[userRole]?.catalog) {
-          alert(`🛡️ Access Denied: Your active role context lacks Catalog clearance.`);
-          return;
-        }
         if (tab === 'notification' && !ROLE_PERMISSIONS[userRole]?.alerts) {
-          alert(`🛡️ Access Denied: Your active role context lacks Alert clearance.`);
+          alert(
+            `🛡️ Access Denied: Your active role context lacks Alert clearance.`
+          );
           return;
         }
         setActiveTab(tab);
@@ -434,16 +414,6 @@ export default function AppRouter() {
           return;
         }
         setActiveTab('notification');
-        setSettingsSubView('main');
-        setPurchaseSubView(null);
-        setPendingOrder(null);
-      }}
-      onNavigateToCatalog={() => {
-        if (!ROLE_PERMISSIONS[userRole]?.catalog) {
-          alert(`🛡️ Access Denied: Catalog clearance tokens required.`);
-          return;
-        }
-        setActiveTab('catalog');
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);

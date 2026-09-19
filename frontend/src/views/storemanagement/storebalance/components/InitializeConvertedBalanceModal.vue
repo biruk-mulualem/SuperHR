@@ -53,7 +53,6 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': form.storeId }"
-                  @change="onStoreOrGroupChange"
                 >
                   <option value="">Select Store</option>
                   <option
@@ -76,7 +75,6 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': form.groupId }"
-                  @change="onStoreOrGroupChange"
                 >
                   <option value="">Select Group</option>
                   <option
@@ -106,18 +104,33 @@
                   <input
                     type="text"
                     v-model="itemSearchQuery"
-                    placeholder="Search items by code or name..."
+                    placeholder="Search items with converted balance..."
+                    :disabled="!currentStoreId || !currentGroupId"
                     @input="onSearchInput"
                     class="item-search-input"
                   />
                   <span v-if="isSearching" class="search-spinner">⏳</span>
-                  <span v-else-if="itemSearchQuery && items.length > 0" class="search-results-count">
+                  <span
+                    v-else-if="itemSearchQuery && items.length > 0"
+                    class="search-results-count"
+                  >
                     {{ items.length }} results
                   </span>
                 </div>
 
+                <span
+                  v-if="!currentStoreId || !currentGroupId"
+                  class="hint"
+                >
+                  ⚠️ Please select a store and group first
+                </span>
+
                 <!-- Item List -->
-                <div v-if="itemSearchQuery" class="item-select-container" ref="itemSelectContainer">
+                <div
+                  v-if="itemSearchQuery && currentStoreId && currentGroupId"
+                  class="item-select-container"
+                  ref="itemSelectContainer"
+                >
                   <div class="item-select-scroll" @scroll="onItemScroll">
                     <div v-if="isSearching" class="item-loading">
                       <div class="spinner-small"></div>
@@ -134,16 +147,24 @@
                     >
                       <div class="item-option-content">
                         <span class="item-option-code">{{ item.code }}</span>
-                        <span class="item-option-name">{{ item.name || item.standardName || 'Unnamed' }}</span>
-                        <span class="item-option-uom">{{ getItemUOM(item) }}</span>
-                        <span v-if="item.conversionUomId" class="item-option-conversion">
-                          🔄 {{ getConversionDisplay(item) }}
+                        <span class="item-option-name">{{
+                          item.name || item.standardName || "Unnamed"
+                        }}</span>
+                        <span class="item-option-uom">{{
+                          getItemUOM(item)
+                        }}</span>
+                        <span class="item-option-balance">
+                          💰 {{ formatNumber(item.convertedBalance) }}
+                          {{ getConvertedUOMDisplay(item) }}
                         </span>
                       </div>
                     </div>
 
-                    <div v-else-if="!isSearching" class="item-no-results">
-                      No items found matching your search
+                    <div
+                      v-else-if="!isSearching"
+                      class="item-no-results"
+                    >
+                      No items with a converted balance match your search
                     </div>
 
                     <div
@@ -158,15 +179,18 @@
                 <!-- Selected Item Display -->
                 <div v-if="selectedItemDisplay" class="selected-item-display">
                   <span class="selected-badge">✅ Selected:</span>
-                  <span class="selected-item-code">{{ selectedItemDisplay.code }}</span>
+                  <span class="selected-item-code">{{
+                    selectedItemDisplay.code
+                  }}</span>
                   <span class="selected-item-name">
-                    {{ selectedItemDisplay.name || selectedItemDisplay.standardName || 'Unnamed' }}
+                    {{
+                      selectedItemDisplay.name ||
+                      selectedItemDisplay.standardName ||
+                      "Unnamed"
+                    }}
                   </span>
                   <span class="selected-item-uom">
                     ({{ getItemUOM(selectedItemDisplay) }})
-                  </span>
-                  <span v-if="selectedItemDisplay.conversionUomId" class="selected-item-conversion">
-                    🔄 {{ getConversionDisplay(selectedItemDisplay) }}
                   </span>
                   <button
                     type="button"
@@ -180,18 +204,25 @@
             </div>
 
             <!-- Current Balance Display -->
-            <div v-if="selectedItemDisplay && currentBalance !== null" class="current-balance-display">
+            <div
+              v-if="selectedItemDisplay && currentBalance !== null"
+              class="current-balance-display"
+            >
               <span class="label">Current Converted Balance:</span>
-              <span class="value balance">{{ currentBalance }} {{ getConvertedUOMDisplay(selectedItemDisplay) }}</span>
-            </div>
-            <div v-else-if="selectedItemDisplay && currentBalance === null" class="current-balance-display loading">
-              <span class="label">Loading balance...</span>
+              <span class="value balance"
+                >{{ formatNumber(currentBalance) }}
+                {{ getConvertedUOMDisplay(selectedItemDisplay) }}</span
+              >
             </div>
 
             <!-- Quantity -->
             <div class="form-row">
               <div class="form-group">
-                <label>Quantity ({{ getConvertedUOMDisplay(selectedItemDisplay) }}) *</label>
+                <label
+                  >Quantity ({{
+                    getConvertedUOMDisplay(selectedItemDisplay)
+                  }}) *</label
+                >
                 <input
                   v-model.number="form.convertedBalance"
                   type="number"
@@ -209,7 +240,9 @@
             <!-- Remark Input -->
             <div class="form-row">
               <div class="form-group full-width">
-                <label>Remark <span class="optional">(Optional)</span></label>
+                <label
+                  >Remark <span class="optional">(Optional)</span></label
+                >
                 <textarea
                   v-model="form.remark"
                   class="form-textarea"
@@ -241,7 +274,6 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': formOut.storeId }"
-                  @change="onStoreOrGroupChangeOut"
                 >
                   <option value="">Select Store</option>
                   <option
@@ -264,7 +296,6 @@
                   required
                   class="form-select"
                   :class="{ 'has-value': formOut.groupId }"
-                  @change="onStoreOrGroupChangeOut"
                 >
                   <option value="">Select Group</option>
                   <option
@@ -294,18 +325,37 @@
                   <input
                     type="text"
                     v-model="itemSearchQueryOut"
-                    placeholder="Search items by code or name..."
+                    placeholder="Search items with converted balance..."
+                    :disabled="!currentStoreIdOut || !currentGroupIdOut"
                     @input="onSearchInputOut"
                     class="item-search-input"
                   />
                   <span v-if="isSearchingOut" class="search-spinner">⏳</span>
-                  <span v-else-if="itemSearchQueryOut && itemsOut.length > 0" class="search-results-count">
+                  <span
+                    v-else-if="itemSearchQueryOut && itemsOut.length > 0"
+                    class="search-results-count"
+                  >
                     {{ itemsOut.length }} results
                   </span>
                 </div>
 
+                <span
+                  v-if="!currentStoreIdOut || !currentGroupIdOut"
+                  class="hint"
+                >
+                  ⚠️ Please select a store and group first
+                </span>
+
                 <!-- Item List -->
-                <div v-if="itemSearchQueryOut" class="item-select-container" ref="itemSelectContainerOut">
+                <div
+                  v-if="
+                    itemSearchQueryOut &&
+                    currentStoreIdOut &&
+                    currentGroupIdOut
+                  "
+                  class="item-select-container"
+                  ref="itemSelectContainerOut"
+                >
                   <div class="item-select-scroll" @scroll="onItemScrollOut">
                     <div v-if="isSearchingOut" class="item-loading">
                       <div class="spinner-small"></div>
@@ -322,20 +372,30 @@
                     >
                       <div class="item-option-content">
                         <span class="item-option-code">{{ item.code }}</span>
-                        <span class="item-option-name">{{ item.name || item.standardName || 'Unnamed' }}</span>
-                        <span class="item-option-uom">{{ getItemUOM(item) }}</span>
-                        <span v-if="item.conversionUomId" class="item-option-conversion">
-                          🔄 {{ getConversionDisplay(item) }}
+                        <span class="item-option-name">{{
+                          item.name || item.standardName || "Unnamed"
+                        }}</span>
+                        <span class="item-option-uom">{{
+                          getItemUOM(item)
+                        }}</span>
+                        <span class="item-option-balance">
+                          💰 {{ formatNumber(item.convertedBalance) }}
+                          {{ getConvertedUOMDisplay(item) }}
                         </span>
                       </div>
                     </div>
 
-                    <div v-else-if="!isSearchingOut" class="item-no-results">
-                      No items found matching your search
+                    <div
+                      v-else-if="!isSearchingOut"
+                      class="item-no-results"
+                    >
+                      No items with a converted balance match your search
                     </div>
 
                     <div
-                      v-if="hasMoreItemsOut && !isSearchingOut && itemsOut.length > 0"
+                      v-if="
+                        hasMoreItemsOut && !isSearchingOut && itemsOut.length > 0
+                      "
                       class="item-load-more"
                     >
                       Scroll for more items...
@@ -344,17 +404,23 @@
                 </div>
 
                 <!-- Selected Item Display -->
-                <div v-if="selectedItemDisplayOut" class="selected-item-display">
+                <div
+                  v-if="selectedItemDisplayOut"
+                  class="selected-item-display"
+                >
                   <span class="selected-badge">✅ Selected:</span>
-                  <span class="selected-item-code">{{ selectedItemDisplayOut.code }}</span>
+                  <span class="selected-item-code">{{
+                    selectedItemDisplayOut.code
+                  }}</span>
                   <span class="selected-item-name">
-                    {{ selectedItemDisplayOut.name || selectedItemDisplayOut.standardName || 'Unnamed' }}
+                    {{
+                      selectedItemDisplayOut.name ||
+                      selectedItemDisplayOut.standardName ||
+                      "Unnamed"
+                    }}
                   </span>
                   <span class="selected-item-uom">
                     ({{ getItemUOM(selectedItemDisplayOut) }})
-                  </span>
-                  <span v-if="selectedItemDisplayOut.conversionUomId" class="selected-item-conversion">
-                    🔄 {{ getConversionDisplay(selectedItemDisplayOut) }}
                   </span>
                   <button
                     type="button"
@@ -368,19 +434,28 @@
             </div>
 
             <!-- Current Balance Display -->
-            <div v-if="selectedItemDisplayOut && currentBalanceOut !== null" class="current-balance-display">
+            <div
+              v-if="selectedItemDisplayOut && currentBalanceOut !== null"
+              class="current-balance-display"
+            >
               <span class="label">Current Converted Balance:</span>
-              <span class="value balance">{{ currentBalanceOut }} {{ getConvertedUOMDisplay(selectedItemDisplayOut) }}</span>
-              <span v-if="currentBalanceOut === 0" class="warning-text">⚠️ Balance is zero</span>
-            </div>
-            <div v-else-if="selectedItemDisplayOut && currentBalanceOut === null" class="current-balance-display loading">
-              <span class="label">Loading balance...</span>
+              <span class="value balance"
+                >{{ formatNumber(currentBalanceOut) }}
+                {{ getConvertedUOMDisplay(selectedItemDisplayOut) }}</span
+              >
+              <span v-if="currentBalanceOut === 0" class="warning-text"
+                >⚠️ Balance is zero</span
+              >
             </div>
 
             <!-- Quantity -->
             <div class="form-row">
               <div class="form-group">
-                <label>Quantity ({{ getConvertedUOMDisplay(selectedItemDisplayOut) }}) *</label>
+                <label
+                  >Quantity ({{
+                    getConvertedUOMDisplay(selectedItemDisplayOut)
+                  }}) *</label
+                >
                 <input
                   v-model.number="formOut.convertedBalance"
                   type="number"
@@ -394,14 +469,18 @@
                 <span class="hint" v-if="formOut.itemId">
                   In {{ getConvertedUOMDisplay(selectedItemDisplayOut) }}
                 </span>
-                <span v-if="stockOutError" class="error-text">{{ stockOutError }}</span>
+                <span v-if="stockOutError" class="error-text">{{
+                  stockOutError
+                }}</span>
               </div>
             </div>
 
             <!-- Remark Input -->
             <div class="form-row">
               <div class="form-group full-width">
-                <label>Remark <span class="optional">(Optional)</span></label>
+                <label
+                  >Remark <span class="optional">(Optional)</span></label
+                >
                 <textarea
                   v-model="formOut.remark"
                   class="form-textarea"
@@ -417,24 +496,37 @@
 
       <!-- Footer -->
       <div class="modal-footer">
-        <button class="btn-secondary" @click="handleClose" :disabled="importing || saving">
+        <button
+          class="btn-secondary"
+          @click="handleClose"
+          :disabled="saving"
+        >
           Cancel
         </button>
         <button
           v-if="activeTab === 'in'"
           class="btn-primary"
           @click="saveBalance"
-          :disabled="saving || !form.itemId || importing || form.convertedBalance <= 0"
+          :disabled="
+            saving || !form.itemId || form.convertedBalance <= 0
+          "
         >
-          {{ saving ? 'Saving...' : '📥 Stock In' }}
+          {{ saving ? "Saving..." : "📥 Stock In" }}
         </button>
         <button
           v-if="activeTab === 'out'"
           class="btn-primary"
           @click="saveBalanceOut"
-          :disabled="saving || !formOut.itemId || importing || formOut.convertedBalance <= 0 || stockOutError || currentBalanceOut === null || currentBalanceOut === 0"
+          :disabled="
+            saving ||
+            !formOut.itemId ||
+            formOut.convertedBalance <= 0 ||
+            stockOutError ||
+            currentBalanceOut === null ||
+            currentBalanceOut === 0
+          "
         >
-          {{ saving ? 'Saving...' : '📤 Stock Out' }}
+          {{ saving ? "Saving..." : "📤 Stock Out" }}
         </button>
       </div>
     </div>
@@ -447,86 +539,50 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
-import itemRequestService from '@/stores/itemRequestService';
-import convertedBalanceService from '@/stores/convertedBalanceService';
+import { ref, computed, onMounted, watch } from "vue";
+import convertedBalanceService from "@/stores/convertedBalanceService";
 
 // ================================================================
 // PROPS
 // ================================================================
 
 const props = defineProps({
-  isAdmin: {
-    type: Boolean,
-    default: false,
-  },
-  userData: {
-    type: Object,
-    default: () => ({}),
-  },
-  storeId: {
-    type: Number,
-    default: null,
-  },
-  groupId: {
-    type: Number,
-    default: null,
-  },
-  storeName: {
-    type: String,
-    default: '',
-  },
-  groupName: {
-    type: String,
-    default: '',
-  },
-  stores: {
-    type: Array,
-    default: () => [],
-  },
-  groups: {
-    type: Array,
-    default: () => [],
-  },
-  categories: {
-    type: Array,
-    default: () => [],
-  },
-  inventoryItems: {
-    type: [Array, Object],
-    default: () => [],
-  },
-  visible: {
-    type: Boolean,
-    default: false,
-  },
+  isAdmin: { type: Boolean, default: false },
+  userData: { type: Object, default: () => ({}) },
+  storeId: { type: Number, default: null },
+  groupId: { type: Number, default: null },
+  storeName: { type: String, default: "" },
+  groupName: { type: String, default: "" },
+  stores: { type: Array, default: () => [] },
+  groups: { type: Array, default: () => [] },
+  categories: { type: Array, default: () => [] },
+  inventoryItems: { type: [Array, Object], default: () => [] },
+  visible: { type: Boolean, default: false },
 });
 
 // ================================================================
 // EMITS
 // ================================================================
 
-const emit = defineEmits(['close', 'success', 'update:visible']);
+const emit = defineEmits(["close", "success", "update:visible"]);
 
 // ================================================================
 // STATE
 // ================================================================
 
-const activeTab = ref('in');
+const activeTab = ref("in");
 const saving = ref(false);
-const importing = ref(false);
-const isDragOver = ref(false);
 
 // Stock In State
 const isSearching = ref(false);
 const form = ref({
   storeId: null,
   groupId: null,
-  itemId: '',
+  itemId: "",
   convertedBalance: 0,
-  remark: '',
+  remark: "",
 });
-const itemSearchQuery = ref('');
+const itemSearchQuery = ref("");
 const items = ref([]);
 const itemDisplayLimit = ref(10);
 const selectedItemDisplay = ref(null);
@@ -534,21 +590,19 @@ const itemSelectContainer = ref(null);
 let searchTimeout = null;
 let searchPage = ref(1);
 let hasMoreItems = ref(false);
-let totalItemsCount = ref(0);
 let searchTotal = ref(0);
 const currentBalance = ref(null);
-let isFetchingBalance = ref(false);
 
 // Stock Out State
 const isSearchingOut = ref(false);
 const formOut = ref({
   storeId: null,
   groupId: null,
-  itemId: '',
+  itemId: "",
   convertedBalance: 0,
-  remark: '',
+  remark: "",
 });
-const itemSearchQueryOut = ref('');
+const itemSearchQueryOut = ref("");
 const itemsOut = ref([]);
 const itemDisplayLimitOut = ref(10);
 const selectedItemDisplayOut = ref(null);
@@ -556,44 +610,57 @@ const itemSelectContainerOut = ref(null);
 let searchTimeoutOut = null;
 let searchPageOut = ref(1);
 let hasMoreItemsOut = ref(false);
-let totalItemsCountOut = ref(0);
 let searchTotalOut = ref(0);
 const currentBalanceOut = ref(null);
-const stockOutError = ref('');
-let isFetchingBalanceOut = ref(false);
+const stockOutError = ref("");
 
 // Toast State
 const showToast = ref(false);
-const toastMessage = ref('');
-const toastType = ref('success');
+const toastMessage = ref("");
+const toastType = ref("success");
 let toastTimeout = null;
 
 // ================================================================
 // COMPUTED
 // ================================================================
 
-const displayedItems = computed(() => {
-  return items.value.slice(0, itemDisplayLimit.value);
-});
+const displayedItems = computed(() =>
+  items.value.slice(0, itemDisplayLimit.value)
+);
 
-const displayedItemsOut = computed(() => {
-  return itemsOut.value.slice(0, itemDisplayLimitOut.value);
-});
+const displayedItemsOut = computed(() =>
+  itemsOut.value.slice(0, itemDisplayLimitOut.value)
+);
+
+/** Effective store+group for the "in" tab — either the admin's own
+ *  selection or the values passed in as props. */
+const currentStoreId = computed(
+  () => Number(form.value.storeId || props.storeId) || null
+);
+const currentGroupId = computed(
+  () => Number(form.value.groupId || props.groupId) || null
+);
+
+/** Same for the "out" tab. */
+const currentStoreIdOut = computed(
+  () => Number(formOut.value.storeId || props.storeId) || null
+);
+const currentGroupIdOut = computed(
+  () => Number(formOut.value.groupId || props.groupId) || null
+);
 
 // ================================================================
-// METHODS - Toast
+// TOAST
 // ================================================================
 
-const showToastMessage = (msg, type = 'success') => {
+const showToastMessage = (msg, type = "success") => {
   if (toastTimeout) {
     clearTimeout(toastTimeout);
     toastTimeout = null;
   }
-  
   toastMessage.value = msg;
   toastType.value = type;
   showToast.value = true;
-  
   toastTimeout = setTimeout(() => {
     showToast.value = false;
     toastTimeout = null;
@@ -601,93 +668,98 @@ const showToastMessage = (msg, type = 'success') => {
 };
 
 // ================================================================
-// METHODS - Modal Close
+// MODAL CLOSE
 // ================================================================
 
 const closeModal = () => {
-  if (importing.value) return;
-  
+  if (saving.value) return;
+
   if (toastTimeout) {
     clearTimeout(toastTimeout);
     toastTimeout = null;
   }
   showToast.value = false;
-  
-  emit('update:visible', false);
-  emit('close');
+
+  emit("update:visible", false);
+  emit("close");
 };
 
-const handleClose = () => {
-  closeModal();
-};
-
-const handleOverlayClick = () => {
-  closeModal();
-};
+const handleClose = () => closeModal();
+const handleOverlayClick = () => closeModal();
 
 // ================================================================
-// METHODS - Search Items (Stock In)
+// SEARCH (Stock In) — uses convertedBalanceService.getConvertedBalanceItems
 // ================================================================
 
 const onSearchInput = () => {
   if (searchTimeout) clearTimeout(searchTimeout);
-  
+
   const query = itemSearchQuery.value.trim();
-  
+
   if (!query) {
     items.value = [];
-    selectedItemDisplay.value = null;
     searchTotal.value = 0;
     return;
   }
-  
+
+  if (!currentStoreId.value || !currentGroupId.value) {
+    items.value = [];
+    showToastMessage("Please select a store and group first", "warning");
+    return;
+  }
+
   searchPage.value = 1;
   items.value = [];
-  
-  searchTimeout = setTimeout(() => {
-    searchItems(query);
-  }, 300);
+
+  searchTimeout = setTimeout(() => searchItems(query), 300);
 };
 
 const searchItems = async (query) => {
   if (!query) return;
-  
+
+  const storeId = currentStoreId.value;
+  const groupId = currentGroupId.value;
+
+  if (!storeId || !groupId) return;
+
   isSearching.value = true;
-  
+
   try {
-    const response = await itemRequestService.getActiveItems({
+    const response = await convertedBalanceService.getConvertedBalanceItems({
+      storeId,
+      groupId,
       search: query,
       page: searchPage.value,
-      limit: 20
+      limit: 20,
     });
-    
+
     if (response.success) {
       const itemsData = response.data || [];
-      
-      if (searchPage.value === 1) {
-        items.value = itemsData;
-      } else {
-        items.value = [...items.value, ...itemsData];
-      }
-      
+
+      items.value =
+        searchPage.value === 1
+          ? itemsData
+          : [...items.value, ...itemsData];
+
       searchTotal.value = response.pagination?.total || itemsData.length;
-      hasMoreItems.value = itemsData.length === 20 && (searchPage.value * 20) < searchTotal.value;
-      totalItemsCount.value = searchTotal.value;
+      hasMoreItems.value =
+        itemsData.length === 20 &&
+        searchPage.value * 20 < searchTotal.value;
     } else {
       items.value = [];
-      showToastMessage(response.error || 'Failed to search items', 'error');
+      showToastMessage(response.error || "Failed to search items", "error");
     }
   } catch (error) {
-    console.error('Error searching items:', error);
-    showToastMessage('Failed to search items', 'error');
+    console.error("Error searching items:", error);
+    showToastMessage("Failed to search items", "error");
   } finally {
     isSearching.value = false;
   }
 };
 
 const onItemScroll = (event) => {
-  const element = event.target;
-  if (element.scrollTop + element.clientHeight >= element.scrollHeight - 50) {
+  const el = event.target;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
     if (hasMoreItems.value && !isSearching.value) {
       searchPage.value++;
       searchItems(itemSearchQuery.value.trim());
@@ -695,90 +767,99 @@ const onItemScroll = (event) => {
   }
 };
 
-const selectItem = async (item) => {
+const selectItem = (item) => {
   form.value.itemId = item.id || item.itemId;
   selectedItemDisplay.value = item;
-  itemSearchQuery.value = item.code || item.name || '';
+  itemSearchQuery.value = item.code || item.name || "";
   items.value = [];
   searchTotal.value = 0;
-  
-  // Reset and fetch current balance
-  currentBalance.value = null;
-  await fetchCurrentBalance();
+
+  // 👇 balance comes straight from the selected row
+  currentBalance.value = Number(item.convertedBalance) || 0;
 };
 
 const clearItemSelection = () => {
-  form.value.itemId = '';
+  form.value.itemId = "";
   selectedItemDisplay.value = null;
-  itemSearchQuery.value = '';
+  itemSearchQuery.value = "";
   items.value = [];
   searchTotal.value = 0;
   currentBalance.value = null;
 };
 
 // ================================================================
-// METHODS - Search Items (Stock Out)
+// SEARCH (Stock Out) — same endpoint
 // ================================================================
 
 const onSearchInputOut = () => {
   if (searchTimeoutOut) clearTimeout(searchTimeoutOut);
-  
+
   const query = itemSearchQueryOut.value.trim();
-  
+
   if (!query) {
     itemsOut.value = [];
-    selectedItemDisplayOut.value = null;
     searchTotalOut.value = 0;
     return;
   }
-  
+
+  if (!currentStoreIdOut.value || !currentGroupIdOut.value) {
+    itemsOut.value = [];
+    showToastMessage("Please select a store and group first", "warning");
+    return;
+  }
+
   searchPageOut.value = 1;
   itemsOut.value = [];
-  
-  searchTimeoutOut = setTimeout(() => {
-    searchItemsOut(query);
-  }, 300);
+
+  searchTimeoutOut = setTimeout(() => searchItemsOut(query), 300);
 };
 
 const searchItemsOut = async (query) => {
   if (!query) return;
-  
+
+  const storeId = currentStoreIdOut.value;
+  const groupId = currentGroupIdOut.value;
+
+  if (!storeId || !groupId) return;
+
   isSearchingOut.value = true;
-  
+
   try {
-    const response = await itemRequestService.getActiveItems({
+    const response = await convertedBalanceService.getConvertedBalanceItems({
+      storeId,
+      groupId,
       search: query,
       page: searchPageOut.value,
-      limit: 20
+      limit: 20,
     });
-    
+
     if (response.success) {
       const itemsData = response.data || [];
-      
-      if (searchPageOut.value === 1) {
-        itemsOut.value = itemsData;
-      } else {
-        itemsOut.value = [...itemsOut.value, ...itemsData];
-      }
-      
+
+      itemsOut.value =
+        searchPageOut.value === 1
+          ? itemsData
+          : [...itemsOut.value, ...itemsData];
+
       searchTotalOut.value = response.pagination?.total || itemsData.length;
-      hasMoreItemsOut.value = itemsData.length === 20 && (searchPageOut.value * 20) < searchTotalOut.value;
-      totalItemsCountOut.value = searchTotalOut.value;
+      hasMoreItemsOut.value =
+        itemsData.length === 20 &&
+        searchPageOut.value * 20 < searchTotalOut.value;
     } else {
       itemsOut.value = [];
-      showToastMessage(response.error || 'Failed to search items', 'error');
+      showToastMessage(response.error || "Failed to search items", "error");
     }
   } catch (error) {
-    console.error('Error searching items:', error);
-    showToastMessage('Failed to search items', 'error');
+    console.error("Error searching items:", error);
+    showToastMessage("Failed to search items", "error");
   } finally {
     isSearchingOut.value = false;
   }
 };
 
 const onItemScrollOut = (event) => {
-  const element = event.target;
-  if (element.scrollTop + element.clientHeight >= element.scrollHeight - 50) {
+  const el = event.target;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
     if (hasMoreItemsOut.value && !isSearchingOut.value) {
       searchPageOut.value++;
       searchItemsOut(itemSearchQueryOut.value.trim());
@@ -786,239 +867,120 @@ const onItemScrollOut = (event) => {
   }
 };
 
-const selectItemOut = async (item) => {
+const selectItemOut = (item) => {
   formOut.value.itemId = item.id || item.itemId;
   selectedItemDisplayOut.value = item;
-  itemSearchQueryOut.value = item.code || item.name || '';
+  itemSearchQueryOut.value = item.code || item.name || "";
   itemsOut.value = [];
   searchTotalOut.value = 0;
-  stockOutError.value = '';
-  
-  // Reset and fetch current balance
-  currentBalanceOut.value = null;
-  await fetchCurrentBalanceOut();
+  stockOutError.value = "";
+
+  // 👇 balance comes straight from the selected row
+  currentBalanceOut.value = Number(item.convertedBalance) || 0;
+  validateStockOut();
 };
 
 const clearItemSelectionOut = () => {
-  formOut.value.itemId = '';
+  formOut.value.itemId = "";
   selectedItemDisplayOut.value = null;
-  itemSearchQueryOut.value = '';
+  itemSearchQueryOut.value = "";
   itemsOut.value = [];
   searchTotalOut.value = 0;
   currentBalanceOut.value = null;
-  stockOutError.value = '';
+  stockOutError.value = "";
 };
 
 // ================================================================
-// METHODS - Fetch Current Balance
-// ================================================================
-
-const onStoreOrGroupChange = async () => {
-  if (selectedItemDisplay.value) {
-    currentBalance.value = null;
-    await fetchCurrentBalance();
-  }
-};
-
-const onStoreOrGroupChangeOut = async () => {
-  if (selectedItemDisplayOut.value) {
-    currentBalanceOut.value = null;
-    stockOutError.value = '';
-    await fetchCurrentBalanceOut();
-  }
-};
-
-const fetchCurrentBalance = async () => {
-  const storeId = form.value.storeId || props.storeId;
-  const groupId = form.value.groupId || props.groupId;
-  
-  if (!storeId || !groupId || !selectedItemDisplay.value) {
-    currentBalance.value = null;
-    return;
-  }
-  
-  if (isFetchingBalance.value) return;
-  isFetchingBalance.value = true;
-  
-  try {
-    console.log('🔍 Fetching balance for item:', selectedItemDisplay.value.code, 'Store:', storeId, 'Group:', groupId);
-    
-    const response = await convertedBalanceService.getConvertedBalances({
-      storeId: Number(storeId),
-      groupId: Number(groupId),
-      itemId: Number(selectedItemDisplay.value.id),
-      limit: 1
-    });
-    
-    console.log('📊 Balance response:', response);
-    
-    if (response.success && response.data && response.data.length > 0) {
-      currentBalance.value = parseFloat(response.data[0].convertedBalance || 0);
-      console.log('✅ Balance found:', currentBalance.value);
-    } else {
-      currentBalance.value = 0;
-      console.log('ℹ️ No balance found, setting to 0');
-    }
-  } catch (error) {
-    console.error('❌ Error fetching current balance:', error);
-    currentBalance.value = 0;
-  } finally {
-    isFetchingBalance.value = false;
-  }
-};
-
-const fetchCurrentBalanceOut = async () => {
-  const storeId = formOut.value.storeId || props.storeId;
-  const groupId = formOut.value.groupId || props.groupId;
-  
-  if (!storeId || !groupId || !selectedItemDisplayOut.value) {
-    currentBalanceOut.value = null;
-    return;
-  }
-  
-  if (isFetchingBalanceOut.value) return;
-  isFetchingBalanceOut.value = true;
-  
-  try {
-    console.log('🔍 Fetching balance for item (out):', selectedItemDisplayOut.value.code, 'Store:', storeId, 'Group:', groupId);
-    
-    const response = await convertedBalanceService.getConvertedBalances({
-      storeId: Number(storeId),
-      groupId: Number(groupId),
-      itemId: Number(selectedItemDisplayOut.value.id),
-      limit: 1
-    });
-    
-    console.log('📊 Balance response (out):', response);
-    
-    if (response.success && response.data && response.data.length > 0) {
-      currentBalanceOut.value = parseFloat(response.data[0].convertedBalance || 0);
-      console.log('✅ Balance found (out):', currentBalanceOut.value);
-    } else {
-      currentBalanceOut.value = 0;
-      console.log('ℹ️ No balance found (out), setting to 0');
-    }
-  } catch (error) {
-    console.error('❌ Error fetching current balance (out):', error);
-    currentBalanceOut.value = 0;
-  } finally {
-    isFetchingBalanceOut.value = false;
-  }
-};
-
-// ================================================================
-// METHODS - Validate Stock Out
+// VALIDATE STOCK OUT
 // ================================================================
 
 const validateStockOut = () => {
-  stockOutError.value = '';
-  
-  if (!selectedItemDisplayOut.value) {
-    return;
-  }
-  
+  stockOutError.value = "";
+
+  if (!selectedItemDisplayOut.value) return;
+
   const qty = parseFloat(formOut.value.convertedBalance) || 0;
-  
-  if (qty <= 0) {
+  if (qty <= 0) return;
+
+  if (
+    currentBalanceOut.value === null ||
+    currentBalanceOut.value === undefined
+  ) {
+    stockOutError.value = "⚠️ Please wait for balance to load";
     return;
   }
-  
-  if (currentBalanceOut.value === null || currentBalanceOut.value === undefined) {
-    stockOutError.value = '⚠️ Please wait for balance to load';
-    return;
-  }
-  
+
   if (currentBalanceOut.value === 0) {
-    stockOutError.value = '⚠️ Balance is zero. Cannot remove stock.';
+    stockOutError.value = "⚠️ Balance is zero. Cannot remove stock.";
     return;
   }
-  
+
   if (qty > currentBalanceOut.value) {
     stockOutError.value = `⚠️ Insufficient balance. Available: ${currentBalanceOut.value}`;
-  } else {
-    stockOutError.value = '';
   }
 };
 
 // ================================================================
-// HELPERS - Item Display
+// HELPERS
 // ================================================================
 
 const getItemUOM = (item) => {
-  if (!item) return 'N/A';
-  if (item.uom?.code) return item.uom.code;
-  if (item.uomCode) return item.uomCode;
-  if (item.uom_code) return item.uom_code;
-  return 'N/A';
+  if (!item) return "N/A";
+  return (
+    item.uom?.code ||
+    item.uomCode ||
+    item.uom_code ||
+    "N/A"
+  );
 };
 
-// ✅ Get the CONVERTED UOM (the one shown in the balance)
 const getConvertedUOMDisplay = (item) => {
-  if (!item) return 'N/A';
-  return item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'N/A';
-};
-
-const getConversionDisplay = (item) => {
-  if (!item) return '';
-  const conversionValue = item.conversionValue || item.conversion_value || 1;
-  const conversionUom = item.conversionUom?.code || item.conversionUomCode || item.conversion_uom_code || '';
-  const baseUom = getItemUOM(item);
-  
-  if (conversionUom && conversionValue > 1) {
-    return `${conversionValue} ${conversionUom} = 1 ${baseUom}`;
-  }
-  return '';
+  if (!item) return "N/A";
+  return (
+    item.conversionUomCode ||
+    item.conversionUom?.code ||
+    item.uomCode ||
+    item.uom?.code ||
+    "N/A"
+  );
 };
 
 const getStoreName = (storeId) => {
-  if (!storeId) return 'Unknown';
+  if (!storeId) return "Unknown";
   const store = props.stores.find((s) => Number(s.id) === Number(storeId));
-  return store ? store.name : 'Unknown';
+  return store ? store.name : "Unknown";
 };
 
 const getGroupName = (groupId) => {
-  if (!groupId) return 'Unknown';
+  if (!groupId) return "Unknown";
   const group = props.groups.find((g) => Number(g.id) === Number(groupId));
-  return group ? group.name : 'Unknown';
-};
-
-const getInventoryItemsArray = () => {
-  if (Array.isArray(props.inventoryItems)) {
-    return props.inventoryItems;
-  }
-  if (props.inventoryItems && typeof props.inventoryItems === 'object') {
-    if (props.inventoryItems.data && Array.isArray(props.inventoryItems.data)) {
-      return props.inventoryItems.data;
-    }
-    return Object.values(props.inventoryItems);
-  }
-  return [];
+  return group ? group.name : "Unknown";
 };
 
 const formatNumber = (num) => {
+  if (num === undefined || num === null) return "0";
   return new Intl.NumberFormat().format(num);
 };
 
 // ================================================================
-// ✅ SAVE BALANCE - Stock In (Uses stockIn API)
+// SAVE — Stock In
 // ================================================================
 
 const saveBalance = async () => {
-  // Validation
   if (!form.value.storeId) {
-    showToastMessage('Please select a store', 'error');
+    showToastMessage("Please select a store", "error");
     return;
   }
   if (!form.value.groupId) {
-    showToastMessage('Please select a group', 'error');
+    showToastMessage("Please select a group", "error");
     return;
   }
   if (!form.value.itemId) {
-    showToastMessage('Please select an item', 'error');
+    showToastMessage("Please select an item", "error");
     return;
   }
   if (form.value.convertedBalance <= 0) {
-    showToastMessage('Quantity must be greater than 0', 'error');
+    showToastMessage("Quantity must be greater than 0", "error");
     return;
   }
 
@@ -1026,82 +988,80 @@ const saveBalance = async () => {
 
   try {
     const item = selectedItemDisplay.value;
-    
-    // Get the CORRECT converted UOM
-    const convertedUom = item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'KG';
-    const conversionValue = item.conversionValue || item.conversion_value || 1;
-    
-    console.log('📥 Stock In - Item:', item.code, 'Qty:', form.value.convertedBalance, 'UOM:', convertedUom);
+    const convertedUom = getConvertedUOMDisplay(item);
+    const conversionValue =
+      item.conversionValue || item.conversion_value || 1;
 
-    // ✅ Use the new stockIn method
     const response = await convertedBalanceService.stockIn({
       storeId: Number(form.value.storeId),
       groupId: Number(form.value.groupId),
       itemId: Number(form.value.itemId),
-      itemCode: item.code || '',
-      itemName: item.name || item.standardName || 'Unknown',
+      itemCode: item.code || "",
+      itemName: item.name || item.standardName || "Unknown",
       uomCode: convertedUom,
       quantity: Number(form.value.convertedBalance),
       conversionRate: conversionValue,
       sourceUomId: item.uomId,
       targetUomId: item.conversionUomId,
-      reason: form.value.remark || 'Stock In'
+      reason: form.value.remark || "Stock In",
     });
 
     if (response.success) {
-      showToastMessage('✅ Stock added successfully!', 'success');
-      emit('success', response.data);
-      
-      // Refresh balance after successful operation
-      await fetchCurrentBalance();
-      
+      showToastMessage("✅ Stock added successfully!", "success");
+      emit("success", response.data);
+
       setTimeout(() => {
         saving.value = false;
         closeModal();
       }, 1500);
     } else {
-      showToastMessage(response.error || '❌ Failed to add stock', 'error');
+      showToastMessage(response.error || "❌ Failed to add stock", "error");
       saving.value = false;
     }
   } catch (error) {
-    console.error('Error adding stock:', error);
-    showToastMessage('❌ Failed to add stock', 'error');
+    console.error("Error adding stock:", error);
+    showToastMessage("❌ Failed to add stock", "error");
     saving.value = false;
   }
 };
 
 // ================================================================
-// ✅ SAVE BALANCE - Stock Out (Uses stockOut API)
+// SAVE — Stock Out
 // ================================================================
 
 const saveBalanceOut = async () => {
-  // Validation
   if (!formOut.value.storeId) {
-    showToastMessage('Please select a store', 'error');
+    showToastMessage("Please select a store", "error");
     return;
   }
   if (!formOut.value.groupId) {
-    showToastMessage('Please select a group', 'error');
+    showToastMessage("Please select a group", "error");
     return;
   }
   if (!formOut.value.itemId) {
-    showToastMessage('Please select an item', 'error');
+    showToastMessage("Please select an item", "error");
     return;
   }
   if (formOut.value.convertedBalance <= 0) {
-    showToastMessage('Quantity must be greater than 0', 'error');
+    showToastMessage("Quantity must be greater than 0", "error");
     return;
   }
-  if (currentBalanceOut.value === null || currentBalanceOut.value === undefined) {
-    showToastMessage('Please wait for balance to load', 'error');
+  if (
+    currentBalanceOut.value === null ||
+    currentBalanceOut.value === undefined
+  ) {
+    showToastMessage("Please wait for balance to load", "error");
     return;
   }
   if (currentBalanceOut.value === 0) {
-    showToastMessage('⚠️ Balance is zero. Cannot remove stock.', 'error');
+    showToastMessage("⚠️ Balance is zero. Cannot remove stock.", "error");
     return;
   }
   if (formOut.value.convertedBalance > currentBalanceOut.value) {
-    showToastMessage(`⚠️ Insufficient balance. Available: ${currentBalanceOut.value}`, 'error');
+    showToastMessage(
+      `⚠️ Insufficient balance. Available: ${currentBalanceOut.value}`,
+      "error"
+    );
     return;
   }
 
@@ -1109,52 +1069,45 @@ const saveBalanceOut = async () => {
 
   try {
     const item = selectedItemDisplayOut.value;
-    
-    // Get the CORRECT converted UOM
-    const convertedUom = item.conversionUomCode || item.conversionUom?.code || item.uomCode || item.uom?.code || 'KG';
-    const conversionValue = item.conversionValue || item.conversion_value || 1;
-    
-    console.log('📤 Stock Out - Item:', item.code, 'Qty:', formOut.value.convertedBalance, 'UOM:', convertedUom);
+    const convertedUom = getConvertedUOMDisplay(item);
+    const conversionValue =
+      item.conversionValue || item.conversion_value || 1;
 
-    // ✅ Use the new stockOut method
     const response = await convertedBalanceService.stockOut({
       storeId: Number(formOut.value.storeId),
       groupId: Number(formOut.value.groupId),
       itemId: Number(formOut.value.itemId),
-      itemCode: item.code || '',
-      itemName: item.name || item.standardName || 'Unknown',
+      itemCode: item.code || "",
+      itemName: item.name || item.standardName || "Unknown",
       uomCode: convertedUom,
       quantity: Number(formOut.value.convertedBalance),
       conversionRate: conversionValue,
       sourceUomId: item.uomId,
       targetUomId: item.conversionUomId,
-      reason: formOut.value.remark || 'Stock Out'
+      reason: formOut.value.remark || "Stock Out",
     });
 
     if (response.success) {
-      showToastMessage('✅ Stock removed successfully!', 'success');
-      emit('success', response.data);
-      
-      // Refresh balance after successful operation
-      await fetchCurrentBalanceOut();
-      
+      showToastMessage("✅ Stock removed successfully!", "success");
+      emit("success", response.data);
+
       setTimeout(() => {
         saving.value = false;
         closeModal();
       }, 1500);
     } else {
-      showToastMessage(response.error || '❌ Failed to remove stock', 'error');
+      showToastMessage(response.error || "❌ Failed to remove stock", "error");
       saving.value = false;
     }
   } catch (error) {
-    console.error('Error removing stock:', error);
-    showToastMessage('❌ Failed to remove stock', 'error');
+    console.error("Error removing stock:", error);
+    showToastMessage("❌ Failed to remove stock", "error");
     saving.value = false;
   }
 };
 
 // ================================================================
-// INITIALIZATION
+// INIT
 // ================================================================
 
 const initializeForm = () => {
@@ -1163,7 +1116,6 @@ const initializeForm = () => {
       form.value.storeId = Number(props.storeId);
       formOut.value.storeId = Number(props.storeId);
     }
-    
     if (props.groupId) {
       form.value.groupId = Number(props.groupId);
       formOut.value.groupId = Number(props.groupId);
@@ -1172,80 +1124,92 @@ const initializeForm = () => {
 };
 
 // ================================================================
-// LIFECYCLE
+// WATCHERS
 // ================================================================
 
-watch(() => props.visible, async (newVal) => {
-  if (newVal) {
-    // Reset Stock In form
-    form.value.itemId = '';
-    form.value.convertedBalance = 0;
-    form.value.remark = '';
-    selectedItemDisplay.value = null;
-    itemSearchQuery.value = '';
-    items.value = [];
-    searchTotal.value = 0;
-    currentBalance.value = null;
-    
-    // Reset Stock Out form
-    formOut.value.itemId = '';
-    formOut.value.convertedBalance = 0;
-    formOut.value.remark = '';
-    selectedItemDisplayOut.value = null;
-    itemSearchQueryOut.value = '';
-    itemsOut.value = [];
-    searchTotalOut.value = 0;
-    currentBalanceOut.value = null;
-    stockOutError.value = '';
-    
-    initializeForm();
-  } else {
-    if (toastTimeout) {
-      clearTimeout(toastTimeout);
-      toastTimeout = null;
+watch(
+  () => props.visible,
+  (newVal) => {
+    if (newVal) {
+      // Reset Stock In
+      form.value.itemId = "";
+      form.value.convertedBalance = 0;
+      form.value.remark = "";
+      selectedItemDisplay.value = null;
+      itemSearchQuery.value = "";
+      items.value = [];
+      searchTotal.value = 0;
+      currentBalance.value = null;
+
+      // Reset Stock Out
+      formOut.value.itemId = "";
+      formOut.value.convertedBalance = 0;
+      formOut.value.remark = "";
+      selectedItemDisplayOut.value = null;
+      itemSearchQueryOut.value = "";
+      itemsOut.value = [];
+      searchTotalOut.value = 0;
+      currentBalanceOut.value = null;
+      stockOutError.value = "";
+
+      initializeForm();
+    } else {
+      if (toastTimeout) {
+        clearTimeout(toastTimeout);
+        toastTimeout = null;
+      }
+      showToast.value = false;
     }
-    showToast.value = false;
-  }
-}, { immediate: true });
+  },
+  { immediate: true }
+);
 
-watch(() => [props.storeId, props.groupId], async () => {
-  if (props.visible) {
-    initializeForm();
+watch(
+  () => [props.storeId, props.groupId],
+  () => {
+    if (props.visible) initializeForm();
   }
-});
+);
 
-// Watch for changes to form values that should trigger balance refresh
-watch(() => form.value.storeId, () => {
-  if (selectedItemDisplay.value && props.visible) {
-    currentBalance.value = null;
-    fetchCurrentBalance();
+// Store/group change → clear current selection (item may not exist in the new scope)
+watch(
+  () => form.value.storeId,
+  () => {
+    if (selectedItemDisplay.value) {
+      clearItemSelection();
+      showToastMessage("Store changed — please re-select an item", "info");
+    }
   }
-});
-
-watch(() => form.value.groupId, () => {
-  if (selectedItemDisplay.value && props.visible) {
-    currentBalance.value = null;
-    fetchCurrentBalance();
+);
+watch(
+  () => form.value.groupId,
+  () => {
+    if (selectedItemDisplay.value) {
+      clearItemSelection();
+      showToastMessage("Group changed — please re-select an item", "info");
+    }
   }
-});
-
-watch(() => formOut.value.storeId, () => {
-  if (selectedItemDisplayOut.value && props.visible) {
-    currentBalanceOut.value = null;
-    stockOutError.value = '';
-    fetchCurrentBalanceOut();
+);
+watch(
+  () => formOut.value.storeId,
+  () => {
+    if (selectedItemDisplayOut.value) {
+      clearItemSelectionOut();
+      showToastMessage("Store changed — please re-select an item", "info");
+    }
   }
-});
-
-watch(() => formOut.value.groupId, () => {
-  if (selectedItemDisplayOut.value && props.visible) {
-    currentBalanceOut.value = null;
-    stockOutError.value = '';
-    fetchCurrentBalanceOut();
+);
+watch(
+  () => formOut.value.groupId,
+  () => {
+    if (selectedItemDisplayOut.value) {
+      clearItemSelectionOut();
+      showToastMessage("Group changed — please re-select an item", "info");
+    }
   }
-});
+);
 
-onMounted(async () => {
+onMounted(() => {
   initializeForm();
 });
 </script>
@@ -1459,11 +1423,6 @@ onMounted(async () => {
   margin-top: 2px;
 }
 
-.balance-form .hint.pre-filled {
-  color: #16a34a;
-  font-weight: 500;
-}
-
 .full-width {
   flex: 1 1 100%;
   min-width: 100%;
@@ -1482,11 +1441,6 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 12px;
   flex-wrap: wrap;
-}
-
-.current-balance-display.loading {
-  background: #f1f5f9;
-  color: #94a3b8;
 }
 
 .current-balance-display .label {
@@ -1532,6 +1486,12 @@ onMounted(async () => {
   outline: none;
   border-color: #3b82f6;
   background: white;
+}
+
+.item-search-input:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .search-spinner {
@@ -1641,12 +1601,15 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-.item-option-conversion {
-  font-size: 9px;
-  color: #8b5cf6;
-  background: #f3e8ff;
+/* balance badge next to each row */
+.item-option-balance {
+  font-size: 10px;
+  color: #2563eb;
+  background: #eff6ff;
   padding: 1px 8px;
   border-radius: 10px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .item-loading {
@@ -1718,14 +1681,6 @@ onMounted(async () => {
 .selected-item-uom {
   color: #64748b;
   font-size: 11px;
-}
-
-.selected-item-conversion {
-  font-size: 10px;
-  color: #8b5cf6;
-  background: #f3e8ff;
-  padding: 1px 8px;
-  border-radius: 10px;
 }
 
 .clear-selection {
@@ -1874,8 +1829,12 @@ onMounted(async () => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -1886,6 +1845,12 @@ onMounted(async () => {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

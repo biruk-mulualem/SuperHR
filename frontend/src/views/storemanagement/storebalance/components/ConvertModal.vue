@@ -20,8 +20,8 @@
           <div>
             <p class="info-title">How Conversion Works</p>
             <p class="info-text">
-              Select items with available stock and enter the quantity to convert.
-              The system will reduce the source balance and increase the converted balance.
+              Select items with available stock, enter the quantity to convert, and
+              provide a <strong>Pad / SIV number for each item</strong> you select.
             </p>
           </div>
         </div>
@@ -71,7 +71,10 @@
             v-for="item in filteredItems"
             :key="item.id"
             class="convert-item"
-            :class="{ 'has-error': item.convertQty > item.balance }"
+            :class="{
+              'has-error': item.convertQty > item.balance,
+              'has-pad-error': item.selected && item.padError,
+            }"
           >
             <div class="convert-item-info">
               <input
@@ -86,53 +89,83 @@
               <span class="item-balance">{{ formatNumber(item.balance) }}</span>
               <span class="item-arrow">→</span>
               <span class="item-target">{{ item.convertToUom }}</span>
-              <span class="item-rate">(1 {{ item.uomCode }} = {{ item.conversionRate }} {{ item.convertToUom }})</span>
+              <span class="item-rate">
+                (1 {{ item.uomCode }} = {{ item.conversionRate }} {{ item.convertToUom }})
+              </span>
             </div>
-            
+
+            <!-- Per-item controls (quantity + pad number) -->
             <div class="convert-item-input" v-if="item.selected">
-              <label>Quantity:</label>
-              <div class="quantity-control">
-                <button
-                  type="button"
-                  class="qty-btn"
-                  @click="adjustQuantity(item, -1)"
-                  :disabled="item.convertQty <= 1"
+              <div class="convert-item-row">
+                <label>Quantity:</label>
+                <div class="quantity-control">
+                  <button
+                    type="button"
+                    class="qty-btn"
+                    @click="adjustQuantity(item, -1)"
+                    :disabled="item.convertQty <= 1"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    v-model.number="item.convertQty"
+                    :max="item.balance"
+                    min="1"
+                    step="1"
+                    class="qty-input"
+                    @focus="selectAllText($event)"
+                    @input="validateQty(item)"
+                  />
+                  <button
+                    type="button"
+                    class="qty-btn"
+                    @click="adjustQuantity(item, 1)"
+                    :disabled="item.convertQty >= item.balance"
+                  >
+                    +
+                  </button>
+                  <span class="qty-max">Max: {{ formatNumber(item.balance) }}</span>
+                </div>
+                <span
+                  class="convert-result"
+                  v-if="item.convertQty > 0 && item.convertQty <= item.balance"
                 >
-                  −
-                </button>
-                <input
-                  type="number"
-                  v-model.number="item.convertQty"
-                  :max="item.balance"
-                  min="1"
-                  step="1"
-                  class="qty-input"
-                  @focus="selectAllText($event)"
-                  @input="validateQty(item)"
-                />
-                <button
-                  type="button"
-                  class="qty-btn"
-                  @click="adjustQuantity(item, 1)"
-                  :disabled="item.convertQty >= item.balance"
-                >
-                  +
-                </button>
-                <span class="qty-max">Max: {{ formatNumber(item.balance) }}</span>
+                  → {{ formatNumber(item.convertQty * item.conversionRate) }}
+                  {{ item.convertToUom }}
+                </span>
+                <span class="convert-error" v-if="item.convertQty > item.balance">
+                  ⚠️ Exceeds max ({{ formatNumber(item.balance) }})
+                </span>
               </div>
-              <span class="convert-result" v-if="item.convertQty > 0 && item.convertQty <= item.balance">
-                → {{ formatNumber(item.convertQty * item.conversionRate) }} {{ item.convertToUom }}
-              </span>
-              <span class="convert-error" v-if="item.convertQty > item.balance">
-                ⚠️ Exceeds max ({{ formatNumber(item.balance) }})
-              </span>
+
+              <div class="convert-item-row pad-row">
+                <label class="pad-label-small">
+                  <span class="pad-icon-small">📒</span>
+                  ውስጥ ለውስጥ Pad
+                </label>
+                <input
+                  type="text"
+                  v-model="item.sivNumber"
+                  class="pad-input-small"
+                  :class="{ 'has-error': item.padError }"
+                  placeholder="e.g. PAD-2024-0125"
+                  maxlength="100"
+                  @input="item.padError = ''"
+                />
+                <span v-if="item.padError" class="pad-error-small">
+                  {{ item.padError }}
+                </span>
+              </div>
             </div>
           </div>
-          
+
           <div v-if="filteredItems.length === 0" class="no-items">
             <span class="empty-icon">📦</span>
             <p>{{ searchQuery ? 'No items match your search' : 'No items available for conversion.' }}</p>
-            <span class="empty-hint" v-if="!searchQuery">Items must have stock and a conversion UOM set.</span>
+            <span class="empty-hint" v-if="!searchQuery">
+              Items must have stock and a conversion UOM set.
+            </span>
           </div>
         </div>
       </div>
@@ -201,12 +234,19 @@
               :key="item.id"
               class="confirmation-item"
             >
-              <span class="conf-item-code">{{ item.itemCode }}</span>
-              <span class="conf-item-name">{{ item.itemName }}</span>
-              <span class="conf-item-detail">
-                {{ item.convertQty }} {{ item.uomCode }} → 
-                {{ formatNumber(item.convertQty * item.conversionRate) }} {{ item.convertToUom }}
-              </span>
+              <div class="conf-item-main">
+                <span class="conf-item-code">{{ item.itemCode }}</span>
+                <span class="conf-item-name">{{ item.itemName }}</span>
+                <span class="conf-item-detail">
+                  {{ item.convertQty }} {{ item.uomCode }} →
+                  {{ formatNumber(item.convertQty * item.conversionRate) }}
+                  {{ item.convertToUom }}
+                </span>
+              </div>
+              <div class="conf-item-pad">
+                <span class="conf-pad-icon">📒</span>
+                <span class="conf-pad-text">{{ item.sivNumber }}</span>
+              </div>
             </div>
           </div>
 
@@ -214,7 +254,7 @@
             <span class="warning-icon">⚠️</span>
             <span class="warning-text">
               This action cannot be undone. The source balance will be reduced.
-              Please verify the quantities before confirming.
+              Please verify the quantities and Pad / SIV numbers before confirming.
             </span>
           </div>
         </div>
@@ -232,9 +272,7 @@
       </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- TOAST -->
-    <!-- ============================================================ -->
+    <!-- Toast -->
     <div v-if="showToast" class="toast" :class="toastType">
       <span>{{ toastMessage }}</span>
     </div>
@@ -242,46 +280,22 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import convertedBalanceService from '@/stores/convertedBalanceService';
 
-// ================================================================
-// PROPS
-// ================================================================
-
 const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false,
-  },
-  storeId: {
-    type: Number,
-    required: true,
-  },
-  groupId: {
-    type: Number,
-    required: true,
-  },
-  storeName: {
-    type: String,
-    default: '',
-  },
-  categories: {
-    type: Array,
-    default: () => [],
-  },
+  visible: { type: Boolean, default: false },
+  storeId: { type: Number, required: true },
+  groupId: { type: Number, required: true },
+  storeName: { type: String, default: '' },
+  categories: { type: Array, default: () => [] },
 });
-
-// ================================================================
-// EMITS
-// ================================================================
 
 const emit = defineEmits(['update:visible', 'success', 'error']);
 
-// ================================================================
+// ----------------------------------------------------------------
 // STATE
-// ================================================================
-
+// ----------------------------------------------------------------
 const loading = ref(false);
 const converting = ref(false);
 const searchQuery = ref('');
@@ -297,13 +311,12 @@ const toastMessage = ref('');
 const toastType = ref('success');
 let toastTimeout = null;
 
-// ================================================================
+// ----------------------------------------------------------------
 // COMPUTED
-// ================================================================
+// ----------------------------------------------------------------
 
 const filteredItems = computed(() => {
   let items = availableItems.value;
-  
   if (searchQuery.value) {
     const search = searchQuery.value.toLowerCase();
     items = items.filter(item =>
@@ -311,28 +324,29 @@ const filteredItems = computed(() => {
       item.itemName.toLowerCase().includes(search)
     );
   }
-  
   return items;
 });
 
-const hasSelectedItems = computed(() => {
-  return availableItems.value.some(item => 
-    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  );
-});
+/**
+ * An item is only considered "ready" if it's selected, has a valid
+ * quantity, AND has a non-empty pad / SIV number.
+ */
+const selectedItems = computed(() =>
+  availableItems.value.filter(
+    item =>
+      item.selected &&
+      item.convertQty > 0 &&
+      item.convertQty <= item.balance
+  )
+);
 
-const selectedCount = computed(() => {
-  return availableItems.value.filter(item => 
-    item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  ).length;
-});
+const selectedCount = computed(() => selectedItems.value.length);
+const hasSelectedItems = computed(() => selectedItems.value.length > 0);
 
 const totalConvertedAmount = computed(() => {
   let total = 0;
-  availableItems.value.forEach(item => {
-    if (item.selected && item.convertQty > 0 && item.convertQty <= item.balance) {
-      total += item.convertQty * item.conversionRate;
-    }
+  selectedItems.value.forEach(item => {
+    total += item.convertQty * item.conversionRate;
   });
   return formatNumber(total);
 });
@@ -342,13 +356,11 @@ const getTargetUom = () => {
   return selected ? selected.convertToUom : 'N/A';
 };
 
-// ================================================================
+// ----------------------------------------------------------------
 // METHODS
-// ================================================================
+// ----------------------------------------------------------------
 
-const closeModal = () => {
-  emit('update:visible', false);
-};
+const closeModal = () => emit('update:visible', false);
 
 const showToastMessage = (msg, type = 'success') => {
   if (toastTimeout) clearTimeout(toastTimeout);
@@ -368,32 +380,30 @@ const formatNumber = (num) => {
 
 const onSearch = () => {
   if (searchTimeout) clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    fetchAvailableItems();
-  }, 300);
+  searchTimeout = setTimeout(() => fetchAvailableItems(), 300);
 };
 
-const onFilterChange = () => {
-  fetchAvailableItems();
-};
+const onFilterChange = () => fetchAvailableItems();
 
 const fetchAvailableItems = async () => {
   if (!props.storeId || !props.groupId) return;
-  
+
   loading.value = true;
   try {
     const response = await convertedBalanceService.getAvailableItems({
       storeId: props.storeId,
       groupId: props.groupId,
       categoryId: filterCategory.value || undefined,
-      search: searchQuery.value || undefined
+      search: searchQuery.value || undefined,
     });
 
     if (response.success) {
       availableItems.value = response.data.map(item => ({
         ...item,
         selected: false,
-        convertQty: 1
+        convertQty: 1,
+        sivNumber: '',
+        padError: '',
       }));
     } else {
       showToastMessage('Failed to fetch available items', 'error');
@@ -410,8 +420,11 @@ const toggleSelection = (item) => {
   item.selected = !item.selected;
   if (item.selected) {
     item.convertQty = 1;
+    // leave sivNumber as-is if user had typed one earlier
   } else {
     item.convertQty = 0;
+    item.sivNumber = '';
+    item.padError = '';
   }
 };
 
@@ -422,33 +435,59 @@ const adjustQuantity = (item, delta) => {
   }
 };
 
-const selectAllText = (event) => {
-  event.target.select();
-};
+const selectAllText = (event) => event.target.select();
 
 const validateQty = (item) => {
-  if (item.convertQty > item.balance) {
-    item.convertQty = item.balance;
-  }
-  if (item.convertQty < 0) {
-    item.convertQty = 0;
-  }
+  if (item.convertQty > item.balance) item.convertQty = item.balance;
+  if (item.convertQty < 0) item.convertQty = 0;
   if (item.convertQty === 0) {
     item.selected = false;
+    item.sivNumber = '';
+    item.padError = '';
   }
+};
+
+/**
+ * Validate every selected item has a pad number.
+ * Sets padError on the offending item(s) so the field highlights red.
+ * Returns true when everything is OK.
+ */
+const validateAllPads = () => {
+  let allValid = true;
+  let firstMissing = null;
+
+  selectedItems.value.forEach(item => {
+    if (!item.sivNumber || !item.sivNumber.trim()) {
+      item.padError = 'Pad / SIV is required';
+      allValid = false;
+      if (!firstMissing) firstMissing = item;
+    } else {
+      item.padError = '';
+    }
+  });
+
+  if (!allValid && firstMissing) {
+    showToastMessage(
+      `Pad / SIV is missing for ${firstMissing.itemCode}`,
+      'warning'
+    );
+  }
+
+  return allValid;
 };
 
 const openConfirmation = () => {
-  const selected = availableItems.value.filter(
-    item => item.selected && item.convertQty > 0 && item.convertQty <= item.balance
-  );
-  
-  if (selected.length === 0) {
+  if (!validateAllPads()) return;
+
+  if (selectedItems.value.length === 0) {
     showToastMessage('No valid items selected for conversion', 'warning');
     return;
   }
-  
-  selectedForConfirmation.value = selected;
+
+  selectedForConfirmation.value = selectedItems.value.map(item => ({
+    ...item,
+    sivNumber: item.sivNumber.trim(),
+  }));
   showConfirmation.value = true;
 };
 
@@ -458,9 +497,21 @@ const closeConfirmation = () => {
 };
 
 const confirmConversion = async () => {
-  const selectedItems = selectedForConfirmation.value;
+  // Re-validate in case the user somehow got here without a pad
+  const itemsWithPad = selectedForConfirmation.value.filter(
+    item => item.sivNumber && item.sivNumber.trim()
+  );
 
-  if (selectedItems.length === 0) {
+  if (itemsWithPad.length !== selectedForConfirmation.value.length) {
+    showToastMessage(
+      'Every selected item must have a Pad / SIV number',
+      'error'
+    );
+    closeConfirmation();
+    return;
+  }
+
+  if (itemsWithPad.length === 0) {
     showToastMessage('No items selected for conversion', 'warning');
     return;
   }
@@ -468,7 +519,8 @@ const confirmConversion = async () => {
   converting.value = true;
 
   try {
-    const items = selectedItems.map(item => ({
+    // 👇 each item carries its own sivNumber
+    const items = itemsWithPad.map(item => ({
       balanceId: item.balanceId,
       itemId: item.id,
       quantity: item.convertQty,
@@ -478,37 +530,31 @@ const confirmConversion = async () => {
       itemCode: item.itemCode,
       itemName: item.itemName,
       uomCode: item.uomCode,
-      convertToUom: item.convertToUom
+      convertToUom: item.convertToUom,
+      sivNumber: item.sivNumber,          // 👈 per-item pad
     }));
 
     const response = await convertedBalanceService.convert(items);
 
     if (response.success) {
       showToastMessage(
-        response.message || `Successfully converted ${selectedItems.length} item(s)`,
+        response.message ||
+          `Successfully converted ${itemsWithPad.length} item(s)`,
         'success'
       );
-      
+
       emit('success', response.data);
-      
       closeConfirmation();
-      
-      // Reset selection
+
       availableItems.value.forEach(item => {
         item.selected = false;
         item.convertQty = 1;
+        item.sivNumber = '';
+        item.padError = '';
       });
-      
-      // Refresh the list
-      setTimeout(() => {
-        fetchAvailableItems();
-      }, 500);
-      
-      // Close modal after success
-      setTimeout(() => {
-        closeModal();
-      }, 1500);
-      
+
+      setTimeout(() => fetchAvailableItems(), 500);
+      setTimeout(() => closeModal(), 1500);
     } else {
       showToastMessage(response.message || 'Conversion failed', 'error');
       if (response.data?.errors) {
@@ -520,29 +566,31 @@ const confirmConversion = async () => {
     }
   } catch (error) {
     console.error('Conversion error:', error);
-    showToastMessage('Failed to perform conversion', 'error');
+    showToastMessage(
+      error?.message || 'Failed to perform conversion',
+      'error'
+    );
     emit('error', [{ error: error.message || 'Conversion failed' }]);
   } finally {
     converting.value = false;
   }
 };
 
-// ================================================================
-// WATCH
-// ================================================================
+// ----------------------------------------------------------------
+// WATCH / CLEANUP
+// ----------------------------------------------------------------
 
-watch(() => props.visible, (newVal) => {
-  if (newVal) {
-    // Reset state when opening
-    searchQuery.value = '';
-    filterCategory.value = '';
-    fetchAvailableItems();
-  }
-}, { immediate: true });
-
-// ================================================================
-// CLEANUP
-// ================================================================
+watch(
+  () => props.visible,
+  (newVal) => {
+    if (newVal) {
+      searchQuery.value = '';
+      filterCategory.value = '';
+      fetchAvailableItems();
+    }
+  },
+  { immediate: true }
+);
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
@@ -581,23 +629,23 @@ onBeforeUnmount(() => {
 }
 
 .confirmation-modal .modal-container {
-  max-width: 520px;
+  max-width: 560px;
 }
 
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 /* ================================================================ */
@@ -611,30 +659,23 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #e2e8f0;
   flex-shrink: 0;
 }
-
 .modal-header-content {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
-.modal-icon {
-  font-size: 24px;
-}
-
+.modal-icon { font-size: 24px; }
 .modal-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
   color: #1e293b;
 }
-
 .modal-subtitle {
   font-size: 12px;
   color: #94a3b8;
   margin: 0;
 }
-
 .modal-close {
   background: none;
   border: none;
@@ -650,24 +691,19 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
   flex-shrink: 0;
 }
-
 .modal-close:hover {
   background: #f1f5f9;
   color: #1e293b;
 }
 
 /* ================================================================ */
-/* BODY */
+/* BODY & INFO BOX */
 /* ================================================================ */
 .modal-body {
   padding: 16px 20px;
   overflow-y: auto;
   flex: 1;
 }
-
-/* ================================================================ */
-/* INFO BOX */
-/* ================================================================ */
 .convert-info-box {
   display: flex;
   gap: 12px;
@@ -677,19 +713,13 @@ onBeforeUnmount(() => {
   border: 1px solid #bbf7d0;
   margin-bottom: 14px;
 }
-
-.info-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
+.info-icon { font-size: 18px; flex-shrink: 0; }
 .info-title {
   font-weight: 600;
   font-size: 13px;
   color: #166534;
   margin: 0;
 }
-
 .info-text {
   font-size: 12px;
   color: #475569;
@@ -706,13 +736,11 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
 }
-
 .search-box-small {
   position: relative;
   flex: 1;
   min-width: 180px;
 }
-
 .search-box-small input {
   width: 100%;
   padding: 6px 12px 6px 32px;
@@ -722,14 +750,12 @@ onBeforeUnmount(() => {
   background: #f8fafc;
   transition: all 0.2s;
 }
-
 .search-box-small input:focus {
   outline: none;
   border-color: #8b5cf6;
   background: white;
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
-
 .search-icon-small {
   position: absolute;
   left: 10px;
@@ -738,11 +764,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #94a3b8;
 }
-
-.filter-group {
-  min-width: 140px;
-}
-
+.filter-group { min-width: 140px; }
 .filter-select {
   width: 100%;
   padding: 6px 12px;
@@ -752,7 +774,6 @@ onBeforeUnmount(() => {
   background: white;
   cursor: pointer;
 }
-
 .convert-stats {
   display: flex;
   gap: 12px;
@@ -760,7 +781,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #475569;
 }
-
 .stat-item {
   background: #f1f5f9;
   padding: 3px 12px;
@@ -772,21 +792,16 @@ onBeforeUnmount(() => {
 /* ITEM LIST */
 /* ================================================================ */
 .convert-item-list {
-  max-height: 380px;
+  max-height: 420px;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
-
-.convert-item-list::-webkit-scrollbar {
-  width: 6px;
-}
-
+.convert-item-list::-webkit-scrollbar { width: 6px; }
 .convert-item-list::-webkit-scrollbar-track {
   background: #f1f5f9;
   border-radius: 3px;
 }
-
 .convert-item-list::-webkit-scrollbar-thumb {
   background: #94a3b8;
   border-radius: 3px;
@@ -800,18 +815,10 @@ onBeforeUnmount(() => {
   gap: 6px;
   transition: background 0.2s;
 }
-
-.convert-item:hover {
-  background: #fafbfc;
-}
-
-.convert-item:last-child {
-  border-bottom: none;
-}
-
-.convert-item.has-error {
-  background: #fef2f2;
-}
+.convert-item:hover { background: #fafbfc; }
+.convert-item:last-child { border-bottom: none; }
+.convert-item.has-error { background: #fef2f2; }
+.convert-item.has-pad-error { background: #fff7ed; }
 
 .convert-item-info {
   display: flex;
@@ -819,7 +826,6 @@ onBeforeUnmount(() => {
   gap: 10px;
   flex-wrap: wrap;
 }
-
 .convert-item-info input[type="checkbox"] {
   width: 16px;
   height: 16px;
@@ -827,12 +833,10 @@ onBeforeUnmount(() => {
   accent-color: #8b5cf6;
   flex-shrink: 0;
 }
-
 .convert-item-info input[type="checkbox"]:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
 .item-code {
   font-weight: 600;
   color: #2563eb;
@@ -840,7 +844,6 @@ onBeforeUnmount(() => {
   min-width: 90px;
   font-family: monospace;
 }
-
 .item-name {
   flex: 1;
   font-weight: 500;
@@ -848,7 +851,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   min-width: 120px;
 }
-
 .item-uom-badge {
   background: #f1f5f9;
   padding: 1px 10px;
@@ -857,19 +859,13 @@ onBeforeUnmount(() => {
   color: #475569;
   font-weight: 500;
 }
-
 .item-balance {
   font-weight: 600;
   color: #1e293b;
   font-size: 13px;
   min-width: 40px;
 }
-
-.item-arrow {
-  color: #94a3b8;
-  font-size: 14px;
-}
-
+.item-arrow { color: #94a3b8; font-size: 14px; }
 .item-target {
   background: #dbeafe;
   padding: 1px 10px;
@@ -878,24 +874,25 @@ onBeforeUnmount(() => {
   color: #1e40af;
   font-weight: 500;
 }
-
-.item-rate {
-  font-size: 11px;
-  color: #94a3b8;
-}
+.item-rate { font-size: 11px; color: #94a3b8; }
 
 /* ================================================================ */
-/* CONVERT INPUT */
+/* ITEM INPUT (quantity + pad) */
 /* ================================================================ */
 .convert-item-input {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   padding-left: 28px;
-  flex-wrap: wrap;
 }
 
-.convert-item-input label {
+.convert-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.convert-item-row label {
   font-size: 12px;
   color: #64748b;
   font-weight: 500;
@@ -910,7 +907,6 @@ onBeforeUnmount(() => {
   border: 1px solid #e2e8f0;
   padding: 1px;
 }
-
 .qty-btn {
   background: transparent;
   border: none;
@@ -919,20 +915,14 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 600;
   color: #64748b;
-  transition: all 0.2s;
   border-radius: 4px;
+  transition: all 0.2s;
 }
-
 .qty-btn:hover:not(:disabled) {
   background: #f1f5f9;
   color: #0f172a;
 }
-
-.qty-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
+.qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .qty-input {
   width: 50px;
   text-align: center;
@@ -942,15 +932,8 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 500;
 }
-
-.qty-input:focus {
-  outline: none;
-}
-
-.qty-max {
-  font-size: 11px;
-  color: #94a3b8;
-}
+.qty-input:focus { outline: none; }
+.qty-max { font-size: 11px; color: #94a3b8; }
 
 .convert-result {
   font-weight: 600;
@@ -960,11 +943,52 @@ onBeforeUnmount(() => {
   padding: 2px 12px;
   border-radius: 4px;
 }
-
 .convert-error {
   font-weight: 600;
   color: #dc2626;
   font-size: 12px;
+}
+
+/* Pad row inside an item */
+.pad-row {
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.pad-label-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6d28d9;
+  white-space: nowrap;
+}
+.pad-icon-small { font-size: 13px; }
+.pad-input-small {
+  flex: 1;
+  min-width: 140px;
+  padding: 4px 10px;
+  border: 1px solid #e9d5ff;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+  font-family: inherit;
+}
+.pad-input-small:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+.pad-input-small.has-error {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+.pad-error-small {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* ================================================================ */
@@ -975,26 +999,16 @@ onBeforeUnmount(() => {
   padding: 30px 20px;
   color: #94a3b8;
 }
-
 .no-items .empty-icon {
   font-size: 36px;
   display: block;
   margin-bottom: 8px;
 }
-
-.no-items p {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.no-items .empty-hint {
-  font-size: 12px;
-  color: #b0b8c4;
-}
+.no-items p { margin: 0; font-size: 14px; font-weight: 500; }
+.no-items .empty-hint { font-size: 12px; color: #b0b8c4; }
 
 /* ================================================================ */
-/* FOOTER */
+/* FOOTER & BUTTONS */
 /* ================================================================ */
 .modal-footer {
   display: flex;
@@ -1005,10 +1019,6 @@ onBeforeUnmount(() => {
   background: #f8fafc;
   flex-shrink: 0;
 }
-
-/* ================================================================ */
-/* BUTTONS */
-/* ================================================================ */
 .btn-primary {
   background: #8b5cf6;
   color: white;
@@ -1024,15 +1034,8 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
   white-space: nowrap;
 }
-
-.btn-primary:hover:not(:disabled) {
-  background: #7c3aed;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.btn-primary:hover:not(:disabled) { background: #7c3aed; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-secondary {
   background: #f1f5f9;
@@ -1047,10 +1050,7 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
   white-space: nowrap;
 }
-
-.btn-secondary:hover:not(:disabled) {
-  background: #e2e8f0;
-}
+.btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
 
 .btn-danger {
   background: #ef4444;
@@ -1067,15 +1067,8 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
   white-space: nowrap;
 }
-
-.btn-danger:hover:not(:disabled) {
-  background: #dc2626;
-}
-
-.btn-danger:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .spinner-small {
   display: inline-block;
@@ -1087,10 +1080,6 @@ onBeforeUnmount(() => {
   animation: spin 0.6s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* ================================================================ */
 /* CONFIRMATION MODAL */
 /* ================================================================ */
@@ -1099,7 +1088,6 @@ onBeforeUnmount(() => {
   text-align: center;
   margin-bottom: 8px;
 }
-
 .confirmation-title {
   text-align: center;
   font-size: 15px;
@@ -1107,25 +1095,19 @@ onBeforeUnmount(() => {
   color: #1e293b;
   margin-bottom: 16px;
 }
-
 .confirmation-details {
   background: #f8fafc;
   border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 16px;
 }
-
 .detail-row {
   display: flex;
   justify-content: space-between;
   padding: 4px 0;
   border-bottom: 1px solid #e2e8f0;
 }
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
+.detail-row:last-child { border-bottom: none; }
 .detail-row.highlight {
   background: #fef3c7;
   margin: 4px -16px 0 -16px;
@@ -1133,13 +1115,11 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   border-bottom: none;
 }
-
 .detail-label {
   font-weight: 500;
   color: #64748b;
   font-size: 13px;
 }
-
 .detail-value {
   color: #1e293b;
   font-weight: 500;
@@ -1147,26 +1127,27 @@ onBeforeUnmount(() => {
 }
 
 .confirmation-list {
-  max-height: 160px;
+  max-height: 220px;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   margin-bottom: 14px;
 }
-
 .confirmation-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.confirmation-item:last-child { border-bottom: none; }
+.conf-item-main {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  border-bottom: 1px solid #f1f5f9;
+  gap: 10px;
+  flex-wrap: wrap;
   font-size: 13px;
 }
-
-.confirmation-item:last-child {
-  border-bottom: none;
-}
-
 .conf-item-code {
   font-weight: 600;
   color: #2563eb;
@@ -1174,15 +1155,30 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-family: monospace;
 }
-
 .conf-item-name {
   flex: 1;
   color: #1e293b;
 }
-
 .conf-item-detail {
   color: #8b5cf6;
   font-weight: 500;
+}
+.conf-item-pad {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 6px;
+  padding: 2px 8px;
+  align-self: flex-start;
+}
+.conf-pad-icon { font-size: 12px; }
+.conf-pad-text {
+  color: #6d28d9;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: monospace;
 }
 
 .warning-box {
@@ -1194,12 +1190,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   border: 1px solid #fecaca;
 }
-
-.warning-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
+.warning-icon { font-size: 18px; flex-shrink: 0; }
 .warning-text {
   font-size: 12px;
   color: #991b1b;
@@ -1224,105 +1215,30 @@ onBeforeUnmount(() => {
   border-left: 3px solid #10b981;
   animation: slideIn 0.3s ease;
 }
-
-.toast.error {
-  border-left-color: #ef4444;
-}
-
-.toast.info {
-  border-left-color: #3b82f6;
-}
-
-.toast.warning {
-  border-left-color: #f59e0b;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
+.toast.error { border-left-color: #ef4444; }
+.toast.info { border-left-color: #3b82f6; }
+.toast.warning { border-left-color: #f59e0b; }
 
 /* ================================================================ */
 /* RESPONSIVE */
 /* ================================================================ */
 @media (max-width: 768px) {
-  .modal-container {
-    max-width: 100%;
-    max-height: 95vh;
-    margin: 10px;
-  }
-
-  .convert-controls {
-    flex-direction: column;
-  }
-
-  .search-box-small {
-    width: 100%;
-  }
-
-  .filter-group {
-    width: 100%;
-  }
-
-  .convert-stats {
-    margin-left: 0;
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .convert-item-info {
-    flex-wrap: wrap;
-  }
-
-  .convert-item-input {
-    padding-left: 0;
-  }
-
-  .confirmation-item {
-    flex-wrap: wrap;
-  }
-
-  .modal-footer {
-    flex-direction: column;
-  }
-
-  .modal-footer button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .item-rate {
-    display: none;
-  }
+  .modal-container { max-width: 100%; max-height: 95vh; margin: 10px; }
+  .convert-controls { flex-direction: column; }
+  .search-box-small, .filter-group { width: 100%; }
+  .convert-stats { margin-left: 0; width: 100%; justify-content: flex-start; }
+  .convert-item-info { flex-wrap: wrap; }
+  .convert-item-input { padding-left: 0; }
+  .confirmation-item { flex-wrap: wrap; }
+  .modal-footer { flex-direction: column; }
+  .modal-footer button { width: 100%; justify-content: center; }
+  .item-rate { display: none; }
 }
-
 @media (max-width: 480px) {
-  .modal-body {
-    padding: 12px;
-  }
-
-  .convert-item {
-    padding: 6px 10px;
-  }
-
-  .item-code {
-    min-width: 60px;
-    font-size: 11px;
-  }
-
-  .item-name {
-    font-size: 12px;
-    min-width: 80px;
-  }
-
-  .quantity-control {
-    flex: 1;
-  }
+  .modal-body { padding: 12px; }
+  .convert-item { padding: 6px 10px; }
+  .item-code { min-width: 60px; font-size: 11px; }
+  .item-name { font-size: 12px; min-width: 80px; }
+  .quantity-control { flex: 1; }
 }
 </style>

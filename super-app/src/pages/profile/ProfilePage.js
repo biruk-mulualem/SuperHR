@@ -1,275 +1,581 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+// pages/profile/ProfilePage.js
+import React, { useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Alert,
+  Platform,
+} from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
-// የሁሉንም ተጠቃሚዎች የግል መረጃ እና የስራ ክፍላቸውን (Role) የያዘ ዳታቤዝ
+// ================================================================
+// USER PROFILES
+// ================================================================
 const USER_PROFILES = {
-  john_doe: {
+  admin: {
     name: 'John Doe',
     title: 'System Administrator',
-    role: 'Admin (Master Access)', // 🌟 አዲስ፡ የሲስተም ሮል መግለጫ
+    role: 'Admin (Master Access)',
+    roleColor: '#8B5CF6',
     id: 'EMP-2026-01',
     department: 'IT & Security Infrastructure',
-    email: 'john_doe@superfiber.com',
+    email: 'john.doe@superfiber.com',
     phone: '+251 900 11 22 33',
     joinedDate: 'Mar 2022',
     initials: 'JD',
-    stats: { deliveries: 'Full', rating: '5.0', efficiency: '99%' }
+    avatar: 'https://i.pravatar.cc/300?img=12',
   },
-  flynn_rider: {
+  sales: {
     name: 'Flynn Rider',
     title: 'Senior Distribution Lead',
-    role: 'Sales Representative', // 🌟 አዲስ፡ የሲስተም ሮል መግለጫ
+    role: 'Sales Representative',
+    roleColor: '#10B981',
     id: 'EMP-2026-99',
     department: 'Logistics & Supply Chain',
-    email: 'flynn_rider@superfiber.com',
+    email: 'flynn.rider@superfiber.com',
     phone: '+251 911 23 45 67',
     joinedDate: 'Jan 2024',
     initials: 'FR',
-    stats: { deliveries: '142', rating: '4.9', efficiency: '96%' }
+    avatar: 'https://i.pravatar.cc/300?img=15',
   },
-  sam_purchaser: {
+  purchaser: {
     name: 'Sam Purchaser',
     title: 'Procurement Specialist',
-    role: 'Purchaser', // 🌟 አዲስ፡ የሲስተም ሮል መግለጫ
+    role: 'Purchaser',
+    roleColor: '#F59E0B',
     id: 'EMP-2026-04',
     department: 'Purchasing & Inventory',
-    email: 'sam_p@superfiber.com',
+    email: 'sam.p@superfiber.com',
     phone: '+251 922 44 55 66',
     joinedDate: 'Jul 2023',
     initials: 'SP',
-    stats: { deliveries: '94', rating: '4.7', efficiency: '91%' }
+    avatar: 'https://i.pravatar.cc/300?img=33',
   },
-  alex_manager: {
+  manager: {
     name: 'Alex Manager',
     title: 'Operations Director',
-    role: 'General Manager', // 🌟 አዲስ፡ የሲስተም ሮል መግለጫ
+    role: 'General Manager',
+    roleColor: '#3B82F6',
     id: 'EMP-2026-02',
     department: 'Corporate Management',
-    email: 'alex_m@superfiber.com',
+    email: 'alex.m@superfiber.com',
     phone: '+251 933 77 88 99',
     joinedDate: 'Nov 2021',
     initials: 'AM',
-    stats: { deliveries: '310', rating: '4.8', efficiency: '95%' }
+    avatar: 'https://i.pravatar.cc/300?img=52',
   },
-  elena_auditor: {
+  auditor: {
     name: 'Elena Auditor',
     title: 'Financial Compliance Officer',
-    role: 'Auditor', // 🌟 አዲስ፡ የሲስተም ሮል መግለጫ
+    role: 'Auditor',
+    roleColor: '#EF4444',
     id: 'EMP-2026-07',
     department: 'Auditing & Finance',
-    email: 'elena_a@superfiber.com',
+    email: 'elena.a@superfiber.com',
     phone: '+251 944 22 33 44',
     joinedDate: 'May 2024',
     initials: 'EA',
-    stats: { deliveries: 'Audit', rating: '4.9', efficiency: '98%' }
-  }
+    avatar: 'https://i.pravatar.cc/300?img=45',
+  },
 };
 
+const FALLBACK_KEY = 'sales';
+
+// ================================================================
+// COMPONENT
+// ================================================================
 export default function ProfilePage({ darkMode, userRole }) {
-  // በጨለማ ሁነታ ላይ ተመስርቶ ቀለማትን በዲናሚክ መንገድ መምረጥ
   const textColor = darkMode ? '#F1F5F9' : '#1E293B';
   const subTextColor = darkMode ? '#94A3B8' : '#64748B';
   const cardBg = darkMode ? '#1E293B' : '#FFFFFF';
   const borderColor = darkMode ? '#334155' : '#E2E8F0';
+  const dividerColor = darkMode ? '#1E293B' : '#F1F5F9';
 
-  // የገባው ተጠቃሚ ስም በዳታቤዝ ውስጥ ከሌለ እንደ ፎልባክ 'flynn_rider'ን ይጭናል
-  const activeProfileKey = userRole || 'flynn_rider';
-  const employeeData = USER_PROFILES[activeProfileKey] || USER_PROFILES['flynn_rider'];
+  const roleKey = (userRole || FALLBACK_KEY).toLowerCase();
+  const profile = USER_PROFILES[roleKey] || USER_PROFILES[FALLBACK_KEY];
+
+  // Local avatar override — starts null so we use the CDN image
+  const [localAvatar, setLocalAvatar] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const avatarUri = localAvatar || profile.avatar;
+
+  // ---------- Pick from camera ----------
+  const pickFromCamera = async () => {
+    try {
+      const res = await launchCamera({
+        mediaType: 'photo',
+        quality: 0.8,
+        saveToPhotos: false,
+        cameraType: 'front',
+      });
+
+      if (res.didCancel) return;
+      if (res.errorCode) {
+        Alert.alert('Camera Error', res.errorMessage || 'Failed to open camera.');
+        return;
+      }
+
+      const asset = res.assets?.[0];
+      if (asset?.uri) handlePickedImage(asset);
+    } catch (e) {
+      Alert.alert('Error', 'Could not open camera.');
+    }
+  };
+
+  // ---------- Pick from gallery ----------
+  const pickFromGallery = async () => {
+    try {
+      const res = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        selectionLimit: 1,
+      });
+
+      if (res.didCancel) return;
+      if (res.errorCode) {
+        Alert.alert('Gallery Error', res.errorMessage || 'Failed to open gallery.');
+        return;
+      }
+
+      const asset = res.assets?.[0];
+      if (asset?.uri) handlePickedImage(asset);
+    } catch (e) {
+      Alert.alert('Error', 'Could not open gallery.');
+    }
+  };
+
+  // ---------- Handle the picked image ----------
+  const handlePickedImage = async (asset) => {
+    // Swap locally right away
+    setLocalAvatar(asset.uri);
+
+    // TODO: Upload the file to your API and update the profile.
+    // Example:
+    //   setUploading(true);
+    //   try {
+    //     const formData = new FormData();
+    //     formData.append('avatar', {
+    //       uri: asset.uri,
+    //       type: asset.type || 'image/jpeg',
+    //       name: asset.fileName || 'avatar.jpg',
+    //     });
+    //     const res = await fetch('https://your-api.com/users/me/avatar', {
+    //       method: 'POST',
+    //       body: formData,
+    //       headers: { 'Content-Type': 'multipart/form-data' },
+    //     });
+    //     const data = await res.json();
+    //     setLocalAvatar(data.avatarUrl);
+    //   } catch (e) {
+    //     Alert.alert('Upload failed', e.message);
+    //   } finally {
+    //     setUploading(false);
+    //   }
+
+    console.log('Picked avatar asset:', asset);
+  };
+
+  // ---------- Show the picker sheet ----------
+  const handleAvatarPress = () => {
+    Alert.alert(
+      'Change Profile Photo',
+      'Choose a source',
+      [
+        { text: '📷  Camera', onPress: pickFromCamera },
+        { text: '🖼️  Gallery', onPress: pickFromGallery },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      
-      {/* 1. የላይኛው ዋና የአቫታር እና የባጅ መግለጫ ካርድ ክፍል */}
-      <View style={[styles.profileCard, { backgroundColor: cardBg, borderColor }]}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{employeeData.initials}</Text>
-          <View style={styles.statusBadge} />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ============ HERO CARD ============ */}
+      <View
+        style={[
+          styles.heroCard,
+          { backgroundColor: cardBg, borderColor },
+        ]}
+      >
+        <View style={styles.heroTopRow}>
+          {/* Tappable avatar */}
+          <TouchableOpacity
+            style={[
+              styles.avatarWrapper,
+              { borderColor: profile.roleColor },
+            ]}
+            onPress={handleAvatarPress}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={{ uri: avatarUri }}
+              style={styles.avatarImage}
+            />
+
+            {/* Online dot (top-right) */}
+            <View
+              style={[styles.statusDot, { borderColor: cardBg }]}
+            />
+
+            {/* Camera edit badge (bottom-right) */}
+            <View
+              style={[
+                styles.editBadge,
+                {
+                  backgroundColor: profile.roleColor,
+                  borderColor: cardBg,
+                },
+              ]}
+            >
+              <Text style={styles.editBadgeIcon}>📷</Text>
+            </View>
+
+            {/* Uploading overlay */}
+            {uploading && (
+              <View style={styles.uploadOverlay}>
+                <Text style={styles.uploadOverlayText}>⏳</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.heroTextBlock}>
+            <Text
+              style={[styles.nameText, { color: textColor }]}
+              numberOfLines={1}
+            >
+              {profile.name}
+            </Text>
+            <Text
+              style={[styles.titleText, { color: subTextColor }]}
+              numberOfLines={1}
+            >
+              {profile.title}
+            </Text>
+
+            <View
+              style={[
+                styles.rolePill,
+                { backgroundColor: profile.roleColor + '20' },
+              ]}
+            >
+              <View
+                style={[
+                  styles.roleDot,
+                  { backgroundColor: profile.roleColor },
+                ]}
+              />
+              <Text
+                style={[styles.rolePillText, { color: profile.roleColor }]}
+              >
+                {profile.role}
+              </Text>
+            </View>
+          </View>
         </View>
-        <Text style={[styles.nameText, { color: textColor }]}>{employeeData.name}</Text>
-        <Text style={[styles.titleText, { color: subTextColor }]}>{employeeData.title}</Text>
-        
-        <View style={[styles.badgeContainer, { backgroundColor: darkMode ? '#0F172A' : '#F1F5F9' }]}>
-          <Text style={[styles.badgeText, { color: darkMode ? '#93C5FD' : '#1E3A8A' }]}>
-            {employeeData.id}
+
+        {/* ID strip */}
+        <View
+          style={[
+            styles.idStrip,
+            {
+              backgroundColor: darkMode ? '#0F172A' : '#F8FAFC',
+              borderColor,
+            },
+          ]}
+        >
+          <Text style={[styles.idLabel, { color: subTextColor }]}>
+            EMPLOYEE ID
+          </Text>
+          <Text style={[styles.idValue, { color: textColor }]}>
+            {profile.id}
           </Text>
         </View>
       </View>
 
-      {/* 2. የስራ አፈጻጸም መግለጫ ቁጥሮች (Quick Stats) */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statBox, { backgroundColor: cardBg, borderColor }]}>
-          <Text style={[styles.statNumber, { color: darkMode ? '#93C5FD' : '#1E3A8A' }]}>
-            {employeeData.stats.deliveries}
-          </Text>
-          <Text style={[styles.statLabel, { color: subTextColor }]}>Deliveries</Text>
-        </View>
-        
-        <View style={[styles.statBox, { backgroundColor: cardBg, borderColor }]}>
-          <Text style={[styles.statNumber, { color: '#10B981' }]}>
-            {employeeData.stats.rating}
-          </Text>
-          <Text style={[styles.statLabel, { color: subTextColor }]}>Rating</Text>
-        </View>
-        
-        <View style={[styles.statBox, { backgroundColor: cardBg, borderColor }]}>
-          <Text style={[styles.statNumber, { color: '#F59E0B' }]}>
-            {employeeData.stats.efficiency}
-          </Text>
-          <Text style={[styles.statLabel, { color: subTextColor }]}>Efficiency</Text>
-        </View>
+      {/* ============ DETAILED INFO ============ */}
+      <Text style={[styles.sectionTitle, { color: textColor }]}>
+        📋 Details
+      </Text>
+
+      <View
+        style={[
+          styles.detailsCard,
+          { backgroundColor: cardBg, borderColor },
+        ]}
+      >
+        <InfoRow
+          icon="🏢"
+          label="Department"
+          value={profile.department}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          dividerColor={dividerColor}
+        />
+        <InfoRow
+          icon="📧"
+          label="Email"
+          value={profile.email}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          dividerColor={dividerColor}
+        />
+        <InfoRow
+          icon="📱"
+          label="Phone"
+          value={profile.phone}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          dividerColor={dividerColor}
+        />
+        <InfoRow
+          icon="📅"
+          label="Joined"
+          value={profile.joinedDate}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          dividerColor={dividerColor}
+          isLast
+        />
       </View>
 
-      {/* 3. ዝርዝር የግል፣ የስራ እና የሮል (Role) መረጃዎች ክፍል */}
-      <View style={[styles.detailsCard, { backgroundColor: cardBg, borderColor }]}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Detailed Information</Text>
-
-        {/* 🌟 አዲስ መስመር፡ የሲስተም ሮል (Assigned Role) ማሳያ */}
-        <View style={styles.infoRow}>
-          <Text style={[styles.infoLabel, { color: subTextColor }]}>Assigned Role</Text>
-          <Text style={[styles.roleValueText, { color: darkMode ? '#93C5FD' : '#0284C7' }]}>
-            {employeeData.role}
-          </Text>
-        </View>
-
-        <View style={[styles.infoRow, { borderTopWidth: 1, borderColor, paddingTop: 12, marginTop: 12 }]}>
-          <Text style={[styles.infoLabel, { color: subTextColor }]}>Department</Text>
-          <Text style={[styles.infoValue, { color: textColor }]}>{employeeData.department}</Text>
-        </View>
-
-        <View style={[styles.infoRow, { borderTopWidth: 1, borderColor, paddingTop: 12, marginTop: 12 }]}>
-          <Text style={[styles.infoLabel, { color: subTextColor }]}>Email Address</Text>
-          <Text style={[styles.infoValue, { color: textColor }]}>{employeeData.email}</Text>
-        </View>
-
-        <View style={[styles.infoRow, { borderTopWidth: 1, borderColor, paddingTop: 12, marginTop: 12 }]}>
-          <Text style={[styles.infoLabel, { color: subTextColor }]}>Phone Number</Text>
-          <Text style={[styles.infoValue, { color: textColor }]}>{employeeData.phone}</Text>
-        </View>
-
-        <View style={[styles.infoRow, { borderTopWidth: 1, borderColor, paddingTop: 12, marginTop: 12 }]}>
-          <Text style={[styles.infoLabel, { color: subTextColor }]}>Joined Date</Text>
-          <Text style={[styles.infoValue, { color: textColor }]}>{employeeData.joinedDate}</Text>
-        </View>
-      </View>
-
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
+// ================================================================
+// INFO ROW
+// ================================================================
+function InfoRow({
+  icon,
+  label,
+  value,
+  textColor,
+  subTextColor,
+  dividerColor,
+  isLast,
+}) {
+  return (
+    <View
+      style={[
+        styles.infoRow,
+        !isLast && {
+          borderBottomWidth: 1,
+          borderBottomColor: dividerColor,
+        },
+      ]}
+    >
+      <View style={styles.infoLeft}>
+        <Text style={styles.infoIcon}>{icon}</Text>
+        <Text style={[styles.infoLabel, { color: subTextColor }]}>
+          {label}
+        </Text>
+      </View>
+      <Text
+        style={[styles.infoValue, { color: textColor }]}
+        numberOfLines={2}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ================================================================
+// STYLES
+// ================================================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   scrollContent: {
-    padding: 16,
+    padding: 20,
     paddingBottom: 40,
   },
-  profileCard: {
-    alignItems: 'center',
-    padding: 24,
+
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+
+  // ---- Hero card ----
+  heroCard: {
     borderRadius: 16,
     borderWidth: 1,
-    elevation: 2,
+    padding: 18,
+    marginBottom: 22,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
-  },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#0284C7',
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    position: 'relative',
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '800',
-  },
-  statusBadge: {
-    width: 16,
-    height: 16,
-    backgroundColor: '#10B981',
-    borderRadius: 8,
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-  },
-  nameText: {
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  titleText: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  badgeContainer: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginTop: 12,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  statBox: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginHorizontal: 4,
-    elevation: 1,
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  detailsCard: {
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    marginTop: 16,
     elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     marginBottom: 16,
+  },
+  avatarWrapper: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 3,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 38,
+    backgroundColor: '#E2E8F0',
+  },
+
+  // Top-right green online dot
+  statusDot: {
+    width: 18,
+    height: 18,
+    backgroundColor: '#10B981',
+    borderRadius: 9,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    borderWidth: 3,
+  },
+
+  // Bottom-right 📷 badge
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  editBadgeIcon: {
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+
+  // Uploading overlay
+  uploadOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 38,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadOverlayText: {
+    fontSize: 26,
+    color: '#FFFFFF',
+  },
+
+  heroTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameText: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  titleText: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 3,
+  },
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginTop: 8,
+    gap: 6,
+  },
+  roleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  rolePillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  idStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  idLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  idValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+  },
+
+  // ---- Details ----
+  detailsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 14,
+    gap: 12,
+  },
+  infoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoIcon: {
+    fontSize: 15,
   },
   infoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  infoValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
-  roleValueText: {
-    fontSize: 14,
+  infoValue: {
+    fontSize: 13,
     fontWeight: '700',
-  }
+    flex: 1,
+    textAlign: 'right',
+  },
 });

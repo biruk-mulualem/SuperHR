@@ -223,12 +223,36 @@
                         </div>
                       </div>
 
-                      <div class="detail-card">
-                        <h4>📝 Additional Information</h4>
-                        <div><span>Updated By</span><span class="value">{{ transaction.updatedBy || 'System' }}</span></div>
-                        <div><span>Remark</span><span class="value">{{ transaction.remark || '-' }}</span></div>
-                        <div><span>Reference Type</span><span class="value">{{ transaction.referenceType || '-' }}</span></div>
-                      </div>
+                     <div class="detail-card">
+  <h4>📝 Additional Information</h4>
+
+  <div>
+    <span>Updated By</span>
+    <span class="value">{{ transaction.updatedBy || 'System' }}</span>
+  </div>
+
+  <div>
+    <span>Remark</span>
+    <span class="value">{{ transaction.remark || '-' }}</span>
+  </div>
+
+  <div>
+    <span>Reference Type</span>
+    <span class="value">{{ transaction.referenceType || '-' }}</span>
+  </div>
+
+  <!-- GRN — only when present -->
+  <div v-if="transaction.grnNumber">
+    <span>GRN Number</span>
+    <span class="value mono">{{ transaction.grnNumber }}</span>
+  </div>
+
+  <!-- SIV / Pad — only when present -->
+  <div v-if="transaction.sivNumber">
+    <span>SIV / Pad Number</span>
+    <span class="value mono">{{ transaction.sivNumber }}</span>
+  </div>
+</div>
                     </div>
                   </div>
                 </div>

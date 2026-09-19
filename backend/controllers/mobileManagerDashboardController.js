@@ -1,11 +1,14 @@
 // controllers/mobileManagerDashboardController.js
 // Mobile-only aggregate endpoints for the manager dashboard.
-// The web app uses purchaseFollowUpController.js for its own views.
 'use strict';
 
 const { Op } = require('sequelize');
 const db = require('../models');
-const { PurchaseRequest, PurchaseNotification } = db;
+const {
+  PurchaseRequest,
+  PurchaseFollowUpDispatch,
+  PurchaseNotification,
+} = db;
 
 // ================================================================
 // HELPERS
@@ -23,22 +26,59 @@ const isManagerRequest = (req) => {
   return role === 'manager' || isAdminRequest(req);
 };
 
-// Types that count as "needs my approval" on the dashboard:
-//   - 'dispatch'       → regular recipients (assigned to you)
-//   - 'dispatch_boss'  → boss recipients (assigned to you, boss flow)
-const APPROVAL_TYPES = ['dispatch', 'dispatch_boss'];
+// Statuses that mean "still in the purchasing pipeline"
+const ACTIVE_PR_STATUSES = ['draft', 'submitted', 'pending', 'approved'];
 
 // ================================================================
-// 1. PURCHASE SUMMARY — GET /api/mobile/manager-dashboard/purchase-summary
+// CORE COUNTER — how many PRs are waiting for the boss?
 //
-//   Counts UNREAD notifications for the current user:
-//     - pendingApproval   → unread dispatch / dispatch_boss notifications
-//                           ("a request was assigned to you")
-//     - pendingPayment    → unread approval_request notifications
-//                           ("prices sent to you for approval")
+//   A PR is "waiting" when:
+//     1. the current user was dispatched to it (is_boss = true)
+//     2. its status is still in the active pipeline
+//     3. boss_reviewed_at IS NULL  ← the key: boss hasn't decided yet
+// ================================================================
+const countPendingApprovals = async (userId) => {
+  // 1. PRs this boss was dispatched to
+  const dispatchRows = await PurchaseFollowUpDispatch.findAll({
+    where: { userId, isBoss: true },
+    attributes: ['purchaseRequestId'],
+    raw: true,
+  });
+
+  const prIds = [...new Set(dispatchRows.map((d) => d.purchaseRequestId))];
+  if (prIds.length === 0) return 0;
+
+  // 2. Count the ones still un-reviewed by the boss
+  const count = await PurchaseRequest.count({
+    where: {
+      id: { [Op.in]: prIds },
+      status: { [Op.in]: ACTIVE_PR_STATUSES },
+      bossReviewedAt: null, // 👈 only un-decided PRs
+    },
+  });
+
+  return count;
+};
+
+// ================================================================
+// CORE COUNTER — pending payments (unchanged — still notification-based)
+// ================================================================
+const countPendingPayments = async (userId) => {
+  return PurchaseNotification.count({
+    where: {
+      user_id: userId,
+      type: 'approval_request',
+      is_read: false,
+    },
+  });
+};
+
+// ================================================================
+// 1. PURCHASE SUMMARY
+//    GET /api/mobile/manager-dashboard/purchase-summary
 //
-//   Response:
-//     { success: true, data: { pendingApproval, pendingPayment } }
+//    Response:
+//      { success: true, data: { pendingApproval, pendingPayment } }
 // ================================================================
 exports.getPurchaseSummary = async (req, res) => {
   try {
@@ -57,24 +97,9 @@ exports.getPurchaseSummary = async (req, res) => {
       });
     }
 
-    // ------------------------------------------------------------
-    // Count unread notifications by group for this user
-    // ------------------------------------------------------------
     const [pendingApproval, pendingPayment] = await Promise.all([
-      PurchaseNotification.count({
-        where: {
-          user_id: userId,
-          type: { [Op.in]: APPROVAL_TYPES },
-          is_read: false,
-        },
-      }),
-      PurchaseNotification.count({
-        where: {
-          user_id: userId,
-          type: 'approval_request',
-          is_read: false,
-        },
-      }),
+      countPendingApprovals(userId),
+      countPendingPayments(userId),
     ]);
 
     res.json({
@@ -94,10 +119,8 @@ exports.getPurchaseSummary = async (req, res) => {
 };
 
 // ================================================================
-// 2. FULL DASHBOARD — GET /api/mobile/manager-dashboard
-//
-//   Richer payload for future use: the same two notification
-//   counts plus recent activity from the purchase requests table.
+// 2. FULL DASHBOARD
+//    GET /api/mobile/manager-dashboard
 // ================================================================
 exports.getDashboard = async (req, res) => {
   try {
@@ -117,48 +140,53 @@ exports.getDashboard = async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 1. Notification counts
+    // 1. Counts
     // ------------------------------------------------------------
     const [pendingApproval, pendingPayment] = await Promise.all([
-      PurchaseNotification.count({
-        where: {
-          user_id: userId,
-          type: { [Op.in]: APPROVAL_TYPES },
-          is_read: false,
-        },
-      }),
-      PurchaseNotification.count({
-        where: {
-          user_id: userId,
-          type: 'approval_request',
-          is_read: false,
-        },
-      }),
+      countPendingApprovals(userId),
+      countPendingPayments(userId),
     ]);
 
     // ------------------------------------------------------------
-    // 2. Recent requests
-    //    Non-admins see only their own requests.
+    // 2. Recent activity — PRs this boss has been dispatched to
     // ------------------------------------------------------------
-    const baseWhere = {};
-    if (!isAdminRequest(req)) {
-      baseWhere.createdById = userId;
-    }
-
-    const recentRequests = await PurchaseRequest.findAll({
-      where: baseWhere,
-      order: [['updated_at', 'DESC']],
-      limit: 5,
-      attributes: [
-        'id',
-        'prNumber',
-        'department',
-        'status',
-        'priority',
-        'preparedBy',
-        'updated_at',
-      ],
+    const dispatchRows = await PurchaseFollowUpDispatch.findAll({
+      where: { userId, isBoss: true },
+      attributes: ['purchaseRequestId'],
+      raw: true,
     });
+
+    const prIds = [...new Set(dispatchRows.map((d) => d.purchaseRequestId))];
+
+    let recentRequests = [];
+    if (prIds.length > 0) {
+      const rows = await PurchaseRequest.findAll({
+        where: { id: { [Op.in]: prIds } },
+        order: [['updated_at', 'DESC']],
+        limit: 5,
+        attributes: [
+          'id',
+          'prNumber',
+          'department',
+          'status',
+          'priority',
+          'preparedBy',
+          'bossReviewedAt',
+          'updated_at',
+        ],
+      });
+
+      recentRequests = rows.map((r) => ({
+        id: r.id,
+        requestNumber: r.prNumber,
+        department: r.department,
+        status: r.status,
+        priority: r.priority,
+        preparedBy: r.preparedBy,
+        bossReviewed: !!r.bossReviewedAt, // 👈 handy for the UI
+        updatedAt: r.updated_at,
+      }));
+    }
 
     res.json({
       success: true,
@@ -167,15 +195,7 @@ exports.getDashboard = async (req, res) => {
           pendingApproval,
           pendingPayment,
         },
-        recentRequests: recentRequests.map((r) => ({
-          id: r.id,
-          requestNumber: r.prNumber,
-          department: r.department,
-          status: r.status,
-          priority: r.priority,
-          preparedBy: r.preparedBy,
-          updatedAt: r.updated_at,
-        })),
+        recentRequests,
         lastUpdated: new Date().toISOString(),
       },
     });
