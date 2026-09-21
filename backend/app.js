@@ -107,6 +107,10 @@ const purchaseFollowUpRoutes = require('./routes/purchaseFollowUpRoutes');
 const mobileManagerDashboardRoutes = require('./routes/mobileManagerDashboardRoutes');
 const formulationRoutes = require('./routes/formulationRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const mobilePurchaserRoutes = require('./routes/mobilePurchaserRoutes');
+const purchaseNotificationRoutes = require('./routes/purchaseNotificationRoutes');
+
+
 
 // ========== NEW: BACKUP ROUTES ==========
 const backupRoutes = require("./routes/backupRoutes");
@@ -177,6 +181,9 @@ app.use('/api/converted-balances', convertedBalanceRoutes);
 app.use('/api/purchasing-groups', purchasingGroupRoutes);
 app.use('/api/purchase-follow-ups', purchaseFollowUpRoutes);
 app.use('/api/mobile/manager-dashboard', mobileManagerDashboardRoutes);
+app.use('/api/mobile/purchaser', mobilePurchaserRoutes);
+
+app.use('/api/mobile/purchase-notifications', purchaseNotificationRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);

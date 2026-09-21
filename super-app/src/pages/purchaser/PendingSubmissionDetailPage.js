@@ -1,5 +1,5 @@
 // pages/purchaser/PendingSubmissionDetailPage.js
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
   Alert,
+  ActivityIndicator,
   TouchableWithoutFeedback,
   Dimensions,
 } from 'react-native';
@@ -24,10 +25,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import purchaserService from '../../stores/purchaserService';
+
 const { width, height } = Dimensions.get('window');
 
 // ================================================================
-// MOCK DOCUMENT (replace with real URL from API)
+// MOCK DOCUMENT — only used when the PR has no real document
 // ================================================================
 const MOCK_DOC_URL =
   'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&h=1100&fit=crop';
@@ -44,7 +47,7 @@ const getPriorityColor = (priority) => {
 };
 
 // ================================================================
-// ZOOMABLE IMAGE VIEWER (full-screen)
+// ZOOMABLE IMAGE VIEWER
 // ================================================================
 const ZoomableImage = ({ uri, onClose, containerWidth, containerHeight }) => {
   const scale = useSharedValue(1);
@@ -168,6 +171,7 @@ const ZoomableImage = ({ uri, onClose, containerWidth, containerHeight }) => {
 export default function PendingSubmissionDetailPage({
   request,
   onBack,
+  onRefresh,
   darkMode = false,
   textColor,
   subTextColor,
@@ -179,24 +183,38 @@ export default function PendingSubmissionDetailPage({
   const resolvedCardBg = cardBg || (darkMode ? '#1E293B' : '#FFFFFF');
   const resolvedBorderColor = borderColor || (darkMode ? '#334155' : '#E2E8F0');
 
-  // ---------- Bid drafts ----------
-  const [drafts, setDrafts] = useState(() => {
+  // ---------- Bid drafts (preload the user's current bid) ----------
+  const initialDrafts = useMemo(() => {
     const init = {};
     (request?.items || []).forEach((it) => {
+      const hasMine = !!it.hasMyBid;
+
       init[it.id] = {
-        unitPrice: '',
-        discount: '',
-        matchesRequirement: null,
-        remark: '',
-        notes: '',
+        unitPrice: hasMine && it.myUnitPrice != null
+          ? String(it.myUnitPrice)
+          : '',
+        discount: hasMine && it.myDiscount
+          ? String(it.myDiscount)
+          : '',
+        matchesRequirement: hasMine
+          ? it.myMatchesRequirement ?? true
+          : null,
+        remark: hasMine ? it.myRemark || '' : '',
+        notes: hasMine ? it.myNotes || '' : '',
       };
     });
     return init;
-  });
+  }, [request]);
 
+  const [drafts, setDrafts] = useState(initialDrafts);
   const [activeItemId, setActiveItemId] = useState(null);
   const [fullImageVisible, setFullImageVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDrafts(initialDrafts);
+  }, [initialDrafts]);
 
   // ---------- Helpers ----------
   const getDraft = (id) => drafts[id] || {};
@@ -232,33 +250,78 @@ export default function PendingSubmissionDetailPage({
   const closeBidModal = () => setActiveItemId(null);
 
   const openFullImage = (url) => {
+    if (!url) return;
     setSelectedImage(url);
     setFullImageVisible(true);
   };
 
-  const submitPriceFor = (item) => {
+  // ================================================================
+  // SUBMIT
+  // ================================================================
+  const submitPriceFor = async (item) => {
     const draft = getDraft(item.id);
     if (!isDraftValid(item, draft)) return;
+    if (submitting) return;
 
-    const payload = {
-      itemId: item.id,
-      unitPrice: parseFloat(draft.unitPrice),
-      discount: parseFloat(draft.discount) || 0,
-      totalPrice: calcTotal(item, draft),
-      finalPrice: calcFinal(item, draft),
-      matchesRequirement: draft.matchesRequirement,
-      remark: draft.remark || null,
-      notes: draft.notes || null,
-    };
+    setSubmitting(true);
 
-    console.log('Submit price:', payload);
-    // TODO: await purchaseFollowUpService.submitPrice(item.id, payload);
+    try {
+      const payload = {
+        unitPrice: parseFloat(draft.unitPrice),
+        discount: parseFloat(draft.discount) || 0,
+        matchesRequirement: draft.matchesRequirement === true,
+        remark: draft.remark || null,
+        notes: draft.notes || null,
+      };
 
-    Alert.alert(
-      '✅ Price Submitted',
-      `${item.item}\nFinal: ETB ${payload.finalPrice.toFixed(2)}`,
-      [{ text: 'OK', onPress: closeBidModal }],
-    );
+      const res = await purchaserService.submitPrice(item.id, payload);
+
+      if (res?.success) {
+        const updatedItem = res.data?.items?.find((i) => i.id === item.id);
+        const finalPrice = Number(
+          updatedItem?.myFinalPrice ?? calcFinal(item, draft),
+        );
+
+        updateDraft(item.id, {
+          unitPrice: updatedItem?.myUnitPrice != null
+            ? String(updatedItem.myUnitPrice)
+            : draft.unitPrice,
+          discount: '',
+          matchesRequirement: updatedItem?.myMatchesRequirement ?? null,
+          remark: updatedItem?.myRemark ?? '',
+          notes: updatedItem?.myNotes ?? '',
+        });
+
+        Alert.alert(
+          item.hasMyBid ? '✅ Price Updated' : '✅ Price Submitted',
+          `${item.item}\nFinal: ETB ${finalPrice.toFixed(2)}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                closeBidModal();
+                onRefresh?.();
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert(
+          '❌ Submission Failed',
+          res?.error || 'Please try again.',
+        );
+      }
+    } catch (err) {
+      console.error('submitPrice error:', err);
+      Alert.alert(
+        '❌ Submission Failed',
+        err?.response?.data?.error ||
+          err?.message ||
+          'Something went wrong. Please try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ---------- Empty state ----------
@@ -281,7 +344,17 @@ export default function PendingSubmissionDetailPage({
 
   const items = Array.isArray(request.items) ? request.items : [];
   const itemCount = items.length;
+
+  // 👇 Use the server-resolved URL; fall back to the mock only if truly absent
   const imageUrl = request.imageUrl || MOCK_DOC_URL;
+
+  // 👇 Prefer the pre-formatted label; fall back to the raw date
+  const dateLabel =
+    request.dateLabel ||
+    request.date ||
+    request.requestedDateLabel ||
+    request.requestedDate ||
+    'N/A';
 
   // ================================================================
   // RENDER
@@ -356,7 +429,7 @@ export default function PendingSubmissionDetailPage({
                 Date
               </Text>
               <Text style={[styles.summaryValue, { color: resolvedTextColor }]}>
-                {request.date || 'N/A'}
+                {dateLabel}
               </Text>
             </View>
             <View style={styles.summaryItem}>
@@ -428,6 +501,9 @@ export default function PendingSubmissionDetailPage({
         {items.map((item, idx) => {
           const draft = getDraft(item.id);
           const hasPrice = parseFloat(draft.unitPrice) > 0;
+          const alreadyMine = !!item.hasMyBid;
+          const serverPrice = item.myFinalPrice;
+
           return (
             <View
               key={item.id}
@@ -448,10 +524,19 @@ export default function PendingSubmissionDetailPage({
                     {item.code} · {item.quantity} {item.uom}
                   </Text>
                 </View>
+
                 {hasPrice && (
                   <View style={styles.priceChip}>
                     <Text style={styles.priceChipText}>
                       ETB {calcFinal(item, draft).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                {!hasPrice && alreadyMine && serverPrice != null && (
+                  <View style={styles.priceChip}>
+                    <Text style={styles.priceChipText}>
+                      ✓ ETB {Number(serverPrice).toFixed(2)}
                     </Text>
                   </View>
                 )}
@@ -460,7 +545,10 @@ export default function PendingSubmissionDetailPage({
               <TouchableOpacity
                 style={[
                   styles.submitBtn,
-                  { backgroundColor: hasPrice ? '#F1F5F9' : '#F59E0B' },
+                  {
+                    backgroundColor:
+                      hasPrice || alreadyMine ? '#F1F5F9' : '#F59E0B',
+                  },
                 ]}
                 onPress={() => openBidModal(item.id)}
                 activeOpacity={0.85}
@@ -468,10 +556,15 @@ export default function PendingSubmissionDetailPage({
                 <Text
                   style={[
                     styles.submitBtnText,
-                    { color: hasPrice ? '#475569' : '#FFFFFF' },
+                    {
+                      color:
+                        hasPrice || alreadyMine ? '#475569' : '#FFFFFF',
+                    },
                   ]}
                 >
-                  {hasPrice ? '✏️ Edit Price' : '📤 Submit Price'}
+                  {hasPrice || alreadyMine
+                    ? '✏️ Edit Price'
+                    : '📤 Submit Price'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -505,7 +598,6 @@ export default function PendingSubmissionDetailPage({
 
                   {activeItem && (
                     <>
-                      {/* Item summary */}
                       <View
                         style={[
                           styles.modalInfoBox,
@@ -524,12 +616,9 @@ export default function PendingSubmissionDetailPage({
                         </Text>
                       </View>
 
-                      {/* ROW 1: Unit Price | Total Price */}
                       <View style={styles.fieldRow}>
                         <View style={styles.fieldCol}>
-                          <Text
-                            style={[styles.fieldLabel, { color: resolvedTextColor }]}
-                          >
+                          <Text style={[styles.fieldLabel, { color: resolvedTextColor }]}>
                             Unit Price (ETB) *
                           </Text>
                           <TextInput
@@ -547,13 +636,12 @@ export default function PendingSubmissionDetailPage({
                             onChangeText={(t) =>
                               updateDraft(activeItem.id, { unitPrice: t })
                             }
+                            editable={!submitting}
                           />
                         </View>
 
                         <View style={styles.fieldCol}>
-                          <Text
-                            style={[styles.fieldLabel, { color: resolvedTextColor }]}
-                          >
+                          <Text style={[styles.fieldLabel, { color: resolvedTextColor }]}>
                             Total Price (ETB)
                           </Text>
                           <View
@@ -575,12 +663,9 @@ export default function PendingSubmissionDetailPage({
                         </View>
                       </View>
 
-                      {/* ROW 2: Discount | Final Price */}
                       <View style={styles.fieldRow}>
                         <View style={styles.fieldCol}>
-                          <Text
-                            style={[styles.fieldLabel, { color: resolvedTextColor }]}
-                          >
+                          <Text style={[styles.fieldLabel, { color: resolvedTextColor }]}>
                             Discount (ETB)
                           </Text>
                           <TextInput
@@ -598,13 +683,12 @@ export default function PendingSubmissionDetailPage({
                             onChangeText={(t) =>
                               updateDraft(activeItem.id, { discount: t })
                             }
+                            editable={!submitting}
                           />
                         </View>
 
                         <View style={styles.fieldCol}>
-                          <Text
-                            style={[styles.fieldLabel, { color: resolvedTextColor }]}
-                          >
+                          <Text style={[styles.fieldLabel, { color: resolvedTextColor }]}>
                             Final Price (ETB)
                           </Text>
                           <View
@@ -621,7 +705,6 @@ export default function PendingSubmissionDetailPage({
                         </View>
                       </View>
 
-                      {/* Match spec */}
                       <Text
                         style={[
                           styles.fieldLabel,
@@ -649,6 +732,7 @@ export default function PendingSubmissionDetailPage({
                             updateDraft(activeItem.id, { matchesRequirement: true })
                           }
                           activeOpacity={0.85}
+                          disabled={submitting}
                         >
                           <Text
                             style={[
@@ -683,6 +767,7 @@ export default function PendingSubmissionDetailPage({
                             updateDraft(activeItem.id, { matchesRequirement: false })
                           }
                           activeOpacity={0.85}
+                          disabled={submitting}
                         >
                           <Text
                             style={[
@@ -700,7 +785,6 @@ export default function PendingSubmissionDetailPage({
                         </TouchableOpacity>
                       </View>
 
-                      {/* Remark when no-match */}
                       {activeDraft.matchesRequirement === false && (
                         <>
                           <Text
@@ -727,11 +811,11 @@ export default function PendingSubmissionDetailPage({
                             onChangeText={(t) =>
                               updateDraft(activeItem.id, { remark: t })
                             }
+                            editable={!submitting}
                           />
                         </>
                       )}
 
-                      {/* Notes */}
                       <Text
                         style={[
                           styles.fieldLabel,
@@ -756,6 +840,7 @@ export default function PendingSubmissionDetailPage({
                         onChangeText={(t) =>
                           updateDraft(activeItem.id, { notes: t })
                         }
+                        editable={!submitting}
                       />
                     </>
                   )}
@@ -769,6 +854,7 @@ export default function PendingSubmissionDetailPage({
                     ]}
                     onPress={closeBidModal}
                     activeOpacity={0.85}
+                    disabled={submitting}
                   >
                     <Text style={[styles.modalCancelText, { color: resolvedTextColor }]}>
                       Cancel
@@ -777,13 +863,21 @@ export default function PendingSubmissionDetailPage({
                   <TouchableOpacity
                     style={[
                       styles.modalSubmitBtn,
-                      { backgroundColor: activeValid ? '#10B981' : '#94A3B8' },
+                      {
+                        backgroundColor: activeValid && !submitting
+                          ? '#10B981'
+                          : '#94A3B8',
+                      },
                     ]}
                     onPress={() => activeItem && submitPriceFor(activeItem)}
-                    disabled={!activeValid}
+                    disabled={!activeValid || submitting}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.modalSubmitText}>📤 Submit Price</Text>
+                    {submitting ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.modalSubmitText}>📤 Submit Price</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -818,11 +912,8 @@ export default function PendingSubmissionDetailPage({
 // STYLES
 // ================================================================
 const styles = StyleSheet.create({
-  detailContainer: {
-    flex: 1,
-  },
+  detailContainer: { flex: 1 },
 
-  // ---- Content ----
   content: { flex: 1 },
   contentContainer: {
     padding: 16,
@@ -830,7 +921,6 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // ---- Order Summary ----
   orderSummary: {
     borderRadius: 12,
     padding: 16,
@@ -865,7 +955,6 @@ const styles = StyleSheet.create({
   },
   summaryValue: { fontSize: 14, fontWeight: '600', marginTop: 2 },
 
-  // ---- Document ----
   imageSection: {
     borderRadius: 12,
     padding: 16,
@@ -894,7 +983,6 @@ const styles = StyleSheet.create({
   },
   imageOverlayText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
 
-  // ---- Reason ----
   reasonSection: {
     borderRadius: 12,
     padding: 16,
@@ -910,7 +998,6 @@ const styles = StyleSheet.create({
   },
   reasonText: { fontSize: 14, lineHeight: 22 },
 
-  // ---- Items ----
   itemBlock: {
     borderRadius: 12,
     borderWidth: 1,
@@ -942,7 +1029,6 @@ const styles = StyleSheet.create({
   submitBtn: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   submitBtnText: { fontSize: 13, fontWeight: '800' },
 
-  // ---- Bid Modal ----
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',
@@ -990,15 +1076,12 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
-  // ---- Side-by-side field rows ----
   fieldRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
   },
-  fieldCol: {
-    flex: 1,
-  },
+  fieldCol: { flex: 1 },
   computedInline: {
     justifyContent: 'center',
     backgroundColor: 'transparent',
@@ -1018,7 +1101,6 @@ const styles = StyleSheet.create({
     color: '#10B981',
   },
 
-  // ---- Match radio ----
   radioRow: { flexDirection: 'row', gap: 10 },
   radioBtn: {
     flex: 1,
@@ -1029,7 +1111,6 @@ const styles = StyleSheet.create({
   },
   radioText: { fontSize: 12, fontWeight: '800' },
 
-  // ---- Modal footer ----
   modalFooter: {
     flexDirection: 'row',
     gap: 10,
@@ -1050,10 +1131,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalSubmitText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
-  // ---- Full-screen image viewer ----
   fullImageContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.95)',
@@ -1098,7 +1179,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  // ---- Empty ----
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 14 },
 });

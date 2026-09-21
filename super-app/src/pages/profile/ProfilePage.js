@@ -1,5 +1,5 @@
 // pages/profile/ProfilePage.js
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,181 +7,275 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
-import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import * as ImagePicker from 'expo-image-picker';
+
+import userService from '../../stores/userService';
+import DEFAULT_AVATAR from '../../../assets/logo.png';
 
 // ================================================================
-// USER PROFILES
+// HELPERS
 // ================================================================
-const USER_PROFILES = {
-  admin: {
-    name: 'John Doe',
-    title: 'System Administrator',
-    role: 'Admin (Master Access)',
-    roleColor: '#8B5CF6',
-    id: 'EMP-2026-01',
-    department: 'IT & Security Infrastructure',
-    email: 'john.doe@superfiber.com',
-    phone: '+251 900 11 22 33',
-    joinedDate: 'Mar 2022',
-    initials: 'JD',
-    avatar: 'https://i.pravatar.cc/300?img=12',
-  },
-  sales: {
-    name: 'Flynn Rider',
-    title: 'Senior Distribution Lead',
-    role: 'Sales Representative',
-    roleColor: '#10B981',
-    id: 'EMP-2026-99',
-    department: 'Logistics & Supply Chain',
-    email: 'flynn.rider@superfiber.com',
-    phone: '+251 911 23 45 67',
-    joinedDate: 'Jan 2024',
-    initials: 'FR',
-    avatar: 'https://i.pravatar.cc/300?img=15',
-  },
-  purchaser: {
-    name: 'Sam Purchaser',
-    title: 'Procurement Specialist',
-    role: 'Purchaser',
-    roleColor: '#F59E0B',
-    id: 'EMP-2026-04',
-    department: 'Purchasing & Inventory',
-    email: 'sam.p@superfiber.com',
-    phone: '+251 922 44 55 66',
-    joinedDate: 'Jul 2023',
-    initials: 'SP',
-    avatar: 'https://i.pravatar.cc/300?img=33',
-  },
-  manager: {
-    name: 'Alex Manager',
-    title: 'Operations Director',
-    role: 'General Manager',
-    roleColor: '#3B82F6',
-    id: 'EMP-2026-02',
-    department: 'Corporate Management',
-    email: 'alex.m@superfiber.com',
-    phone: '+251 933 77 88 99',
-    joinedDate: 'Nov 2021',
-    initials: 'AM',
-    avatar: 'https://i.pravatar.cc/300?img=52',
-  },
-  auditor: {
-    name: 'Elena Auditor',
-    title: 'Financial Compliance Officer',
-    role: 'Auditor',
-    roleColor: '#EF4444',
-    id: 'EMP-2026-07',
-    department: 'Auditing & Finance',
-    email: 'elena.a@superfiber.com',
-    phone: '+251 944 22 33 44',
-    joinedDate: 'May 2024',
-    initials: 'EA',
-    avatar: 'https://i.pravatar.cc/300?img=45',
-  },
+const ROLE_COLORS = {
+  admin: '#8B5CF6',
+  superadmin: '#8B5CF6',
+  manager: '#3B82F6',
+  finance: '#10B981',
+  hr: '#10B981',
+  checker: '#0EA5E9',
+  purchase_organizer: '#F59E0B',
+  purchaser: '#F59E0B',
+  storekeeper: '#EC4899',
+  store_it: '#EC4899',
+  attendance: '#6366F1',
+  employee: '#64748B',
 };
 
-const FALLBACK_KEY = 'sales';
+const getRoleColor = (role) =>
+  ROLE_COLORS[String(role || '').toLowerCase()] || '#3B82F6';
+
+const EMPLOYMENT_STATUS_LABELS = {
+  active: 'Active',
+  inactive: 'Inactive',
+  'on-leave': 'On Leave',
+  terminated: 'Terminated',
+  retired: 'Retired',
+};
+
+const EMPLOYMENT_TYPE_LABELS = {
+  'full-time': 'Full-Time',
+  'part-time': 'Part-Time',
+  contract: 'Contract',
+  intern: 'Intern',
+};
+
+const GENDER_LABELS = {
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
+};
+
+const MARITAL_LABELS = {
+  single: 'Single',
+  married: 'Married',
+  divorced: 'Divorced',
+  widowed: 'Widowed',
+};
+
+const hasValue = (value) => {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+};
+
+const formatAddress = (addr) => {
+  if (!addr || typeof addr !== 'object') return '';
+  const parts = [
+    addr.region,
+    addr.city,
+    addr.subcity,
+    addr.district,
+    addr.kebele,
+    addr.houseNumber,
+    addr.poBox,
+  ].filter((p) => p !== undefined && p !== null && String(p).trim() !== '');
+  return parts.join(', ');
+};
+
+const formatEmergencyContact = (contact) => {
+  if (!contact || typeof contact !== 'object') return '';
+  const name = contact.name || '';
+  const relationship = contact.relationship || '';
+  const phone = contact.phone || contact.alternatePhone || '';
+
+  const pieces = [];
+  if (name) pieces.push(name);
+  if (relationship) pieces.push(`(${relationship})`);
+  if (phone) pieces.push(`· ${phone}`);
+
+  return pieces.join(' ');
+};
 
 // ================================================================
 // COMPONENT
 // ================================================================
-export default function ProfilePage({ darkMode, userRole }) {
+export default function ProfilePage({ darkMode }) {
   const textColor = darkMode ? '#F1F5F9' : '#1E293B';
   const subTextColor = darkMode ? '#94A3B8' : '#64748B';
   const cardBg = darkMode ? '#1E293B' : '#FFFFFF';
   const borderColor = darkMode ? '#334155' : '#E2E8F0';
-  const dividerColor = darkMode ? '#1E293B' : '#F1F5F9';
+  const dividerColor = darkMode ? '#334155' : '#F1F5F9';
 
-  const roleKey = (userRole || FALLBACK_KEY).toLowerCase();
-  const profile = USER_PROFILES[roleKey] || USER_PROFILES[FALLBACK_KEY];
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Local avatar override — starts null so we use the CDN image
   const [localAvatar, setLocalAvatar] = useState(null);
   const [uploading, setUploading] = useState(false);
 
-  const avatarUri = localAvatar || profile.avatar;
+  // ------------------------------------------------------------
+  // LOAD PROFILE
+  // ------------------------------------------------------------
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-  // ---------- Pick from camera ----------
+    try {
+      const res = await userService.getMyProfile();
+
+      if (res.success && res.user) {
+        setProfile(res.user);
+      } else {
+        setError(res.error || 'Failed to load profile');
+      }
+    } catch (err) {
+      console.error('ProfilePage load failed:', err);
+      setError(
+        err?.response?.data?.error ||
+          err?.message ||
+          'Failed to load profile',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  // ------------------------------------------------------------
+  // UPLOAD HANDLER
+  // ------------------------------------------------------------
+  const handlePickedImage = async (asset) => {
+    // employeeId comes from the loaded profile (nested or flat)
+    const employeeId =
+      profile?.employeeId ||
+      profile?.employee?.employeeId ||
+      null;
+
+    if (!employeeId) {
+      Alert.alert(
+        'Not linked',
+        'Your account is not linked to an employee record. Contact an administrator.',
+      );
+      return;
+    }
+
+    setLocalAvatar(asset.uri);
+    setUploading(true);
+
+    try {
+      const res = await userService.uploadProfilePicture(employeeId, asset);
+
+      if (res?.success && res.fileUrl) {
+        setProfile((p) =>
+          p
+            ? {
+                ...p,
+                profilePicture: res.fileUrl,
+                avatar: res.fileUrl,
+              }
+            : p,
+        );
+        setLocalAvatar(null);
+        Alert.alert('✅ Avatar updated');
+      } else {
+        Alert.alert('Upload failed', res?.error || 'Try again');
+        setLocalAvatar(null);
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      Alert.alert('Upload failed', err?.message || 'Try again');
+      setLocalAvatar(null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ------------------------------------------------------------
+  // CAMERA
+  // ------------------------------------------------------------
   const pickFromCamera = async () => {
     try {
-      const res = await launchCamera({
-        mediaType: 'photo',
-        quality: 0.8,
-        saveToPhotos: false,
-        cameraType: 'front',
-      });
-
-      if (res.didCancel) return;
-      if (res.errorCode) {
-        Alert.alert('Camera Error', res.errorMessage || 'Failed to open camera.');
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Camera access is needed to take a profile photo.',
+        );
         return;
       }
 
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],       // ✅ new API, no deprecation warning
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (res.canceled) return;
+
       const asset = res.assets?.[0];
-      if (asset?.uri) handlePickedImage(asset);
+      if (asset?.uri) {
+        handlePickedImage({
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+        });
+      }
     } catch (e) {
+      console.error('Camera error:', e);
       Alert.alert('Error', 'Could not open camera.');
     }
   };
 
-  // ---------- Pick from gallery ----------
+  // ------------------------------------------------------------
+  // GALLERY
+  // ------------------------------------------------------------
   const pickFromGallery = async () => {
     try {
-      const res = await launchImageLibrary({
-        mediaType: 'photo',
-        quality: 0.8,
-        selectionLimit: 1,
-      });
-
-      if (res.didCancel) return;
-      if (res.errorCode) {
-        Alert.alert('Gallery Error', res.errorMessage || 'Failed to open gallery.');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Photo library access is needed to choose a picture.',
+        );
         return;
       }
 
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],       // ✅ new API
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (res.canceled) return;
+
       const asset = res.assets?.[0];
-      if (asset?.uri) handlePickedImage(asset);
+      if (asset?.uri) {
+        handlePickedImage({
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+        });
+      }
     } catch (e) {
+      console.error('Gallery error:', e);
       Alert.alert('Error', 'Could not open gallery.');
     }
   };
 
-  // ---------- Handle the picked image ----------
-  const handlePickedImage = async (asset) => {
-    // Swap locally right away
-    setLocalAvatar(asset.uri);
-
-    // TODO: Upload the file to your API and update the profile.
-    // Example:
-    //   setUploading(true);
-    //   try {
-    //     const formData = new FormData();
-    //     formData.append('avatar', {
-    //       uri: asset.uri,
-    //       type: asset.type || 'image/jpeg',
-    //       name: asset.fileName || 'avatar.jpg',
-    //     });
-    //     const res = await fetch('https://your-api.com/users/me/avatar', {
-    //       method: 'POST',
-    //       body: formData,
-    //       headers: { 'Content-Type': 'multipart/form-data' },
-    //     });
-    //     const data = await res.json();
-    //     setLocalAvatar(data.avatarUrl);
-    //   } catch (e) {
-    //     Alert.alert('Upload failed', e.message);
-    //   } finally {
-    //     setUploading(false);
-    //   }
-
-    console.log('Picked avatar asset:', asset);
-  };
-
-  // ---------- Show the picker sheet ----------
+  // ------------------------------------------------------------
+  // PICKER SHEET
+  // ------------------------------------------------------------
   const handleAvatarPress = () => {
+    if (uploading) return;
+
     Alert.alert(
       'Change Profile Photo',
       'Choose a source',
@@ -194,6 +288,153 @@ export default function ProfilePage({ darkMode, userRole }) {
     );
   };
 
+  // ------------------------------------------------------------
+  // LOADING / ERROR
+  // ------------------------------------------------------------
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.center,
+          { backgroundColor: darkMode ? '#0F172A' : '#F8FAFC' },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={[styles.centerText, { color: subTextColor }]}>
+          Loading profile...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <View
+        style={[
+          styles.center,
+          { backgroundColor: darkMode ? '#0F172A' : '#F8FAFC' },
+        ]}
+      >
+        <Text style={styles.errorIcon}>⚠️</Text>
+        <Text style={[styles.centerText, { color: subTextColor }]}>
+          {error || 'Profile not available'}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={loadProfile}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ------------------------------------------------------------
+  // DERIVE
+  // ------------------------------------------------------------
+  const emp = profile.employee || {};
+
+  const fullName =
+    profile.fullName ||
+    [emp.firstName, emp.middleName, emp.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim() ||
+    profile.username ||
+    'User';
+
+  const role = profile.role || 'Employee';
+  const roleColor = getRoleColor(role);
+  const displayRole = userService.formatRole(role);
+
+  const title =
+    emp.title || (emp.position && emp.position.title) || displayRole;
+
+  const employeeId =
+    emp.employeeCode ||
+    profile.employeeCode ||
+    (emp.employeeId ? `EMP-${emp.employeeId}` : null);
+
+  const avatarUri =
+    localAvatar ||
+    profile.profilePicture ||
+    profile.avatar ||
+    emp.profilePicture ||
+    null;
+
+  // ------------------------------------------------------------
+  // BUILD ROWS
+  // ------------------------------------------------------------
+  const employmentRows = [
+    { icon: '👤', label: 'Username', value: profile.username },
+    { icon: '🏢', label: 'Department', value: profile.departmentName || emp.departmentName },
+    { icon: '🎯', label: 'Position', value: emp.title },
+    {
+      icon: '📊',
+      label: 'Employment Type',
+      value: EMPLOYMENT_TYPE_LABELS[emp.employmentType],
+    },
+    {
+      icon: '🚦',
+      label: 'Status',
+      value: EMPLOYMENT_STATUS_LABELS[emp.employmentStatus],
+    },
+    { icon: '📅', label: 'Hire Date (EC)', value: emp.hireDateEC },
+    {
+      icon: '📅',
+      label: 'Hire Date',
+      value: emp.hireDateGC ? userService.formatDate(emp.hireDateGC) : null,
+    },
+  ].filter((row) => hasValue(row.value));
+
+  const contactRows = [
+    { icon: '📧', label: 'Email', value: profile.email },
+    { icon: '📱', label: 'Phone', value: emp.phoneNumber || profile.phoneNumber },
+    { icon: '✉️', label: 'Work Email', value: emp.workEmail },
+    { icon: '✉️', label: 'Personal Email', value: emp.personalEmail },
+    {
+      icon: '🆘',
+      label: 'Emergency Contact',
+      value: formatEmergencyContact(emp.emergencyContact),
+    },
+  ].filter((row) => hasValue(row.value));
+
+  const personalRows = [
+    { icon: '⚧', label: 'Gender', value: GENDER_LABELS[emp.gender] },
+    {
+      icon: '💍',
+      label: 'Marital Status',
+      value: MARITAL_LABELS[emp.maritalStatus],
+    },
+    { icon: '🌍', label: 'Nationality', value: emp.nationality },
+    { icon: '🎂', label: 'Date of Birth (EC)', value: emp.dateOfBirthEC },
+    {
+      icon: '🎂',
+      label: 'Date of Birth',
+      value: emp.dateOfBirthGC
+        ? userService.formatDate(emp.dateOfBirthGC)
+        : null,
+    },
+  ].filter((row) => hasValue(row.value));
+
+  const addressRows = [
+    {
+      icon: '🏠',
+      label: 'Current Address',
+      value: formatAddress(emp.currentAddress),
+    },
+    {
+      icon: '🏡',
+      label: 'Permanent Address',
+      value: formatAddress(emp.permanentAddress),
+    },
+    { icon: '🗺️', label: 'Work Location', value: emp.workLocation },
+  ].filter((row) => hasValue(row.value));
+
+  // ================================================================
+  // RENDER
+  // ================================================================
   return (
     <ScrollView
       style={styles.container}
@@ -208,42 +449,38 @@ export default function ProfilePage({ darkMode, userRole }) {
         ]}
       >
         <View style={styles.heroTopRow}>
-          {/* Tappable avatar */}
           <TouchableOpacity
-            style={[
-              styles.avatarWrapper,
-              { borderColor: profile.roleColor },
-            ]}
+            style={[styles.avatarWrapper, { borderColor: roleColor }]}
             onPress={handleAvatarPress}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            disabled={uploading}
           >
-            <Image
-              source={{ uri: avatarUri }}
-              style={styles.avatarImage}
-            />
+            {avatarUri ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={styles.avatarImage}
+                onError={(e) => {
+                  console.warn('Avatar load failed:', e?.nativeEvent?.error);
+                }}
+              />
+            ) : (
+              <Image source={DEFAULT_AVATAR} style={styles.avatarImage} />
+            )}
 
-            {/* Online dot (top-right) */}
-            <View
-              style={[styles.statusDot, { borderColor: cardBg }]}
-            />
+            <View style={[styles.statusDot, { borderColor: cardBg }]} />
 
-            {/* Camera edit badge (bottom-right) */}
             <View
               style={[
                 styles.editBadge,
-                {
-                  backgroundColor: profile.roleColor,
-                  borderColor: cardBg,
-                },
+                { backgroundColor: roleColor, borderColor: cardBg },
               ]}
             >
               <Text style={styles.editBadgeIcon}>📷</Text>
             </View>
 
-            {/* Uploading overlay */}
             {uploading && (
               <View style={styles.uploadOverlay}>
-                <Text style={styles.uploadOverlayText}>⏳</Text>
+                <ActivityIndicator size="small" color="#FFFFFF" />
               </View>
             )}
           </TouchableOpacity>
@@ -253,103 +490,158 @@ export default function ProfilePage({ darkMode, userRole }) {
               style={[styles.nameText, { color: textColor }]}
               numberOfLines={1}
             >
-              {profile.name}
+              {fullName}
             </Text>
             <Text
               style={[styles.titleText, { color: subTextColor }]}
               numberOfLines={1}
             >
-              {profile.title}
+              {title}
             </Text>
 
             <View
-              style={[
-                styles.rolePill,
-                { backgroundColor: profile.roleColor + '20' },
-              ]}
+              style={[styles.rolePill, { backgroundColor: roleColor + '20' }]}
             >
-              <View
-                style={[
-                  styles.roleDot,
-                  { backgroundColor: profile.roleColor },
-                ]}
-              />
-              <Text
-                style={[styles.rolePillText, { color: profile.roleColor }]}
-              >
-                {profile.role}
+              <View style={[styles.roleDot, { backgroundColor: roleColor }]} />
+              <Text style={[styles.rolePillText, { color: roleColor }]}>
+                {displayRole}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* ID strip */}
-        <View
-          style={[
-            styles.idStrip,
-            {
-              backgroundColor: darkMode ? '#0F172A' : '#F8FAFC',
-              borderColor,
-            },
-          ]}
+        {hasValue(employeeId) && (
+          <View
+            style={[
+              styles.idStrip,
+              {
+                backgroundColor: darkMode ? '#0F172A' : '#F8FAFC',
+                borderColor,
+              },
+            ]}
+          >
+            <Text style={[styles.idLabel, { color: subTextColor }]}>
+              EMPLOYEE ID
+            </Text>
+            <Text style={[styles.idValue, { color: textColor }]}>
+              {employeeId}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* ============ EMPLOYMENT ============ */}
+      {employmentRows.length > 0 && (
+        <Section
+          title="💼 Employment"
+          textColor={textColor}
+          cardBg={cardBg}
+          borderColor={borderColor}
         >
-          <Text style={[styles.idLabel, { color: subTextColor }]}>
-            EMPLOYEE ID
-          </Text>
-          <Text style={[styles.idValue, { color: textColor }]}>
-            {profile.id}
-          </Text>
-        </View>
-      </View>
+          {employmentRows.map((row, idx) => (
+            <InfoRow
+              key={row.label}
+              icon={row.icon}
+              label={row.label}
+              value={row.value}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              dividerColor={dividerColor}
+              isLast={idx === employmentRows.length - 1}
+            />
+          ))}
+        </Section>
+      )}
 
-      {/* ============ DETAILED INFO ============ */}
-      <Text style={[styles.sectionTitle, { color: textColor }]}>
-        📋 Details
-      </Text>
+      {/* ============ CONTACT ============ */}
+      {contactRows.length > 0 && (
+        <Section
+          title="📞 Contact"
+          textColor={textColor}
+          cardBg={cardBg}
+          borderColor={borderColor}
+        >
+          {contactRows.map((row, idx) => (
+            <InfoRow
+              key={row.label}
+              icon={row.icon}
+              label={row.label}
+              value={row.value}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              dividerColor={dividerColor}
+              isLast={idx === contactRows.length - 1}
+            />
+          ))}
+        </Section>
+      )}
 
-      <View
-        style={[
-          styles.detailsCard,
-          { backgroundColor: cardBg, borderColor },
-        ]}
-      >
-        <InfoRow
-          icon="🏢"
-          label="Department"
-          value={profile.department}
+      {/* ============ PERSONAL ============ */}
+      {personalRows.length > 0 && (
+        <Section
+          title="👤 Personal"
           textColor={textColor}
-          subTextColor={subTextColor}
-          dividerColor={dividerColor}
-        />
-        <InfoRow
-          icon="📧"
-          label="Email"
-          value={profile.email}
+          cardBg={cardBg}
+          borderColor={borderColor}
+        >
+          {personalRows.map((row, idx) => (
+            <InfoRow
+              key={row.label}
+              icon={row.icon}
+              label={row.label}
+              value={row.value}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              dividerColor={dividerColor}
+              isLast={idx === personalRows.length - 1}
+            />
+          ))}
+        </Section>
+      )}
+
+      {/* ============ ADDRESS ============ */}
+      {addressRows.length > 0 && (
+        <Section
+          title="📍 Address"
           textColor={textColor}
-          subTextColor={subTextColor}
-          dividerColor={dividerColor}
-        />
-        <InfoRow
-          icon="📱"
-          label="Phone"
-          value={profile.phone}
-          textColor={textColor}
-          subTextColor={subTextColor}
-          dividerColor={dividerColor}
-        />
-        <InfoRow
-          icon="📅"
-          label="Joined"
-          value={profile.joinedDate}
-          textColor={textColor}
-          subTextColor={subTextColor}
-          dividerColor={dividerColor}
-          isLast
-        />
-      </View>
+          cardBg={cardBg}
+          borderColor={borderColor}
+        >
+          {addressRows.map((row, idx) => (
+            <InfoRow
+              key={row.label}
+              icon={row.icon}
+              label={row.label}
+              value={row.value}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              dividerColor={dividerColor}
+              isLast={idx === addressRows.length - 1}
+            />
+          ))}
+        </Section>
+      )}
 
       <View style={{ height: 40 }} />
     </ScrollView>
+  );
+}
+
+// ================================================================
+// SECTION WRAPPER
+// ================================================================
+function Section({ title, children, textColor, cardBg, borderColor }) {
+  return (
+    <View style={{ marginBottom: 22 }}>
+      <Text style={[styles.sectionTitle, { color: textColor }]}>
+        {title}
+      </Text>
+      <View
+        style={[styles.detailsCard, { backgroundColor: cardBg, borderColor }]}
+      >
+        {children}
+      </View>
+    </View>
   );
 }
 
@@ -383,7 +675,7 @@ function InfoRow({
       </View>
       <Text
         style={[styles.infoValue, { color: textColor }]}
-        numberOfLines={2}
+        numberOfLines={3}
       >
         {value}
       </Text>
@@ -392,14 +684,29 @@ function InfoRow({
 }
 
 // ================================================================
-// STYLES
+// STYLES (unchanged)
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+  scrollContent: { padding: 20, paddingBottom: 40 },
+
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    gap: 12,
   },
+  centerText: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  errorIcon: { fontSize: 40 },
+  retryBtn: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  retryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
   sectionTitle: {
     fontSize: 13,
@@ -409,7 +716,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // ---- Hero card ----
   heroCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -441,8 +747,6 @@ const styles = StyleSheet.create({
     borderRadius: 38,
     backgroundColor: '#E2E8F0',
   },
-
-  // Top-right green online dot
   statusDot: {
     width: 18,
     height: 18,
@@ -453,8 +757,6 @@ const styles = StyleSheet.create({
     right: 0,
     borderWidth: 3,
   },
-
-  // Bottom-right 📷 badge
   editBadge: {
     position: 'absolute',
     bottom: 0,
@@ -466,12 +768,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
   },
-  editBadgeIcon: {
-    fontSize: 11,
-    color: '#FFFFFF',
-  },
-
-  // Uploading overlay
+  editBadgeIcon: { fontSize: 11, color: '#FFFFFF' },
   uploadOverlay: {
     position: 'absolute',
     top: 0,
@@ -483,25 +780,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  uploadOverlayText: {
-    fontSize: 26,
-    color: '#FFFFFF',
-  },
 
-  heroTextBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  nameText: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  titleText: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 3,
-  },
+  heroTextBlock: { flex: 1, minWidth: 0 },
+  nameText: { fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
+  titleText: { fontSize: 13, fontWeight: '500', marginTop: 3 },
   rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -512,16 +794,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 6,
   },
-  roleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  rolePillText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
+  roleDot: { width: 6, height: 6, borderRadius: 3 },
+  rolePillText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
   idStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -531,18 +805,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
-  idLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
-  idValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-  },
+  idLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6 },
+  idValue: { fontSize: 13, fontWeight: '800', fontFamily: 'monospace' },
 
-  // ---- Details ----
   detailsCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -564,14 +829,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 0,
   },
-  infoIcon: {
-    fontSize: 15,
-  },
-  infoLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  infoIcon: { fontSize: 15 },
+  infoLabel: { fontSize: 13, fontWeight: '600' },
   infoValue: {
     fontSize: 13,
     fontWeight: '700',

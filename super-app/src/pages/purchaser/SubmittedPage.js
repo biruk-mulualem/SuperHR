@@ -1,61 +1,27 @@
 // pages/purchaser/SubmittedPage.js
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+
+import purchaserService from '../../stores/purchaserService';
 import PendingSubmissionDetailPage from './PendingSubmissionDetailPage';
 
 // ================================================================
-// DEMO DATA
+// HELPERS
 // ================================================================
-const SUBMITTED = [
-  {
-    id: 'RS-2026-001',
-    requestNumber: 'PR-2026-0002',
-    requester: 'Tigist Hailu',
-    department: 'Maintenance',
-    submittedAt: '2026-09-07 14:22',
-    status: 'won',
-    priority: 'Medium',
-    items: [
-      { id: 1, item: 'Bearing 6204', code: 'BR-6204', quantity: 20, uom: 'PCS', myUnitPrice: 85.0, winUnitPrice: 85.0 },
-    ],
-  },
-  {
-    id: 'RS-2026-002',
-    requestNumber: 'PR-2026-0005',
-    requester: 'Selam Tesfaye',
-    department: 'Production',
-    submittedAt: '2026-09-05 09:15',
-    status: 'lost',
-    priority: 'High',
-    items: [
-      { id: 1, item: 'Electrical Cable 100m', code: 'EC-100', quantity: 5, uom: 'ROLL', myUnitPrice: 152.0, winUnitPrice: 148.0 },
-    ],
-  },
-  {
-    id: 'RS-2026-003',
-    requestNumber: 'PR-2026-0006',
-    requester: 'Dawit Solomon',
-    department: 'Electrical',
-    submittedAt: '2026-09-04 11:40',
-    status: 'pending',
-    priority: 'Low',
-    items: [
-      { id: 1, item: 'Industrial Paint', code: 'IP-100', quantity: 30, uom: 'LTR', myUnitPrice: 15.33, winUnitPrice: null },
-    ],
-  },
-];
-
 const getStatusMeta = (status) => {
   switch (status) {
     case 'won':     return { label: 'Won',     color: '#10B981', icon: '🏆' };
     case 'lost':    return { label: 'Lost',    color: '#EF4444', icon: '❌' };
     case 'pending': return { label: 'Pending', color: '#F59E0B', icon: '⏳' };
+    case 'mixed':   return { label: 'Mixed',   color: '#8B5CF6', icon: '🎯' };
     default:        return { label: 'Unknown', color: '#64748B', icon: '•' };
   }
 };
@@ -68,6 +34,62 @@ const formatPrice = (price) => {
   });
 };
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+/**
+ * Map the server DTO into the shape this screen renders.
+ */
+const normalizeSubmission = (pr) => {
+  const items = Array.isArray(pr.items) ? pr.items : [];
+
+  return {
+    id: pr.id,
+    requestNumber: pr.requestNumber || '—',
+    requester: pr.requester || 'Unknown',
+    department: pr.department || 'N/A',
+    priority: pr.priority || 'Normal',
+    rawPriority: pr.rawPriority || 'medium',
+    status: pr.myStatus || 'pending',
+    submittedAt: pr.updatedAt || pr.createdAt || null,
+    imageUrl: pr.imageUrl,
+    reason: pr.reason,
+    items: items.map((it) => ({
+      id: it.id,
+      item: it.itemName || it.itemCode || '—',
+      code: it.itemCode || '—',
+      quantity: Number(it.quantity) || 0,
+      uom: it.uom || '—',
+      myUnitPrice: it.myUnitPrice,
+      myFinalPrice: it.myFinalPrice,
+      winUnitPrice: it.hasWinner ? it.winningPrice : null,
+      myStatus: it.myStatus,
+      // Detail page uses these too
+      specification: it.specification,
+      brand: it.brand,
+      model: it.model,
+      baseUom: it.baseUom,
+      conversionUom: it.conversionUom,
+      remark: it.remark,
+      hasWinner: !!it.hasWinner,
+      hasMyBid: !!it.hasMyBid,
+      bidCount: it.bidCount || 0,
+      bids: it.bids || [],
+    })),
+    _raw: pr,
+  };
+};
+
 /**
  * Adapt a Submitted row into the shape PendingSubmissionDetailPage expects.
  */
@@ -77,10 +99,12 @@ const adaptForDetail = (sub) => ({
   requester: sub.requester,
   department: sub.department,
   priority: sub.priority || 'Normal',
+  rawPriority: sub.rawPriority,
   date: sub.submittedAt,
   items: sub.items,
   imageUrl: sub.imageUrl,
   reason: sub.reason,
+  _raw: sub._raw,
 });
 
 // ================================================================
@@ -94,13 +118,57 @@ export default function SubmittedPage({
   darkMode = false,
 }) {
   const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Detail view
+  // ------------------------------------------------------------
+  // FETCH
+  // ------------------------------------------------------------
+  const fetchSubmitted = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    try {
+      const res = await purchaserService.getSubmittedSubmissions({
+        page: 1,
+        limit: 50,
+      });
+
+      if (res?.success && res.data) {
+        const list = Array.isArray(res.data.items) ? res.data.items : [];
+        setSubmissions(list.map(normalizeSubmission));
+      } else {
+        setError(res?.error || 'Failed to load submitted requests');
+      }
+    } catch (err) {
+      console.error('SubmittedPage fetch failed:', err);
+      setError(
+        err?.response?.data?.error ||
+          err?.message ||
+          'Failed to load submitted requests',
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSubmitted(false);
+  }, [fetchSubmitted]);
+
+  // ------------------------------------------------------------
+  // DETAIL VIEW
+  // ------------------------------------------------------------
   if (selectedSubmission) {
     return (
       <PendingSubmissionDetailPage
         request={adaptForDetail(selectedSubmission)}
         onBack={() => setSelectedSubmission(null)}
+        onRefresh={() => fetchSubmitted(false)}
         darkMode={darkMode}
         textColor={textColor}
         subTextColor={subTextColor}
@@ -110,16 +178,63 @@ export default function SubmittedPage({
     );
   }
 
-  // List view
+  // ------------------------------------------------------------
+  // LIST
+  // ------------------------------------------------------------
   return (
     <ScrollView
       style={styles.wrap}
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => fetchSubmitted(true)}
+          tintColor={subTextColor}
+        />
+      }
     >
-      {SUBMITTED.map((sub) => {
+      {/* ERROR BANNER */}
+      {error && !loading ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>⚠️ {error}</Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => fetchSubmitted(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* LOADING */}
+      {loading && submissions.length === 0 ? (
+        <View style={styles.loadingBlock}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={[styles.loadingText, { color: subTextColor }]}>
+            Loading submitted requests...
+          </Text>
+        </View>
+      ) : null}
+
+      {/* EMPTY */}
+      {!loading && submissions.length === 0 && !error ? (
+        <View style={styles.emptyBlock}>
+          <Text style={styles.emptyIcon}>📭</Text>
+          <Text style={[styles.emptyTitle, { color: textColor }]}>
+            Nothing submitted yet
+          </Text>
+          <Text style={[styles.emptySub, { color: subTextColor }]}>
+            Submit a price on a pending request and it will appear here.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* LIST */}
+      {submissions.map((sub) => {
         const meta = getStatusMeta(sub.status);
-        const canUpdate = sub.status === 'pending';
+
         return (
           <View
             key={sub.id}
@@ -134,7 +249,12 @@ export default function SubmittedPage({
                   {sub.requester} · {sub.department}
                 </Text>
               </View>
-              <View style={[styles.statusPill, { backgroundColor: meta.color + '20' }]}>
+              <View
+                style={[
+                  styles.statusPill,
+                  { backgroundColor: meta.color + '20' },
+                ]}
+              >
                 <Text style={[styles.statusPillText, { color: meta.color }]}>
                   {meta.icon} {meta.label}
                 </Text>
@@ -173,7 +293,12 @@ export default function SubmittedPage({
                       <Text
                         style={[
                           styles.winPrice,
-                          { color: sub.status === 'won' ? '#10B981' : '#94A3B8' },
+                          {
+                            color:
+                              it.myStatus === 'won'
+                                ? '#10B981'
+                                : '#94A3B8',
+                          },
                         ]}
                       >
                         Win: {formatPrice(it.winUnitPrice)}
@@ -186,23 +311,14 @@ export default function SubmittedPage({
 
             <View style={styles.cardFooterRow}>
               <Text style={[styles.cardFooterText, { color: subTextColor }]}>
-                Submitted {sub.submittedAt}
+                Submitted {formatDate(sub.submittedAt)}
               </Text>
               <TouchableOpacity
-                style={[
-                  styles.updateBtn,
-                  { backgroundColor: canUpdate ? '#3B82F6' : '#E2E8F0' },
-                ]}
-                onPress={() => canUpdate && setSelectedSubmission(sub)}
-                disabled={!canUpdate}
+                style={[styles.updateBtn, { backgroundColor: '#3B82F6' }]}
+                onPress={() => setSelectedSubmission(sub)}
                 activeOpacity={0.8}
               >
-                <Text
-                  style={[
-                    styles.updateBtnText,
-                    { color: canUpdate ? '#FFFFFF' : '#94A3B8' },
-                  ]}
-                >
+                <Text style={[styles.updateBtnText, { color: '#FFFFFF' }]}>
                   ✏️ Update Price
                 </Text>
               </TouchableOpacity>
@@ -264,4 +380,59 @@ const styles = StyleSheet.create({
 
   updateBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
   updateBtnText: { fontSize: 12, fontWeight: '800' },
+
+  // Loading
+  loadingBlock: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: { fontSize: 13, fontWeight: '600' },
+
+  // Empty
+  emptyBlock: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyIcon: { fontSize: 44, opacity: 0.6 },
+  emptyTitle: { fontSize: 16, fontWeight: '800' },
+  emptySub: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 30,
+    lineHeight: 19,
+  },
+
+  // Error
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  errorText: {
+    flex: 1,
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  retryBtn: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
 });

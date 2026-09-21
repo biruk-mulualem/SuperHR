@@ -18,6 +18,14 @@ const {
 // Statuses that appear in the follow-up list
 const FOLLOW_UP_STATUSES = ['approved', 'submitted', 'rejected'];
 
+// Roles that can see EVERY purchase request (not just their own)
+const FULL_ACCESS_ROLES = [
+  'admin',
+  'administrator',
+  'superadmin',
+  'purchase_organizer',   // 👈 NEW
+];
+
 // ================================================================
 // HELPERS
 // ================================================================
@@ -26,7 +34,18 @@ const isAdminRequest = (req) => {
   const user = req.user || {};
   if (user.isAdmin === true) return true;
   const role = String(user.role ?? '').toLowerCase();
-  return role === 'admin' || role === 'administrator' || role === 'superadmin';
+  return ['admin', 'administrator', 'superadmin'].includes(role);
+};
+
+/**
+ * Roles that bypass the "createdBy = me" filter.
+ * Admins and purchase organizers can see every PR in the pipeline.
+ */
+const canViewAllFollowUps = (req) => {
+  const user = req.user || {};
+  if (user.isAdmin === true) return true;
+  const role = String(user.role ?? '').toLowerCase();
+  return FULL_ACCESS_ROLES.includes(role);
 };
 
 /**
@@ -147,13 +166,13 @@ const toFollowUpDto = (pr) => {
     status = 'bidding';
   }
 
-  // 🔥 Force rejected if the underlying PR is rejected (halted by boss)
+  // Force rejected if the underlying PR is rejected (halted by boss)
   if (plain.status === 'rejected') {
     status = 'rejected';
   }
 
   // ------------------------------------------------------------
-  // 🆕 Boss decision fields
+  // Boss decision fields
   // ------------------------------------------------------------
   const bossReviewedAt = plain.bossReviewedAt || null;
   let bossDecision = null;
@@ -185,10 +204,10 @@ const toFollowUpDto = (pr) => {
     approvedDocBack: plain.approvedDocBack,
     approvedDocBackName: plain.approvedDocBackName,
 
-    // 🆕 Boss decision
-    bossReviewedAt,                  // null if not yet reviewed
-    bossReviewed: !!bossReviewedAt,  // convenience boolean
-    bossDecision,                    // 'approved' | 'declined' | null
+    // Boss decision
+    bossReviewedAt,
+    bossReviewed: !!bossReviewedAt,
+    bossDecision,
     bossDeclineReason: plain.declineReason || null,
 
     // Related data
@@ -222,7 +241,7 @@ exports.listFollowUps = async (req, res) => {
       status = 'all',
       department = 'all',
       priority = 'all',
-      bossDecision = 'all',   // 🆕 'all' | 'approved' | 'declined' | 'pending'
+      bossDecision = 'all',
       sortBy = 'updated_at',
       sortOrder = 'DESC',
     } = req.query;
@@ -241,15 +260,15 @@ exports.listFollowUps = async (req, res) => {
       where.status = status;
     }
 
-    // Non-admins only see their own requests
-    if (!isAdminRequest(req)) {
+    // 👇 Only scope to own PRs if the user can't see everything
+    if (!canViewAllFollowUps(req)) {
       where.createdById = req.user?.userId ?? -1;
     }
 
     if (department && department !== 'all') where.department = department;
     if (priority && priority !== 'all') where.priority = priority;
 
-    // 🆕 Boss decision filter
+    // Boss decision filter
     if (bossDecision === 'pending') {
       where.bossReviewedAt = null;
     } else if (bossDecision === 'approved') {
@@ -327,7 +346,7 @@ exports.getFollowUp = async (req, res) => {
     }
 
     if (
-      !isAdminRequest(req) &&
+      !canViewAllFollowUps(req) &&
       Number(pr.createdById) !== Number(req.user?.userId)
     ) {
       return res.status(403).json({
@@ -508,7 +527,11 @@ exports.updatePrice = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Price has been removed' });
     }
 
-    if (!isAdminRequest(req) && Number(price.submittedById) !== Number(req.user?.userId)) {
+    // ✅ Only admin OR the original submitter can edit a price
+    if (
+      !isAdminRequest(req) &&
+      Number(price.submittedById) !== Number(req.user?.userId)
+    ) {
       await t.rollback();
       return res.status(403).json({
         success: false,
@@ -604,7 +627,11 @@ exports.removePrice = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Price already removed' });
     }
 
-    if (!isAdminRequest(req) && Number(price.submittedById) !== Number(req.user?.userId)) {
+    // ✅ Only admin OR the original submitter can remove a price
+    if (
+      !isAdminRequest(req) &&
+      Number(price.submittedById) !== Number(req.user?.userId)
+    ) {
       await t.rollback();
       return res.status(403).json({
         success: false,
@@ -785,7 +812,11 @@ exports.setDispatches = async (req, res) => {
       });
     }
 
-    if (!isAdminRequest(req) && Number(pr.createdById) !== Number(req.user?.userId)) {
+    // 👇 Organizers/admins can dispatch any PR; others only their own
+    if (
+      !canViewAllFollowUps(req) &&
+      Number(pr.createdById) !== Number(req.user?.userId)
+    ) {
       await t.rollback();
       return res.status(403).json({
         success: false,
@@ -976,7 +1007,9 @@ exports.removeDispatch = async (req, res) => {
 exports.getFollowUpStats = async (req, res) => {
   try {
     const baseWhere = { status: { [Op.in]: FOLLOW_UP_STATUSES } };
-    if (!isAdminRequest(req)) {
+
+    // 👇 Organizers/admins see stats across everything
+    if (!canViewAllFollowUps(req)) {
       baseWhere.createdById = req.user?.userId ?? -1;
     }
 
@@ -989,7 +1022,6 @@ exports.getFollowUpStats = async (req, res) => {
         PurchaseRequest.count({
           where: { ...baseWhere, status: 'rejected' },
         }),
-        // 🆕 Boss-approved count
         PurchaseRequest.count({
           where: {
             ...baseWhere,
@@ -1059,7 +1091,7 @@ exports.getFollowUpStats = async (req, res) => {
         totalRequests: totalPRs,
         submittedRequests: submittedPRs,
         rejectedRequests: rejectedPRs,
-        bossApprovedRequests: bossApprovedPRs,   // 🆕
+        bossApprovedRequests: bossApprovedPRs,
         totalItems,
         biddingItems: biddingItemCount,
         winnerItems: winnerItemCount,
@@ -1094,8 +1126,9 @@ exports.sendToBoss = async (req, res) => {
       });
     }
 
+    // 👇 Organizers/admins can send any PR to boss; others only their own
     if (
-      !isAdminRequest(req) &&
+      !canViewAllFollowUps(req) &&
       Number(pr.createdById) !== Number(req.user?.userId)
     ) {
       await t.rollback();
@@ -1201,11 +1234,11 @@ exports.sendToBoss = async (req, res) => {
       { transaction: t }
     );
 
-    // 🆕 Reset the boss's review marker — the boss needs to look at this again
+    // Reset the boss's review marker — the boss needs to look at this again
     await pr.update(
       {
         status: 'submitted',
-        bossReviewedAt: null,     // 👈 important: any previous approval is invalidated
+        bossReviewedAt: null,
       },
       { transaction: t }
     );

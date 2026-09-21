@@ -201,9 +201,28 @@ const router = createRouter({
 
 
 
+   {
+          path: "categories",
+          name: "categories",
+          component: () => import("@/views/storemanagement/inventory/categories.vue"),
+          meta: {
+            title: "Categories",
+            roles: ["admin", "hr", "finance", "employee", "attendance","checker","storekeeper","store_it"],
+          },
+        },
 
 
+         {
+          path: "uom",
+          name: "uom",
+          component: () => import("@/views/storemanagement/inventory/uom.vue"),
+          meta: {
+            title: "Units of Measure",
+            roles: ["admin", "hr", "finance", "employee", "attendance","checker","storekeeper","store_it"],
+          },
+        },
 
+      
 
         {
           path: "employees/create",

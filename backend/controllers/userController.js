@@ -10,21 +10,32 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 // HELPER FUNCTIONS
 // ============================================================================
 
+// ============================================================
+// ROLE-BASED ACCESS
+// ============================================================
 
+// Can VIEW user data (list, read, export, dropdowns)
+const canViewUsers = (user) => {
+  if (!user) return false;
+  const role = (user.role || user.Role?.name)?.toLowerCase();
+  return ['admin', 'superadmin', 'checker', 'purchase_organizer'].includes(role);
+};
 
-// OR for case-insensitive check
-const isAdminOrChecker = (user) => {
+// Can MUTATE user data (bulk updates, imports)
+const canMutateUsers = (user) => {
   if (!user) return false;
   const role = (user.role || user.Role?.name)?.toLowerCase();
   return ['admin', 'superadmin', 'checker'].includes(role);
 };
+
+// Legacy alias — keep for calls that still reference it (mutation endpoints)
+const isAdminOrChecker = canMutateUsers;
 
 const isAdmin = (user) => {
   if (!user) return false;
   const role = (user.role || user.Role?.name)?.toLowerCase();
   return ['admin', 'superadmin'].includes(role);
 };
-
 
 async function getRoleIdFromName(roleName) {
   if (!roleName || roleName === 'all') return null;
@@ -435,11 +446,11 @@ exports.refreshToken = async (req, res) => {
 
 exports.getUsers = async (req, res) => {
   try {
-    // Check admin privileges
-    if (!isAdminOrChecker(req.user)) {
+    // ✅ Read endpoints allow purchase_organizer
+    if (!canViewUsers(req.user)) {
       return res.status(403).json({ 
         success: false, 
-        error: 'Access denied. Admin or Checker privileges required.' 
+        error: 'Access denied. Insufficient privileges to view users.' 
       });
     }
 
@@ -463,10 +474,9 @@ exports.getUsers = async (req, res) => {
     // Build where condition
     let whereCondition = {};
     
-    // ✅ If user is NOT admin (only checker), prevent seeing admin users
-  const isAdminUser = isAdmin(req.user);
+    // ✅ If user is NOT admin, prevent seeing admin users
+    const isAdminUser = isAdmin(req.user);
     if (!isAdminUser) {
-      // Checker can see all users EXCEPT admins
       // Get admin role IDs to exclude
       const adminRoles = await Role.findAll({
         where: { 
@@ -485,7 +495,7 @@ exports.getUsers = async (req, res) => {
     if (roleName && roleName !== 'all') {
       const roleRecord = await Role.findOne({ where: { name: roleName } });
       if (roleRecord) {
-        // ✅ If checker is trying to filter for admin role, deny it
+        // ✅ If non-admin is trying to filter for admin role, deny it
         if (!isAdminUser) {
           const adminRoles = await Role.findAll({
             where: { 
@@ -667,13 +677,13 @@ exports.getUsers = async (req, res) => {
 // ============================================================================
 exports.getUserStats = async (req, res) => {
   try {
- // ✅ Using the helper
-if (!isAdminOrChecker(req.user)) {
-  return res.status(403).json({ 
-    success: false, 
-    error: 'Access denied. Admin or Checker privileges required.' 
-  });
-}
+    // ✅ Read endpoints allow purchase_organizer
+    if (!canViewUsers(req.user)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. Insufficient privileges to view user stats.' 
+      });
+    }
 
     // Parallel queries for better performance
     const [
@@ -795,13 +805,13 @@ if (!isAdminOrChecker(req.user)) {
 // ============================================================================
 exports.advancedSearchUsers = async (req, res) => {
   try {
-   // ✅ Using the helper
-if (!isAdminOrChecker(req.user)) {
-  return res.status(403).json({ 
-    success: false, 
-    error: 'Access denied. Admin or Checker privileges required.' 
-  });
-}
+    // ✅ Read endpoints allow purchase_organizer
+    if (!canViewUsers(req.user)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. Insufficient privileges to search users.' 
+      });
+    }
 
     const {
       q = '',
@@ -869,16 +879,16 @@ if (!isAdminOrChecker(req.user)) {
 };
 
 // ============================================================================
-// BULK UPDATE USERS
+// BULK UPDATE USERS  — mutation, keep strict
 // ============================================================================
 exports.bulkUpdateUsers = async (req, res) => {
   try {
-   if (!isAdminOrChecker(req.user)) {
-  return res.status(403).json({ 
-    success: false, 
-    error: 'Access denied. Admin or Checker privileges required.' 
-  });
-}
+    if (!isAdminOrChecker(req.user)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. Admin or Checker privileges required.' 
+      });
+    }
 
     const { userIds, updates } = req.body;
     
@@ -933,12 +943,13 @@ exports.bulkUpdateUsers = async (req, res) => {
 // ============================================================================
 exports.exportUsers = async (req, res) => {
   try {
-    if (!isAdminOrChecker(req.user)) {
-  return res.status(403).json({ 
-    success: false, 
-    error: 'Access denied. Admin or Checker privileges required.' 
-  });
-}
+    // ✅ Read endpoints allow purchase_organizer
+    if (!canViewUsers(req.user)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. Insufficient privileges to export users.' 
+      });
+    }
 
     const {
       format = 'json',
@@ -1068,7 +1079,7 @@ exports.getUserById = async (req, res) => {
     const isTargetAdmin = ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(user.Role?.name);
     const isAdminUser = isAdmin(req.user);
 
-    // ✅ If current user is NOT admin (checker) and target is admin, deny access
+    // ✅ If current user is NOT admin and target is admin, deny access
     if (!isAdminUser && isTargetAdmin) {
       return res.status(403).json({ 
         success: false, 
@@ -1076,8 +1087,8 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // ✅ Allow admin/checker to view any user, or users to view themselves
-    if (!isAdminOrChecker(req.user) && req.user.userId !== user.userId) {
+    // ✅ Allow viewers to see any user, or users to see themselves
+    if (!canViewUsers(req.user) && req.user.userId !== user.userId) {
       return res.status(403).json({ 
         success: false, 
         error: 'Access denied. You can only view your own profile.' 
@@ -1110,11 +1121,8 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// Keep other existing endpoints (createUser, updateUser, deleteUser, etc.)
-// with consistent error handling and response format...
-
 // ============================================================================
-// GET ALL ROLES (Optimized with caching headers)
+// GET ALL ROLES
 // ============================================================================
 exports.getAllRoles = async (req, res) => {
   try {
@@ -1137,7 +1145,7 @@ exports.getAllRoles = async (req, res) => {
 };
 
 // ============================================================================
-// GET ALL DEPARTMENTS (Optimized with caching headers)
+// GET ALL DEPARTMENTS
 // ============================================================================
 exports.getAllDepartments = async (req, res) => {
   try {
@@ -1146,8 +1154,7 @@ exports.getAllDepartments = async (req, res) => {
       order: [['departmentId', 'ASC']] 
     });
     
-    // Set cache headers
-    res.set('Cache-Control', 'private, max-age=300'); // Cache for 5 minutes
+    res.set('Cache-Control', 'private, max-age=300');
     res.status(200).json({ success: true, data: departments });
   } catch (error) {
     console.error('Get all departments error:', error);
@@ -1156,7 +1163,7 @@ exports.getAllDepartments = async (req, res) => {
 };
 
 // ============================================================================
-// GET ALL POSITIONS (Optimized with caching headers)
+// GET ALL POSITIONS
 // ============================================================================
 exports.getAllPositions = async (req, res) => {
   try {
@@ -1165,8 +1172,7 @@ exports.getAllPositions = async (req, res) => {
       order: [['positionId', 'ASC']] 
     });
     
-    // Set cache headers
-    res.set('Cache-Control', 'private, max-age=300'); // Cache for 5 minutes
+    res.set('Cache-Control', 'private, max-age=300');
     res.status(200).json({ success: true, data: positions });
   } catch (error) {
     console.error('Get all positions error:', error);
@@ -1174,23 +1180,23 @@ exports.getAllPositions = async (req, res) => {
   }
 };
 
-
-
 // ============================================================================
 // GET AVAILABLE FILTER OPTIONS
 // ============================================================================
 exports.getFilterOptions = async (req, res) => {
   try {
- if (!isAdminOrChecker(req.user)) {
-      return res.status(403).json({ success: false, error: 'Access denied. Admin or Checker privileges required.' });
+    // ✅ Read endpoint — allow purchase_organizer
+    if (!canViewUsers(req.user)) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied. Insufficient privileges to view filter options.' 
+      });
     }
 
     const [roles, departments, statuses, dateRange] = await Promise.all([
       Role.findAll({ attributes: ['roleId', 'name'], where: { isActive: true } }),
       Department.findAll({ attributes: ['departmentId', 'name'], where: { isActive: true } }),
-      // Get unique status values
       User.findAll({ attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('isActive')), 'status']], raw: true }),
-      // Get date range for filtering
       User.findOne({ 
         attributes: [
           [Sequelize.fn('MIN', Sequelize.col('created_at')), 'minDate'],
@@ -1226,7 +1232,7 @@ exports.getFilterOptions = async (req, res) => {
 };
 
 // ============================================================================
-// GET PROFILE (Add this if missing)
+// GET PROFILE
 // ============================================================================
 exports.getProfile = async (req, res) => {
   try {
@@ -1266,7 +1272,7 @@ exports.getProfile = async (req, res) => {
 };
 
 // ============================================================================
-// CHANGE PASSWORD (Add this if missing)
+// CHANGE PASSWORD
 // ============================================================================
 exports.changePassword = async (req, res) => {
   try {
@@ -1294,7 +1300,7 @@ exports.changePassword = async (req, res) => {
 };
 
 // ============================================================================
-// CREATE USER (Add this if missing)
+// CREATE USER
 // ============================================================================
 exports.createUser = async (req, res) => {
   try {
@@ -1348,7 +1354,7 @@ exports.createUser = async (req, res) => {
 };
 
 // ============================================================================
-// UPDATE USER (Add this if missing)
+// UPDATE USER
 // ============================================================================
 exports.updateUser = async (req, res) => {
   try {
@@ -1381,13 +1387,11 @@ exports.updateUser = async (req, res) => {
     // 3. ✅ VALIDATE USERNAME BEFORE SAVING
     // ================================================================
     if (username !== undefined && username !== user.username) {
-      // Check if username is already taken
       const existingUser = await User.findOne({ where: { username } });
       if (existingUser) {
         return res.status(400).json({ success: false, error: 'Username already taken' });
       }
       
-      // ✅ Validate username format (allow letters, numbers, underscores)
       if (!/^[a-zA-Z0-9_]+$/.test(username)) {
         return res.status(400).json({
           success: false,
@@ -1449,16 +1453,10 @@ exports.updateUser = async (req, res) => {
     // ================================================================
     const updateData = {};
     
-    // Username - only if provided and valid
     if (username !== undefined) updateData.username = username;
-    
-    // Full name - anyone can change their own full name
     if (fullName !== undefined) updateData.fullName = fullName;
-    
-    // Email - anyone can change their own email (if not taken)
     if (email !== undefined) updateData.email = email;
     
-    // Role, Department, Status - only admins can change these
     if (isAdmin) {
       if (roleId !== undefined) updateData.roleId = roleId;
       if (departmentId !== undefined) updateData.departmentId = departmentId;
@@ -1502,7 +1500,6 @@ exports.updateUser = async (req, res) => {
   } catch (error) {
     console.error('Update user error:', error);
     
-    // ✅ Handle validation errors better
     if (error.name === 'SequelizeValidationError') {
       const messages = error.errors.map(e => e.message);
       return res.status(400).json({
@@ -1519,7 +1516,7 @@ exports.updateUser = async (req, res) => {
 };
 
 // ============================================================================
-// RESET PASSWORD (Add this if missing)
+// RESET PASSWORD
 // ============================================================================
 exports.resetPassword = async (req, res) => {
   try {
@@ -1542,7 +1539,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 // ============================================================================
-// ACTIVATE USER (Add this if missing)
+// ACTIVATE USER
 // ============================================================================
 exports.activateUser = async (req, res) => {
   try {
@@ -1562,7 +1559,7 @@ exports.activateUser = async (req, res) => {
 };
 
 // ============================================================================
-// DEACTIVATE USER (Add this if missing)
+// DEACTIVATE USER
 // ============================================================================
 exports.deactivateUser = async (req, res) => {
   try {
@@ -1586,7 +1583,7 @@ exports.deactivateUser = async (req, res) => {
 };
 
 // ============================================================================
-// TOGGLE USER STATUS (Add this if missing)
+// TOGGLE USER STATUS
 // ============================================================================
 exports.toggleUserStatus = async (req, res) => {
   try {
@@ -1614,47 +1611,9 @@ exports.toggleUserStatus = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Get stores for a user by username (with group info)
- * POST /api/users/stores-by-username
- */
-// backend/controllers/userController.js - getStoresByUsername
-
-/**
- * Get stores for a user by username (with group info)
- * POST /api/users/stores-by-username
- */
+// ============================================================================
+// GET STORES BY USERNAME
+// ============================================================================
 exports.getStoresByUsername = async (req, res) => {
   try {
     const { username } = req.body;
@@ -1702,7 +1661,6 @@ exports.getStoresByUsername = async (req, res) => {
       });
     }
 
-    // ✅ Format the stores to include storeId and groups
     const formattedStores = (result.data.stores || []).map(store => ({
       storeId: store.storeId,
       name: store.name,
@@ -1746,10 +1704,10 @@ exports.getStoresByUsername = async (req, res) => {
     });
   }
 };
-/**
- * Get user's groups for a specific store
- * GET /api/users/stores/:storeId/groups
- */
+
+// ============================================================================
+// GET USER STORE GROUPS
+// ============================================================================
 exports.getUserStoreGroups = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -1777,13 +1735,9 @@ exports.getUserStoreGroups = async (req, res) => {
   }
 };
 
-// backend/controllers/userController.js - Complete fixed loginWithStore
-// backend/controllers/userController.js - Complete fixed loginWithStore
-
-/**
- * Login with store selection
- * POST /api/users/login-with-store
- */
+// ============================================================================
+// LOGIN WITH STORE
+// ============================================================================
 exports.loginWithStore = async (req, res) => {
   try {
     const { username, password, storeId, groupId } = req.body;
@@ -1893,8 +1847,6 @@ exports.loginWithStore = async (req, res) => {
 
     console.log('📤 Fetching store with ID:', storeId);
 
-    // ✅ FIX: Use 'storeId' as the model attribute (not 'id')
-    // The Store model has storeId as the primary key, not id
     store = await Store.findByPk(storeId, {
       attributes: ['storeId', 'name', 'code', 'location', 'status']
     });
@@ -1905,12 +1857,10 @@ exports.loginWithStore = async (req, res) => {
       code: store.code
     } : 'Not found');
 
-    // ✅ CRITICAL: Get the store ID from the model
     const actualStoreId = store ? store.storeId : null;
     console.log('✅ actualStoreId:', actualStoreId);
 
     if (isAdmin) {
-      // Admin can access any store
       if (!store) {
         console.log('❌ Store not found for admin:', storeId);
         return res.status(404).json({
@@ -1919,7 +1869,6 @@ exports.loginWithStore = async (req, res) => {
         });
       }
 
-      // For admin, get all groups or use provided groupId
       if (groupId) {
         selectedGroup = await Group.findByPk(groupId, {
           attributes: ['groupId', 'name', 'code', 'description', 'status']
@@ -1944,7 +1893,6 @@ exports.loginWithStore = async (req, res) => {
         }
       }
     } else {
-      // Non-admin: Verify user has access to the selected store
       console.log('📤 Verifying store access for user:', user.userId, 'store:', storeId);
       const accessResult = await userStoreService.verifyStoreAccess(user.userId, storeId);
       
@@ -1971,7 +1919,6 @@ exports.loginWithStore = async (req, res) => {
         });
       }
 
-      // Determine which group to use
       if (groupId) {
         selectedGroup = groupsForStore.find(g => {
           const gId = g.id || g.groupId;
@@ -2113,8 +2060,6 @@ exports.loginWithStore = async (req, res) => {
       bankAccount: employee?.bankAccount,
       workLocation: employee?.workLocation,
       
-      // ✅ ===== Store and Group Fields - FIXED =====
-      // ✅ CRITICAL: These must have values
       storeId: actualStoreId,
       storeName: store?.name || null,
       storeCode: store?.code || null,
@@ -2122,9 +2067,8 @@ exports.loginWithStore = async (req, res) => {
       groupName: actualGroupName,
       groupCode: actualGroupCode,
       
-      // ✅ ===== Current Store/Group - FIXED =====
       currentStore: store ? {
-        id: actualStoreId,  // ✅ This must be a number, not undefined!
+        id: actualStoreId,
         name: store.name,
         code: store.code,
         location: store.location || '',
@@ -2138,10 +2082,8 @@ exports.loginWithStore = async (req, res) => {
         status: selectedGroup.status || 'Active'
       } : null,
       
-      // ✅ ===== Admin Flag =====
       isAdmin: isAdmin,
       
-      // ✅ ===== All Groups for this Store =====
       groupsForStore: groupsForStore.map(g => ({
         id: g.id || g.groupId,
         name: g.name,
@@ -2150,7 +2092,6 @@ exports.loginWithStore = async (req, res) => {
         status: g.status || 'Active'
       })),
       
-      // ✅ ===== All User Groups =====
       groups: user.groups ? user.groups.map(g => ({
         id: g.groupId,
         name: g.name,
@@ -2159,7 +2100,6 @@ exports.loginWithStore = async (req, res) => {
         status: g.status
       })) : [],
       
-      // ✅ ===== User's Stores =====
       stores: store ? [{
         id: actualStoreId,
         name: store.name,
@@ -2170,7 +2110,6 @@ exports.loginWithStore = async (req, res) => {
       
       hasMultipleStores: false,
       
-      // ✅ ===== Legacy fields for compatibility =====
       assignedStore: store ? {
         id: actualStoreId,
         name: store.name,
@@ -2197,10 +2136,6 @@ exports.loginWithStore = async (req, res) => {
     console.log('  groupId (direct):', userResponse.groupId);
     console.log('  storeName:', userResponse.storeName);
     console.log('  groupName:', userResponse.groupName);
-    console.log('  currentStore:', JSON.stringify(userResponse.currentStore, null, 2));
-    console.log('  currentGroup:', JSON.stringify(userResponse.currentGroup, null, 2));
-    console.log('  assignedStore:', JSON.stringify(userResponse.assignedStore, null, 2));
-    console.log('  assignedGroup:', JSON.stringify(userResponse.assignedGroup, null, 2));
     console.log('  isAdmin:', userResponse.isAdmin);
     console.log('========================================');
 
@@ -2220,6 +2155,73 @@ exports.loginWithStore = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Server error during login'
+    });
+  }
+};
+
+
+
+// ============================================================================
+// SAVE PUSH TOKEN
+// ----------------------------------------------------------------------------
+// The mobile app calls this once after login to register its Expo push token.
+// Stored on the user row so the backend can send OS-level notifications later.
+// ============================================================================
+exports.savePushToken = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { token, platform } = req.body || {};
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'No authenticated user',
+      });
+    }
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Push token is required',
+      });
+    }
+
+    // Basic shape check — Expo tokens always look like:
+    //   ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]
+    // Reject anything else so we don't pollute the DB.
+    if (!token.startsWith('ExponentPushToken[')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Expo push token format',
+      });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    await user.update({
+      expoPushToken: token,
+      pushTokenUpdatedAt: new Date(),
+    });
+
+    console.log(
+      `✅ Push token saved — user ${userId} (${platform || 'unknown'}): ${token}`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Push token saved',
+    });
+  } catch (error) {
+    console.error('❌ savePushToken error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Server error',
     });
   }
 };

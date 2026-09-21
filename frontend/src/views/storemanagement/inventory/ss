@@ -1,4 +1,4 @@
-<!-- pages/inventory.vue -->
+<!-- pages/inventory.vue - COMPLETE FILE WITH WORKING PAGINATION -->
 <template>
   <div class="section-card">
     <!-- ==================== HEADER ==================== -->
@@ -117,12 +117,13 @@
                     </button>
                   </td>
                   <td class="sku">{{ item.code }}</td>
-                  <td>
-                    <div class="item-info">
-                      <span class="common-name">{{ item.name }}</span>
-                      <span class="standard-name">{{ item.standardName }}</span>
-                    </div>
-                  </td>
+                 <td>
+  <div class="item-info">
+    <span class="common-name">{{ item.name }}</span>
+    <span class="standard-name">{{ item.standardName }}</span>
+ 
+  </div>
+</td>
                   <td>{{ item.category?.name || '-' }}</td>
                   <td>{{ item.uom?.code || '-' }}</td>
                   <td>
@@ -156,49 +157,53 @@
                             <div><span>Barcode</span><span class="value">{{ item.barcode || '-' }}</span></div>
                           </div>
 
-                          <div class="detail-card">
-                            <h4>💰 Pricing & Unit</h4>
-                            <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom || '-' }}</span></div>
-                            
-                            <div>
-                              <span>Conversion</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
-                                  'no-conversion': !hasConversion(item),
-                                  'base-unit': isSelfConversion(item),
-                                  'has-conversion': hasConversion(item) && !isSelfConversion(item)
-                                }"
-                              >
-                                {{ getConversionDisplay(item) }}
-                              </span>
-                            </div>
-                            <div>
-                              <span>Conversion Unit</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
-                                  'no-conversion': !hasConversion(item),
-                                  'base-unit': isSelfConversion(item)
-                                }"
-                              >
-                                {{ getConversionUnitDisplay(item) }}
-                              </span>
-                            </div>
-                            <div>
-                              <span>Conversion Value</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
-                                  'no-conversion': !hasConversion(item),
-                                  'base-unit': isSelfConversion(item)
-                                }"
-                              >
-                                {{ getConversionValueDisplay(item) }}
-                              </span>
-                            </div>
-                            <div><span>Cost Price</span><span class="value">ETB {{ formatCurrency(item.costPrice) }}</span></div>
-                          </div>
+                        <!-- ============================================================ -->
+<!-- CONVERSION DISPLAY - UPDATED                                -->
+<!-- ============================================================ -->
+
+<div class="detail-card">
+  <h4>💰 Pricing & Unit</h4>
+  <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom || '-' }}</span></div>
+  
+  <div>
+    <span>Conversion</span>
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item),
+        'has-conversion': hasConversion(item) && !isSelfConversion(item)
+      }"
+    >
+      {{ getConversionDisplay(item) }}
+    </span>
+  </div>
+  <div>
+    <span>Conversion Unit</span>
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item)
+      }"
+    >
+      {{ getConversionUnitDisplay(item) }}
+    </span>
+  </div>
+  <div>
+    <span>Conversion Value</span>
+    <span 
+      class="value" 
+      :class="{ 
+        'no-conversion': !hasConversion(item),
+        'base-unit': isSelfConversion(item)
+      }"
+    >
+      {{ getConversionValueDisplay(item) }}
+    </span>
+  </div>
+  <div><span>Cost Price</span><span class="value">ETB {{ formatCurrency(item.costPrice) }}</span></div>
+</div>
                         </div>
 
                         <div class="detail-card full-width">
@@ -223,7 +228,9 @@
           </table>
         </div>
 
-        <!-- PAGINATION -->
+        <!-- ============================================================ -->
+        <!-- ✅ WORKING PAGINATION - USING API RESPONSE                  -->
+        <!-- ============================================================ -->
         <div v-if="totalItems > 0" class="pagination-container">
           <div class="pagination-info">
             <span>Showing {{ items.length }} of {{ totalItems }} items</span>
@@ -238,6 +245,8 @@
             >
               ← Previous
             </button>
+            
+            
             
             <button 
               class="page-btn" 
@@ -259,25 +268,139 @@
       </div>
 
       <!-- ============================================================ -->
-      <!-- TAB 2: CATEGORIES (from categories.vue)                      -->
+      <!-- TAB 2: CATEGORIES                                             -->
       <!-- ============================================================ -->
       <div v-if="activeTab === 'categories'" class="categories-tab">
-        <Categories @category-updated="onCategoryUpdated" />
+        <div class="section-header">
+          <h2>📁 Item Categories</h2>
+          <button class="btn-add" @click="openAddCategoryModal">➕ Add Category</button>
+        </div>
+
+        <div class="table-container">
+          <table class="category-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Category Name</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="categories.length === 0">
+                <td colspan="4" class="empty-state">
+                  <div class="empty-content">
+                    <span class="empty-icon">📁</span>
+                    <p>No categories found</p>
+                    <button class="btn-secondary" @click="openAddCategoryModal">Add First Category</button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-for="(cat, index) in paginatedCategories" :key="cat.categoryId || cat.id">
+                <td class="text-center">{{ (categoryPage - 1) * categoryPageSize + index + 1 }}</td>
+                <td>{{ cat.name }}</td>
+                <td>
+                  <span :class="['status-badge', cat.status?.toLowerCase() || 'active']">
+                    {{ cat.status || 'Active' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button @click="openEditCategoryModal(cat)" class="icon-btn" title="Edit">✏️</button>
+                    <button @click="toggleCategoryStatus(cat)" class="icon-btn" :title="cat.status === 'Active' ? 'Deactivate' : 'Activate'">
+                      {{ cat.status === 'Active' ? '⏸️' : '▶️' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" v-if="categories.length > 0">
+          <button class="page-btn" :disabled="categoryPage === 1" @click="categoryPage--">←</button>
+          <span class="page-info">{{ categoryPage }} / {{ categoryTotalPages }}</span>
+          <button class="page-btn" :disabled="categoryPage === categoryTotalPages" @click="categoryPage++">→</button>
+          <select v-model="categoryPageSize" class="limit-select">
+            <option :value="5">5</option>
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+          </select>
+        </div>
       </div>
 
       <!-- ============================================================ -->
-      <!-- TAB 3: UOM (from uom.vue)                                    -->
+      <!-- TAB 3: UOM                                                    -->
       <!-- ============================================================ -->
       <div v-if="activeTab === 'uom'" class="uom-tab">
-        <UOM @uom-updated="onUOMUpdated" />
+        <div class="section-header">
+          <h2>📏 Units of Measure</h2>
+          <button class="btn-add" @click="openAddUOMModal">➕ Add UOM</button>
+        </div>
+
+        <div class="table-container">
+          <table class="uom-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="uomList.length === 0">
+                <td colspan="5" class="empty-state">
+                  <div class="empty-content">
+                    <span class="empty-icon">📏</span>
+                    <p>No UOMs found</p>
+                    <button class="btn-secondary" @click="openAddUOMModal">Add First UOM</button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-for="(uom, index) in paginatedUOMs" :key="uom.uomId || uom.id">
+                <td class="text-center">{{ (uomPage - 1) * uomPageSize + index + 1 }}</td>
+                <td class="code">{{ uom.code }}</td>
+                <td>{{ uom.name }}</td>
+                <td>
+                  <span :class="['status-badge', uom.status?.toLowerCase() || 'active']">
+                    {{ uom.status || 'Active' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button @click="openEditUOMModal(uom)" class="icon-btn" title="Edit">✏️</button>
+                    <button @click="toggleUOMStatus(uom)" class="icon-btn" :title="uom.status === 'Active' ? 'Deactivate' : 'Activate'">
+                      {{ uom.status === 'Active' ? '⏸️' : '▶️' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" v-if="uomList.length > 0">
+          <button class="page-btn" :disabled="uomPage === 1" @click="uomPage--">←</button>
+          <span class="page-info">{{ uomPage }} / {{ uomTotalPages }}</span>
+          <button class="page-btn" :disabled="uomPage === uomTotalPages" @click="uomPage++">→</button>
+          <select v-model="uomPageSize" class="limit-select">
+            <option :value="5">5</option>
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+          </select>
+        </div>
       </div>
 
     </div>
   </div>
 
   <!-- ================================================================ -->
-  <!-- ITEM MODAL                                                       -->
+  <!-- MODALS                                                           -->
   <!-- ================================================================ -->
+
+  <!-- ITEM MODAL -->
   <div v-if="showItemModal" class="modal-overlay" @click.self="closeItemModal">
     <div class="modal-container item-modal">
       <div class="modal-header">
@@ -340,6 +463,7 @@
             </div>
           </div>
 
+          <!-- Conversion Section -->
           <div class="form-section-title">Conversion</div>
           <div class="form-row">
             <div class="form-group">
@@ -429,7 +553,7 @@
     </div>
   </div>
 
-  <!-- DEACTIVATE MODAL -->
+  <!-- DEACTIVATE/CONFIRMATION MODAL -->
   <div v-if="showDeactivateModal" class="modal-overlay" @click.self="closeDeactivateModal">
     <div class="modal-container deactivate-modal">
       <div class="modal-header">
@@ -478,55 +602,114 @@
     </div>
   </div>
 
-  <!-- EXPORT MODAL -->
-  <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
-    <div class="modal-container export-modal">
+  <!-- CATEGORY MODAL -->
+  <div v-if="showCategoryModal" class="modal-overlay" @click.self="closeCategoryModal">
+    <div class="modal-container category-modal">
       <div class="modal-header">
-        <h3>📊 Export Item Data</h3>
-        <button class="modal-close" @click="closeExportModal">✕</button>
+        <h3>{{ editingCategory ? '✏️ Edit Category' : '📁 Add New Category' }}</h3>
+        <button class="modal-close" @click="closeCategoryModal">✕</button>
       </div>
       <div class="modal-body">
-        <div class="export-options">
-          <div class="export-section">
-            <label class="export-label">Select Export Format:</label>
-            <div class="format-options">
-              <label class="format-option" @click="exportFormat = 'xlsx'">
-                <input type="radio" v-model="exportFormat" value="xlsx" /> 
-                📊 Excel (.xlsx)
-                <span class="format-desc">Recommended - Full formatting</span>
-              </label>
-              <label class="format-option" @click="exportFormat = 'csv'">
-                <input type="radio" v-model="exportFormat" value="csv" /> 
-                📄 CSV (.csv)
-                <span class="format-desc">Compatible with all spreadsheets</span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="export-section">
-            <label class="export-label">Data Scope:</label>
-            <div class="scope-options">
-              <label class="scope-option" @click="exportScope = 'all'">
-                <input type="radio" v-model="exportScope" value="all" /> 
-                All Items
-              </label>
-              <label class="scope-option" @click="exportScope = 'filtered'">
-                <input type="radio" v-model="exportScope" value="filtered" /> 
-                Filtered Items
-                <span class="scope-desc" v-if="hasActiveFilters">({{ items.length }} items)</span>
-              </label>
-            </div>
-          </div>
+        <div class="form-group">
+          <label>Category Name *</label>
+          <input v-model="categoryForm.name" type="text" required placeholder="Enter category name..." />
+          <span class="hint">Examples: Fiber Raw Material, Paint Raw Material, Electronics</span>
+        </div>
+        <div v-if="categoryExists" class="form-error">
+          ⚠️ Category "{{ categoryForm.name }}" already exists
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-secondary" @click="closeExportModal">Cancel</button>
-        <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
-          {{ exporting ? 'Exporting...' : '📥 Export' }}
+        <button class="btn-secondary" @click="closeCategoryModal">Cancel</button>
+        <button class="btn-primary" @click="confirmSaveCategory" :disabled="!categoryForm.name.trim()">
+          {{ editingCategory ? 'Update' : 'Add' }}
         </button>
       </div>
     </div>
   </div>
+
+  <!-- UOM MODAL -->
+  <div v-if="showUOMModal" class="modal-overlay" @click.self="closeUOMModal">
+    <div class="modal-container uom-modal">
+      <div class="modal-header">
+        <h3>{{ editingUOM ? '✏️ Edit UOM' : '📏 Add New UOM' }}</h3>
+        <button class="modal-close" @click="closeUOMModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <form @submit.prevent="saveUOM" class="uom-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>UOM Code *</label>
+              <input v-model="uomForm.code" type="text" required placeholder="e.g., KG, L, Box" 
+                     :readonly="!!editingUOM" />
+              <span v-if="editingUOM" class="hint">Code cannot be changed</span>
+            </div>
+            <div class="form-group">
+              <label>UOM Name *</label>
+              <input v-model="uomForm.name" type="text" required placeholder="e.g., Kilogram, Liter, Box" />
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="closeUOMModal">Cancel</button>
+        <button class="btn-primary" @click="saveUOM" :disabled="!uomForm.code || !uomForm.name">
+          {{ editingUOM ? 'Update' : 'Add' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT MODAL -->
+ <!-- EXPORT MODAL -->
+<div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
+  <div class="modal-container export-modal">
+    <div class="modal-header">
+      <h3>📊 Export Item Data</h3>
+      <button class="modal-close" @click="closeExportModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="export-options">
+        <div class="export-section">
+          <label class="export-label">Select Export Format:</label>
+          <div class="format-options">
+            <label class="format-option" @click="exportFormat = 'xlsx'">
+              <input type="radio" v-model="exportFormat" value="xlsx" /> 
+              📊 Excel (.xlsx)
+              <span class="format-desc">Recommended - Full formatting</span>
+            </label>
+            <label class="format-option" @click="exportFormat = 'csv'">
+              <input type="radio" v-model="exportFormat" value="csv" /> 
+              📄 CSV (.csv)
+              <span class="format-desc">Compatible with all spreadsheets</span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="export-section">
+          <label class="export-label">Data Scope:</label>
+          <div class="scope-options">
+            <label class="scope-option" @click="exportScope = 'all'">
+              <input type="radio" v-model="exportScope" value="all" /> 
+              All Items
+            </label>
+            <label class="scope-option" @click="exportScope = 'filtered'">
+              <input type="radio" v-model="exportScope" value="filtered" /> 
+              Filtered Items
+              <span class="scope-desc" v-if="hasActiveFilters">({{ items.length }} items)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" @click="closeExportModal">Cancel</button>
+      <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
+        {{ exporting ? 'Exporting...' : '📥 Export' }}
+      </button>
+    </div>
+  </div>
+</div>
 
   <!-- IMPORT MODAL -->
   <div v-if="showImportModal" class="modal-overlay" @click.self="!importing && closeImportModal()">
@@ -666,10 +849,6 @@
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import itemService from '@/stores/itemService';
 
-// ✅ Import the separate components
-import Categories from './categories.vue';
-import UOM from './uom.vue';
-
 // Import Quill editor dynamically
 const QuillEditor = defineAsyncComponent(() => 
   import('@vueup/vue-quill').then(m => m.QuillEditor)
@@ -690,17 +869,11 @@ const currentPage = ref(1);
 const itemsPerPage = ref(10);
 const totalItems = ref(0);
 const totalPagesFromServer = ref(1);
+// Add to your existing state
 const exportFormat = ref('xlsx');
 const exportScope = ref('all');
 
-// ✅ Tabs still exist
 const activeTab = ref('items');
-const tabs = [
-  { key: 'items', label: '📦 Items' },
-  { key: 'categories', label: '📁 Categories' },
-  { key: 'uom', label: '📏 UOM' }
-];
-
 const expandedRow = ref(null);
 const specType = ref('text');
 
@@ -713,9 +886,25 @@ const savingItem = ref(false);
 const showDeactivateModal = ref(false);
 const deactivateItem = ref(null);
 
+// Category Modals
+const showCategoryModal = ref(false);
+const editingCategory = ref(null);
+const categoryExists = ref(false);
+const categoryForm = ref({ name: '', status: 'Active' });
+const categoryPage = ref(1);
+const categoryPageSize = ref(5);
+
+// UOM Modals
+const showUOMModal = ref(false);
+const editingUOM = ref(null);
+const uomForm = ref({ code: '', name: '', status: 'Active' });
+const uomPage = ref(1);
+const uomPageSize = ref(5);
+
 // Export
 const showExportModal = ref(false);
 const exporting = ref(false);
+const exportType = ref('full');
 
 // Import
 const showImportModal = ref(false);
@@ -757,6 +946,15 @@ const quillToolbar = [
   ['clean']
 ];
 
+// ================================================================
+// TABS DEFINITION
+// ================================================================
+const tabs = [
+  { key: 'items', label: '📦 Items' },
+  { key: 'categories', label: '📁 Categories' },
+  { key: 'uom', label: '📏 UOM' }
+];
+
 const itemForm = ref({
   name: '',
   standardName: '',
@@ -779,6 +977,7 @@ const itemForm = ref({
 // ================================================================
 // COMPUTED
 // ================================================================
+
 const activeCategories = computed(() => {
   return categories.value.filter(c => c.status === 'Active');
 });
@@ -791,34 +990,80 @@ const activeCategoryNames = computed(() => {
   return categories.value.filter(c => c.status === 'Active').map(c => c.name);
 });
 
+// ✅ Use totalPages from server response directly
 const totalPages = computed(() => {
   return totalPagesFromServer.value || 1;
+});
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value;
+  return categories.value.slice(start, start + categoryPageSize.value);
+});
+
+const categoryTotalPages = computed(() => {
+  return Math.ceil(categories.value.length / categoryPageSize.value) || 1;
+});
+
+const paginatedUOMs = computed(() => {
+  const start = (uomPage.value - 1) * uomPageSize.value;
+  return uomList.value.slice(start, start + uomPageSize.value);
+});
+
+const uomTotalPages = computed(() => {
+  return Math.ceil(uomList.value.length / uomPageSize.value) || 1;
 });
 
 const hasActiveFilters = computed(() => {
   return filterCategory.value || filterStatus.value || filterUOM.value || searchQuery.value;
 });
 
-// ================================================================
-// EVENT HANDLERS FOR CHILD COMPONENTS
-// ================================================================
-const onCategoryUpdated = async () => {
-  await loadCategories();
-  await loadItems();
-};
-
-const onUOMUpdated = async () => {
-  await loadUOMs();
-  await loadItems();
-};
+// Display page numbers with ellipsis
+const displayedPages = computed(() => {
+  const total = totalPages.value;
+  const current = currentPage.value;
+  const pages = [];
+  
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) {
+      pages.push(i);
+    }
+  } else {
+    pages.push(1);
+    if (current > 3) {
+      pages.push('...');
+    }
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    if (current < total - 2) {
+      pages.push('...');
+    }
+    pages.push(total);
+  }
+  return pages;
+});
 
 // ================================================================
 // HELPER METHODS
 // ================================================================
+
 const getUOMCode = (id) => {
   const uom = uomList.value.find(u => (u.uomId || u.id) === id);
   return uom?.code || '';
 };
+
+// ================================================================
+// HELPER METHODS - FIXED CONVERSION DISPLAY
+// ================================================================
+
+// ================================================================
+// HELPER METHODS - FIXED CONVERSION DISPLAY
+// ================================================================
+// ================================================================
+// HELPER METHODS - CLEAN CONVERSION DISPLAY
+// ================================================================
 
 const getConversionDisplay = (item) => {
   if (!item) return 'No conversion';
@@ -827,14 +1072,17 @@ const getConversionDisplay = (item) => {
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
   
+  // No conversion unit or value is 0
   if (!convUnit || convValue === 0) {
     return 'No conversion';
   }
   
+  // Self-conversion (base unit)
   if (convUnit === uomCode) {
     return 'Base Unit';
   }
   
+  // Actual conversion to different unit
   return `${convValue} ${convUnit} = 1 ${uomCode}`;
 };
 
@@ -909,6 +1157,7 @@ const toggleExpand = (id) => {
 // ================================================================
 // PAGINATION METHODS
 // ================================================================
+
 const goToPage = (page) => {
   if (page === '...') return;
   if (page < 1 || page > totalPages.value) return;
@@ -944,6 +1193,7 @@ const clearFilters = () => {
 // ================================================================
 // LOAD DATA
 // ================================================================
+
 const loadCategories = async () => {
   try {
     const response = await itemService.getCategories();
@@ -997,12 +1247,19 @@ const loadItems = async () => {
     });
     
     if (response.success) {
+      // ✅ Items from response.data.items
       items.value = response.data.items || [];
+      
+      // ✅ Total from response.data.pagination.total
       totalItems.value = response.data.pagination?.total || response.data.total || response.data.items?.length || 0;
+      
+      // ✅ Total pages from response.data.pagination.totalPages
       totalPagesFromServer.value = response.data.pagination?.totalPages || 1;
       
+      // If current page is beyond total pages, go to last page
       if (currentPage.value > totalPages.value && totalPages.value > 0) {
         currentPage.value = totalPages.value;
+        // Reload with corrected page
         await loadItems();
         return;
       }
@@ -1020,10 +1277,21 @@ const loadItems = async () => {
 // ================================================================
 // DOWNLOAD TEMPLATE CSV
 // ================================================================
+
 const downloadTemplate = () => {
   const headers = [
-    'name', 'standardName', 'description', 'brand', 'model', 'barcode',
-    'categoryName', 'uomCode', 'conversionUomCode', 'conversionValue', 'costPrice', 'specText'
+    'name',
+    'standardName',
+    'description',
+    'brand',
+    'model',
+    'barcode',
+    'categoryName',
+    'uomCode',
+    'conversionUomCode',
+    'conversionValue',
+    'costPrice',
+    'specText'
   ];
 
   const sampleData = [
@@ -1087,14 +1355,17 @@ const downloadTemplate = () => {
 };
 
 // ================================================================
-// SAVE ITEM
+// SAVE ITEM - COMPLETE FIXED VERSION
 // ================================================================
+
 const saveItem = async () => {
   savingItem.value = true;
   try {
+    // 🔥 Handle conversion properly
     let conversionUomId = itemForm.value.conversionUomId || null;
     let conversionValue = parseFloat(itemForm.value.conversionValue) || 0;
 
+    // If conversionUomId is empty string or null, set to null
     if (!conversionUomId || conversionUomId === '') {
       conversionUomId = null;
       conversionValue = 0;
@@ -1102,10 +1373,17 @@ const saveItem = async () => {
       const uomIdInt = parseInt(itemForm.value.uomId);
       const convUomIdInt = parseInt(conversionUomId);
       
+      // If conversion UOM is same as base UOM, set value to 1
       if (convUomIdInt === uomIdInt) {
         conversionValue = 1;
       }
     }
+
+    // console.log('📤 Saving with conversion:', {
+    //   uomId: itemForm.value.uomId,
+    //   conversionUomId: conversionUomId,
+    //   conversionValue: conversionValue,
+    // });
 
     const formData = {
       name: itemForm.value.name,
@@ -1139,11 +1417,14 @@ const saveItem = async () => {
     const itemId = editingItem.value?.itemId || editingItem.value?.id;
 
     if (editingItem.value) {
+      // 🔥 UPDATE existing item
+      // console.log('🔄 Updating item:', itemId, formData);
       response = await itemService.updateItem(itemId, formData);
       
       if (response.success) {
         showToastMessage('Item updated successfully!', 'success');
         
+        // Upload PDF if exists
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
         }
@@ -1154,12 +1435,15 @@ const saveItem = async () => {
         showToastMessage(response.error || 'Failed to update item', 'error');
       }
     } else {
+      // 🔥 CREATE new item
+      // console.log('📤 Creating new item:', formData);
       response = await itemService.createItem(formData);
       
       if (response.success) {
         showToastMessage('Item added successfully!', 'success');
         const newItemId = response.data.itemId || response.data.id;
         
+        // Upload PDF if exists
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(newItemId, itemForm.value.specPdfFile);
         }
@@ -1177,7 +1461,6 @@ const saveItem = async () => {
     savingItem.value = false;
   }
 };
-
 const uploadSpecificationFile = async (itemId, file) => {
   try {
     const response = await itemService.uploadSpecification(itemId, file);
@@ -1221,8 +1504,131 @@ const confirmDeactivate = async () => {
 };
 
 // ================================================================
+// CATEGORY CRUD
+// ================================================================
+const confirmSaveCategory = async () => {
+  const catName = categoryForm.value.name.trim();
+  if (!catName) return;
+  
+  try {
+    if (editingCategory.value) {
+      const response = await itemService.updateCategory(editingCategory.value.categoryId, {
+        name: catName,
+        status: categoryForm.value.status
+      });
+      if (response.success) {
+        showToastMessage('Category updated!', 'success');
+        await loadCategories();
+        await loadItems();
+        closeCategoryModal();
+      } else {
+        showToastMessage(response.error || 'Failed to update category', 'error');
+      }
+    } else {
+      const exists = categories.value.some(c => c.name === catName);
+      if (exists) {
+        categoryExists.value = true;
+        return;
+      }
+      const response = await itemService.createCategory({ name: catName });
+      if (response.success) {
+        showToastMessage(`Category "${catName}" added!`, 'success');
+        await loadCategories();
+        await loadItems();
+        closeCategoryModal();
+      } else {
+        showToastMessage(response.error || 'Failed to add category', 'error');
+      }
+    }
+  } catch (error) {
+    console.error('Category save error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to save category', 'error');
+  }
+};
+
+const toggleCategoryStatus = async (cat) => {
+  try {
+    const newStatus = cat.status === 'Active' ? 'Inactive' : 'Active';
+    const response = await itemService.updateCategory(cat.categoryId, { status: newStatus });
+    if (response.success) {
+      showToastMessage(`Category "${cat.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
+      await loadCategories();
+      await loadItems();
+    } else {
+      showToastMessage(response.error || 'Failed to change status', 'error');
+    }
+  } catch (error) {
+    console.error('Category status error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to change status', 'error');
+  }
+};
+
+// ================================================================
+// UOM CRUD
+// ================================================================
+const saveUOM = async () => {
+  const code = uomForm.value.code.trim();
+  const name = uomForm.value.name.trim();
+  
+  if (!code || !name) {
+    showToastMessage('Please enter both code and name', 'error');
+    return;
+  }
+  
+  try {
+    if (editingUOM.value) {
+      const response = await itemService.updateUOM(editingUOM.value.uomId, { name });
+      if (response.success) {
+        showToastMessage('UOM updated!', 'success');
+        await loadUOMs();
+        await loadItems();
+        closeUOMModal();
+      } else {
+        showToastMessage(response.error || 'Failed to update UOM', 'error');
+      }
+    } else {
+      const exists = uomList.value.some(u => u.code === code);
+      if (exists) {
+        showToastMessage(`UOM "${code}" already exists`, 'error');
+        return;
+      }
+      const response = await itemService.createUOM({ code, name });
+      if (response.success) {
+        showToastMessage(`UOM "${code}" added!`, 'success');
+        await loadUOMs();
+        await loadItems();
+        closeUOMModal();
+      } else {
+        showToastMessage(response.error || 'Failed to add UOM', 'error');
+      }
+    }
+  } catch (error) {
+    console.error('UOM save error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to save UOM', 'error');
+  }
+};
+
+const toggleUOMStatus = async (uom) => {
+  try {
+    const newStatus = uom.status === 'Active' ? 'Inactive' : 'Active';
+    const response = await itemService.updateUOM(uom.uomId, { status: newStatus });
+    if (response.success) {
+      showToastMessage(`UOM "${uom.code}" ${newStatus === 'Active' ? 'activated' : 'deactivated'}`, 'success');
+      await loadUOMs();
+      await loadItems();
+    } else {
+      showToastMessage(response.error || 'Failed to change status', 'error');
+    }
+  } catch (error) {
+    console.error('UOM status error:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to change status', 'error');
+  }
+};
+
+// ================================================================
 // EXPORT
 // ================================================================
+
 const exportSelectedReport = async () => {
   exporting.value = true;
   try {
@@ -1235,7 +1641,7 @@ const exportSelectedReport = async () => {
     const params = {
       categoryId: categoryId,
       status: filterStatus.value || undefined,
-      format: exportFormat.value || 'xlsx',
+      format: exportFormat.value || 'xlsx', // 'xlsx' or 'csv'
     };
 
     const result = await itemService.downloadExport(params);
@@ -1257,12 +1663,20 @@ const exportSelectedReport = async () => {
 // ================================================================
 // IMPORT
 // ================================================================
+
 const openImportModal = () => {
   showImportModal.value = true;
   csvFile.value = null;
   importPreviewData.value = [];
   importResults.value = null;
-  importProgress.value = { total: 0, processed: 0, success: 0, failed: 0, remaining: 0, percentage: 0 };
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  };
 };
 
 const closeImportModal = () => {
@@ -1271,7 +1685,14 @@ const closeImportModal = () => {
   importPreviewData.value = [];
   importResults.value = null;
   importing.value = false;
-  importProgress.value = { total: 0, processed: 0, success: 0, failed: 0, remaining: 0, percentage: 0 };
+  importProgress.value = {
+    total: 0,
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: 0,
+    percentage: 0
+  };
 };
 
 const triggerCsvUpload = () => {
@@ -1443,11 +1864,14 @@ const processImport = async () => {
 // ================================================================
 // UI HELPERS
 // ================================================================
+
 const onUOMChange = () => {
   if (itemForm.value.uomId) {
+    // Reset conversion when UOM changes
     const uomId = parseInt(itemForm.value.uomId);
     const currentConvUomId = itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null;
     
+    // If conversion UOM is same as new UOM or not set, clear it
     if (!currentConvUomId || currentConvUomId === uomId) {
       itemForm.value.conversionUomId = null;
       itemForm.value.conversionValue = 0;
@@ -1565,6 +1989,47 @@ const removePdfFile = () => {
   itemForm.value.specPdfSize = '';
 };
 
+// -- Category Modal --
+const openAddCategoryModal = () => {
+  editingCategory.value = null;
+  categoryForm.value = { name: '', status: 'Active' };
+  categoryExists.value = false;
+  showCategoryModal.value = true;
+};
+
+const openEditCategoryModal = (cat) => {
+  editingCategory.value = cat;
+  categoryForm.value = { name: cat.name, status: cat.status || 'Active' };
+  categoryExists.value = false;
+  showCategoryModal.value = true;
+};
+
+const closeCategoryModal = () => {
+  showCategoryModal.value = false;
+  editingCategory.value = null;
+  categoryForm.value = { name: '', status: 'Active' };
+  categoryExists.value = false;
+};
+
+// -- UOM Modal --
+const openAddUOMModal = () => {
+  editingUOM.value = null;
+  uomForm.value = { code: '', name: '', status: 'Active' };
+  showUOMModal.value = true;
+};
+
+const openEditUOMModal = (uom) => {
+  editingUOM.value = uom;
+  uomForm.value = { code: uom.code, name: uom.name, status: uom.status || 'Active' };
+  showUOMModal.value = true;
+};
+
+const closeUOMModal = () => {
+  showUOMModal.value = false;
+  editingUOM.value = null;
+};
+
+// -- Export --
 const openExportModal = () => {
   showExportModal.value = true;
 };
@@ -1573,12 +2038,14 @@ const closeExportModal = () => {
   showExportModal.value = false;
 };
 
+// -- Remove CSV --
 const removeCsvFile = () => {
   csvFile.value = null;
   importPreviewData.value = [];
   importResults.value = null;
 };
 
+// -- Toast --
 const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg;
   toastType.value = type;
@@ -1600,6 +2067,8 @@ onMounted(async () => {
 /* ================================================================
    SECTION CARD
    ================================================================ */
+
+/* Add to your styles */
 .detail-card .value.base-unit {
   color: #6b7280;
   font-style: italic;
@@ -1613,6 +2082,8 @@ onMounted(async () => {
 .detail-card .value.no-conversion {
   color: #ef4444;
 }
+
+
 
 .section-card {
   background: white;
@@ -1885,20 +2356,22 @@ onMounted(async () => {
   overflow-x: auto;
 }
 
-.item-table {
+.item-table, .category-table, .uom-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   min-width: 600px;
 }
 
-.item-table th, .item-table td {
+.item-table th, .item-table td,
+.category-table th, .category-table td,
+.uom-table th, .uom-table td {
   padding: 10px 12px;
   text-align: left;
   border-bottom: 1px solid #f1f5f9;
 }
 
-.item-table th {
+.item-table th, .category-table th, .uom-table th {
   background: #f8fafc;
   font-weight: 600;
   color: #475569;
@@ -1908,7 +2381,7 @@ onMounted(async () => {
 }
 
 .text-center { text-align: center; }
-.sku { font-weight: 600; color: #2563eb; font-size: 12px; }
+.sku, .code { font-weight: 600; color: #2563eb; font-size: 12px; }
 
 .item-info {
   display: flex;
@@ -1929,6 +2402,19 @@ onMounted(async () => {
 .status-badge.discontinued { background: #fee2e2; color: #991b1b; }
 
 .action-buttons { display: flex; gap: 4px; }
+
+.category-table, .uom-table { min-width: 400px; }
+
+/* ================================================================
+   SECTION HEADER
+   ================================================================ */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.section-header h2 { margin: 0; font-size: 18px; color: #1e293b; }
 
 /* ================================================================
    EXPAND ROW
@@ -2099,6 +2585,8 @@ onMounted(async () => {
 }
 
 .item-modal { max-width: 750px; }
+.uom-modal { max-width: 450px; }
+.category-modal { max-width: 450px; }
 .export-modal { max-width: 400px; }
 .deactivate-modal { max-width: 450px; }
 .import-modal { max-width: 750px; }
@@ -2149,18 +2637,18 @@ onMounted(async () => {
   border-bottom: 2px solid #e2e8f0;
 }
 
-.item-form .form-row {
+.item-form .form-row, .uom-form .form-row {
   display: flex;
   gap: 16px;
   margin-bottom: 12px;
 }
-.item-form .form-group {
+.item-form .form-group, .uom-form .form-group {
   flex: 1;
   min-width: 120px;
 }
 .item-form .form-group.full-width { flex: 1 1 100%; }
 
-.item-form .form-group label {
+.item-form .form-group label, .uom-form .form-group label {
   display: block;
   font-size: 11px;
   font-weight: 600;
@@ -2172,7 +2660,8 @@ onMounted(async () => {
 
 .item-form .form-group input,
 .item-form .form-group select,
-.item-form .form-group textarea {
+.item-form .form-group textarea,
+.uom-form .form-group input {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid #e2e8f0;
@@ -2183,13 +2672,14 @@ onMounted(async () => {
 
 .item-form .form-group input:focus,
 .item-form .form-group select:focus,
-.item-form .form-group textarea:focus {
+.item-form .form-group textarea:focus,
+.uom-form .form-group input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.item-form .hint {
+.item-form .hint, .uom-form .hint {
   display: block;
   font-size: 11px;
   color: #94a3b8;
@@ -2442,6 +2932,45 @@ onMounted(async () => {
   justify-content: center;
 }
 
+.page-numbers {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.page-number {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #475569;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-number:hover:not(.active):not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.page-number.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+  font-weight: 600;
+}
+
+.page-number:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .page-btn {
   padding: 6px 14px;
   background: white;
@@ -2559,16 +3088,48 @@ onMounted(async () => {
   .filter-bar { flex-direction: column; }
   .filter-bar select { width: 100%; }
   .spec-type-selector { flex-direction: column; gap: 8px; }
-  .item-form .form-row { flex-direction: column; gap: 8px; }
+  .item-form .form-row, .uom-form .form-row { flex-direction: column; gap: 8px; }
 }
 
 @media (max-width: 600px) {
   .section-card { padding: 12px; }
   .tabs { flex-wrap: wrap; }
   .tab { flex: 1; text-align: center; padding: 6px 10px; font-size: 11px; }
-  .pagination-controls { gap: 6px; }
-  .item-table { min-width: 500px; }
+  .pagination { flex-wrap: wrap; }
+  .item-table, .category-table, .uom-table { min-width: 500px; }
   .modal-container { margin: 10px; max-height: 95vh; }
-  .pagination-info { font-size: 12px; }
+  
+  .pagination-controls {
+    gap: 6px;
+  }
+  
+  .page-number {
+    min-width: 28px;
+    height: 28px;
+    font-size: 12px;
+    padding: 0 6px;
+  }
+  
+  .page-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  
+  .pagination-info {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .page-numbers {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

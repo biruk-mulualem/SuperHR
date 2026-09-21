@@ -7,20 +7,35 @@
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to update your profile picture.",
+        "NSCameraUsageDescription": "This app needs access to your camera to take a profile photo."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#F5F0E1",
         "foregroundImage": "./assets/logo.png"
       },
-      "package": "com.birukmulualem.superapp"
+      "package": "com.birukmulualem.superapp",
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/logo.png"
     },
     "plugins": [
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photos to update your profile picture.",
+          "cameraPermission": "This app needs access to your camera to take a profile photo."
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -75,6 +75,8 @@ module.exports = (sequelize, DataTypes) => {
           isEmail: true,
         },
       },
+
+      
       passwordHash: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -103,6 +105,18 @@ module.exports = (sequelize, DataTypes) => {
           key: "department_id",
         },
       },
+  
+expoPushToken: {
+  type: DataTypes.STRING(255),
+  allowNull: true,
+  field: 'expo_push_token',
+},
+
+pushTokenUpdatedAt: {
+  type: DataTypes.DATE,
+  allowNull: true,
+  field: 'push_token_updated_at',
+},
       isActive: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

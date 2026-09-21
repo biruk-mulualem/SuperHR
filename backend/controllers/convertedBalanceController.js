@@ -1187,6 +1187,139 @@ class ConvertedBalanceController {
             });
         }
     }
+
+    /**
+     * GET /api/converted-balances/items-for-stock-in
+     * ----------------------------------------------------------------
+     * Returns ALL items, not just ones with a converted balance yet.
+     * For items that already have a converted_balances row, includes the
+     * current convertedBalance. For items that don't, convertedBalance
+     * is 0 and hasExistingBalance is false — so Stock In can initialize.
+     */
+    static async getItemsForStockIn(req, res) {
+        try {
+            const {
+                storeId,
+                groupId,
+                search = '',
+                page = 1,
+                limit = 20
+            } = req.query;
+
+            if (!storeId || !groupId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Store ID and Group ID are required'
+                });
+            }
+
+            const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+            const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+            const offset = (pageNum - 1) * pageSize;
+
+            // ------------------------------------------------------------
+            // 1. Search ALL items
+            // ------------------------------------------------------------
+            const itemWhere = {};
+            if (search && search.trim()) {
+                const q = `%${search.trim()}%`;
+                itemWhere[Op.or] = [
+                    { code: { [Op.iLike]: q } },
+                    { name: { [Op.iLike]: q } },
+                    { standardName: { [Op.iLike]: q } }
+                ];
+            }
+
+            const total = await Item.count({ where: itemWhere });
+
+            const items = await Item.findAll({
+                where: itemWhere,
+                include: [
+                    { model: Category, as: 'category' },
+                    { model: UOM, as: 'uom' },
+                    { model: UOM, as: 'conversionUom' }
+                ],
+                order: [['name', 'ASC']],
+                limit: pageSize,
+                offset,
+                distinct: true
+            });
+
+            const itemIds = items.map((i) => i.itemId);
+
+            // ------------------------------------------------------------
+            // 2. Merge in any existing converted_balances rows
+            //    (only for this store + group)
+            // ------------------------------------------------------------
+            const existingBalances = itemIds.length
+                ? await ConvertedBalance.findAll({
+                      where: {
+                          storeId: parseInt(storeId),
+                          groupId: parseInt(groupId),
+                          itemId: { [Op.in]: itemIds }
+                      },
+                      attributes: ['itemId', 'convertedBalance']
+                  })
+                : [];
+
+            const balanceMap = new Map(
+                existingBalances.map((b) => [
+                    b.itemId,
+                    parseFloat(b.convertedBalance) || 0
+                ])
+            );
+
+            // ------------------------------------------------------------
+            // 3. Build response — every item carries convertedBalance
+            //    (0 if it has no converted_balances row yet)
+            // ------------------------------------------------------------
+            const data = items.map((it) => ({
+                id: it.itemId,
+                itemId: it.itemId,
+                code: it.code,
+                name: it.name,
+                standardName: it.standardName,
+                uomId: it.uomId,
+                uomCode: it.uom?.code,
+                uomName: it.uom?.name,
+                conversionUomId: it.conversionUomId,
+                conversionUomCode: it.conversionUom?.code,
+                conversionUomName: it.conversionUom?.name,
+                conversionValue: parseFloat(it.conversionValue) || 1,
+                categoryId: it.category?.categoryId,
+                categoryName: it.category?.name,
+                // ⭐ KEY: 0 if no converted_balances row exists
+                convertedBalance: balanceMap.get(it.itemId) || 0,
+                hasExistingBalance: balanceMap.has(it.itemId)
+            }));
+
+            res.json({
+                success: true,
+                data,
+                pagination: {
+                    total,
+                    page: pageNum,
+                    totalPages: Math.ceil(total / pageSize),
+                    limit: pageSize
+                }
+            });
+        } catch (error) {
+            console.error('Get items for stock-in error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch items',
+                details: error.message
+            });
+        }
+    }
+
+
+
+
+
+
+
+
 }
 
 module.exports = ConvertedBalanceController;

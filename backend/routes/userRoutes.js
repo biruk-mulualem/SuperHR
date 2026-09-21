@@ -28,6 +28,7 @@ router.use(authMiddleware());
 // Profile routes (any authenticated user)
 router.get('/profile', userController.getProfile);
 router.post('/change-password', userController.changePassword);
+router.post('/push-token', userController.savePushToken);
 
 // Read-only lookup data (any authenticated user)
 router.get('/roles', userController.getAllRoles);

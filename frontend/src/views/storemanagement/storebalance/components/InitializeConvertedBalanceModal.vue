@@ -40,7 +40,7 @@
         <div v-if="activeTab === 'in'">
           <div class="init-info">
             <span class="info-icon">ℹ️</span>
-            <span>Add stock to the converted balance for a specific item.</span>
+            <span>Add stock to the converted balance. If the item has no balance yet, it will be initialized.</span>
           </div>
 
           <form @submit.prevent="saveBalance" class="balance-form">
@@ -104,7 +104,7 @@
                   <input
                     type="text"
                     v-model="itemSearchQuery"
-                    placeholder="Search items with converted balance..."
+                    placeholder="Search any item..."
                     :disabled="!currentStoreId || !currentGroupId"
                     @input="onSearchInput"
                     class="item-search-input"
@@ -157,6 +157,13 @@
                           💰 {{ formatNumber(item.convertedBalance) }}
                           {{ getConvertedUOMDisplay(item) }}
                         </span>
+                        <!-- ✨ NEW badge for items without a converted balance yet -->
+                        <span
+                          v-if="item.hasExistingBalance === false"
+                          class="item-option-new"
+                        >
+                          ✨ New
+                        </span>
                       </div>
                     </div>
 
@@ -164,7 +171,7 @@
                       v-else-if="!isSearching"
                       class="item-no-results"
                     >
-                      No items with a converted balance match your search
+                      No items match your search
                     </div>
 
                     <div
@@ -212,6 +219,11 @@
               <span class="value balance"
                 >{{ formatNumber(currentBalance) }}
                 {{ getConvertedUOMDisplay(selectedItemDisplay) }}</span
+              >
+              <span
+                v-if="selectedItemDisplay.hasExistingBalance === false"
+                class="new-balance-text"
+                >✨ New — will initialize</span
               >
             </div>
 
@@ -261,7 +273,7 @@
         <div v-if="activeTab === 'out'">
           <div class="init-info warning">
             <span class="info-icon">⚠️</span>
-            <span>Remove stock from the converted balance for a specific item.</span>
+            <span>Remove stock from the converted balance. Only items that already have a balance can be stocked out.</span>
           </div>
 
           <form @submit.prevent="saveBalanceOut" class="balance-form">
@@ -688,7 +700,8 @@ const handleClose = () => closeModal();
 const handleOverlayClick = () => closeModal();
 
 // ================================================================
-// SEARCH (Stock In) — uses convertedBalanceService.getConvertedBalanceItems
+// SEARCH (Stock In) — uses convertedBalanceService.getItemsForStockIn
+// Returns ALL items, not just ones with a converted balance.
 // ================================================================
 
 const onSearchInput = () => {
@@ -725,7 +738,8 @@ const searchItems = async (query) => {
   isSearching.value = true;
 
   try {
-    const response = await convertedBalanceService.getConvertedBalanceItems({
+    // ✅ CHANGED: search ALL items (was getConvertedBalanceItems)
+    const response = await convertedBalanceService.getItemsForStockIn({
       storeId,
       groupId,
       search: query,
@@ -774,7 +788,7 @@ const selectItem = (item) => {
   items.value = [];
   searchTotal.value = 0;
 
-  // 👇 balance comes straight from the selected row
+  // 👇 balance comes straight from the selected row (0 for new items)
   currentBalance.value = Number(item.convertedBalance) || 0;
 };
 
@@ -788,7 +802,8 @@ const clearItemSelection = () => {
 };
 
 // ================================================================
-// SEARCH (Stock Out) — same endpoint
+// SEARCH (Stock Out) — unchanged, still uses getConvertedBalanceItems
+// Only returns items that already have a converted balance.
 // ================================================================
 
 const onSearchInputOut = () => {
@@ -825,6 +840,7 @@ const searchItemsOut = async (query) => {
   isSearchingOut.value = true;
 
   try {
+    // ✅ UNCHANGED: still only returns items with a converted balance
     const response = await convertedBalanceService.getConvertedBalanceItems({
       storeId,
       groupId,
@@ -1462,6 +1478,11 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.current-balance-display .new-balance-text {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
 /* ================================================================ */
 /* ITEM SEARCH */
 /* ================================================================ */
@@ -1609,6 +1630,17 @@ onMounted(() => {
   padding: 1px 8px;
   border-radius: 10px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ✨ NEW badge for items without a converted balance yet */
+.item-option-new {
+  font-size: 10px;
+  color: #7c3aed;
+  background: #f3e8ff;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 700;
   white-space: nowrap;
 }
 

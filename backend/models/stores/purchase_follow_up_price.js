@@ -18,6 +18,15 @@ module.exports = (sequelize, DataTypes) => {
         constraints: false,
       });
 
+      // 👇 NEW — who this price actually belongs to
+      //    - null/equal to submittedById when a purchaser submits directly
+      //    - set when the collector (desk account) submits on someone's behalf
+      PurchaseFollowUpPrice.belongsTo(models.User, {
+        foreignKey: 'onBehalfOfId',
+        as: 'onBehalfOf',
+        constraints: false,
+      });
+
       PurchaseFollowUpPrice.belongsTo(models.User, {
         foreignKey: 'removedById',
         as: 'removedBy',
@@ -47,10 +56,23 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(160),
         allowNull: false,
       },
+
+      // Who physically pressed submit
       submittedById: {
         type: DataTypes.INTEGER,
         allowNull: true,
         field: 'submitted_by_id',
+        references: { model: 'users', key: 'user_id' },
+      },
+
+      // 👇 NEW — who this price belongs to
+      //    When the collector submits on behalf of someone, this is
+      //    that someone's user_id. Otherwise it's null (meaning: use
+      //    submittedById as the owner).
+      onBehalfOfId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'on_behalf_of_id',
         references: { model: 'users', key: 'user_id' },
       },
 
@@ -145,6 +167,7 @@ module.exports = (sequelize, DataTypes) => {
         { fields: ['status'] },
         { fields: ['is_winner'] },
         { fields: ['submitted_by_id'] },
+        { fields: ['on_behalf_of_id'] },   // 👈 NEW index for lookups
       ],
     }
   );

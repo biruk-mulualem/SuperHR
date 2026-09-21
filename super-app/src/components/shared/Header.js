@@ -1,5 +1,5 @@
 // components/Header.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,8 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 
+
+import notificationService from '../../stores/notificationService';
 // ================================================================
 // USER PROFILES
 // ================================================================
@@ -108,6 +110,25 @@ export default function Header({
   notificationCount = 0,
 }) {
   const [modalVisible, setModalVisible] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(notificationCount);
+
+  // ---------- Live unread count ----------
+  const fetchUnreadCount = useCallback(async () => {
+    const result = await notificationService.unreadCount('local');
+    if (result.success) setUnreadCount(result.count);
+  }, []);
+
+  // Fetch on mount + poll every 30s
+  useEffect(() => {
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchUnreadCount]);
+
+  // Sync if the parent passes an updated count
+  useEffect(() => {
+    setUnreadCount(notificationCount);
+  }, [notificationCount]);
 
   const headerBg = darkMode ? '#1E293B' : '#FFFFFF';
   const borderBottomColor = darkMode ? '#334155' : '#E2E8F0';
@@ -152,10 +173,10 @@ export default function Header({
             >
               <Text style={styles.emojiIcon}>🔔</Text>
 
-              {notificationCount > 0 && (
+              {unreadCount > 0 && (
                 <View style={styles.notificationBadge}>
                   <Text style={styles.badgeText}>
-                    {notificationCount > 9 ? '9+' : notificationCount}
+                    {unreadCount > 9 ? '9+' : unreadCount}
                   </Text>
                 </View>
               )}

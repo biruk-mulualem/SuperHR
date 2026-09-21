@@ -1,206 +1,32 @@
 // pages/notification/NotificationPage.js
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 
-// ================================================================
-// DEMO REQUEST PAYLOADS
-// In production, these would come from your API's notification feed —
-// each notification would carry a small `request` snapshot.
-// ================================================================
-const DEMO_MANAGER_REQUESTS = {
-  'PR-2026-0001': {
-    id: 'PR-2026-0001',
-    requestNumber: 'PR-2026-0001',
-    requester: 'Tigist Hailu',
-    department: 'Production',
-    priority: 'High',
-    date: '2026-09-05',
-    status: 'approved_not_paid',
-    items: [
-      { id: 1, item: 'Steel Pipe 2 inch', code: 'SP-002', quantity: 50, uom: 'PCS' },
-      { id: 2, item: 'Industrial Paint', code: 'IP-100', quantity: 30, uom: 'LTR' },
-    ],
-  },
-  'PR-2026-0003': {
-    id: 'PR-2026-0003',
-    requestNumber: 'PR-2026-0003',
-    requester: 'Dawit Solomon',
-    department: 'Electrical',
-    priority: 'Medium',
-    date: '2026-09-07',
-    status: 'pending_approval',
-    items: [
-      { id: 1, item: 'Circuit Breaker 32A', code: 'CB-32A', quantity: 10, uom: 'PCS' },
-    ],
-  },
-};
-
-const DEMO_PURCHASER_REQUESTS = {
-  'PR-2026-0001': {
-    id: 'PR-2026-0001',
-    requestNumber: 'PR-2026-0001',
-    requester: 'Tigist Hailu',
-    department: 'Production',
-    priority: 'High',
-    date: '2026-09-05',
-    items: [
-      { id: 1, item: 'Steel Pipe 2 inch', code: 'SP-002', quantity: 50, uom: 'PCS' },
-      { id: 2, item: 'Industrial Paint', code: 'IP-100', quantity: 30, uom: 'LTR' },
-      { id: 3, item: 'Hydraulic Pump', code: 'HP-500', quantity: 2, uom: 'SET' },
-    ],
-  },
-  'PR-2026-0003': {
-    id: 'PR-2026-0003',
-    requestNumber: 'PR-2026-0003',
-    requester: 'Dawit Solomon',
-    department: 'Electrical',
-    priority: 'Medium',
-    date: '2026-09-07',
-    items: [
-      { id: 1, item: 'Circuit Breaker 32A', code: 'CB-32A', quantity: 10, uom: 'PCS' },
-    ],
-  },
-  'PR-2026-0004': {
-    id: 'PR-2026-0004',
-    requestNumber: 'PR-2026-0004',
-    requester: 'Meron Ayele',
-    department: 'Maintenance',
-    priority: 'Urgent',
-    date: '2026-09-08',
-    items: [
-      { id: 1, item: 'Conveyor Belt 10m', code: 'CB-010', quantity: 3, uom: 'ROLL' },
-      { id: 2, item: 'Bearing 6204', code: 'BR-6204', quantity: 20, uom: 'PCS' },
-    ],
-  },
-};
-
-// ================================================================
-// ROLE-SCOPED PURCHASE NOTIFICATIONS
-// ================================================================
-const NOTIFICATIONS_BY_ROLE = {
-  manager: [
-    {
-      id: 'm1',
-      type: 'approval',
-      title: '⏳ Approval pending',
-      desc: 'PR-2026-0003 is awaiting your approval.',
-      time: '5 mins ago',
-      read: false,
-      route: {
-        tab: 'pendingDetail',
-        payload: DEMO_MANAGER_REQUESTS['PR-2026-0003'],
-        fallback: { tab: 'purchase', subView: 'pendingApproval' },
-      },
-    },
-    {
-      id: 'm2',
-      type: 'approval',
-      title: '⏳ 2 more requests pending',
-      desc: 'You have 2 additional requests awaiting approval.',
-      time: '20 mins ago',
-      read: false,
-      route: {
-        tab: 'purchase',
-        subView: 'pendingApproval',
-      },
-    },
-    {
-      id: 'm3',
-      type: 'payment',
-      title: '💳 Payment released',
-      desc: 'Payment for PR-2026-0001 has been released.',
-      time: '2 hours ago',
-      read: false,
-      route: {
-        tab: 'pendingDetail',
-        payload: DEMO_MANAGER_REQUESTS['PR-2026-0001'],
-        fallback: { tab: 'purchase', subView: 'approvedNotPaid' },
-      },
-    },
-    {
-      id: 'm4',
-      type: 'order',
-      title: '📋 New total requests available',
-      desc: 'You have 12 total purchase requests.',
-      time: 'Yesterday',
-      read: true,
-      route: {
-        tab: 'purchase',
-        subView: 'totalRequests',
-      },
-    },
-  ],
-
-  purchaser: [
-    {
-      id: 'p1',
-      type: 'order',
-      title: '📥 New request to price',
-      desc: 'PR-2026-0004 is now available for price submission.',
-      time: '3 mins ago',
-      read: false,
-      route: {
-        tab: 'pendingSubmissionDetail',
-        payload: DEMO_PURCHASER_REQUESTS['PR-2026-0004'],
-        fallback: { tab: 'purchase', subView: 'pendingSubmission' },
-      },
-    },
-    {
-      id: 'p2',
-      type: 'alert',
-      title: '⏳ Deadline approaching',
-      desc: 'PR-2026-0001 deadline is in 24 hours.',
-      time: '45 mins ago',
-      read: false,
-      route: {
-        tab: 'pendingSubmissionDetail',
-        payload: DEMO_PURCHASER_REQUESTS['PR-2026-0001'],
-        fallback: { tab: 'purchase', subView: 'pendingSubmission' },
-      },
-    },
-    {
-      id: 'p3',
-      type: 'order',
-      title: '📥 Price collection opened',
-      desc: 'PR-2026-0003 is now collecting prices.',
-      time: '2 hours ago',
-      read: false,
-      route: {
-        tab: 'pendingSubmissionDetail',
-        payload: DEMO_PURCHASER_REQUESTS['PR-2026-0003'],
-        fallback: { tab: 'purchase', subView: 'pendingSubmission' },
-      },
-    },
-    {
-      id: 'p4',
-      type: 'approval',
-      title: '🏆 You won a bid',
-      desc: 'Your price for "Bearing 6204" was selected.',
-      time: 'Yesterday',
-      read: true,
-      route: {
-        tab: 'purchase',
-        subView: 'submitted',
-      },
-    },
-  ],
-
-  default: [],
-};
-
-const FALLBACK_ROLE = 'purchaser';
+import notificationService from '../../stores/notificationService';
 
 // ================================================================
 // HELPERS
 // ================================================================
 const getTypeColor = (type) => {
   const colors = {
+    dispatch:          '#3B82F6',
+    dispatch_boss:     '#8B5CF6',
+    approval_request:  '#F59E0B',
+    price_submitted:   '#06B6D4',
+    winner_selected:   '#10B981',
+    request_approved:  '#10B981',
+    request_declined:  '#EF4444',
+    request_deleted:   '#64748B',
+    purchase_reminder: '#F97316',
     order:    '#3B82F6',
     payment:  '#10B981',
     alert:    '#EF4444',
@@ -210,76 +36,223 @@ const getTypeColor = (type) => {
   return colors[type] || '#64748B';
 };
 
-const getTypeIcon = (type) => {
-  const icons = {
-    order:    '📦',
-    payment:  '💳',
-    alert:    '⚠️',
-    approval: '⏳',
-    system:   '🛡️',
-  };
-  return icons[type] || '🔔';
+const getTypeIcon = (type) => notificationService.getIcon(type);
+
+// ----------------------------------------------------------------
+// ROUTE BUILDER
+// ----------------------------------------------------------------
+const buildRouteFromNotification = (item) => {
+  if (!item.referenceId) return null;
+
+  switch (item.type) {
+    case 'dispatch':
+    case 'dispatch_boss':
+    case 'approval_request':
+    case 'price_submitted':
+      return {
+        tab: 'pendingSubmissionDetail',
+        params: { id: item.referenceId },
+      };
+
+    case 'winner_selected':
+    case 'request_approved':
+    case 'request_declined':
+      return {
+        tab: 'submittedDetail',
+        params: { id: item.referenceId },
+      };
+
+    case 'request_deleted':
+      return null;
+
+    default:
+      return {
+        tab: 'pendingSubmissionDetail',
+        params: { id: item.referenceId },
+      };
+  }
 };
 
 // ================================================================
 // COMPONENT
 // ================================================================
 export default function NotificationPage({
-  darkMode,
+  darkMode = false,
   userRole,
   onOpenNotification,
 }) {
-  const textColor = darkMode ? '#F1F5F9' : '#1E293B';
-  const subTextColor = darkMode ? '#94A3B8' : '#64748B';
-  const cardBg = darkMode ? '#1E293B' : '#FFFFFF';
-  const borderColor = darkMode ? '#334155' : '#E2E8F0';
-  const titleColor = darkMode ? '#93C5FD' : '#1E3A8A';
-  const emptyBg = darkMode ? '#1E293B' : '#F8FAFC';
-  const unreadBg = darkMode ? '#1E293B' : '#EFF6FF';
+  const textColor      = darkMode ? '#F1F5F9' : '#1E293B';
+  const subTextColor   = darkMode ? '#94A3B8' : '#64748B';
+  const cardBg         = darkMode ? '#1E293B' : '#FFFFFF';
+  const borderColor    = darkMode ? '#334155' : '#E2E8F0';
+  const titleColor     = darkMode ? '#93C5FD' : '#1E3A8A';
+  const emptyBg        = darkMode ? '#1E293B' : '#F8FAFC';
+  const unreadBg       = darkMode ? '#1E293B' : '#EFF6FF';
 
-  const roleKey = String(userRole || FALLBACK_ROLE).toLowerCase();
-  const initial =
-    NOTIFICATIONS_BY_ROLE[roleKey] || NOTIFICATIONS_BY_ROLE.default;
+  // ----------------------------------------------------------------
+  // State
+  // ----------------------------------------------------------------
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-  const [readMap, setReadMap] = useState({});
+  // ----------------------------------------------------------------
+  // Load
+  // ----------------------------------------------------------------
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    setErrorMsg(null);
 
-  const notifications = useMemo(
-    () =>
-      initial.map((n) => ({
-        ...n,
-        read: readMap[n.id] !== undefined ? readMap[n.id] : n.read,
-      })),
-    [initial, readMap],
-  );
+    try {
+      const res = await notificationService.list({
+        purchaseType: 'local',
+        limit: 50,
+      });
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+      if (res.success) {
+        const mapped = (res.items || []).map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title || '🔔 Notification',
+          desc: n.body || '',
+          time: notificationService.formatRelativeTime(n.createdAt),
+          read: !!n.isRead,
+          createdAt: n.createdAt,
+          referenceId: n.referenceId,
+          referenceType: n.referenceType,
+          metadata: n.metadata || {},
+        }));
 
-  const handleTap = (item) => {
-    setReadMap((prev) => ({ ...prev, [item.id]: true }));
-    if (item.route && onOpenNotification) {
-      onOpenNotification(item.route);
+        setItems(mapped);
+      } else {
+        setErrorMsg(res.error || 'Failed to load notifications');
+        setItems([]);
+      }
+    } catch (e) {
+      console.error('NotificationPage load error:', e);
+      setErrorMsg(e.message || 'Failed to load');
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load({ silent: true });
+    setRefreshing(false);
+  }, [load]);
+
+  // ----------------------------------------------------------------
+  // Tap → delete notification → navigate (if reference)
+  // ----------------------------------------------------------------
+  const handleTap = async (item) => {
+    const isPersisted = Number.isInteger(item.id) && item.id > 0;
+
+    // Optimistic removal
+    const snapshot = items;
+    setItems((prev) => prev.filter((n) => n.id !== item.id));
+
+    // Persist
+    if (isPersisted) {
+      try {
+        const res = await notificationService.remove(item.id);
+        console.log('🗑️ delete response:', res);
+
+        if (!res.success) {
+          setItems(snapshot);
+          Alert.alert('Error', res.error || 'Failed to remove notification');
+          return;
+        }
+      } catch (err) {
+        console.error('🔴 delete threw:', err);
+        setItems(snapshot);
+        return;
+      }
+    }
+
+    // Navigate
+    const route = buildRouteFromNotification(item);
+
+    if (route && typeof onOpenNotification === 'function') {
+      onOpenNotification(route);
     }
   };
 
-  const handleMarkAllRead = () => {
-    const all = {};
-    notifications.forEach((n) => (all[n.id] = true));
-    setReadMap(all);
+  // ----------------------------------------------------------------
+  // Mark all read
+  // ----------------------------------------------------------------
+  const handleMarkAllRead = async () => {
+    const before = items;
+    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+
+    try {
+      const res = await notificationService.markAllAsRead('local');
+      if (!res.success) {
+        setItems(before);
+        Alert.alert('Error', res.error || 'Failed to mark all as read');
+      }
+    } catch (err) {
+      console.error('🔴 markAllAsRead threw:', err);
+      setItems(before);
+    }
   };
 
+  // ----------------------------------------------------------------
+  // Derived
+  // ----------------------------------------------------------------
+  const unreadCount = useMemo(
+    () => items.filter((n) => !n.read).length,
+    [items]
+  );
+
+  // ----------------------------------------------------------------
+  // Loading
+  // ----------------------------------------------------------------
+  if (loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: emptyBg }]}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={[styles.centerText, { color: subTextColor }]}>
+          Loading notifications…
+        </Text>
+      </View>
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Render
+  // ----------------------------------------------------------------
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#3B82F6"
+        />
+      }
     >
+      {/* Header */}
       <View style={styles.headerRow}>
         <View>
           <Text style={[styles.pageTitle, { color: titleColor }]}>
             Notifications
           </Text>
           <Text style={[styles.pageSub, { color: subTextColor }]}>
-            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up 🎉'}
+            {errorMsg
+              ? `⚠️ ${errorMsg}`
+              : unreadCount > 0
+              ? `${unreadCount} unread`
+              : 'All caught up 🎉'}
           </Text>
         </View>
 
@@ -307,7 +280,8 @@ export default function NotificationPage({
         )}
       </View>
 
-      {notifications.length === 0 ? (
+      {/* List / empty */}
+      {items.length === 0 ? (
         <View
           style={[styles.emptyBox, { backgroundColor: emptyBg, borderColor }]}
         >
@@ -316,11 +290,11 @@ export default function NotificationPage({
             No notifications
           </Text>
           <Text style={[styles.emptyText, { color: subTextColor }]}>
-            You're all caught up for your role.
+            You're all caught up.
           </Text>
         </View>
       ) : (
-        notifications.map((item) => {
+        items.map((item) => {
           const typeColor = getTypeColor(item.type);
           const typeIcon = getTypeIcon(item.type);
 
@@ -362,12 +336,14 @@ export default function NotificationPage({
                   )}
                 </View>
 
-                <Text
-                  style={[styles.notifDesc, { color: subTextColor }]}
-                  numberOfLines={2}
-                >
-                  {item.desc}
-                </Text>
+                {item.desc ? (
+                  <Text
+                    style={[styles.notifDesc, { color: subTextColor }]}
+                    numberOfLines={2}
+                  >
+                    {item.desc}
+                  </Text>
+                ) : null}
 
                 <View style={styles.footerRow}>
                   <Text
@@ -378,8 +354,10 @@ export default function NotificationPage({
                   >
                     🕐 {item.time}
                   </Text>
-                  <Text style={[styles.viewHint, { color: '#3B82F6' }]}>
-                    View ›
+
+                  {/* ✅ Same hint for every row — tappable to clear */}
+                  <Text style={[styles.clearHint, { color: subTextColor }]}>
+                    Tap to clear
                   </Text>
                 </View>
               </View>
@@ -399,6 +377,15 @@ export default function NotificationPage({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
+
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    gap: 12,
+  },
+  centerText: { fontSize: 13, fontWeight: '600' },
 
   headerRow: {
     flexDirection: 'row',
@@ -457,7 +444,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   notifTime: { fontSize: 11, fontWeight: '500' },
-  viewHint: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
+
+  // ✅ Soft grey hint on every card
+  clearHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    opacity: 0.8,
+  },
 
   emptyBox: {
     alignItems: 'center',

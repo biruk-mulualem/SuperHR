@@ -452,6 +452,64 @@ class ConvertedBalanceService {
         return response.data;
     }
 
+
+/**
+ * Fetch items available for Stock In.
+ * Returns ALL items, not just ones already in converted_balances.
+ * Items that don't have a converted balance yet come back with
+ * convertedBalance = 0 and hasExistingBalance = false.
+ */
+async getItemsForStockIn({
+    storeId,
+    groupId,
+    search = '',
+    page = 1,
+    limit = 20,
+}: {
+    storeId: number;
+    groupId: number;
+    search?: string;
+    page?: number;
+    limit?: number;
+}) {
+  try {
+    const params = new URLSearchParams();
+    params.append('storeId', String(storeId));
+    params.append('groupId', String(groupId));
+    if (search) params.append('search', search);
+    params.append('page', String(page));
+    params.append('limit', String(limit));
+
+    const response = await api.get(
+      `/converted-balances/items-for-stock-in?${params.toString()}`
+    );
+
+    return {
+      success: true,
+      data: response.data?.data || [],
+      pagination: response.data?.pagination || {
+        total: 0,
+        page: 1,
+        totalPages: 1,
+        limit,
+      },
+    };
+  } catch (error) {
+    console.error('getItemsForStockIn error:', error);
+    return {
+      success: false,
+            error:
+                (error as { response?: { data?: { error?: string } } }).response?.data
+                    ?.error ||
+                (error instanceof Error ? error.message : 'Failed to fetch items'),
+      data: [],
+      pagination: { total: 0, page: 1, totalPages: 1, limit },
+    };
+  }
+}
+
+
+
     /**
      * ================================================================
      * GET SINGLE CONVERTED BALANCE

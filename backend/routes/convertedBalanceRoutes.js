@@ -23,6 +23,12 @@ router.post('/stock-in', ConvertedBalanceController.stockIn);
 // POST /api/converted-balances/stock-out
 router.post('/stock-out', ConvertedBalanceController.stockOut);
 
+router.get(
+  '/items-for-stock-in',
+  authMiddleware(),
+  ConvertedBalanceController.getItemsForStockIn
+);
+
 router.get('/items', ConvertedBalanceController.getConvertedBalanceItems);
 
 
