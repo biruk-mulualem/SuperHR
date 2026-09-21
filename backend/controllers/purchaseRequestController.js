@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const path = require('path');
 const db = require('../models');
 const { PurchaseRequest, PurchaseRequestItem } = db;
-
+const { buildFileUrl } = require('../utils/buildFileUrl');   // ← ADD
 // ================================================================
 // HELPERS
 // ================================================================
@@ -32,12 +32,14 @@ const CREATOR_INCLUDE = {
   required: false,
 };
 
+
 /**
- * Builds a URL that the frontend can resolve against its API base.
+ * Builds an absolute URL for an approved purchase-request document.
+ * Works for both web and mobile — no client-side resolution needed.
  */
 const buildUploadUrl = (file) => {
   if (!file) return null;
-  return `/uploads/purchase-requests/approved/${file.filename}`;
+  return buildFileUrl(`/uploads/purchase-requests/approved/${file.filename}`);
 };
 
 /**

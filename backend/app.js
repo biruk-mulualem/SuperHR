@@ -18,6 +18,7 @@ console.log(
 );
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("PORT:", process.env.PORT);
+console.log("PUBLIC_BASE_URL:", process.env.PUBLIC_BASE_URL);   // ← ADD THIS
 console.log("===============================");
 
 // ============================================================================
