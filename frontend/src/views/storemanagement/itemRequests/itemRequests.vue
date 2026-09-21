@@ -163,7 +163,7 @@
                   </div>
                   <span class="notification-text">{{ getAcceptanceSummary(req) }}</span>
                 </div>
-                <div v-if="(req as any).isAsset" class="asset-badge">🔧 Asset</div>
+                <div v-if="isAssetRequest(req)" class="asset-badge">🔧 Asset</div>
               </td>
               <td>
                 <div class="action-buttons">
@@ -248,10 +248,10 @@
                             formatDateTime(req.updatedAt)
                           }}</span>
                         </div>
-                        <div v-if="(req as any).isAsset">
-                          <span>🔧 Asset Request</span>
-                          <span class="value">Yes</span>
-                        </div>
+                       <div v-if="isAssetRequest(req)">
+  <span>🔧 Asset Request</span>
+  <span class="value">Yes</span>
+</div>
                       </div>
 
                       <div class="detail-card">
@@ -660,6 +660,27 @@ const shouldSkipNotifications = (storeCode: string): boolean => {
 const isSkipStore = (req: ItemRequest): boolean => {
   const supplyingStore = stores.value.find(s => (s.storeId || s.id) === req.supplyingStoreId);
   return supplyingStore ? shouldSkipNotifications(supplyingStore.code) : false;
+};
+
+
+// ================================================================
+// ASSET REQUEST DETECTION
+// ================================================================
+
+/**
+ * An "asset request" is one where at least one notification carries
+ * is_department_approval === true.
+ *
+ *   is_department_approval === true  →  asset  →  print-asset-requests
+ *   otherwise                        →  normal →  print-requests
+ */
+const isAssetRequest = (req: ItemRequest): boolean => {
+  if (!req) return false;
+
+  const notifications = (req as any).notifications as Array<any> | undefined;
+  if (!notifications || notifications.length === 0) return false;
+
+  return notifications.some((n) => n?.is_department_approval === true);
 };
 
 // ================================================================
@@ -1167,14 +1188,40 @@ const confirmStatusChange = async (): Promise<void> => {
   }
 };
 
+/**
+ * Navigate to the correct print page based on request type.
+ *
+ *   asset request  →  print-asset-requests  (has "Checked By" section)
+ *   normal request →  print-requests        (no "Checked By" section)
+ *
+ * The asset flag is derived from the notifications: if any notification
+ * has is_department_approval === true, the request is an asset request.
+ */
 const printRequest = (req: ItemRequest): void => {
   const requestId = req.requestId || req.id;
+  if (!requestId) {
+    showToastMessage('Cannot print: missing request ID', 'error');
+    return;
+  }
+
+  const asset = isAssetRequest(req);
+  const routeName = asset ? 'print-asset-requests' : 'print-requests';
+
+  console.log('🖨️ Print:', {
+    requestId,
+    requestCode: req.requestCode,
+    notificationFlags: (req as any).notifications?.map(
+      (n: any) => n.is_department_approval
+    ),
+    isAsset: asset,
+    routeName,
+  });
+
   router.push({
-    name: "print-requests",
+    name: routeName,
     query: { id: String(requestId) },
   });
 };
-
 // ================================================================
 // FILTERS & PAGINATION
 // ================================================================

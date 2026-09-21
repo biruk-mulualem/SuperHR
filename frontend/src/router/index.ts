@@ -775,6 +775,16 @@ const router = createRouter({
             roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
           },
         },
+         {
+          path: "print-asset-requests",
+          name: "print-asset-requests",
+          component: () =>
+            import("@/views/storemanagement/itemRequests/assetrequest.vue"),
+          meta: {
+            title: "print asset requests ",
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
+          },
+        },
 
         {
           path: "",

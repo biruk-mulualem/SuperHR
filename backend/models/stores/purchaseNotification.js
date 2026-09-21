@@ -166,6 +166,31 @@ module.exports = (sequelize, DataTypes) => {
             notification.read_at = new Date();
           }
         },
+
+        // ------------------------------------------------------------------
+        // Fire a push notification after a single notification row is created.
+        // Lazy require avoids a circular dependency with models/index.js.
+        // Wrapped in try/catch — a push failure NEVER breaks the DB write.
+        // Silently no-ops if PUSH_ENABLED !== 'true'.
+        // ------------------------------------------------------------------
+        afterCreate: async (notification) => {
+          try {
+            const { sendPushToUser } = require('../services/pushService');
+
+            await sendPushToUser(notification.user_id, {
+              title: notification.title,
+              body: notification.body || '',
+              data: {
+                notificationId: notification.id,
+                type: notification.type,
+                referenceId: notification.reference_id,
+                referenceType: notification.reference_type,
+              },
+            });
+          } catch (err) {
+            console.error('⚠️ Push afterCreate error:', err.message);
+          }
+        },
       },
     }
   );
@@ -226,6 +251,9 @@ module.exports = (sequelize, DataTypes) => {
 
   /**
    * Create the same purchase notification for many users in one query.
+   *
+   * bulkCreate does not fire per-row afterCreate hooks, so we also
+   * fire a single batched push for all recipients here.
    */
   PurchaseNotification.notifyMany = async function (
     userIds,
@@ -253,7 +281,31 @@ module.exports = (sequelize, DataTypes) => {
       metadata,
     }));
 
-    return PurchaseNotification.bulkCreate(rows, { returning: true });
+    const created = await PurchaseNotification.bulkCreate(rows, {
+      returning: true,
+    });
+
+    // ------------------------------------------------------------------
+    // Fire a push for every created row. Best-effort — try/catch so a
+    // push failure NEVER breaks the notification insert.
+    // ------------------------------------------------------------------
+    try {
+      const { sendPushToUsers } = require('../services/pushService');
+
+      await sendPushToUsers(uniqueIds, {
+        title,
+        body: body || '',
+        data: {
+          type,
+          referenceId,
+          referenceType,
+        },
+      });
+    } catch (err) {
+      console.error('⚠️ notifyMany push error:', err.message);
+    }
+
+    return created;
   };
 
   /**

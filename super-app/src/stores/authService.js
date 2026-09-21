@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "./interceptor";
+import { Platform } from 'react-native';
 
 // ==================== STORAGE KEYS (must match web's localStorage keys) ====================
 const K_TOKEN = "token";
@@ -346,6 +347,10 @@ class AuthService {
       this.setUserStoreAndGroup(user);
       await this.fetchRoles();
 
+      // ✅ Register this device for push notifications
+      // Best-effort — never blocks or fails login
+      await registerPushTokenAfterLogin(this);
+
       return {
         success: true,
         user,
@@ -395,6 +400,10 @@ class AuthService {
       await this._persist();
       this.setUserStoreAndGroup(user);
       await this.fetchRoles();
+
+      // ✅ Register this device for push notifications
+      // Best-effort — never blocks or fails login
+      await registerPushTokenAfterLogin(this);
 
       return { success: true, user };
     } catch (e) {
@@ -459,6 +468,52 @@ class AuthService {
     if (!this.user) return false;
     const roles = Array.isArray(role) ? role : [role];
     return roles.includes(this.user.role);
+  }
+}
+
+// ------------------------------------------------------------------
+// PUSH NOTIFICATION REGISTRATION
+// ------------------------------------------------------------------
+/**
+ * After a successful login, register this device for push notifications.
+ *
+ * Flow:
+ *   1. Ask permission + get the Expo token (in pushNotifications.js)
+ *   2. If granted, send the token to the backend
+ *
+ * Best-effort — any failure is logged and swallowed. Login must NEVER
+ * fail because push registration failed.
+ *
+ * @param {object} authService  the singleton instance (for JWT)
+ */
+async function registerPushTokenAfterLogin(authService) {
+  try {
+    // Lazy import so this file doesn't fail if pushNotifications.js
+    // is missing on some older build.
+    const { registerForPushNotificationsAsync } = require('./pushNotifications');
+
+    const result = await registerForPushNotificationsAsync();
+
+    if (!result.granted || !result.token) {
+      console.log(
+        '🔕 Push not registered:',
+        result.error || 'Permission denied'
+      );
+      return;
+    }
+
+    // Send the token to the backend.
+    // authService.token is already set at this point, and the axios
+    // interceptor will attach it as the Bearer header.
+    await api.post('/users/push-token', {
+      token: result.token,
+      platform: Platform.OS,
+    });
+
+    console.log('✅ Push token registered with backend');
+  } catch (err) {
+    // Never break login because of a push failure
+    console.log('⚠️ Push registration skipped:', err?.message);
   }
 }
 

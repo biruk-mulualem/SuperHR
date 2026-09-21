@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.birukmulualem.superapp",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app needs access to your photos to update your profile picture.",
         "NSCameraUsageDescription": "This app needs access to your camera to take a profile photo."
@@ -21,7 +22,10 @@
       "package": "com.birukmulualem.superapp",
       "permissions": [
         "READ_MEDIA_IMAGES",
-        "CAMERA"
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -34,6 +38,14 @@
         {
           "photosPermission": "This app needs access to your photos to update your profile picture.",
           "cameraPermission": "This app needs access to your camera to take a profile photo."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo.png",
+          "color": "#3B82F6",
+          "sounds": []
         }
       ]
     ],
