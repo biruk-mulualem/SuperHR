@@ -201,6 +201,46 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+
+// ─── TEMPORARY DEBUG ROUTE — REMOVE AFTER DEBUGGING ───
+app.get('/api/debug/files', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const dir = path.join(process.cwd(), 'uploads', 'purchase-requests', 'approved');
+
+  let files = [];
+  let error = null;
+  try {
+    files = fs.readdirSync(dir).map((name) => {
+      const stat = fs.statSync(path.join(dir, name));
+      return { name, size: stat.size };
+    });
+  } catch (e) {
+    error = e.message;
+  }
+
+  res.json({
+    cwd: process.cwd(),
+    lookingIn: dir,
+    dirExists: fs.existsSync(dir),
+    fileCount: files.length,
+    files: files.slice(-20),
+    error,
+  });
+});
+
+app.get('/api/debug/file-exists', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const target = req.query.path || '';
+  const full = path.join(process.cwd(), 'uploads', target);
+  res.json({
+    cwd: process.cwd(),
+    lookingFor: full,
+    exists: fs.existsSync(full),
+  });
+});
+
 // ============================================================================
 // GLOBAL ERROR HANDLER
 // ============================================================================
