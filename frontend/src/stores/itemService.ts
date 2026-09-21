@@ -700,10 +700,23 @@ async getGroups(): Promise<{ success: boolean; data: any[]; error?: string }> {
  * Backend returns 409 with `blockingDetails` when the item is referenced.
  * We forward that through so the UI can render the store/group details.
  */
-async permanentDeleteItem(id: number | string): Promise<{
+async permanentDeleteItem(
+  id: number | string,
+  options: { force?: boolean } = {}
+): Promise<{
   success: boolean;
   message: string;
   error?: string;
+  forced?: boolean;
+  data?: {
+    item: { id: number; code: string; name: string };
+    cascaded: {
+      storeBalancesDeleted: number;
+      convertedBalancesDeleted: number;
+      historyDeleted: number;
+      purchaseRequestItemsDeleted: number;
+    };
+  };
   references?: string[];
   blockingDetails?: Array<{
     table: string;
@@ -713,10 +726,16 @@ async permanentDeleteItem(id: number | string): Promise<{
   }>;
 }> {
   try {
-    const response = await api.delete(`/items/${id}/permanent`);
+    const url = options.force
+      ? `/items/${id}/permanent?force=true`
+      : `/items/${id}/permanent`;
+
+    const response = await api.delete(url);
     return {
       success: true,
       message: response.data?.message || 'Item permanently deleted',
+      forced: response.data?.forced,
+      data: response.data?.data,
     };
   } catch (error: any) {
     console.error('Permanent delete item error:', error);
@@ -731,7 +750,6 @@ async permanentDeleteItem(id: number | string): Promise<{
       message: backendMessage,
       error: backendMessage,
       references: error.response?.data?.references || undefined,
-      // ✅ THE FIX — forward blockingDetails from the backend
       blockingDetails: error.response?.data?.blockingDetails || undefined,
     };
   }

@@ -136,7 +136,6 @@
                       <button @click="openDeactivateModal(item)" class="icon-btn" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
                         {{ item.status === 'Active' ? '⏸️' : '▶️' }}
                       </button>
-                      <!-- 🗑️ Hard delete — only shows when item is Inactive -->
                       <button
                         v-if="item.status === 'Inactive'"
                         @click="openDeleteModal(item)"
@@ -268,14 +267,14 @@
       </div>
 
       <!-- ============================================================ -->
-      <!-- TAB 2: CATEGORIES (from categories.vue)                      -->
+      <!-- TAB 2: CATEGORIES                                             -->
       <!-- ============================================================ -->
       <div v-if="activeTab === 'categories'" class="categories-tab">
         <Categories @category-updated="onCategoryUpdated" />
       </div>
 
       <!-- ============================================================ -->
-      <!-- TAB 3: UOM (from uom.vue)                                    -->
+      <!-- TAB 3: UOM                                                    -->
       <!-- ============================================================ -->
       <div v-if="activeTab === 'uom'" class="uom-tab">
         <UOM @uom-updated="onUOMUpdated" />
@@ -285,7 +284,7 @@
   </div>
 
   <!-- ================================================================ -->
-  <!-- ITEM MODAL                                                       -->
+  <!-- ITEM MODAL (Add / Edit)                                          -->
   <!-- ================================================================ -->
   <div v-if="showItemModal" class="modal-overlay" @click.self="closeItemModal">
     <div class="modal-container item-modal">
@@ -543,7 +542,7 @@
         </p>
 
         <!-- ============================================================ -->
-        <!-- BLOCKING REFERENCES — Store / Group details -->
+        <!-- BLOCKING REFERENCES — Store / Group details                  -->
         <!-- ============================================================ -->
         <div v-if="blockedDetails.length > 0" class="blocked-references">
           <h4 class="blocked-title">🚫 Cannot delete — item is in use</h4>
@@ -558,7 +557,6 @@
               row{{ ref.count !== 1 ? 's' : '' }}
             </p>
 
-            <!-- Store / Group table -->
             <table
               v-if="ref.details && ref.details.length &&
                     (ref.table === 'StoreBalance' || ref.table === 'ConvertedBalance')"
@@ -586,7 +584,6 @@
               </tbody>
             </table>
 
-            <!-- Purchase Request table -->
             <table
               v-else-if="ref.details && ref.details.length &&
                         ref.table === 'PurchaseRequestItem'"
@@ -610,7 +607,6 @@
               </tbody>
             </table>
 
-            <!-- Fallback (e.g., StoreBalanceHistory — count only) -->
             <p v-else class="blocked-no-details">
               {{ ref.count }} historical row(s) exist and can't be listed here.
             </p>
@@ -621,15 +617,62 @@
             purchase records, and history above.
           </p>
         </div>
+
+        <!-- ============================================================ -->
+        <!-- FORCE-DELETE FINAL WARNING                                   -->
+        <!-- ============================================================ -->
+        <div v-if="showForceConfirm" class="force-delete-warning">
+          <p class="force-warning-title">🚨 This will delete inventory data</p>
+          <p class="force-warning-text">
+            The item and ALL related store balances, converted balances, history, and
+            purchase request line items will be permanently removed. This cannot be
+            undone.
+          </p>
+        </div>
       </div>
 
       <div class="modal-footer">
         <button class="btn-secondary" @click="closeDeleteModal" :disabled="deletingItem">
           Cancel
         </button>
-        <button class="btn-danger" @click="confirmDelete" :disabled="deletingItem">
+
+        <!-- Stage 1a: no blocking refs — allow normal delete -->
+        <button
+          v-if="!showForceConfirm && blockedDetails.length === 0"
+          class="btn-danger"
+          @click="confirmDelete"
+          :disabled="deletingItem"
+        >
           {{ deletingItem ? 'Deleting...' : '🗑️ Delete Permanently' }}
         </button>
+
+        <!-- Stage 1b: blocked — offer "Delete Anyway" -->
+        <button
+          v-if="!showForceConfirm && blockedDetails.length > 0"
+          class="btn-danger"
+          @click="showForceConfirm = true"
+          :disabled="deletingItem"
+        >
+          ⚠️ Delete Anyway (Removes Balances)
+        </button>
+
+        <!-- Stage 2: confirm force-delete -->
+        <template v-if="showForceConfirm">
+          <button
+            class="btn-secondary"
+            @click="showForceConfirm = false"
+            :disabled="deletingItem"
+          >
+            ← Go Back
+          </button>
+          <button
+            class="btn-danger"
+            @click="confirmForceDelete"
+            :disabled="deletingItem"
+          >
+            {{ deletingItem ? 'Deleting...' : '🗑️ Yes, Delete Everything' }}
+          </button>
+        </template>
       </div>
     </div>
   </div>
@@ -826,11 +869,9 @@
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import itemService from '@/stores/itemService';
 
-// ✅ Import the separate components
 import Categories from './categories.vue';
 import UOM from './uom.vue';
 
-// Import Quill editor dynamically
 const QuillEditor = defineAsyncComponent(() =>
   import('@vueup/vue-quill').then(m => m.QuillEditor)
 );
@@ -852,8 +893,8 @@ const totalItems = ref(0);
 const totalPagesFromServer = ref(1);
 const exportFormat = ref('xlsx');
 const exportScope = ref('all');
+const showForceConfirm = ref(false);
 
-// ✅ Tabs still exist
 const activeTab = ref('items');
 const tabs = [
   { key: 'items', label: '📦 Items' },
@@ -907,7 +948,6 @@ const toastType = ref('success');
 
 const pdfFileInput = ref(null);
 
-// Quill Editor Toolbar
 const quillToolbar = [
   ['bold', 'italic', 'underline', 'strike'],
   ['blockquote', 'code-block'],
@@ -967,7 +1007,7 @@ const hasActiveFilters = computed(() => {
 });
 
 // ================================================================
-// EVENT HANDLERS FOR CHILD COMPONENTS
+// CHILD EVENTS
 // ================================================================
 const onCategoryUpdated = async () => {
   await loadCategories();
@@ -980,7 +1020,7 @@ const onUOMUpdated = async () => {
 };
 
 // ================================================================
-// HELPER METHODS
+// HELPERS
 // ================================================================
 const getUOMCode = (id) => {
   const uom = uomList.value.find(u => (u.uomId || u.id) === id);
@@ -994,60 +1034,40 @@ const getConversionDisplay = (item) => {
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
 
-  if (!convUnit || convValue === 0) {
-    return 'No conversion';
-  }
-
-  if (convUnit === uomCode) {
-    return 'Base Unit';
-  }
-
+  if (!convUnit || convValue === 0) return 'No conversion';
+  if (convUnit === uomCode) return 'Base Unit';
   return `${convValue} ${convUnit} = 1 ${uomCode}`;
 };
 
 const getConversionUnitDisplay = (item) => {
   if (!item) return '-';
-
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
   const uomCode = item.uom?.code || item.uom || '';
-
-  if (!convUnit || convValue === 0) {
-    return '-';
-  }
-
+  if (!convUnit || convValue === 0) return '-';
   return convUnit === uomCode ? `${convUnit}` : convUnit;
 };
 
 const getConversionValueDisplay = (item) => {
   if (!item) return '0';
-
   const convValue = parseFloat(item.conversionValue) || 0;
   const convUnit = item.conversionUom?.code || item.conversionUom;
-
-  if (!convUnit) {
-    return '0';
-  }
-
+  if (!convUnit) return '0';
   return convValue;
 };
 
 const hasConversion = (item) => {
   if (!item) return false;
-
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-
   return !!(convUnit && convValue > 0);
 };
 
 const isSelfConversion = (item) => {
   if (!item) return false;
-
   const uomCode = item.uom?.code || item.uom || '';
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-
   return !!(convUnit && convValue > 0 && convUnit === uomCode);
 };
 
@@ -1074,7 +1094,7 @@ const toggleExpand = (id) => {
 };
 
 // ================================================================
-// PAGINATION METHODS
+// PAGINATION
 // ================================================================
 const goToPage = (page) => {
   if (page === '...') return;
@@ -1165,7 +1185,11 @@ const loadItems = async () => {
 
     if (response.success) {
       items.value = response.data.items || [];
-      totalItems.value = response.data.pagination?.total || response.data.total || response.data.items?.length || 0;
+      totalItems.value =
+        response.data.pagination?.total ||
+        response.data.total ||
+        response.data.items?.length ||
+        0;
       totalPagesFromServer.value = response.data.pagination?.totalPages || 1;
 
       if (currentPage.value > totalPages.value && totalPages.value > 0) {
@@ -1185,7 +1209,7 @@ const loadItems = async () => {
 };
 
 // ================================================================
-// DOWNLOAD TEMPLATE CSV
+// TEMPLATE CSV
 // ================================================================
 const downloadTemplate = () => {
   const headers = [
@@ -1229,9 +1253,7 @@ const downloadTemplate = () => {
   sampleData.forEach(row => {
     const values = headers.map(header => {
       let value = row[header] || '';
-      if (header === 'barcode') {
-        value = `="${value}"`;
-      }
+      if (header === 'barcode') value = `="${value}"`;
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         return `"${value.replace(/"/g, '""')}"`;
       }
@@ -1268,10 +1290,7 @@ const saveItem = async () => {
     } else {
       const uomIdInt = parseInt(itemForm.value.uomId);
       const convUomIdInt = parseInt(conversionUomId);
-
-      if (convUomIdInt === uomIdInt) {
-        conversionValue = 1;
-      }
+      if (convUomIdInt === uomIdInt) conversionValue = 1;
     }
 
     const formData = {
@@ -1310,11 +1329,9 @@ const saveItem = async () => {
 
       if (response.success) {
         showToastMessage('Item updated successfully!', 'success');
-
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
         }
-
         await loadItems();
         closeItemModal();
       } else {
@@ -1326,11 +1343,9 @@ const saveItem = async () => {
       if (response.success) {
         showToastMessage('Item added successfully!', 'success');
         const newItemId = response.data.itemId || response.data.id;
-
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(newItemId, itemForm.value.specPdfFile);
         }
-
         await loadItems();
         closeItemModal();
       } else {
@@ -1358,7 +1373,7 @@ const uploadSpecificationFile = async (itemId, file) => {
 };
 
 // ================================================================
-// DEACTIVATE ITEM
+// DEACTIVATE
 // ================================================================
 const confirmDeactivate = async () => {
   if (deactivateItem.value) {
@@ -1388,16 +1403,9 @@ const confirmDeactivate = async () => {
 };
 
 // ================================================================
-// HARD DELETE ITEM
-// ----------------------------------------------------------------
-// Two close paths:
-//   - closeDeleteModal()      → user-initiated (backdrop, Cancel, ✕)
-//                                blocked while a delete is in flight
-//   - forceCloseDeleteModal() → programmatic (called by confirmDelete)
-//                                ALWAYS closes, regardless of the flag
+// HARD DELETE — NO TOASTS
 // ================================================================
 const openDeleteModal = (item) => {
-  // 🔒 Only Inactive items can be hard-deleted
   if (item.status !== 'Inactive') {
     showToastMessage('Please deactivate the item before deleting.', 'warning');
     return;
@@ -1406,25 +1414,24 @@ const openDeleteModal = (item) => {
   deleteError.value = '';
   blockedDetails.value = [];
   deletingItem.value = false;
+  showForceConfirm.value = false;
   showDeleteModal.value = true;
 };
 
-// Shared reset — single source of truth for cleanup
 const resetDeleteState = () => {
   showDeleteModal.value = false;
   deleteItemTarget.value = null;
   deletingItem.value = false;
   deleteError.value = '';
   blockedDetails.value = [];
+  showForceConfirm.value = false;
 };
 
-// User-initiated close — respects the "saving" guard
 const closeDeleteModal = () => {
   if (deletingItem.value) return;
   resetDeleteState();
 };
 
-// Programmatic close — always closes (used after success)
 const forceCloseDeleteModal = () => {
   resetDeleteState();
 };
@@ -1436,7 +1443,6 @@ const confirmDelete = async () => {
   deleteError.value = '';
   blockedDetails.value = [];
 
-  // Snapshot the target so we don't lose it if state resets mid-flight
   const target = deleteItemTarget.value;
   const itemId = target.itemId || target.id;
 
@@ -1444,13 +1450,7 @@ const confirmDelete = async () => {
     const response = await itemService.permanentDeleteItem(itemId);
 
     if (response.success) {
-      showToastMessage(
-        `Item "${target.name}" deleted permanently!`,
-        'success'
-      );
       await loadItems();
-
-      // ✅ Always close, even if deletingItem is still true
       forceCloseDeleteModal();
     } else {
       let msg =
@@ -1464,7 +1464,6 @@ const confirmDelete = async () => {
 
       deleteError.value = msg;
       blockedDetails.value = response.blockingDetails || [];
-      showToastMessage(msg, 'error');
       deletingItem.value = false;
     }
   } catch (error) {
@@ -1473,7 +1472,43 @@ const confirmDelete = async () => {
       error.response?.data?.message ||
       error.message ||
       'Failed to permanently delete item.';
-    showToastMessage(deleteError.value, 'error');
+    deletingItem.value = false;
+  }
+};
+
+/**
+ * Force-delete — user confirmed they want to remove the item AND all
+ * related balances / history / purchase request line items.
+ * No toast on success or failure — errors show inside the modal.
+ */
+const confirmForceDelete = async () => {
+  if (!deleteItemTarget.value) return;
+
+  deletingItem.value = true;
+  deleteError.value = '';
+
+  const target = deleteItemTarget.value;
+  const itemId = target.itemId || target.id;
+
+  try {
+    const response = await itemService.permanentDeleteItem(itemId, { force: true });
+
+    if (response.success) {
+      await loadItems();
+      forceCloseDeleteModal();
+    } else {
+      deleteError.value =
+        response.message ||
+        response.error ||
+        'Failed to force-delete item.';
+      deletingItem.value = false;
+    }
+  } catch (error) {
+    console.error('Force delete error:', error);
+    deleteError.value =
+      error.response?.data?.message ||
+      error.message ||
+      'Failed to force-delete item.';
     deletingItem.value = false;
   }
 };
@@ -1577,17 +1612,13 @@ const parseCsvFile = (file) => {
         headers.forEach((h, idx) => {
           let value = values[idx] || '';
           value = value.trim();
-          if (h === 'barcode' && value) {
-            value = value.replace(/[^0-9]/g, '');
-          }
+          if (h === 'barcode' && value) value = value.replace(/[^0-9]/g, '');
           if (['conversionValue', 'costPrice'].includes(h) && value) {
             value = parseFloat(value) || 0;
           }
           obj[h] = value;
         });
-        if (obj.name) {
-          data.push(obj);
-        }
+        if (obj.name) data.push(obj);
       }
 
       importPreviewData.value = data;
@@ -1634,13 +1665,13 @@ const processImport = async () => {
   importing.value = true;
   importResults.value = null;
 
-  const totalItems = importPreviewData.value.length;
+  const totalItemsCount = importPreviewData.value.length;
   importProgress.value = {
-    total: totalItems,
+    total: totalItemsCount,
     processed: 0,
     success: 0,
     failed: 0,
-    remaining: totalItems,
+    remaining: totalItemsCount,
     percentage: 0
   };
 
@@ -1674,13 +1705,12 @@ const processImport = async () => {
       setTimeout(() => {
         closeImportModal();
       }, 2000);
-
     } else {
       showToastMessage(response.error || 'Failed to import items', 'error');
       importResults.value = {
         success: 0,
-        failed: totalItems,
-        total: totalItems,
+        failed: totalItemsCount,
+        total: totalItemsCount,
         errors: [response.error || 'Import failed']
       };
       importing.value = false;
@@ -1705,7 +1735,6 @@ const onUOMChange = () => {
   if (itemForm.value.uomId) {
     const uomId = parseInt(itemForm.value.uomId);
     const currentConvUomId = itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null;
-
     if (!currentConvUomId || currentConvUomId === uomId) {
       itemForm.value.conversionUomId = null;
       itemForm.value.conversionValue = 0;
@@ -1853,25 +1882,25 @@ onMounted(async () => {
   await loadItems();
 });
 </script>
-
 <style scoped>
 /* ================================================================
-   SECTION CARD
+   DETAIL CARD — special value states
    ================================================================ */
 .detail-card .value.base-unit {
   color: #6b7280;
   font-style: italic;
 }
-
 .detail-card .value.has-conversion {
   color: #2563eb;
   font-weight: 600;
 }
-
 .detail-card .value.no-conversion {
   color: #ef4444;
 }
 
+/* ================================================================
+   SECTION CARD
+   ================================================================ */
 .section-card {
   background: white;
   border-radius: 16px;
@@ -2084,12 +2113,8 @@ onMounted(async () => {
 }
 .icon-btn:hover { background: #f1f5f9; }
 
-.delete-btn {
-  color: #ef4444;
-}
-.delete-btn:hover {
-  background: #fee2e2;
-}
+.delete-btn { color: #ef4444; }
+.delete-btn:hover { background: #fee2e2; }
 
 .btn-clear-filters {
   background: #f1f5f9;
@@ -2101,9 +2126,7 @@ onMounted(async () => {
   color: #64748b;
   transition: all 0.2s;
 }
-.btn-clear-filters:hover {
-  background: #e2e8f0;
-}
+.btn-clear-filters:hover { background: #e2e8f0; }
 
 /* ================================================================
    TABS
@@ -2163,9 +2186,7 @@ onMounted(async () => {
 /* ================================================================
    TABLES
    ================================================================ */
-.table-container {
-  overflow-x: auto;
-}
+.table-container { overflow-x: auto; }
 
 .item-table {
   width: 100%;
@@ -2192,10 +2213,7 @@ onMounted(async () => {
 .text-center { text-align: center; }
 .sku { font-weight: 600; color: #2563eb; font-size: 12px; }
 
-.item-info {
-  display: flex;
-  flex-direction: column;
-}
+.item-info { display: flex; flex-direction: column; }
 .common-name { font-weight: 500; color: #1e293b; }
 .standard-name { font-size: 11px; color: #94a3b8; }
 
@@ -2290,23 +2308,15 @@ onMounted(async () => {
 /* ================================================================
    DEACTIVATE / DELETE MODAL
    ================================================================ */
-.deactivate-modal {
-  max-width: 450px;
-}
-
-.delete-modal {
-  max-width: 520px;
-}
+.deactivate-modal { max-width: 450px; }
+.delete-modal { max-width: 520px; }
 
 .confirmation-icon {
   font-size: 48px;
   text-align: center;
   margin-bottom: 12px;
 }
-
-.confirmation-icon.danger {
-  color: #dc2626;
-}
+.confirmation-icon.danger { color: #dc2626; }
 
 .confirmation-title {
   font-size: 16px;
@@ -2315,10 +2325,7 @@ onMounted(async () => {
   text-align: center;
   margin-bottom: 16px;
 }
-
-.confirmation-title.danger {
-  color: #991b1b;
-}
+.confirmation-title.danger { color: #991b1b; }
 
 .confirmation-details {
   background: #f8fafc;
@@ -2335,17 +2342,8 @@ onMounted(async () => {
 }
 .detail-row:last-child { border-bottom: none; }
 
-.detail-label {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.detail-value {
-  color: #1e293b;
-  font-weight: 500;
-  font-size: 13px;
-}
+.detail-label { font-weight: 500; color: #64748b; font-size: 13px; }
+.detail-value { color: #1e293b; font-weight: 500; font-size: 13px; }
 
 .warning-text {
   color: #f59e0b;
@@ -2398,7 +2396,7 @@ onMounted(async () => {
 }
 
 /* ================================================================
-   BLOCKING REFERENCES (store / group details)
+   BLOCKING REFERENCES
    ================================================================ */
 .blocked-references {
   background: #fef2f2;
@@ -2415,12 +2413,8 @@ onMounted(async () => {
   margin: 0 0 10px 0;
 }
 
-.blocked-group {
-  margin-bottom: 12px;
-}
-.blocked-group:last-of-type {
-  margin-bottom: 6px;
-}
+.blocked-group { margin-bottom: 12px; }
+.blocked-group:last-of-type { margin-bottom: 6px; }
 
 .blocked-group-title {
   font-size: 12px;
@@ -2493,6 +2487,29 @@ onMounted(async () => {
   color: #7f1d1d;
   margin: 10px 0 0 0;
   font-style: italic;
+  line-height: 1.5;
+}
+
+/* ================================================================
+   FORCE-DELETE FINAL WARNING
+   ================================================================ */
+.force-delete-warning {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: #7f1d1d;
+  border-radius: 8px;
+  border: 2px solid #dc2626;
+}
+.force-warning-title {
+  color: #fecaca;
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0 0 4px 0;
+}
+.force-warning-text {
+  color: #fee2e2;
+  font-size: 12px;
+  margin: 0;
   line-height: 1.5;
 }
 
@@ -2578,10 +2595,7 @@ onMounted(async () => {
   gap: 16px;
   margin-bottom: 12px;
 }
-.item-form .form-group {
-  flex: 1;
-  min-width: 120px;
-}
+.item-form .form-group { flex: 1; min-width: 120px; }
 .item-form .form-group.full-width { flex: 1 1 100%; }
 
 .item-form .form-group label {
@@ -2852,11 +2866,7 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 8px;
 }
-
-.pagination-info .page-info {
-  font-weight: 500;
-  color: #1e293b;
-}
+.pagination-info .page-info { font-weight: 500; color: #1e293b; }
 
 .pagination-controls {
   display: flex;
@@ -2876,16 +2886,11 @@ onMounted(async () => {
   color: #1e293b;
   transition: all 0.2s;
 }
-
 .page-btn:hover:not(:disabled) {
   background: #f1f5f9;
   border-color: #94a3b8;
 }
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .limit-select {
   padding: 6px 10px;

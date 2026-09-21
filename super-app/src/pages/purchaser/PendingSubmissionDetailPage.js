@@ -346,7 +346,11 @@ export default function PendingSubmissionDetailPage({
   const itemCount = items.length;
 
   // 👇 Use the server-resolved URL; fall back to the mock only if truly absent
-  const imageUrl = request.imageUrl || MOCK_DOC_URL;
+ const imageUrl =
+  request.imageUrl ||
+  request.approvedDocFront ||
+  request.approvedDocBack ||
+  MOCK_DOC_URL;
 
   // 👇 Prefer the pre-formatted label; fall back to the raw date
   const dateLabel =
