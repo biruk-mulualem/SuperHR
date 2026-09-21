@@ -10,7 +10,7 @@ const {
   PurchaseFollowUpDispatch,
   PurchaseNotification,
 } = db;
-
+const { buildFileUrl } = require('../utils/buildFileUrl');
 // ================================================================
 // CONSTANTS
 // ================================================================
@@ -199,10 +199,10 @@ const toFollowUpDto = (pr) => {
     expertName: plain.expertName,
     preparedBy: plain.preparedBy,
     approvedDate: plain.approvedAt || plain.updatedAt,
-    approvedDocFront: plain.approvedDocFront,
-    approvedDocFrontName: plain.approvedDocFrontName,
-    approvedDocBack: plain.approvedDocBack,
-    approvedDocBackName: plain.approvedDocBackName,
+  approvedDocFront: buildFileUrl(plain.approvedDocFront),
+approvedDocFrontName: plain.approvedDocFrontName,
+approvedDocBack: buildFileUrl(plain.approvedDocBack),
+approvedDocBackName: plain.approvedDocBackName,
 
     // Boss decision
     bossReviewedAt,
