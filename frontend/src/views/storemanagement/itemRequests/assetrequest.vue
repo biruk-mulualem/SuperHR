@@ -350,13 +350,16 @@ const formatQuantity = (value: number | string): string => {
 
 const formatDate = (dateString?: string): string => {
   if (!dateString) return 'N/A'
+
   const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric' 
-  })
+
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+
+  return `${day}/${month}/${year}`
 }
+
 
 const stripHtml = (htmlContent: string): string => {
   if (!htmlContent) return ''
