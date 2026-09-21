@@ -688,28 +688,54 @@ async getGroups(): Promise<{ success: boolean; data: any[]; error?: string }> {
     }
   }
 
-  /**
-   * Permanently delete an item
+   /**
+   * Permanently delete an item (hard delete).
+   * Backend only allows this for INACTIVE items with no references.
    * DELETE /api/items/:id/permanent
    */
-  async permanentDeleteItem(id: number | string): Promise<{
-    success: boolean;
+ /**
+ * Permanently delete an item (hard delete).
+ * DELETE /api/items/:id/permanent
+ *
+ * Backend returns 409 with `blockingDetails` when the item is referenced.
+ * We forward that through so the UI can render the store/group details.
+ */
+async permanentDeleteItem(id: number | string): Promise<{
+  success: boolean;
+  message: string;
+  error?: string;
+  references?: string[];
+  blockingDetails?: Array<{
+    table: string;
+    count: number;
     message: string;
-    error?: string;
-  }> {
-    try {
-      const response = await api.delete(`/items/${id}/permanent`);
-      return response.data;
-    } catch (error: any) {
-      console.error('Permanent delete item error:', error);
-      return {
-        success: false,
-        message: '',
-        error: error.response?.data?.error || 'Failed to permanently delete item'
-      };
-    }
-  }
+    details: any[] | null;
+  }>;
+}> {
+  try {
+    const response = await api.delete(`/items/${id}/permanent`);
+    return {
+      success: true,
+      message: response.data?.message || 'Item permanently deleted',
+    };
+  } catch (error: any) {
+    console.error('Permanent delete item error:', error);
 
+    const backendMessage =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      'Failed to permanently delete item';
+
+    return {
+      success: false,
+      message: backendMessage,
+      error: backendMessage,
+      references: error.response?.data?.references || undefined,
+      // ✅ THE FIX — forward blockingDetails from the backend
+      blockingDetails: error.response?.data?.blockingDetails || undefined,
+    };
+  }
+}
   /**
    * Upload item specification PDF
    * POST /api/items/:id/upload-specification

@@ -64,7 +64,7 @@ router.get('/active', itemController.getActiveItems);
 // Search items
 router.get('/search', itemController.searchItems);
 
-// Export items as CSV
+// Export items as CSV / Excel
 router.get('/export', itemController.exportItems);
 
 // Get items by category
@@ -78,7 +78,7 @@ router.get('/', itemController.getAllItems);
 
 // ==================== IMPORTANT: Wildcard routes MUST come AFTER specific routes ====================
 
-// Get single item by ID - THIS MUST BE AFTER ALL SPECIFIC ROUTES
+// Get single item by ID
 router.get('/:id', itemController.getItemById);
 
 // Create a new item
@@ -102,23 +102,23 @@ router.patch('/:id/activate', itemController.activateItem);
 // Deactivate an item
 router.patch('/:id/deactivate', itemController.deactivateItem);
 
-// Soft delete an item (set status to Discontinued)
+// ✅ HARD DELETE — must come BEFORE the generic /:id delete
+router.delete('/:id/permanent', itemController.permanentDeleteItem);
+
+// ✅ SOFT DELETE — comes after the more specific route
 router.delete('/:id', itemController.deleteItem);
 
-// Permanently delete an item from database
-router.delete('/:id/permanent', itemController.permanentDeleteItem);
+// Remove item specification (specific path — before /:id* wildcards)
+router.delete(
+  '/:id/remove-specification',
+  itemController.removeItemSpecification
+);
 
 // Upload item specification
 router.post(
   '/:id/upload-specification',
   uploadItemSpec,
   itemController.uploadItemSpecification
-);
-
-// Remove item specification
-router.delete(
-  '/:id/remove-specification',
-  itemController.removeItemSpecification
 );
 
 module.exports = router;

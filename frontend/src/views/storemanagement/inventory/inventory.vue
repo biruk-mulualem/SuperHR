@@ -34,8 +34,8 @@
 
     <!-- ==================== TABS ==================== -->
     <div class="tabs">
-      <button 
-        v-for="tab in tabs" 
+      <button
+        v-for="tab in tabs"
         :key="tab.key"
         :class="['tab', { active: activeTab === tab.key }]"
         @click="activeTab = tab.key"
@@ -136,6 +136,15 @@
                       <button @click="openDeactivateModal(item)" class="icon-btn" :title="item.status === 'Active' ? 'Deactivate' : 'Activate'">
                         {{ item.status === 'Active' ? '⏸️' : '▶️' }}
                       </button>
+                      <!-- 🗑️ Hard delete — only shows when item is Inactive -->
+                      <button
+                        v-if="item.status === 'Inactive'"
+                        @click="openDeleteModal(item)"
+                        class="icon-btn delete-btn"
+                        title="Delete Permanently"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -159,12 +168,12 @@
                           <div class="detail-card">
                             <h4>💰 Pricing & Unit</h4>
                             <div><span>Unit of Measure</span><span class="value">{{ item.uom?.code || item.uom || '-' }}</span></div>
-                            
+
                             <div>
                               <span>Conversion</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
+                              <span
+                                class="value"
+                                :class="{
                                   'no-conversion': !hasConversion(item),
                                   'base-unit': isSelfConversion(item),
                                   'has-conversion': hasConversion(item) && !isSelfConversion(item)
@@ -175,9 +184,9 @@
                             </div>
                             <div>
                               <span>Conversion Unit</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
+                              <span
+                                class="value"
+                                :class="{
                                   'no-conversion': !hasConversion(item),
                                   'base-unit': isSelfConversion(item)
                                 }"
@@ -187,9 +196,9 @@
                             </div>
                             <div>
                               <span>Conversion Value</span>
-                              <span 
-                                class="value" 
-                                :class="{ 
+                              <span
+                                class="value"
+                                :class="{
                                   'no-conversion': !hasConversion(item),
                                   'base-unit': isSelfConversion(item)
                                 }"
@@ -229,24 +238,24 @@
             <span>Showing {{ items.length }} of {{ totalItems }} items</span>
             <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
           </div>
-          
+
           <div class="pagination-controls">
-            <button 
-              class="page-btn" 
-              :disabled="currentPage === 1" 
+            <button
+              class="page-btn"
+              :disabled="currentPage === 1"
               @click="goToPage(currentPage - 1)"
             >
               ← Previous
             </button>
-            
-            <button 
-              class="page-btn" 
-              :disabled="currentPage === totalPages" 
+
+            <button
+              class="page-btn"
+              :disabled="currentPage === totalPages"
               @click="goToPage(currentPage + 1)"
             >
               Next →
             </button>
-            
+
             <select v-model="itemsPerPage" @change="handlePageSizeChange" class="limit-select">
               <option :value="5">5 per page</option>
               <option :value="10">10 per page</option>
@@ -373,21 +382,21 @@
           <div class="form-section-title">Specifications</div>
           <div class="spec-type-selector">
             <label class="spec-option">
-              <input type="radio" value="text" v-model="specType" /> 
+              <input type="radio" value="text" v-model="specType" />
               📝 Rich Text Specifications
             </label>
             <label class="spec-option">
-              <input type="radio" value="pdf" v-model="specType" /> 
+              <input type="radio" value="pdf" v-model="specType" />
               📄 PDF Document
             </label>
           </div>
-          
+
           <div v-if="specType === 'text'" class="form-row">
             <div class="form-group full-width">
               <label>Rich Text Specifications</label>
               <ClientOnly>
-                <QuillEditor 
-                  v-model:content="itemForm.specText" 
+                <QuillEditor
+                  v-model:content="itemForm.specText"
                   content-type="html"
                   theme="snow"
                   :toolbar="quillToolbar"
@@ -413,7 +422,7 @@
                   <span>Click to upload PDF</span>
                   <span class="upload-hint">or drag and drop</span>
                 </div>
-                <input type="file" ref="pdfFileInput" accept=".pdf" 
+                <input type="file" ref="pdfFileInput" accept=".pdf"
                        @change="handlePdfUpload" style="display:none" />
               </div>
             </div>
@@ -429,7 +438,9 @@
     </div>
   </div>
 
-  <!-- DEACTIVATE MODAL -->
+  <!-- ================================================================ -->
+  <!-- DEACTIVATE MODAL                                                 -->
+  <!-- ================================================================ -->
   <div v-if="showDeactivateModal" class="modal-overlay" @click.self="closeDeactivateModal">
     <div class="modal-container deactivate-modal">
       <div class="modal-header">
@@ -478,7 +489,154 @@
     </div>
   </div>
 
-  <!-- EXPORT MODAL -->
+  <!-- ================================================================ -->
+  <!-- HARD DELETE CONFIRMATION MODAL                                   -->
+  <!-- ================================================================ -->
+  <div v-if="showDeleteModal" class="modal-overlay" @click.self="closeDeleteModal">
+    <div class="modal-container delete-modal">
+      <div class="modal-header">
+        <h3>🗑️ Permanently Delete Item</h3>
+        <button class="modal-close" @click="closeDeleteModal" :disabled="deletingItem">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="confirmation-icon danger">⚠️</div>
+
+        <p class="confirmation-title danger">
+          This will <strong>permanently remove</strong> the item from the database.
+        </p>
+
+        <div class="confirmation-details">
+          <div class="detail-row">
+            <span class="detail-label">Item:</span>
+            <span class="detail-value">{{ deleteItemTarget?.name }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Code:</span>
+            <span class="detail-value">{{ deleteItemTarget?.code }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Category:</span>
+            <span class="detail-value">{{ deleteItemTarget?.category?.name || '-' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">UOM:</span>
+            <span class="detail-value">{{ deleteItemTarget?.uom?.code || '-' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Current Status:</span>
+            <span class="status-badge inactive">Inactive</span>
+          </div>
+        </div>
+
+        <div class="danger-zone">
+          <p class="danger-title">🚨 This action cannot be undone.</p>
+          <p class="danger-text">
+            The item row will be removed permanently. If this item is referenced
+            by any balance, purchase request, or history record, deletion will
+            be blocked to protect your data.
+          </p>
+        </div>
+
+        <p v-if="deleteError" class="delete-error-message">
+          ❌ {{ deleteError }}
+        </p>
+
+        <!-- ============================================================ -->
+        <!-- BLOCKING REFERENCES — Store / Group details -->
+        <!-- ============================================================ -->
+        <div v-if="blockedDetails.length > 0" class="blocked-references">
+          <h4 class="blocked-title">🚫 Cannot delete — item is in use</h4>
+
+          <div
+            v-for="ref in blockedDetails"
+            :key="ref.table"
+            class="blocked-group"
+          >
+            <p class="blocked-group-title">
+              {{ ref.table }} — {{ ref.count }}
+              row{{ ref.count !== 1 ? 's' : '' }}
+            </p>
+
+            <!-- Store / Group table -->
+            <table
+              v-if="ref.details && ref.details.length &&
+                    (ref.table === 'StoreBalance' || ref.table === 'ConvertedBalance')"
+              class="blocked-table"
+            >
+              <thead>
+                <tr>
+                  <th>Store</th>
+                  <th>Group</th>
+                  <th style="text-align:right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in ref.details" :key="idx">
+                  <td>
+                    <span class="cell-main">{{ row.storeName }}</span>
+                    <span class="cell-sub">{{ row.storeCode || ('#' + row.storeId) }}</span>
+                  </td>
+                  <td>
+                    <span class="cell-main">{{ row.groupName }}</span>
+                    <span class="cell-sub">{{ row.groupCode || ('#' + row.groupId) }}</span>
+                  </td>
+                  <td class="cell-number">{{ formatCurrency(row.balance) }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Purchase Request table -->
+            <table
+              v-else-if="ref.details && ref.details.length &&
+                        ref.table === 'PurchaseRequestItem'"
+              class="blocked-table"
+            >
+              <thead>
+                <tr>
+                  <th>PR Number</th>
+                  <th>Department</th>
+                  <th style="text-align:right">Qty</th>
+                  <th>UOM</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in ref.details" :key="idx">
+                  <td><strong>{{ row.prNumber || ('#' + row.requestId) }}</strong></td>
+                  <td>{{ row.department || '—' }}</td>
+                  <td class="cell-number">{{ row.quantity }}</td>
+                  <td>{{ row.uom || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Fallback (e.g., StoreBalanceHistory — count only) -->
+            <p v-else class="blocked-no-details">
+              {{ ref.count }} historical row(s) exist and can't be listed here.
+            </p>
+          </div>
+
+          <p class="blocked-hint">
+            To delete this item, first remove or archive the balances,
+            purchase records, and history above.
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" @click="closeDeleteModal" :disabled="deletingItem">
+          Cancel
+        </button>
+        <button class="btn-danger" @click="confirmDelete" :disabled="deletingItem">
+          {{ deletingItem ? 'Deleting...' : '🗑️ Delete Permanently' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- EXPORT MODAL                                                     -->
+  <!-- ================================================================ -->
   <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
     <div class="modal-container export-modal">
       <div class="modal-header">
@@ -491,27 +649,27 @@
             <label class="export-label">Select Export Format:</label>
             <div class="format-options">
               <label class="format-option" @click="exportFormat = 'xlsx'">
-                <input type="radio" v-model="exportFormat" value="xlsx" /> 
+                <input type="radio" v-model="exportFormat" value="xlsx" />
                 📊 Excel (.xlsx)
                 <span class="format-desc">Recommended - Full formatting</span>
               </label>
               <label class="format-option" @click="exportFormat = 'csv'">
-                <input type="radio" v-model="exportFormat" value="csv" /> 
+                <input type="radio" v-model="exportFormat" value="csv" />
                 📄 CSV (.csv)
                 <span class="format-desc">Compatible with all spreadsheets</span>
               </label>
             </div>
           </div>
-          
+
           <div class="export-section">
             <label class="export-label">Data Scope:</label>
             <div class="scope-options">
               <label class="scope-option" @click="exportScope = 'all'">
-                <input type="radio" v-model="exportScope" value="all" /> 
+                <input type="radio" v-model="exportScope" value="all" />
                 All Items
               </label>
               <label class="scope-option" @click="exportScope = 'filtered'">
-                <input type="radio" v-model="exportScope" value="filtered" /> 
+                <input type="radio" v-model="exportScope" value="filtered" />
                 Filtered Items
                 <span class="scope-desc" v-if="hasActiveFilters">({{ items.length }} items)</span>
               </label>
@@ -528,7 +686,9 @@
     </div>
   </div>
 
-  <!-- IMPORT MODAL -->
+  <!-- ================================================================ -->
+  <!-- IMPORT MODAL                                                     -->
+  <!-- ================================================================ -->
   <div v-if="showImportModal" class="modal-overlay" @click.self="!importing && closeImportModal()">
     <div class="modal-container import-modal">
       <div class="modal-header">
@@ -563,9 +723,9 @@
           </div>
         </div>
 
-        <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload()" 
+        <div class="file-upload-area import-upload" @click="!importing && triggerCsvUpload()"
              :class="{ 'drag-over': isDragOver, 'disabled': importing }"
-             @dragover.prevent="!importing && (isDragOver = true)" 
+             @dragover.prevent="!importing && (isDragOver = true)"
              @dragleave.prevent="!importing && (isDragOver = false)"
              @drop.prevent="!importing && handleCsvDrop($event)">
           <div v-if="csvFile" class="file-preview">
@@ -580,7 +740,7 @@
             <span class="upload-hint">or drag and drop</span>
             <span class="upload-hint">Supported formats: .csv</span>
           </div>
-          <input type="file" ref="csvFileInput" accept=".csv" 
+          <input type="file" ref="csvFileInput" accept=".csv"
                  @change="handleCsvUpload" style="display:none" :disabled="importing" />
         </div>
 
@@ -671,7 +831,7 @@ import Categories from './categories.vue';
 import UOM from './uom.vue';
 
 // Import Quill editor dynamically
-const QuillEditor = defineAsyncComponent(() => 
+const QuillEditor = defineAsyncComponent(() =>
   import('@vueup/vue-quill').then(m => m.QuillEditor)
 );
 
@@ -712,6 +872,13 @@ const savingItem = ref(false);
 // Deactivate Modal
 const showDeactivateModal = ref(false);
 const deactivateItem = ref(null);
+
+// Hard Delete Modal
+const showDeleteModal = ref(false);
+const deleteItemTarget = ref(null);
+const deletingItem = ref(false);
+const deleteError = ref('');
+const blockedDetails = ref([]);
 
 // Export
 const showExportModal = ref(false);
@@ -822,65 +989,65 @@ const getUOMCode = (id) => {
 
 const getConversionDisplay = (item) => {
   if (!item) return 'No conversion';
-  
+
   const uomCode = item.uom?.code || item.uom || '';
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-  
+
   if (!convUnit || convValue === 0) {
     return 'No conversion';
   }
-  
+
   if (convUnit === uomCode) {
     return 'Base Unit';
   }
-  
+
   return `${convValue} ${convUnit} = 1 ${uomCode}`;
 };
 
 const getConversionUnitDisplay = (item) => {
   if (!item) return '-';
-  
+
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
   const uomCode = item.uom?.code || item.uom || '';
-  
+
   if (!convUnit || convValue === 0) {
     return '-';
   }
-  
+
   return convUnit === uomCode ? `${convUnit}` : convUnit;
 };
 
 const getConversionValueDisplay = (item) => {
   if (!item) return '0';
-  
+
   const convValue = parseFloat(item.conversionValue) || 0;
   const convUnit = item.conversionUom?.code || item.conversionUom;
-  
+
   if (!convUnit) {
     return '0';
   }
-  
+
   return convValue;
 };
 
 const hasConversion = (item) => {
   if (!item) return false;
-  
+
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-  
+
   return !!(convUnit && convValue > 0);
 };
 
 const isSelfConversion = (item) => {
   if (!item) return false;
-  
+
   const uomCode = item.uom?.code || item.uom || '';
   const convUnit = item.conversionUom?.code || item.conversionUom;
   const convValue = parseFloat(item.conversionValue) || 0;
-  
+
   return !!(convUnit && convValue > 0 && convUnit === uomCode);
 };
 
@@ -902,8 +1069,8 @@ const formatFileSize = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
-const toggleExpand = (id) => { 
-  expandedRow.value = expandedRow.value === id ? null : id; 
+const toggleExpand = (id) => {
+  expandedRow.value = expandedRow.value === id ? null : id;
 };
 
 // ================================================================
@@ -980,7 +1147,7 @@ const loadItems = async () => {
       const category = categories.value.find(c => c.name === filterCategory.value);
       categoryId = category?.categoryId || category?.id;
     }
-    
+
     let uomId = undefined;
     if (filterUOM.value) {
       const uom = uomList.value.find(u => u.code === filterUOM.value);
@@ -995,12 +1162,12 @@ const loadItems = async () => {
       status: filterStatus.value || undefined,
       uomId: uomId
     });
-    
+
     if (response.success) {
       items.value = response.data.items || [];
       totalItems.value = response.data.pagination?.total || response.data.total || response.data.items?.length || 0;
       totalPagesFromServer.value = response.data.pagination?.totalPages || 1;
-      
+
       if (currentPage.value > totalPages.value && totalPages.value > 0) {
         currentPage.value = totalPages.value;
         await loadItems();
@@ -1058,7 +1225,7 @@ const downloadTemplate = () => {
   ];
 
   let csvContent = headers.join(',') + '\n';
-  
+
   sampleData.forEach(row => {
     const values = headers.map(header => {
       let value = row[header] || '';
@@ -1082,7 +1249,7 @@ const downloadTemplate = () => {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-  
+
   showToastMessage('Template CSV downloaded successfully!', 'success');
 };
 
@@ -1101,7 +1268,7 @@ const saveItem = async () => {
     } else {
       const uomIdInt = parseInt(itemForm.value.uomId);
       const convUomIdInt = parseInt(conversionUomId);
-      
+
       if (convUomIdInt === uomIdInt) {
         conversionValue = 1;
       }
@@ -1140,14 +1307,14 @@ const saveItem = async () => {
 
     if (editingItem.value) {
       response = await itemService.updateItem(itemId, formData);
-      
+
       if (response.success) {
         showToastMessage('Item updated successfully!', 'success');
-        
+
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(itemId, itemForm.value.specPdfFile);
         }
-        
+
         await loadItems();
         closeItemModal();
       } else {
@@ -1155,15 +1322,15 @@ const saveItem = async () => {
       }
     } else {
       response = await itemService.createItem(formData);
-      
+
       if (response.success) {
         showToastMessage('Item added successfully!', 'success');
         const newItemId = response.data.itemId || response.data.id;
-        
+
         if (itemForm.value.specPdfFile && specType.value === 'pdf') {
           await uploadSpecificationFile(newItemId, itemForm.value.specPdfFile);
         }
-        
+
         await loadItems();
         closeItemModal();
       } else {
@@ -1199,13 +1366,13 @@ const confirmDeactivate = async () => {
       const newStatus = deactivateItem.value.status === 'Active' ? 'Inactive' : 'Active';
       const itemId = deactivateItem.value.itemId;
       let response;
-      
+
       if (newStatus === 'Active') {
         response = await itemService.activateItem(itemId);
       } else {
         response = await itemService.deactivateItem(itemId);
       }
-      
+
       if (response.success) {
         showToastMessage(`Item "${deactivateItem.value.name}" ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, 'success');
         await loadItems();
@@ -1221,6 +1388,97 @@ const confirmDeactivate = async () => {
 };
 
 // ================================================================
+// HARD DELETE ITEM
+// ----------------------------------------------------------------
+// Two close paths:
+//   - closeDeleteModal()      → user-initiated (backdrop, Cancel, ✕)
+//                                blocked while a delete is in flight
+//   - forceCloseDeleteModal() → programmatic (called by confirmDelete)
+//                                ALWAYS closes, regardless of the flag
+// ================================================================
+const openDeleteModal = (item) => {
+  // 🔒 Only Inactive items can be hard-deleted
+  if (item.status !== 'Inactive') {
+    showToastMessage('Please deactivate the item before deleting.', 'warning');
+    return;
+  }
+  deleteItemTarget.value = item;
+  deleteError.value = '';
+  blockedDetails.value = [];
+  deletingItem.value = false;
+  showDeleteModal.value = true;
+};
+
+// Shared reset — single source of truth for cleanup
+const resetDeleteState = () => {
+  showDeleteModal.value = false;
+  deleteItemTarget.value = null;
+  deletingItem.value = false;
+  deleteError.value = '';
+  blockedDetails.value = [];
+};
+
+// User-initiated close — respects the "saving" guard
+const closeDeleteModal = () => {
+  if (deletingItem.value) return;
+  resetDeleteState();
+};
+
+// Programmatic close — always closes (used after success)
+const forceCloseDeleteModal = () => {
+  resetDeleteState();
+};
+
+const confirmDelete = async () => {
+  if (!deleteItemTarget.value) return;
+
+  deletingItem.value = true;
+  deleteError.value = '';
+  blockedDetails.value = [];
+
+  // Snapshot the target so we don't lose it if state resets mid-flight
+  const target = deleteItemTarget.value;
+  const itemId = target.itemId || target.id;
+
+  try {
+    const response = await itemService.permanentDeleteItem(itemId);
+
+    if (response.success) {
+      showToastMessage(
+        `Item "${target.name}" deleted permanently!`,
+        'success'
+      );
+      await loadItems();
+
+      // ✅ Always close, even if deletingItem is still true
+      forceCloseDeleteModal();
+    } else {
+      let msg =
+        response.error ||
+        response.message ||
+        'Failed to permanently delete item.';
+
+      if (Array.isArray(response.references) && response.references.length > 0) {
+        msg += `\n\nBlocked by: ${response.references.join(', ')}`;
+      }
+
+      deleteError.value = msg;
+      blockedDetails.value = response.blockingDetails || [];
+      showToastMessage(msg, 'error');
+      deletingItem.value = false;
+    }
+  } catch (error) {
+    console.error('Permanent delete error:', error);
+    deleteError.value =
+      error.response?.data?.message ||
+      error.message ||
+      'Failed to permanently delete item.';
+    showToastMessage(deleteError.value, 'error');
+    deletingItem.value = false;
+  }
+};
+
+// ================================================================
 // EXPORT
 // ================================================================
 const exportSelectedReport = async () => {
@@ -1231,7 +1489,7 @@ const exportSelectedReport = async () => {
       const category = categories.value.find(c => c.name === filterCategory.value);
       categoryId = category?.categoryId || category?.id;
     }
-    
+
     const params = {
       categoryId: categoryId,
       status: filterStatus.value || undefined,
@@ -1239,7 +1497,7 @@ const exportSelectedReport = async () => {
     };
 
     const result = await itemService.downloadExport(params);
-    
+
     if (result.success) {
       showToastMessage('Export completed successfully!', 'success');
     } else {
@@ -1310,7 +1568,7 @@ const parseCsvFile = (file) => {
         showToastMessage('CSV file must contain headers and at least one data row', 'error');
         return;
       }
-      
+
       const headers = parseCSVLine(lines[0]);
       const data = [];
       for (let i = 1; i < lines.length; i++) {
@@ -1331,7 +1589,7 @@ const parseCsvFile = (file) => {
           data.push(obj);
         }
       }
-      
+
       importPreviewData.value = data;
       showToastMessage(`Successfully parsed ${data.length} items from CSV`, 'success');
     } catch (error) {
@@ -1346,7 +1604,7 @@ const parseCSVLine = (line) => {
   const result = [];
   let current = '';
   let inQuotes = false;
-  
+
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (char === '"') {
@@ -1375,7 +1633,7 @@ const processImport = async () => {
 
   importing.value = true;
   importResults.value = null;
-  
+
   const totalItems = importPreviewData.value.length;
   importProgress.value = {
     total: totalItems,
@@ -1388,7 +1646,7 @@ const processImport = async () => {
 
   try {
     const response = await itemService.importItems(importPreviewData.value);
-    
+
     if (response.success) {
       importResults.value = {
         success: response.data.success,
@@ -1398,7 +1656,7 @@ const processImport = async () => {
           .filter(r => !r.success)
           .map(r => `${r.data?.name || 'Unknown'}: ${r.error}`)
       };
-      
+
       importProgress.value = {
         total: response.data.total,
         processed: response.data.total,
@@ -1407,16 +1665,16 @@ const processImport = async () => {
         remaining: 0,
         percentage: 100
       };
-      
+
       showToastMessage(response.message, 'success');
       await loadItems();
       await loadCategories();
       await loadUOMs();
-      
+
       setTimeout(() => {
         closeImportModal();
       }, 2000);
-      
+
     } else {
       showToastMessage(response.error || 'Failed to import items', 'error');
       importResults.value = {
@@ -1447,7 +1705,7 @@ const onUOMChange = () => {
   if (itemForm.value.uomId) {
     const uomId = parseInt(itemForm.value.uomId);
     const currentConvUomId = itemForm.value.conversionUomId ? parseInt(itemForm.value.conversionUomId) : null;
-    
+
     if (!currentConvUomId || currentConvUomId === uomId) {
       itemForm.value.conversionUomId = null;
       itemForm.value.conversionValue = 0;
@@ -1491,13 +1749,13 @@ const openAddItem = () => {
 
 const openEditItem = (item) => {
   editingItem.value = item;
-  
+
   if (item.specType === 'pdf' && item.specPdfUrl) {
     specType.value = 'pdf';
   } else {
     specType.value = 'text';
   }
-  
+
   itemForm.value = {
     name: item.name,
     standardName: item.standardName || '',
@@ -1769,6 +2027,23 @@ onMounted(async () => {
 }
 .btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
 
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .btn-pdf-open {
   background: #3b82f6;
   color: white;
@@ -1808,6 +2083,13 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 .icon-btn:hover { background: #f1f5f9; }
+
+.delete-btn {
+  color: #ef4444;
+}
+.delete-btn:hover {
+  background: #fee2e2;
+}
 
 .btn-clear-filters {
   background: #f1f5f9;
@@ -2006,10 +2288,14 @@ onMounted(async () => {
 .no-specs { color: #94a3b8; font-size: 13px; padding: 12px; text-align: center; }
 
 /* ================================================================
-   DEACTIVATE MODAL
+   DEACTIVATE / DELETE MODAL
    ================================================================ */
 .deactivate-modal {
   max-width: 450px;
+}
+
+.delete-modal {
+  max-width: 520px;
 }
 
 .confirmation-icon {
@@ -2018,12 +2304,20 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
+.confirmation-icon.danger {
+  color: #dc2626;
+}
+
 .confirmation-title {
   font-size: 16px;
   font-weight: 600;
   color: #1e293b;
   text-align: center;
   margin-bottom: 16px;
+}
+
+.confirmation-title.danger {
+  color: #991b1b;
 }
 
 .confirmation-details {
@@ -2072,6 +2366,136 @@ onMounted(async () => {
   margin-top: 6px;
 }
 
+.danger-zone {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.danger-title {
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 13px;
+  margin: 0 0 4px 0;
+}
+
+.danger-text {
+  color: #7f1d1d;
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.delete-error-message {
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  margin-top: 12px;
+  white-space: pre-line;
+}
+
+/* ================================================================
+   BLOCKING REFERENCES (store / group details)
+   ================================================================ */
+.blocked-references {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+
+.blocked-title {
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0 0 10px 0;
+}
+
+.blocked-group {
+  margin-bottom: 12px;
+}
+.blocked-group:last-of-type {
+  margin-bottom: 6px;
+}
+
+.blocked-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f1d1d;
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.blocked-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: white;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #fee2e2;
+}
+
+.blocked-table thead th {
+  background: #fee2e2;
+  color: #7f1d1d;
+  font-weight: 700;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.blocked-table tbody td {
+  padding: 6px 10px;
+  border-top: 1px solid #fee2e2;
+  color: #7f1d1d;
+  vertical-align: top;
+}
+
+.blocked-table .cell-main {
+  display: block;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.blocked-table .cell-sub {
+  display: block;
+  font-size: 10px;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.blocked-table .cell-number {
+  text-align: right;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.blocked-no-details {
+  margin: 0;
+  font-size: 12px;
+  color: #7f1d1d;
+  font-style: italic;
+  padding: 8px 10px;
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+.blocked-hint {
+  font-size: 11px;
+  color: #7f1d1d;
+  margin: 10px 0 0 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
 /* ================================================================
    MODALS
    ================================================================ */
@@ -2100,7 +2524,6 @@ onMounted(async () => {
 
 .item-modal { max-width: 750px; }
 .export-modal { max-width: 400px; }
-.deactivate-modal { max-width: 450px; }
 .import-modal { max-width: 750px; }
 
 .modal-header {
@@ -2136,6 +2559,7 @@ onMounted(async () => {
   justify-content: center;
 }
 .modal-close:hover { background: #f1f5f9; color: #1e293b; }
+.modal-close:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ================================================================
    FORM STYLES

@@ -925,14 +925,37 @@ exports.deleteItem = async (req, res) => {
 };
 
 /**
- * Permanently delete an item from database
+ * Permanently delete an item from the database.
  * DELETE /api/items/:id/permanent
+ *
+ * 🔒 Safety rules:
+ *   - Only INACTIVE items can be hard-deleted (must be deactivated first)
+ *   - Refuses if the item is referenced by any dependent table
+ *     (balances, purchase request items, store history, etc.)
+ */
+/**
+ * Permanently delete an item from the database.
+ * DELETE /api/items/:id/permanent
+ *
+ * 🔒 Safety rules:
+ *   - Only INACTIVE items can be hard-deleted
+ *   - Refuses if the item is referenced by any dependent table,
+ *     and returns the details of the blocking rows so the UI can
+ *     show exactly which store/group/PR is using the item.
  */
 exports.permanentDeleteItem = async (req, res) => {
   try {
     const { id } = req.params;
+    const itemId = parseInt(id);
 
-    const item = await Item.findByPk(id);
+    if (!itemId || isNaN(itemId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid item ID",
+      });
+    }
+
+    const item = await Item.findByPk(itemId);
     if (!item) {
       return res.status(404).json({
         success: false,
@@ -940,17 +963,253 @@ exports.permanentDeleteItem = async (req, res) => {
       });
     }
 
+    // 🔒 Rule 1: only Inactive items can be hard-deleted
+    if (item.status !== "Inactive") {
+      return res.status(400).json({
+        success: false,
+        message: `Only Inactive items can be permanently deleted. Current status: ${item.status}`,
+      });
+    }
+
+    const models = require("../models");
+    const blockingRefs = [];
+
+    // ============================================================
+    // 1. STORE BALANCES — return full details (store + group)
+    // ============================================================
+    if (models.StoreBalance) {
+      try {
+        const balances = await models.StoreBalance.findAll({
+          where: { itemId },
+          attributes: [
+            "id",
+            "storeId",
+            "groupId",
+            "balance",
+            "status",
+            "createdAt",
+            "updatedAt",
+          ],
+          include: [
+            {
+              model: models.Store,
+              as: "store",
+              attributes: ["storeId", "name", "code"],
+              required: false,
+            },
+            {
+              model: models.Group,
+              as: "group",
+              attributes: ["groupId", "name", "code"],
+              required: false,
+            },
+          ],
+        });
+
+        if (balances.length > 0) {
+          blockingRefs.push({
+            table: "StoreBalance",
+            count: balances.length,
+            message: `StoreBalance (${balances.length})`,
+            details: balances.map((b) => ({
+              id: b.id,
+              storeId: b.storeId,
+              storeName: b.store?.name || "Unknown",
+              storeCode: b.store?.code || null,
+              groupId: b.groupId,
+              groupName: b.group?.name || "Unknown",
+              groupCode: b.group?.code || null,
+              balance: parseFloat(b.balance) || 0,
+              status: b.status,
+              createdAt: b.createdAt,
+            })),
+          });
+        }
+      } catch (e) {
+        console.warn("StoreBalance lookup failed:", e.message);
+        // Fall back to a simple count so we don't silently drop the blocker
+        const fallbackCount = await models.StoreBalance.count({
+          where: { itemId },
+        });
+        if (fallbackCount > 0) {
+          blockingRefs.push({
+            table: "StoreBalance",
+            count: fallbackCount,
+            message: `StoreBalance (${fallbackCount})`,
+            details: null,
+          });
+        }
+      }
+    }
+
+    // ============================================================
+    // 2. CONVERTED BALANCES — return full details
+    // ============================================================
+    if (models.ConvertedBalance) {
+      try {
+        const converted = await models.ConvertedBalance.findAll({
+          where: { itemId },
+          attributes: ["id", "storeId", "groupId", "convertedBalance"],
+          include: [
+            {
+              model: models.Store,
+              as: "store",
+              attributes: ["storeId", "name", "code"],
+              required: false,
+            },
+            {
+              model: models.Group,
+              as: "group",
+              attributes: ["groupId", "name", "code"],
+              required: false,
+            },
+          ],
+        });
+
+        if (converted.length > 0) {
+          blockingRefs.push({
+            table: "ConvertedBalance",
+            count: converted.length,
+            message: `ConvertedBalance (${converted.length})`,
+            details: converted.map((b) => ({
+              id: b.id,
+              storeId: b.storeId,
+              storeName: b.store?.name || "Unknown",
+              storeCode: b.store?.code || null,
+              groupId: b.groupId,
+              groupName: b.group?.name || "Unknown",
+              groupCode: b.group?.code || null,
+              balance: parseFloat(b.convertedBalance) || 0,
+            })),
+          });
+        }
+      } catch (e) {
+        console.warn("ConvertedBalance lookup failed:", e.message);
+        const fallbackCount = await models.ConvertedBalance.count({
+          where: { itemId },
+        });
+        if (fallbackCount > 0) {
+          blockingRefs.push({
+            table: "ConvertedBalance",
+            count: fallbackCount,
+            message: `ConvertedBalance (${fallbackCount})`,
+            details: null,
+          });
+        }
+      }
+    }
+
+    // ============================================================
+    // 3. STORE BALANCE HISTORY — count only (too many rows)
+    // ============================================================
+    if (models.StoreBalanceHistory) {
+      try {
+        const historyCount = await models.StoreBalanceHistory.count({
+          where: { itemId },
+        });
+        if (historyCount > 0) {
+          blockingRefs.push({
+            table: "StoreBalanceHistory",
+            count: historyCount,
+            message: `StoreBalanceHistory (${historyCount})`,
+            details: null,
+          });
+        }
+      } catch (e) {
+        console.warn("StoreBalanceHistory lookup failed:", e.message);
+      }
+    }
+
+    // ============================================================
+    // 4. PURCHASE REQUEST ITEMS — return PR number + department
+    // ============================================================
+    if (models.PurchaseRequestItem) {
+      try {
+        const purchaseItems = await models.PurchaseRequestItem.findAll({
+          where: { code: item.code },
+          attributes: ["id", "code", "quantity", "uom", "requestId"],
+          include: [
+            {
+              model: models.PurchaseRequest,
+              as: "request",
+              attributes: ["id", "prNumber", "department", "requestedDate"],
+              required: false,
+            },
+          ],
+        });
+
+        if (purchaseItems.length > 0) {
+          blockingRefs.push({
+            table: "PurchaseRequestItem",
+            count: purchaseItems.length,
+            message: `PurchaseRequestItem (${purchaseItems.length})`,
+            details: purchaseItems.map((p) => ({
+              id: p.id,
+              code: p.code,
+              quantity: parseFloat(p.quantity) || 0,
+              uom: p.uom,
+              requestId: p.requestId,
+              prNumber: p.request?.prNumber || null,
+              department: p.request?.department || null,
+              requestedDate: p.request?.requestedDate || null,
+            })),
+          });
+        }
+      } catch (e) {
+        console.warn("PurchaseRequestItem lookup failed:", e.message);
+        const fallbackCount = await models.PurchaseRequestItem.count({
+          where: { code: item.code },
+        });
+        if (fallbackCount > 0) {
+          blockingRefs.push({
+            table: "PurchaseRequestItem",
+            count: fallbackCount,
+            message: `PurchaseRequestItem (${fallbackCount})`,
+            details: null,
+          });
+        }
+      }
+    }
+
+    // ============================================================
+    // REFUSE if any references exist
+    // ============================================================
+    if (blockingRefs.length > 0) {
+      const summary = blockingRefs.map((r) => r.message).join(", ");
+
+      return res.status(409).json({
+        success: false,
+        message: `Cannot permanently delete this item — it is referenced by: ${summary}.`,
+        references: blockingRefs.map((r) => r.message),   // backwards compatible
+        blockingDetails: blockingRefs,                     // 👈 NEW — full data
+      });
+    }
+
+    // ============================================================
+    // ✅ Safe to hard-delete
+    // ============================================================
+    const snapshot = {
+      id: item.itemId,
+      code: item.code,
+      name: item.name,
+    };
+
     await item.destroy();
+
+    console.log(
+      `🗑️ Permanently deleted item: ${snapshot.code} - ${snapshot.name}`
+    );
 
     res.status(200).json({
       success: true,
-      message: "Item permanently deleted",
+      message: `Item "${snapshot.name}" (${snapshot.code}) permanently deleted`,
+      data: snapshot,
     });
   } catch (error) {
     console.error("Error in permanentDeleteItem:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to delete item",
+      message: "Failed to permanently delete item",
       error: error.message,
     });
   }
@@ -2064,3 +2323,6 @@ exports.deleteUOM = async (req, res) => {
     });
   }
 };
+
+
+
