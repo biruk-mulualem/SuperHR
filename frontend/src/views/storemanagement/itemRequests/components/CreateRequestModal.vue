@@ -358,17 +358,16 @@
             
             <div class="form-row">
               <div class="form-group">
-                <label>Requested By *</label>
-                <input
-                  v-model="form.requestedBy"
-                  type="text"
-                  required
-                  disabled
-                  class="form-input"
-                  placeholder="Enter requester name..."
-                />
-                <span class="hint">Enter the name of the person requesting</span>
-              </div>
+  <label>Requested By *</label>
+  <input
+    v-model="form.requestedBy"
+    type="text"
+    required
+    class="form-input"
+    placeholder="Enter requester name..."
+  />
+  <span class="hint">Defaults to the logged-in user — edit if requesting on behalf of someone else</span>
+</div>
               <div class="form-group">
                 <label>Requested Date *</label>
                 <input v-model="form.requestedDate" type="date" required class="form-input" />
@@ -1382,10 +1381,10 @@ const initializeForm = () => {
         brand: item.brand || item.item?.brand || '',
         model: item.model || item.item?.model || '',
       })) : [],
-      requestedBy: req.requestedByUser?.fullName || 
-                   req.requestedByUser?.username || 
-                   req.requestedBy || 
-                   getCurrentUser(),
+    requestedBy: req.requestedBy || 
+             req.requestedByUser?.fullName || 
+             req.requestedByUser?.username || 
+             getCurrentUser(),
       requestedDate: requestedDate,
       status: "pending",
       remark: req.remark || "",

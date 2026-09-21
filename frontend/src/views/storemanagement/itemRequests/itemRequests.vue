@@ -1078,15 +1078,16 @@ const getItemNames = (items: RequestItem[] | undefined): string => {
 };
 
 const getRequesterName = (req: ItemRequest): string => {
-  if (req.requestedByUser) {
-    return (
-      req.requestedByUser.fullName ||
-      req.requestedByUser.full_name ||
-      req.requestedByUser.username ||
-      "N/A"
-    );
+  // ✅ Prefer the manually-typed name
+  if (req.requestedBy && String(req.requestedBy).trim()) {
+    return String(req.requestedBy).trim();
   }
-  return req.requestedBy || "N/A";
+  // Fall back to the joined user record
+  const u = req.requestedByUser;
+  if (u) {
+    return u.fullName || u.full_name || u.username || "N/A";
+  }
+  return "N/A";
 };
 
 const formatDate = (dateString?: string): string => {

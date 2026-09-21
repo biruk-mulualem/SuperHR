@@ -259,12 +259,12 @@ export interface CreateRequestData {
     selectedUom?: 'base' | 'conversion';
     uomCode?: string;
     isBaseUom?: boolean;
-    // ✅ NEW: Spec fields
     specification?: string;
     brand?: string;
     model?: string;
   }[];
   requestedById?: number;
+  requestedBy?: string;      // ← ADDED
   requestedDate: string;
   status?: 'pending' | 'approved' | 'rejected';
   remark?: string;
@@ -282,12 +282,12 @@ export interface UpdateRequestData {
     selectedUom?: 'base' | 'conversion';
     uomCode?: string;
     isBaseUom?: boolean;
-    // ✅ NEW: Spec fields
     specification?: string;
     brand?: string;
     model?: string;
   }[];
   requestedById?: number;
+  requestedBy?: string;      // ← ADDED
   requestedDate?: string;
   remark?: string;
   isAsset?: boolean;

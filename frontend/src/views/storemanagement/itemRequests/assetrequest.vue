@@ -229,20 +229,22 @@ const getRequestingDepartment = (): string => {
 
 const getRequesterName = (): string => {
   if (!requestData.value) return 'N/A'
-  
+
   const req = requestData.value
+
+  // ✅ Prefer the manually-typed name
+  if (req.requestedBy && String(req.requestedBy).trim()) {
+    return String(req.requestedBy).trim()
+  }
+
+  // Fall back to the joined user record
   const user = req.requestedByUser
-  
   if (user) {
-    const userData = user as any
     if (user.fullName) return user.fullName
     if (user.full_name) return user.full_name
+    if (user.username) return user.username
   }
-  
-  if (req.requestedBy) {
-    return req.requestedBy
-  }
-  
+
   return 'N/A'
 }
 

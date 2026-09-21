@@ -156,6 +156,13 @@ ItemRequest.hasMany(models.RequestNotification, {
           key: 'user_id', // Use user_id since that's the actual primary key
         },
       },
+
+      requestedBy: {
+  type: DataTypes.STRING(255),
+  allowNull: true,
+  field: 'requested_by',
+},
+
       requestedDate: {
         type: DataTypes.DATEONLY,
         allowNull: false,

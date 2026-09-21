@@ -1238,6 +1238,10 @@ exports.getRequestById = async (req, res) => {
 // 4. CREATE REQUEST - GROUP ONLY (NO DEPARTMENT)
 // ================================================================
 
+// ================================================================
+// 4. CREATE REQUEST - GROUP + DEPARTMENT (if isAsset)
+// ================================================================
+
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -1247,15 +1251,19 @@ exports.createRequest = async (req, res) => {
       supplyingStoreId,
       items,
       requestedById,
+      requestedBy,          // ← ADDED
       requestedDate,
       status = "pending",
       remark,
       isAsset = false,
     } = req.body;
-    // ✅ ADD THIS LOGGING
+
+    // ✅ Logging
     console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
     console.log(JSON.stringify(items, null, 2));
-    
+    console.log('👤 requestedById:', requestedById);
+    console.log('👤 requestedBy  :', requestedBy);   // ← ADDED
+
     // ================================================================
     // 1. VALIDATE REQUIRED FIELDS
     // ================================================================
@@ -1394,15 +1402,12 @@ exports.createRequest = async (req, res) => {
 
       // ✅ Get UOM info from the request (sent from frontend)
       const selectedUom = item.selectedUom || 'base';
-      
-      // ✅ Use the uomCode from the frontend, fallback to base UOM if not provided
+
       let uomCode = item.uomCode;
-      
-      // If uomCode is not provided or is empty, use the base UOM
       if (!uomCode || uomCode === '') {
         uomCode = itemRecord.uom?.code || 'Units';
       }
-      
+
       const isBaseUom = item.isBaseUom !== false;
 
       console.log(`📦 Item ${itemRecord.code}: selectedUom=${selectedUom}, uomCode=${uomCode}, isBaseUom=${isBaseUom}`);
@@ -1415,7 +1420,6 @@ exports.createRequest = async (req, res) => {
         uomCode: uomCode,
         selectedUom: selectedUom,
         isBaseUom: isBaseUom,
-        // ✅ Preserve spec fields from the request
         specification: item.specification || null,
         brand: item.brand || null,
         model: item.model || null,
@@ -1475,7 +1479,7 @@ exports.createRequest = async (req, res) => {
     const requestCode = await ItemRequest.generateRequestCode();
 
     // ================================================================
-    // 8. CREATE THE REQUEST (with isAsset)
+    // 8. CREATE THE REQUEST (with isAsset + requestedBy)
     // ================================================================
     const request = await ItemRequest.create(
       {
@@ -1483,6 +1487,7 @@ exports.createRequest = async (req, res) => {
         askingStoreId: parseInt(askingStoreId),
         supplyingStoreId: parseInt(supplyingStoreId),
         requestedById: requestedById || null,
+        requestedBy: requestedBy || null,          // ← ADDED
         requestedDate: requestedDate || new Date().toISOString().split("T")[0],
         status: status || "pending",
         remark: remark || null,
@@ -1502,11 +1507,9 @@ exports.createRequest = async (req, res) => {
             itemId: item.itemId,
             quantity: item.quantity,
             remark: item.remark || null,
-            // ✅ UOM fields
             selected_uom: item.selectedUom || 'base',
             uom_code: item.uomCode || item.itemRecord?.uom?.code || 'Units',
             is_base_uom: item.isBaseUom !== false,
-            // ✅ NEW: Save spec fields from the request
             specification: item.specification || null,
             brand: item.brand || null,
             model: item.model || null,
@@ -1694,12 +1697,15 @@ exports.updateRequest = async (req, res) => {
       supplyingStoreId,
       items,
       requestedById,
+      requestedBy,          // ← ADDED
       requestedDate,
       remark,
-      isAsset,  // ✅ Read isAsset from request body
+      isAsset,
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, req.body);
+    console.log(`👤 requestedById: ${requestedById}`);
+    console.log(`👤 requestedBy  : ${requestedBy}`);   // ← ADDED
 
     const request = await ItemRequest.findByPk(id);
     if (!request) {
@@ -1716,16 +1722,18 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ✅ Update request with isAsset
+    // ✅ Update request with isAsset and requestedBy
     await request.update({
       askingStoreId: askingStoreId || request.askingStoreId,
       supplyingStoreId: supplyingStoreId || request.supplyingStoreId,
       requestedById:
         requestedById !== undefined ? requestedById : request.requestedById,
+      requestedBy:
+        requestedBy !== undefined ? requestedBy : request.requestedBy,   // ← ADDED
       requestedDate: requestedDate || request.requestedDate,
       status: "pending",
       remark: remark !== undefined ? remark : request.remark,
-      isAsset: isAsset !== undefined ? isAsset : request.isAsset,  // ✅ Save isAsset
+      isAsset: isAsset !== undefined ? isAsset : request.isAsset,
     });
 
     // ✅ Update items with UOM AND SPEC FIELDS
@@ -1736,7 +1744,6 @@ exports.updateRequest = async (req, res) => {
 
       await Promise.all(
         items.map(async (item) => {
-          // ✅ Get UOM info
           const selectedUom = item.selectedUom || 'base';
           const uomCode = item.uomCode || 'Units';
           const isBaseUom = item.isBaseUom !== false;
@@ -1746,11 +1753,9 @@ exports.updateRequest = async (req, res) => {
             itemId: item.itemId,
             quantity: item.quantity,
             remark: item.remark || null,
-            // ✅ UOM fields
             selected_uom: selectedUom,
             uom_code: uomCode,
             is_base_uom: isBaseUom,
-            // ✅ NEW: Save spec fields
             specification: item.specification || null,
             brand: item.brand || null,
             model: item.model || null,
@@ -1773,7 +1778,7 @@ exports.updateRequest = async (req, res) => {
       request.requestId,
       request.supplyingStoreId,
       request.askingStoreId,
-      updatedIsAsset || false,  // ✅ Pass isAsset flag
+      updatedIsAsset || false,
       null
     );
 
@@ -1792,7 +1797,6 @@ exports.updateRequest = async (req, res) => {
               include: [{ model: UOM, as: "uom" }],
             },
           ],
-          // ✅ Include spec fields
           attributes: [
             'id',
             'requestId',
@@ -1802,9 +1806,9 @@ exports.updateRequest = async (req, res) => {
             'selected_uom',
             'uom_code',
             'is_base_uom',
-            'specification',  // ← ADD
-            'brand',          // ← ADD
-            'model',          // ← ADD
+            'specification',
+            'brand',
+            'model',
             'created_at',
             'updated_at',
           ],
