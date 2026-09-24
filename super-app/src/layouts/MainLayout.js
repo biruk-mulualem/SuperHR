@@ -25,7 +25,7 @@ export default function MainLayout({
   const isFooterVisible = showHeader && activeTab === 'home';
 
   // Pages that use FlatList - don't wrap in ScrollView
-  const listPages = ['purchase', 'catalog', 'notification', 'profile', 'pendingDetail'];
+  const listPages = ['purchase', 'catalog', 'notification', 'profile', 'pendingDetail', 'managerDashboard'];
   const isListPage = listPages.includes(activeTab);
 
   if (!showHeader) {

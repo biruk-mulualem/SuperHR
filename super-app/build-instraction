@@ -1,0 +1,3 @@
+cd super-app
+eas login
+eas build --profile preview --platform android

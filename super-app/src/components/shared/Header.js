@@ -1,5 +1,5 @@
 // components/Header.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,67 +11,51 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import notificationService from '../../stores/notificationService';
+import authService from '../../stores/authService';
 // ================================================================
-// USER PROFILES
+// ROLE COLOR MAP (for the pill color)
 // ================================================================
-const USER_PROFILES = {
-  admin: {
-    name: 'John Doe',
-    initials: 'JD',
-    role: 'Admin',
-    roleColor: '#8B5CF6',
-    avatar: 'https://i.pravatar.cc/300?img=12',
-  },
-  sales: {
-    name: 'Flynn Rider',
-    initials: 'FR',
-    role: 'Sales Rep',
-    roleColor: '#10B981',
-    avatar: 'https://i.pravatar.cc/300?img=15',
-  },
-  purchaser: {
-    name: 'Sam Purchaser',
-    initials: 'SP',
-    role: 'Purchaser',
-    roleColor: '#F59E0B',
-    avatar: 'https://i.pravatar.cc/300?img=33',
-  },
-  manager: {
-    name: 'Alex Manager',
-    initials: 'AM',
-    role: 'Manager',
-    roleColor: '#3B82F6',
-    avatar: 'https://i.pravatar.cc/300?img=52',
-  },
-  auditor: {
-    name: 'Elena Auditor',
-    initials: 'EA',
-    role: 'Auditor',
-    roleColor: '#EF4444',
-    avatar: 'https://i.pravatar.cc/300?img=45',
-  },
-  banker: {
-    name: 'Betty Banker',
-    initials: 'BB',
-    role: 'Banker',
-    roleColor: '#06B6D4',
-    avatar: 'https://i.pravatar.cc/300?img=29',
-  },
-  supervisor: {
-    name: 'Sam Supervisor',
-    initials: 'SS',
-    role: 'Supervisor',
-    roleColor: '#0EA5E9',
-    avatar: 'https://i.pravatar.cc/300?img=60',
-  },
+const ROLE_COLORS = {
+  admin:      '#8B5CF6',
+  administrator: '#8B5CF6',
+  superadmin: '#8B5CF6',
+  sales:      '#10B981',
+  purchaser:  '#F59E0B',
+  manager:    '#3B82F6',
+  auditor:    '#EF4444',
+  banker:     '#06B6D4',
+  supervisor: '#0EA5E9',
+  employee:   '#64748B',
+  storekeeper: '#0EA5E9',
+  store_it:   '#14B8A6',
+  checker:    '#F97316',
+  finance:    '#22C55E',
 };
 
-const FALLBACK_KEY = 'sales';
+// Nicely format a role string for display ("store_it" → "Store It")
+const prettyRole = (raw) => {
+  if (!raw) return 'User';
+  return String(raw)
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+};
+
+// Build initials from a name ("John Doe" → "JD")
+const initialsFromName = (name) => {
+  if (!name) return '?';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
 
 // ================================================================
-// PAGE LIBRARY (no more "paidNotArrived")
+// PAGE LIBRARY
 // ================================================================
 const PAGE_LIBRARY = {
   totalRequests:     { label: 'Total Requests',     emoji: '📋', page: 'totalRequests' },
@@ -83,7 +67,6 @@ const PAGE_LIBRARY = {
   submitted:         { label: 'Submitted',          emoji: '📤', page: 'submitted' },
 };
 
-// Which pages each role sees
 const ROLE_PAGES = {
   admin:      ['totalRequests', 'pendingApproval', 'approvedNotPaid'],
   manager:    ['totalRequests', 'pendingApproval', 'approvedNotPaid'],
@@ -109,27 +92,67 @@ export default function Header({
   onNavigateToPurchase,
   notificationCount = 0,
 }) {
+  const insets = useSafeAreaInsets();
   const [modalVisible, setModalVisible] = useState(false);
   const [unreadCount, setUnreadCount] = useState(notificationCount);
 
-  // ---------- Live unread count ----------
+  // Force re-render when auth changes (login / logout / profile update)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const unsub = authService.subscribe(() => setTick((t) => t + 1));
+    return unsub;
+  }, []);
+
+  // ============================================================
+  // REAL USER DATA — pulled from authService
+  // ============================================================
+  const user = authService.user;
+
+  const userName = useMemo(() => {
+    if (!user) return 'User';
+    return (
+      user.fullName ||
+      user.full_name ||
+      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null) ||
+      user.username ||
+      user.email ||
+      'User'
+    );
+  }, [user]);
+
+  const userInitials = useMemo(() => initialsFromName(userName), [userName]);
+
+  const userRoleRaw = (user?.role || userRole || 'employee').toString().toLowerCase();
+  const userRoleLabel = prettyRole(userRoleRaw);
+  const roleColor = ROLE_COLORS[userRoleRaw] || '#64748B';
+
+  const userAvatarUrl =
+    user?.profilePicture ||
+    user?.profilePictureUrl ||
+    user?.avatar ||
+    null;
+
+  // ============================================================
+  // LIVE UNREAD COUNT
+  // ============================================================
   const fetchUnreadCount = useCallback(async () => {
     const result = await notificationService.unreadCount('local');
     if (result.success) setUnreadCount(result.count);
   }, []);
 
-  // Fetch on mount + poll every 30s
   useEffect(() => {
     fetchUnreadCount();
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, [fetchUnreadCount]);
 
-  // Sync if the parent passes an updated count
   useEffect(() => {
     setUnreadCount(notificationCount);
   }, [notificationCount]);
 
+  // ============================================================
+  // THEME COLORS
+  // ============================================================
   const headerBg = darkMode ? '#1E293B' : '#FFFFFF';
   const borderBottomColor = darkMode ? '#334155' : '#E2E8F0';
   const titleColor = darkMode ? '#FFFFFF' : '#1E3A8A';
@@ -140,20 +163,61 @@ export default function Header({
   const modalSubTextColor = darkMode ? '#94A3B8' : '#64748B';
   const modalBorderColor = darkMode ? '#334155' : '#F1F5F9';
 
-  // ---------- Resolve user profile ----------
-  const roleKey = String(userRole || FALLBACK_KEY).toLowerCase();
-  const profile = USER_PROFILES[roleKey] || USER_PROFILES[FALLBACK_KEY];
-
-  // ---------- Role-specific purchase pages ----------
-  const pageKeys = ROLE_PAGES[roleKey] || [];
+  // ============================================================
+  // ROLE PAGES
+  // ============================================================
+  const pageKeys = ROLE_PAGES[userRoleRaw] || [];
   const purchaseNavItems = pageKeys.map((k) => PAGE_LIBRARY[k]).filter(Boolean);
   const canSeePurchase = purchaseNavItems.length > 0;
+
+  // ============================================================
+  // AVATAR RENDERING HELPER
+  // If a real avatar URL exists → show the image
+  // Otherwise → show a colored circle with the user's initials
+  // ============================================================
+  const renderAvatar = (size, fontSize) => {
+    if (userAvatarUrl) {
+      return (
+        <Image
+          source={{ uri: userAvatarUrl }}
+          style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#E2E8F0' }}
+        />
+      );
+    }
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: roleColor + '25',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Text
+          style={{
+            color: roleColor,
+            fontWeight: '800',
+            fontSize,
+            letterSpacing: 0.5,
+          }}
+        >
+          {userInitials}
+        </Text>
+      </View>
+    );
+  };
 
   return (
     <View
       style={[
         styles.headerWrapper,
-        { backgroundColor: headerBg, borderBottomColor },
+        {
+          backgroundColor: headerBg,
+          borderBottomColor,
+          paddingTop: insets.top,   // ← safe-area fix
+        },
       ]}
     >
       <View style={styles.headerContainer}>
@@ -164,7 +228,7 @@ export default function Header({
         </View>
 
         <View style={styles.actionGroup}>
-          {/* Bell — visible whenever alerts permission exists */}
+          {/* Bell */}
           {permissions?.alerts && (
             <TouchableOpacity
               style={[styles.iconButton, { backgroundColor: notifBtnBg }]}
@@ -183,16 +247,13 @@ export default function Header({
             </TouchableOpacity>
           )}
 
-          {/* Avatar */}
+          {/* Avatar — real user */}
           <TouchableOpacity
-            style={[styles.avatarButton, { borderColor: profile.roleColor }]}
+            style={[styles.avatarButton, { borderColor: roleColor }]}
             onPress={() => setModalVisible(true)}
             activeOpacity={0.7}
           >
-            <Image
-              source={{ uri: profile.avatar }}
-              style={styles.avatarImage}
-            />
+            {renderAvatar(40, 14)}
           </TouchableOpacity>
         </View>
       </View>
@@ -207,7 +268,15 @@ export default function Header({
         <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.modalCard, { backgroundColor: modalBgColor }]}>
+              <View
+                style={[
+                  styles.modalCard,
+                  {
+                    backgroundColor: modalBgColor,
+                    paddingBottom: 34 + insets.bottom,   // ← respects home indicator
+                  },
+                ]}
+              >
                 <View
                   style={[
                     styles.modalAccentBar,
@@ -215,7 +284,7 @@ export default function Header({
                   ]}
                 />
 
-                {/* USER HEADER CARD */}
+                {/* USER HEADER CARD — real user data */}
                 <View
                   style={[
                     styles.userHeaderCard,
@@ -228,13 +297,10 @@ export default function Header({
                   <View
                     style={[
                       styles.userHeaderAvatar,
-                      { borderColor: profile.roleColor },
+                      { borderColor: roleColor },
                     ]}
                   >
-                    <Image
-                      source={{ uri: profile.avatar }}
-                      style={styles.userHeaderAvatarImage}
-                    />
+                    {renderAvatar(52, 18)}
                   </View>
 
                   <View style={styles.userHeaderText}>
@@ -242,27 +308,28 @@ export default function Header({
                       style={[styles.userHeaderName, { color: modalTextColor }]}
                       numberOfLines={1}
                     >
-                      {profile.name}
+                      {userName}
                     </Text>
+
                     <View
                       style={[
                         styles.userHeaderRolePill,
-                        { backgroundColor: profile.roleColor + '20' },
+                        { backgroundColor: roleColor + '20' },
                       ]}
                     >
                       <View
                         style={[
                           styles.userHeaderRoleDot,
-                          { backgroundColor: profile.roleColor },
+                          { backgroundColor: roleColor },
                         ]}
                       />
                       <Text
                         style={[
                           styles.userHeaderRoleText,
-                          { color: profile.roleColor },
+                          { color: roleColor },
                         ]}
                       >
-                        {profile.role}
+                        {userRoleLabel}
                       </Text>
                     </View>
                   </View>
@@ -272,7 +339,7 @@ export default function Header({
                   Navigation Menu
                 </Text>
 
-                {/* 🌙 Dark mode toggle */}
+                {/* Dark mode toggle */}
                 {setDarkMode && (
                   <View
                     style={[
@@ -310,7 +377,7 @@ export default function Header({
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Role-specific purchase pages */}
+                  {/* Role-specific pages */}
                   {canSeePurchase &&
                     purchaseNavItems.map((item) => (
                       <TouchableOpacity
@@ -336,7 +403,7 @@ export default function Header({
                       </TouchableOpacity>
                     ))}
 
-                  {/* App Settings */}
+                  {/* Settings */}
                   <TouchableOpacity
                     style={[
                       styles.menuLinkRow,
@@ -353,7 +420,7 @@ export default function Header({
                     </Text>
                   </TouchableOpacity>
 
-                  {/* System Alerts */}
+                  {/* Alerts */}
                   {permissions?.alerts && (
                     <TouchableOpacity
                       style={[

@@ -1,4 +1,4 @@
-// AppRouter.js
+// index.js
 import React, { useState, useEffect } from 'react';
 import { BackHandler, LogBox, View, ActivityIndicator } from 'react-native';
 
@@ -39,7 +39,19 @@ import PendingDetailPage from '../pages/manager/PendingDetailPage';
 import PendingSubmissionPage from '../pages/purchaser/PendingSubmissionPage';
 import SubmittedPage from '../pages/purchaser/SubmittedPage';
 
-// 🔥 Auth service + hook
+// Manager sub-dashboards (drill-ins from ManagerDashboard)
+import ManagerPurchaseDashboard from '../pages/dashboard/roles/manager/ManagerPurchaseDashboard';
+import ManagerStoreDashboard from '../pages/dashboard/roles/manager/ManagerStoreDashboard';
+import ManagerHRDashboard from '../pages/dashboard/roles/manager/ManagerHRDashboard';
+import ManagerFinanceDashboard from '../pages/dashboard/roles/manager/ManagerFinanceDashboard';
+
+// Store pages
+import StoresListPage from '../pages/stores/StoresListPage';
+import ItemsListPage from '../pages/stores/ItemsListPage';
+import BalanceAuditPage from '../pages/stores/BalanceAuditPage';
+import LowStockAlertsPage from '../pages/stores/LowStockAlertsPage';
+
+// Auth service + hook
 import authService from '../stores/authService';
 import { useAuth } from '../hooks/useAuth';
 import { setUnauthorizedHandler } from '../stores/interceptor';
@@ -50,7 +62,7 @@ import { setUnauthorizedHandler } from '../stores/interceptor';
 const ROLE_PERMISSIONS = {
   admin:      { catalog: true,  alerts: true,  purchase: true  },
   manager:    { catalog: true,  alerts: true,  purchase: true  },
-  purchaser:  { catalog: true,  alerts: true,  purchase: true  }, // 🔔 now shown
+  purchaser:  { catalog: true,  alerts: true,  purchase: true  },
   sales:      { catalog: true,  alerts: true,  purchase: false },
   banker:     { catalog: false, alerts: true,  purchase: false },
   supervisor: { catalog: true,  alerts: true,  purchase: true  },
@@ -68,6 +80,10 @@ export default function AppRouter() {
   const [settingsSubView, setSettingsSubView] = useState('main');
   const [purchaseSubView, setPurchaseSubView] = useState(null);
   const [pendingOrder, setPendingOrder] = useState(null);
+
+  // Remembers where a purchase sub-page was opened from
+  // ('managerDashboard' | null)
+  const [purchaseReturnTo, setPurchaseReturnTo] = useState(null);
 
   // ---------- Derived from auth ----------
   const isLoggedIn = auth.isAuthenticated;
@@ -97,6 +113,7 @@ export default function AppRouter() {
       setSettingsSubView('main');
       setPurchaseSubView(null);
       setPendingOrder(null);
+      setPurchaseReturnTo(null);
     });
   }, []);
 
@@ -107,6 +124,7 @@ export default function AppRouter() {
     const handleHardwareBackPress = () => {
       if (!isLoggedIn) return false;
 
+      // ---------- Pending detail page ----------
       if (activeTab === 'pendingDetail') {
         setPendingOrder(null);
         setActiveTab('purchase');
@@ -114,22 +132,52 @@ export default function AppRouter() {
         return true;
       }
 
-      if (purchaseSubView !== null) {
+      // ---------- Inside a purchase sub-page (PendingApproval, etc.) ----------
+      if (activeTab === 'purchase' && purchaseSubView !== null) {
+        if (purchaseReturnTo === 'managerDashboard') {
+          setPurchaseSubView('purchaseDashboard');
+          setActiveTab('managerDashboard');
+          setPurchaseReturnTo(null);
+        } else {
+          setPurchaseSubView(null);
+          setActiveTab('home');
+        }
+        return true;
+      }
+
+      // ---------- Inside a manager drill-in ----------
+      if (activeTab === 'managerDashboard' && purchaseSubView !== null) {
+        // Any store sub-view → back to store dashboard
+        if (
+          purchaseSubView === 'storesList' ||
+          purchaseSubView === 'inventory' ||
+          purchaseSubView === 'storeDetail' ||
+          purchaseSubView === 'balanceAudit' ||
+          purchaseSubView === 'lowStock' ||
+          purchaseSubView === 'transfers'
+        ) {
+          setPurchaseSubView('storeDashboard');
+          return true;
+        }
+        // Any manager sub-dashboard → back to home
         setPurchaseSubView(null);
         setActiveTab('home');
         return true;
       }
 
+      // ---------- Settings branch ----------
       if (activeTab === 'settings' && settingsSubView !== 'main') {
         setSettingsSubView('main');
         return true;
       }
 
+      // ---------- Any other non-home tab ----------
       if (activeTab !== 'home') {
         setActiveTab('home');
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);
+        setPurchaseReturnTo(null);
         return true;
       }
 
@@ -142,7 +190,14 @@ export default function AppRouter() {
     );
 
     return () => sub.remove();
-  }, [isLoggedIn, activeTab, settingsSubView, purchaseSubView, pendingOrder]);
+  }, [
+    isLoggedIn,
+    activeTab,
+    settingsSubView,
+    purchaseSubView,
+    pendingOrder,
+    purchaseReturnTo,
+  ]);
 
   // ================================================================
   // 4) Logout handler
@@ -158,6 +213,7 @@ export default function AppRouter() {
       setSettingsSubView('main');
       setPurchaseSubView(null);
       setPendingOrder(null);
+      setPurchaseReturnTo(null);
     }
   };
 
@@ -171,17 +227,24 @@ export default function AppRouter() {
   // ================================================================
   // 6) Navigation helpers
   // ================================================================
-  const navigateToPurchasePage = (page) => {
+
+  const navigateToPurchasePage = (page, returnTo = null) => {
+    setPurchaseReturnTo(returnTo);
     setPurchaseSubView(page);
     setActiveTab('purchase');
   };
 
-const navigateToPendingDetail = (screen, payload) => {
-  // We're called as navigateToPendingDetail('pendingDetail', { id, requestNumber })
-  const orderData = payload ?? screen;   // handle both calling conventions
-  setPendingOrder(orderData);
-  setActiveTab('pendingDetail');
-};
+  // Manager section drill-ins
+  const navigateToManagerDashboard = (sectionKey) => {
+    setPurchaseSubView(sectionKey);
+    setActiveTab('managerDashboard');
+  };
+
+  const navigateToPendingDetail = (screen, payload) => {
+    const orderData = payload ?? screen;
+    setPendingOrder(orderData);
+    setActiveTab('pendingDetail');
+  };
 
   // ================================================================
   // 7) Theme tokens
@@ -214,12 +277,117 @@ const navigateToPendingDetail = (screen, payload) => {
       );
     }
 
+    // ---------- Manager sub-dashboards (drill-ins) ----------
+    if (activeTab === 'managerDashboard') {
+      const commonProps = {
+        onNavigateToPurchase: (page) =>
+          navigateToPurchasePage(page, 'managerDashboard'),
+        onNavigateToManagerDashboard: (section) =>
+          navigateToManagerDashboard(section),
+        darkMode,
+        textColor,
+        subTextColor,
+        cardBg,
+        borderColor,
+      };
+
+      switch (purchaseSubView) {
+        // ---------- Manager sub-dashboards ----------
+        case 'purchaseDashboard':
+          return <ManagerPurchaseDashboard {...commonProps} />;
+        case 'storeDashboard':
+          return <ManagerStoreDashboard {...commonProps} />;
+        case 'hrDashboard':
+          return <ManagerHRDashboard {...commonProps} />;
+        case 'financeDashboard':
+          return <ManagerFinanceDashboard {...commonProps} />;
+
+        // ---------- Stores list ----------
+        case 'storesList':
+          return (
+            <StoresListPage
+              onNavigateToDetail={(store) => {
+                // StoreDetailPage not built yet — log for now
+                console.log('Open store detail:', store);
+              }}
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+            />
+          );
+
+        // ---------- Inventory (Items) ----------
+        case 'inventory':
+          return (
+            <ItemsListPage
+              onNavigateToDetail={(item) => {
+                // ItemDetailPage not built yet — log for now
+                console.log('Open item detail:', item);
+              }}
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+            />
+          );
+
+        // ---------- Balance Audit ----------
+        case 'balanceAudit':
+          return (
+            <BalanceAuditPage
+              onNavigateToStoreDetail={(store) => {
+                // StoreDetailPage not built yet — log for now
+                console.log('Open store detail:', store);
+              }}
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+            />
+          );
+
+        // ---------- Low Stock Alerts ----------
+        case 'lowStock':
+          return (
+            <LowStockAlertsPage
+              onNavigateToItemDetail={(item) => {
+                // ItemDetailPage not built yet — log for now
+                console.log('Open item detail:', item);
+              }}
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+            />
+          );
+
+        // ---------- Store sub-views not built yet ----------
+        case 'storeDetail':
+        case 'transfers':
+          return <ManagerStoreDashboard {...commonProps} />;
+
+        default:
+          return <ManagerPurchaseDashboard {...commonProps} />;
+      }
+    }
+
     // ---------- Purchase sub-pages ----------
     if (activeTab === 'purchase' && purchaseSubView !== null) {
       const commonProps = {
         onBack: () => {
-          setPurchaseSubView(null);
-          setActiveTab('home');
+          if (purchaseReturnTo === 'managerDashboard') {
+            setPurchaseSubView('purchaseDashboard');
+            setActiveTab('managerDashboard');
+            setPurchaseReturnTo(null);
+          } else {
+            setPurchaseSubView(null);
+            setActiveTab('home');
+          }
         },
         darkMode,
         textColor,
@@ -237,7 +405,6 @@ const navigateToPendingDetail = (screen, payload) => {
         case 'approvedNotPaid':
           return <ApprovedNotPaidPage {...commonProps} />;
 
-        // ✅ Purchaser pages
         case 'pendingSubmission':
           return <PendingSubmissionPage {...commonProps} />;
         case 'submitted':
@@ -251,7 +418,6 @@ const navigateToPendingDetail = (screen, payload) => {
     // ---------- Main tabs ----------
     switch (activeTab) {
       case 'home':
-        // ✅ DashboardPage handles role dispatch internally
         return (
           <DashboardPage
             darkMode={darkMode}
@@ -259,6 +425,7 @@ const navigateToPendingDetail = (screen, payload) => {
             userRole={userRole}
             permissions={ROLE_PERMISSIONS[userRole]}
             onNavigateToPurchase={navigateToPurchasePage}
+            onNavigateToManagerDashboard={navigateToManagerDashboard}
             textColor={textColor}
             subTextColor={subTextColor}
             cardBg={cardBg}
@@ -282,6 +449,7 @@ const navigateToPendingDetail = (screen, payload) => {
               userRole={userRole}
               permissions={ROLE_PERMISSIONS[userRole]}
               onNavigateToPurchase={navigateToPurchasePage}
+              onNavigateToManagerDashboard={navigateToManagerDashboard}
               textColor={textColor}
               subTextColor={subTextColor}
               cardBg={cardBg}
@@ -326,6 +494,7 @@ const navigateToPendingDetail = (screen, payload) => {
             userRole={userRole}
             permissions={ROLE_PERMISSIONS[userRole]}
             onNavigateToPurchase={navigateToPurchasePage}
+            onNavigateToManagerDashboard={navigateToManagerDashboard}
             textColor={textColor}
             subTextColor={subTextColor}
             cardBg={cardBg}
@@ -365,11 +534,12 @@ const navigateToPendingDetail = (screen, payload) => {
         onNavigateToPurchase={navigateToPurchasePage}
       >
         <LoginPage
-          onLoginSuccess={(roleAssigned) => {
+          onLoginSuccess={() => {
             setActiveTab('home');
             setSettingsSubView('main');
             setPurchaseSubView(null);
             setPendingOrder(null);
+            setPurchaseReturnTo(null);
           }}
         />
       </MainLayout>
@@ -395,18 +565,21 @@ const navigateToPendingDetail = (screen, payload) => {
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);
+        setPurchaseReturnTo(null);
       }}
       onNavigateToProfile={() => {
         setActiveTab('profile');
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);
+        setPurchaseReturnTo(null);
       }}
       onNavigateToSettings={() => {
         setActiveTab('settings');
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);
+        setPurchaseReturnTo(null);
       }}
       onNavigateToNotifications={() => {
         if (!ROLE_PERMISSIONS[userRole]?.alerts) {
@@ -417,6 +590,7 @@ const navigateToPendingDetail = (screen, payload) => {
         setSettingsSubView('main');
         setPurchaseSubView(null);
         setPendingOrder(null);
+        setPurchaseReturnTo(null);
       }}
       darkMode={darkMode}
       setDarkMode={setDarkMode}

@@ -183,6 +183,14 @@ export default function PendingSubmissionDetailPage({
   const resolvedCardBg = cardBg || (darkMode ? '#1E293B' : '#FFFFFF');
   const resolvedBorderColor = borderColor || (darkMode ? '#334155' : '#E2E8F0');
 
+  // ----------------------------------------------------------------
+  // Dark-mode-aware colors for the pieces that were hardcoded before
+  // ----------------------------------------------------------------
+  const screenBg = darkMode ? '#0F172A' : '#F8FAFC';
+  const reasonBg = darkMode ? '#0F172A' : '#F8FAFC';
+  const reasonAccent = darkMode ? '#60A5FA' : '#3B82F6';
+  const imagePlaceholderBg = darkMode ? '#0F172A' : '#E2E8F0';
+
   // ---------- Bid drafts (preload the user's current bid) ----------
   const initialDrafts = useMemo(() => {
     const init = {};
@@ -330,7 +338,7 @@ export default function PendingSubmissionDetailPage({
       <View
         style={[
           styles.detailContainer,
-          { backgroundColor: darkMode ? '#0F172A' : '#F8FAFC' },
+          { backgroundColor: screenBg },
         ]}
       >
         <View style={styles.emptyWrap}>
@@ -346,11 +354,11 @@ export default function PendingSubmissionDetailPage({
   const itemCount = items.length;
 
   // 👇 Use the server-resolved URL; fall back to the mock only if truly absent
- const imageUrl =
-  request.imageUrl ||
-  request.approvedDocFront ||
-  request.approvedDocBack ||
-  MOCK_DOC_URL;
+  const imageUrl =
+    request.imageUrl ||
+    request.approvedDocFront ||
+    request.approvedDocBack ||
+    MOCK_DOC_URL;
 
   // 👇 Prefer the pre-formatted label; fall back to the raw date
   const dateLabel =
@@ -367,7 +375,7 @@ export default function PendingSubmissionDetailPage({
     <View
       style={[
         styles.detailContainer,
-        { backgroundColor: darkMode ? '#0F172A' : '#F8FAFC' },
+        { backgroundColor: screenBg },
       ]}
     >
       <ScrollView
@@ -464,7 +472,10 @@ export default function PendingSubmissionDetailPage({
           >
             <Image
               source={{ uri: imageUrl }}
-              style={styles.requestImage}
+              style={[
+                styles.requestImage,
+                { backgroundColor: imagePlaceholderBg },
+              ]}
               resizeMode="cover"
             />
             <View style={styles.imageOverlay}>
@@ -484,7 +495,15 @@ export default function PendingSubmissionDetailPage({
             <Text style={[styles.sectionTitle, { color: resolvedTextColor }]}>
               📝 Request Reason
             </Text>
-            <View style={styles.reasonContainer}>
+            <View
+              style={[
+                styles.reasonContainer,
+                {
+                  backgroundColor: reasonBg,
+                  borderLeftColor: reasonAccent,
+                },
+              ]}
+            >
               <Text style={[styles.reasonText, { color: resolvedTextColor }]}>
                 {request.reason}
               </Text>
@@ -551,7 +570,9 @@ export default function PendingSubmissionDetailPage({
                   styles.submitBtn,
                   {
                     backgroundColor:
-                      hasPrice || alreadyMine ? '#F1F5F9' : '#F59E0B',
+                      hasPrice || alreadyMine
+                        ? (darkMode ? '#334155' : '#F1F5F9')
+                        : '#F59E0B',
                   },
                 ]}
                 onPress={() => openBidModal(item.id)}
@@ -562,7 +583,9 @@ export default function PendingSubmissionDetailPage({
                     styles.submitBtnText,
                     {
                       color:
-                        hasPrice || alreadyMine ? '#475569' : '#FFFFFF',
+                        hasPrice || alreadyMine
+                          ? (darkMode ? '#E2E8F0' : '#475569')
+                          : '#FFFFFF',
                     },
                   ]}
                 >
@@ -631,6 +654,7 @@ export default function PendingSubmissionDetailPage({
                               {
                                 color: resolvedTextColor,
                                 borderColor: resolvedBorderColor,
+                                backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
                               },
                             ]}
                             keyboardType="decimal-pad"
@@ -678,6 +702,7 @@ export default function PendingSubmissionDetailPage({
                               {
                                 color: resolvedTextColor,
                                 borderColor: resolvedBorderColor,
+                                backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
                               },
                             ]}
                             keyboardType="decimal-pad"
@@ -729,7 +754,7 @@ export default function PendingSubmissionDetailPage({
                               backgroundColor:
                                 activeDraft.matchesRequirement === true
                                   ? '#10B98115'
-                                  : 'transparent',
+                                  : (darkMode ? '#0F172A' : 'transparent'),
                             },
                           ]}
                           onPress={() =>
@@ -764,7 +789,7 @@ export default function PendingSubmissionDetailPage({
                               backgroundColor:
                                 activeDraft.matchesRequirement === false
                                   ? '#EF444415'
-                                  : 'transparent',
+                                  : (darkMode ? '#0F172A' : 'transparent'),
                             },
                           ]}
                           onPress={() =>
@@ -805,6 +830,7 @@ export default function PendingSubmissionDetailPage({
                               {
                                 color: resolvedTextColor,
                                 borderColor: resolvedBorderColor,
+                                backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
                               },
                             ]}
                             multiline
@@ -834,6 +860,7 @@ export default function PendingSubmissionDetailPage({
                           {
                             color: resolvedTextColor,
                             borderColor: resolvedBorderColor,
+                            backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
                           },
                         ]}
                         multiline
@@ -974,7 +1001,7 @@ const styles = StyleSheet.create({
   requestImage: {
     width: '100%',
     height: 200,
-    backgroundColor: '#E2E8F0',
+    // backgroundColor set inline for dark mode
   },
   imageOverlay: {
     position: 'absolute',
@@ -994,11 +1021,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   reasonContainer: {
-    backgroundColor: '#F8FAFC',
     padding: 14,
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6',
+    // backgroundColor and borderLeftColor set inline for dark mode
   },
   reasonText: { fontSize: 14, lineHeight: 22 },
 
@@ -1069,6 +1095,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
+    // backgroundColor set inline for dark mode
   },
   textarea: {
     borderWidth: 1,
@@ -1078,6 +1105,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     minHeight: 60,
     textAlignVertical: 'top',
+    // backgroundColor set inline for dark mode
   },
 
   fieldRow: {

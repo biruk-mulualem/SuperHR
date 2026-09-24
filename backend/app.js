@@ -110,9 +110,11 @@ const formulationRoutes = require('./routes/formulationRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const mobilePurchaserRoutes = require('./routes/mobilePurchaserRoutes');
 const purchaseNotificationRoutes = require('./routes/purchaseNotificationRoutes');
-
-
-
+const mobileStoreListRoutes = require('./routes/mobileStoreListRoutes');
+const mobileItemListRoutes = require('./routes/mobileItemListRoutes');
+const mobileLowStockRoutes = require('./routes/mobileLowStockRoutes');
+const mobileManagerBalanceAudit = require('./routes/mobileManagerBalanceAudit');
+const mobileManagerStoreDashboardRoutes = require('./routes/mobileManagerStoreDashboardRoutes');
 // ========== NEW: BACKUP ROUTES ==========
 const backupRoutes = require("./routes/backupRoutes");
 
@@ -183,8 +185,12 @@ app.use('/api/purchasing-groups', purchasingGroupRoutes);
 app.use('/api/purchase-follow-ups', purchaseFollowUpRoutes);
 app.use('/api/mobile/manager-dashboard', mobileManagerDashboardRoutes);
 app.use('/api/mobile/purchaser', mobilePurchaserRoutes);
-
+app.use('/api/mobile/store-list', mobileStoreListRoutes);
 app.use('/api/mobile/purchase-notifications', purchaseNotificationRoutes);
+app.use('/api/mobile/item-list', mobileItemListRoutes);
+app.use('/api/mobile/low-stock', mobileLowStockRoutes);
+app.use('/api/mobile/manager/balance-audit', mobileManagerBalanceAudit);
+app.use('/api/mobile/manager/store-dashboard', mobileManagerStoreDashboardRoutes);
 // ========== NEW: BACKUP ROUTES ==========
 app.use("/api/backup", backupRoutes);
 app.use('/api/purchase-requests', purchaseRequestRoutes);

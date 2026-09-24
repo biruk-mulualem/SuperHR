@@ -3,7 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 
 // =========================================================================
-// 🎯 ROLE DASHBOARDS — Real per-role imports
+// 🎯 ROLE DASHBOARDS
 // =========================================================================
 import AdminDashboard     from './roles/AdminDashboard';
 import ManagerDashboard   from './roles/ManagerDashboard';
@@ -24,7 +24,7 @@ const ROLES = {
 };
 
 // =========================================================================
-// 🧩 GENERIC FALLBACK (banker / supervisor / auditor / unknown)
+// 🧩 GENERIC FALLBACK
 // =========================================================================
 const WelcomeBanner = ({ greeting, role, darkMode }) => (
   <View style={[styles.welcomeCard, { backgroundColor: darkMode ? '#1E3A8A' : '#EFF6FF' }]}>
@@ -91,6 +91,7 @@ export default function DashboardPage({
   userRole,
   permissions,
   onNavigateToPurchase,
+  onNavigateToManagerDashboard,   // 🆕 ADD THIS
   navigation,
 }) {
   const theme = {
@@ -100,7 +101,6 @@ export default function DashboardPage({
     borderColor: darkMode ? '#334155' : '#E2E8F0',
   };
 
-  // ✅ Normalize role to lowercase to match the ROLES map
   const roleKey = String(userRole || '').toLowerCase();
   const DashboardComponent = DASHBOARD_COMPONENTS[roleKey] || GeneralDashboard;
 
@@ -113,13 +113,14 @@ export default function DashboardPage({
     navigation,
     permissions,
     onNavigateToPurchase,
+    onNavigateToManagerDashboard,   // 🆕 FORWARD THIS
   };
 
   return <DashboardComponent {...commonProps} />;
 }
 
 // =========================================================================
-// 🎨 STYLES (fallback dashboard)
+// 🎨 STYLES
 // =========================================================================
 const styles = StyleSheet.create({
   distinctContainer: { flex: 1, padding: 16 },
