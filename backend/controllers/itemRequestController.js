@@ -3001,23 +3001,41 @@ exports.getGroupNotifications = async (req, res) => {
           include: [
             { model: Store, as: "askingStore" },
             { model: Store, as: "supplyingStore" },
-            { model: User, as: "requestedByUser" },
-            { 
-              model: ItemRequestDetail, 
+            {
+              model: User,
+              as: "requestedByUser",
+              attributes: [
+                "userId",
+                "username",
+                "fullName",
+                "email",
+                "roleId",
+                "departmentId",
+              ],
+              include: [
+                {
+                  model: Department,
+                  as: "Department",
+                  attributes: ["department_id", "name", "code"],
+                },
+              ],
+            },
+            {
+              model: ItemRequestDetail,
               as: "items",
               include: [
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }]
-                }
-              ]
-            }
-          ]
+                  include: [{ model: UOM, as: "uom" }],
+                },
+              ],
+            },
+          ],
         },
         { model: Group, as: "group" },
         { model: Store, as: "store" },
-        { model: User, as: "respondedByUser" }
+        { model: User, as: "respondedByUser" },
       ],
       order: [["created_at", "DESC"]],
       limit: parseInt(limit),

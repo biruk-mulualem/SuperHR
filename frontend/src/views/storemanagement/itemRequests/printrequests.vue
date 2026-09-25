@@ -15,7 +15,9 @@
         ITEM REQUEST FROM 
         <span class="store-name">{{ getStoreName(requestData.supplyingStoreId) }}</span> 
         TO 
-        <span class="store-name">{{ getStoreName(requestData.askingStoreId) }}</span>
+        <span class="store-name" :class="{ 'dept-origin': isOtherStore(requestData.askingStoreId) }">
+          {{ getAskingStoreDisplay() }}
+        </span>
       </h3>
       
       <div class="date-row">
@@ -46,10 +48,10 @@
           <td class="text-left">{{ getItemNameOnly(item) }}</td>
           <td>{{ getItemUOM(item) || 'Pcs' }}</td>
           <td class="font-bold">{{ formatQuantity(item.quantity) }}</td>
-          <td>{{ getItemBrand(item) || '-' }}</td>
-          <td>{{ getItemModel(item) || '-' }}</td>
-          <td class="spec-cell">{{ stripHtml(getItemSpecification(item)) || '-' }}</td>
-          <td>{{ item.remark || '-' }}</td>
+          <td>{{ getItemBrand(item) || '' }}</td>
+          <td>{{ getItemModel(item) || '' }}</td>
+          <td class="spec-cell">{{ stripHtml(getItemSpecification(item)) || '' }}</td>
+          <td>{{ item.remark || '' }}</td>
         </tr>
       </tbody>
     </table>
@@ -231,6 +233,54 @@ const getRequesterName = (): string => {
 const getStoreName = (storeId: number): string => {
   const store = stores.value.find(s => (s.storeId || s.id) === storeId)
   return store ? store.name : 'Unknown Store'
+}
+
+// ================================================================
+// "OTHER" STORE HANDLING — show requesting department instead
+// ================================================================
+
+/**
+ * Is the store the placeholder "Other" (STORE-008)?
+ * Accepts either a store object or a storeId.
+ */
+const isOtherStore = (storeOrId: number | Store | null | undefined): boolean => {
+  if (storeOrId === null || storeOrId === undefined) return false
+
+  let store: Store | undefined = undefined
+
+  if (typeof storeOrId === 'object') {
+    store = storeOrId
+  } else {
+    store = stores.value.find(s => (s.storeId || s.id) === storeOrId)
+  }
+
+  if (!store) return false
+
+  const code = ((store as any).code || '').toUpperCase()
+  const name = (store.name || '').trim().toLowerCase()
+
+  return code === 'STORE-008' || name === 'other'
+}
+
+/**
+ * Best display name for the asking store:
+ *   - If the store is "Other" → use the requester's department name
+ *   - Otherwise → use the store's name
+ */
+const getAskingStoreDisplay = (): string => {
+  if (!requestData.value) return 'Unknown Store'
+
+  const req = requestData.value
+
+  const askingStore = stores.value.find(
+    s => (s.storeId || s.id) === req.askingStoreId
+  )
+
+  if (isOtherStore(askingStore)) {
+    return getRequestingDepartment()
+  }
+
+  return getStoreName(req.askingStoreId)
 }
 
 // ================================================================
@@ -466,6 +516,19 @@ onMounted(async () => {
   font-weight: 800;
   font-size: 16px;
   text-decoration: none;
+}
+
+.store-name.dept-origin {
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+
+/* Optional: show a small label before the department name */
+.store-name.dept-origin::before {
+  content: ' ';
+  font-weight: 600;
+  font-size: 0.85em;
+  opacity: 0.75;
 }
 
 .date-row {

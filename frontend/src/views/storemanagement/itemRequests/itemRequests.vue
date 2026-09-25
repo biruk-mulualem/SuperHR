@@ -697,26 +697,19 @@ const isUserSupplyingStore = (req: ItemRequest): boolean => {
   return Number(req.supplyingStoreId) === userAssignedStoreId.value;
 };
 
+
+
 const canEditRequest = (req: ItemRequest): boolean => {
+  // Only finalized requests are locked
+  if (req.status === 'finalized') return false;
+
+  // Admins can edit anything else
+  if (userIsAdmin.value) return true;
+
+  // Otherwise, only the asking store can edit
   if (!isUserAskingStore(req)) return false;
 
-  // Editable statuses
-  if (req.status === 'rejected') return true;
-  if (req.status === 'approved') return true;   // ← new
-
-  if (isSkipStore(req)) return req.status === 'pending';
-
-  if (req.status === 'pending') {
-    if (req.notifications && req.notifications.length > 0) {
-      const allAccepted = req.notifications.every(
-        (n: { status: string }) => n.status === 'accepted'
-      );
-      return !allAccepted;
-    }
-    return true;
-  }
-
-  return false;
+  return true;
 };
 
 const canApproveRequest = (req: ItemRequest): boolean => {
