@@ -53,6 +53,55 @@ module.exports = (sequelize, DataTypes) => {
       return grouped;
     }
 
+static normalizeApprovalConfig(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      departments: [],
+      requiresApproval: true,
+      version: 1,
+    };
+  }
+
+  // Already new shape
+  if (Array.isArray(raw.departments)) {
+    return {
+      departments: raw.departments.map((d) => ({
+        departmentId: Number(d.departmentId),
+        appliesTo: Array.isArray(d.appliesTo) ? d.appliesTo : [],
+      })),
+      requiresApproval: raw.requiresApproval !== false,
+      version: raw.version || 1,
+      lastUpdated: raw.lastUpdated,
+      updatedBy: raw.updatedBy,
+    };
+  }
+
+  // Old shape — migrate
+  if (raw.departmentId) {
+    return {
+      departments: [
+        {
+          departmentId: Number(raw.departmentId),
+          appliesTo: Array.isArray(raw.applyToStores) ? raw.applyToStores : [],
+        },
+      ],
+      requiresApproval: raw.requiresApproval !== false,
+      version: (raw.version || 1) + 1,
+      lastUpdated: raw.lastUpdated,
+      updatedBy: raw.updatedBy,
+      _migrated: true,
+    };
+  }
+
+  // Nothing configured yet
+  return {
+    departments: [],
+    requiresApproval: true,
+    version: raw.version || 1,
+  };
+}
+
+
     // Get default attendance rules
     static getDefaultAttendanceRules() {
       return {

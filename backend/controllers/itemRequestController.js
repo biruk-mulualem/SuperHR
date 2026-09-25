@@ -39,38 +39,21 @@ async function getApprovalDepartmentConfig() {
   try {
     const SystemSetting = db.SystemSetting;
     const setting = await SystemSetting.findOne({
-      where: { settingKey: 'approval.department' }
+      where: { settingKey: 'approval.department' },
     });
 
-    if (!setting) {
-      console.log('⚠️ No department setting found');
+    if (!setting || !setting.settingValue) {
       return null;
     }
 
-    // ✅ The settingValue is already parsed JSONB in PostgreSQL
-    const config = setting.settingValue;
-    
-    console.log('📋 Found department config:', config);
+    const normalized = SystemSetting.normalizeApprovalConfig(setting.settingValue);
 
-    // Check if departmentId exists
-    if (!config || !config.departmentId) {
-      console.log('⚠️ Department setting missing departmentId');
-      return null;
-    }
-
-    // Verify the department exists
-    const department = await db.Department.findByPk(config.departmentId);
-    if (!department) {
-      console.log(`⚠️ Department ${config.departmentId} not found`);
-      return null;
-    }
+    if (!normalized.requiresApproval) return null;
+    if (!normalized.departments || normalized.departments.length === 0) return null;
 
     return {
-      departmentId: config.departmentId,
-      name: config.name || department.name,
-      code: config.code || department.code,
-      applyToStores: config.applyToStores || [],
-      requiresApproval: config.requiresApproval !== false,
+      departments: normalized.departments,
+      requiresApproval: true,
     };
   } catch (error) {
     console.error('❌ Error getting approval department config:', error);
@@ -431,10 +414,19 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
 // ================================================================
 // HELPER: Create notifications (GROUPS + DEPARTMENT for ASSET)
 // ================================================================
-async function createRequestNotifications(requestId, storeId, askingStoreId, isAsset = false, transaction = null) {
+// ================================================================
+// HELPER: Create notifications (GROUPS + MULTIPLE DEPARTMENTS for ASSET)
+// ================================================================
+async function createRequestNotifications(
+  requestId,
+  storeId,
+  askingStoreId,
+  isAsset = false,
+  transaction = null
+) {
   try {
     console.log(
-      `📤 Creating notifications for request ${requestId}, store ${storeId}, isAsset: ${isAsset}`,
+      `📤 Creating notifications for request ${requestId}, supplying store ${storeId}, asking store ${askingStoreId}, isAsset: ${isAsset}`
     );
 
     // 🔥 STEP 1: Get the asking store details
@@ -456,7 +448,7 @@ async function createRequestNotifications(requestId, storeId, askingStoreId, isA
         replacements: { storeId: parseInt(storeId) },
         type: db.sequelize.QueryTypes.SELECT,
         transaction: transaction,
-      },
+      }
     );
 
     console.log(`📋 Found ${groups.length} groups for supplying store`);
@@ -464,7 +456,9 @@ async function createRequestNotifications(requestId, storeId, askingStoreId, isA
     // 🔥 STEP 3: Create notifications
     let totalCount = 0;
 
+    // ============================================================
     // 3a. Create group notifications using bulkCreate
+    // ============================================================
     const groupNotifications = [];
     for (const group of groups) {
       const groupId = parseInt(group.id);
@@ -492,57 +486,84 @@ async function createRequestNotifications(requestId, storeId, askingStoreId, isA
       console.log(`✅ Created ${result.length} group notifications`);
     }
 
-    // 3b. 🔥 CREATE DEPARTMENT NOTIFICATION USING `create()`
+    // ============================================================
+    // 3b. 🔥 CREATE DEPARTMENT NOTIFICATIONS — loop over all
+    //     configured departments whose appliesTo includes the
+    //     asking store's code.
+    // ============================================================
     if (isAsset) {
       console.log(`📋 isAsset is true, checking department config...`);
-      
-      // Get department from SystemSetting
-      const SystemSetting = db.SystemSetting;
-      const setting = await SystemSetting.findOne({
-        where: { settingKey: 'approval.department' }
-      });
 
-      console.log('📋 Found setting:', setting ? setting.toJSON() : 'null');
+      const askingStoreCode = askingStore.code;
+      console.log(`📋 Asking store code: ${askingStoreCode}`);
 
-      if (setting && setting.settingValue) {
-        const config = setting.settingValue;
-        const departmentId = config.departmentId;
-        
-        console.log(`📋 Department ID from config: ${departmentId}`);
+      // Get normalized config (single or multiple departments)
+      const config = await getApprovalDepartmentConfig();
 
-        if (departmentId) {
-          // ✅ Verify department exists using the correct field name
-          const department = await db.Department.findByPk(departmentId);
-          console.log('📋 Found department:', department ? department.toJSON() : 'null');
-          
-          if (department) {
-            // ✅ CREATE department notification - department_id will be saved!
-            const deptNotification = await RequestNotification.create({
+      if (!config || !config.departments || config.departments.length === 0) {
+        console.log(
+          `⚠️ No approval departments configured — skipping department notifications`
+        );
+      } else {
+        // Filter to departments whose appliesTo includes the asking store code
+        const applicableDepartments = config.departments.filter(
+          (d) =>
+            Array.isArray(d.appliesTo) &&
+            d.appliesTo.includes(askingStoreCode)
+        );
+
+        console.log(
+          `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
+            `department(s) apply to store ${askingStoreCode}`
+        );
+
+        if (applicableDepartments.length === 0) {
+          console.log(
+            `⚠️ No department applies to store ${askingStoreCode} — ` +
+              `no department notifications created`
+          );
+        }
+
+        for (const entry of applicableDepartments) {
+          const department = await db.Department.findByPk(entry.departmentId);
+
+          if (!department) {
+            console.log(
+              `⚠️ Department ${entry.departmentId} not found — skipping`
+            );
+            continue;
+          }
+
+          const deptNotification = await RequestNotification.create(
+            {
               request_id: parseInt(requestId),
               group_id: null,
-              department_id: department.departmentId,  // ✅ Use department.departmentId (from model)
+              department_id: department.departmentId,
               store_id: parseInt(storeId),
               status: "pending",
               approval_type: "department",
               is_department_approval: true,
               created_at: new Date(),
               updated_at: new Date(),
-            }, { 
-              transaction: transaction,
-            });
-            
-            totalCount++;
-            console.log(`✅ Added department notification for: ${department.name} (ID: ${department.departmentId})`);
-            console.log('📋 Created department notification:', deptNotification.toJSON());
-          } else {
-            console.log(`⚠️ Department ${departmentId} not found in departments table`);
-          }
-        } else {
-          console.log(`⚠️ No departmentId in config`);
+            },
+            { transaction: transaction }
+          );
+
+          totalCount++;
+          console.log(
+            `✅ Added department notification for ${department.name} ` +
+              `(ID ${department.departmentId}) — applies to ${askingStoreCode}`
+          );
+          console.log(
+            "📋 Created department notification:",
+            deptNotification.toJSON()
+          );
         }
-      } else {
-        console.log(`⚠️ No SystemSetting found for 'approval.department'`);
       }
+    } else {
+      console.log(
+        `ℹ️ isAsset is false — no department notifications created`
+      );
     }
 
     console.log(`✅ Total notifications created: ${totalCount}`);
@@ -748,7 +769,7 @@ exports.getRequests = async (req, res) => {
       storeId,
       userId,
       sortBy,
-      sortOrder
+      sortOrder,
     });
 
     const offset = (page - 1) * limit;
@@ -760,34 +781,42 @@ exports.getRequests = async (req, res) => {
     const currentUser = req.user;
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
-    
+
     console.log("👤 Current User from Request:", {
       userId: currentUserId,
       role: currentUserRole,
       username: currentUser?.username,
-      fullName: currentUser?.fullName
+      fullName: currentUser?.fullName,
     });
 
-    const { getUserStoreAndGroup } = require('../utils/userAccess');
-    
+    const { getUserStoreAndGroup } = require("../utils/userAccess");
+
     let userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
     let userIsAdmin = false;
-    
+
     console.log("📍 Initial userStoreId from token:", userStoreId);
-    
+
     if (!userStoreId && currentUserId) {
       console.log("🔍 No storeId in token, fetching from database...");
       try {
         const accessResult = await getUserStoreAndGroup(currentUserId);
-        console.log("📊 Database access result:", JSON.stringify(accessResult, null, 2));
-        
+        console.log(
+          "📊 Database access result:",
+          JSON.stringify(accessResult, null, 2)
+        );
+
         if (accessResult.success && accessResult.data) {
           userStoreId = accessResult.data.assignedStoreId;
           userIsAdmin = accessResult.data.isAdmin || false;
-          console.log("✅ Retrieved from database - storeId:", userStoreId, "isAdmin:", userIsAdmin);
+          console.log(
+            "✅ Retrieved from database - storeId:",
+            userStoreId,
+            "isAdmin:",
+            userIsAdmin
+          );
         }
       } catch (err) {
-        console.warn('⚠️ Could not get user store from database:', err);
+        console.warn("⚠️ Could not get user store from database:", err);
       }
     }
 
@@ -799,7 +828,7 @@ exports.getRequests = async (req, res) => {
       role: currentUserRole,
       storeId: userStoreId,
       isAdmin: userIsAdmin,
-      hasStore: !!userStoreId
+      hasStore: !!userStoreId,
     });
 
     // ================================================================
@@ -819,16 +848,16 @@ exports.getRequests = async (req, res) => {
     console.log("\n" + "=".repeat(80));
     console.log("🔒 PERMISSION LOGIC START");
     console.log("=".repeat(80));
-    
+
     // ✅ ADMIN: Can see everything
     if (currentUserRole === "admin" || userIsAdmin) {
       console.log("\n👑 ADMIN USER DETECTED - showing all requests");
-      
+
       if (status !== "all") {
         where.status = status;
         console.log("  - Status filter applied:", status);
       }
-      
+
       if (storeId !== "all") {
         where[Op.or] = [
           { askingStoreId: parseInt(storeId) },
@@ -836,26 +865,34 @@ exports.getRequests = async (req, res) => {
         ];
         console.log("  - Store filter applied:", storeId);
       }
-      
-      console.log("📋 Admin WHERE clause so far:", JSON.stringify(where, null, 2));
-      
-    // ✅ STORE USER (storekeeper / store_it)
-    } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
-      
+
+      console.log(
+        "📋 Admin WHERE clause so far:",
+        JSON.stringify(where, null, 2)
+      );
+
+      // ✅ STORE USER (storekeeper / store_it)
+    } else if (
+      currentUserRole === "storekeeper" ||
+      currentUserRole === "store_it"
+    ) {
       console.log("\n📦 STORE USER DETECTED:", currentUserRole);
-      
+
       if (!userStoreId) {
         console.log("⚠️ User has NO store assigned");
         if (currentUserId) {
           where.requestedById = currentUserId;
           console.log("  - Filtering by requestedById:", currentUserId);
         }
-        console.log("📋 WHERE clause for user with no store:", JSON.stringify(where, null, 2));
+        console.log(
+          "📋 WHERE clause for user with no store:",
+          JSON.stringify(where, null, 2)
+        );
       } else {
         console.log("✅ User has store assigned:", userStoreId);
-        
+
         // ✅ CORRECT PERMISSION LOGIC
-        
+
         // RULE 1: User is the ASKING store → Can see ALL statuses
         const askingStoreCondition = { askingStoreId: userStoreId };
         console.log(`\n📌 RULE 1 - Asking Store (ID: ${userStoreId}):`);
@@ -865,32 +902,34 @@ exports.getRequests = async (req, res) => {
           console.log("  - Status filter applied to asking condition:", status);
         }
         console.log("  - Condition:", JSON.stringify(askingStoreCondition));
-        
+
         // RULE 2: User is the SUPPLYING store → Can ONLY see approved/finalized
         const supplyingStoreCondition = {
           supplyingStoreId: userStoreId,
-          status: { [Op.in]: ['approved', 'finalized'] }
+          status: { [Op.in]: ["approved", "finalized"] },
         };
         console.log(`\n📌 RULE 2 - Supplying Store (ID: ${userStoreId}):`);
         console.log("  - Can ONLY see approved/finalized");
-        if (status !== "all" && ['approved', 'finalized'].includes(status)) {
+        if (status !== "all" && ["approved", "finalized"].includes(status)) {
           supplyingStoreCondition.status = status;
-          console.log("  - Status filter applied to supplying condition:", status);
+          console.log(
+            "  - Status filter applied to supplying condition:",
+            status
+          );
         }
         if (status === "pending") {
-          console.log("  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!");
+          console.log(
+            "  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!"
+          );
         }
         console.log("  - Condition:", JSON.stringify(supplyingStoreCondition));
-        
+
         // Combine with OR
-        where[Op.or] = [
-          askingStoreCondition,
-          supplyingStoreCondition
-        ];
-        
+        where[Op.or] = [askingStoreCondition, supplyingStoreCondition];
+
         console.log("\n📋 Combined WHERE clause with OR:");
         console.log(JSON.stringify(where, null, 2));
-        
+
         // ✅ If a specific store filter is requested, apply it WITHIN the permission
         if (storeId !== "all" && parseInt(storeId) !== userStoreId) {
           console.log(`\n📌 Additional store filter applied (${storeId}):`);
@@ -899,37 +938,37 @@ exports.getRequests = async (req, res) => {
               [Op.or]: [
                 { askingStoreId: parseInt(storeId) },
                 { supplyingStoreId: parseInt(storeId) },
-              ]
+              ],
             },
             {
-              [Op.or]: [
-                askingStoreCondition,
-                supplyingStoreCondition
-              ]
-            }
+              [Op.or]: [askingStoreCondition, supplyingStoreCondition],
+            },
           ];
           console.log("📋 Updated WHERE with AND + store filter:");
           console.log(JSON.stringify(where, null, 2));
         }
-        
+
         console.log("\n📋 FINAL PERMISSION SUMMARY:");
         console.log("  - Asking Store:", userStoreId, "→ ALL statuses");
-        console.log("  - Supplying Store:", userStoreId, "→ ONLY approved/finalized");
+        console.log(
+          "  - Supplying Store:",
+          userStoreId,
+          "→ ONLY approved/finalized"
+        );
       }
-      
-    // ✅ CHECKER / FINANCE: Only see approved/finalized
+
+      // ✅ CHECKER / FINANCE: Only see approved/finalized
     } else if (currentUserRole === "checker" || currentUserRole === "finance") {
-      
       console.log("\n📊 CHECKER/FINANCE USER DETECTED:", currentUserRole);
-      
+
       if (status === "all") {
-        where.status = { [Op.in]: ['approved', 'finalized'] };
+        where.status = { [Op.in]: ["approved", "finalized"] };
         console.log("  - Status set to approved/finalized (no status filter)");
       } else {
         where.status = status;
         console.log("  - Status filter applied:", status);
       }
-      
+
       if (userStoreId) {
         where[Op.or] = [
           { askingStoreId: userStoreId },
@@ -937,14 +976,13 @@ exports.getRequests = async (req, res) => {
         ];
         console.log("  - Store filter applied:", userStoreId);
       }
-      
+
       console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
-      
-    // ✅ OTHER USERS: Only see requests they created
+
+      // ✅ OTHER USERS: Only see requests they created
     } else {
-      
       console.log("\n👤 OTHER USER ROLE DETECTED:", currentUserRole);
-      
+
       if (currentUserId) {
         where.requestedById = currentUserId;
         console.log("  - Filtering by requestedById:", currentUserId);
@@ -975,7 +1013,7 @@ exports.getRequests = async (req, res) => {
           { remark: { [Op.like]: `%${search}%` } },
         ],
       };
-      
+
       if (where[Op.and]) {
         where[Op.and].push(searchCondition);
       } else {
@@ -1005,7 +1043,7 @@ exports.getRequests = async (req, res) => {
     console.log("  - Offset:", offset);
     console.log("  - Sort By:", sortBy);
     console.log("  - Sort Order:", sortOrder);
-    
+
     const totalCount = await ItemRequest.count({ where });
     console.log(`\n📊 Total count of visible requests: ${totalCount}`);
 
@@ -1025,21 +1063,20 @@ exports.getRequests = async (req, res) => {
               include: [{ model: UOM, as: "uom" }],
             },
           ],
-          // ✅ Include spec fields in listing
           attributes: [
-            'id',
-            'requestId',
-            'itemId',
-            'quantity',
-            'remark',
-            'selected_uom',
-            'uom_code',
-            'is_base_uom',
-            'specification',  // ← ADD
-            'brand',          // ← ADD
-            'model',          // ← ADD
-            'created_at',
-            'updated_at',
+            "id",
+            "requestId",
+            "itemId",
+            "quantity",
+            "remark",
+            "selected_uom",
+            "uom_code",
+            "is_base_uom",
+            "specification",
+            "brand",
+            "model",
+            "created_at",
+            "updated_at",
           ],
         },
         {
@@ -1067,6 +1104,7 @@ exports.getRequests = async (req, res) => {
           as: "notifications",
           include: [
             { model: Group, as: "group" },
+            { model: Department, as: "department" },   // 👈 ADDED
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -1081,7 +1119,7 @@ exports.getRequests = async (req, res) => {
     console.log("\n" + "=".repeat(80));
     console.log("📋 RETURNED REQUESTS:");
     console.log("=".repeat(80));
-    
+
     if (rows.length === 0) {
       console.log("ℹ️ No requests found");
     } else {
@@ -1093,14 +1131,20 @@ exports.getRequests = async (req, res) => {
         console.log(`  - Status: ${request.status}`);
         console.log(`  - Asking Store ID: ${request.askingStoreId}`);
         console.log(`  - Supplying Store ID: ${request.supplyingStoreId}`);
-        console.log(`  - Requested By: ${request.requestedByUser?.username || 'Unknown'}`);
+        console.log(
+          `  - Requested By: ${request.requestedByUser?.username || "Unknown"}`
+        );
         console.log(`  - Created At: ${request.createdAt}`);
-        
+
         // Check role visibility
         if (request.askingStoreId === userStoreId) {
-          console.log(`  - ✅ User's store is ASKING → SHOWN (status: ${request.status})`);
+          console.log(
+            `  - ✅ User's store is ASKING → SHOWN (status: ${request.status})`
+          );
         } else if (request.supplyingStoreId === userStoreId) {
-          console.log(`  - ✅ User's store is SUPPLYING → SHOWN (status: ${request.status})`);
+          console.log(
+            `  - ✅ User's store is SUPPLYING → SHOWN (status: ${request.status})`
+          );
         }
       });
     }
@@ -1121,13 +1165,12 @@ exports.getRequests = async (req, res) => {
         },
       },
     });
-    
   } catch (error) {
     console.error("\n❌ GET REQUESTS ERROR:");
     console.error("=".repeat(80));
     console.error(error);
     console.error("=".repeat(80));
-    
+
     res.status(500).json({
       success: false,
       error: "Failed to fetch requests",

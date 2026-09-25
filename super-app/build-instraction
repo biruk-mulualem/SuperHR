@@ -1,3 +1,6 @@
 cd super-app
 eas login
-eas build --profile preview --platform android
+
+For Android APK (test build):eas build --platform android --profile preview
+For Play Store:eas build --platform android --profile production
+For iOS:eas build --platform ios --profile production

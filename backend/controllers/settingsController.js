@@ -1114,13 +1114,18 @@ exports.getDepartmentStatistics = async (req, res) => {
 // APPROVAL DEPARTMENT SETTINGS
 // ============================================================================
 
+// ============================================================================
+// APPROVAL DEPARTMENT SETTINGS — Multi-Department (Option A)
+// ============================================================================
+
 /**
- * GET: Get approval department configuration
+ * GET: Get approval department configuration.
+ * Auto-migrates the old single-department shape to the new multi-department shape.
  */
 exports.getApprovalDepartment = async (req, res) => {
   try {
     const setting = await SystemSetting.findOne({
-      where: { settingKey: 'approval.department' }
+      where: { settingKey: 'approval.department' },
     });
 
     if (!setting || !setting.settingValue) {
@@ -1128,42 +1133,53 @@ exports.getApprovalDepartment = async (req, res) => {
         success: true,
         data: {
           configured: false,
-          departmentId: null,
-          department: null,
+          departments: [],
           requiresApproval: true,
-          applyToStores: [],
-          message: 'No approval department configured'
-        }
+          message: 'No approval departments configured',
+        },
       });
     }
 
-    const config = setting.settingValue;
-    
-    let department = null;
-    if (config.departmentId) {
-      department = await Department.findByPk(config.departmentId, {
-        attributes: ['departmentId', 'code', 'name', 'description', 'isActive']
-      });
+    const normalized = SystemSetting.normalizeApprovalConfig(setting.settingValue);
+
+    // If we just migrated an old shape, persist it
+    if (normalized._migrated) {
+      delete normalized._migrated;
+      await setting.update({ settingValue: normalized });
+      console.log('✅ Migrated approval.department to multi-department shape');
     }
+
+    // Fetch each department and attach metadata
+    const withDetails = await Promise.all(
+      normalized.departments.map(async (entry) => {
+        const department = await Department.findByPk(entry.departmentId, {
+          attributes: ['departmentId', 'code', 'name', 'description', 'isActive'],
+        });
+        return {
+          departmentId: entry.departmentId,
+          appliesTo: entry.appliesTo,
+          code: department?.code || null,
+          name: department?.name || 'Unknown',
+          description: department?.description || null,
+          isActive: department ? department.isActive : false,
+        };
+      })
+    );
+
+    // Only count "configured" if at least one active department exists
+    const configured = withDetails.some((d) => d.isActive);
 
     res.json({
       success: true,
       data: {
-        configured: !!department && department.isActive,
-        departmentId: config.departmentId || null,
-        department: department ? {
-          id: department.departmentId,
-          code: department.code,
-          name: department.name,
-          description: department.description,
-          isActive: department.isActive
-        } : null,
-        requiresApproval: config.requiresApproval !== false,
-        applyToStores: config.applyToStores || [],
-        message: department ? `Approval department: ${department.name}` : 'No department configured'
-      }
+        configured,
+        departments: withDetails,
+        requiresApproval: normalized.requiresApproval !== false,
+        message: configured
+          ? `${withDetails.filter((d) => d.isActive).length} approval department(s) configured`
+          : 'No active approval departments configured',
+      },
     });
-
   } catch (error) {
     console.error('❌ Get approval department error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1171,34 +1187,169 @@ exports.getApprovalDepartment = async (req, res) => {
 };
 
 /**
- * GET: Get all active departments for approval dropdown
+ * POST: Save the multi-department approval config.
+ * Body: { departments: [{ departmentId, appliesTo }], requiresApproval }
  */
+exports.setApprovalDepartment = async (req, res) => {
+  try {
+    const { departments = [], requiresApproval = true } = req.body;
+    const userId = req.user?.userId;
+
+    if (!Array.isArray(departments) || departments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one department is required',
+      });
+    }
+
+    // Validate each department
+    const validated = [];
+    for (const entry of departments) {
+      if (!entry.departmentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Each department entry must have a departmentId',
+        });
+      }
+
+      const department = await Department.findOne({
+        where: { departmentId: entry.departmentId, isActive: true },
+      });
+
+      if (!department) {
+        return res.status(404).json({
+          success: false,
+          error: `Department ${entry.departmentId} not found or inactive`,
+        });
+      }
+
+      validated.push({
+        departmentId: department.departmentId,
+        appliesTo: Array.isArray(entry.appliesTo) ? entry.appliesTo : [],
+      });
+    }
+
+    const [setting, created] = await SystemSetting.findOrCreate({
+      where: { settingKey: 'approval.department' },
+      defaults: {
+        settingKey: 'approval.department',
+        settingValue: {
+          departments: validated,
+          requiresApproval,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: userId,
+          version: 1,
+        },
+        category: 'approval',
+        description: 'Departments that approve item requests, per store',
+        dataType: 'json',
+        isEditable: true,
+        updatedBy: userId,
+      },
+    });
+
+    if (!created) {
+      const normalized = SystemSetting.normalizeApprovalConfig(setting.settingValue);
+      const nextVersion = (normalized.version || 1) + 1;
+
+      await setting.update({
+        settingValue: {
+          departments: validated,
+          requiresApproval,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: userId,
+          version: nextVersion,
+        },
+        updatedBy: userId,
+      });
+    }
+
+    console.log(
+      `✅ Approval config saved: ${validated.length} department(s) — ` +
+      validated.map((d) => `#${d.departmentId}→[${d.appliesTo.join(',') || 'no stores'}]`).join(' | ')
+    );
+
+    res.json({
+      success: true,
+      message: `Approval settings saved for ${validated.length} department(s)`,
+      data: {
+        departments: validated,
+        requiresApproval,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Set approval department error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * DELETE: Disable approval requirement (keeps config so it can be re-enabled).
+ */
+exports.removeApprovalDepartment = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.department' },
+    });
+
+    if (!setting) {
+      return res.status(404).json({
+        success: false,
+        error: 'Approval department setting not found',
+      });
+    }
+
+    const normalized = SystemSetting.normalizeApprovalConfig(setting.settingValue);
+
+    await setting.update({
+      settingValue: {
+        departments: normalized.departments,     // keep the config
+        requiresApproval: false,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: userId,
+        version: (normalized.version || 1) + 1,
+      },
+      updatedBy: userId,
+    });
+
+    console.log('❌ Approval requirement disabled (config preserved)');
+
+    res.json({
+      success: true,
+      message: 'Approval requirement disabled successfully',
+    });
+  } catch (error) {
+    console.error('❌ Remove approval department error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.getDepartmentsForApproval = async (req, res) => {
   try {
     const departments = await Department.findAll({
       where: { isActive: true },
       attributes: ['departmentId', 'code', 'name', 'description'],
-      order: [['name', 'ASC']]
+      order: [['name', 'ASC']],
     });
 
     const setting = await SystemSetting.findOne({
-      where: { settingKey: 'approval.department' }
+      where: { settingKey: 'approval.department' },
     });
-    const configuredDeptId = setting?.settingValue?.departmentId || null;
 
-    const formatted = departments.map(dept => ({
+    const normalized = SystemSetting.normalizeApprovalConfig(setting?.settingValue);
+    const configuredIds = new Set(normalized.departments.map((d) => d.departmentId));
+
+    const formatted = departments.map((dept) => ({
       departmentId: dept.departmentId,
       code: dept.code,
       name: dept.name,
       description: dept.description,
-      isConfigured: dept.departmentId === configuredDeptId
+      isConfigured: configuredIds.has(dept.departmentId),
     }));
 
-    res.json({
-      success: true,
-      data: formatted
-    });
-
+    res.json({ success: true, data: formatted });
   } catch (error) {
     console.error('❌ Get departments for approval error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -1213,170 +1364,29 @@ exports.getDepartmentsForApproval = async (req, res) => {
  */
 exports.getStoresForApproval = async (req, res) => {
   try {
-    console.log('📦 Fetching stores for approval...');
-
     const stores = await Store.findAll({
       where: { status: 'Active' },
-      attributes: ['storeId', 'code', 'name', 'location'], // ✅ No 'type'
-      order: [['code', 'ASC']]
+      attributes: ['storeId', 'code', 'name', 'location'],
+      order: [['code', 'ASC']],
     });
 
-    console.log(`📦 Found ${stores.length} stores`);
-
-    // Get currently selected stores from config
-    const setting = await SystemSetting.findOne({
-      where: { settingKey: 'approval.department' }
-    });
-    const selectedStores = setting?.settingValue?.applyToStores || [];
-
-    const formatted = stores.map(store => ({
+    const formatted = stores.map((store) => ({
       storeId: store.storeId,
       code: store.code,
       name: store.name,
       location: store.location,
-      isSelected: selectedStores.includes(store.code)
+      isSelected: false,   // selection is per-department now
     }));
 
     res.json({
       success: true,
       data: formatted,
-      selected: selectedStores
+      selected: [],
     });
-
   } catch (error) {
     console.error('❌ Get stores for approval error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-/**
- * POST: Set approval department
- */
-exports.setApprovalDepartment = async (req, res) => {
-  try {
-    const { 
-      departmentId, 
-      requiresApproval = true,
-      applyToStores = []
-    } = req.body;
-    const userId = req.user?.userId;
 
-    if (!departmentId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Department ID is required'
-      });
-    }
-
-    const department = await Department.findOne({
-      where: { 
-        departmentId: departmentId,
-        isActive: true 
-      }
-    });
-
-    if (!department) {
-      return res.status(404).json({
-        success: false,
-        error: 'Department not found or inactive'
-      });
-    }
-
-    const value = {
-      departmentId: department.departmentId,
-      code: department.code,
-      name: department.name,
-      requiresApproval: requiresApproval,
-      applyToStores: applyToStores || [],
-      lastUpdated: new Date().toISOString(),
-      updatedBy: userId,
-      version: 1
-    };
-
-    const [setting, created] = await SystemSetting.findOrCreate({
-      where: { settingKey: 'approval.department' },
-      defaults: {
-        settingKey: 'approval.department',
-        settingValue: value,
-        category: 'approval',
-        description: 'Department that approves item requests',
-        dataType: 'json',
-        isEditable: true,
-        updatedBy: userId
-      }
-    });
-
-    if (!created) {
-      const currentVersion = setting.settingValue?.version || 0;
-      value.version = currentVersion + 1;
-      
-      await setting.update({
-        settingValue: value,
-        updatedBy: userId
-      });
-    }
-
-    console.log(`✅ Approval department set to: ${department.name} (${department.code})`);
-    console.log(`   Apply to stores: ${applyToStores.join(', ') || 'None'}`);
-
-    res.json({
-      success: true,
-      message: `Approval department set to: ${department.name}`,
-      data: {
-        department: {
-          id: department.departmentId,
-          code: department.code,
-          name: department.name
-        },
-        requiresApproval: requiresApproval,
-        applyToStores: applyToStores,
-        setting: setting
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Set approval department error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * DELETE: Remove/disable approval department
- */
-exports.removeApprovalDepartment = async (req, res) => {
-  try {
-    const userId = req.user?.userId;
-
-    const setting = await SystemSetting.findOne({
-      where: { settingKey: 'approval.department' }
-    });
-
-    if (!setting) {
-      return res.status(404).json({
-        success: false,
-        error: 'Approval department setting not found'
-      });
-    }
-
-    const value = setting.settingValue || {};
-    value.requiresApproval = false;
-    value.applyToStores = [];
-    value.version = (value.version || 0) + 1;
-
-    await setting.update({
-      settingValue: value,
-      updatedBy: userId
-    });
-
-    console.log('❌ Approval department disabled');
-
-    res.json({
-      success: true,
-      message: 'Approval department disabled successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ Remove approval department error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};

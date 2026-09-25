@@ -9,71 +9,99 @@
     </div>
 
     <div class="rules-container">
-      <!-- Current Status -->
+      <!-- ==================== CURRENT STATUS ==================== -->
       <div class="status-card" :class="{ configured: approvalConfig.configured }">
         <div class="status-header">
           <span class="status-icon">{{ approvalConfig.configured ? '✅' : '⚠️' }}</span>
           <div>
-            <strong>{{ approvalConfig.configured ? 'Approval Department Configured' : 'No Approval Department Set' }}</strong>
+            <strong>
+              {{ approvalConfig.configured
+                ? `${approvalConfig.departments.length} Approval Department(s) Configured`
+                : 'No Approval Departments Set' }}
+            </strong>
             <p class="status-message">{{ approvalConfig.message }}</p>
           </div>
         </div>
-        <div v-if="approvalConfig.configured" class="status-details">
-          <div class="detail-item">
-            <span class="label">Department:</span>
-            <span class="value">{{ approvalConfig.department?.name }} ({{ approvalConfig.department?.code }})</span>
-          </div>
-          <div class="detail-item">
-            <span class="label">Status:</span>
-            <span class="value" :class="approvalConfig.requiresApproval ? 'active' : 'inactive'">
-              {{ approvalConfig.requiresApproval ? '✅ Enabled' : '❌ Disabled' }}
+
+        <div v-if="approvalConfig.departments?.length" class="status-details">
+          <div
+            v-for="dept in approvalConfig.departments"
+            :key="dept.departmentId"
+            class="detail-item"
+          >
+            <span class="label">
+              🏛️ {{ dept.name }}
+              <span v-if="!dept.isActive" class="inactive-badge">inactive</span>
+            </span>
+            <span class="value">
+              {{ dept.appliesTo.length }} store(s)
+              <span v-if="dept.appliesTo.length === 0" class="empty-badge">no stores</span>
             </span>
           </div>
-          <div class="detail-item" v-if="approvalConfig.applyToStores?.length">
-            <span class="label">Apply To Stores:</span>
-            <span class="value">{{ approvalConfig.applyToStores.join(', ') }}</span>
-          </div>
+        </div>
+
+        <div v-if="approvalConfig.departments?.length" class="detail-item status-enabled-row">
+          <span class="label">Status:</span>
+          <span class="value" :class="approvalConfig.requiresApproval ? 'active' : 'inactive'">
+            {{ approvalConfig.requiresApproval ? '✅ Enabled' : '❌ Disabled' }}
+          </span>
         </div>
       </div>
 
-      <!-- Settings -->
+      <!-- ==================== SETTINGS ==================== -->
       <div class="rule-section">
-        <h3>Settings</h3>
-        <p class="help-text">Configure which department approves requests for specific stores</p>
+        <h3>Approval Departments</h3>
+        <p class="help-text">
+          Select which departments approve requests, and for each department, which stores it applies to.
+          When a request is submitted for a store, <strong>every</strong> department whose list
+          includes that store will be asked to approve.
+        </p>
 
-        <div class="rule-grid side-by-side">
-          <div class="rule-item">
-            <label>Select Approval Department</label>
-            <select v-model="approvalForm.departmentId" class="form-control">
-              <option value="">-- Select Department --</option>
-              <option
-                v-for="dept in departmentsForApproval"
-                :key="dept.departmentId"
-                :value="dept.departmentId"
-              >
-                {{ dept.name }} ({{ dept.code }})
-              </option>
-            </select>
-          </div>
-          <div class="rule-item">
-            <label>Requires Approval?</label>
-            <select v-model="approvalForm.requiresApproval" class="form-control">
-              <option :value="true">Yes</option>
-              <option :value="false">No</option>
-            </select>
-          </div>
+        <!-- Requires Approval toggle -->
+        <div class="rule-item" style="margin-bottom: 20px; max-width: 300px;">
+          <label>Requires Approval?</label>
+          <select v-model="approvalForm.requiresApproval" class="form-control">
+            <option :value="true">Yes</option>
+            <option :value="false">No</option>
+          </select>
         </div>
 
-        <!-- Apply To Stores -->
-        <div class="rule-item" style="margin-top: 20px;">
-          <div class="stores-header">
-            <label>Apply To Stores</label>
-            <div class="stores-actions">
-              <span class="store-count">{{ approvalForm.applyToStores.length }} store(s) selected</span>
+        <!-- Department picker -->
+        <div class="dept-picker">
+          <label class="picker-label">Select Departments</label>
+          <div class="dept-chips" v-if="departmentsForApproval.length > 0">
+            <button
+              v-for="dept in departmentsForApproval"
+              :key="dept.departmentId"
+              type="button"
+              class="dept-chip"
+              :class="{ selected: isDepartmentSelected(dept.departmentId) }"
+              @click="toggleDepartment(dept.departmentId)"
+            >
+              {{ dept.name }} ({{ dept.code }})
+            </button>
+          </div>
+          <p v-else class="empty-hint">No active departments found</p>
+        </div>
+
+        <!-- Per-department store lists -->
+        <div
+          v-for="dept in selectedDepartments"
+          :key="dept.departmentId"
+          class="dept-card"
+        >
+          <div class="dept-card-header">
+            <div>
+              <strong>🏛️ {{ dept.name }} ({{ dept.code }})</strong>
+              <p class="dept-card-sub">
+                {{ formFor(dept.departmentId).appliesTo.length }} store(s) selected
+              </p>
+            </div>
+            <div class="dept-card-actions">
               <button
                 type="button"
                 class="btn-select-all"
-                @click="selectAllStores"
+                @click="selectAllFor(dept.departmentId)"
                 v-if="allStores.length > 0"
               >
                 Select All
@@ -81,28 +109,34 @@
               <button
                 type="button"
                 class="btn-deselect-all"
-                @click="deselectAllStores"
-                v-if="approvalForm.applyToStores.length > 0"
+                @click="deselectAllFor(dept.departmentId)"
+                v-if="formFor(dept.departmentId).appliesTo.length > 0"
               >
                 Deselect All
               </button>
+              <button
+                type="button"
+                class="btn-remove-dept"
+                @click="toggleDepartment(dept.departmentId)"
+              >
+                ✕ Remove
+              </button>
             </div>
           </div>
-          <p class="help-text">Select which stores require department approval</p>
 
           <div class="stores-list" v-if="allStores.length > 0">
             <label
               v-for="store in allStores"
-              :key="store.storeId"
+              :key="`${dept.departmentId}-${store.storeId}`"
               class="store-item"
-              :class="{ checked: approvalForm.applyToStores.includes(store.code) }"
+              :class="{ checked: formFor(dept.departmentId).appliesTo.includes(store.code) }"
             >
               <span class="checkbox-wrapper">
                 <input
                   type="checkbox"
                   :value="store.code"
-                  v-model="approvalForm.applyToStores"
-                  :id="'store-' + store.storeId"
+                  v-model="formFor(dept.departmentId).appliesTo"
+                  :id="`store-${dept.departmentId}-${store.storeId}`"
                 >
                 <span class="checkmark"></span>
               </span>
@@ -119,9 +153,16 @@
             <p class="empty-hint">Add stores to start configuring approvals</p>
           </div>
         </div>
+
+        <!-- Empty selection state -->
+        <div v-if="selectedDepartments.length === 0" class="empty-state">
+          <span class="empty-icon">🏛️</span>
+          <p>No departments selected</p>
+          <p class="empty-hint">Click a department above to configure which stores it approves</p>
+        </div>
       </div>
 
-      <!-- Action Buttons -->
+      <!-- ==================== ACTION BUTTONS ==================== -->
       <div class="action-buttons" style="margin-top: 20px;">
         <button class="btn-save" @click="saveApprovalSettings" :disabled="savingApproval">
           {{ savingApproval ? 'Saving...' : 'Save Settings' }}
@@ -131,7 +172,7 @@
           @click="removeApprovalDepartment"
           v-if="approvalConfig.configured"
         >
-          Remove Department
+          Remove All Departments
         </button>
       </div>
     </div>
@@ -139,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, inject } from 'vue'
+import { ref, reactive, onMounted, inject, computed } from 'vue'
 import settingService from '@/stores/settingService'
 
 const addToast = inject('addToast')
@@ -148,31 +189,60 @@ const savingApproval = ref(false)
 
 const approvalConfig = ref({
   configured: false,
-  department: null,
+  departments: [],
   requiresApproval: true,
-  applyToStores: [],
-  message: 'No department configured'
+  message: 'No departments configured',
 })
 
 const approvalForm = reactive({
-  departmentId: '',
   requiresApproval: true,
-  applyToStores: []
+  // Map: departmentId -> { appliesTo: [storeCodes] }
+  departmentStores: {},
 })
 
 const departmentsForApproval = ref([])
 const allStores = ref([])
 
+// ================================================================
+// COMPUTED
+// ================================================================
+const selectedDepartments = computed(() =>
+  departmentsForApproval.value.filter(
+    (d) => approvalForm.departmentStores[d.departmentId] !== undefined
+  )
+)
+
+const isDepartmentSelected = (departmentId) =>
+  approvalForm.departmentStores[departmentId] !== undefined
+
+// Ensures the entry exists before v-model tries to write to it
+const formFor = (departmentId) => {
+  if (!approvalForm.departmentStores[departmentId]) {
+    approvalForm.departmentStores[departmentId] = { appliesTo: [] }
+  }
+  return approvalForm.departmentStores[departmentId]
+}
+
+// ================================================================
+// LOADERS
+// ================================================================
 const loadApprovalDepartment = async () => {
   try {
     const response = await settingService.getApprovalDepartment()
     if (response.success) {
       const data = response.data
       approvalConfig.value = data
-      if (data.configured && data.department) {
-        approvalForm.departmentId = data.department.id
-        approvalForm.requiresApproval = data.requiresApproval !== false
-        approvalForm.applyToStores = data.applyToStores || []
+
+      // Rebuild form state from the config
+      approvalForm.requiresApproval = data.requiresApproval !== false
+      approvalForm.departmentStores = {}
+
+      if (Array.isArray(data.departments)) {
+        data.departments.forEach((d) => {
+          approvalForm.departmentStores[d.departmentId] = {
+            appliesTo: Array.isArray(d.appliesTo) ? [...d.appliesTo] : [],
+          }
+        })
       }
     }
   } catch (error) {
@@ -197,27 +267,72 @@ const loadStoresForApproval = async () => {
     const response = await settingService.getStoresForApproval()
     if (response.success) {
       allStores.value = response.data
-      if (response.selected && response.selected.length > 0) {
-        approvalForm.applyToStores = response.selected
-      }
     }
   } catch (error) {
     console.error('Error loading stores:', error)
   }
 }
 
+// ================================================================
+// DEPARTMENT TOGGLE
+// ================================================================
+const toggleDepartment = (departmentId) => {
+  if (approvalForm.departmentStores[departmentId] !== undefined) {
+    delete approvalForm.departmentStores[departmentId]
+  } else {
+    approvalForm.departmentStores[departmentId] = { appliesTo: [] }
+  }
+}
+
+// ================================================================
+// PER-DEPARTMENT STORE SELECTION
+// ================================================================
+const selectAllFor = (departmentId) => {
+  approvalForm.departmentStores[departmentId].appliesTo = allStores.value.map((s) => s.code)
+}
+
+const deselectAllFor = (departmentId) => {
+  approvalForm.departmentStores[departmentId].appliesTo = []
+}
+
+// ================================================================
+// SAVE
+// ================================================================
 const saveApprovalSettings = async () => {
-  if (!approvalForm.departmentId) {
-    addToast('Please select a department', 'error')
+  const departments = Object.entries(approvalForm.departmentStores).map(
+    ([departmentId, entry]) => ({
+      departmentId: parseInt(departmentId),
+      appliesTo: entry.appliesTo || [],
+    })
+  )
+
+  if (departments.length === 0) {
+    addToast('Please select at least one department', 'error')
     return
+  }
+
+  // Warn if some departments have no stores (they'd be inert)
+  const emptyDepts = departments.filter((d) => d.appliesTo.length === 0)
+  if (emptyDepts.length > 0) {
+    const names = emptyDepts
+      .map(
+        (d) =>
+          departmentsForApproval.value.find((x) => x.departmentId === d.departmentId)?.name ||
+          `#${d.departmentId}`
+      )
+      .join(', ')
+    const proceed = confirm(
+      `${emptyDepts.length} department(s) have no stores selected (${names}). ` +
+      `They will not be notified for any requests. Continue?`
+    )
+    if (!proceed) return
   }
 
   savingApproval.value = true
   try {
     const payload = {
-      departmentId: parseInt(approvalForm.departmentId),
+      departments,
       requiresApproval: approvalForm.requiresApproval,
-      applyToStores: approvalForm.applyToStores || []
     }
     const response = await settingService.setApprovalDepartment(payload)
     if (response.success) {
@@ -225,7 +340,7 @@ const saveApprovalSettings = async () => {
       await Promise.all([
         loadApprovalDepartment(),
         loadDepartmentsForApproval(),
-        loadStoresForApproval()
+        loadStoresForApproval(),
       ])
     } else {
       addToast(response.error || 'Failed to save', 'error')
@@ -238,18 +353,21 @@ const saveApprovalSettings = async () => {
   }
 }
 
+// ================================================================
+// REMOVE ALL
+// ================================================================
 const removeApprovalDepartment = async () => {
-  if (!confirm('Remove approval department? Requests will not require department approval.')) {
+  if (!confirm('Remove all approval departments? Requests will not require department approval.')) {
     return
   }
   try {
     const response = await settingService.removeApprovalDepartment()
     if (response.success) {
-      addToast('Approval department removed', 'success')
+      addToast('Approval departments removed', 'success')
       await Promise.all([
         loadApprovalDepartment(),
         loadDepartmentsForApproval(),
-        loadStoresForApproval()
+        loadStoresForApproval(),
       ])
     } else {
       addToast(response.error || 'Failed to remove', 'error')
@@ -260,24 +378,22 @@ const removeApprovalDepartment = async () => {
   }
 }
 
-const selectAllStores = () => {
-  approvalForm.applyToStores = allStores.value.map(s => s.code)
-}
-
-const deselectAllStores = () => {
-  approvalForm.applyToStores = []
-}
-
+// ================================================================
+// LIFECYCLE
+// ================================================================
 onMounted(async () => {
   await Promise.all([
     loadApprovalDepartment(),
     loadDepartmentsForApproval(),
-    loadStoresForApproval()
+    loadStoresForApproval(),
   ])
 })
 </script>
 
 <style scoped>
+/* ================================================================
+   BASE LAYOUT (unchanged from original)
+   ================================================================ */
 .settings-card {
   background: white;
   border-radius: 12px;
@@ -305,16 +421,10 @@ onMounted(async () => {
   background: #10b981;
   color: white;
 }
-.btn-save:hover {
-  background: #059669;
-}
-.btn-save:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.rules-container {
-  padding: 20px;
-}
+.btn-save:hover { background: #059669; }
+.btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.rules-container { padding: 20px; }
 .help-text {
   font-size: 13px;
   color: #94a3b8;
@@ -335,11 +445,6 @@ onMounted(async () => {
   font-weight: 600;
   color: #1e293b;
   margin-bottom: 16px;
-}
-.rule-grid.side-by-side {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 20px;
 }
 .rule-item {
   display: flex;
@@ -365,7 +470,9 @@ onMounted(async () => {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-/* Status Card */
+/* ================================================================
+   STATUS CARD
+   ================================================================ */
 .status-card {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -382,9 +489,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
 }
-.status-card .status-icon {
-  font-size: 24px;
-}
+.status-card .status-icon { font-size: 24px; }
 .status-card .status-message {
   font-size: 13px;
   color: #64748b;
@@ -395,12 +500,10 @@ onMounted(async () => {
   padding-top: 12px;
   border-top: 1px solid #e2e8f0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
 }
-.detail-item {
-  font-size: 13px;
-}
+.detail-item { font-size: 13px; }
 .detail-item .label {
   color: #64748b;
   font-weight: 500;
@@ -409,14 +512,125 @@ onMounted(async () => {
   color: #1e293b;
   font-weight: 500;
 }
-.detail-item .value.active {
-  color: #10b981;
-}
-.detail-item .value.inactive {
-  color: #ef4444;
+.detail-item .value.active { color: #10b981; }
+.detail-item .value.inactive { color: #ef4444; }
+.status-enabled-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
 }
 
-/* Stores List */
+.inactive-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.empty-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ================================================================
+   DEPARTMENT PICKER
+   ================================================================ */
+.dept-picker { margin-bottom: 20px; }
+.picker-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 10px;
+}
+.dept-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dept-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1.5px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dept-chip:hover {
+  border-color: #818cf8;
+  background: #f5f3ff;
+}
+.dept-chip.selected {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: white;
+}
+.dept-chip.selected:hover {
+  background: #4f46e5;
+}
+
+/* ================================================================
+   PER-DEPARTMENT CARD
+   ================================================================ */
+.dept-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  background: #fafbfc;
+}
+.dept-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.dept-card-header strong {
+  font-size: 14px;
+  color: #1e293b;
+}
+.dept-card-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+}
+.dept-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.btn-remove-dept {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-remove-dept:hover { background: #fecaca; }
+
+/* ================================================================
+   STORES LIST (reused per-department)
+   ================================================================ */
 .stores-header {
   display: flex;
   justify-content: space-between;
@@ -459,16 +673,13 @@ onMounted(async () => {
   background: #6366f1;
   color: white;
 }
-.btn-select-all:hover {
-  background: #4f46e5;
-}
+.btn-select-all:hover { background: #4f46e5; }
 .btn-deselect-all {
   background: #f1f5f9;
   color: #475569;
 }
-.btn-deselect-all:hover {
-  background: #e2e8f0;
-}
+.btn-deselect-all:hover { background: #e2e8f0; }
+
 .stores-list {
   display: flex;
   flex-direction: column;
@@ -478,7 +689,7 @@ onMounted(async () => {
   padding: 8px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  background: #fafbfc;
+  background: white;
 }
 .store-item {
   display: flex;
@@ -588,6 +799,10 @@ onMounted(async () => {
   border-radius: 4px;
   white-space: nowrap;
 }
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
 .empty-state {
   text-align: center;
   padding: 30px 20px;
@@ -606,6 +821,15 @@ onMounted(async () => {
   font-size: 12px;
   color: #cbd5e1;
 }
+.empty-hint {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin: 4px 0;
+}
+
+/* ================================================================
+   ACTION BUTTONS
+   ================================================================ */
 .action-buttons {
   display: flex;
   gap: 12px;
@@ -621,14 +845,12 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 500;
 }
-.btn-remove:hover {
-  background: #fecaca;
-}
+.btn-remove:hover { background: #fecaca; }
 
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
 @media (max-width: 768px) {
-  .rule-grid.side-by-side {
-    grid-template-columns: 1fr;
-  }
   .stores-list {
     max-height: 250px;
     padding: 6px;
@@ -642,20 +864,24 @@ onMounted(async () => {
     width: 100%;
     justify-content: flex-start;
   }
+  .dept-card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dept-card-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
   .store-item {
     padding: 10px 12px;
     gap: 10px;
   }
-  .store-info {
-    gap: 8px;
-  }
+  .store-info { gap: 8px; }
   .store-code {
     min-width: 60px;
     font-size: 11px;
   }
-  .store-name {
-    font-size: 13px;
-  }
+  .store-name { font-size: 13px; }
   .store-location {
     font-size: 11px;
     padding: 1px 8px;

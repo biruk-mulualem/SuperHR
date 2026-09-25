@@ -51,6 +51,11 @@ import ItemsListPage from '../pages/stores/ItemsListPage';
 import BalanceAuditPage from '../pages/stores/BalanceAuditPage';
 import LowStockAlertsPage from '../pages/stores/LowStockAlertsPage';
 
+// Posts pages  ← NEW
+import PostsPage from '../pages/posts/PostsPage';
+// NOTE: GroupDetailPage is imported by PostsPage directly when a group is
+// opened. We do NOT import it here because it lazily loads expo-av and other
+// native modules, and eager-loading it at app boot crashes Expo Go.
 // Auth service + hook
 import authService from '../stores/authService';
 import { useAuth } from '../hooks/useAuth';
@@ -80,9 +85,6 @@ export default function AppRouter() {
   const [settingsSubView, setSettingsSubView] = useState('main');
   const [purchaseSubView, setPurchaseSubView] = useState(null);
   const [pendingOrder, setPendingOrder] = useState(null);
-
-  // Remembers where a purchase sub-page was opened from
-  // ('managerDashboard' | null)
   const [purchaseReturnTo, setPurchaseReturnTo] = useState(null);
 
   // ---------- Derived from auth ----------
@@ -132,7 +134,7 @@ export default function AppRouter() {
         return true;
       }
 
-      // ---------- Inside a purchase sub-page (PendingApproval, etc.) ----------
+      // ---------- Inside a purchase sub-page ----------
       if (activeTab === 'purchase' && purchaseSubView !== null) {
         if (purchaseReturnTo === 'managerDashboard') {
           setPurchaseSubView('purchaseDashboard');
@@ -147,7 +149,6 @@ export default function AppRouter() {
 
       // ---------- Inside a manager drill-in ----------
       if (activeTab === 'managerDashboard' && purchaseSubView !== null) {
-        // Any store sub-view → back to store dashboard
         if (
           purchaseSubView === 'storesList' ||
           purchaseSubView === 'inventory' ||
@@ -159,7 +160,6 @@ export default function AppRouter() {
           setPurchaseSubView('storeDashboard');
           return true;
         }
-        // Any manager sub-dashboard → back to home
         setPurchaseSubView(null);
         setActiveTab('home');
         return true;
@@ -227,14 +227,12 @@ export default function AppRouter() {
   // ================================================================
   // 6) Navigation helpers
   // ================================================================
-
   const navigateToPurchasePage = (page, returnTo = null) => {
     setPurchaseReturnTo(returnTo);
     setPurchaseSubView(page);
     setActiveTab('purchase');
   };
 
-  // Manager section drill-ins
   const navigateToManagerDashboard = (sectionKey) => {
     setPurchaseSubView(sectionKey);
     setActiveTab('managerDashboard');
@@ -292,7 +290,6 @@ export default function AppRouter() {
       };
 
       switch (purchaseSubView) {
-        // ---------- Manager sub-dashboards ----------
         case 'purchaseDashboard':
           return <ManagerPurchaseDashboard {...commonProps} />;
         case 'storeDashboard':
@@ -302,12 +299,10 @@ export default function AppRouter() {
         case 'financeDashboard':
           return <ManagerFinanceDashboard {...commonProps} />;
 
-        // ---------- Stores list ----------
         case 'storesList':
           return (
             <StoresListPage
               onNavigateToDetail={(store) => {
-                // StoreDetailPage not built yet — log for now
                 console.log('Open store detail:', store);
               }}
               darkMode={darkMode}
@@ -318,12 +313,10 @@ export default function AppRouter() {
             />
           );
 
-        // ---------- Inventory (Items) ----------
         case 'inventory':
           return (
             <ItemsListPage
               onNavigateToDetail={(item) => {
-                // ItemDetailPage not built yet — log for now
                 console.log('Open item detail:', item);
               }}
               darkMode={darkMode}
@@ -334,12 +327,10 @@ export default function AppRouter() {
             />
           );
 
-        // ---------- Balance Audit ----------
         case 'balanceAudit':
           return (
             <BalanceAuditPage
               onNavigateToStoreDetail={(store) => {
-                // StoreDetailPage not built yet — log for now
                 console.log('Open store detail:', store);
               }}
               darkMode={darkMode}
@@ -350,12 +341,10 @@ export default function AppRouter() {
             />
           );
 
-        // ---------- Low Stock Alerts ----------
         case 'lowStock':
           return (
             <LowStockAlertsPage
               onNavigateToItemDetail={(item) => {
-                // ItemDetailPage not built yet — log for now
                 console.log('Open item detail:', item);
               }}
               darkMode={darkMode}
@@ -366,7 +355,6 @@ export default function AppRouter() {
             />
           );
 
-        // ---------- Store sub-views not built yet ----------
         case 'storeDetail':
         case 'transfers':
           return <ManagerStoreDashboard {...commonProps} />;
@@ -426,6 +414,18 @@ export default function AppRouter() {
             permissions={ROLE_PERMISSIONS[userRole]}
             onNavigateToPurchase={navigateToPurchasePage}
             onNavigateToManagerDashboard={navigateToManagerDashboard}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+          />
+        );
+
+      // ---------- Posts tab  ← NEW ----------
+      case 'posts':
+        return (
+          <PostsPage
+            darkMode={darkMode}
             textColor={textColor}
             subTextColor={subTextColor}
             cardBg={cardBg}

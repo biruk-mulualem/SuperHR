@@ -10,8 +10,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.birukmulualem.superapp",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to update your profile picture.",
-        "NSCameraUsageDescription": "This app needs access to your camera to take a profile photo."
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to update your profile picture and to attach media to posts.",
+        "NSCameraUsageDescription": "This app needs access to your camera to take a profile photo.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save downloaded photos and videos from posts to your library.",
+        "NSMicrophoneUsageDescription": "This app may need microphone access when you record videos to attach to posts."
       }
     },
     "android": {
@@ -22,10 +24,13 @@
       "package": "com.birukmulualem.superapp",
       "permissions": [
         "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
         "CAMERA",
+        "RECORD_AUDIO",
         "POST_NOTIFICATIONS",
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -36,8 +41,22 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "This app needs access to your photos to update your profile picture.",
+          "photosPermission": "This app needs access to your photos to update your profile picture and to attach images to posts.",
           "cameraPermission": "This app needs access to your camera to take a profile photo."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can save downloaded media.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save downloaded photos and videos to your device.",
+          "isAccessMediaLocationEnabled": true
         }
       ],
       [
@@ -47,7 +66,8 @@
           "color": "#3B82F6",
           "sounds": []
         }
-      ]
+      ],
+      "expo-video"
     ],
     "extra": {
       "eas": {

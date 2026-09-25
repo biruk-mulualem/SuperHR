@@ -1,5 +1,6 @@
 // services/settingService.ts
-import api from '@/stores/interceptor'; 
+import api from '@/stores/interceptor';
+
 export interface Role {
   roleId: number;
   name: string;
@@ -147,6 +148,43 @@ export interface AttendanceRules {
   };
 }
 
+// ================================================================
+// APPROVAL TYPES
+// ================================================================
+
+export interface ApprovalDepartmentEntry {
+  departmentId: number;
+  appliesTo: string[];
+  // enriched metadata returned by GET
+  code?: string;
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface ApprovalConfig {
+  configured: boolean;
+  departments: ApprovalDepartmentEntry[];
+  requiresApproval: boolean;
+  message: string;
+}
+
+export interface DepartmentForApproval {
+  departmentId: number;
+  code: string;
+  name: string;
+  description?: string;
+  isConfigured: boolean;
+}
+
+export interface StoreForApproval {
+  storeId: number;
+  code: string;
+  name: string;
+  location?: string;
+  isSelected: boolean;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];
@@ -167,7 +205,7 @@ export interface ApiResponse<T> {
 
 class SettingService {
   // ==================== ROLES API ====================
-  
+
   async getRoles(page: number = 1, limit: number = 20, includeInactive: boolean = false): Promise<PaginatedResponse<Role>> {
     try {
       const response = await api.get(
@@ -225,7 +263,7 @@ class SettingService {
   }
 
   // ==================== DEPARTMENTS API ====================
-  
+
   async getDepartments(page: number = 1, limit: number = 20, includeInactive: boolean = false): Promise<PaginatedResponse<Department>> {
     try {
       const response = await api.get(
@@ -310,7 +348,7 @@ class SettingService {
   }
 
   // ==================== POSITIONS API ====================
-  
+
   async getPositions(page: number = 1, limit: number = 20, includeInactive: boolean = false, departmentId?: number): Promise<PaginatedResponse<Position>> {
     try {
       let url = `/settings/positions?page=${page}&limit=${limit}&includeInactive=${includeInactive}`;
@@ -377,7 +415,7 @@ class SettingService {
   }
 
   // ==================== SYSTEM SETTINGS API ====================
-  
+
   async getAllSettings(): Promise<ApiResponse<SystemSetting[]>> {
     try {
       const response = await api.get('/settings/settings');
@@ -430,7 +468,7 @@ class SettingService {
   }
 
   // ==================== ATTENDANCE RULES API ====================
-  
+
   async getAttendanceRules(): Promise<ApiResponse<AttendanceRules>> {
     try {
       const response = await api.get('/settings/attendance/rules');
@@ -449,116 +487,80 @@ class SettingService {
     }
   }
 
+  // ==================== APPROVAL DEPARTMENT API (multi-department) ====================
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// services/settingService.ts
-
-// ==================== APPROVAL DEPARTMENT API ====================
-
-/**
- * Get approval department configuration
- */
-async getApprovalDepartment(): Promise<ApiResponse<any>> {
-  try {
-    const response = await api.get('/settings/approval/department');
-    return response.data;
-  } catch (error: any) {
-    throw error.response?.data || { success: false, error: 'Failed to fetch approval department' };
+  /**
+   * Get approval configuration (multi-department)
+   * Returns { configured, departments: [{ departmentId, appliesTo, ... }], requiresApproval, message }
+   */
+  async getApprovalDepartment(): Promise<ApiResponse<ApprovalConfig>> {
+    try {
+      const response = await api.get('/settings/approval/department');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || { success: false, error: 'Failed to fetch approval configuration' };
+    }
   }
-}
 
-/**
- * Get all departments for approval dropdown
- */
-async getDepartmentsForApproval(): Promise<ApiResponse<any>> {
-  try {
-    const response = await api.get('/settings/approval/departments');
-    return response.data;
-  } catch (error: any) {
-    throw error.response?.data || { success: false, error: 'Failed to fetch departments' };
+  /**
+   * Get all active departments for the approval picker
+   */
+  async getDepartmentsForApproval(): Promise<ApiResponse<DepartmentForApproval[]>> {
+    try {
+      const response = await api.get('/settings/approval/departments');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || { success: false, error: 'Failed to fetch approval departments' };
+    }
   }
-}
 
-/**
- * 🔥 Get all stores for "Apply To" dropdown
- */
-async getStoresForApproval(): Promise<ApiResponse<any>> {
-  try {
-    const response = await api.get('/settings/approval/stores');
-    return response.data;
-  } catch (error: any) {
-    throw error.response?.data || { success: false, error: 'Failed to fetch stores' };
+  /**
+   * Get all active stores (used as the per-department store picker)
+   */
+  async getStoresForApproval(): Promise<ApiResponse<StoreForApproval[]> & { selected?: string[] }> {
+    try {
+      const response = await api.get('/settings/approval/stores');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || { success: false, error: 'Failed to fetch approval stores' };
+    }
   }
-}
 
-/**
- * Set approval department
- */
-async setApprovalDepartment(data: {
-  departmentId: number;
-  requiresApproval?: boolean;
-  applyToStores?: string[];
-}): Promise<ApiResponse<any>> {
-  try {
-    const response = await api.post('/settings/approval/department', data);
-    return response.data;
-  } catch (error: any) {
-    throw error.response?.data || { success: false, error: 'Failed to set approval department' };
+  /**
+   * Save the multi-department approval configuration.
+   *
+   * Payload:
+   * {
+   *   departments: [{ departmentId: number, appliesTo: string[] }],
+   *   requiresApproval?: boolean
+   * }
+   */
+  async setApprovalDepartment(data: {
+    departments: Array<{ departmentId: number; appliesTo: string[] }>;
+    requiresApproval?: boolean;
+  }): Promise<ApiResponse<{ departments: ApprovalDepartmentEntry[]; requiresApproval: boolean }>> {
+    try {
+      const response = await api.post('/settings/approval/department', data);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || { success: false, error: 'Failed to save approval configuration' };
+    }
   }
-}
 
-/**
- * Remove/disable approval department
- */
-async removeApprovalDepartment(): Promise<ApiResponse<any>> {
-  try {
-    const response = await api.delete('/settings/approval/department');
-    return response.data;
-  } catch (error: any) {
-    throw error.response?.data || { success: false, error: 'Failed to remove approval department' };
+  /**
+   * Disable the approval requirement (keeps the config so it can be re-enabled).
+   */
+  async removeApprovalDepartment(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.delete('/settings/approval/department');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || { success: false, error: 'Failed to remove approval configuration' };
+    }
   }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   // ==================== UTILITY METHODS ====================
-  
+
   getDefaultAttendanceRules(): AttendanceRules {
     return {
       workSchedule: {
