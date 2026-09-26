@@ -29,7 +29,7 @@ const toDto = (row) => {
   const plain = row.toJSON ? row.toJSON() : row;
   return {
     id: plain.id,
-    purchaseType: plain.purchase_type,
+    scope: plain.scope,
     type: plain.type,
     title: plain.title,
     body: plain.body,
@@ -45,7 +45,6 @@ const toDto = (row) => {
 
 // ================================================================
 // 1. LIST — GET /api/mobile/notifications
-// 🔒 Scoped to req.user.userId.
 // ================================================================
 exports.listNotifications = async (req, res) => {
   try {
@@ -54,12 +53,12 @@ exports.listNotifications = async (req, res) => {
       return res.status(401).json({ success: false, error: 'No authenticated user' });
     }
 
-    const { purchaseType = null, unreadOnly = 'false', type = null } = req.query;
+    const { scope = null, unreadOnly = 'false', type = null } = req.query;
     const { pageNum, pageSize, offset } = parsePagination(req.query);
 
     const where = { user_id: userId };
-    if (purchaseType && ALLOWED_SCOPES.includes(purchaseType)) {
-      where.purchase_type = purchaseType;
+    if (scope && ALLOWED_SCOPES.includes(scope)) {
+      where.scope = scope;
     }
     if (unreadOnly === 'true' || unreadOnly === true) {
       where.is_read = false;
@@ -99,10 +98,8 @@ exports.getUnreadCount = async (req, res) => {
       return res.status(401).json({ success: false, error: 'No authenticated user' });
     }
 
-    const { purchaseType = null } = req.query;
-    const scopedType = purchaseType && ALLOWED_SCOPES.includes(purchaseType)
-      ? purchaseType
-      : null;
+    const { scope = null } = req.query;
+    const scopedType = scope && ALLOWED_SCOPES.includes(scope) ? scope : null;
 
     const count = await MobileNotification.unreadCountFor(userId, scopedType);
     res.json({ success: true, data: { count } });
@@ -165,10 +162,8 @@ exports.markAllAsRead = async (req, res) => {
       return res.status(401).json({ success: false, error: 'No authenticated user' });
     }
 
-    const { purchaseType = null } = req.body || {};
-    const scopedType = purchaseType && ALLOWED_SCOPES.includes(purchaseType)
-      ? purchaseType
-      : null;
+    const { scope = null } = req.body || {};
+    const scopedType = scope && ALLOWED_SCOPES.includes(scope) ? scope : null;
 
     const affected = await MobileNotification.markAllRead(userId, scopedType);
 
@@ -240,7 +235,7 @@ exports.createNotification = async (req, res) => {
 
     const {
       userIds,
-      purchaseType = 'local',
+      scope = 'local',
       type,
       title,
       body = null,
@@ -261,7 +256,7 @@ exports.createNotification = async (req, res) => {
     delete sanitizedMetadata.userId;
 
     const rows = await MobileNotification.notifyMany(userIds, {
-      purchaseType,
+      scope,
       type,
       title,
       body,

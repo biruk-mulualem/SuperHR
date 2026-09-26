@@ -117,8 +117,12 @@ const normalizePost = (p) => ({
   }),
 
   imageRecords: p.images || [],
-  commentCount: p.commentCount || 0,
-  comments: p.comments || [],
+  commentCount: Number(p.commentCount) || 0,
+  // Only attach `comments` when the endpoint actually sent them.
+  // The list endpoint returns only `commentCount`; the detail endpoint
+  // returns the full array. Keeping the key absent for list items lets
+  // renderPost fall back to commentCount correctly.
+  ...(Array.isArray(p.comments) ? { comments: p.comments } : {}),
 });
 
 const normalizeMember = (m) => ({
@@ -930,7 +934,12 @@ export default function GroupDetailPage({
 
   const renderPost = ({ item: p }) => {
     const cfg = postStatusConfig(p.status, darkMode);
-    const commentCount = p.comments ? p.comments.length : (p.commentCount || 0);
+    // Prefer the length of the loaded comments array when it actually has
+    // items; otherwise fall back to commentCount from the list endpoint.
+    const commentCount =
+      Array.isArray(p.comments) && p.comments.length > 0
+        ? p.comments.length
+        : (Number(p.commentCount) || 0);
     return (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -1920,4 +1929,3 @@ const styles = StyleSheet.create({
   avatarSmall: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   avatarSmallText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
 });
-

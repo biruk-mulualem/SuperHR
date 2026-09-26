@@ -122,6 +122,33 @@ export const mobilePostsGroupService = {
     return response.data;
   },
 
+
+    // ==========================================================================
+  // INVITATIONS — accept / decline (invitee side)
+  // ==========================================================================
+
+  /**
+   * Accept a pending invitation to join a group.
+   * POST {API_BASE}/mobile/groups/:id/accept-invite
+   */
+  acceptInvite: async (groupId) => {
+    const response = await api.post(
+      `/mobile/groups/${groupId}/accept-invite`
+    );
+    return response.data;
+  },
+
+  /**
+   * Decline a pending invitation to join a group.
+   * POST {API_BASE}/mobile/groups/:id/decline-invite
+   */
+  declineInvite: async (groupId) => {
+    const response = await api.post(
+      `/mobile/groups/${groupId}/decline-invite`
+    );
+    return response.data;
+  },
+
   // ==========================================================================
   // USER DIRECTORY — for the invite picker
   // ==========================================================================

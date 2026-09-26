@@ -1,12 +1,55 @@
-// super-app/src/components/FloatingFooter.js
-import React from 'react';
+// super-app/src/components/shared/FloatingFooter.js
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+
+import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
+import authService from '../../stores/authService';
+
+const POLL_MS = 30000;
 
 export default function FloatingFooter({ activeTab, setActiveTab, darkMode }) {
   const footerBg = darkMode ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.85)';
   const borderColor = darkMode ? '#334155' : 'rgba(226, 232, 240, 0.8)';
   const unselectedColor = darkMode ? '#94A3B8' : '#64748B';
   const selectedColor = darkMode ? '#93C5FD' : '#1E3A8A';
+
+  // ── Pending approvals badge (sum across all active groups) ──
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      const user = authService.user;
+      if (!user?.userId) {
+        if (!cancelled) setPendingApprovals(0);
+        return;
+      }
+      try {
+        const res = await mobilePostsGroupService.listGroups({
+          filter: 'active',
+          page: 1,
+          limit: 100,
+        });
+        if (!cancelled && res?.success) {
+          const total = (res.data?.items || []).reduce(
+            (sum, g) => sum + (g.pendingCount || 0),
+            0
+          );
+          setPendingApprovals(total);
+        }
+      } catch {
+        // silent — tab bar polling should never crash the app
+      }
+    };
+
+    load();
+    const id = setInterval(load, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
     <View style={styles.floatingNavContainer} pointerEvents="box-none">
@@ -18,15 +61,25 @@ export default function FloatingFooter({ activeTab, setActiveTab, darkMode }) {
           onPress={() => setActiveTab('posts')}
           activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.navIcon,
-              activeTab === 'posts' && styles.activeIcon,
-              { opacity: activeTab === 'posts' ? 1 : 0.6 },
-            ]}
-          >
-            💬
-          </Text>
+          <View style={styles.navIconWrap}>
+            <Text
+              style={[
+                styles.navIcon,
+                activeTab === 'posts' && styles.activeIcon,
+                { opacity: activeTab === 'posts' ? 1 : 0.6 },
+              ]}
+            >
+              💬
+            </Text>
+
+            {pendingApprovals > 0 && (
+              <View style={[styles.tabBadge, { borderColor: footerBg }]}>
+                <Text style={styles.tabBadgeText}>
+                  {pendingApprovals > 99 ? '99+' : pendingApprovals}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text
             style={[
               styles.navText,
@@ -129,6 +182,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  navIconWrap: {
+    position: 'relative',
+  },
   navIcon: {
     fontSize: 20,
   },
@@ -138,5 +194,26 @@ const styles = StyleSheet.create({
   navText: {
     fontSize: 11,
     marginTop: 2,
+  },
+
+  // ── Golden pending-approvals badge on the Posts icon ──
+  tabBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -12,
+    backgroundColor: '#F5C842',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+  },
+  tabBadgeText: {
+    color: '#7A5A00',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.2,
   },
 });

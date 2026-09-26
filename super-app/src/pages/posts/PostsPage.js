@@ -19,15 +19,12 @@ import {
 import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
 import authService from '../../stores/authService';
 
-// NOTE: GroupDetailPage is loaded lazily inside the component (see `if (openedGroup)` below).
-
 // ================================================================
 // Filters
 // ================================================================
 const FILTERS = [
   { key: 'active',   label: 'Active'   },
   { key: 'inactive', label: 'Inactive' },
-  { key: 'unread',   label: 'Unread'   },
 ];
 
 const PAGE_SIZE = 10;
@@ -59,14 +56,12 @@ export default function PostsPage({
   const [managingGroup, setManagingGroup] = useState(null);
 
   // ---- Security confirm modal state ----
-  // { group, action: 'deactivate' | 'delete' }
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmText, setConfirmText] = useState('');
   const [confirmError, setConfirmError] = useState(null);
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   // ---- Leave group modal state ----
-  // { group, isOwner: boolean }
   const [leaveGroupModal, setLeaveGroupModal] = useState(null);
   const [transferTo, setTransferTo] = useState(null);
   const [leaveError, setLeaveError] = useState(null);
@@ -80,14 +75,10 @@ export default function PostsPage({
   const [currentUser, setCurrentUser] = useState(authService.user);
 
   useEffect(() => {
-    // Sync immediately (in case user is already in memory)
     setCurrentUser(authService.user);
-
-    // Subscribe to future changes (login / logout / profile refresh)
     const unsubscribe = authService.subscribe((svc) => {
       setCurrentUser(svc.user);
     });
-
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
       else authService._listeners?.delete?.(unsubscribe);
@@ -110,11 +101,8 @@ export default function PostsPage({
     else setLoading(true);
 
     try {
-      // Backend supports 'active' | 'inactive'.
-      // The 'unread' filter is client-side, so fetch 'active' for it.
-      const serverFilter = filter === 'unread' ? 'active' : filter;
       const res = await mobilePostsGroupService.listGroups({
-        filter: serverFilter,
+        filter,
         search: search.trim(),
         page: 1,
         limit: 100,
@@ -133,19 +121,16 @@ export default function PostsPage({
     }
   }, [filter, search]);
 
-  // Initial + whenever filter/search change
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
 
-  // Reset local pagination when filter/search change
   useEffect(() => {
     setPage(1);
     loadingMoreRef.current = false;
     setLoadingMore(false);
   }, [search, filter]);
 
-  // Back handler for the opened group
   useEffect(() => {
     if (!openedGroup) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -162,13 +147,7 @@ export default function PostsPage({
     () => ({
       active:   groups.filter((g) => g.status === 'active').length,
       inactive: groups.filter((g) => g.status === 'inactive').length,
-      unread:   groups.filter((g) => (g.unreadCount || 0) > 0).length,
     }),
-    [groups]
-  );
-
-  const totalUnread = useMemo(
-    () => groups.reduce((sum, g) => sum + (g.unreadCount || 0), 0),
     [groups]
   );
 
@@ -176,22 +155,16 @@ export default function PostsPage({
     const q = search.trim().toLowerCase();
     return groups
       .filter((g) => {
-        const matchesFilter =
-          filter === 'unread'
-            ? (g.unreadCount || 0) > 0
-            : g.status === filter;
+        const matchesFilter = g.status === filter;
         const matchesSearch =
           !q ||
           (g.name || '').toLowerCase().includes(q) ||
           (g.description || '').toLowerCase().includes(q);
         return matchesFilter && matchesSearch;
       })
-      .sort((a, b) => {
-        const ua = a.unreadCount || 0;
-        const ub = b.unreadCount || 0;
-        if (ua !== ub) return ub - ua;
-        return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
-      });
+      .sort((a, b) =>
+        new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+      );
   }, [groups, search, filter]);
 
   const visibleGroups = useMemo(
@@ -410,9 +383,8 @@ export default function PostsPage({
   // ================================================================
   const renderGroup = ({ item: g }) => {
     const isInactive = g.status === 'inactive';
-    const unread = g.unreadCount || 0;
-    const hasUnread = unread > 0;
     const memberCount = g.memberCount || (g.members ? g.members.length : 0);
+    const pendingCount = g.pendingCount || 0;
 
     return (
       <TouchableOpacity
@@ -423,9 +395,7 @@ export default function PostsPage({
           styles.groupCard,
           {
             backgroundColor: cardBg,
-            borderColor: hasUnread
-              ? darkMode ? '#B45309' : '#FCD34D'
-              : borderColor,
+            borderColor: darkMode ? '#D4A64A' : '#F5D77E',
           },
         ]}
       >
@@ -435,8 +405,6 @@ export default function PostsPage({
             {
               backgroundColor: isInactive
                 ? '#94A3B8'
-                : hasUnread
-                ? '#F59E0B'
                 : (g.accent || '#8B5CF6'),
             },
           ]}
@@ -450,6 +418,7 @@ export default function PostsPage({
             >
               {g.name}
             </Text>
+
             {isInactive && (
               <View
                 style={[
@@ -467,15 +436,12 @@ export default function PostsPage({
                 </Text>
               </View>
             )}
-            {hasUnread && (
-              <View
-                style={[
-                  styles.unreadBadge,
-                  { backgroundColor: '#F59E0B', borderColor: cardBg },
-                ]}
-              >
-                <Text style={styles.unreadBadgeText}>
-                  {unread > 99 ? '99+' : unread}
+
+            {/* Golden circular pending count badge */}
+            {pendingCount > 0 && (
+              <View style={[styles.pendingCircle, { borderColor: cardBg }]}>
+                <Text style={styles.pendingCircleText}>
+                  {pendingCount > 99 ? '99+' : pendingCount}
                 </Text>
               </View>
             )}
@@ -492,18 +458,15 @@ export default function PostsPage({
             <Text style={[styles.groupMeta, { color: subTextColor }]}>
               {memberCount} member{memberCount === 1 ? '' : 's'}
             </Text>
-            {hasUnread && !isInactive && (
-              <Text
-                style={[
-                  styles.groupMeta,
-                  styles.unreadMeta,
-                  { color: darkMode ? '#FCD34D' : '#92400E' },
-                ]}
-              >
-                · {unread} unread post{unread === 1 ? '' : 's'}
-              </Text>
-            )}
           </View>
+
+          {/* Pending approval hint under member count */}
+          {pendingCount > 0 && (
+            <Text style={[styles.pendingHint, { color: '#B45309' }]}>
+              You have {pendingCount} pending approval
+              {pendingCount === 1 ? '' : 's'}
+            </Text>
+          )}
         </View>
 
         <View style={styles.actionBtns}>
@@ -607,7 +570,6 @@ export default function PostsPage({
           <Text style={[styles.headerTitle, { color: textColor }]}>Posts</Text>
           <Text style={[styles.headerSub, { color: subTextColor }]}>
             {counts.active} active · {counts.inactive} inactive
-            {totalUnread > 0 ? ` · ${totalUnread} unread` : ''}
           </Text>
         </View>
         <TouchableOpacity
@@ -638,11 +600,10 @@ export default function PostsPage({
         )}
       </View>
 
-      {/* 3 filters */}
+      {/* 2 filters */}
       <View style={styles.filterRow}>
         {FILTERS.map((f) => {
           const active = filter === f.key;
-          const isUnread = f.key === 'unread';
           return (
             <TouchableOpacity
               key={f.key}
@@ -652,11 +613,9 @@ export default function PostsPage({
                 styles.filterPill,
                 {
                   backgroundColor: active
-                    ? isUnread ? '#F59E0B' : '#8B5CF6'
+                    ? '#8B5CF6'
                     : darkMode ? '#1E293B' : '#F1F5F9',
-                  borderColor: active
-                    ? isUnread ? '#F59E0B' : '#8B5CF6'
-                    : borderColor,
+                  borderColor: active ? '#8B5CF6' : borderColor,
                 },
               ]}
             >
@@ -724,20 +683,14 @@ export default function PostsPage({
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Text style={styles.emptyEmoji}>
-              {search ? '🔍' : filter === 'unread' ? '✅' : '📭'}
+              {search ? '🔍' : '📭'}
             </Text>
             <Text style={[styles.emptyTitle, { color: textColor }]}>
-              {search
-                ? 'No matches'
-                : filter === 'unread'
-                ? 'All caught up'
-                : 'No groups'}
+              {search ? 'No matches' : 'No groups'}
             </Text>
             <Text style={[styles.emptyBody, { color: subTextColor }]}>
               {search
                 ? `No groups match "${search}".`
-                : filter === 'unread'
-                ? 'No unread posts.'
                 : filter === 'inactive'
                 ? 'No inactive groups.'
                 : 'No active groups.'}
@@ -871,7 +824,6 @@ export default function PostsPage({
           {managingGroup && (() => {
             const g = managingGroup;
             const isInactive = g.status === 'inactive';
-            const unread = g.unreadCount || 0;
             const owner = isOwner(g);
             const memberCount =
               g.memberCount || (g.members ? g.members.length : 0);
@@ -954,16 +906,6 @@ export default function PostsPage({
                       {g.postCount ?? 0}
                     </Text>
                   </View>
-                  {unread > 0 && (
-                    <View style={styles.manageInfoRow}>
-                      <Text style={[styles.manageInfoLabel, { color: '#F59E0B' }]}>
-                        Unread
-                      </Text>
-                      <Text style={[styles.manageInfoValue, { color: '#F59E0B' }]}>
-                        {unread}
-                      </Text>
-                    </View>
-                  )}
                   <View style={styles.manageInfoRow}>
                     <Text style={[styles.manageInfoLabel, { color: subTextColor }]}>
                       Last activity
@@ -1272,7 +1214,6 @@ export default function PostsPage({
           {leaveGroupModal && (() => {
             const { group, isOwner: owner } = leaveGroupModal;
 
-            // Get members from the group object if present
             const members = (group.members || []).filter(
               (m) => Number(m.userId) !== Number(currentUserId)
             );
@@ -1427,7 +1368,7 @@ export default function PostsPage({
 }
 
 // ================================================================
-// STYLES (unchanged)
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1523,7 +1464,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 12,
     overflow: 'hidden',
   },
@@ -1535,7 +1476,8 @@ const styles = StyleSheet.create({
     width: 4,
   },
 
-  unreadBadge: {
+  // ── Golden circular pending count badge ──
+  pendingCircle: {
     minWidth: 22,
     height: 22,
     borderRadius: 11,
@@ -1543,12 +1485,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
+    backgroundColor: '#F5C842',
   },
-  unreadBadgeText: {
-    color: '#FFFFFF',
+  pendingCircleText: {
+    color: '#7A5A00',
     fontSize: 10.5,
     fontWeight: '900',
     letterSpacing: 0.2,
+  },
+
+  // ── "You have N pending approvals" hint ──
+  pendingHint: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 5,
+    letterSpacing: 0.1,
   },
 
   nameRow: {
@@ -1572,7 +1523,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   groupMeta: { fontSize: 11, fontWeight: '500' },
-  unreadMeta: { fontWeight: '800', letterSpacing: 0.2, marginLeft: 6 },
 
   actionBtns: {
     flexDirection: 'row',

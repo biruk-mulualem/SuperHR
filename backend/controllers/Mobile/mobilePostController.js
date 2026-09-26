@@ -12,6 +12,7 @@ const {
   PostGroupPostRead,
   PostGroupAuditLog,
   User,
+  MobileNotification,        // ← NEW
 } = db;
 
 // ================================================================
@@ -81,6 +82,39 @@ const postIncludes = () => [
 ];
 
 // ================================================================
+// NOTIFICATION HELPERS                                    ← NEW
+// ================================================================
+const safeNotify = async (fn) => {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error('❌ post notification failed:', e.message);
+  }
+};
+
+/**
+ * Return the userIds of all ACTIVE members of a group,
+ * excluding one or more users (usually the actor).
+ */
+const getGroupMemberIdsExcept = async (groupId, excludeIds = []) => {
+  const excludeSet = new Set(
+    (Array.isArray(excludeIds) ? excludeIds : [excludeIds])
+      .filter((id) => id != null)
+      .map((id) => String(id))
+  );
+
+  const rows = await PostGroupMember.findAll({
+    where: { groupId, status: 'active' },
+    attributes: ['userId'],
+    raw: true,
+  });
+
+  return rows
+    .map((r) => r.userId)
+    .filter((id) => !excludeSet.has(String(id)));
+};
+
+// ================================================================
 // 1. LIST POSTS IN GROUP
 //    GET /api/mobile/posts/groups/:groupId/posts
 // ================================================================
@@ -120,25 +154,32 @@ exports.listGroupPosts = async (req, res) => {
 
     const postIds = rows.map((r) => r.id);
 
+    // ── Which posts has this user already read? ──
     const readRows = postIds.length
       ? await PostGroupPostRead.findAll({
           where: { userId, postId: { [Op.in]: postIds } },
           attributes: ['postId'],
+          raw: true,
         })
       : [];
     const readSet = new Set(readRows.map((r) => String(r.postId)));
 
+    // ── Comment count per post ──
+    // NOTE: with `group` + `raw`, Sequelize returns the group column
+    // with its DB name (`post_id`), NOT the model alias (`postId`).
+    // We explicitly alias it so `c.postId` is always defined.
     const commentCounts = postIds.length
       ? await PostGroupPostComment.findAll({
-          where: { postId: { [Op.in]: postIds } },
           attributes: [
-            'postId',
+            ['post_id', 'postId'],
             [db.sequelize.fn('COUNT', db.sequelize.col('id')), 'cnt'],
           ],
-          group: ['postId'],
+          where: { postId: { [Op.in]: postIds } },
+          group: ['post_id'],
           raw: true,
         })
       : [];
+
     const countMap = new Map(
       commentCounts.map((c) => [String(c.postId), Number(c.cnt)])
     );
@@ -197,6 +238,7 @@ exports.getPost = async (req, res) => {
 // ================================================================
 // 3. CREATE POST
 //    POST /api/mobile/posts/groups/:groupId/posts
+//    ← UPDATED: notifies all active members except the author
 // ================================================================
 exports.createPost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -256,6 +298,27 @@ exports.createPost = async (req, res) => {
 
     await t.commit();
 
+    // ── Notify all active members (except the author) ──   ← NEW
+    await safeNotify(async () => {
+      const recipientIds = await getGroupMemberIdsExcept(groupId, [userId]);
+      if (recipientIds.length === 0) return;
+
+      const group = await PostGroup.findByPk(groupId, {
+        attributes: ['id', 'name'],
+      });
+      const author = await User.findByPk(userId, { attributes: USER_ATTRS });
+      const authorName = author?.fullName || author?.username || 'Someone';
+
+      await MobileNotification.posts.postSubmitted({
+        recipientIds,
+        postId: post.id,
+        groupId: Number(groupId),
+        groupName: group?.name || 'a group',
+        authorName,
+        title: post.title,
+      });
+    });
+
     const full = await PostGroupPost.findByPk(post.id, {
       include: postIncludes(),
     });
@@ -312,6 +375,7 @@ exports.deletePost = async (req, res) => {
 // ================================================================
 // 5. APPROVE POST
 //    POST /api/mobile/posts/:id/approve  { note }
+//    ← UPDATED: notifies the post's author
 // ================================================================
 exports.approvePost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -358,6 +422,25 @@ exports.approvePost = async (req, res) => {
     });
 
     await t.commit();
+
+    // ── Notify the post's author (unless the manager is the author) ──   ← NEW
+    await safeNotify(async () => {
+      if (Number(p.authorId) === Number(userId)) return;
+
+      const group = await PostGroup.findByPk(p.groupId, {
+        attributes: ['id', 'name'],
+      });
+
+      await MobileNotification.posts.postApproved({
+        recipientId: p.authorId,
+        postId: p.id,
+        groupId: Number(p.groupId),
+        groupName: group?.name || 'a group',
+        title: p.title,
+        note: String(note).trim(),
+      });
+    });
+
     const full = await PostGroupPost.findByPk(p.id, {
       include: postIncludes(),
     });
@@ -372,6 +455,7 @@ exports.approvePost = async (req, res) => {
 // ================================================================
 // 6. DECLINE POST
 //    POST /api/mobile/posts/:id/decline  { reason }
+//    ← UPDATED: notifies the post's author
 // ================================================================
 exports.declinePost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -418,6 +502,25 @@ exports.declinePost = async (req, res) => {
     });
 
     await t.commit();
+
+    // ── Notify the post's author (unless the manager is the author) ──   ← NEW
+    await safeNotify(async () => {
+      if (Number(p.authorId) === Number(userId)) return;
+
+      const group = await PostGroup.findByPk(p.groupId, {
+        attributes: ['id', 'name'],
+      });
+
+      await MobileNotification.posts.postDeclined({
+        recipientId: p.authorId,
+        postId: p.id,
+        groupId: Number(p.groupId),
+        groupName: group?.name || 'a group',
+        title: p.title,
+        reason: String(reason).trim(),
+      });
+    });
+
     const full = await PostGroupPost.findByPk(p.id, {
       include: postIncludes(),
     });
@@ -472,6 +575,7 @@ exports.listComments = async (req, res) => {
 // ================================================================
 // 9. ADD COMMENT
 //    POST /api/mobile/posts/:id/comments  { body }
+//    ← UPDATED: notifies all active members except the commenter
 // ================================================================
 exports.addComment = async (req, res) => {
   try {
@@ -509,6 +613,38 @@ exports.addComment = async (req, res) => {
       groupId: post.groupId,
     });
 
+    // ── Notify all active members (except the commenter) ──   ← NEW
+    await safeNotify(async () => {
+      const recipientIds = await getGroupMemberIdsExcept(post.groupId, [userId]);
+      if (recipientIds.length === 0) return;
+
+      const group = await PostGroup.findByPk(post.groupId, {
+        attributes: ['id', 'name'],
+      });
+      const me = await User.findByPk(userId, { attributes: USER_ATTRS });
+      const commenterName = me?.fullName || me?.username || 'Someone';
+      const trimmed = String(body).trim();
+      const snippet =
+        trimmed.length > 80 ? trimmed.slice(0, 77).trimEnd() + '…' : trimmed;
+
+      await MobileNotification.notifyMany(recipientIds, {
+        purchaseType: 'posts',
+        type: 'posts.post_comment',
+        title: '💬 New comment',
+        body: `${commenterName} commented on "${post.title}" in ${
+          group?.name || 'a group'
+        }: "${snippet}"`,
+        referenceId: post.id,
+        referenceType: 'post_group_post',
+        metadata: {
+          postId: post.id,
+          groupId: Number(post.groupId),
+          groupName: group?.name,
+          commenterName,
+        },
+      });
+    });
+
     const fresh = await PostGroupPostComment.findByPk(comment.id, {
       include: [{ model: User, as: 'author', attributes: USER_ATTRS }],
     });
@@ -519,11 +655,6 @@ exports.addComment = async (req, res) => {
   }
 };
 
-// ================================================================
-// 10. ANNOTATE POST IMAGE
-//     POST /api/mobile/posts/:id/images/:imageId/annotate
-//     multipart/form-data: image (single file)
-// ================================================================
 // ================================================================
 // 10. ANNOTATE POST IMAGE
 //     POST /api/mobile/posts/:id/images/:imageId/annotate
@@ -568,17 +699,11 @@ exports.annotatePostImage = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Post not found' });
     }
 
-    // Remember the old file so we can delete it from disk after commit.
     const oldUrl = original.url;
 
-    // ─── REPLACE IN PLACE ────────────────────────────────────────
-    // Keep the same row id, keep the same orderIndex, keep the same
-    // slot in the gallery. Only swap the file behind it.
     await original.update(
       {
         url: `/uploads/posts/${file.filename}`,
-        // Clear any previous annotation link — this row is now the
-        // canonical (already-annotated) image.
         annotatedFromId: null,
       },
       { transaction: t }
@@ -595,9 +720,6 @@ exports.annotatePostImage = async (req, res) => {
 
     await t.commit();
 
-    // ─── CLEAN UP THE OLD FILE ───────────────────────────────────
-    // Best-effort — if it fails, it's just a stray file on disk,
-    // not a data integrity problem.
     if (oldUrl && oldUrl.startsWith('/uploads/posts/')) {
       const path = require('path');
       const fs = require('fs');

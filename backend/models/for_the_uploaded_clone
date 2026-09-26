@@ -157,3 +157,27 @@ ALTER INDEX IF EXISTS idx_purchase_notifications_user_type
 
 SELECT COUNT(*) FROM mobile_notifications;
 COMMIT;
+
+
+
+
+
+-- Drop the old constraint first
+ALTER TABLE mobile_notifications
+  DROP CONSTRAINT IF EXISTS purchase_notifications_purchase_type_check;
+
+-- Rename the column
+ALTER TABLE mobile_notifications
+  RENAME COLUMN purchase_type TO scope;
+
+-- Add a fresh constraint with the new name
+ALTER TABLE mobile_notifications
+  ADD CONSTRAINT mobile_notifications_scope_check
+  CHECK (scope IN ('local', 'foreign', 'posts'));
+
+-- Rename the indexes so the names match the new column
+ALTER INDEX IF EXISTS idx_mobile_notifications_purchase_type
+  RENAME TO idx_mobile_notifications_scope;
+
+ALTER INDEX IF EXISTS idx_mobile_notifications_user_type
+  RENAME TO idx_mobile_notifications_user_scope;

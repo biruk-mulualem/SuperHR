@@ -7,6 +7,7 @@ export const mobileNotificationService = {
   // ================================================================
   getIcon(type) {
     const ICON_MAP = {
+      // ── Purchase ──
       dispatch:          '📦',
       dispatch_boss:     '📦',
       approval_request:  '⏳',
@@ -18,6 +19,21 @@ export const mobileNotificationService = {
       purchase_reminder: '🔔',
       order:             '🛒',
       payment:           '💳',
+
+      // ── Posts / Groups (namespaced to match MobileNotification.posts.*) ──
+      'posts.member_invited':        '📨',
+      'posts.member_accepted':       '✅',
+      'posts.member_declined':       '🚫',
+      'posts.member_removed':        '🚪',
+      'posts.post_submitted':        '📝',
+      'posts.post_approved':         '✅',
+      'posts.post_declined':         '⛔',
+      'posts.post_comment':          '💬',
+      'posts.image_signed':          '✍️',
+      'posts.group_deactivated':     '⏸',
+      'posts.ownership_transferred': '👑',
+
+      // ── Fallbacks ──
       alert:             '⚠️',
       approval:          '⏳',
       system:            '⚙️',

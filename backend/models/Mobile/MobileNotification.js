@@ -26,22 +26,25 @@ module.exports = (sequelize, DataTypes) => {
       },
 
       // ==================== SCOPE ====================
-      // 'local'   — Local Purchase workflow
-      // 'foreign' — Foreign / Import Purchase workflow
-      // 'posts'   — Posts / Groups workflow
-      purchase_type: {
+      // Which feature module this notification belongs to.
+      //   'local'   — Local Purchase workflow
+      //   'foreign' — Foreign / Import Purchase workflow
+      //   'posts'   — Posts / Groups workflow
+      //   (future: 'hr', 'finance', 'store', etc.)
+      scope: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'local',
         validate: {
           isIn: {
             args: [['local', 'foreign', 'posts']],
-            msg: "purchase_type must be 'local', 'foreign', or 'posts'",
+            msg: "scope must be 'local', 'foreign', or 'posts'",
           },
         },
       },
 
       // ==================== EVENT TYPE ====================
+      // Namespaced by scope where applicable.
       // Purchase:
       //   'dispatch', 'approval_request', 'price_submitted', 'winner_selected',
       //   'request_approved', 'request_declined', 'request_deleted',
@@ -49,9 +52,9 @@ module.exports = (sequelize, DataTypes) => {
       // Foreign (future):
       //   'shipment_update', 'lc_opened', 'customs_cleared', 'delivery_scheduled'
       // Posts:
-      //   'posts.member_invited', 'posts.member_accepted', 'posts.member_removed',
-      //   'posts.post_submitted', 'posts.post_approved', 'posts.post_declined',
-      //   'posts.post_comment', 'posts.image_signed',
+      //   'posts.member_invited', 'posts.member_accepted', 'posts.member_declined',
+      //   'posts.member_removed', 'posts.post_submitted', 'posts.post_approved',
+      //   'posts.post_declined', 'posts.post_comment', 'posts.image_signed',
       //   'posts.group_deactivated', 'posts.ownership_transferred'
       type: {
         type: DataTypes.STRING(50),
@@ -139,12 +142,12 @@ module.exports = (sequelize, DataTypes) => {
           fields: ['type'],
         },
         {
-          name: 'idx_mobile_notifications_purchase_type',
-          fields: ['purchase_type'],
+          name: 'idx_mobile_notifications_scope',
+          fields: ['scope'],
         },
         {
-          name: 'idx_mobile_notifications_user_type',
-          fields: ['user_id', 'purchase_type', 'is_read'],
+          name: 'idx_mobile_notifications_user_scope',
+          fields: ['user_id', 'scope', 'is_read'],
         },
       ],
 
@@ -192,7 +195,7 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   // ==================== ENUMS ====================
-  MobileNotification.PURCHASE_TYPES = {
+  MobileNotification.SCOPES = {
     LOCAL: 'local',
     FOREIGN: 'foreign',
     POSTS: 'posts',
@@ -202,7 +205,7 @@ module.exports = (sequelize, DataTypes) => {
 
   MobileNotification.notify = async function ({
     userId,
-    purchaseType = 'local',
+    scope = 'local',
     type,
     title,
     body = null,
@@ -212,7 +215,7 @@ module.exports = (sequelize, DataTypes) => {
   }) {
     return MobileNotification.create({
       user_id: userId,
-      purchase_type: purchaseType,
+      scope,
       type,
       title,
       body,
@@ -225,7 +228,7 @@ module.exports = (sequelize, DataTypes) => {
   MobileNotification.notifyMany = async function (
     userIds,
     {
-      purchaseType = 'local',
+      scope = 'local',
       type,
       title,
       body = null,
@@ -239,7 +242,7 @@ module.exports = (sequelize, DataTypes) => {
 
     const rows = uniqueIds.map((uid) => ({
       user_id: uid,
-      purchase_type: purchaseType,
+      scope,
       type,
       title,
       body,
@@ -266,9 +269,9 @@ module.exports = (sequelize, DataTypes) => {
     return created;
   };
 
-  MobileNotification.unreadCountFor = async function (userId, purchaseType = null) {
+  MobileNotification.unreadCountFor = async function (userId, scope = null) {
     const where = { user_id: userId, is_read: false };
-    if (purchaseType) where.purchase_type = purchaseType;
+    if (scope) where.scope = scope;
     return MobileNotification.count({ where });
   };
 
@@ -285,9 +288,9 @@ module.exports = (sequelize, DataTypes) => {
     return row;
   };
 
-  MobileNotification.markAllRead = async function (userId, purchaseType = null) {
+  MobileNotification.markAllRead = async function (userId, scope = null) {
     const where = { user_id: userId, is_read: false };
-    if (purchaseType) where.purchase_type = purchaseType;
+    if (scope) where.scope = scope;
 
     const [affected] = await MobileNotification.update(
       { is_read: true, read_at: new Date() },
@@ -299,7 +302,7 @@ module.exports = (sequelize, DataTypes) => {
   MobileNotification.listForUser = async function (
     userId,
     {
-      purchaseType = null,
+      scope = null,
       unreadOnly = false,
       limit = 50,
       offset = 0,
@@ -307,7 +310,7 @@ module.exports = (sequelize, DataTypes) => {
     } = {}
   ) {
     const where = { user_id: userId };
-    if (purchaseType) where.purchase_type = purchaseType;
+    if (scope) where.scope = scope;
     if (unreadOnly) where.is_read = false;
 
     const { rows, count } = await MobileNotification.findAndCountAll({
@@ -327,7 +330,7 @@ module.exports = (sequelize, DataTypes) => {
     memberInvited: ({ recipientId, groupId, groupName, inviterName }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.member_invited',
         title: '📨 Group invitation',
         body: `${inviterName} invited you to join "${groupName}".`,
@@ -339,7 +342,7 @@ module.exports = (sequelize, DataTypes) => {
     memberAccepted: ({ recipientId, groupId, groupName, memberName }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.member_accepted',
         title: '✅ Member joined',
         body: `${memberName} accepted your invitation to "${groupName}".`,
@@ -351,7 +354,7 @@ module.exports = (sequelize, DataTypes) => {
     memberRemoved: ({ recipientId, groupId, groupName }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.member_removed',
         title: '🚪 Removed from group',
         body: `You were removed from "${groupName}".`,
@@ -369,7 +372,7 @@ module.exports = (sequelize, DataTypes) => {
       title,
     }) =>
       MobileNotification.notifyMany(recipientIds, {
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.post_submitted',
         title: '📝 New post awaiting review',
         body: `${authorName} submitted "${title}" in ${groupName}.`,
@@ -381,7 +384,7 @@ module.exports = (sequelize, DataTypes) => {
     postApproved: ({ recipientId, postId, groupId, groupName, title, note }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.post_approved',
         title: '✅ Post approved',
         body: `Your post "${title}" in ${groupName} was approved.${
@@ -395,7 +398,7 @@ module.exports = (sequelize, DataTypes) => {
     postDeclined: ({ recipientId, postId, groupId, groupName, title, reason }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.post_declined',
         title: '⛔ Post declined',
         body: `Your post "${title}" in ${groupName} was declined.${
@@ -416,7 +419,7 @@ module.exports = (sequelize, DataTypes) => {
     }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.post_comment',
         title: '💬 New comment',
         body: `${commenterName} commented on a post in ${groupName}: "${snippet}"`,
@@ -434,7 +437,7 @@ module.exports = (sequelize, DataTypes) => {
     }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.image_signed',
         title: '✍️ Image signed',
         body: `${signerName} signed an image on your post in ${groupName}.`,
@@ -445,7 +448,7 @@ module.exports = (sequelize, DataTypes) => {
 
     groupDeactivated: ({ recipientIds, groupId, groupName }) =>
       MobileNotification.notifyMany(recipientIds, {
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.group_deactivated',
         title: '⏸ Group deactivated',
         body: `"${groupName}" was deactivated. Only the owner can reactivate it.`,
@@ -462,7 +465,7 @@ module.exports = (sequelize, DataTypes) => {
     }) =>
       MobileNotification.notify({
         userId: recipientId,
-        purchaseType: 'posts',
+        scope: 'posts',
         type: 'posts.ownership_transferred',
         title: '👑 You are now the owner',
         body: `${previousOwner} handed ownership of "${groupName}" to you.`,

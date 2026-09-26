@@ -168,7 +168,8 @@ export default function Header({
     if (!userId) return;
 
     try {
-      const res = await mobileNotificationService.unreadCount('local');
+      // No scope → counts across local + foreign + posts
+      const res = await mobileNotificationService.unreadCount();
       if (res?.success) {
         setUnreadCount(Number(res?.data?.count ?? 0));
       }

@@ -6,9 +6,10 @@ const db = require('../../models');
 const {
   PostGroup,
   PostGroupMember,
+  PostGroupPost,
   PostGroupAuditLog,
   User,
-  MobileNotification,        // ← NEW
+  MobileNotification,
 } = db;
 
 // ================================================================
@@ -64,21 +65,58 @@ const groupDto = (g, members) => ({
 });
 
 // ================================================================
-// NOTIFICATION HELPER — best-effort, never throws
+// NOTIFICATION HELPERS — LOUD for debugging
 // ================================================================
 const safeNotify = async (fn) => {
   try {
-    await fn();
+    const result = await fn();
+    console.log('✅ safeNotify succeeded, id:', result?.id ?? '(none)');
+    return result;
   } catch (e) {
-    console.error('❌ group notification failed:', e.message);
+    console.error('❌ group notification FAILED');
+    console.error('   name:    ', e.name);
+    console.error('   message: ', e.message);
+    if (e.errors?.length) {
+      console.error('   validation errors:');
+      e.errors.forEach((err) =>
+        console.error(
+          '     -',
+          err.path,
+          '|',
+          err.message,
+          '| value:',
+          err.value
+        )
+      );
+    }
+    console.error('   stack:');
+    console.error(e.stack);
+    throw e;
   }
+};
+
+// Returns active member userIds, excluding the actor(s).
+const getGroupMemberIdsExcept = async (groupId, excludeIds = []) => {
+  const excludeSet = new Set(
+    (Array.isArray(excludeIds) ? excludeIds : [excludeIds])
+      .filter((id) => id != null)
+      .map((id) => String(id))
+  );
+
+  const rows = await PostGroupMember.findAll({
+    where: { groupId, status: 'active' },
+    attributes: ['userId'],
+    raw: true,
+  });
+
+  return rows
+    .map((r) => r.userId)
+    .filter((id) => !excludeSet.has(String(id)));
 };
 
 // ================================================================
 // 1. LIST GROUPS
-//    GET /api/mobile/groups
 // ================================================================
-
 exports.listGroups = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -113,10 +151,40 @@ exports.listGroups = async (req, res) => {
       distinct: true,
     });
 
+    const groupIds = rows.map((g) => g.id);
+
+    let pendingMap = {};
+
+    if (groupIds.length > 0) {
+      try {
+        const counts = await PostGroupPost.findAll({
+          attributes: [
+            'groupId',
+            [db.sequelize.fn('COUNT', db.sequelize.col('id')), 'cnt'],
+          ],
+          where: {
+            groupId: { [Op.in]: groupIds },
+            status: 'pending',
+          },
+          group: ['groupId'],
+          raw: true,
+        });
+        pendingMap = counts.reduce((acc, r) => {
+          acc[r.groupId] = Number(r.cnt) || 0;
+          return acc;
+        }, {});
+      } catch (e) {
+        console.warn('pending count query failed:', e.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        items: rows.map((g) => groupDto(g, g.members)),
+        items: rows.map((g) => ({
+          ...groupDto(g, g.members),
+          pendingCount: pendingMap[g.id] || 0,
+        })),
         total: count,
         page: pageNum,
         pageSize,
@@ -131,9 +199,7 @@ exports.listGroups = async (req, res) => {
 
 // ================================================================
 // 2. GET GROUP
-//    GET /api/mobile/groups/:id
 // ================================================================
-
 exports.getGroup = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -145,13 +211,21 @@ exports.getGroup = async (req, res) => {
     }
 
     const member = g.members.find(
-      (m) => Number(m.userId) === Number(userId) && m.status === 'active'
+      (m) =>
+        Number(m.userId) === Number(userId) &&
+        (m.status === 'active' || m.status === 'pending')
     );
     if (!member) {
       return res.status(403).json({ success: false, error: 'Not a member' });
     }
 
-    res.json({ success: true, data: groupDto(g, g.members) });
+    res.json({
+      success: true,
+      data: {
+        ...groupDto(g, g.members),
+        myStatus: member.status,
+      },
+    });
   } catch (err) {
     console.error('❌ getGroup:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -160,7 +234,6 @@ exports.getGroup = async (req, res) => {
 
 // ================================================================
 // 3. CREATE GROUP
-//    POST /api/mobile/groups  { name, description?, emoji?, accent? }
 // ================================================================
 exports.createGroup = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -220,7 +293,6 @@ exports.createGroup = async (req, res) => {
 
 // ================================================================
 // 4. UPDATE GROUP
-//    PATCH /api/mobile/groups/:id
 // ================================================================
 exports.updateGroup = async (req, res) => {
   try {
@@ -250,6 +322,7 @@ exports.updateGroup = async (req, res) => {
 // 5. SET STATUS
 //    POST /api/mobile/groups/:id/activate
 //    POST /api/mobile/groups/:id/deactivate
+//    ← UPDATED: notifies all active members (except owner) on BOTH
 // ================================================================
 exports.setGroupStatus = async (req, res) => {
   try {
@@ -257,9 +330,12 @@ exports.setGroupStatus = async (req, res) => {
     if (!(await isOwner(req.params.id, userId))) {
       return res.status(403).json({ success: false, error: 'Owner only' });
     }
+
     const status = req.body.status === 'inactive' ? 'inactive' : 'active';
     const g = await PostGroup.findByPk(req.params.id);
     if (!g) return res.status(404).json({ success: false, error: 'Not found' });
+
+    const previousStatus = g.status;
 
     await g.update({ status, lastActivity: new Date() });
     await audit({
@@ -269,6 +345,31 @@ exports.setGroupStatus = async (req, res) => {
       targetId: g.id,
       groupId: g.id,
     });
+
+    // Notify only when the status actually changed
+    if (status !== previousStatus) {
+      await safeNotify(async () => {
+        const recipientIds = await getGroupMemberIdsExcept(g.id, [userId]);
+        if (recipientIds.length === 0) return;
+
+        const isDeactivating = status === 'inactive';
+
+        await MobileNotification.notifyMany(recipientIds, {
+          purchaseType: 'posts',
+          type: isDeactivating
+            ? 'posts.group_deactivated'
+            : 'posts.group_activated',
+          title: isDeactivating ? '⏸ Group deactivated' : '▶ Group activated',
+          body: isDeactivating
+            ? `"${g.name}" was deactivated. Only the owner can reactivate it.`
+            : `"${g.name}" was reactivated. You can post again.`,
+          referenceId: g.id,
+          referenceType: 'post_group',
+          metadata: { groupId: g.id, groupName: g.name },
+        });
+      });
+    }
+
     res.json({ success: true, data: groupDto(g) });
   } catch (err) {
     console.error('❌ setGroupStatus:', err);
@@ -279,6 +380,7 @@ exports.setGroupStatus = async (req, res) => {
 // ================================================================
 // 6. DELETE GROUP
 //    DELETE /api/mobile/groups/:id  { confirm: "Name" }
+//    ← UPDATED: notifies all active members (except owner)
 // ================================================================
 exports.deleteGroup = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -300,6 +402,12 @@ exports.deleteGroup = async (req, res) => {
         .status(400)
         .json({ success: false, error: 'Confirmation mismatch' });
     }
+
+    // Snapshot recipients BEFORE destroying
+    const groupName = g.name;
+    const groupId = g.id;
+    const recipientIds = await getGroupMemberIdsExcept(groupId, [userId]);
+
     await g.update({ deletedAt: new Date() }, { transaction: t });
     await audit({
       actorId: userId,
@@ -310,6 +418,22 @@ exports.deleteGroup = async (req, res) => {
       metadata: { name: g.name },
     });
     await t.commit();
+
+    // Notify all members except the owner
+    await safeNotify(async () => {
+      if (recipientIds.length === 0) return;
+
+      await MobileNotification.notifyMany(recipientIds, {
+        purchaseType: 'posts',
+        type: 'posts.group_deleted',
+        title: '🗑️ Group deleted',
+        body: `"${groupName}" was deleted by its owner.`,
+        referenceId: groupId,
+        referenceType: 'post_group',
+        metadata: { groupId, groupName },
+      });
+    });
+
     res.json({ success: true, message: 'Group deleted' });
   } catch (err) {
     await t.rollback();
@@ -321,6 +445,7 @@ exports.deleteGroup = async (req, res) => {
 // ================================================================
 // 7. LEAVE GROUP
 //    POST /api/mobile/groups/:id/leave  { transferTo?: userId }
+//    ← UPDATED: notifies new owner + remaining members
 // ================================================================
 exports.leaveGroup = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -336,6 +461,13 @@ exports.leaveGroup = async (req, res) => {
     }
 
     const owner = Number(g.createdBy) === Number(userId);
+
+    // Snapshot data for notifications
+    const groupName = g.name;
+    const leaver = await User.findByPk(userId, { attributes: USER_ATTRS });
+    const leaverName = leaver?.fullName || leaver?.username || 'A member';
+
+    let newOwnerId = null;
 
     if (owner) {
       if (!transferTo) {
@@ -354,12 +486,16 @@ exports.leaveGroup = async (req, res) => {
           .status(400)
           .json({ success: false, error: 'New owner must be active member' });
       }
+      newOwnerId = transferTo;
       await newOwner.update({ role: 'owner' }, { transaction: t });
       await g.update(
         { createdBy: transferTo, lastActivity: new Date() },
         { transaction: t }
       );
     }
+
+    // Recipients = active members except the leaver (captured before deletion)
+    const remainingIds = await getGroupMemberIdsExcept(groupId, [userId]);
 
     await PostGroupMember.destroy({
       where: { groupId, userId },
@@ -376,6 +512,35 @@ exports.leaveGroup = async (req, res) => {
     });
 
     await t.commit();
+
+    // Notify: new owner (if any) + remaining members
+    await safeNotify(async () => {
+      if (newOwnerId) {
+        await MobileNotification.posts.ownershipTransferred({
+          recipientId: newOwnerId,
+          groupId: Number(groupId),
+          groupName,
+          previousOwner: leaverName,
+        });
+      }
+
+      if (remainingIds.length > 0) {
+        await MobileNotification.notifyMany(remainingIds, {
+          purchaseType: 'posts',
+          type: 'posts.member_left',
+          title: '👋 Member left',
+          body: `${leaverName} left "${groupName}".`,
+          referenceId: Number(groupId),
+          referenceType: 'post_group',
+          metadata: {
+            groupId: Number(groupId),
+            groupName,
+            memberName: leaverName,
+          },
+        });
+      }
+    });
+
     res.json({ success: true, message: 'Left group' });
   } catch (err) {
     await t.rollback();
@@ -386,7 +551,6 @@ exports.leaveGroup = async (req, res) => {
 
 // ================================================================
 // 8. LIST MEMBERS
-//    GET /api/mobile/groups/:id/members?status=active|pending
 // ================================================================
 exports.listMembers = async (req, res) => {
   try {
@@ -408,8 +572,6 @@ exports.listMembers = async (req, res) => {
 
 // ================================================================
 // 9. ADD MEMBER (owner invites user)
-//    POST /api/mobile/groups/:id/members  { userId }
-//    ← UPDATED: uses MobileNotification.posts.memberInvited helper
 // ================================================================
 exports.addMember = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -473,7 +635,6 @@ exports.addMember = async (req, res) => {
 
     await t.commit();
 
-    // ── Notify the invited user (post-commit, best-effort) ──
     const actor = await User.findByPk(actorId, { attributes: USER_ATTRS });
     const inviterName = actor?.fullName || actor?.username || 'Someone';
 
@@ -499,8 +660,6 @@ exports.addMember = async (req, res) => {
 
 // ================================================================
 // 10. REMOVE MEMBER
-//     DELETE /api/mobile/groups/:id/members/:userId
-//     ← UPDATED: uses MobileNotification.posts.memberRemoved helper
 // ================================================================
 exports.removeMember = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -551,7 +710,6 @@ exports.removeMember = async (req, res) => {
 
     await t.commit();
 
-    // ── Notify the removed user (post-commit, best-effort) ──
     await safeNotify(() =>
       MobileNotification.posts.memberRemoved({
         recipientId: Number(userId),
@@ -570,7 +728,6 @@ exports.removeMember = async (req, res) => {
 
 // ================================================================
 // 11. LIST USERS — directory for the invite picker
-//     GET /api/mobile/groups/users/directory
 // ================================================================
 exports.listUsersDirectory = async (req, res) => {
   try {
@@ -609,8 +766,6 @@ exports.listUsersDirectory = async (req, res) => {
 
 // ================================================================
 // 12. ACCEPT INVITATION
-//     POST /api/mobile/groups/:id/accept-invite
-//     ← NEW — flips pending membership to active, notifies owner
 // ================================================================
 exports.acceptInvite = async (req, res) => {
   try {
@@ -646,7 +801,6 @@ exports.acceptInvite = async (req, res) => {
       groupId,
     });
 
-    // ── Notify the owner that someone accepted (best-effort) ──
     const me = await User.findByPk(userId, { attributes: USER_ATTRS });
     const memberName = me?.fullName || me?.username || 'A user';
 
@@ -668,8 +822,6 @@ exports.acceptInvite = async (req, res) => {
 
 // ================================================================
 // 13. DECLINE INVITATION
-//     POST /api/mobile/groups/:id/decline-invite
-//     ← NEW — removes the pending membership, optionally notifies owner
 // ================================================================
 exports.declineInvite = async (req, res) => {
   try {
@@ -702,8 +854,6 @@ exports.declineInvite = async (req, res) => {
       groupId,
     });
 
-    // ── Notify the owner (best-effort). Set to a soft type so the
-    //    owner isn't spammed; comment out if you don't want this at all.
     const me = await User.findByPk(userId, { attributes: USER_ATTRS });
     const declinerName = me?.fullName || me?.username || 'A user';
 
