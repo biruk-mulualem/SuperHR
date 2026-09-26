@@ -18,7 +18,7 @@ console.log(
 );
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("PORT:", process.env.PORT);
-console.log("PUBLIC_BASE_URL:", process.env.PUBLIC_BASE_URL);   // ← ADD THIS
+console.log("PUBLIC_BASE_URL:", process.env.PUBLIC_BASE_URL);
 console.log("===============================");
 
 // ============================================================================
@@ -42,8 +42,8 @@ const uploadDirs = [
   "uploads/documents/legal",
   
   // ========== NEW: OTHER DOCUMENTS ==========
-  "uploads/documents/employment_letters",  // Employment Letters
-  "uploads/documents/other_documents",     // Other & Custom Documents
+  "uploads/documents/employment_letters",
+  "uploads/documents/other_documents",
   
   // Legacy document folders (keep for existing files)
   "uploads/documents/id_cards",
@@ -65,7 +65,10 @@ const uploadDirs = [
   "uploads/temp/",
 
   // ========== NEW: BACKUP DIRECTORY ==========
-  "uploads/backups/"
+  "uploads/backups/",
+
+  // ========== NEW: POST IMAGES ==========
+  "uploads/posts",
 ];
 
 // Serve static files from uploads directory
@@ -105,22 +108,28 @@ const stockCardRoutes = require('./routes/stockCardRoutes');
 const finishedGoodRoutes = require('./routes/finishedGoodRoutes');
 const convertedBalanceRoutes = require('./routes/convertedBalanceRoutes');
 const purchaseFollowUpRoutes = require('./routes/purchaseFollowUpRoutes');
-const mobileManagerDashboardRoutes = require('./routes/mobileManagerDashboardRoutes');
-const formulationRoutes = require('./routes/formulationRoutes');
-const orderRoutes = require('./routes/orderRoutes');
-const mobilePurchaserRoutes = require('./routes/mobilePurchaserRoutes');
-const purchaseNotificationRoutes = require('./routes/purchaseNotificationRoutes');
-const mobileStoreListRoutes = require('./routes/mobileStoreListRoutes');
-const mobileItemListRoutes = require('./routes/mobileItemListRoutes');
-const mobileLowStockRoutes = require('./routes/mobileLowStockRoutes');
-const mobileManagerBalanceAudit = require('./routes/mobileManagerBalanceAudit');
-const mobileManagerStoreDashboardRoutes = require('./routes/mobileManagerStoreDashboardRoutes');
 // ========== NEW: BACKUP ROUTES ==========
 const backupRoutes = require("./routes/backupRoutes");
-
+const formulationRoutes = require('./routes/formulationRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 const purchasingGroupRoutes = require("./routes/purchasingGroupRoutes");
 const purchaseRequestRoutes = require('./routes/purchaseRequestRoutes');
-const mobileDetailRoutes = require('./routes/mobileDetailRoutes'); // 👈 NEW
+
+// ==========Mobile Route ==========
+const mobilePurchaserRoutes = require('./routes/Mobile/mobilePurchaserRoutes');
+const mobileStoreListRoutes = require('./routes/Mobile/mobileStoreListRoutes');
+const mobileItemListRoutes = require('./routes/Mobile/mobileItemListRoutes');
+const mobileLowStockRoutes = require('./routes/Mobile/mobileLowStockRoutes');
+const mobileManagerBalanceAudit = require('./routes/Mobile/mobileManagerBalanceAudit');
+const mobileManagerStoreDashboardRoutes = require('./routes/Mobile/mobileManagerStoreDashboardRoutes');
+const mobileManagerDashboardRoutes = require('./routes/Mobile/mobileManagerDashboardRoutes');
+const mobileDetailRoutes = require('./routes/Mobile/mobileDetailRoutes');
+const mobileNotificationRoutes = require('./routes/Mobile/mobileNotificationRoutes');
+app.use('/api/mobile/notifications', mobileNotificationRoutes);
+// ========== NEW: Posts / Groups mobile routes ==========
+const mobileGroupRoutes = require('./routes/Mobile/mobileGroupRoutes');
+const mobilePostRoutes  = require('./routes/Mobile/mobilePostRoutes');
+
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -183,18 +192,23 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/converted-balances', convertedBalanceRoutes);
 app.use('/api/purchasing-groups', purchasingGroupRoutes);
 app.use('/api/purchase-follow-ups', purchaseFollowUpRoutes);
+// ========== NEW: BACKUP ROUTES ==========
+app.use("/api/backup", backupRoutes);
+app.use('/api/purchase-requests', purchaseRequestRoutes);
+// ========== NEW: Mobile Routes ==========
 app.use('/api/mobile/manager-dashboard', mobileManagerDashboardRoutes);
 app.use('/api/mobile/purchaser', mobilePurchaserRoutes);
 app.use('/api/mobile/store-list', mobileStoreListRoutes);
-app.use('/api/mobile/purchase-notifications', purchaseNotificationRoutes);
 app.use('/api/mobile/item-list', mobileItemListRoutes);
 app.use('/api/mobile/low-stock', mobileLowStockRoutes);
 app.use('/api/mobile/manager/balance-audit', mobileManagerBalanceAudit);
 app.use('/api/mobile/manager/store-dashboard', mobileManagerStoreDashboardRoutes);
-// ========== NEW: BACKUP ROUTES ==========
-app.use("/api/backup", backupRoutes);
-app.use('/api/purchase-requests', purchaseRequestRoutes);
 app.use('/api/mobile', mobileDetailRoutes);
+
+// ========== NEW: Posts / Groups ==========
+app.use('/api/mobile/groups', mobileGroupRoutes);
+app.use('/api/mobile/posts',  mobilePostRoutes);
+
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================
@@ -206,7 +220,6 @@ app.get("/api/health", (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
-
 
 // ─── TEMPORARY DEBUG ROUTE — REMOVE AFTER DEBUGGING ───
 app.get('/api/debug/files', (req, res) => {
@@ -282,7 +295,7 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================================================
-// START CRON JOBS (Only in production/development, not in test)
+// START CRON JOBS
 // ============================================================================
 if (process.env.NODE_ENV !== "test") {
   try {

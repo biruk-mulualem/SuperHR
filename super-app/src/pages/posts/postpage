@@ -13,13 +13,86 @@ import {
   Alert,
   ActivityIndicator,
   BackHandler,
-  RefreshControl,
 } from 'react-native';
 
-import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
-import authService from '../../stores/authService';
-
 // NOTE: GroupDetailPage is loaded lazily inside the component (see `if (openedGroup)` below).
+
+// ================================================================
+// SHARED ROSTER — used to seed each group's member list
+// ================================================================
+const ALL_MEMBERS = [
+  { userId: 324, name: 'Boss',   role: 'member', initials: 'B',  color: '#8B5CF6', department: 'Management',    status: 'active'  },
+  { userId: 101, name: 'Sara',   role: 'member', initials: 'SA', color: '#10B981', department: 'Sales',         status: 'active'  },
+  { userId: 102, name: 'Dawit',  role: 'member', initials: 'DA', color: '#3B82F6', department: 'Inventory',     status: 'active'  },
+  { userId: 103, name: 'Hanna',  role: 'member', initials: 'HA', color: '#EC4899', department: 'HR',            status: 'active'  },
+  { userId: 201, name: 'Mulu',   role: 'member', initials: 'MU', color: '#F59E0B', department: 'Warehouse',     status: 'active'  },
+  { userId: 202, name: 'Yared',  role: 'member', initials: 'YA', color: '#06B6D4', department: 'Logistics',     status: 'active'  },
+  { userId: 301, name: 'Abel',   role: 'member', initials: 'AB', color: '#EF4444', department: 'Maintenance',   status: 'active'  },
+  { userId: 302, name: 'Tigist', role: 'member', initials: 'TI', color: '#8B5CF6', department: 'Finance',       status: 'pending' },
+  { userId: 304, name: 'Aster',  role: 'member', initials: 'AS', color: '#10B981', department: 'Customer Care', status: 'pending' },
+  { userId: 305, name: 'Brook',  role: 'member', initials: 'BR', color: '#3B82F6', department: 'IT Support',    status: 'pending' },
+];
+
+// Deterministic pseudo-random roster for a group: always includes the owner,
+// plus (memberCount - 1) others selected by group.id.
+const membersForGroup = (group) => {
+  const owner = ALL_MEMBERS.find((m) => m.userId === group.createdBy);
+  const others = ALL_MEMBERS.filter((m) => m.userId !== group.createdBy);
+
+  const extrasCount = Math.max(0, Math.min(others.length, (group.memberCount || 1) - 1));
+  const start = (group.id || 0) % others.length;
+  const picked = [];
+  for (let i = 0; i < extrasCount; i++) {
+    picked.push(others[(start + i) % others.length]);
+  }
+
+  return [owner, ...picked].filter(Boolean);
+};
+
+// ================================================================
+// DEMO DATA — 30 groups
+// ================================================================
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+const DEMO_GROUPS = [
+  { id: 1,  name: 'Main Store',           description: 'General store announcements',     emoji: '🏬', accent: '#10B981', memberCount: 12, postCount: 24, lastActivity: Date.now() - 1000 * 60 * 12,       status: 'active',   unreadCount: 0, createdBy: 101, createdAt: Date.now() - DAY_MS * 180 },
+  { id: 2,  name: 'Inventory Team',       description: 'Stock counts, transfers, audits', emoji: '📦', accent: '#8B5CF6', memberCount: 6,  postCount: 41, lastActivity: Date.now() - 1000 * 60 * 60 * 3,   status: 'active',   unreadCount: 0, createdBy: 102, createdAt: Date.now() - DAY_MS * 160 },
+  { id: 3,  name: 'Purchasing',           description: 'POs, suppliers, deliveries',      emoji: '🛒', accent: '#3B82F6', memberCount: 8,  postCount: 17, lastActivity: Date.now() - 1000 * 60 * 60 * 26,  status: 'active',   unreadCount: 3, createdBy: 103, createdAt: Date.now() - DAY_MS * 150 },
+  { id: 4,  name: 'Finance',              description: 'Budgets, payments, approvals',    emoji: '💰', accent: '#F59E0B', memberCount: 4,  postCount: 9,  lastActivity: Date.now() - 1000 * 60 * 60 * 48,  status: 'inactive', unreadCount: 0, createdBy: 324, createdAt: Date.now() - DAY_MS * 140 },
+  { id: 5,  name: 'HR & Payroll',         description: 'Employees, attendance, salary',   emoji: '👥', accent: '#EC4899', memberCount: 5,  postCount: 12, lastActivity: Date.now() - 1000 * 60 * 60 * 6,   status: 'active',   unreadCount: 1, createdBy: 205, createdAt: Date.now() - DAY_MS * 130 },
+  { id: 6,  name: 'Marketing',            description: 'Campaigns, ads, brand',           emoji: '📣', accent: '#8B5CF6', memberCount: 7,  postCount: 28, lastActivity: Date.now() - 1000 * 60 * 60 * 1,   status: 'active',   unreadCount: 7, createdBy: 104, createdAt: Date.now() - DAY_MS * 120 },
+  { id: 7,  name: 'Quality Control',      description: 'Inspections, standards, reports', emoji: '✅', accent: '#10B981', memberCount: 3,  postCount: 6,  lastActivity: Date.now() - 1000 * 60 * 60 * 20,  status: 'active',   unreadCount: 0, createdBy: 110, createdAt: Date.now() - DAY_MS * 110 },
+  { id: 8,  name: 'IT Support',           description: 'Tickets, systems, access',        emoji: '💻', accent: '#3B82F6', memberCount: 4,  postCount: 33, lastActivity: Date.now() - 1000 * 60 * 60 * 2,   status: 'active',   unreadCount: 2, createdBy: 105, createdAt: Date.now() - DAY_MS * 100 },
+  { id: 9,  name: 'Logistics',            description: 'Shipping, customs, tracking',     emoji: '🚚', accent: '#F59E0B', memberCount: 9,  postCount: 19, lastActivity: Date.now() - 1000 * 60 * 60 * 14,  status: 'active',   unreadCount: 0, createdBy: 109, createdAt: Date.now() - DAY_MS * 95  },
+  { id: 10, name: 'Sales Team',           description: 'Deals, clients, quotas',          emoji: '📈', accent: '#8B5CF6', memberCount: 11, postCount: 52, lastActivity: Date.now() - 1000 * 60 * 30,      status: 'active',   unreadCount: 5, createdBy: 101, createdAt: Date.now() - DAY_MS * 90  },
+  { id: 11, name: 'R&D',                  description: 'Products, testing, prototypes',   emoji: '🔬', accent: '#EC4899', memberCount: 5,  postCount: 8,  lastActivity: Date.now() - 1000 * 60 * 60 * 36,  status: 'inactive', unreadCount: 0, createdBy: 111, createdAt: Date.now() - DAY_MS * 85  },
+  { id: 12, name: 'Customer Service',     description: 'Complaints, refunds, feedback',   emoji: '🎧', accent: '#10B981', memberCount: 6,  postCount: 22, lastActivity: Date.now() - 1000 * 60 * 60 * 5,   status: 'active',   unreadCount: 1, createdBy: 106, createdAt: Date.now() - DAY_MS * 80  },
+  { id: 13, name: 'Legal & Compliance',   description: 'Contracts, regulations, audits',  emoji: '⚖️', accent: '#3B82F6', memberCount: 2,  postCount: 4,  lastActivity: Date.now() - 1000 * 60 * 60 * 72,  status: 'active',   unreadCount: 0, createdBy: 324, createdAt: Date.now() - DAY_MS * 75  },
+  { id: 14, name: 'Procurement',          description: 'Vendors, quotes, negotiations',   emoji: '📋', accent: '#F59E0B', memberCount: 4,  postCount: 14, lastActivity: Date.now() - 1000 * 60 * 60 * 8,   status: 'active',   unreadCount: 4, createdBy: 306, createdAt: Date.now() - DAY_MS * 70  },
+  { id: 15, name: 'Training',             description: 'Onboarding, courses, certs',      emoji: '🎓', accent: '#8B5CF6', memberCount: 3,  postCount: 11, lastActivity: Date.now() - 1000 * 60 * 60 * 18,  status: 'active',   unreadCount: 0, createdBy: 203, createdAt: Date.now() - DAY_MS * 65  },
+  { id: 16, name: 'Store 02 - Bole',      description: 'Branch updates and news',         emoji: '🏪', accent: '#10B981', memberCount: 8,  postCount: 26, lastActivity: Date.now() - 1000 * 60 * 45,      status: 'active',   unreadCount: 2, createdBy: 101, createdAt: Date.now() - DAY_MS * 60  },
+  { id: 17, name: 'Store 03 - CMC',       description: 'Branch updates and news',         emoji: '🏪', accent: '#10B981', memberCount: 7,  postCount: 20, lastActivity: Date.now() - 1000 * 60 * 60 * 4,   status: 'active',   unreadCount: 0, createdBy: 101, createdAt: Date.now() - DAY_MS * 55  },
+  { id: 18, name: 'Store 04 - Megenagna', description: 'Branch updates and news',         emoji: '🏪', accent: '#10B981', memberCount: 6,  postCount: 15, lastActivity: Date.now() - 1000 * 60 * 60 * 12,  status: 'active',   unreadCount: 1, createdBy: 101, createdAt: Date.now() - DAY_MS * 50  },
+  { id: 19, name: 'Store 05 - Saris',     description: 'Branch updates and news',         emoji: '🏪', accent: '#10B981', memberCount: 5,  postCount: 13, lastActivity: Date.now() - 1000 * 60 * 60 * 22,  status: 'inactive', unreadCount: 0, createdBy: 101, createdAt: Date.now() - DAY_MS * 45  },
+  { id: 20, name: 'Executive',            description: 'C-suite announcements',           emoji: '👔', accent: '#EF4444', memberCount: 3,  postCount: 7,  lastActivity: Date.now() - 1000 * 60 * 60 * 10,  status: 'active',   unreadCount: 0, createdBy: 324, createdAt: Date.now() - DAY_MS * 40  },
+  { id: 21, name: 'Warehouse A',          description: 'Inbound and outbound ops',        emoji: '📥', accent: '#8B5CF6', memberCount: 9,  postCount: 34, lastActivity: Date.now() - 1000 * 60 * 60 * 7,   status: 'active',   unreadCount: 0, createdBy: 204, createdAt: Date.now() - DAY_MS * 38  },
+  { id: 22, name: 'Warehouse B',          description: 'Inbound and outbound ops',        emoji: '📤', accent: '#8B5CF6', memberCount: 7,  postCount: 28, lastActivity: Date.now() - 1000 * 60 * 60 * 11,  status: 'active',   unreadCount: 3, createdBy: 204, createdAt: Date.now() - DAY_MS * 36  },
+  { id: 23, name: 'Security',             description: 'Access, alarms, patrols',         emoji: '🛡️', accent: '#EF4444', memberCount: 12, postCount: 18, lastActivity: Date.now() - 1000 * 60 * 60 * 3,   status: 'active',   unreadCount: 0, createdBy: 303, createdAt: Date.now() - DAY_MS * 34  },
+  { id: 24, name: 'Maintenance',          description: 'Repairs, facilities, tools',      emoji: '🔧', accent: '#F59E0B', memberCount: 6,  postCount: 21, lastActivity: Date.now() - 1000 * 60 * 60 * 15,  status: 'active',   unreadCount: 2, createdBy: 301, createdAt: Date.now() - DAY_MS * 32  },
+  { id: 25, name: 'Compliance',           description: 'Audits, policies, training',      emoji: '📜', accent: '#3B82F6', memberCount: 3,  postCount: 5,  lastActivity: Date.now() - 1000 * 60 * 60 * 40,  status: 'active',   unreadCount: 0, createdBy: 324, createdAt: Date.now() - DAY_MS * 30  },
+  { id: 26, name: 'Customer Success',     description: 'Accounts, renewals, upsells',     emoji: '🌟', accent: '#10B981', memberCount: 5,  postCount: 16, lastActivity: Date.now() - 1000 * 60 * 60 * 9,   status: 'active',   unreadCount: 1, createdBy: 106, createdAt: Date.now() - DAY_MS * 28  },
+  { id: 27, name: 'Data & Analytics',     description: 'Reports, dashboards, KPIs',       emoji: '📊', accent: '#8B5CF6', memberCount: 4,  postCount: 12, lastActivity: Date.now() - 1000 * 60 * 60 * 2,   status: 'active',   unreadCount: 0, createdBy: 111, createdAt: Date.now() - DAY_MS * 26  },
+  { id: 28, name: 'Onboarding',           description: 'New hires, setup, orientation',   emoji: '🚀', accent: '#EC4899', memberCount: 3,  postCount: 9,  lastActivity: Date.now() - 1000 * 60 * 60 * 24,  status: 'active',   unreadCount: 0, createdBy: 203, createdAt: Date.now() - DAY_MS * 24  },
+  { id: 29, name: 'Partnerships',         description: 'Vendors, alliances, deals',       emoji: '🤝', accent: '#3B82F6', memberCount: 2,  postCount: 6,  lastActivity: Date.now() - 1000 * 60 * 60 * 30,  status: 'active',   unreadCount: 0, createdBy: 324, createdAt: Date.now() - DAY_MS * 22  },
+  { id: 30, name: 'Innovation Lab',       description: 'Ideas, experiments, pilots',      emoji: '💡', accent: '#F59E0B', memberCount: 4,  postCount: 10, lastActivity: Date.now() - 1000 * 60 * 60 * 19,  status: 'active',   unreadCount: 2, createdBy: 111, createdAt: Date.now() - DAY_MS * 20  },
+];
+
+// ----------------------------------------------------------------
+// Current user (same values as GroupDetailPage)
+// ----------------------------------------------------------------
+const CURRENT_USER = { userId: 324, name: 'Boss', role: 'manager' };
+
+const PAGE_SIZE = 10;
 
 // ================================================================
 // Filters
@@ -30,8 +103,6 @@ const FILTERS = [
   { key: 'unread',   label: 'Unread'   },
 ];
 
-const PAGE_SIZE = 10;
-
 export default function PostsPage({
   darkMode,
   textColor,
@@ -40,7 +111,6 @@ export default function PostsPage({
   borderColor,
 }) {
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const [groups, setGroups] = useState([]);
   const [search, setSearch] = useState('');
@@ -54,7 +124,6 @@ export default function PostsPage({
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [groupError, setGroupError] = useState(null);
-  const [submittingGroup, setSubmittingGroup] = useState(false);
 
   const [managingGroup, setManagingGroup] = useState(null);
 
@@ -63,89 +132,44 @@ export default function PostsPage({
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmText, setConfirmText] = useState('');
   const [confirmError, setConfirmError] = useState(null);
-  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   // ---- Leave group modal state ----
   // { group, isOwner: boolean }
   const [leaveGroupModal, setLeaveGroupModal] = useState(null);
   const [transferTo, setTransferTo] = useState(null);
   const [leaveError, setLeaveError] = useState(null);
-  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
 
   const [openedGroup, setOpenedGroup] = useState(null);
 
   // ----------------------------------------------------------------
-  // Current user — from the existing auth service
+  // Helpers
   // ----------------------------------------------------------------
-  const [currentUser, setCurrentUser] = useState(authService.user);
+  const isOwner = (g) => g?.createdBy === CURRENT_USER.userId;
 
   useEffect(() => {
-    // Sync immediately (in case user is already in memory)
-    setCurrentUser(authService.user);
-
-    // Subscribe to future changes (login / logout / profile refresh)
-    const unsubscribe = authService.subscribe((svc) => {
-      setCurrentUser(svc.user);
-    });
-
+    let cancelled = false;
+    setLoading(true);
+    const t = setTimeout(() => {
+      if (!cancelled) {
+        setGroups(
+          DEMO_GROUPS.map((g) => {
+            const seeded = membersForGroup(g);
+            return {
+              ...g,
+              members: seeded,
+              memberCount: seeded.length,
+            };
+          })
+        );
+        setLoading(false);
+      }
+    }, 400);
     return () => {
-      if (typeof unsubscribe === 'function') unsubscribe();
-      else authService._listeners?.delete?.(unsubscribe);
+      cancelled = true;
+      clearTimeout(t);
     };
   }, []);
 
-  const currentUserId = currentUser?.userId;
-
-  // ----------------------------------------------------------------
-  // Helpers
-  // ----------------------------------------------------------------
-  const isOwner = (g) =>
-    !!g && Number(g.createdBy) === Number(currentUserId);
-
-  // ----------------------------------------------------------------
-  // Data loading
-  // ----------------------------------------------------------------
-  const loadGroups = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-
-    try {
-      // Backend supports 'active' | 'inactive'.
-      // The 'unread' filter is client-side, so fetch 'active' for it.
-      const serverFilter = filter === 'unread' ? 'active' : filter;
-      const res = await mobilePostsGroupService.listGroups({
-        filter: serverFilter,
-        search: search.trim(),
-        page: 1,
-        limit: 100,
-      });
-
-      if (res.success) {
-        setGroups(res.data.items || []);
-      } else {
-        Alert.alert('Error', res.error || 'Failed to load groups');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to load groups');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [filter, search]);
-
-  // Initial + whenever filter/search change
-  useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
-
-  // Reset local pagination when filter/search change
-  useEffect(() => {
-    setPage(1);
-    loadingMoreRef.current = false;
-    setLoadingMore(false);
-  }, [search, filter]);
-
-  // Back handler for the opened group
   useEffect(() => {
     if (!openedGroup) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -155,9 +179,6 @@ export default function PostsPage({
     return () => sub.remove();
   }, [openedGroup]);
 
-  // ----------------------------------------------------------------
-  // Derived
-  // ----------------------------------------------------------------
   const counts = useMemo(
     () => ({
       active:   groups.filter((g) => g.status === 'active').length,
@@ -182,17 +203,23 @@ export default function PostsPage({
             : g.status === filter;
         const matchesSearch =
           !q ||
-          (g.name || '').toLowerCase().includes(q) ||
-          (g.description || '').toLowerCase().includes(q);
+          g.name.toLowerCase().includes(q) ||
+          g.description.toLowerCase().includes(q);
         return matchesFilter && matchesSearch;
       })
       .sort((a, b) => {
         const ua = a.unreadCount || 0;
         const ub = b.unreadCount || 0;
         if (ua !== ub) return ub - ua;
-        return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+        return b.lastActivity - a.lastActivity;
       });
   }, [groups, search, filter]);
+
+  useEffect(() => {
+    setPage(1);
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+  }, [search, filter]);
 
   const visibleGroups = useMemo(
     () => filteredGroups.slice(0, page * PAGE_SIZE),
@@ -218,61 +245,88 @@ export default function PostsPage({
   // ----------------------------------------------------------------
   // Create group
   // ----------------------------------------------------------------
-  const submitGroup = async () => {
+  const submitGroup = () => {
     if (!newGroupName.trim()) {
       setGroupError('Name is required');
       return;
     }
-    setSubmittingGroup(true);
-    try {
-      const res = await mobilePostsGroupService.createGroup({
+    const id = Math.max(0, ...groups.map((g) => g.id)) + 1;
+    const owner = ALL_MEMBERS.find((m) => m.userId === CURRENT_USER.userId) || {
+      userId: CURRENT_USER.userId,
+      name: CURRENT_USER.name,
+      role: 'member',
+      initials: CURRENT_USER.name.slice(0, 2).toUpperCase(),
+      color: '#8B5CF6',
+      department: 'Management',
+      status: 'active',
+    };
+
+    setGroups((prev) => [
+      {
+        id,
         name: newGroupName.trim(),
-        description: newGroupDesc.trim() || null,
-      });
-      if (res.success) {
-        setGroups((prev) => [res.data, ...prev]);
-        setShowCreateGroup(false);
-        setNewGroupName('');
-        setNewGroupDesc('');
-        setGroupError(null);
-      } else {
-        setGroupError(res.error || 'Could not create group');
-      }
-    } catch (e) {
-      setGroupError(e?.message || 'Could not create group');
-    } finally {
-      setSubmittingGroup(false);
-    }
+        description: newGroupDesc.trim() || 'No description',
+        emoji: '💬',
+        accent: '#8B5CF6',
+        memberCount: 1,
+        postCount: 0,
+        lastActivity: Date.now(),
+        createdAt: Date.now(),
+        status: 'active',
+        unreadCount: 0,
+        createdBy: CURRENT_USER.userId,
+        members: [owner],
+      },
+      ...prev,
+    ]);
+    setShowCreateGroup(false);
+    setNewGroupName('');
+    setNewGroupDesc('');
+    setGroupError(null);
   };
 
   // ----------------------------------------------------------------
-  // Owner-only: activate / deactivate / delete
+  // Member helpers
   // ----------------------------------------------------------------
-  const applyGroupUpdate = (updated) => {
+  const removeMemberFromGroup = (groupId, userId) => {
     setGroups((prev) =>
-      prev.map((g) =>
-        Number(g.id) === Number(updated.id) ? { ...g, ...updated } : g
-      )
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        const nextMembers = (g.members || []).filter((m) => m.userId !== userId);
+        return {
+          ...g,
+          members: nextMembers,
+          memberCount: nextMembers.length,
+          lastActivity: Date.now(),
+        };
+      })
     );
   };
 
-  const setGroupStatus = async (groupId, newStatus) => {
-    try {
-      const res =
-        newStatus === 'active'
-          ? await mobilePostsGroupService.activateGroup(groupId)
-          : await mobilePostsGroupService.deactivateGroup(groupId);
+  const transferOwnershipAndRemove = (groupId, newOwnerId, oldOwnerId) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        const nextMembers = (g.members || []).filter((m) => m.userId !== oldOwnerId);
+        return {
+          ...g,
+          createdBy: newOwnerId,
+          members: nextMembers,
+          memberCount: nextMembers.length,
+          lastActivity: Date.now(),
+        };
+      })
+    );
+  };
 
-      if (res.success) {
-        applyGroupUpdate(res.data);
-      } else {
-        Alert.alert('Error', res.error || 'Could not update group');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not update group');
-    } finally {
-      setManagingGroup(null);
-    }
+  // ----------------------------------------------------------------
+  // Owner-only: deactivate / activate / delete (with security confirm)
+  // ----------------------------------------------------------------
+  const setGroupStatus = (groupId, newStatus) => {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, status: newStatus } : g))
+    );
+    setManagingGroup(null);
   };
 
   const requestDeactivate = (g) => {
@@ -291,7 +345,7 @@ export default function PostsPage({
     setConfirmAction({ group: g, action: 'delete' });
   };
 
-  const applyConfirmAction = async () => {
+  const applyConfirmAction = () => {
     if (!confirmAction) return;
     const { group, action } = confirmAction;
 
@@ -300,34 +354,15 @@ export default function PostsPage({
       return;
     }
 
-    setConfirmSubmitting(true);
-    try {
-      if (action === 'deactivate') {
-        const res = await mobilePostsGroupService.deactivateGroup(group.id);
-        if (res.success) {
-          applyGroupUpdate(res.data);
-        } else {
-          setConfirmError(res.error || 'Could not deactivate');
-          return;
-        }
-      } else if (action === 'delete') {
-        const res = await mobilePostsGroupService.deleteGroup(group.id, confirmText.trim());
-        if (res.success) {
-          setGroups((prev) => prev.filter((g) => Number(g.id) !== Number(group.id)));
-        } else {
-          setConfirmError(res.error || 'Could not delete');
-          return;
-        }
-      }
-
-      setConfirmAction(null);
-      setConfirmText('');
-      setConfirmError(null);
-    } catch (e) {
-      setConfirmError(e?.message || 'Something went wrong');
-    } finally {
-      setConfirmSubmitting(false);
+    if (action === 'deactivate') {
+      setGroupStatus(group.id, 'inactive');
+    } else if (action === 'delete') {
+      setGroups((prev) => prev.filter((g) => g.id !== group.id));
     }
+
+    setConfirmAction(null);
+    setConfirmText('');
+    setConfirmError(null);
   };
 
   const cancelConfirmAction = () => {
@@ -346,34 +381,23 @@ export default function PostsPage({
     setLeaveGroupModal({ group: g, isOwner: isOwner(g) });
   };
 
-  const applyLeave = async () => {
+  const applyLeave = () => {
     if (!leaveGroupModal) return;
     const { group, isOwner: owner } = leaveGroupModal;
 
-    if (owner && !transferTo) {
-      setLeaveError('Pick someone to hand over ownership to.');
-      return;
+    if (owner) {
+      if (!transferTo) {
+        setLeaveError('Pick someone to hand over ownership to.');
+        return;
+      }
+      transferOwnershipAndRemove(group.id, transferTo.userId, CURRENT_USER.userId);
+    } else {
+      removeMemberFromGroup(group.id, CURRENT_USER.userId);
     }
 
-    setLeaveSubmitting(true);
-    try {
-      const res = await mobilePostsGroupService.leaveGroup(
-        group.id,
-        owner ? { transferTo: transferTo.userId } : {}
-      );
-      if (res.success) {
-        setGroups((prev) => prev.filter((g) => Number(g.id) !== Number(group.id)));
-        setLeaveGroupModal(null);
-        setTransferTo(null);
-        setLeaveError(null);
-      } else {
-        setLeaveError(res.error || 'Could not leave group');
-      }
-    } catch (e) {
-      setLeaveError(e?.message || 'Could not leave group');
-    } finally {
-      setLeaveSubmitting(false);
-    }
+    setLeaveGroupModal(null);
+    setTransferTo(null);
+    setLeaveError(null);
   };
 
   const cancelLeave = () => {
@@ -412,7 +436,7 @@ export default function PostsPage({
     const isInactive = g.status === 'inactive';
     const unread = g.unreadCount || 0;
     const hasUnread = unread > 0;
-    const memberCount = g.memberCount || (g.members ? g.members.length : 0);
+    const memberCount = g.members ? g.members.length : (g.memberCount || 0);
 
     return (
       <TouchableOpacity
@@ -437,7 +461,7 @@ export default function PostsPage({
                 ? '#94A3B8'
                 : hasUnread
                 ? '#F59E0B'
-                : (g.accent || '#8B5CF6'),
+                : g.accent,
             },
           ]}
         />
@@ -485,7 +509,7 @@ export default function PostsPage({
             style={[styles.groupDesc, { color: subTextColor }]}
             numberOfLines={1}
           >
-            {g.description || 'No description'}
+            {g.description}
           </Text>
 
           <View style={styles.metaRow}>
@@ -549,8 +573,12 @@ export default function PostsPage({
       <View style={styles.container}>
         <View style={styles.headerBar}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Posts</Text>
-            <Text style={[styles.headerSub, { color: subTextColor }]}>Loading groups…</Text>
+            <Text style={[styles.headerTitle, { color: textColor }]}>
+              Posts
+            </Text>
+            <Text style={[styles.headerSub, { color: subTextColor }]}>
+              Loading groups…
+            </Text>
           </View>
         </View>
 
@@ -570,23 +598,38 @@ export default function PostsPage({
   if (openedGroup) {
     const GroupDetailComponent = require('./GroupDetailPage').default;
 
-    const liveGroup =
-      groups.find((g) => Number(g.id) === Number(openedGroup.id)) || openedGroup;
+    // Always read the freshest version of the group from state
+    const liveGroup = groups.find((g) => g.id === openedGroup.id) || openedGroup;
 
     return (
       <GroupDetailComponent
         group={liveGroup}
-        currentUser={currentUser}
-        onGroupUpdated={applyGroupUpdate}
-        onGroupRemoved={() =>
+        members={liveGroup.members || []}
+        setMembers={(updater) => {
           setGroups((prev) =>
-            prev.filter((g) => Number(g.id) !== Number(liveGroup.id))
-          )
-        }
-        onBack={() => {
-          setOpenedGroup(null);
-          loadGroups(true);
+            prev.map((g) => {
+              if (g.id !== liveGroup.id) return g;
+              const nextMembers =
+                typeof updater === 'function' ? updater(g.members || []) : updater;
+              return {
+                ...g,
+                members: nextMembers,
+                memberCount: nextMembers.length,
+                lastActivity: Date.now(),
+              };
+            })
+          );
         }}
+        onPostCountChange={(count) => {
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.id === liveGroup.id
+                ? { ...g, postCount: count, lastActivity: Date.now() }
+                : g
+            )
+          );
+        }}
+        onBack={() => setOpenedGroup(null)}
         darkMode={darkMode}
         textColor={textColor}
         subTextColor={subTextColor}
@@ -604,7 +647,9 @@ export default function PostsPage({
       {/* Header */}
       <View style={styles.headerBar}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Posts</Text>
+          <Text style={[styles.headerTitle, { color: textColor }]}>
+            Posts
+          </Text>
           <Text style={[styles.headerSub, { color: subTextColor }]}>
             {counts.active} active · {counts.inactive} inactive
             {totalUnread > 0 ? ` · ${totalUnread} unread` : ''}
@@ -620,7 +665,9 @@ export default function PostsPage({
       </View>
 
       {/* Search */}
-      <View style={[styles.searchWrap, { backgroundColor: cardBg, borderColor }]}>
+      <View
+        style={[styles.searchWrap, { backgroundColor: cardBg, borderColor }]}
+      >
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           value={search}
@@ -695,13 +742,6 @@ export default function PostsPage({
         removeClippedSubviews={true}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadGroups(true)}
-            tintColor="#8B5CF6"
-          />
-        }
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.footerLoader}>
@@ -763,7 +803,9 @@ export default function PostsPage({
             onPress={() => setShowCreateGroup(false)}
           />
           <View style={[styles.modal, { backgroundColor: cardBg, borderColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>New Group</Text>
+            <Text style={[styles.modalTitle, { color: textColor }]}>
+              New Group
+            </Text>
             <Text style={[styles.modalSub, { color: subTextColor }]}>
               Create a group to organize posts
             </Text>
@@ -777,7 +819,6 @@ export default function PostsPage({
               }}
               placeholder="e.g. Marketing Team"
               placeholderTextColor={subTextColor}
-              editable={!submittingGroup}
               style={[
                 styles.input,
                 {
@@ -796,7 +837,6 @@ export default function PostsPage({
               onChangeText={setNewGroupDesc}
               placeholder="Optional"
               placeholderTextColor={subTextColor}
-              editable={!submittingGroup}
               style={[
                 styles.input,
                 {
@@ -808,7 +848,9 @@ export default function PostsPage({
             />
 
             {groupError && (
-              <Text style={{ color: '#EF4444', marginTop: 6, fontWeight: '600' }}>
+              <Text
+                style={{ color: '#EF4444', marginTop: 6, fontWeight: '600' }}
+              >
                 {groupError}
               </Text>
             )}
@@ -817,7 +859,6 @@ export default function PostsPage({
               <TouchableOpacity
                 onPress={() => setShowCreateGroup(false)}
                 activeOpacity={0.85}
-                disabled={submittingGroup}
                 style={[
                   styles.modalBtn,
                   {
@@ -833,22 +874,14 @@ export default function PostsPage({
               <TouchableOpacity
                 onPress={submitGroup}
                 activeOpacity={0.85}
-                disabled={submittingGroup}
                 style={[
                   styles.modalBtn,
-                  {
-                    backgroundColor: submittingGroup ? '#94A3B8' : '#8B5CF6',
-                    borderColor: submittingGroup ? '#94A3B8' : '#8B5CF6',
-                  },
+                  { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
                 ]}
               >
-                {submittingGroup ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                    Create
-                  </Text>
-                )}
+                <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                  Create
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -873,13 +906,12 @@ export default function PostsPage({
             const isInactive = g.status === 'inactive';
             const unread = g.unreadCount || 0;
             const owner = isOwner(g);
-            const memberCount =
-              g.memberCount || (g.members ? g.members.length : 0);
+            const memberCount = g.members ? g.members.length : (g.memberCount || 0);
 
             return (
               <View style={[styles.modal, { backgroundColor: cardBg, borderColor }]}>
                 <View style={styles.manageHeader}>
-                  <Text style={styles.manageEmoji}>{g.emoji || '💬'}</Text>
+                  <Text style={styles.manageEmoji}>{g.emoji}</Text>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
                       style={[styles.modalTitle, { color: textColor }]}
@@ -951,7 +983,7 @@ export default function PostsPage({
                       Total posts
                     </Text>
                     <Text style={[styles.manageInfoValue, { color: textColor }]}>
-                      {g.postCount ?? 0}
+                      {g.postCount}
                     </Text>
                   </View>
                   {unread > 0 && (
@@ -995,20 +1027,10 @@ export default function PostsPage({
                     >
                       <Text style={styles.actionBtnIcon}>▶</Text>
                       <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.actionBtnTitle,
-                            { color: darkMode ? '#6EE7B7' : '#047857' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnTitle, { color: darkMode ? '#6EE7B7' : '#047857' }]}>
                           Activate group
                         </Text>
-                        <Text
-                          style={[
-                            styles.actionBtnSub,
-                            { color: darkMode ? '#6EE7B7' : '#047857' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnSub, { color: darkMode ? '#6EE7B7' : '#047857' }]}>
                           Members can post again
                         </Text>
                       </View>
@@ -1029,20 +1051,10 @@ export default function PostsPage({
                     >
                       <Text style={styles.actionBtnIcon}>⏸</Text>
                       <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.actionBtnTitle,
-                            { color: darkMode ? '#FCD34D' : '#92400E' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnTitle, { color: darkMode ? '#FCD34D' : '#92400E' }]}>
                           Deactivate group
                         </Text>
-                        <Text
-                          style={[
-                            styles.actionBtnSub,
-                            { color: darkMode ? '#FCD34D' : '#92400E' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnSub, { color: darkMode ? '#FCD34D' : '#92400E' }]}>
                           Freeze activity until you reactivate
                         </Text>
                       </View>
@@ -1063,20 +1075,10 @@ export default function PostsPage({
                     >
                       <Text style={styles.actionBtnIcon}>🗑️</Text>
                       <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.actionBtnTitle,
-                            { color: darkMode ? '#FCA5A5' : '#991B1B' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnTitle, { color: darkMode ? '#FCA5A5' : '#991B1B' }]}>
                           Delete group (permanent)
                         </Text>
-                        <Text
-                          style={[
-                            styles.actionBtnSub,
-                            { color: darkMode ? '#FCA5A5' : '#991B1B' },
-                          ]}
-                        >
+                        <Text style={[styles.actionBtnSub, { color: darkMode ? '#FCA5A5' : '#991B1B' }]}>
                           Removes group, posts, comments — cannot be undone
                         </Text>
                       </View>
@@ -1131,7 +1133,7 @@ export default function PostsPage({
         </View>
       </Modal>
 
-      {/* ─── Security Confirm ─── */}
+      {/* ─── Security Confirm (Owner: Deactivate / Delete) ─── */}
       <Modal
         visible={!!confirmAction}
         transparent
@@ -1155,18 +1157,9 @@ export default function PostsPage({
               ? (darkMode ? '#FCA5A5' : '#991B1B')
               : (darkMode ? '#FCD34D' : '#92400E');
 
-            const matches =
-              confirmText.trim().toLowerCase() ===
-              group.name.trim().toLowerCase();
-
             return (
               <View style={[styles.centerModal, { backgroundColor: cardBg, borderColor }]}>
-                <View
-                  style={[
-                    styles.confirmBadge,
-                    { backgroundColor: accentDark, borderColor: accent },
-                  ]}
-                >
+                <View style={[styles.confirmBadge, { backgroundColor: accentDark, borderColor: accent }]}>
                   <Text style={[styles.confirmBadgeText, { color: accentText }]}>
                     {isDelete ? '⚠️ PERMANENT ACTION' : '⏸ DEACTIVATION'}
                   </Text>
@@ -1188,15 +1181,11 @@ export default function PostsPage({
                 </Text>
                 <TextInput
                   value={confirmText}
-                  onChangeText={(v) => {
-                    setConfirmText(v);
-                    setConfirmError(null);
-                  }}
+                  onChangeText={(v) => { setConfirmText(v); setConfirmError(null); }}
                   placeholder={group.name}
                   placeholderTextColor={subTextColor}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  editable={!confirmSubmitting}
                   style={[
                     styles.input,
                     {
@@ -1214,40 +1203,31 @@ export default function PostsPage({
                   <TouchableOpacity
                     onPress={cancelConfirmAction}
                     activeOpacity={0.85}
-                    disabled={confirmSubmitting}
-                    style={[
-                      styles.modalBtn,
-                      {
-                        backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                        borderColor,
-                      },
-                    ]}
+                    style={[styles.modalBtn, {
+                      backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                      borderColor,
+                    }]}
                   >
-                    <Text style={[styles.modalBtnText, { color: textColor }]}>
-                      Cancel
-                    </Text>
+                    <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={applyConfirmAction}
                     activeOpacity={0.85}
-                    disabled={!matches || confirmSubmitting}
-                    style={[
-                      styles.modalBtn,
-                      {
-                        backgroundColor:
-                          matches && !confirmSubmitting ? accent : '#94A3B8',
-                        borderColor:
-                          matches && !confirmSubmitting ? accent : '#94A3B8',
-                      },
-                    ]}
+                    disabled={confirmText.trim().toLowerCase() !== group.name.trim().toLowerCase()}
+                    style={[styles.modalBtn, {
+                      backgroundColor:
+                        confirmText.trim().toLowerCase() === group.name.trim().toLowerCase()
+                          ? accent
+                          : '#94A3B8',
+                      borderColor:
+                        confirmText.trim().toLowerCase() === group.name.trim().toLowerCase()
+                          ? accent
+                          : '#94A3B8',
+                    }]}
                   >
-                    {confirmSubmitting ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                        {isDelete ? 'Delete permanently' : 'Deactivate'}
-                      </Text>
-                    )}
+                    <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                      {isDelete ? 'Delete permanently' : 'Deactivate'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1271,10 +1251,8 @@ export default function PostsPage({
           />
           {leaveGroupModal && (() => {
             const { group, isOwner: owner } = leaveGroupModal;
-
-            // Get members from the group object if present
             const members = (group.members || []).filter(
-              (m) => Number(m.userId) !== Number(currentUserId)
+              (m) => m.userId !== CURRENT_USER.userId
             );
 
             return (
@@ -1290,12 +1268,7 @@ export default function PostsPage({
 
                 {owner && (
                   <>
-                    <View
-                      style={[
-                        styles.confirmDivider,
-                        { backgroundColor: borderColor },
-                      ]}
-                    />
+                    <View style={[styles.confirmDivider, { backgroundColor: borderColor }]} />
                     <Text style={[styles.fieldLabel, { color: subTextColor }]}>
                       NEW OWNER
                     </Text>
@@ -1312,55 +1285,27 @@ export default function PostsPage({
                           keyboardShouldPersistTaps="handled"
                           showsVerticalScrollIndicator={false}
                           renderItem={({ item: u }) => {
-                            const selected =
-                              Number(transferTo?.userId) === Number(u.userId);
+                            const selected = transferTo?.userId === u.userId;
                             return (
                               <TouchableOpacity
-                                onPress={() => {
-                                  setTransferTo(u);
-                                  setLeaveError(null);
-                                }}
+                                onPress={() => { setTransferTo(u); setLeaveError(null); }}
                                 activeOpacity={0.85}
-                                style={[
-                                  styles.userPickRow,
-                                  {
-                                    backgroundColor: selected
-                                      ? darkMode
-                                        ? '#312E81'
-                                        : '#EEF2FF'
-                                      : darkMode
-                                      ? '#0F172A'
-                                      : '#FFFFFF',
-                                    borderColor: selected ? '#8B5CF6' : borderColor,
-                                  },
-                                ]}
+                                style={[styles.userPickRow, {
+                                  backgroundColor: selected
+                                    ? (darkMode ? '#312E81' : '#EEF2FF')
+                                    : (darkMode ? '#0F172A' : '#FFFFFF'),
+                                  borderColor: selected ? '#8B5CF6' : borderColor,
+                                }]}
                               >
-                                <View
-                                  style={[
-                                    styles.avatarSmall,
-                                    { backgroundColor: u.color || '#8B5CF6' },
-                                  ]}
-                                >
+                                <View style={[styles.avatarSmall, { backgroundColor: u.color || '#8B5CF6' }]}>
                                   <Text style={styles.avatarSmallText}>
-                                    {u.initials ||
-                                      (u.name || '?').slice(0, 2).toUpperCase()}
+                                    {u.initials || u.name.slice(0, 2).toUpperCase()}
                                   </Text>
                                 </View>
-                                <Text
-                                  style={[
-                                    styles.userPickName,
-                                    { color: textColor, flex: 1 },
-                                  ]}
-                                >
+                                <Text style={[styles.userPickName, { color: textColor, flex: 1 }]}>
                                   {u.name}
                                 </Text>
-                                {selected && (
-                                  <Text
-                                    style={[styles.checkMark, { color: '#8B5CF6' }]}
-                                  >
-                                    ✓
-                                  </Text>
-                                )}
+                                {selected && <Text style={[styles.checkMark, { color: '#8B5CF6' }]}>✓</Text>}
                               </TouchableOpacity>
                             );
                           }}
@@ -1377,44 +1322,25 @@ export default function PostsPage({
                   <TouchableOpacity
                     onPress={cancelLeave}
                     activeOpacity={0.85}
-                    disabled={leaveSubmitting}
-                    style={[
-                      styles.modalBtn,
-                      {
-                        backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                        borderColor,
-                      },
-                    ]}
+                    style={[styles.modalBtn, {
+                      backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                      borderColor,
+                    }]}
                   >
-                    <Text style={[styles.modalBtnText, { color: textColor }]}>
-                      Cancel
-                    </Text>
+                    <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={applyLeave}
                     activeOpacity={0.85}
-                    disabled={(owner && !transferTo) || leaveSubmitting}
-                    style={[
-                      styles.modalBtn,
-                      {
-                        backgroundColor:
-                          (owner && !transferTo) || leaveSubmitting
-                            ? '#94A3B8'
-                            : '#EF4444',
-                        borderColor:
-                          (owner && !transferTo) || leaveSubmitting
-                            ? '#94A3B8'
-                            : '#EF4444',
-                      },
-                    ]}
+                    disabled={owner && !transferTo}
+                    style={[styles.modalBtn, {
+                      backgroundColor: (owner && !transferTo) ? '#94A3B8' : '#EF4444',
+                      borderColor: (owner && !transferTo) ? '#94A3B8' : '#EF4444',
+                    }]}
                   >
-                    {leaveSubmitting ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                        {owner ? 'Transfer & leave' : 'Leave group'}
-                      </Text>
-                    )}
+                    <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                      {owner ? 'Transfer & leave' : 'Leave group'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1427,7 +1353,7 @@ export default function PostsPage({
 }
 
 // ================================================================
-// STYLES (unchanged)
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1740,6 +1666,7 @@ const styles = StyleSheet.create({
   },
   modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 
+  /* ---- Confirm / Leave modals ---- */
   centerBackdrop: {
     flex: 1,
     justifyContent: 'center',
@@ -1810,3 +1737,4 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
 });
+

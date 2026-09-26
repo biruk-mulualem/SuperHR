@@ -1,5 +1,5 @@
 // super-app/src/pages/posts/GroupDetailPage.js
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -24,32 +24,137 @@ import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import api from '../../stores/interceptor';   // ← NEW — for building absolute URLs
-import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
-import mobilePostsPostService from '../../stores/mobilePostsPostService';
-
 // Sibling pages
 import GroupMembersPage from './GroupMembersPage';
 import GroupAboutPage from './GroupAboutPage';
 
 // ================================================================
-// STATIC FILE URL HELPER
-// Static files (uploads) are served from the server root, NOT under /api.
-// Strip a trailing /api from the interceptor's baseURL if present.
+// DEMO DATA
 // ================================================================
-const API_BASE = (api.defaults.baseURL || '').replace(/\/api\/?$/, '');
+const DEMO_POSTS = [
+  {
+    id: 101,
+    title: 'New opening hours from Monday',
+    body: 'Starting next Monday, all stores open at 7:00 AM and close at 9:00 PM. Please update your schedules accordingly.',
+    author: 'Sara',
+    authorId: 101,
+    createdAt: Date.now() - 1000 * 60 * 12,
+    unread: true,
+    status: 'pending',
+    reviewNote: '',
+    reviewedBy: null,
+    reviewedAt: null,
+    images: [
+      'https://picsum.photos/seed/store1/1200/800',
+      'https://picsum.photos/seed/store2/1200/800',
+    ],
+    comments: [
+      { id: 1, author: 'Dawit', authorId: 102, body: 'Does this apply to the warehouse too, or just the stores?', createdAt: Date.now() - 1000 * 60 * 10 },
+      { id: 2, author: 'Hanna', authorId: 103, body: 'Thanks for the heads up!', createdAt: Date.now() - 1000 * 60 * 8 },
+      { id: 3, author: 'Mulu',  authorId: 201, body: 'Noted — I will update the schedule board.', createdAt: Date.now() - 1000 * 60 * 5 },
+    ],
+  },
+  {
+    id: 102,
+    title: 'Cash register #3 needs repair',
+    body: 'The paper feed is jamming constantly. Reported to IT yesterday. Anyone else having the same issue?',
+    author: 'Dawit',
+    authorId: 102,
+    createdAt: Date.now() - 1000 * 60 * 60 * 4,
+    unread: true,
+    status: 'pending',
+    reviewNote: '',
+    reviewedBy: null,
+    reviewedAt: null,
+    images: ['https://picsum.photos/seed/register/1200/800'],
+    comments: [
+      { id: 4, author: 'Mulu', authorId: 201, body: 'Same issue on register #4 yesterday.', createdAt: Date.now() - 1000 * 60 * 60 * 2 },
+    ],
+  },
+  {
+    id: 103,
+    title: 'Cycle count results — Oct',
+    body: 'Monthly cycle count complete. 3 SKUs below threshold. Full report attached in the drive folder.',
+    author: 'Mulu',
+    authorId: 201,
+    createdAt: Date.now() - 1000 * 60 * 60 * 26,
+    unread: false,
+    status: 'approved',
+    reviewNote: 'Great work, please share the report with Finance too.',
+    reviewedBy: 'Boss',
+    reviewedAt: Date.now() - 1000 * 60 * 60 * 24,
+    images: [],
+    comments: [
+      { id: 5, author: 'Sara', authorId: 101, body: 'Which SKUs are below threshold?', createdAt: Date.now() - 1000 * 60 * 60 * 20 },
+    ],
+  },
+  {
+    id: 104,
+    title: 'New supplier onboarding',
+    body: 'Welcome Tianjin Steel. Their first shipment is expected on Oct 12. Everyone please double-check the incoming BOLs.',
+    author: 'Boss',
+    authorId: 324,
+    createdAt: Date.now() - 1000 * 60 * 60 * 48,
+    unread: false,
+    status: 'approved',
+    reviewNote: '',
+    reviewedBy: null,
+    reviewedAt: null,
+    images: [
+      'https://picsum.photos/seed/supplier1/1200/800',
+      'https://picsum.photos/seed/supplier2/1200/800',
+      'https://picsum.photos/seed/supplier3/1200/800',
+    ],
+    comments: [],
+  },
+  {
+    id: 105,
+    title: 'Reminder: safety training Friday',
+    body: 'Mandatory safety training this Friday at 2 PM in the main hall. Attendance will be recorded.',
+    author: 'Hanna',
+    authorId: 103,
+    createdAt: Date.now() - 1000 * 60 * 60 * 72,
+    unread: false,
+    status: 'approved',
+    reviewNote: '',
+    reviewedBy: null,
+    reviewedAt: null,
+    images: ['https://picsum.photos/seed/safety/1200/800'],
+    comments: [],
+  },
+  {
+    id: 106,
+    title: 'Q4 targets published',
+    body: 'Please review the Q4 targets shared in the drive. Reach out if you have questions about your store.',
+    author: 'Yared',
+    authorId: 202,
+    createdAt: Date.now() - 1000 * 60 * 60 * 96,
+    unread: false,
+    status: 'declined',
+    reviewNote: 'These targets are outdated — please use the revised Q4 numbers.',
+    reviewedBy: 'Boss',
+    reviewedAt: Date.now() - 1000 * 60 * 60 * 90,
+    images: [],
+    comments: [],
+  },
+];
 
-const absoluteUrl = (u) => {
-  if (!u) return u;
-  if (/^https?:\/\//i.test(u)) return u;                 // already absolute
-  if (/^(file|content|data|blob):/i.test(u)) return u;   // local device URIs
-  const base = API_BASE.replace(/\/$/, '');
-  return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
-};
+const INITIAL_MEMBERS = [
+  { userId: 324, name: 'Boss',   role: 'admin',  initials: 'B',  color: '#8B5CF6', department: 'Management',    status: 'active'  },
+  { userId: 101, name: 'Sara',   role: 'member', initials: 'SA', color: '#10B981', department: 'Sales',         status: 'active'  },
+  { userId: 102, name: 'Dawit',  role: 'member', initials: 'DA', color: '#3B82F6', department: 'Inventory',     status: 'active'  },
+  { userId: 103, name: 'Hanna',  role: 'member', initials: 'HA', color: '#EC4899', department: 'HR',            status: 'active'  },
+  { userId: 201, name: 'Mulu',   role: 'member', initials: 'MU', color: '#F59E0B', department: 'Warehouse',     status: 'active'  },
+  { userId: 202, name: 'Yared',  role: 'member', initials: 'YA', color: '#06B6D4', department: 'Logistics',     status: 'active'  },
+  { userId: 301, name: 'Abel',   role: 'member', initials: 'AB', color: '#EF4444', department: 'Maintenance',   status: 'active'  },
+  { userId: 302, name: 'Tigist', role: 'member', initials: 'TI', color: '#8B5CF6', department: 'Finance',       status: 'pending' },
+  { userId: 304, name: 'Aster',  role: 'member', initials: 'AS', color: '#10B981', department: 'Customer Care', status: 'pending' },
+  { userId: 305, name: 'Brook',  role: 'member', initials: 'BR', color: '#3B82F6', department: 'IT Support',    status: 'pending' },
+];
 
-// ================================================================
-// CONSTANTS
-// ================================================================
+const CURRENT_USER = { userId: 324, name: 'Boss', role: 'manager' };
+const DEMO_GROUP_CREATOR_ID = 101;
+
 const POST_FILTERS = [
   { key: 'pending',  label: 'Pending'  },
   { key: 'approved', label: 'Approved' },
@@ -67,8 +172,7 @@ const PEN_SIZES = [3, 6, 10, 16];
 // ================================================================
 const fmtTimeAgo = (ts) => {
   if (!ts) return '—';
-  const t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
-  const s = Math.floor((Date.now() - t) / 1000);
+  const s = Math.floor((Date.now() - ts) / 1000);
   if (s < 60) return 'just now';
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
@@ -92,44 +196,6 @@ const postStatusConfig = (status, darkMode) => {
       return { label: '—', bg: darkMode ? '#1E293B' : '#F1F5F9', color: darkMode ? '#94A3B8' : '#64748B' };
   }
 };
-
-// Normalize a post coming from the backend to what the UI expects.
-// Every image URL is converted to an absolute URL so <Image> can load it.
-const normalizePost = (p) => ({
-  id: p.id,
-  groupId: p.groupId,
-  title: p.title,
-  body: p.body || '',
-  status: p.status,
-  reviewNote: p.reviewNote || '',
-  reviewedBy: p.reviewedBy || null,
-  reviewedBy_name: p.reviewedBy_name || null,
-  reviewedAt: p.reviewedAt || null,
-  author: p.author || 'Unknown',
-  authorId: p.authorId,
-  createdAt: p.createdAt,
-  unread: !!p.unread,
-
-  // ↓ absolute URLs for the <Image> component
-  images: (p.images || []).map((img) => {
-    const raw = typeof img === 'string' ? img : img.url;
-    return absoluteUrl(raw);
-  }),
-
-  imageRecords: p.images || [],
-  commentCount: p.commentCount || 0,
-  comments: p.comments || [],
-});
-
-const normalizeMember = (m) => ({
-  userId: m.userId,
-  name: m.name,
-  initials: m.initials || (m.name || '?').slice(0, 2).toUpperCase(),
-  color: m.color || '#8B5CF6',
-  department: m.department || null,
-  role: m.role,
-  status: m.status,
-});
 
 // ================================================================
 // IMAGE VIEWER
@@ -235,9 +301,11 @@ function ImageViewer({ visible, uri, onClose }) {
           <TouchableOpacity onPress={onClose} hitSlop={14} activeOpacity={0.7} style={styles.viewerCloseBtn}>
             <Text style={styles.viewerCloseText}>✕</Text>
           </TouchableOpacity>
+
           <View style={styles.viewerHintWrap} pointerEvents="none">
             <Text style={styles.viewerHint}>Pinch to zoom · Double-tap to toggle · Drag to pan</Text>
           </View>
+
           <View style={styles.viewerStage} {...panResponder.panHandlers}>
             <Animated.Image
               source={{ uri }}
@@ -306,10 +374,15 @@ function AnnotationScreen({
     const { locationX, locationY } = e.nativeEvent;
     setLive(`M ${locationX} ${locationY}`);
   };
+
   const handleMove = (e) => {
     const { locationX, locationY } = e.nativeEvent;
-    setLive((prev) => (prev ? `${prev} L ${locationX} ${locationY}` : `M ${locationX} ${locationY}`));
+    setLive((prev) => {
+      if (!prev) return `M ${locationX} ${locationY}`;
+      return `${prev} L ${locationX} ${locationY}`;
+    });
   };
+
   const handleEnd = () => {
     setLive((prev) => {
       if (prev && prev.length > 4) {
@@ -318,6 +391,7 @@ function AnnotationScreen({
       return '';
     });
   };
+
   const undo = () => setStrokes((prev) => prev.slice(0, -1));
   const clearAll = () => { setStrokes([]); setLive(''); };
 
@@ -342,7 +416,10 @@ function AnnotationScreen({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.annotBackdrop, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-          <View style={[styles.annotSheet, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
+          <View style={[
+            styles.annotSheet,
+            { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' },
+          ]}>
             <View style={[styles.annotHeader, { borderBottomColor: borderColor }]}>
               <TouchableOpacity onPress={onClose} hitSlop={10} activeOpacity={0.7} style={styles.annotHeaderBtn}>
                 <Text style={[styles.annotHeaderBtnText, { color: textColor }]}>Cancel</Text>
@@ -370,13 +447,18 @@ function AnnotationScreen({
 
             <View style={styles.annotCanvasWrap}>
               {imgSize.w > 0 && (
-                <View ref={viewRef} collapsable={false} style={[styles.annotCanvas, { width: frameW, height: frameH }]}>
+                <View
+                  ref={viewRef}
+                  collapsable={false}
+                  style={[styles.annotCanvas, { width: frameW, height: frameH }]}
+                >
                   <Image
                     source={{ uri }}
                     style={{ position: 'absolute', width: frameW, height: frameH }}
                     resizeMode="cover"
                     pointerEvents="none"
                   />
+
                   <Svg
                     width={frameW}
                     height={frameH}
@@ -389,10 +471,25 @@ function AnnotationScreen({
                     onResponderTerminate={handleEnd}
                   >
                     {strokes.map((s, i) => (
-                      <Path key={`s-${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      <Path
+                        key={`s-${i}`}
+                        d={s.d}
+                        stroke={s.color}
+                        strokeWidth={s.width}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
                     ))}
                     {live ? (
-                      <Path d={live} stroke={penColor} strokeWidth={penWidth} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      <Path
+                        d={live}
+                        stroke={penColor}
+                        strokeWidth={penWidth}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
                     ) : null}
                   </Svg>
                 </View>
@@ -430,7 +527,9 @@ function AnnotationScreen({
                     onPress={() => setPenWidth(w)}
                     activeOpacity={0.85}
                     style={[styles.annotSizeBtn, {
-                      backgroundColor: active ? (darkMode ? '#312E81' : '#EEF2FF') : (darkMode ? '#1E293B' : '#F1F5F9'),
+                      backgroundColor: active
+                        ? (darkMode ? '#312E81' : '#EEF2FF')
+                        : (darkMode ? '#1E293B' : '#F1F5F9'),
                       borderColor: active ? '#8B5CF6' : borderColor,
                     }]}
                   >
@@ -446,19 +545,27 @@ function AnnotationScreen({
 
               <View style={{ flex: 1 }} />
 
-              <TouchableOpacity onPress={undo} disabled={strokes.length === 0} activeOpacity={0.85}
+              <TouchableOpacity
+                onPress={undo}
+                disabled={strokes.length === 0}
+                activeOpacity={0.85}
                 style={[styles.annotActionBtn, {
                   backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                  borderColor, opacity: strokes.length === 0 ? 0.5 : 1,
+                  borderColor,
+                  opacity: strokes.length === 0 ? 0.5 : 1,
                 }]}
               >
                 <Text style={[styles.annotToolText, { color: textColor }]}>↶</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={clearAll} disabled={strokes.length === 0} activeOpacity={0.85}
+              <TouchableOpacity
+                onPress={clearAll}
+                disabled={strokes.length === 0}
+                activeOpacity={0.85}
                 style={[styles.annotActionBtn, {
                   backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                  borderColor, opacity: strokes.length === 0 ? 0.5 : 1,
+                  borderColor,
+                  opacity: strokes.length === 0 ? 0.5 : 1,
                 }]}
               >
                 <Text style={[styles.annotToolText, { color: '#EF4444' }]}>Clear</Text>
@@ -476,9 +583,9 @@ function AnnotationScreen({
 // ================================================================
 export default function GroupDetailPage({
   group,
-  currentUser,
-  onGroupUpdated,
-  onGroupRemoved,
+  members: membersProp,
+  setMembers: setMembersProp,
+  onPostCountChange,
   onBack,
   darkMode,
   textColor,
@@ -486,49 +593,43 @@ export default function GroupDetailPage({
   cardBg,
   borderColor,
 }) {
-  // ----------------------------------------------------------------
-  // Auth / permissions
-  // ----------------------------------------------------------------
-  const currentUserId = currentUser?.userId;
-  const isManager =
-    !!currentUser &&
-    (currentUser.isAdmin === true ||
-      ['admin', 'administrator', 'superadmin', 'manager'].includes(
-        String(currentUser.role || '').toLowerCase()
-      ));
+  const [posts, setPosts] = useState(DEMO_POSTS);
+  const [localMembers, setLocalMembers] = useState(INITIAL_MEMBERS);
 
-  const groupCreatorId = group?.createdBy;
-  const isGroupAdmin =
-    !!currentUserId && Number(currentUserId) === Number(groupCreatorId);
-
-  // ----------------------------------------------------------------
-  // State
-  // ----------------------------------------------------------------
-  const [posts, setPosts] = useState([]);
-  const [postsLoading, setPostsLoading] = useState(true);
-
-  const [members, setMembers] = useState([]);
-  const [membersLoading, setMembersLoading] = useState(true);
+  // Prefer parent-owned members (persisted in PostsPage). Fall back to local
+  // state so the page still works standalone (e.g. in isolation / tests).
+  const members = membersProp ?? localMembers;
+  const setMembers = setMembersProp ?? setLocalMembers;
 
   const [search, setSearch] = useState('');
   const [postFilter, setPostFilter] = useState('pending');
 
+  // ---- Role / permission flags ----
+  // Manager = company-level role that can approve/decline posts.
+  const isManager = CURRENT_USER.role === 'manager' || CURRENT_USER.role === 'admin';
+
+  const groupCreatorId = group?.createdBy ?? DEMO_GROUP_CREATOR_ID;
+
+  // Only the person who created the group can manage members.
+  // Managers/admin can still review posts, but cannot add/remove members.
+  const isGroupAdmin = CURRENT_USER.userId === groupCreatorId;
+
+  const myMembership = members.find((m) => m.userId === CURRENT_USER.userId);
+  const canCreatePost = !!myMembership;
+
   const [page, setPage] = useState('posts');
 
   const [confirmDeletePost, setConfirmDeletePost] = useState(null);
-  const [deletingPost, setDeletingPost] = useState(false);
 
   const [reviewPage, setReviewPage] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewError, setReviewError] = useState(null);
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostBody, setNewPostBody] = useState('');
   const [newPostImages, setNewPostImages] = useState([]);
   const [postError, setPostError] = useState(null);
-  const [submittingPost, setSubmittingPost] = useState(false);
 
   const [selectedPostId, setSelectedPostId] = useState(null);
 
@@ -539,64 +640,51 @@ export default function GroupDetailPage({
   const [annotVisible, setAnnotVisible] = useState(false);
   const [annotTarget, setAnnotTarget] = useState(null);
 
+  // ---- Comment composer ----
   const [commentText, setCommentText] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
   const commentInputRef = useRef(null);
 
-  const myMembership = members.find((m) => Number(m.userId) === Number(currentUserId));
-  const canCreatePost = !!myMembership && myMembership.status === 'active';
+  const openImageViewer = (uri) => { setViewerUri(uri); setViewerVisible(true); };
+  const closeImageViewer = () => setViewerVisible(false);
 
-  // ----------------------------------------------------------------
-  // Loaders
-  // ----------------------------------------------------------------
-  const loadPosts = useCallback(async () => {
-    if (!group?.id) return;
-    setPostsLoading(true);
-    try {
-      const [pendingRes, approvedRes, declinedRes] = await Promise.all([
-        mobilePostsPostService.listGroupPosts(group.id, { status: 'pending',  limit: 100 }),
-        mobilePostsPostService.listGroupPosts(group.id, { status: 'approved', limit: 100 }),
-        mobilePostsPostService.listGroupPosts(group.id, { status: 'declined', limit: 100 }),
-      ]);
+  const openAnnotation = (postId, imageIndex, uri) => {
+    setAnnotTarget({ postId, imageIndex });
+    setAnnotUri(uri);
+    setAnnotVisible(true);
+  };
+  const closeAnnotation = () => {
+    setAnnotVisible(false);
+    setAnnotUri(null);
+    setAnnotTarget(null);
+  };
+  const applyAnnotation = (newUri) => {
+    if (!annotTarget) return;
+    const { postId, imageIndex } = annotTarget;
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const nextImages = (p.images || []).slice();
+        nextImages[imageIndex] = newUri;
+        return { ...p, images: nextImages };
+      })
+    );
+    closeAnnotation();
+  };
 
-      const merge = [];
-      if (pendingRes.success)  merge.push(...(pendingRes.data.items || []));
-      if (approvedRes.success) merge.push(...(approvedRes.data.items || []));
-      if (declinedRes.success) merge.push(...(declinedRes.data.items || []));
-
-      setPosts(merge.map(normalizePost));
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to load posts');
-    } finally {
-      setPostsLoading(false);
-    }
-  }, [group?.id]);
-
-  const loadMembers = useCallback(async () => {
-    if (!group?.id) return;
-    setMembersLoading(true);
-    try {
-      const res = await mobilePostsGroupService.listMembers(group.id);
-      if (res.success) {
-        setMembers((res.data.items || []).map(normalizeMember));
-      }
-    } catch (e) {
-      console.warn('loadMembers:', e);
-    } finally {
-      setMembersLoading(false);
-    }
-  }, [group?.id]);
-
-  useEffect(() => {
-    if (group?.id) {
-      loadPosts();
-      loadMembers();
-    }
-  }, [group?.id, loadPosts, loadMembers]);
+  const selectedPost = useMemo(
+    () => posts.find((p) => p.id === selectedPostId) || null,
+    [posts, selectedPostId]
+  );
 
   useEffect(() => {
     setCommentText('');
   }, [selectedPostId]);
+
+  // Keep parent's group.postCount in sync (optional callback).
+  useEffect(() => {
+    onPostCountChange?.(posts.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts.length]);
 
   // ----------------------------------------------------------------
   // Hardware back
@@ -618,7 +706,7 @@ export default function GroupDetailPage({
   }, [annotVisible, viewerVisible, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack]);
 
   // ----------------------------------------------------------------
-  // Derived
+  // Derived data
   // ----------------------------------------------------------------
   const postCounts = useMemo(() => ({
     pending:  posts.filter((p) => p.status === 'pending').length,
@@ -635,62 +723,15 @@ export default function GroupDetailPage({
         if (!raw) return matchesFilter;
         const numStr = String(p.id);
         const matchesSearch =
-          (p.title || '').toLowerCase().includes(raw) ||
-          (p.body || '').toLowerCase().includes(raw) ||
-          (p.author || '').toLowerCase().includes(raw) ||
+          p.title.toLowerCase().includes(raw) ||
+          p.body.toLowerCase().includes(raw) ||
+          p.author.toLowerCase().includes(raw) ||
           numStr.includes(numeric) ||
           `#${numStr}`.includes(raw);
         return matchesFilter && matchesSearch;
       })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .sort((a, b) => b.createdAt - a.createdAt);
   }, [posts, search, postFilter]);
-
-  const selectedPost = useMemo(
-    () => posts.find((p) => Number(p.id) === Number(selectedPostId)) || null,
-    [posts, selectedPostId]
-  );
-
-  // ----------------------------------------------------------------
-  // Image viewer / annotation
-  // ----------------------------------------------------------------
-  const openImageViewer = (uri) => { setViewerUri(uri); setViewerVisible(true); };
-  const closeImageViewer = () => setViewerVisible(false);
-
-  const openAnnotation = (postId, imageIndex, uri) => {
-    setAnnotTarget({ postId, imageIndex });
-    setAnnotUri(uri);
-    setAnnotVisible(true);
-  };
-  const closeAnnotation = () => {
-    setAnnotVisible(false);
-    setAnnotUri(null);
-    setAnnotTarget(null);
-  };
-
-  const applyAnnotation = async (newUri) => {
-    if (!annotTarget) return;
-    const { postId, imageIndex } = annotTarget;
-    try {
-      const res = await mobilePostsPostService.annotatePostImage(postId, imageIndex, {
-        uri: newUri,
-        name: 'annotated.jpg',
-        type: 'image/jpeg',
-      });
-      if (res.success) {
-        const fresh = await mobilePostsPostService.getPost(postId);
-        if (fresh.success) {
-          const norm = normalizePost(fresh.data);
-          setPosts((prev) => prev.map((p) => (Number(p.id) === Number(postId) ? norm : p)));
-        }
-      } else {
-        Alert.alert('Error', res.error || 'Could not save annotation');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not save annotation');
-    } finally {
-      closeAnnotation();
-    }
-  };
 
   // ----------------------------------------------------------------
   // Post actions
@@ -721,7 +762,7 @@ export default function GroupDetailPage({
     setNewPostImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const submitPost = async () => {
+  const submitPost = () => {
     if (!canCreatePost) {
       Alert.alert('Not allowed', 'You do not have permission to post in this group.');
       return;
@@ -730,108 +771,72 @@ export default function GroupDetailPage({
       setPostError('Title is required');
       return;
     }
-    setSubmittingPost(true);
-    try {
-      const res = await mobilePostsPostService.createPost(group.id, {
+    const id = posts.length ? Math.max(...posts.map((p) => p.id)) + 1 : 101;
+    setPosts((prev) => [
+      {
+        id,
         title: newPostTitle.trim(),
         body: newPostBody.trim(),
-        images: newPostImages.map((uri) => ({ uri })),
-      });
-      if (res.success) {
-        setPosts((prev) => [normalizePost(res.data), ...prev]);
-        setShowCreatePost(false);
-        setNewPostTitle('');
-        setNewPostBody('');
-        setNewPostImages([]);
-        setPostError(null);
-      } else {
-        setPostError(res.error || 'Could not create post');
-      }
-    } catch (e) {
-      setPostError(e?.message || 'Could not create post');
-    } finally {
-      setSubmittingPost(false);
-    }
+        author: CURRENT_USER.name,
+        authorId: CURRENT_USER.userId,
+        createdAt: Date.now(),
+        unread: false,
+        status: 'pending',
+        reviewNote: '',
+        reviewedBy: null,
+        reviewedAt: null,
+        images: newPostImages,
+        comments: [],
+      },
+      ...prev,
+    ]);
+    setShowCreatePost(false);
+    setNewPostTitle('');
+    setNewPostBody('');
+    setNewPostImages([]);
+    setPostError(null);
   };
 
-  const openPost = async (post) => {
+  const openPost = (post) => {
     setSelectedPostId(post.id);
-
     if (post.unread) {
-      mobilePostsPostService.markPostRead(post.id).catch(() => {});
-      setPosts((prev) =>
-        prev.map((p) => (Number(p.id) === Number(post.id) ? { ...p, unread: false } : p))
-      );
-    }
-
-    if (!post.comments || post.comments.length === 0) {
-      try {
-        const res = await mobilePostsPostService.getPost(post.id);
-        if (res.success) {
-          const norm = normalizePost(res.data);
-          setPosts((prev) => prev.map((p) => (Number(p.id) === Number(norm.id) ? norm : p)));
-        }
-      } catch (e) {
-        // ignore
-      }
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, unread: false } : p)));
     }
   };
 
   const requestDeletePost = (post) => setConfirmDeletePost(post);
 
-  const applyDeletePost = async () => {
+  const applyDeletePost = () => {
     const target = confirmDeletePost;
     if (!target) return;
-    setDeletingPost(true);
-    try {
-      const res = await mobilePostsPostService.deletePost(target.id);
-      if (res.success) {
-        setPosts((prev) => prev.filter((p) => Number(p.id) !== Number(target.id)));
-        if (Number(selectedPostId) === Number(target.id)) setSelectedPostId(null);
-        setConfirmDeletePost(null);
-      } else {
-        Alert.alert('Error', res.error || 'Could not delete post');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not delete post');
-    } finally {
-      setDeletingPost(false);
-    }
+    setPosts((prev) => prev.filter((p) => p.id !== target.id));
+    if (selectedPostId === target.id) setSelectedPostId(null);
+    setConfirmDeletePost(null);
   };
 
-  const submitComment = async () => {
+  const submitComment = () => {
     if (!selectedPost) return;
     const text = commentText.trim();
     if (!text) return;
 
-    setSubmittingComment(true);
-    try {
-      const res = await mobilePostsPostService.addComment(selectedPost.id, text);
-      if (res.success) {
-        const newComment = {
-          id: res.data.id,
-          author: res.data.author,
-          authorId: res.data.authorId,
-          body: res.data.body,
-          createdAt: res.data.createdAt,
-        };
-        setPosts((prev) =>
-          prev.map((p) =>
-            Number(p.id) === Number(selectedPost.id)
-              ? { ...p, comments: [...(p.comments || []), newComment], commentCount: (p.commentCount || 0) + 1 }
-              : p
-          )
-        );
-        setCommentText('');
-        commentInputRef.current?.focus();
-      } else {
-        Alert.alert('Error', res.error || 'Could not post comment');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not post comment');
-    } finally {
-      setSubmittingComment(false);
-    }
+    const newComment = {
+      id: Date.now(),
+      author: CURRENT_USER.name,
+      authorId: CURRENT_USER.userId,
+      body: text,
+      createdAt: Date.now(),
+    };
+
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === selectedPost.id
+          ? { ...p, comments: [...(p.comments || []), newComment] }
+          : p
+      )
+    );
+
+    setCommentText('');
+    commentInputRef.current?.focus();
   };
 
   const openReviewPage = (post, action) => {
@@ -842,7 +847,7 @@ export default function GroupDetailPage({
     setReviewPage({ post, action });
   };
 
-  const applyReviewPage = async () => {
+  const applyReviewPage = () => {
     if (!reviewPage) return;
     if (!reviewNote.trim()) {
       setReviewError(
@@ -852,27 +857,18 @@ export default function GroupDetailPage({
       );
       return;
     }
-    setReviewSubmitting(true);
     const { post, action } = reviewPage;
-    try {
-      const res = action === 'approve'
-        ? await mobilePostsPostService.approvePost(post.id, reviewNote.trim())
-        : await mobilePostsPostService.declinePost(post.id, reviewNote.trim());
-
-      if (res.success) {
-        const norm = normalizePost(res.data);
-        setPosts((prev) => prev.map((p) => (Number(p.id) === Number(norm.id) ? { ...p, ...norm } : p)));
-        setReviewPage(null);
-        setReviewNote('');
-        setReviewError(null);
-      } else {
-        setReviewError(res.error || 'Could not save review');
-      }
-    } catch (e) {
-      setReviewError(e?.message || 'Could not save review');
-    } finally {
-      setReviewSubmitting(false);
-    }
+    const nextStatus = action === 'approve' ? 'approved' : 'declined';
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === post.id
+          ? { ...p, status: nextStatus, reviewNote: reviewNote.trim(), reviewedBy: CURRENT_USER.name, reviewedAt: Date.now() }
+          : p
+      )
+    );
+    setReviewPage(null);
+    setReviewNote('');
+    setReviewError(null);
   };
 
   const cancelReviewPage = () => {
@@ -930,7 +926,7 @@ export default function GroupDetailPage({
 
   const renderPost = ({ item: p }) => {
     const cfg = postStatusConfig(p.status, darkMode);
-    const commentCount = p.comments ? p.comments.length : (p.commentCount || 0);
+    const commentCount = (p.comments || []).length;
     return (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -970,12 +966,14 @@ export default function GroupDetailPage({
   };
 
   const renderComment = ({ item: c }) => {
-    const member = members.find((m) => Number(m.userId) === Number(c.authorId));
-    const memberColor = member?.color || '#8B5CF6';
-    const memberInitials = member?.initials || (c.author || '?').slice(0, 2).toUpperCase();
+    const memberColor = members.find((m) => m.userId === c.authorId)?.color || '#8B5CF6';
+    const memberInitials = members.find((m) => m.userId === c.authorId)?.initials || c.author.slice(0, 2).toUpperCase();
 
     return (
-      <View style={[styles.commentRow, { backgroundColor: cardBg, borderColor }]}>
+      <View style={[styles.commentRow, {
+        backgroundColor: cardBg,
+        borderColor: borderColor,
+      }]}>
         <View style={[styles.avatarSmall, { backgroundColor: memberColor }]}>
           <Text style={styles.avatarSmallText}>{memberInitials}</Text>
         </View>
@@ -1003,19 +1001,15 @@ export default function GroupDetailPage({
             <View style={styles.modalActions}>
               <TouchableOpacity
                 onPress={() => setConfirmDeletePost(null)}
-                disabled={deletingPost}
                 style={[styles.modalBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
               >
                 <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={applyDeletePost}
-                disabled={deletingPost}
                 style={[styles.modalBtn, { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}
               >
-                {deletingPost ? <ActivityIndicator color="#FFF" size="small" /> : (
-                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Delete</Text>
-                )}
+                <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1084,7 +1078,6 @@ export default function GroupDetailPage({
             placeholderTextColor={subTextColor}
             multiline
             numberOfLines={6}
-            editable={!reviewSubmitting}
             style={[styles.reviewInput, {
               color: textColor,
               backgroundColor: cardBg,
@@ -1109,7 +1102,6 @@ export default function GroupDetailPage({
           <TouchableOpacity
             onPress={cancelReviewPage}
             activeOpacity={0.85}
-            disabled={reviewSubmitting}
             style={[styles.reviewFooterBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
           >
             <Text style={[styles.reviewFooterBtnText, { color: textColor }]}>Cancel</Text>
@@ -1117,18 +1109,16 @@ export default function GroupDetailPage({
           <TouchableOpacity
             onPress={applyReviewPage}
             activeOpacity={0.9}
-            disabled={!reviewNote.trim() || reviewSubmitting}
+            disabled={!reviewNote.trim()}
             style={[styles.reviewFooterBtn, {
-              backgroundColor: reviewNote.trim() && !reviewSubmitting ? accent : '#94A3B8',
-              borderColor: reviewNote.trim() && !reviewSubmitting ? accent : '#94A3B8',
+              backgroundColor: reviewNote.trim() ? accent : '#94A3B8',
+              borderColor: reviewNote.trim() ? accent : '#94A3B8',
               flex: 1.4,
             }]}
           >
-            {reviewSubmitting ? <ActivityIndicator color="#FFF" size="small" /> : (
-              <Text style={[styles.reviewFooterBtnText, { color: '#FFFFFF' }]}>
-                {isApprove ? '✓ Approve & save' : '✕ Decline & save'}
-              </Text>
-            )}
+            <Text style={[styles.reviewFooterBtnText, { color: '#FFFFFF' }]}>
+              {isApprove ? '✓ Approve & save' : '✕ Decline & save'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1150,18 +1140,24 @@ export default function GroupDetailPage({
     const comments = p.comments || [];
     const num = fmtPostNumber(p.id);
 
-    const ageMs = Date.now() - new Date(p.createdAt).getTime();
-    const withinWindow = ageMs < 5 * 60 * 1000;
-    const canDelete = isManager || isGroupAdmin || (Number(p.authorId) === Number(currentUserId) && withinWindow);
+    const DELETE_WINDOW_MS = 5 * 60 * 1000;
+    const canDelete =
+      (p.authorId === CURRENT_USER.userId || isGroupAdmin) &&
+      (Date.now() - p.createdAt) < DELETE_WINDOW_MS;
 
     return (
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.headerBar}>
           <TouchableOpacity onPress={() => setSelectedPostId(null)} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
             <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>Post {num}</Text>
+            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
+              Post {num}
+            </Text>
             <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>In {group?.name}</Text>
           </View>
           {canDelete && (
@@ -1176,7 +1172,11 @@ export default function GroupDetailPage({
           )}
         </View>
 
-        <ScrollView contentContainerStyle={styles.detailPageContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.detailPageContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.detailTopRow}>
             <View style={[styles.postStatusPill, { backgroundColor: cfg.bg }]}>
               <Text style={[styles.postStatusPillText, { color: cfg.color }]}>{cfg.label}</Text>
@@ -1188,10 +1188,10 @@ export default function GroupDetailPage({
 
           <View style={styles.detailAuthorRow}>
             <View style={[styles.avatarSmall, {
-              backgroundColor: members.find((m) => Number(m.userId) === Number(p.authorId))?.color || '#8B5CF6',
+              backgroundColor: members.find((m) => m.userId === p.authorId)?.color || '#8B5CF6',
             }]}>
               <Text style={styles.avatarSmallText}>
-                {members.find((m) => Number(m.userId) === Number(p.authorId))?.initials || (p.author || '?').slice(0, 2).toUpperCase()}
+                {(members.find((m) => m.userId === p.authorId)?.initials) || p.author.slice(0, 2).toUpperCase()}
               </Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -1218,9 +1218,9 @@ export default function GroupDetailPage({
                     />
                   </TouchableOpacity>
 
-                  {isManager && p.imageRecords && p.imageRecords[i] && (
+                  {isManager && (
                     <TouchableOpacity
-                      onPress={() => openAnnotation(p.id, p.imageRecords[i].id, uri)}
+                      onPress={() => openAnnotation(p.id, i, uri)}
                       activeOpacity={0.85}
                       hitSlop={6}
                       style={styles.signImageBtn}
@@ -1250,13 +1250,16 @@ export default function GroupDetailPage({
               </View>
             ) : (
               <ScrollView
-                style={[styles.commentsScroll, { height: Math.max(120, Math.min(300, comments.length * 90)) }]}
+                style={[
+                  styles.commentsScroll,
+                  { height: Math.max(120, Math.min(300, comments.length * 90)) },
+                ]}
                 contentContainerStyle={styles.commentsScrollContent}
                 nestedScrollEnabled
                 showsVerticalScrollIndicator
                 keyboardShouldPersistTaps="handled"
               >
-                {comments.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((c) => (
+                {comments.slice().sort((a, b) => b.createdAt - a.createdAt).map((c) => (
                   <React.Fragment key={c.id}>{renderComment({ item: c })}</React.Fragment>
                 ))}
               </ScrollView>
@@ -1284,7 +1287,7 @@ export default function GroupDetailPage({
             }]}>
               <Text style={[styles.viewerNoticeText, { color: darkMode ? '#6EE7B7' : '#047857' }]}>✓ Approved</Text>
               <Text style={[styles.viewerNoticeSub, { color: darkMode ? '#6EE7B7' : '#047857' }]}>
-                {p.reviewedAt ? `Approved · ${fmtTimeAgo(p.reviewedAt)}` : 'Approved by the manager.'}
+                {p.reviewedBy ? `Approved by ${p.reviewedBy} · ${fmtTimeAgo(p.reviewedAt)}` : 'Approved by the manager.'}
               </Text>
             </View>
           )}
@@ -1296,7 +1299,7 @@ export default function GroupDetailPage({
             }]}>
               <Text style={[styles.viewerNoticeText, { color: darkMode ? '#FCA5A5' : '#991B1B' }]}>✕ Declined</Text>
               <Text style={[styles.viewerNoticeSub, { color: darkMode ? '#FCA5A5' : '#991B1B' }]}>
-                {p.reviewedAt ? `Declined · ${fmtTimeAgo(p.reviewedAt)}` : 'Declined by the manager.'}
+                {p.reviewedBy ? `Declined by ${p.reviewedBy} · ${fmtTimeAgo(p.reviewedAt)}` : 'Declined by the manager.'}
               </Text>
             </View>
           )}
@@ -1312,6 +1315,7 @@ export default function GroupDetailPage({
                 }]}>
                   {isApproved ? '✓ MANAGER NOTE' : '✕ MANAGER NOTE'}
                 </Text>
+                {p.reviewedBy && <Text style={[styles.reviewNoteMeta, { color: subTextColor }]}>— {p.reviewedBy}</Text>}
               </View>
               <Text style={[styles.reviewNoteBody, { color: textColor }]}>{p.reviewNote}</Text>
             </View>
@@ -1337,10 +1341,13 @@ export default function GroupDetailPage({
           )}
         </ScrollView>
 
-        <View style={[styles.commentBar, { backgroundColor: cardBg, borderTopColor: borderColor }]}>
+        <View style={[
+          styles.commentBar,
+          { backgroundColor: cardBg, borderTopColor: borderColor },
+        ]}>
           <View style={[styles.commentBarAvatar, { backgroundColor: '#8B5CF6' }]}>
             <Text style={styles.commentBarAvatarText}>
-              {(currentUser?.name || 'ME').slice(0, 2).toUpperCase()}
+              {CURRENT_USER.name.slice(0, 2).toUpperCase()}
             </Text>
           </View>
 
@@ -1350,30 +1357,40 @@ export default function GroupDetailPage({
             onChangeText={setCommentText}
             placeholder="Write a comment…"
             placeholderTextColor={subTextColor}
-            editable={!submittingComment}
-            style={[styles.commentBarInput, {
-              color: textColor,
-              backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
-            }]}
+            style={[
+              styles.commentBarInput,
+              {
+                color: textColor,
+                backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
+              },
+            ]}
             multiline
             numberOfLines={4}
           />
 
           <TouchableOpacity
             onPress={submitComment}
-            disabled={!commentText.trim() || submittingComment}
+            disabled={!commentText.trim()}
             activeOpacity={0.85}
-            style={[styles.commentBarSendBtn, {
-              backgroundColor: commentText.trim() && !submittingComment
-                ? '#8B5CF6'
-                : (darkMode ? '#1E293B' : '#E2E8F0'),
-            }]}
+            style={[
+              styles.commentBarSendBtn,
+              {
+                backgroundColor: commentText.trim()
+                  ? '#8B5CF6'
+                  : (darkMode ? '#1E293B' : '#E2E8F0'),
+              },
+            ]}
           >
-            {submittingComment ? <ActivityIndicator color="#FFF" size="small" /> : (
-              <Text style={[styles.commentBarSendText, {
-                color: commentText.trim() ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8'),
-              }]}>➤</Text>
-            )}
+            <Text style={[
+              styles.commentBarSendText,
+              {
+                color: commentText.trim()
+                  ? '#FFFFFF'
+                  : (darkMode ? '#64748B' : '#94A3B8'),
+              },
+            ]}>
+              ➤
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1395,17 +1412,16 @@ export default function GroupDetailPage({
   }
 
   // ================================================================
-  // MEMBERS PAGE
+  // MEMBERS PAGE (delegated)
   // ================================================================
   if (page === 'members') {
     return (
       <GroupMembersPage
-        group={group}
+        group={{ ...(group || {}), createdBy: groupCreatorId }}
         members={members}
-        onMembersChanged={loadMembers}
+        setMembers={setMembers}
         isGroupAdmin={isGroupAdmin}
-        currentUser={currentUser}
-        onGroupUpdated={onGroupUpdated}
+        currentUserId={CURRENT_USER.userId}
         onBack={() => setPage('posts')}
         darkMode={darkMode}
         textColor={textColor}
@@ -1417,16 +1433,16 @@ export default function GroupDetailPage({
   }
 
   // ================================================================
-  // ABOUT PAGE
+  // ABOUT PAGE (delegated)
   // ================================================================
   if (page === 'about') {
     return (
       <GroupAboutPage
-        group={group}
+        group={{ ...(group || {}), createdBy: groupCreatorId }}
         members={members}
         postsCount={posts.length}
         pendingPosts={postCounts.pending}
-        currentUserId={currentUserId}
+        currentUserId={CURRENT_USER.userId}
         canManage={isGroupAdmin}
         onBack={() => setPage('posts')}
         darkMode={darkMode}
@@ -1522,26 +1538,20 @@ export default function GroupDetailPage({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          postsLoading ? (
-            <View style={styles.emptyBox}>
-              <ActivityIndicator color="#8B5CF6" />
-            </View>
-          ) : (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyEmoji}>
-                {postFilter === 'pending' ? '⏳' : postFilter === 'approved' ? '✓' : '✕'}
-              </Text>
-              <Text style={[styles.emptyTitle, { color: textColor }]}>
-                {search ? 'No matches'
-                  : postFilter === 'pending' ? 'No pending posts'
-                  : postFilter === 'approved' ? 'No approved posts'
-                  : 'No declined posts'}
-              </Text>
-              <Text style={[styles.emptyBody, { color: subTextColor }]}>
-                {search ? `No posts match "${search}".` : 'Try a different filter.'}
-              </Text>
-            </View>
-          )
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyEmoji}>
+              {postFilter === 'pending' ? '⏳' : postFilter === 'approved' ? '✓' : '✕'}
+            </Text>
+            <Text style={[styles.emptyTitle, { color: textColor }]}>
+              {search ? 'No matches'
+                : postFilter === 'pending' ? 'No pending posts'
+                : postFilter === 'approved' ? 'No approved posts'
+                : 'No declined posts'}
+            </Text>
+            <Text style={[styles.emptyBody, { color: subTextColor }]}>
+              {search ? `No posts match "${search}".` : 'Try a different filter.'}
+            </Text>
+          </View>
         }
       />
 
@@ -1566,7 +1576,6 @@ export default function GroupDetailPage({
               onChangeText={(v) => { setNewPostTitle(v); setPostError(null); }}
               placeholder="What's this about?"
               placeholderTextColor={subTextColor}
-              editable={!submittingPost}
               style={[styles.input, {
                 color: textColor,
                 backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
@@ -1582,7 +1591,6 @@ export default function GroupDetailPage({
               placeholderTextColor={subTextColor}
               multiline
               numberOfLines={5}
-              editable={!submittingPost}
               style={[styles.input, styles.textarea, {
                 color: textColor,
                 backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
@@ -1598,7 +1606,6 @@ export default function GroupDetailPage({
               <TouchableOpacity
                 onPress={pickImages}
                 activeOpacity={0.85}
-                disabled={submittingPost}
                 style={[styles.pickerBtn, { backgroundColor: darkMode ? '#0F172A' : '#FFFFFF', borderColor }]}
               >
                 <Text style={styles.pickerBtnIcon}>🖼️</Text>
@@ -1629,18 +1636,15 @@ export default function GroupDetailPage({
             {postError && <Text style={{ color: '#EF4444', marginTop: 6, fontWeight: '600' }}>{postError}</Text>}
 
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setShowCreatePost(false)} activeOpacity={0.85} disabled={submittingPost} style={[styles.modalBtn, {
+              <TouchableOpacity onPress={() => setShowCreatePost(false)} activeOpacity={0.85} style={[styles.modalBtn, {
                 backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor,
               }]}>
                 <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={submitPost} activeOpacity={0.85} disabled={submittingPost} style={[styles.modalBtn, {
-                backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
-                borderColor: submittingPost ? '#94A3B8' : '#8B5CF6',
+              <TouchableOpacity onPress={submitPost} activeOpacity={0.85} style={[styles.modalBtn, {
+                backgroundColor: '#8B5CF6', borderColor: '#8B5CF6',
               }]}>
-                {submittingPost ? <ActivityIndicator color="#FFF" size="small" /> : (
-                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Submit for review</Text>
-                )}
+                <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Submit for review</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1664,14 +1668,18 @@ export default function GroupDetailPage({
 }
 
 // ================================================================
-// STYLES (unchanged)
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
   headerBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, gap: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 10,
   },
   backBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 30, fontWeight: '300', marginTop: -6 },
@@ -1772,27 +1780,49 @@ const styles = StyleSheet.create({
   commentBody: { fontSize: 13.5, fontWeight: '500', lineHeight: 19, marginTop: 2 },
 
   commentBar: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
-    paddingHorizontal: 12, paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
     paddingBottom: Platform.OS === 'ios' ? 26 : 14,
     borderTopWidth: 1,
   },
   commentBarAvatar: {
     width: 32, height: 32, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
   },
-  commentBarAvatarText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  commentBarAvatarText: {
+    color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4,
+  },
   commentBarInput: {
-    flex: 1, minHeight: 38, maxHeight: 110, borderRadius: 20,
-    paddingHorizontal: 14, paddingTop: 9, paddingBottom: 9,
-    fontSize: 14, fontWeight: '500',
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 110,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingTop: 9,
+    paddingBottom: 9,
+    fontSize: 14,
+    fontWeight: '500',
   },
-  commentBarSendBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  commentBarSendText: { fontSize: 15, fontWeight: '900', marginTop: -1 },
+  commentBarSendBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  commentBarSendText: {
+    fontSize: 15, fontWeight: '900', marginTop: -1,
+  },
 
-  viewerNotice: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16, alignItems: 'center' },
+  viewerNotice: {
+    padding: 14, borderRadius: 12, borderWidth: 1,
+    marginBottom: 16, alignItems: 'center',
+  },
   viewerNoticeText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
-  viewerNoticeSub: { fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9 },
+  viewerNoticeSub: {
+    fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9,
+  },
 
   reviewNoteCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   reviewNoteHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
@@ -1801,7 +1831,10 @@ const styles = StyleSheet.create({
   reviewNoteBody: { fontSize: 13.5, fontWeight: '500', lineHeight: 20 },
 
   approvalActionsInline: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  approvalBtn: { flex: 1, paddingVertical: 13, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  approvalBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 11, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   approvalBtnText: { fontSize: 13.5, fontWeight: '900', letterSpacing: 0.2 },
 
   reviewPageContent: { paddingHorizontal: 16, paddingBottom: 32 },
@@ -1809,42 +1842,87 @@ const styles = StyleSheet.create({
   reviewPostTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3, lineHeight: 24 },
   reviewPostBody: { fontSize: 13.5, fontWeight: '500', marginTop: 8, lineHeight: 20 },
   reviewImageThumb: { width: 130, height: 130, borderRadius: 12 },
-  reviewMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+  reviewMetaRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
   reviewMetaLabel: { fontSize: 12.5, fontWeight: '600' },
   reviewMetaValue: { fontSize: 13, fontWeight: '800' },
-  reviewFieldLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8, marginTop: 4 },
+  reviewFieldLabel: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    marginBottom: 8, marginTop: 4,
+  },
   reviewInput: {
-    borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14.5, fontWeight: '500', minHeight: 130, textAlignVertical: 'top',
+    borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14.5, fontWeight: '500',
+    minHeight: 130, textAlignVertical: 'top',
   },
   reviewErrorText: { color: '#EF4444', marginTop: 6, fontWeight: '700', fontSize: 12.5 },
   reviewInfoBox: { marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1 },
   reviewInfoText: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
-  reviewFooter: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1 },
-  reviewFooterBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  reviewFooter: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderTopWidth: 1,
+  },
+  reviewFooterBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   reviewFooterBtnText: { fontSize: 14.5, fontWeight: '900', letterSpacing: 0.2 },
 
-  annotBackdrop: { flex: 1, justifyContent: 'flex-end' },
-  annotSheet: { height: SCREEN.height * 0.75, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  annotBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  annotSheet: {
+    height: SCREEN.height * 0.75,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
   annotHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
   },
   annotHeaderBtn: { minWidth: 64, height: 34, alignItems: 'center', justifyContent: 'center' },
   annotHeaderBtnText: { fontSize: 14, fontWeight: '800' },
   annotTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
   annotCanvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   annotCanvas: { overflow: 'hidden', borderRadius: 12 },
-  annotHint: { fontSize: 12, fontWeight: '600', textAlign: 'center', paddingHorizontal: 24, paddingVertical: 6 },
-  annotPaletteRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14 },
-  annotColorSwatch: { width: 28, height: 28, borderRadius: 14 },
+  annotHint: {
+    fontSize: 12, fontWeight: '600', textAlign: 'center',
+    paddingHorizontal: 24, paddingVertical: 6,
+  },
+  annotPaletteRow: {
+    flexDirection: 'row', justifyContent: 'center', gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
+  },
+  annotColorSwatch: {
+    width: 28, height: 28, borderRadius: 14,
+  },
   annotToolRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 20, paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 14, borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 22 : 14,
+    borderTopWidth: 1,
   },
-  annotSizeBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  annotActionBtn: { minWidth: 54, height: 36, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  annotSizeBtn: {
+    width: 36, height: 36, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  annotActionBtn: {
+    minWidth: 54, height: 36, paddingHorizontal: 10,
+    borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   annotToolText: { fontSize: 13.5, fontWeight: '800', letterSpacing: 0.2 },
 
   viewerBackdrop: { flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' },
@@ -1855,7 +1933,9 @@ const styles = StyleSheet.create({
   },
   viewerCloseText: { color: '#FFFFFF', fontSize: 20, fontWeight: '700', marginTop: -2 },
   viewerHintWrap: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center', zIndex: 10 },
-  viewerHint: { color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.2 },
+  viewerHint: {
+    color: 'rgba(255,255,255,0.7)', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.2,
+  },
   viewerStage: { width: SCREEN.width, height: SCREEN.height, alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: SCREEN.width, height: SCREEN.height },
 
@@ -1877,12 +1957,15 @@ const styles = StyleSheet.create({
   attachmentRemoveText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   attachmentTypeBadge: {
     position: 'absolute', bottom: 4, left: 4,
-    paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 5, paddingVertical: 1,
+    borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.65)',
   },
   attachmentTypeBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
 
-  centerBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 24 },
+  centerBackdrop: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 24,
+  },
   centerModal: { width: '100%', maxWidth: 420, borderRadius: 18, borderWidth: 1, padding: 20 },
 
   emptyBox: { alignItems: 'center', paddingTop: 60 },
@@ -1906,18 +1989,24 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
   modalSub: { fontSize: 12.5, fontWeight: '600', marginTop: 3, marginBottom: 8 },
 
-  fieldLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6, marginTop: 12 },
+  fieldLabel: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    marginBottom: 6, marginTop: 12,
+  },
   input: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
     fontSize: 14, fontWeight: '500',
   },
   textarea: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' },
 
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  modalBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+  },
   modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 
   avatarSmall: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   avatarSmallText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
 });
-

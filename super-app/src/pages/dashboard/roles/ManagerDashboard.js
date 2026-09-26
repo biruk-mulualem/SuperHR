@@ -9,10 +9,15 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
-import { mobileManagerDashboardService } from '../../../stores/mobileManagerDashboardService';
 
-// Optional store service — reads the same store summary the
-// Store & Inventory dashboard uses, so the tile stats stay in sync.
+// ================================================================
+// PURCHASE = DEMO (service removed to avoid 500s)
+// ================================================================
+const DEMO_PURCHASE = { pendingApproval: 7, pendingPayment: 3 };
+
+// ================================================================
+// STORE — real services (kept as-is)
+// ================================================================
 let mobileStoreDashboardService = null;
 try {
   // eslint-disable-next-line global-require
@@ -23,7 +28,6 @@ try {
   mobileStoreDashboardService = null;
 }
 
-// Optional balance-audit service — same source as Stock Status page.
 let mobileManagerBalanceAuditService = null;
 try {
   // eslint-disable-next-line global-require
@@ -60,6 +64,8 @@ export default function ManagerDashboard({
 
   // -----------------------------------------------------------------
   // FETCH
+  //   Purchase → demo data (no service)
+  //   Store    → real service (unchanged)
   // -----------------------------------------------------------------
   const loadSummary = useCallback(async ({ silent = false } = {}) => {
     try {
@@ -67,24 +73,10 @@ export default function ManagerDashboard({
       else setLoading(true);
       setError(null);
 
-      // ── Purchase summary ──
-      let purchase = EMPTY_PURCHASE;
-      try {
-        const res = await mobileManagerDashboardService.getPurchaseSummary();
-        if (res?.success) {
-          purchase = {
-            pendingApproval: Number(res.data?.pendingApproval ?? 0),
-            pendingPayment: Number(res.data?.pendingPayment ?? 0),
-          };
-        } else if (res?.error) {
-          setError(res.error);
-        }
-      } catch (e) {
-        console.warn('Purchase summary failed:', e?.message);
-      }
-      setPurchaseData(purchase);
+      // ── Purchase summary (DEMO) ──
+      setPurchaseData(DEMO_PURCHASE);
 
-      // ── Store & inventory summary ──
+      // ── Store & inventory summary (REAL) ──
       let store = EMPTY_STORE;
       try {
         if (mobileStoreDashboardService?.getStoreSummary) {
@@ -154,8 +146,6 @@ export default function ManagerDashboard({
 
   // -----------------------------------------------------------------
   // SECTIONS
-  //   Only Store & Inventory is live. Everything else is "Coming soon"
-  //   and is rendered as an inert (non-tappable) row.
   // -----------------------------------------------------------------
   const sections = [
     {

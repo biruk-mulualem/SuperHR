@@ -1,5 +1,5 @@
 // components/Header.js
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,11 +9,26 @@ import {
   Switch,
   Image,
   TouchableWithoutFeedback,
+  AppState,
 } from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import notificationService from '../../stores/notificationService';
 import authService from '../../stores/authService';
+import mobileNotificationService from '../../stores/mobileNotificationService';
+
+// ================================================================
+// DEMO USER DATA (fallback when authService has no user)
+// ================================================================
+const DEMO_USER = {
+  fullName: 'John Anderson',
+  firstName: 'John',
+  lastName: 'Anderson',
+  username: 'janderson',
+  email: 'john.anderson@superapp.com',
+  role: 'admin',
+  profilePicture: null, // set to a URL string to test the image avatar
+};
+
 // ================================================================
 // ROLE COLOR MAP (for the pill color)
 // ================================================================
@@ -77,6 +92,9 @@ const ROLE_PAGES = {
   auditor:    [],
 };
 
+// Polling interval for the bell badge
+const UNREAD_POLL_MS = 30000;
+
 // ================================================================
 // COMPONENT
 // ================================================================
@@ -87,7 +105,7 @@ export default function Header({
   onNavigateToNotifications,
   darkMode,
   setDarkMode,
-  permissions,
+  permissions = { alerts: true },
   userRole,
   onNavigateToPurchase,
   notificationCount = 0,
@@ -95,6 +113,10 @@ export default function Header({
   const insets = useSafeAreaInsets();
   const [modalVisible, setModalVisible] = useState(false);
   const [unreadCount, setUnreadCount] = useState(notificationCount);
+
+  // Refs for lifecycle cleanup
+  const pollRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
 
   // Force re-render when auth changes (login / logout / profile update)
   const [, setTick] = useState(0);
@@ -105,8 +127,10 @@ export default function Header({
 
   // ============================================================
   // REAL USER DATA — pulled from authService
+  // (falls back to DEMO_USER when authService has no user)
   // ============================================================
-  const user = authService.user;
+  const user = authService.user || DEMO_USER;
+  const userId = user?.userId || user?.id || null;
 
   const userName = useMemo(() => {
     if (!user) return 'User';
@@ -133,21 +157,68 @@ export default function Header({
     null;
 
   // ============================================================
-  // LIVE UNREAD COUNT
+  // LIVE UNREAD COUNT — from mobileNotificationService
+  //   • fires on mount (only if logged in)
+  //   • re-fires when userId changes (login / switch user)
+  //   • re-fires when the app comes back to the foreground
+  //   • polls every 30s while the app is active
   // ============================================================
   const fetchUnreadCount = useCallback(async () => {
-    const result = await notificationService.unreadCount('local');
-    if (result.success) setUnreadCount(result.count);
-  }, []);
+    // Skip the call when there's no logged-in user (avoids pre-login 401/500 spam)
+    if (!userId) return;
 
+    try {
+      const res = await mobileNotificationService.unreadCount('local');
+      if (res?.success) {
+        setUnreadCount(Number(res?.data?.count ?? 0));
+      }
+    } catch (err) {
+      // Silent — Header polls; don't spam the console
+      // console.warn('unread-count failed:', err?.message);
+    }
+  }, [userId]);
+
+  // Initial fetch + interval poll (scoped to userId)
   useEffect(() => {
+    if (!userId) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
+
+    pollRef.current = setInterval(fetchUnreadCount, UNREAD_POLL_MS);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [userId, fetchUnreadCount]);
+
+  // App foreground listener — refresh immediately when the user returns
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      const prev = appStateRef.current;
+      appStateRef.current = next;
+
+      if (prev.match(/inactive|background/) && next === 'active') {
+        fetchUnreadCount();
+      }
+    });
+    return () => sub?.remove?.();
   }, [fetchUnreadCount]);
 
+  // Keep in sync with prop (e.g. parent pushes an explicit count)
   useEffect(() => {
-    setUnreadCount(notificationCount);
+    if (Number.isFinite(notificationCount) && notificationCount !== unreadCount) {
+      // Only override if the parent actually passes a value > 0
+      // or explicitly resets to 0
+      if (notificationCount > 0 || unreadCount === 0) {
+        setUnreadCount(notificationCount);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notificationCount]);
 
   // ============================================================
@@ -171,9 +242,15 @@ export default function Header({
   const canSeePurchase = purchaseNavItems.length > 0;
 
   // ============================================================
+  // BELL VISIBILITY
+  //   Opt-OUT: hidden only when a parent explicitly passes
+  //   permissions={{ alerts: false }}. Shows for everyone else,
+  //   including roles that don't send a permissions prop at all.
+  // ============================================================
+  const showBell = permissions?.alerts !== false;
+
+  // ============================================================
   // AVATAR RENDERING HELPER
-  // If a real avatar URL exists → show the image
-  // Otherwise → show a colored circle with the user's initials
   // ============================================================
   const renderAvatar = (size, fontSize) => {
     if (userAvatarUrl) {
@@ -209,6 +286,12 @@ export default function Header({
     );
   };
 
+  // Bell press → refresh count + navigate
+  const handleBellPress = () => {
+    fetchUnreadCount();
+    if (onNavigateToNotifications) onNavigateToNotifications();
+  };
+
   return (
     <View
       style={[
@@ -228,11 +311,11 @@ export default function Header({
         </View>
 
         <View style={styles.actionGroup}>
-          {/* Bell */}
-          {permissions?.alerts && (
+          {/* Bell — shows unless explicitly disabled */}
+          {showBell && (
             <TouchableOpacity
               style={[styles.iconButton, { backgroundColor: notifBtnBg }]}
-              onPress={onNavigateToNotifications}
+              onPress={handleBellPress}
               activeOpacity={0.7}
             >
               <Text style={styles.emojiIcon}>🔔</Text>
@@ -420,8 +503,8 @@ export default function Header({
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Alerts */}
-                  {permissions?.alerts && (
+                  {/* Alerts — shows unless explicitly disabled */}
+                  {showBell && (
                     <TouchableOpacity
                       style={[
                         styles.menuLinkRow,
@@ -435,6 +518,7 @@ export default function Header({
                       <Text style={styles.linkEmoji}>🔔</Text>
                       <Text style={[styles.linkText, { color: modalTextColor }]}>
                         System Alerts
+                        {unreadCount > 0 ? `  ·  ${unreadCount}` : ''}
                       </Text>
                     </TouchableOpacity>
                   )}

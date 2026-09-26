@@ -12,12 +12,7 @@
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
       
       <h3 class="form-subtitle-title">
-        ASSET REQUEST FROM 
-        <span class="store-name">{{ getStoreName(requestData.supplyingStoreId) }}</span> 
-        TO 
-        <span class="store-name" :class="{ 'dept-origin': isOtherStore(requestData.askingStoreId) }">
-          {{ getAskingStoreDisplay() }}
-        </span>
+        ASSET REQUISITION FORM 
       </h3>
       
       <div class="date-row">

@@ -65,13 +65,23 @@ import { setUnauthorizedHandler } from '../stores/interceptor';
 // MASTER ENTERPRISE PERMISSION CONFIGURATION MATRIX
 // ================================================================
 const ROLE_PERMISSIONS = {
-  admin:      { catalog: true,  alerts: true,  purchase: true  },
-  manager:    { catalog: true,  alerts: true,  purchase: true  },
-  purchaser:  { catalog: true,  alerts: true,  purchase: true  },
-  sales:      { catalog: true,  alerts: true,  purchase: false },
-  banker:     { catalog: false, alerts: true,  purchase: false },
-  supervisor: { catalog: true,  alerts: true,  purchase: true  },
-  auditor:    { catalog: true,  alerts: false, purchase: false },
+  admin:               { catalog: true,  alerts: true,  purchase: true  },
+  administrator:       { catalog: true,  alerts: true,  purchase: true  },
+  superadmin:          { catalog: true,  alerts: true,  purchase: true  },
+  manager:             { catalog: true,  alerts: true,  purchase: true  },
+  supervisor:          { catalog: true,  alerts: true,  purchase: true  },
+  purchaser:           { catalog: true,  alerts: true,  purchase: true  },
+  purchasing_checkers: { catalog: true,  alerts: true,  purchase: true  },
+  sales:               { catalog: true,  alerts: true,  purchase: false },
+  banker:              { catalog: false, alerts: true,  purchase: false },
+  auditor:             { catalog: true,  alerts: false, purchase: false },
+  storekeeper:         { catalog: true,  alerts: true,  purchase: false },
+  store_it:            { catalog: true,  alerts: true,  purchase: false },
+  checker:             { catalog: true,  alerts: true,  purchase: false },
+  finance:             { catalog: true,  alerts: true,  purchase: false },
+  hr:                  { catalog: true,  alerts: true,  purchase: false },
+  employee:            { catalog: true,  alerts: true,  purchase: false },
+  attendance:          { catalog: false, alerts: true,  purchase: false },
 };
 
 export default function AppRouter() {

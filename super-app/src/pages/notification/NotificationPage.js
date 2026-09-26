@@ -11,10 +11,10 @@ import {
   Alert,
 } from 'react-native';
 
-import notificationService from '../../stores/notificationService';
+import mobileNotificationService from '../../stores/mobileNotificationService';
 
 // ================================================================
-// HELPERS
+// TYPE COLORS
 // ================================================================
 const getTypeColor = (type) => {
   const colors = {
@@ -36,7 +36,7 @@ const getTypeColor = (type) => {
   return colors[type] || '#64748B';
 };
 
-const getTypeIcon = (type) => notificationService.getIcon(type);
+const getTypeIcon = (type) => mobileNotificationService.getIcon(type);
 
 // ----------------------------------------------------------------
 // ROUTE BUILDER
@@ -105,18 +105,19 @@ export default function NotificationPage({
     setErrorMsg(null);
 
     try {
-      const res = await notificationService.list({
+      const res = await mobileNotificationService.list({
         purchaseType: 'local',
         limit: 50,
       });
 
-      if (res.success) {
-        const mapped = (res.items || []).map((n) => ({
+      if (res?.success) {
+        const rows = res?.data?.items || [];
+        const mapped = rows.map((n) => ({
           id: n.id,
           type: n.type,
           title: n.title || '🔔 Notification',
           desc: n.body || '',
-          time: notificationService.formatRelativeTime(n.createdAt),
+          time: mobileNotificationService.formatRelativeTime(n.createdAt),
           read: !!n.isRead,
           createdAt: n.createdAt,
           referenceId: n.referenceId,
@@ -126,12 +127,16 @@ export default function NotificationPage({
 
         setItems(mapped);
       } else {
-        setErrorMsg(res.error || 'Failed to load notifications');
+        setErrorMsg(res?.error || 'Failed to load notifications');
         setItems([]);
       }
     } catch (e) {
       console.error('NotificationPage load error:', e);
-      setErrorMsg(e.message || 'Failed to load');
+      const msg =
+        e?.response?.data?.error ||
+        e?.message ||
+        'Failed to load';
+      setErrorMsg(msg);
       setItems([]);
     } finally {
       setLoading(false);
@@ -161,12 +166,12 @@ export default function NotificationPage({
     // Persist
     if (isPersisted) {
       try {
-        const res = await notificationService.remove(item.id);
+        const res = await mobileNotificationService.remove(item.id);
         console.log('🗑️ delete response:', res);
 
-        if (!res.success) {
+        if (!res?.success) {
           setItems(snapshot);
-          Alert.alert('Error', res.error || 'Failed to remove notification');
+          Alert.alert('Error', res?.error || 'Failed to remove notification');
           return;
         }
       } catch (err) {
@@ -192,10 +197,10 @@ export default function NotificationPage({
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
 
     try {
-      const res = await notificationService.markAllAsRead('local');
-      if (!res.success) {
+      const res = await mobileNotificationService.markAllAsRead('local');
+      if (!res?.success) {
         setItems(before);
-        Alert.alert('Error', res.error || 'Failed to mark all as read');
+        Alert.alert('Error', res?.error || 'Failed to mark all as read');
       }
     } catch (err) {
       console.error('🔴 markAllAsRead threw:', err);

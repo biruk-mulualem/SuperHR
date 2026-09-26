@@ -16,7 +16,7 @@ const createDirectories = () => {
   const dirs = [
     // Profile pictures
     'uploads/profiles',
-    
+
     // Document categories
     'uploads/documents/national_id',
     'uploads/documents/spouse',
@@ -30,26 +30,29 @@ const createDirectories = () => {
     'uploads/documents/legal',
     'uploads/documents/contracts',
     'uploads/documents/performance',
-    
-    // ========== OTHER DOCUMENTS (NEW) ==========
-    'uploads/documents/guarantees',          // Guarantee Letters
-    'uploads/documents/employment_letters',  // Employment Letters
-    'uploads/documents/other_documents',     // Other & Custom Documents
-    
+
+    // ========== OTHER DOCUMENTS ==========
+    'uploads/documents/guarantees',
+    'uploads/documents/employment_letters',
+    'uploads/documents/other_documents',
+
     // Attendance
     'uploads/attendance/',
-    
+
     // Item specifications
     'uploads/items/specifications',
-    
+
     // Store Balance
     'uploads/balances/',
     'uploads/balances/imports',
     'uploads/balances/exports',
 
     // Purchase Requests (approved documents)
-'uploads/purchase-requests',
-'uploads/purchase-requests/approved',
+    'uploads/purchase-requests',
+    'uploads/purchase-requests/approved',
+
+    // ========== NEW: POST IMAGES ==========
+    'uploads/posts',
   ];
   dirs.forEach(dir => ensureDirectoryExists(dir));
 };
@@ -129,18 +132,18 @@ const uploadSingleBalance = (req, res, next) => {
         error: err.message
       });
     }
-    
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
         error: 'No file uploaded'
       });
     }
-    
+
     console.log('✅ File uploaded:', req.file.filename);
     console.log('📊 File size:', req.file.size);
     console.log('📁 File path:', req.file.path);
-    
+
     next();
   });
 };
@@ -153,77 +156,77 @@ const getDocumentFolder = (documentType, subType = null) => {
   if (documentType === 'profile_picture') {
     return null;
   }
-  
+
   // Item specifications
   if (documentType === 'item_specification') {
     return 'items/specifications';
   }
-  
+
   // Store balance imports
   if (documentType === 'balance_import') {
     return 'balances/imports';
   }
-  
+
   const folders = {
     // Identity Documents
     'national_id': 'national_id',
     'id_card': 'national_id',
     'passport': 'national_id',
-    
+
     // Spouse documents
     'spouse_profile': 'spouse',
     'marriage_certificate': 'spouse',
-    
+
     // Child documents
     'child_birth_certificate': 'children',
     'child_medical_report': 'children',
     'child_adoption_certificate': 'children',
     'child_profile': 'children',
-    
+
     // Education
     'education_certificate': 'education',
     'degree': 'education',
     'certificate': 'education',
     'cv': 'education',
     'resume': 'education',
-    
+
     // Training
     'training_certificate': 'training',
-    
+
     // Work Experience
     'experience_letter': 'work_experience',
-    
+
     // Guarantee
-    'guarantee_letter': 'guarantees',      // ← Added this
+    'guarantee_letter': 'guarantees',
     'sdt_letter': 'guarantees',
     'guarantee_other': 'guarantees',
-    
+
     // Parent Support
     'parent_support_document': 'parent_support',
-    
+
     // Nationality
     'naturalization_certificate': 'nationality',
-    
+
     // Health & Legal
     'health_document': 'health',
     'legal_document': 'legal',
-    
+
     // Contracts & Performance
     'contract': 'contracts',
     'performance-review': 'performance',
-    
+
     // ========== OTHER DOCUMENTS ==========
     'employment_letter': 'employment_letters',
     'other_document': 'other_documents',
     'custom_document': 'other_documents',
   };
-  
+
   const folder = folders[documentType];
   if (!folder) {
     console.warn(`Unknown document type: ${documentType}, using 'others'`);
     return 'others';
   }
-  
+
   return folder;
 };
 
@@ -273,20 +276,20 @@ const itemSpecStorage = multer.diskStorage({
 const documentStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const documentType = req.params.type;
-    
+
     console.log('📍 documentStorage.destination - Type:', documentType);
-    
+
     if (documentType === 'profile_picture') {
       console.error('❌ ERROR: profile_picture reached documentStorage!');
       return cb(new Error('Profile pictures should use profile storage, not document storage'), null);
     }
-    
+
     const folder = getDocumentFolder(documentType);
-    
+
     if (!folder || folder === 'others') {
       console.warn(`⚠️ Unknown document type: ${documentType}, using 'others'`);
     }
-    
+
     const dir = `uploads/documents/${folder || 'others'}/`;
     ensureDirectoryExists(dir);
     console.log(`💾 Saving to: ${dir}`);
@@ -295,7 +298,7 @@ const documentStorage = multer.diskStorage({
   filename: async (req, file, cb) => {
     const { Employee } = require('../models');
     const employeeId = req.params.id;
-    
+
     let employeeCode = `EMP${employeeId}`;
     try {
       const employee = await Employee.findByPk(employeeId);
@@ -305,18 +308,18 @@ const documentStorage = multer.diskStorage({
     } catch (err) {
       console.error('Error fetching employee code:', err);
     }
-    
+
     const documentType = req.params.type;
     const index = req.body.index || '';
     const ext = path.extname(file.originalname);
     const timestamp = Date.now();
-    
+
     let filename = `${employeeCode}-${documentType}`;
     if (index !== '') filename += `-${index}`;
     filename += `-${timestamp}${ext}`;
-    
+
     console.log('📄 Generated filename:', filename);
-    
+
     cb(null, filename);
   }
 });
@@ -328,7 +331,7 @@ const imageFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -340,7 +343,7 @@ const documentFilter = (req, file, cb) => {
   const allowedTypes = /pdf|doc|docx|jpg|jpeg|png|xls|xlsx/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -353,7 +356,7 @@ const profileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -366,7 +369,7 @@ const itemSpecFilter = (req, file, cb) => {
   const allowedTypes = /pdf/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -379,7 +382,7 @@ const legalDocumentFilter = (req, file, cb) => {
   const allowedTypes = /pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -436,7 +439,7 @@ const attendanceFileFilter = (req, file, cb) => {
   const allowedTypes = /csv|xlsx|xls/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-  
+
   if (mimetype && extname) {
     cb(null, true);
   } else {
@@ -510,7 +513,7 @@ const uploadItemSpec = (req, res, next) => {
 // ============================================================================
 const uploadDynamicDocument = (req, res, next) => {
   const documentType = req.params.type;
-  
+
   console.log('🔄 uploadDynamicDocument - Type from params:', documentType);
 
   // ========== ALL 4 OTHER DOCUMENT TYPES ==========
@@ -529,12 +532,12 @@ const uploadDynamicDocument = (req, res, next) => {
   }
 
   if (!documentType) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Document type is required in the URL' 
+    return res.status(400).json({
+      success: false,
+      error: 'Document type is required in the URL'
     });
   }
-  
+
   // ✅ PROFILE PICTURES
   if (documentType === 'profile_picture') {
     console.log('📸 Routing to uploadProfile for profile picture');
@@ -546,9 +549,9 @@ const uploadDynamicDocument = (req, res, next) => {
       console.log('✅ Profile picture processed, file:', req.file?.filename);
       next();
     });
-  } 
+  }
   // ✅ LEGAL DOCUMENTS
-  else if (documentType === 'naturalization_certificate' || 
+  else if (documentType === 'naturalization_certificate' ||
            documentType === 'legal_document' ||
            documentType === 'contract' ||
            documentType === 'performance-review') {
@@ -560,7 +563,7 @@ const uploadDynamicDocument = (req, res, next) => {
       }
       next();
     });
-  } 
+  }
   // ✅ REGULAR DOCUMENTS (all other types)
   else {
     console.log('📄 Routing to uploadDocument');
@@ -573,7 +576,6 @@ const uploadDynamicDocument = (req, res, next) => {
     });
   }
 };
-
 
 // ============================================================================
 // PURCHASE REQUEST — APPROVED DOCUMENTS (FRONT + BACK)
@@ -657,6 +659,56 @@ const uploadPurchaseRequestDocs = (req, res, next) => {
 };
 
 // ============================================================================
+// ========== NEW: POST IMAGES ==========
+// ============================================================================
+const postImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = 'uploads/posts/';
+    ensureDirectoryExists(dir);
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    const base = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `post-${base}-${unique}${ext}`;
+    console.log('📄 Post image filename:', filename);
+    cb(null, filename);
+  },
+});
+
+// Reuse the existing imageFilter (images only)
+const uploadPostImageInstance = multer({
+  storage: postImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageFilter,
+});
+
+// Array middleware: up to 10 images per post
+const uploadPostImagesMiddleware = (req, res, next) => {
+  uploadPostImageInstance.array('images', 10)(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer post images error:', err);
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+};
+
+// Single middleware: one annotated image
+const uploadSinglePostImageMiddleware = (req, res, next) => {
+  uploadPostImageInstance.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer post annotation error:', err);
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next();
+  });
+};
+
+// ============================================================================
 // EXPORT ALL
 // ============================================================================
 module.exports = {
@@ -667,22 +719,29 @@ module.exports = {
   uploadSingleAttendance,
   uploadAttendance,
   uploadDynamicDocument,
-  
+
   // Item specification upload
   uploadItemSpec,
-  
+
   // Store Balance upload
   uploadSingleBalance,
   uploadBalance,
-  
+
+  // Purchase Request upload
+  uploadPurchaseRequestDocs,
+
+  // ========== NEW: POST IMAGES ==========
+  uploadPostImagesMiddleware,
+  uploadSinglePostImageMiddleware,
+  uploadPostImageInstance,
+
   // Raw multer instances (for advanced use)
   uploadProfile,
   uploadDocument,
   uploadLegalDocument,
   uploadItemSpecification,
-  
+
   // Utilities
   getDocumentFolder,
   ensureDirectoryExists,
-   uploadPurchaseRequestDocs,
 };
