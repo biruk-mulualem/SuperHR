@@ -1,0 +1,34 @@
+cd super-app
+eas login
+
+For Android APK (test build):eas build --platform android --profile preview
+For Play Store:eas build --platform android --profile production
+For iOS:eas build --platform ios --profile production
+
+
+
+
+
+
+
+
+
+
+eas build --platform android --profile production   # produces .aab
+eas submit --platform android --profile production  # uploads to Play
+
+
+local build
+
+# ONE-TIME setup (or after app.json/native package changes)
+npx expo prebuild --clean
+
+# Recreate the file prebuild --clean deletes
+$sdk = ($env:LOCALAPPDATA + "\Android\Sdk").Replace('\','/')
+Set-Content -Path "D:\SuperHR\super-app\android\local.properties" -Value "sdk.dir=$sdk" -NoNewline
+
+# Build + install + launch on a device you pick
+npx expo run:android --device
+
+# DAY-TO-DAY (no rebuild needed)
+npx expo start --dev-client

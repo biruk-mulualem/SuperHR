@@ -1,0 +1,21 @@
+# Never upload — EAS reinstalls these itself
+node_modules/
+
+# Never upload — cache
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Never upload — dev tools
+.git/
+.vscode/
+.idea/
+.claude/
+*.log
+
+# Never upload — secrets
+.env
+.env.*
+**/firebase-service-account.json
+**/*service-account*.json

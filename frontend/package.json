@@ -1,0 +1,47 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --force --host",
+    "dev:clear": "vite --force --clearScreen false",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build"
+  },
+  "dependencies": {
+    "@headlessui/vue": "^1.7.23",
+    "@heroicons/vue": "^2.2.0",
+    "@vueup/vue-quill": "^1.5.5",
+    "@vueuse/core": "^14.2.1",
+    "axios": "^1.14.0",
+    "chart.js": "^4.5.1",
+    "dayjs": "^1.11.23",
+    "dompurify": "^3.4.10",
+    "kenat": "^3.2.0",
+    "lodash-es": "^4.18.1",
+    "papaparse": "^5.5.3",
+    "pinia": "^3.0.4",
+    "quill": "^2.0.3",
+    "vue": "^3.5.31",
+    "vue-i18n": "^9.14.5",
+    "vue-router": "^4.6.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.4",
+    "@types/node": "^24.12.0",
+    "@types/papaparse": "^5.5.2",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/tsconfig": "^0.9.1",
+    "npm-run-all2": "^8.0.4",
+    "typescript": "~6.0.0",
+    "vite": "^8.2.1",
+    "vue-tsc": "^3.2.6"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

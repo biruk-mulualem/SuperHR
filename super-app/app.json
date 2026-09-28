@@ -1,0 +1,86 @@
+{
+  "expo": {
+    "name": "Super App",
+    "slug": "super-app",
+    "scheme": "superapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.birukmulualem.superapp",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to update your profile picture and to attach media to posts.",
+        "NSCameraUsageDescription": "This app needs access to your camera to take a profile photo.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs permission to save downloaded photos and videos from posts to your library.",
+        "NSMicrophoneUsageDescription": "This app may need microphone access when you record videos to attach to posts.",
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F0E1",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "package": "com.birukmulualem.superapp",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
+     
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photos to update your profile picture and to attach images to posts.",
+          "cameraPermission": "This app needs access to your camera to take a profile photo."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can save downloaded media.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save downloaded photos and videos to your device.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      "expo-video",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aae1d831-cfdf-474f-ac70-e1aef11fdbf0"
+      }
+    }
+  }
+}

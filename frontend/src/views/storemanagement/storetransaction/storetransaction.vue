@@ -1,0 +1,1542 @@
+<!-- views/storemanagement/storetransaction/storetransaction.vue - WITH UOM COLUMN -->
+
+<template>
+  <div class="section-card">
+    <!-- ==================== HEADER ==================== -->
+    <div class="card-header">
+      <div class="header-title">
+        <h2>📋 Store Transactions</h2>
+        <span class="total-badge">{{ totalItems }} Transactions</span>
+      </div>
+      <div class="header-actions">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input
+            type="text"
+            v-model="searchQuery"
+            placeholder="Search transactions..."
+            @input="onSearchChange"
+          />
+        </div>
+        <div class="action-buttons">
+          <button class="btn-export" @click="openExportModal" :disabled="exporting">
+            <span v-if="exporting" class="spinner-small"></span>
+            <span v-else>📊</span>
+            {{ exporting ? "Report..." : "Report" }}
+          </button>
+          <button class="btn-print" @click="printReport">🖨️ Stock Card</button>
+          <!-- Collapse Toggle Button -->
+          <button class="btn-filter-toggle" @click="toggleFilters">
+            {{ showFilters ? '▲ Hide Filters' : '▼ Show Filters' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== FILTERS - COLLAPSIBLE ==================== -->
+    <div class="filter-wrapper" :class="{ 'filter-expanded': showFilters }">
+      <div class="filter-bar">
+        <!-- Only show Store filter for admin users -->
+        <div class="filter-group" v-if="userIsAdmin">
+          <select 
+            v-model="filterStore" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Stores</option>
+            <option v-for="store in stores" :key="store.id" :value="store.id">
+              {{ store.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Only show Group filter for admin users -->
+        <div class="filter-group" v-if="userIsAdmin">
+          <select 
+            v-model="filterGroup" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Groups</option>
+            <option v-for="group in allGroups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Category Filter - Visible to all users -->
+        <div class="filter-group">
+          <select 
+            v-model="filterCategory" 
+            class="filter-select" 
+            @change="onFilterChange"
+          >
+            <option value="">All Categories</option>
+            <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
+        
+        <!-- Type Filter -->
+        <select v-model="filterType" class="filter-select" @change="onFilterChange">
+          <option value="">All Types</option>
+          <option value="Stock In">📥 Stock In</option>
+          <option value="Stock Out">📤 Stock Out</option>
+        </select>
+
+        <!-- Clear filters button -->
+        <button 
+          class="btn-clear-filters" 
+          @click="clearFilters" 
+          v-if="hasActiveFilters"
+        >
+          ✕ Clear Filters
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== STATS ==================== -->
+    <div class="stats-grid" v-if="!isLoading">
+      <div class="stat-card">
+        <div class="stat-icon">📥</div>
+        <div class="stat-content">
+          <div class="stat-number">{{ totalStockIn }}</div>
+          <div class="stat-label">Stock In</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📤</div>
+        <div class="stat-content">
+          <div class="stat-number">{{ totalStockOut }}</div>
+          <div class="stat-label">Stock Out</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-content">
+          <div class="stat-number">{{ totalItems }}</div>
+          <div class="stat-label">Total</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TRANSACTION TABLE ==================== -->
+    <div class="table-container" id="printable-area">
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading transactions...</p>
+      </div>
+      <table v-else class="transaction-table">
+        <thead>
+          <tr>
+            <th style="width:30px"></th>
+            <th>Date</th>
+            <th>Item Code</th>
+            <th>Item</th>
+            <th>Category</th>
+            <th>UOM</th>
+            <th>Type</th>
+            <th>Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="transactions.length === 0">
+            <td colspan="8" class="empty-state">
+              <div class="empty-content">
+                <span class="empty-icon">📋</span>
+                <p>No transactions found</p>
+              </div>
+            </td>
+          </tr>
+          <template v-for="(transaction, index) in transactions" :key="transaction.id">
+            <tr
+              :class="{
+                'expanded-row': expandedRow === transaction.id
+              }"
+            >
+              <td class="text-center">
+                <button class="expand-btn" @click="toggleExpand(transaction.id)">
+                  {{ expandedRow === transaction.id ? "▼" : "▶" }}
+                </button>
+              </td>
+              <td class="date-time">{{ formatDateShort(transaction.createdAt) }}</td>
+              <td>
+                <span class="item-code">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span>
+              </td>
+              <td>
+                <div class="item-info">
+                  <div class="item-common-name">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</div>
+                  <div class="item-standard-name" v-if="transaction.itemStandardName || getItemStandardName(transaction.itemId)">
+                    {{ transaction.itemStandardName || getItemStandardName(transaction.itemId) }}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="category-tag" :class="transaction.categoryName ? 'has-category' : 'no-category'">
+                  {{ transaction.categoryName || 'Uncategorized' }}
+                </span>
+              </td>
+              <td>
+                <span class="uom-display">
+                  {{ transaction.uomCode || getItemUnit(transaction.itemId) || '-' }}
+                </span>
+              </td>
+              <td>
+                <span :class="['type-badge', transaction.type === 'Stock In' ? 'stock-in' : 'stock-out']">
+                  {{ transaction.type === 'Stock In' ? '📥' : '📤' }}
+                </span>
+              </td>
+              <td class="quantity-amount">
+                <span :class="['quantity-value', transaction.type === 'Stock In' ? 'positive' : 'negative']">
+                  {{ transaction.type === 'Stock In' ? '+' : '-' }}{{ formatNumber(transaction.quantity) }}
+                </span>
+              </td>
+            </tr>
+
+            <!-- Expanded Detail Row -->
+            <tr v-if="expandedRow === transaction.id" class="detail-expand-row">
+              <td colspan="8">
+                <div class="expand-details">
+                  <div class="detail-container">
+                    <div class="detail-row">
+                      <div class="detail-card">
+                        <h4>📋 Transaction Details</h4>
+                        <div><span>Transaction ID</span><span class="value">#{{ transaction.id }}</span></div>
+                        <div><span>Date & Time</span><span class="value">{{ formatDateTime(transaction.createdAt) }}</span></div>
+                        <div><span>Store</span><span class="value">{{ getStoreName(transaction.storeId) }}</span></div>
+                        <div><span>Group</span><span class="value">{{ getGroupName(transaction.groupId) }}</span></div>
+                        <div><span>Type</span><span class="value">{{ transaction.type }}</span></div>
+                      </div>
+
+                      <div class="detail-card">
+                        <h4>📦 Item Details</h4>
+                        <div><span>Item Code</span><span class="value">{{ transaction.itemCode || getItemCode(transaction.itemId) }}</span></div>
+                        <div><span>Common Name</span><span class="value">{{ transaction.itemCommonName || getItemCommonName(transaction.itemId) || 'Unnamed' }}</span></div>
+                        <div><span>Standard Name</span><span class="value">{{ transaction.itemStandardName || getItemStandardName(transaction.itemId) || '-' }}</span></div>
+                        <div><span>Category</span><span class="value">{{ transaction.categoryName || 'Uncategorized' }}</span></div>
+                        <div><span>Unit of Measure</span><span class="value">{{ transaction.uomCode || getItemUnit(transaction.itemId) || '-' }}</span></div>
+                        <div><span>Quantity</span><span class="value">{{ transaction.type === 'Stock In' ? '+' : '-' }} {{ formatNumber(transaction.quantity) }}</span></div>
+                        <div>
+                          <span>{{ transaction.type === 'Stock In' ? 'From' : 'To' }}</span>
+                          <span class="value">{{ transaction.type === 'Stock In' ? transaction.sourceStore : transaction.destinationStore }}</span>
+                        </div>
+                      </div>
+
+                     <div class="detail-card">
+  <h4>📝 Additional Information</h4>
+
+  <div>
+    <span>Updated By</span>
+    <span class="value">{{ transaction.updatedBy || 'System' }}</span>
+  </div>
+
+  <div>
+    <span>Remark</span>
+    <span class="value">{{ transaction.remark || '-' }}</span>
+  </div>
+
+  <div>
+    <span>Reference Type</span>
+    <span class="value">{{ transaction.referenceType || '-' }}</span>
+  </div>
+
+  <!-- GRN — only when present -->
+  <div v-if="transaction.grnNumber">
+    <span>GRN Number</span>
+    <span class="value mono">{{ transaction.grnNumber }}</span>
+  </div>
+
+  <!-- SIV / Pad — only when present -->
+  <div v-if="transaction.sivNumber">
+    <span>SIV / Pad Number</span>
+    <span class="value mono">{{ transaction.sivNumber }}</span>
+  </div>
+</div>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== PAGINATION ==================== -->
+    <div class="pagination" v-if="totalItems > 0">
+      <button class="page-btn" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">
+        ← Previous
+      </button>
+      <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+      <button class="page-btn" :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)">
+        Next →
+      </button>
+      <select v-model="pageSize" @change="changePageSize" class="limit-select">
+        <option :value="5">5 per page</option>
+        <option :value="10">10 per page</option>
+        <option :value="20">20 per page</option>
+        <option :value="50">50 per page</option>
+      </select>
+    </div>
+
+    <!-- ==================== EXPORT MODAL ==================== -->
+    <div v-if="showExportModal" class="modal-overlay" @click.self="closeExportModal">
+      <div class="modal-container export-modal">
+        <div class="modal-header">
+          <h3>📊 Generate Transaction Data</h3>
+          <button class="modal-close" @click="closeExportModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="export-options">
+            <div class="export-option" @click="exportType = 'full'">
+              <input type="radio" v-model="exportType" value="full" /> Full Report
+            </div>
+            <div class="export-option" @click="exportType = 'summary'">
+              <input type="radio" v-model="exportType" value="summary" /> Summary by Store
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeExportModal">Cancel</button>
+          <button class="btn-primary" @click="exportSelectedReport" :disabled="exporting">
+            {{ exporting ? 'Generating...' : 'Generate Report' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TOAST ==================== -->
+    <div v-if="showToast" class="toast" :class="toastType">
+      <span>{{ toastMessage }}</span>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import transactionService from '@/stores/transactionService'
+import balanceService from '@/stores/balanceService'
+
+import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+// ================================================================
+// STATE
+// ================================================================
+const router = useRouter()
+const authStore = useAuthStore()
+
+const transactions = ref([])
+const stores = ref([])
+const allGroups = ref([])
+const categories = ref([])
+const inventoryItems = ref([])
+const isLoading = ref(true)
+const paginationInfo = ref({
+  page: 1,
+  limit: 10,
+  total: 0,
+  totalPages: 1
+})
+
+// User data
+const userAssignedStoreId = ref(null)
+const userAssignedStoreName = ref(null)
+const userAssignedGroupId = ref(null)
+const userAssignedGroupName = ref(null)
+const userIsAdmin = ref(false)
+
+// Collapse state - default hidden
+const showFilters = ref(false)
+
+const searchQuery = ref('')
+const filterStore = ref('')
+const filterGroup = ref('')
+const filterCategory = ref('')
+const filterItem = ref('')
+const filterType = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
+const expandedRow = ref(null)
+const exporting = ref(false)
+const exportType = ref('full')
+const showExportModal = ref(false)
+
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('success')
+
+// ================================================================
+// COMPUTED
+// ================================================================
+
+const hasActiveFilters = computed(() => {
+  return filterStore.value || filterGroup.value || filterCategory.value || 
+         filterItem.value || filterType.value || searchQuery.value
+})
+
+const totalPages = computed(() => {
+  return paginationInfo.value.totalPages || 1
+})
+
+const totalItems = computed(() => {
+  return paginationInfo.value.total || 0
+})
+
+const totalStockIn = computed(() => {
+  return transactions.value.filter(t => t.type === 'Stock In').length
+})
+
+const totalStockOut = computed(() => {
+  return transactions.value.filter(t => t.type === 'Stock Out').length
+})
+
+// ================================================================
+// USER DATA
+// ================================================================
+
+const loadUserData = () => {
+  const user = authStore.user
+  if (user) {
+    userIsAdmin.value = user.isAdmin || user.role === 'admin' || user.role === 'Admin'
+    
+    if (user && 'assignedStore' in user && user.assignedStore) {
+      const assignedStore = user.assignedStore
+      userAssignedStoreId.value = assignedStore.id || null
+      userAssignedStoreName.value = assignedStore.name || null
+    } else {
+      userAssignedStoreId.value = null
+      userAssignedStoreName.value = null
+    }
+    
+    if (user && 'assignedGroup' in user && user.assignedGroup) {
+      const assignedGroup = user.assignedGroup
+      userAssignedGroupId.value = assignedGroup.id || null
+      userAssignedGroupName.value = assignedGroup.name || null
+    } else {
+      userAssignedGroupId.value = null
+      userAssignedGroupName.value = null
+    }
+  }
+}
+
+// ================================================================
+// UI HELPERS - Collapse Toggle
+// ================================================================
+
+const toggleFilters = () => {
+  showFilters.value = !showFilters.value
+}
+
+// ================================================================
+// API METHODS
+// ================================================================
+
+const fetchStores = async () => {
+  try {
+    const response = await balanceService.getStores()
+    stores.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching stores:', error)
+  }
+}
+
+const fetchGroups = async () => {
+  try {
+    const response = await balanceService.getGroups()
+    allGroups.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching groups:', error)
+  }
+}
+
+const fetchCategories = async () => {
+  try {
+    const response = await balanceService.getActiveCategories()
+    if (response.success) {
+      categories.value = response.data || []
+      console.log(`✅ Loaded ${categories.value.length} categories for transactions`)
+    }
+  } catch (error) {
+    console.error('Error fetching categories:', error)
+  }
+}
+
+const fetchItems = async () => {
+  try {
+    const response = await balanceService.getActiveItems()
+    inventoryItems.value = response.data || []
+  } catch (error) {
+    console.error('Error fetching items:', error)
+  }
+}
+
+const fetchTransactions = async () => {
+  isLoading.value = true
+  try {
+    const filters = {}
+    
+    if (!userIsAdmin.value && userAssignedStoreId.value) {
+      filters.storeId = userAssignedStoreId.value
+    }
+    
+    if (!userIsAdmin.value && userAssignedGroupId.value) {
+      filters.groupId = userAssignedGroupId.value
+    }
+    
+    if (userIsAdmin.value) {
+      if (filterStore.value) {
+        filters.storeId = Number(filterStore.value)
+      }
+      if (filterGroup.value) {
+        filters.groupId = Number(filterGroup.value)
+      }
+    } else {
+      if (filterItem.value) {
+        filters.itemId = Number(filterItem.value)
+      }
+      if (filterType.value) {
+        filters.transactionType = filterType.value
+      }
+    }
+    
+    if (filterCategory.value) {
+      filters.categoryId = Number(filterCategory.value)
+    }
+    
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+    }
+    
+    filters.page = currentPage.value
+    filters.limit = pageSize.value
+    
+    const response = await transactionService.getTransactions(filters)
+    
+    transactions.value = response.data || []
+    
+    if (response.pagination) {
+      paginationInfo.value = {
+        page: response.pagination.page || 1,
+        limit: response.pagination.limit || 10,
+        total: response.pagination.total || 0,
+        totalPages: response.pagination.totalPages || 1
+      }
+      currentPage.value = paginationInfo.value.page
+      pageSize.value = paginationInfo.value.limit
+    }
+  } catch (error) {
+    console.error('Error fetching transactions:', error)
+    showToastMessage('Failed to load transactions', 'error')
+    transactions.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ================================================================
+// HELPER METHODS
+// ================================================================
+
+const getItemStandardName = (itemId) => {
+  if (!itemId) return null
+  const transaction = transactions.value.find(t => t.itemId === itemId)
+  if (transaction) return transaction.itemStandardName || null
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.standardName || null : null
+}
+
+const getItemCommonName = (itemId) => {
+  if (!itemId) return 'Unnamed'
+  const transaction = transactions.value.find(t => t.itemId === itemId)
+  if (transaction) return transaction.itemCommonName || 'Unnamed'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? (item.name || item.standardName || 'Unnamed') : 'Unnamed'
+}
+
+const getItemCode = (itemId, transaction) => {
+  if (transaction && transaction.itemCode) {
+    return transaction.itemCode
+  }
+  const t = transactions.value.find(tx => tx.itemId === itemId)
+  if (t) return t.itemCode || 'N/A'
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.code || 'N/A' : 'N/A'
+}
+
+const getItemUnit = (itemId, transaction) => {
+  if (transaction && transaction.uomCode) {
+    return transaction.uomCode
+  }
+  const t = transactions.value.find(tx => tx.itemId === itemId)
+  if (t) return t.uomCode || ''
+  const item = inventoryItems.value.find(i => i.id === itemId)
+  return item ? item.uomCode || '' : ''
+}
+
+const getStoreName = (storeId) => {
+  const store = stores.value.find(s => s.id === storeId)
+  return store ? store.name : 'Unknown'
+}
+
+const getGroupName = (groupId) => {
+  const group = allGroups.value.find(g => g.id === groupId)
+  return group ? group.name : 'Unknown'
+}
+
+const formatNumber = (num) => {
+  return new Intl.NumberFormat().format(num)
+}
+
+// ================================================================
+// DATE FORMATTING FUNCTIONS
+// ================================================================
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return ''
+  return dayjs.utc(dateString)
+    .add(6, 'hour')
+    .format('MMM D, YYYY h:mm A')
+}
+
+const formatDateShort = (dateString) => {
+  if (!dateString) return ''
+  return dayjs.utc(dateString)
+    .add(6, 'hour')
+    .format('MMM D, h:mm A')
+}
+
+// ================================================================
+// UI HELPERS
+// ================================================================
+
+const toggleExpand = (id) => {
+  expandedRow.value = expandedRow.value === id ? null : id
+}
+
+// ================================================================
+// FILTERS & PAGINATION
+// ================================================================
+
+const onSearchChange = () => { 
+  currentPage.value = 1
+  fetchTransactions()
+}
+
+const onFilterChange = () => { 
+  currentPage.value = 1
+  fetchTransactions()
+}
+
+const clearFilters = () => {
+  filterStore.value = ''
+  filterGroup.value = ''
+  filterCategory.value = ''
+  filterItem.value = ''
+  filterType.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+  showToastMessage('Filters cleared', 'info')
+  fetchTransactions()
+}
+
+const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  fetchTransactions()
+}
+
+const changePageSize = () => {
+  currentPage.value = 1
+  fetchTransactions()
+}
+
+// ================================================================
+// PRINT & EXPORT
+// ================================================================
+
+const printReport = () => {
+  const query = {}
+  if (filterStore.value) query.storeId = filterStore.value
+  if (filterGroup.value) query.groupId = filterGroup.value
+  if (filterCategory.value) query.categoryId = filterCategory.value
+  if (filterItem.value) query.itemId = filterItem.value
+  if (filterType.value) query.type = filterType.value
+  if (searchQuery.value) query.search = searchQuery.value
+  
+  router.push({
+    name: 'print-transactions',
+    query: query
+  })
+}
+
+const openExportModal = () => {
+  exportType.value = 'full'
+  showExportModal.value = true
+}
+
+const closeExportModal = () => {
+  showExportModal.value = false
+}
+
+const exportSelectedReport = async () => {
+  exporting.value = true
+  try {
+    const filters = {}
+    
+    if (userIsAdmin.value) {
+      if (filterStore.value) {
+        filters.storeId = Number(filterStore.value)
+      }
+      if (filterGroup.value) {
+        filters.groupId = Number(filterGroup.value)
+      }
+    } else {
+      if (userAssignedStoreId.value) {
+        filters.storeId = userAssignedStoreId.value
+      }
+      if (userAssignedGroupId.value) {
+        filters.groupId = userAssignedGroupId.value
+      }
+    }
+    
+    if (filterCategory.value) {
+      filters.categoryId = Number(filterCategory.value)
+    }
+    
+    if (filterItem.value) {
+      filters.itemId = Number(filterItem.value)
+    }
+    if (filterType.value) {
+      filters.transactionType = filterType.value
+    }
+    if (searchQuery.value) {
+      filters.search = searchQuery.value
+    }
+    filters.type = exportType.value
+    
+    const blob = await transactionService.exportTransactions(filters)
+    
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Store_Transactions_Report_${new Date().toISOString().split('T')[0]}.xlsx`
+    a.click()
+    window.URL.revokeObjectURL(url)
+    
+    closeExportModal()
+    showToastMessage('Excel export completed successfully!', 'success')
+  } catch (error) {
+    console.error('Export error:', error)
+    showToastMessage('Failed to export transactions', 'error')
+  } finally {
+    exporting.value = false
+  }
+}
+
+const showToastMessage = (msg, type = 'success') => {
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 3000)
+}
+
+// ================================================================
+// LIFECYCLE HOOKS
+// ================================================================
+
+onMounted(async () => {
+  loadUserData()
+  
+  try {
+    await Promise.all([
+      fetchStores(),
+      fetchGroups(),
+      fetchCategories(),
+      fetchItems()
+    ])
+    
+    if (!userIsAdmin.value) {
+      if (userAssignedStoreId.value) {
+        filterStore.value = String(userAssignedStoreId.value)
+        console.log('🔒 Auto-selected store filter:', userAssignedStoreName.value)
+      }
+      if (userAssignedGroupId.value) {
+        filterGroup.value = String(userAssignedGroupId.value)
+        console.log('🔒 Auto-selected group filter:', userAssignedGroupName.value)
+      }
+    }
+    
+    await fetchTransactions()
+  } catch (error) {
+    console.error('Error loading page:', error)
+    showToastMessage('Failed to load data', 'error')
+  }
+})
+</script>
+
+<style scoped>
+/* ================================================================
+   SECTION CARD
+   ================================================================ */
+.section-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.header-title h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.total-badge {
+  background: #e2e8f0;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-box {
+  position: relative;
+}
+
+.search-box input {
+  padding: 8px 12px 8px 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+  width: 200px;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-filter-toggle {
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-filter-toggle:hover {
+  background: #e2e8f0;
+}
+
+/* ================================================================
+   FILTER WRAPPER - COLLAPSIBLE
+   ================================================================ */
+.filter-wrapper {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, margin 0.3s ease;
+  margin-bottom: 0;
+}
+
+.filter-wrapper.filter-expanded {
+  max-height: 400px;
+  margin-bottom: 16px;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.filter-select {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.filter-select:disabled {
+  background: #f1f5f9;
+  color: #475569;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.btn-clear-filters {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-clear-filters:hover { background: #e2e8f0; }
+
+/* ================================================================
+   BUTTONS
+   ================================================================ */
+.btn-export {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-export:hover:not(:disabled) { background: #059669; }
+.btn-export:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-print {
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-print:hover { background: #7c3aed; }
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-primary:hover:not(:disabled) { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-secondary {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
+
+/* ================================================================
+   STATS
+   ================================================================ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  background: #f8fafc;
+  padding: 14px 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-card:hover {
+  background: #f1f5f9;
+}
+
+.stat-icon {
+  font-size: 24px;
+  background: white;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.stat-number {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* ================================================================
+   TABLE
+   ================================================================ */
+.table-container {
+  overflow-x: auto;
+  min-height: 200px;
+}
+
+.transaction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.transaction-table th,
+.transaction-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.transaction-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.date-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   UOM DISPLAY
+   ================================================================ */
+.uom-display {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #e0f2fe;
+  color: #0369a1;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   TYPE BADGE
+   ================================================================ */
+.type-badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.type-badge.stock-in {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.type-badge.stock-out {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ================================================================
+   ITEM INFO
+   ================================================================ */
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.item-code {
+  font-weight: 600;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.item-common-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.3;
+}
+
+.item-standard-name {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+/* ================================================================
+   CATEGORY TAG STYLES
+   ================================================================ */
+.category-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.category-tag.has-category {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.category-tag.no-category {
+  background: #f1f5f9;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.quantity-amount {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.quantity-value {
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.quantity-value.positive {
+  color: #166534;
+}
+
+.quantity-value.negative {
+  color: #991b1b;
+}
+
+/* ================================================================
+   EXPAND ROW
+   ================================================================ */
+.expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #3b82f6;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.expand-btn:hover { background: #e0e7ff; }
+.expanded-row { background: #f8fafc; }
+.detail-expand-row td { padding: 0 !important; }
+
+.expand-details {
+  padding: 16px 20px;
+  background: white;
+  border-radius: 12px;
+  margin: 8px 0;
+  border: 1px solid #e2e8f0;
+}
+
+.detail-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.detail-card {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.detail-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  border-left: 3px solid #3b82f6;
+  padding-left: 10px;
+}
+
+.detail-card > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+.detail-card > div:last-child { border-bottom: none; }
+.detail-card .value { font-weight: 500; color: #1e293b; }
+
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #64748b;
+}
+.loading-state .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 6px 14px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.page-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #3b82f6; }
+.page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.page-info { font-size: 12px; color: #64748b; white-space: nowrap; }
+.limit-select {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   MODALS
+   ================================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+.modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: #1e293b; }
+
+.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #94a3b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-close:hover { background: #f1f5f9; color: #1e293b; }
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.export-option:hover { background: #f8fafc; border-color: #3b82f6; }
+
+/* ================================================================
+   EMPTY STATE
+   ================================================================ */
+.empty-state { text-align: center; padding: 40px !important; }
+.empty-content { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.empty-icon { font-size: 40px; opacity: 0.3; }
+.empty-content p { color: #64748b; margin: 0; font-size: 14px; }
+
+/* ================================================================
+   TOAST
+   ================================================================ */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+  animation: slideIn 0.3s ease;
+  border-left: 3px solid #10b981;
+  white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.toast.error { border-left-color: #ef4444; }
+.toast.info { border-left-color: #3b82f6; }
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ================================================================
+   PRINT STYLES
+   ================================================================ */
+@media print {
+  .btn-export, .btn-print, .search-box, .filter-wrapper, .pagination, .action-buttons, .expand-btn, .btn-filter-toggle {
+    display: none !important;
+  }
+  .section-card { box-shadow: none !important; padding: 0 !important; }
+  .transaction-table th, .transaction-table td { border: 1px solid #ddd !important; }
+  .stats-grid { display: none !important; }
+  .detail-expand-row { display: table-row !important; }
+  .loading-state { display: none !important; }
+  
+  .category-tag {
+    border: 1px solid #ddd;
+    padding: 1px 6px;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .category-tag.has-category {
+    background: #e0e7ff !important;
+    color: #4338ca !important;
+  }
+  
+  .category-tag.no-category {
+    background: #f1f5f9 !important;
+    color: #94a3b8 !important;
+  }
+  
+  .uom-display {
+    background: #e0f2fe !important;
+    color: #0369a1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .item-common-name {
+    font-weight: 600 !important;
+    color: #000 !important;
+  }
+  
+  .item-standard-name {
+    color: #555 !important;
+    font-style: italic !important;
+  }
+}
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+@media (max-width: 900px) {
+  .detail-row { grid-template-columns: 1fr; }
+  .card-header { flex-direction: column; align-items: stretch; }
+  .header-actions { flex-direction: column; align-items: stretch; }
+  .search-box input { width: 100%; }
+  .filter-bar { flex-direction: column; }
+  .filter-bar select { width: 100%; }
+  .filter-group { width: 100%; }
+  .filter-wrapper.filter-expanded { max-height: 600px; }
+  
+  .item-common-name {
+    font-size: 12px;
+  }
+  
+  .item-standard-name {
+    font-size: 10px;
+  }
+  
+  .category-tag {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
+  
+  .uom-display {
+    font-size: 10px;
+    padding: 1px 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .section-card { padding: 12px; }
+  .stats-grid { grid-template-columns: 1fr; }
+  .pagination { flex-wrap: wrap; }
+  .modal-container { margin: 10px; max-height: 95vh; }
+  .transaction-table { font-size: 12px; }
+  .transaction-table th, .transaction-table td { padding: 6px 8px; }
+}
+</style>

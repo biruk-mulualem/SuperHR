@@ -1,0 +1,139 @@
+// models/ItemRequestDetail.js
+'use strict';
+const { Model } = require('sequelize');
+
+module.exports = (sequelize, DataTypes) => {
+  class ItemRequestDetail extends Model {
+    static associate(models) {
+      ItemRequestDetail.belongsTo(models.ItemRequest, {
+        foreignKey: 'requestId',
+        as: 'request',
+        onDelete: 'CASCADE',
+      });
+      ItemRequestDetail.belongsTo(models.Item, {
+        foreignKey: 'itemId',
+        as: 'item',
+      });
+    }
+
+    getFullInfo() {
+      return {
+        id: this.detailId,
+        requestId: this.requestId,
+        item: this.item,
+        quantity: this.quantity,
+        remark: this.remark,
+        // ✅ UOM fields
+        selectedUom: this.selected_uom,
+        uomCode: this.uom_code,
+        isBaseUom: this.is_base_uom,
+        // ✅ NEW: Spec fields
+        specification: this.specification,
+        brand: this.brand,
+        model: this.model,
+        createdAt: this.createdAt,
+        updatedAt: this.updatedAt,
+      };
+    }
+  }
+
+  ItemRequestDetail.init(
+    {
+      detailId: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+        field: 'id',
+      },
+      requestId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: 'request_id',
+        references: {
+          model: 'item_requests',
+          key: 'id',
+        },
+        validate: {
+          notNull: true,
+        },
+      },
+      itemId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: 'item_id',
+        references: {
+          model: 'items',
+          key: 'id',
+        },
+        validate: {
+          notNull: true,
+        },
+      },
+      quantity: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: false,
+        validate: {
+          min: 0.01,
+          notNull: true,
+        },
+      },
+      remark: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      // ✅ UOM FIELDS
+      selected_uom: {
+        type: DataTypes.ENUM('base', 'conversion'),
+        defaultValue: 'base',
+        allowNull: false,
+      },
+      uom_code: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      is_base_uom: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
+      },
+      // ✅ NEW: SPECIFICATION FIELDS
+      specification: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'specification',
+      },
+      brand: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'brand',
+      },
+      model: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'model',
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+        field: 'created_at',
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+        field: 'updated_at',
+      },
+    },
+    {
+      sequelize,
+      modelName: 'ItemRequestDetail',
+      tableName: 'item_request_details',
+      timestamps: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at',
+    }
+  );
+
+  return ItemRequestDetail;
+};

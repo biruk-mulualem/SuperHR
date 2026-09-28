@@ -1,0 +1,506 @@
+Complete Render PostgreSQL Migration Guide
+The goal is:
+
+Old Render DB → pgAdmin backup → New Render DB → pgAdmin restore → Backend points to new DB
+
+Part 1 — Back up the old database
+Step 1: Open pgAdmin
+Open pgAdmin 4 on your computer.
+
+You should have your old Render database registered under something like:
+
+Servers
+└── Render SuperHR
+    └── Databases
+        └── superhr
+
+If you haven't registered it yet:
+
+Right-click Servers → Register → Server...
+
+Step 2: Configure the old database connection
+Under General:
+
+Name:
+Render SuperHR
+
+Under Connection:
+
+Host:             YOUR_OLD_RENDER_HOST
+Port:             5432
+Maintenance DB:   superhr
+Username:         YOUR_OLD_USERNAME
+Password:         YOUR_OLD_PASSWORD
+
+Under SSL:
+
+SSL mode: Require
+
+Click Save.
+
+Make sure you can expand:
+
+Databases → superhr
+
+Part 2 — Create the backup
+Step 3: Start Backup
+Right-click the old database:
+
+superhr
+
+Select:
+
+Backup...
+
+Step 4: Choose the backup filename
+For example:
+
+C:\Users\YOUR_NAME\Desktop\superhr_backup.dump
+
+On Mac/Linux, you can put it somewhere convenient such as your Desktop.
+
+Step 5: Choose the format
+Set:
+
+Format: Custom
+
+This is important because we'll use this backup with pgAdmin's Restore function.
+
+Step 6: Start the backup
+Click:
+
+Backup
+
+Wait for it to finish.
+
+You want to see something equivalent to:
+
+Process completed successfully
+
+The file should no longer be 0 KB.
+
+Part 3 — VERIFY the backup
+Do not skip this step.
+
+This protects you if something goes wrong with the Render database.
+
+Step 7: Create a temporary local database
+In pgAdmin:
+
+Servers
+ → PostgreSQL
+   → Databases
+
+Right-click Databases.
+
+Choose:
+
+Create → Database
+
+Name it:
+
+superhr_test
+
+Click Save.
+
+Step 8: Restore the backup into the test database
+Right-click:
+
+superhr_test
+
+Choose:
+
+Restore...
+
+Select:
+
+superhr_backup.dump
+
+Set:
+
+Format: Custom or tar
+
+Make sure you are restoring schema + data, not data-only.
+
+Click Restore.
+
+Wait for:
+
+Process completed successfully
+
+Step 9: Check the tables
+Expand:
+
+superhr_test
+ → Schemas
+   → public
+     → Tables
+
+You should see your application's tables.
+
+For example:
+
+departments
+employees
+order_notifications
+...
+
+Step 10: Check actual data
+Right-click an important table:
+
+View/Edit Data → All Rows
+
+Make sure you see real records.
+
+If you can see your old records, the backup is good. ✅
+
+Part 4 — Create the new Render database
+Only after the backup has been successfully verified.
+
+Step 11: Go to Render
+Open your Render dashboard.
+
+Click:
+
+New + → PostgreSQL
+
+Step 12: Configure the new database
+Give it a new name, for example:
+
+superhr_db2
+
+Choose:
+
+Instance Type: Free
+
+Use the same region as your old database if practical.
+
+For example:
+
+Oregon
+
+Then create the database.
+
+Because your workspace can only have one active Free Postgres database, you may need to delete the old Free database before Render lets you create this one.
+
+Make absolutely sure your backup has been verified before deleting the old database.
+
+Part 5 — Connect the new Render database to pgAdmin
+Step 13: Get the new database connection information
+In Render:
+
+superhr_db2 → Connect
+
+You'll see connection information.
+
+You need:
+
+Host
+Port
+Database
+Username
+Password
+
+For pgAdmin, use the External Database URL/connection information.
+
+Step 14: Register the new server in pgAdmin
+In pgAdmin:
+
+Servers → Register → Server...
+
+Under General:
+
+Name:
+SuperHR New
+
+Under Connection, enter the new database's information:
+
+Host:             [new Render host]
+Port:             5432
+Maintenance DB:   superhr_db2
+Username:         [new username]
+Password:         [new password]
+
+Under SSL:
+
+SSL mode: Require
+
+Click Save.
+
+You should now have:
+
+Servers
+├── Render SuperHR
+│   └── Databases
+│       └── superhr
+│
+└── SuperHR New
+    └── Databases
+        └── superhr_db2
+
+Part 6 — Restore the database into the new Render DB
+There are two things to restore:
+
+Structure/schema — tables, indexes, sequences, constraints, etc.
+Data — the actual records.
+Since you're starting with a completely new database, the easiest approach is to restore everything from the backup in one operation.
+
+Step 15: Restore the backup
+Right-click:
+
+superhr_db2
+
+Choose:
+
+Restore...
+
+Select:
+
+superhr_backup.dump
+
+Set:
+
+Format: Custom or tar
+
+Step 16: Check restore options
+Because this is a brand-new database, you generally want:
+
+Only data:       OFF
+Only schema:     OFF
+Create database: OFF
+
+You want both schema and data.
+
+If there is an option called:
+
+Clean before restore
+
+you don't need it for an empty new database.
+
+Step 17: Start the restore
+Click:
+
+Restore
+
+Wait.
+
+You want:
+
+Process completed successfully
+
+Part 7 — Verify the new database
+Step 18: Refresh pgAdmin
+Right-click:
+
+superhr_db2
+
+and select:
+
+Refresh
+
+Then expand:
+
+superhr_db2
+ → Schemas
+   → public
+     → Tables
+
+You should see all your tables.
+
+Step 19: Check important tables
+Right-click:
+
+departments
+
+Choose:
+
+View/Edit Data → All Rows
+
+Confirm your old department records are there.
+
+Do the same for important tables such as:
+
+employees
+orders
+order_notifications
+users
+
+Use the tables that matter to your application.
+
+Part 8 — Make sure the data is actually there
+You can also run SQL in pgAdmin.
+
+Open:
+
+Tools → Query Tool
+
+Select superhr_db2.
+
+Run:
+
+SELECT COUNT(*) FROM departments;
+
+Then:
+
+SELECT COUNT(*) FROM order_notifications;
+
+And for other important tables:
+
+SELECT COUNT(*) FROM employees;
+
+The counts should correspond to what you had in the old database.
+
+Part 9 — Update your backend
+Now your new database is ready.
+
+Go to your backend Web Service in Render.
+
+Open:
+
+Environment
+
+Find:
+
+DATABASE_URL
+
+Step 20: Change DATABASE_URL
+Replace the old database connection with the new database's Internal Database URL.
+
+Because your backend and PostgreSQL database are both on Render, the Internal Database URL is preferable.
+
+It will look approximately like:
+
+postgresql://username:password@internal-render-host/database
+
+Use the exact Internal Database URL displayed by Render.
+
+Do not paste the password into this chat.
+
+Step 21: Save
+Click:
+
+Save Changes
+
+Render should restart/redeploy your backend.
+
+Part 10 — Test your application
+Once the backend finishes deploying:
+
+Step 22: Test login
+Try logging into your application.
+
+Step 23: Test existing records
+Check that old data is present.
+
+For example:
+
+Existing users
+Employees
+Departments
+Orders
+Notifications
+Step 24: Test creating data
+Create a new record.
+
+For example:
+
+Create a new employee
+
+Then refresh the application and make sure it remains there.
+
+Step 25: Check backend logs
+In Render:
+
+Backend → Logs
+
+Look for errors such as:
+
+relation does not exist
+connection refused
+password authentication failed
+database does not exist
+
+If there are no database errors and the application works, the migration is successful. ✅
+
+Part 11 — Do NOT immediately delete things
+Once your new database works, keep your verified backup:
+
+superhr_backup.dump
+
+Keep it somewhere safe, preferably two locations.
+
+For example:
+
+Desktop/
+    superhr_backup.dump
+
+Google Drive/
+    superhr_backup.dump
+
+Then you can safely proceed with cleanup.
+
+Part 12 — Security cleanup
+Because you posted both database credentials earlier:
+
+Step 26: Rotate the database password
+In Render, change/rotate the password for the new PostgreSQL database.
+
+Then update your backend's:
+
+DATABASE_URL
+
+with the new credential.
+
+Redeploy/restart the backend and verify that it still connects.
+
+Your final setup
+When everything is finished, it should look like:
+
+                 ┌─────────────────────┐
+                 │   Your Frontend     │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │   Render Backend    │
+                 │                     │
+                 │ DATABASE_URL = NEW  │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │   superhr_db2       │
+                 │   Free PostgreSQL   │
+                 │                     │
+                 │ Tables + ALL DATA   │
+                 └─────────────────────┘
+
+                 Backup kept separately:
+                 superhr_backup.dump
+
+The critical rule
+Never delete the old database until this sequence is complete:
+
+Backup
+   ↓
+Restore to test database
+   ↓
+Verify tables
+   ↓
+Verify actual data
+   ↓
+Create new Render DB
+   ↓
+Restore backup
+   ↓
+Verify new DB
+   ↓
+Update backend DATABASE_URL
+   ↓
+Test application
+   ↓
+Rotate password
+   ↓
+Only then clean up old resources
+
+This gives you a reliable procedure you can repeat whenever you need to migrate the Free Render PostgreSQL database

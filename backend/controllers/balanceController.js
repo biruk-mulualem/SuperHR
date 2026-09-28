@@ -1,0 +1,5227 @@
+// balanceController.js - COMPLETE FIXED VERSION
+
+const fs = require("fs");
+const path = require("path");
+const csv = require("csv-parser");
+const { Parser } = require("json2csv");
+const { Op } = require("sequelize");
+const ExcelJS = require("exceljs");
+const { getUserStoreAndGroup } = require("../utils/userAccess");
+
+// Import models using destructuring
+const {
+  StoreBalance,
+  StoreBalanceHistory,
+  ItemRequest,
+  ItemRequestDetail,
+  ConvertedBalance,
+  Store,
+  Group,
+  Role,
+  Category,
+  Item,
+  UOM,
+  StoreGroupRelation,
+  User,
+  sequelize,
+} = require("../models");
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const safeDelete = (filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+};
+
+
+
+const getBalanceClass = (balance, minStockAlert) => {
+  if (balance === 0) return "zero";
+  if (balance <= minStockAlert) return "low";
+  return "normal";
+};
+
+const getBaseBalance = (balance, conversionValue) => {
+  return balance * conversionValue;
+};
+
+// ================================================================
+// 🔥 FIXED: HELPER FUNCTION: Check and Finalize Request
+// This is the most critical function - it determines when a request
+// should be finalized (only when ALL groups have processed it)
+// ================================================================
+
+// ================================================================
+// 🔥 FIXED: HELPER FUNCTION - Check and Finalize Request
+// Checks BOTH stores (asking and supplying) for all groups
+// ================================================================
+
+async function checkAndFinalizeRequest(request, storeId, transaction, logs, finalizedRequests) {
+  try {
+    console.log(`🔍 Checking if all groups have processed request ${request.requestCode}`);
+    console.log(`🔍 Request ID: ${request.requestId}`);
+    console.log(`🔍 Asking Store ID: ${request.askingStoreId}`);
+    console.log(`🔍 Supplying Store ID: ${request.supplyingStoreId}`);
+    console.log(`🔍 Current Store ID: ${storeId}`);
+
+    // 🔥 Get ALL groups for BOTH stores (asking and supplying)
+    const allStoreIds = [request.askingStoreId, request.supplyingStoreId];
+    const allGroups = [];
+    
+    for (const storeId of allStoreIds) {
+      const storeGroups = await sequelize.query(
+        `SELECT g.id, g.name, g.status, sgr.store_id
+         FROM groups g
+         INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+         WHERE sgr.store_id = ? AND g.status = 'Active'`,
+        {
+          replacements: [parseInt(storeId)],
+          type: sequelize.QueryTypes.SELECT,
+          transaction: transaction
+        }
+      );
+      
+      // Add store name for logging
+      const store = storeId === request.askingStoreId ? 'Asking' : 'Supplying';
+      storeGroups.forEach(g => g.storeType = store);
+      allGroups.push(...storeGroups);
+    }
+
+    console.log(`📋 Total groups across both stores: ${allGroups.length}`);
+    console.log(`📋 All groups:`, allGroups.map(g => ({ id: g.id, name: g.name, store: g.storeType })));
+
+    // If no groups found, auto-finalize
+    if (allGroups.length === 0) {
+      console.log(`⚠️ No groups found for either store, auto-finalizing`);
+      
+      await ItemRequest.update(
+        {
+          status: 'finalized',
+          finalizedAt: new Date()
+        },
+        {
+          where: { requestId: request.requestId },
+          transaction: transaction
+        }
+      );
+      
+      request.status = 'finalized';
+      request.finalizedAt = new Date();
+      
+      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - No groups found, auto-finalized`);
+      
+      if (finalizedRequests) {
+        finalizedRequests.push({
+          requestId: request.requestId,
+          requestCode: request.requestCode,
+          finalizedAt: request.finalizedAt
+        });
+      }
+      
+      return true;
+    }
+
+    const allGroupIds = allGroups.map(g => parseInt(g.id));
+    console.log(`📋 All group IDs:`, allGroupIds);
+
+    // 🔥 Get ALL processed records for this request (both processed and skipped)
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    const processedRecords = await RequestGroupProcessing.findAll({
+      where: {
+        requestId: request.requestId,
+        status: { [Op.in]: ['processed', 'skipped'] }
+      },
+      transaction: transaction
+    });
+
+    const processedGroupIds = processedRecords
+      .map(r => parseInt(r.groupId))
+      .filter(id => !isNaN(id));
+
+    console.log(`📋 Processed/Skipped groups for request ${request.requestCode}:`, processedGroupIds);
+
+    // 🔥 Check if ALL groups from BOTH stores have processed or been skipped
+    const allProcessed = allGroupIds.length > 0 && 
+                          allGroupIds.every(g => processedGroupIds.includes(g));
+    const remainingGroups = allGroupIds.filter(g => !processedGroupIds.includes(g));
+
+    console.log(`📋 allProcessed: ${allProcessed}`);
+    console.log(`📋 remainingGroups:`, remainingGroups);
+
+    // 🔥 Get details of remaining groups for logging
+    const remainingGroupDetails = remainingGroups.map(g => {
+      const grp = allGroups.find(g2 => parseInt(g2.id) === g);
+      return grp ? `${grp.name} (${grp.storeType} Store)` : g;
+    });
+
+    // 🔥 ONLY finalize if ALL groups from BOTH stores have processed
+    if (allProcessed && allGroupIds.length > 0) {
+      console.log(`✅ ALL GROUPS FROM BOTH STORES HAVE PROCESSED! Finalizing request ${request.requestCode}`);
+      
+      await ItemRequest.update(
+        {
+          status: 'finalized',
+          finalizedAt: new Date()
+        },
+        {
+          where: { requestId: request.requestId },
+          transaction: transaction
+        }
+      );
+      
+      request.status = 'finalized';
+      request.finalizedAt = new Date();
+      
+      console.log(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups (${allGroups.filter(g => g.storeType === 'Asking').length} asking + ${allGroups.filter(g => g.storeType === 'Supplying').length} supplying) have processed`);
+      if (logs) logs.push(`✅ Request ${request.requestCode} FINALIZED - All ${allGroupIds.length} groups have processed`);
+      
+      if (finalizedRequests) {
+        finalizedRequests.push({
+          requestId: request.requestId,
+          requestCode: request.requestCode,
+          finalizedAt: request.finalizedAt
+        });
+      }
+      
+      return true;
+    } else if (remainingGroups.length > 0) {
+      const msg = `⏳ Request ${request.requestCode} PARTIALLY PROCESSED - ${remainingGroups.length} group(s) remaining: ${remainingGroupDetails.join(', ')}`;
+      console.log(msg);
+      if (logs) logs.push(msg);
+      return false;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error(`❌ Error in checkAndFinalizeRequest for ${request.requestCode}:`, error);
+    if (logs) logs.push(`❌ Error checking finalization for ${request.requestCode}: ${error.message}`);
+    return false;
+  }
+}
+
+// ============================================
+// 1. GET ALL BALANCES WITH FILTERS
+// ============================================
+
+exports.getBalances = async (req, res) => {
+  try {
+    const {
+      storeId,
+      groupId,
+      categoryId,
+      status,
+      search,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const whereClause = {};
+
+    if (storeId) {
+      whereClause.storeId = parseInt(storeId);
+    }
+    if (groupId) {
+      whereClause.groupId = parseInt(groupId);
+    }
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const include = [
+      {
+        model: Store,
+        as: "store",
+        attributes: ["id", "name", "code"],
+      },
+      {
+        model: Group,
+        as: "group",
+        attributes: ["id", "name", "code"],
+      },
+      {
+        model: Item,
+        as: "item",
+        attributes: [
+          "itemId",
+          "code",
+          "name",
+          "standardName",
+          "conversionValue",
+          "uomId",
+          "conversionUomId",
+          "categoryId",
+        ],
+        include: [
+          {
+            model: UOM,
+            as: "uom",
+            attributes: ["uomId", "code", "name"],
+          },
+          {
+            model: UOM,
+            as: "conversionUom",
+            attributes: ["uomId", "code", "name"],
+          },
+          {
+            model: Category,
+            as: "category",
+            attributes: ["categoryId", "name", "status"],
+          },
+        ],
+      },
+    ];
+
+    if (categoryId) {
+      include[2].where = { categoryId: parseInt(categoryId) };
+    }
+
+    if (search && search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+
+      whereClause[Op.or] = [
+        { "$item.name$": { [Op.iLike]: searchTerm } },
+        { "$item.code$": { [Op.iLike]: searchTerm } },
+        { "$item.standard_name$": { [Op.iLike]: searchTerm } },
+        { "$store.name$": { [Op.iLike]: searchTerm } },
+        { "$item->category.name$": { [Op.iLike]: searchTerm } },
+      ];
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await StoreBalance.findAndCountAll({
+      where: whereClause,
+      include: include,
+      distinct: true,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["createdAt", "DESC"]],
+    });
+
+    const formattedRows = rows.map((record) => {
+      const item = record.item;
+      const uom = item?.uom;
+      const conversionUom = item?.conversionUom;
+      const category = item?.category;
+
+      const conversionValue =
+        item?.conversionValue !== undefined && item?.conversionValue !== null
+          ? parseFloat(item.conversionValue)
+          : 1;
+
+      const itemName = item?.name || null;
+      const standardName = item?.standardName || null;
+
+      return {
+        id: record.id,
+        storeId: record.storeId,
+        storeName: record.store?.name || null,
+        groupId: record.groupId,
+        groupName: record.group?.name || null,
+        itemId: record.itemId,
+        itemCode: item?.code || null,
+        itemStandardName: standardName,
+        itemCommonName: itemName || standardName || null,
+        categoryId: category?.categoryId || null,
+        categoryName: category?.name || null,
+        uomCode: uom?.code || null,
+        uomName: uom?.name || null,
+        conversionUomCode: conversionUom?.code || null,
+        conversionValue: conversionValue,
+        balance: parseFloat(record.balance),
+        minStock: parseFloat(record.minStockAlert) || 0,
+        baseBalance: getBaseBalance(
+          parseFloat(record.balance),
+          conversionValue,
+        ),
+        status: record.status,
+        statusClass: getBalanceClass(
+          parseFloat(record.balance),
+          parseFloat(record.minStockAlert) || 0,
+        ),
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get balances error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET ALL CATEGORIES
+// ============================================
+exports.getCategories = async (req, res) => {
+  try {
+    const { page = 1, limit = 100, search, status } = req.query;
+
+    const whereClause = {};
+
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { name: { [Op.iLike]: `%${search.trim()}%` } },
+        { description: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Category.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["name", "ASC"]],
+      attributes: [
+        "categoryId",
+        "name",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    const formattedRows = rows.map((category) => ({
+      id: category.categoryId,
+      categoryId: category.categoryId,
+      name: category.name,
+      description: category.description,
+      status: category.status,
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get categories error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET ACTIVE CATEGORIES
+// ============================================
+exports.getActiveCategories = async (req, res) => {
+  try {
+    const categories = await Category.findAll({
+      where: { status: "Active" },
+      order: [["name", "ASC"]],
+      attributes: ["categoryId", "name", "description", "status"],
+    });
+
+    const formattedRows = categories.map((category) => ({
+      id: category.categoryId,
+      categoryId: category.categoryId,
+      name: category.name,
+      description: category.description,
+      status: category.status,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+    });
+  } catch (error) {
+    console.error("Get active categories error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET CATEGORY BY ID
+// ============================================
+exports.getCategoryById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const category = await Category.findByPk(id, {
+      attributes: [
+        "categoryId",
+        "name",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: "Category not found",
+      });
+    }
+
+    const formattedData = {
+      id: category.categoryId,
+      categoryId: category.categoryId,
+      name: category.name,
+      description: category.description,
+      status: category.status,
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: formattedData,
+    });
+  } catch (error) {
+    console.error("Get category by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET ITEMS BY CATEGORY
+// ============================================
+exports.getItemsByCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const category = await Category.findByPk(id);
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        error: "Category not found",
+      });
+    }
+
+    const items = await Item.findAll({
+      where: {
+        categoryId: parseInt(id),
+        status: "Active",
+      },
+      include: [
+        {
+          model: UOM,
+          as: "uom",
+          attributes: ["id", "code", "name"],
+        },
+        {
+          model: UOM,
+          as: "conversionUom",
+          attributes: ["id", "code", "name"],
+        },
+      ],
+      order: [["name", "ASC"]],
+      attributes: [
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "description",
+        "brand",
+        "model",
+        "barcode",
+        "conversionValue",
+        "status",
+      ],
+    });
+
+    const formattedItems = items.map((item) => ({
+      id: item.itemId,
+      itemId: item.itemId,
+      code: item.code,
+      name: item.name,
+      standardName: item.standardName,
+      description: item.description || "",
+      brand: item.brand || "",
+      model: item.model || "",
+      barcode: item.barcode || "",
+      conversionValue: parseFloat(item.conversionValue) || 1,
+      status: item.status,
+      uomCode: item.uom?.code || null,
+      uomName: item.uom?.name || null,
+      conversionUomCode: item.conversionUom?.code || null,
+      conversionUomName: item.conversionUom?.name || null,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        category: {
+          id: category.categoryId,
+          name: category.name,
+          description: category.description,
+          status: category.status,
+        },
+        items: formattedItems,
+        total: formattedItems.length,
+      },
+    });
+  } catch (error) {
+    console.error("Get items by category error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 2. GET BALANCE STATISTICS
+// ============================================
+exports.getStats = async (req, res) => {
+  try {
+    const totalStoresResult = await StoreBalance.findAll({
+      attributes: [
+        [sequelize.fn("DISTINCT", sequelize.col("storeId")), "storeId"],
+      ],
+    });
+    const totalStores = totalStoresResult.length;
+
+    const totalItems = await StoreBalance.count();
+
+    const lowStockItems = await StoreBalance.count({
+      where: {
+        status: "Active",
+        [Op.and]: [
+          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
+          { balance: { [Op.gt]: 0 } },
+        ],
+      },
+    });
+
+    const pendingRequestsCount = await ItemRequest.count({
+      where: { status: "approved" },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalStores,
+        totalItems,
+        lowStockItems,
+        pendingRequestsCount,
+      },
+    });
+  } catch (error) {
+    console.error("Get stats error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 3. GET LOW STOCK ITEMS
+// ============================================
+exports.getLowStockItems = async (req, res) => {
+  try {
+    const records = await StoreBalance.findAll({
+      where: {
+        status: "Active",
+        [Op.and]: [
+          { balance: { [Op.lte]: sequelize.col("minStockAlert") } },
+          { balance: { [Op.gt]: 0 } },
+        ],
+      },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    const formattedRows = records.map((record) => ({
+      id: record.id,
+      storeName: record.store?.name || null,
+      groupName: record.group?.name || null,
+      itemName: record.item?.standardName || record.item?.name || null,
+      itemCode: record.item?.code || null,
+      uomCode: record.item?.uom?.code || null,
+      balance: parseFloat(record.balance),
+      minStockAlert: parseFloat(record.minStockAlert),
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+    });
+  } catch (error) {
+    console.error("Get low stock error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 4. GET BALANCE BY ID
+// ============================================
+exports.getBalanceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const record = await StoreBalance.findByPk(id, {
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: "Balance not found",
+      });
+    }
+
+    const item = record.item;
+    const conversionValue = parseFloat(item?.conversionValue) || 1;
+
+    const formattedData = {
+      id: record.id,
+      storeId: record.storeId,
+      storeName: record.store?.name || null,
+      groupId: record.groupId,
+      groupName: record.group?.name || null,
+      itemId: record.itemId,
+      itemCode: item?.code || null,
+      itemName: item?.standardName || item?.name || null,
+      itemCommonName: item?.standardName || item?.name || null,
+      uomCode: item?.uom?.code || null,
+      conversionUomCode: item?.conversionUom?.code || null,
+      conversionValue: conversionValue,
+      balance: parseFloat(record.balance),
+      minStock: parseFloat(record.minStockAlert) || 0,
+      baseBalance: getBaseBalance(parseFloat(record.balance), conversionValue),
+      status: record.status,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: formattedData,
+    });
+  } catch (error) {
+    console.error("Get balance by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 5. CREATE BALANCE (INITIALIZE)
+// ============================================
+
+exports.createBalance = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { storeId, groupId, itemId, balance, minStock, status } = req.body;
+
+    let userId = req.user?.userId || null;
+
+    if (!userId) {
+      const defaultUser = await User.findOne({
+        where: { isActive: true },
+        attributes: ["userId"],
+        order: [["userId", "ASC"]],
+      });
+      userId = defaultUser ? defaultUser.userId : null;
+    }
+
+    console.log("📦 Create balance request body:", req.body);
+    console.log("👤 Using userId:", userId);
+
+    if (!storeId || !groupId || !itemId) {
+      return res.status(400).json({
+        success: false,
+        error: "Store, Group, and Item are required",
+      });
+    }
+
+    const storeIdInt = parseInt(storeId);
+    const groupIdInt = parseInt(groupId);
+    const itemIdInt = parseInt(itemId);
+    const balanceFloat = parseFloat(balance) || 0;
+    const minStockFloat = parseFloat(minStock) || 0;
+    const statusStr = status || "Active";
+
+    const existing = await StoreBalance.findOne({
+      where: {
+        storeId: storeIdInt,
+        groupId: groupIdInt,
+        itemId: itemIdInt,
+      },
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: "This item already has a balance in this store and group",
+      });
+    }
+
+    const balanceRecord = await StoreBalance.create(
+      {
+        storeId: storeIdInt,
+        groupId: groupIdInt,
+        itemId: itemIdInt,
+        balance: balanceFloat,
+        minStockAlert: minStockFloat,
+        status: statusStr,
+      },
+      { transaction },
+    );
+
+    if (userId) {
+      await StoreBalanceHistory.create(
+        {
+          balanceId: balanceRecord.id,
+          storeId: storeIdInt,
+          groupId: groupIdInt,
+          itemId: itemIdInt,
+          previousBalance: 0,
+          newBalance: balanceFloat,
+          changeAmount: balanceFloat,
+          transactionType: "Stock In",
+          referenceType: "initialization",
+          changedBy: userId,
+          remark: "Initial balance setup",
+        },
+        { transaction },
+      );
+    } else {
+      console.warn(
+        "⚠️ No valid userId found, skipping history record creation",
+      );
+    }
+
+    await transaction.commit();
+
+    const createdRecord = await StoreBalance.findByPk(balanceRecord.id, {
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    const item = createdRecord.item;
+    const conversionValue = parseFloat(item?.conversionValue) || 1;
+
+    const formattedData = {
+      id: createdRecord.id,
+      storeId: createdRecord.storeId,
+      storeName: createdRecord.store?.name || null,
+      groupId: createdRecord.groupId,
+      groupName: createdRecord.group?.name || null,
+      itemId: createdRecord.itemId,
+      itemCode: item?.code || null,
+      itemName: item?.standardName || item?.name || null,
+      itemCommonName: item?.standardName || item?.name || null,
+      uomCode: item?.uom?.code || null,
+      uomName: item?.uom?.name || null,
+      conversionUomCode: item?.conversionUom?.code || null,
+      conversionValue: conversionValue,
+      balance: parseFloat(createdRecord.balance),
+      minStock: parseFloat(createdRecord.minStockAlert) || 0,
+      baseBalance: parseFloat(createdRecord.balance) * conversionValue,
+      status: createdRecord.status,
+      statusClass: getBalanceClass(
+        parseFloat(createdRecord.balance),
+        parseFloat(createdRecord.minStockAlert) || 0,
+      ),
+      createdAt: createdRecord.createdAt,
+      updatedAt: createdRecord.updatedAt,
+    };
+
+    res.status(201).json({
+      success: true,
+      message: "Balance initialized successfully",
+      data: formattedData,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Create balance error:", error);
+
+    if (error.name === "SequelizeValidationError") {
+      const messages = error.errors.map((e) => e.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(", "),
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to create balance",
+    });
+  }
+};
+
+// ============================================
+// 6. UPDATE BALANCE
+// ============================================
+exports.updateBalance = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const { storeId, groupId, itemId, minStock, status } = req.body;
+
+    console.log("📝 Update balance payload:", {
+      id,
+      storeId,
+      groupId,
+      itemId,
+      minStock,
+      status,
+    });
+
+    const balance = await StoreBalance.findByPk(id);
+
+    if (!balance) {
+      return res.status(404).json({
+        success: false,
+        error: "Balance not found",
+      });
+    }
+
+    const storeIdInt = storeId ? parseInt(storeId) : balance.storeId;
+    const groupIdInt = groupId ? parseInt(groupId) : balance.groupId;
+    const itemIdInt = itemId ? parseInt(itemId) : balance.itemId;
+
+    if (storeId || groupId || itemId) {
+      const duplicate = await StoreBalance.findOne({
+        where: {
+          storeId: storeIdInt,
+          groupId: groupIdInt,
+          itemId: itemIdInt,
+          id: { [Op.ne]: parseInt(id) },
+        },
+      });
+
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Another balance already exists for this store, group, and item",
+        });
+      }
+    }
+
+    await balance.update(
+      {
+        storeId: storeIdInt,
+        groupId: groupIdInt,
+        itemId: itemIdInt,
+        minStockAlert:
+          minStock !== undefined ? parseFloat(minStock) : balance.minStockAlert,
+        status: status || balance.status,
+      },
+      { transaction },
+    );
+
+    await transaction.commit();
+
+    const updatedRecord = await StoreBalance.findByPk(id, {
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+            {
+              model: UOM,
+              as: "conversionUom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    const item = updatedRecord.item;
+    const conversionValue = parseFloat(item?.conversionValue) || 1;
+
+    const formattedData = {
+      id: updatedRecord.id,
+      storeId: updatedRecord.storeId,
+      storeName: updatedRecord.store?.name || null,
+      groupId: updatedRecord.groupId,
+      groupName: updatedRecord.group?.name || null,
+      itemId: updatedRecord.itemId,
+      itemCode: item?.code || null,
+      itemName: item?.standardName || item?.name || null,
+      itemCommonName: item?.standardName || item?.name || null,
+      uomCode: item?.uom?.code || null,
+      uomName: item?.uom?.name || null,
+      conversionUomCode: item?.conversionUom?.code || null,
+      conversionValue: conversionValue,
+      balance: parseFloat(updatedRecord.balance),
+      minStock: parseFloat(updatedRecord.minStockAlert) || 0,
+      baseBalance: parseFloat(updatedRecord.balance) * conversionValue,
+      status: updatedRecord.status,
+      statusClass: getBalanceClass(
+        parseFloat(updatedRecord.balance),
+        parseFloat(updatedRecord.minStockAlert) || 0,
+      ),
+      createdAt: updatedRecord.createdAt,
+      updatedAt: updatedRecord.updatedAt,
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Balance updated successfully",
+      data: formattedData,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Update balance error:", error);
+
+    if (error.name === "SequelizeValidationError") {
+      const messages = error.errors.map((e) => e.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(", "),
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to update balance",
+    });
+  }
+};
+
+// ============================================
+// 7. TOGGLE STATUS
+// ============================================
+exports.toggleStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const balance = await StoreBalance.findByPk(id);
+
+    if (!balance) {
+      return res.status(404).json({
+        success: false,
+        error: "Balance not found",
+      });
+    }
+
+    const newStatus = balance.status === "Active" ? "Inactive" : "Active";
+    await balance.update({ status: newStatus });
+
+    res.status(200).json({
+      success: true,
+      message: `Status changed to ${newStatus}`,
+      data: {
+        id: balance.id,
+        status: balance.status,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle status error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 8. DELETE BALANCE
+// ============================================
+exports.deleteBalance = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const balance = await StoreBalance.findByPk(id);
+
+    if (!balance) {
+      return res.status(404).json({
+        success: false,
+        error: "Balance not found",
+      });
+    }
+
+    if (balance.status === "Active") {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot delete active balance. Please deactivate it first.",
+      });
+    }
+
+    await balance.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: "Balance deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete balance error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET APPROVED REQUESTS - WITH GROUP PROCESSING FILTER
+// ============================================
+
+
+// ================================================================
+// GET APPROVED REQUESTS - Shows requests for the specific group
+// ================================================================
+
+// ================================================================
+// GET APPROVED REQUESTS - Shows requests for the specific group
+// ================================================================
+
+exports.getApprovedRequests = async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const groupId = req.query.groupId;
+
+    console.log("🔍 Fetching approved requests for storeId:", storeId, "groupId:", groupId);
+
+    const whereClause = {
+      status: "approved",
+      [Op.or]: [
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) },
+      ],
+    };
+
+    const requests = await ItemRequest.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: Store,
+          as: "askingStore",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Store,
+          as: "supplyingStore",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: User,
+          as: "requestedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+        {
+          model: ItemRequestDetail,
+          as: "items",
+          include: [
+            {
+              model: Item,
+              as: "item",
+              attributes: [
+                "id",
+                "code",
+                "name",
+                "standardName",
+                "conversionValue",
+                "uomId",
+                "conversionUomId",
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    console.log(`✅ Found ${requests.length} total approved requests`);
+
+    // 🔥 Filter out requests already processed by this group
+    let filteredRequests = requests;
+    if (groupId) {
+      const requestIds = requests.map((r) => r.requestId);
+      const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+
+      if (RequestGroupProcessing) {
+        const groupIdInt = parseInt(groupId);
+        
+        const processingRecords = await RequestGroupProcessing.findAll({
+          where: {
+            requestId: { [Op.in]: requestIds },
+            groupId: groupIdInt,
+          },
+          attributes: ["requestId", "status"],
+        });
+
+        const excludedRequestIds = new Set(
+          processingRecords
+            .filter((r) => r.status === "processed" || r.status === "skipped")
+            .map((r) => parseInt(r.requestId)),
+        );
+
+        filteredRequests = requests.filter(
+          (r) => !excludedRequestIds.has(parseInt(r.requestId)),
+        );
+        console.log(
+          `✅ ${filteredRequests.length} requests remaining after filtering out processed/skipped ones`,
+        );
+      }
+    }
+
+    const formattedRequests = filteredRequests.map((request) => ({
+      id: request.requestId,
+      requestCode: request.requestCode,
+      askingStoreId: request.askingStoreId,
+      askingStoreName: request.askingStore?.name || null,
+      supplyingStoreId: request.supplyingStoreId,
+      supplyingStoreName: request.supplyingStore?.name || null,
+      requestedDate: request.requestedDate,
+      status: request.status,
+      remark: request.remark,
+      isAsset: request.isAsset || false,
+      items:
+        request.items?.map((item) => ({
+          id: item.id,
+          itemId: item.itemId,
+          itemName: item.item?.standardName || item.item?.name || null,
+          itemCode: item.item?.code || null,
+          quantity: parseFloat(item.quantity),
+          remark: item.remark || null,
+          // ✅ FIX: Include UOM fields from the request detail
+          uomCode: item.uom_code || item.item?.uom?.code || null,
+          selectedUom: item.selected_uom || 'base',
+          isBaseUom: item.is_base_uom !== false,
+          baseUomCode: item.item?.uom?.code || null,
+          conversionUomCode: item.item?.conversionUom?.code || null,
+          conversionValue: parseFloat(item.item?.conversionValue) || 1,
+        })) || [],
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRequests,
+      meta: {
+        total: requests.length,
+        remaining: filteredRequests.length,
+        groupId: groupId || null,
+        storeId: parseInt(storeId),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get approved requests error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+// ============================================
+// 11. GET ALL STORES
+// ============================================
+exports.getStores = async (req, res) => {
+  try {
+    const { page = 1, limit = 1000, search } = req.query;
+
+    const whereClause = {};
+
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { name: { [Op.iLike]: `%${search.trim()}%` } },
+        { code: { [Op.iLike]: `%${search.trim()}%` } },
+        { location: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Store.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["name", "ASC"]],
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "location",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get stores error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 12. GET ALL GROUPS
+// ============================================
+exports.getGroups = async (req, res) => {
+  try {
+    const { page = 1, limit = 100, search } = req.query;
+
+    const whereClause = {};
+
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { name: { [Op.iLike]: `%${search.trim()}%` } },
+        { code: { [Op.iLike]: `%${search.trim()}%` } },
+        { description: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Group.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["name", "ASC"]],
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get groups error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 13. GET ACTIVE ITEMS
+// ============================================
+
+exports.getActiveItems = async (req, res) => {
+  try {
+    const items = await Item.findAll({
+      where: { status: "Active" },
+      include: [
+        {
+          model: UOM,
+          as: "uom",
+          attributes: ["id", "code", "name"],
+        },
+        {
+          model: UOM,
+          as: "conversionUom",
+          attributes: ["id", "code", "name"],
+        },
+      ],
+      order: [["name", "ASC"]],
+      attributes: [
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "description",
+        "brand",
+        "model",
+        "barcode",
+        "conversionValue",
+        "status",
+      ],
+    });
+
+    const formattedItems = items.map((item) => ({
+      id: item.itemId,
+      itemId: item.itemId,
+      code: item.code,
+      name: item.name,
+      standardName: item.standardName,
+      description: item.description || "",
+      brand: item.brand || "",
+      model: item.model || "",
+      barcode: item.barcode || "",
+      commonName: item.standardName || item.name || "",
+      conversionValue: parseFloat(item.conversionValue) || 1,
+      status: item.status,
+      uomCode: item.uom?.code || null,
+      uomName: item.uom?.name || null,
+      conversionUomCode: item.conversionUom?.code || null,
+      conversionUomName: item.conversionUom?.name || null,
+      uom: item.uom,
+      conversionUom: item.conversionUom,
+    }));
+
+    console.log(`✅ Found ${formattedItems.length} active items`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedItems,
+    });
+  } catch (error) {
+    console.error("Get active items error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 14. GET STORE BY ID
+// ============================================
+exports.getStoreById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const store = await Store.findByPk(id, {
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "location",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: "Store not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: store,
+    });
+  } catch (error) {
+    console.error("Get store by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 15. GET GROUP BY ID
+// ============================================
+exports.getGroupById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const group = await Group.findByPk(id, {
+      attributes: [
+        "id",
+        "name",
+        "code",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        error: "Group not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: group,
+    });
+  } catch (error) {
+    console.error("Get group by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 16. GET ITEM BY ID
+// ============================================
+
+exports.getItemById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const item = await Item.findByPk(id, {
+      include: [
+        {
+          model: UOM,
+          as: "uom",
+          attributes: ["id", "code", "name"],
+        },
+        {
+          model: UOM,
+          as: "conversionUom",
+          attributes: ["id", "code", "name"],
+        },
+      ],
+      attributes: [
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "description",
+        "brand",
+        "model",
+        "barcode",
+        "categoryId",
+        "uomId",
+        "conversionUomId",
+        "conversionValue",
+        "costPrice",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: "Item not found",
+      });
+    }
+
+    const formattedItem = {
+      id: item.itemId,
+      itemId: item.itemId,
+      code: item.code,
+      name: item.name,
+      standardName: item.standardName,
+      description: item.description,
+      brand: item.brand,
+      model: item.model,
+      barcode: item.barcode,
+      categoryId: item.categoryId,
+      uomId: item.uomId,
+      conversionUomId: item.conversionUomId,
+      conversionValue: parseFloat(item.conversionValue) || 1,
+      costPrice: parseFloat(item.costPrice) || 0,
+      status: item.status,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      uom: item.uom,
+      conversionUom: item.conversionUom,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: formattedItem,
+    });
+  } catch (error) {
+    console.error("Get item by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 17. DOWNLOAD CSV TEMPLATE
+// ============================================
+
+exports.downloadTemplate = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    let userAssignedStoreId = null;
+    let userAssignedGroupId = null;
+    let userAssignedStoreName = null;
+    let userAssignedGroupName = null;
+
+    if (userId) {
+      try {
+        const accessResult = await getUserStoreAndGroup(userId);
+        if (accessResult.success) {
+          userAssignedStoreId = accessResult.data.assignedStoreId;
+          userAssignedGroupId = accessResult.data.assignedGroupId;
+          userAssignedStoreName = accessResult.data.assignedStore?.name;
+          userAssignedGroupName = accessResult.data.assignedGroup?.name;
+
+          console.log(
+            "👤 User assigned store:",
+            userAssignedStoreId,
+            userAssignedStoreName,
+          );
+          console.log(
+            "👤 User assigned group:",
+            userAssignedGroupId,
+            userAssignedGroupName,
+          );
+        }
+      } catch (err) {
+        console.warn("Could not get user access:", err);
+      }
+    }
+
+    const sampleStores = await Store.findAll({
+      attributes: ["id", "name", "code"],
+      where: { status: "Active" },
+      order: [["name", "ASC"]],
+      raw: true,
+    });
+
+    const sampleGroups = await Group.findAll({
+      attributes: ["id", "name", "code"],
+      where: { status: "Active" },
+      order: [["name", "ASC"]],
+      raw: true,
+    });
+
+    const sampleItems = await Item.findAll({
+      attributes: ["code", "standardName", "name"],
+      where: { status: "Active" },
+      order: [["code", "ASC"]],
+      limit: 10,
+      raw: true,
+    });
+
+    let defaultStoreId =
+      userAssignedStoreId ||
+      (sampleStores.length > 0 ? sampleStores[0].id : 14);
+    let defaultGroupId =
+      userAssignedGroupId ||
+      (sampleGroups.length > 0 ? sampleGroups[0].id : 25);
+
+    if (
+      userAssignedStoreId &&
+      !userAssignedGroupId &&
+      sampleGroups.length > 0
+    ) {
+      defaultGroupId = sampleGroups[0].id;
+    }
+
+    if (
+      userAssignedGroupId &&
+      !userAssignedStoreId &&
+      sampleStores.length > 0
+    ) {
+      defaultStoreId = sampleStores[0].id;
+    }
+
+    console.log("📋 Default Store ID:", defaultStoreId);
+    console.log("📋 Default Group ID:", defaultGroupId);
+
+    let csvContent = "";
+
+    csvContent += "# ============================================\n";
+    csvContent += "# STORE BALANCE IMPORT TEMPLATE\n";
+    csvContent += "# ============================================\n";
+    csvContent += "#\n";
+    csvContent += "# INSTRUCTIONS:\n";
+    csvContent +=
+      "# 1. Use the itemCode (e.g., SDT000001) instead of numeric itemId\n";
+    csvContent += "# 2. You can find item codes in the Items list\n";
+    csvContent +=
+      "# 3. Required columns: storeId, groupId, itemCode, balance\n";
+    csvContent += '# 4. Optional: minStock, status (defaults to "Active")\n';
+    csvContent += "# 5. All columns must be in the order shown above\n";
+    csvContent += "#\n";
+
+    if (userAssignedStoreId && userAssignedGroupId) {
+      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
+      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
+      csvContent += "#\n";
+      csvContent +=
+        "# ✅ The template below uses your assigned store and group\n";
+      csvContent += "#\n";
+    } else if (userAssignedStoreId) {
+      csvContent += `# 👤 YOUR ASSIGNED STORE: ${userAssignedStoreName} (ID: ${userAssignedStoreId})\n`;
+      csvContent +=
+        "# ⚠️ No group assigned. Using the first available group.\n";
+      csvContent += "#\n";
+    } else if (userAssignedGroupId) {
+      csvContent += `# 👤 YOUR ASSIGNED GROUP: ${userAssignedGroupName} (ID: ${userAssignedGroupId})\n`;
+      csvContent +=
+        "# ⚠️ No store assigned. Using the first available store.\n";
+      csvContent += "#\n";
+    }
+
+    if (sampleStores && sampleStores.length > 0) {
+      csvContent += "# Available Stores:\n";
+      sampleStores.forEach((store) => {
+        const isDefault = store.id === defaultStoreId;
+        csvContent += `#   ${store.id} = ${store.name} (${store.code || "N/A"})${isDefault ? " ✅ DEFAULT" : ""}\n`;
+      });
+    }
+    csvContent += "#\n";
+
+    if (sampleGroups && sampleGroups.length > 0) {
+      csvContent += "# Available Groups:\n";
+      sampleGroups.forEach((group) => {
+        const isDefault = group.id === defaultGroupId;
+        csvContent += `#   ${group.id} = ${group.name} (${group.code || "N/A"})${isDefault ? " ✅ DEFAULT" : ""}\n`;
+      });
+    }
+    csvContent += "#\n";
+
+    if (sampleItems && sampleItems.length > 0) {
+      csvContent += "# Sample Item Codes:\n";
+      sampleItems.forEach((item) => {
+        const itemName = item.standardName || item.name || "Unknown";
+        csvContent += `#   ${item.code}: ${itemName}\n`;
+      });
+    }
+    csvContent += "# ============================================\n";
+
+    csvContent += "storeId,groupId,itemCode,balance,minStock,status\n";
+
+    if (sampleItems && sampleItems.length > 0) {
+      const itemsToUse = sampleItems.slice(0, 6);
+
+      itemsToUse.forEach((item, index) => {
+        const balance = (index + 1) * 50;
+        const minStock = (index + 1) * 5;
+
+        csvContent += `${defaultStoreId},${defaultGroupId},${item.code},${balance},${minStock},Active\n`;
+      });
+    } else {
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002001,50,5,Active\n`;
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002002,100,10,Active\n`;
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002003,150,15,Active\n`;
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002004,200,20,Active\n`;
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002005,250,25,Active\n`;
+      csvContent += `${defaultStoreId},${defaultGroupId},SDT002006,300,30,Active\n`;
+    }
+
+    const csvWithBOM = "\uFEFF" + csvContent;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=balance_import_template_${new Date().toISOString().split("T")[0]}.csv`,
+    );
+    res.send(csvWithBOM);
+  } catch (error) {
+    console.error("❌ Download template error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to download template",
+    });
+  }
+};
+
+// ============================================
+// 18. IMPORT BALANCES FROM CSV
+// ============================================
+exports.importBalances = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "No file uploaded",
+      });
+    }
+
+    let userId = req.user?.userId || null;
+
+    if (!userId) {
+      const defaultUser = await User.findOne({
+        where: { isActive: true },
+        attributes: ["userId"],
+        order: [["userId", "ASC"]],
+      });
+      userId = defaultUser ? defaultUser.userId : null;
+    }
+
+    if (!userId) {
+      const anyUser = await User.findOne({
+        attributes: ["userId"],
+        order: [["userId", "ASC"]],
+      });
+      userId = anyUser ? anyUser.userId : null;
+    }
+
+    if (!userId) {
+      console.warn("⚠️ No valid user found, skipping history records");
+    }
+
+    console.log("👤 Using userId for import:", userId);
+
+    const results = [];
+    const errors = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    const fileContent = fs.readFileSync(req.file.path, "utf8");
+    const lines = fileContent
+      .split("\n")
+      .filter((line) => line.trim() && !line.trim().startsWith("#"));
+
+    if (lines.length < 2) {
+      throw new Error(
+        "CSV file must contain headers and at least one data row",
+      );
+    }
+
+    const firstLine = lines[0];
+    const hasTabs = firstLine.includes("\t");
+    const hasCommas = firstLine.includes(",");
+
+    let separator = ",";
+    if (hasTabs && !hasCommas) {
+      separator = "\t";
+      console.log("📋 Detected tab-separated values (TSV)");
+    } else if (hasCommas) {
+      separator = ",";
+      console.log("📋 Detected comma-separated values (CSV)");
+    } else {
+      console.log("📋 Could not detect separator, using comma");
+    }
+
+    const headers = lines[0]
+      .split(separator)
+      .map((h) => h.trim().toLowerCase());
+    console.log("📋 Headers:", headers);
+
+    const requiredHeaders = ["storeid", "groupid", "balance"];
+    const hasItemId = headers.includes("itemid");
+    const hasItemCode = headers.includes("itemcode");
+
+    if (!hasItemId && !hasItemCode) {
+      throw new Error('CSV must contain either "itemId" or "itemCode" column');
+    }
+
+    const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
+    if (missingHeaders.length > 0) {
+      throw new Error(`Missing required headers: ${missingHeaders.join(", ")}`);
+    }
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const values = line.split(separator).map((v) => v.trim());
+      const row = {};
+      headers.forEach((h, idx) => {
+        row[h] = values[idx] || "";
+      });
+
+      results.push(row);
+    }
+
+    console.log(`📄 Parsed ${results.length} rows from CSV`);
+
+    for (let i = 0; i < results.length; i++) {
+      const row = results[i];
+      const rowNumber = i + 2;
+
+      // ✅ Create a SAVEPOINT for this row - so if it fails,
+      //    we roll back only this row, not the entire transaction
+      const savepointName = `sp_row_${rowNumber}`;
+
+      try {
+        // ✅ Set the savepoint BEFORE any DB operation for this row
+        await sequelize.query(`SAVEPOINT ${savepointName}`, { transaction });
+
+        const storeId = parseInt(row.storeid);
+        const groupId = parseInt(row.groupid);
+        const itemCode = (row.itemcode || row.itemid || "").trim();
+        const balance = parseFloat(row.balance);
+        const minStock = parseInt(row.minstock) || 0;
+        const status = row.status || "Active";
+
+        console.log(
+          `📊 Row ${rowNumber}: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
+        );
+
+        if (isNaN(storeId) || isNaN(groupId) || !itemCode || isNaN(balance)) {
+          throw new Error(
+            `storeId, groupId, itemCode, and balance are required. Got: storeId=${storeId}, groupId=${groupId}, itemCode=${itemCode}, balance=${balance}`,
+          );
+        }
+
+        const item = await Item.findOne({
+          where: { code: itemCode },
+          attributes: ["itemId", "code", "name", "standardName"],
+          transaction,
+        });
+
+        if (!item) {
+          throw new Error(`Item with code "${itemCode}" not found`);
+        }
+
+        const itemId = item.itemId;
+        console.log(
+          `✅ Row ${rowNumber}: Found item: ${itemCode} (ID: ${itemId})`,
+        );
+
+        const existing = await StoreBalance.findOne({
+          where: {
+            storeId: storeId,
+            groupId: groupId,
+            itemId: itemId,
+          },
+          transaction,
+        });
+
+        if (existing) {
+          throw new Error(
+            `Balance already exists for item "${itemCode}" (${item.standardName || item.name})`,
+          );
+        }
+
+        const balanceRecord = await StoreBalance.create(
+          {
+            storeId: storeId,
+            groupId: groupId,
+            itemId: itemId,
+            balance: balance,
+            minStockAlert: minStock,
+            status: status,
+          },
+          { transaction },
+        );
+
+        if (userId) {
+          await StoreBalanceHistory.create(
+            {
+              balanceId: balanceRecord.id,
+              storeId: storeId,
+              groupId: groupId,
+              itemId: itemId,
+              previousBalance: 0,
+              newBalance: balance,
+              changeAmount: balance,
+              transactionType: "Stock In",
+              referenceType: "initialization",
+              changedBy: userId,
+              remark: `CSV import - Initial balance setup for ${itemCode}`,
+            },
+            { transaction },
+          );
+        } else {
+          console.warn(
+            `⚠️ No valid userId, skipping history for row ${rowNumber}`,
+          );
+        }
+
+        // ✅ Release the savepoint — row succeeded
+        await sequelize.query(`RELEASE SAVEPOINT ${savepointName}`, {
+          transaction,
+        });
+
+        successCount++;
+        console.log(
+          `✅ Row ${rowNumber}: Imported ${itemCode} - Balance: ${balance}`,
+        );
+      } catch (rowError) {
+        // ✅ Roll back to the savepoint — ONLY this row is undone,
+        //    the transaction stays alive and the rest of the rows can import
+        try {
+          await sequelize.query(`ROLLBACK TO SAVEPOINT ${savepointName}`, {
+            transaction,
+          });
+        } catch (rollbackError) {
+          console.error(
+            `❌ Failed to rollback savepoint for row ${rowNumber}:`,
+            rollbackError.message,
+          );
+        }
+
+        failedCount++;
+        errors.push(`Row ${rowNumber}: ${rowError.message}`);
+        console.error(`❌ Row ${rowNumber} error:`, rowError.message);
+      }
+    }
+
+    await transaction.commit();
+    safeDelete(req.file.path);
+
+    const responseData = {
+      total: results.length,
+      success: successCount,
+      failed: failedCount,
+      errors: errors.slice(0, 20),
+    };
+
+    console.log(
+      `📊 Import completed: ${successCount} success, ${failedCount} failed`,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Import completed: ${successCount} imported, ${failedCount} failed`,
+      data: responseData,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    safeDelete(req.file.path);
+    console.error("❌ Import error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to import balances",
+    });
+  }
+};
+
+// ============================================
+// 19. EXPORT BALANCES TO EXCEL
+// ============================================
+
+exports.exportBalances = async (req, res) => {
+  try {
+    const { storeId, groupId, categoryId, status } = req.query;
+    
+    console.log('📊 Exporting Excel - storeId:', storeId, 'groupId:', groupId, 'categoryId:', categoryId, 'status:', status);
+    
+    const targetStoreId = storeId ? parseInt(storeId) : null;
+    const targetGroupId = groupId ? parseInt(groupId) : null;
+    const targetCategoryId = categoryId ? parseInt(categoryId) : null;
+    const targetStatus = status || null;
+    
+    const whereClause = {};
+    if (targetStoreId) whereClause.store_id = targetStoreId;
+    if (targetGroupId) whereClause.group_id = targetGroupId;
+    if (targetStatus) whereClause.status = targetStatus;
+    
+    const balances = await StoreBalance.findAll({
+      where: whereClause,
+      include: [
+        { 
+          model: Store, 
+          as: "store", 
+          attributes: ["name", "code"] 
+        },
+        { 
+          model: Group, 
+          as: "group", 
+          attributes: ["name", "code"] 
+        },
+        {
+          model: Item,
+          as: "item",
+          where: targetCategoryId ? { category_id: targetCategoryId } : {},
+          include: [
+            { 
+              model: UOM, 
+              as: "uom", 
+              attributes: ["code", "name"] 
+            },
+            { 
+              model: Category, 
+              as: "category", 
+              attributes: ["name"] 
+            }
+          ]
+        }
+      ],
+      order: [["store_id", "ASC"], ["group_id", "ASC"]]
+    });
+    
+    console.log(`✅ Found ${balances.length} balance records`);
+    
+    const storeName = balances.length > 0 ? balances[0].store?.name || 'Unknown Store' : 'Unknown Store';
+    const groupName = balances.length > 0 ? balances[0].group?.name || 'Unknown Group' : 'Unknown Group';
+    const storeCode = balances.length > 0 ? balances[0].store?.code || '' : '';
+    const groupCode = balances.length > 0 ? balances[0].group?.code || '' : '';
+    const categoryName = balances.length > 0 && balances[0].item?.category ? balances[0].item.category.name : 'All Categories';
+    
+    const userName = req.user?.fullName || req.user?.username || 'Admin';
+    
+    let totalItems = balances.length;
+    let activeItems = 0;
+    let zeroBalanceItems = 0;
+    let lowStockItems = 0;
+    
+    balances.forEach(record => {
+      const balance = parseFloat(record.balance) || 0;
+      
+      if (record.status === 'Active') {
+        activeItems++;
+      }
+      
+      if (balance === 0) {
+        zeroBalanceItems++;
+      } else if (balance <= parseFloat(record.minStockAlert)) {
+        lowStockItems++;
+      }
+    });
+    
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Super Double "T" General Trading PLC';
+    workbook.created = new Date();
+    
+    const sheet = workbook.addWorksheet('Store Balance Report');
+    
+    let currentRow = 1;
+    
+    // Company Name
+    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
+    const companyCell = sheet.getCell(`A${currentRow}`);
+    companyCell.value = 'SUPER DOUBLE "T" GENERAL TRADING PLC';
+    companyCell.font = { bold: true, size: 18, color: { argb: 'FF1A56DB' } };
+    companyCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(currentRow).height = 35;
+    currentRow++;
+    
+    // Slogan
+    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
+    const sloganCell = sheet.getCell(`A${currentRow}`);
+    sloganCell.value = 'WE TRUST IN GOD!!!  እግዚአብሔር ይባረክ!!!';
+    sloganCell.font = { bold: true, size: 12, color: { argb: 'FF4B5563' } };
+    sloganCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(currentRow).height = 25;
+    currentRow++;
+    
+    currentRow++;
+    
+    // Report Title
+    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
+    const titleCell = sheet.getCell(`A${currentRow}`);
+    titleCell.value = 'STORE BALANCE REPORT';
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FF1A56DB' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(currentRow).height = 30;
+    currentRow++;
+    
+    currentRow++;
+    
+    // Store and Group Info
+    const storeRow = sheet.getRow(currentRow);
+    storeRow.getCell(1).value = 'Store:';
+    storeRow.getCell(1).font = { bold: true };
+    storeRow.getCell(2).value = storeName;
+    storeRow.getCell(4).value = 'Group:';
+    storeRow.getCell(4).font = { bold: true };
+    storeRow.getCell(5).value = groupName;
+    currentRow++;
+    
+    const storeCodeRow = sheet.getRow(currentRow);
+    storeCodeRow.getCell(1).value = 'Store Code:';
+    storeCodeRow.getCell(1).font = { bold: true };
+    storeCodeRow.getCell(2).value = storeCode;
+    storeCodeRow.getCell(4).value = 'Group Code:';
+    storeCodeRow.getCell(4).font = { bold: true };
+    storeCodeRow.getCell(5).value = groupCode;
+    currentRow++;
+    
+    const categoryRow = sheet.getRow(currentRow);
+    categoryRow.getCell(1).value = 'Category:';
+    categoryRow.getCell(1).font = { bold: true };
+    categoryRow.getCell(2).value = categoryName;
+    categoryRow.getCell(4).value = 'Status:';
+    categoryRow.getCell(4).font = { bold: true };
+    categoryRow.getCell(5).value = targetStatus || 'All';
+    currentRow++;
+    
+    const now = new Date();
+    const dateTimeStr = now.toLocaleString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    
+    const generatedRow = sheet.getRow(currentRow);
+    generatedRow.getCell(1).value = 'Generated By:';
+    generatedRow.getCell(1).font = { bold: true };
+    generatedRow.getCell(2).value = userName;
+    generatedRow.getCell(4).value = 'Date/Time:';
+    generatedRow.getCell(4).font = { bold: true };
+    generatedRow.getCell(5).value = dateTimeStr;
+    currentRow++;
+    
+    currentRow++;
+    
+    // Summary
+    sheet.mergeCells(`A${currentRow}:F${currentRow}`);
+    const summaryTitleCell = sheet.getCell(`A${currentRow}`);
+    summaryTitleCell.value = 'SUMMARY';
+    summaryTitleCell.font = { bold: true, size: 14, color: { argb: 'FF1A56DB' } };
+    sheet.getRow(currentRow).height = 25;
+    currentRow++;
+    
+    const summaryData = [
+      ['Total Items:', totalItems, 'Active Items:', activeItems],
+      ['Zero Balance Items:', zeroBalanceItems, 'Low Stock Items:', lowStockItems]
+    ];
+    
+    summaryData.forEach((rowData) => {
+      const row = sheet.getRow(currentRow);
+      rowData.forEach((value, index) => {
+        const col = index + 1;
+        row.getCell(col).value = value;
+        if (index % 2 === 0 && value) {
+          row.getCell(col).font = { bold: true };
+        }
+        if (index % 2 === 1 && value) {
+          row.getCell(col).font = { bold: true, color: { argb: 'FF1A56DB' } };
+        }
+      });
+      currentRow++;
+    });
+    
+    currentRow++;
+    currentRow++;
+    
+    // Table Header
+    const headerRow2 = sheet.getRow(currentRow);
+    const headers = ['#', 'Item Code', 'Item Name', 'Category', 'UOM', 'Balance', 'Status'];
+    headers.forEach((header, index) => {
+      const col = index + 1;
+      headerRow2.getCell(col).value = header;
+      headerRow2.getCell(col).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      headerRow2.getCell(col).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1A56DB' }
+      };
+      headerRow2.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
+      headerRow2.getCell(col).border = {
+        top: { style: 'thin', color: { argb: 'FF1A56DB' } },
+        bottom: { style: 'thin', color: { argb: 'FF1A56DB' } },
+        left: { style: 'thin', color: { argb: 'FF1A56DB' } },
+        right: { style: 'thin', color: { argb: 'FF1A56DB' } }
+      };
+    });
+    sheet.getRow(currentRow).height = 25;
+    currentRow++;
+    
+    sheet.getColumn(1).width = 8;
+    sheet.getColumn(2).width = 18;
+    sheet.getColumn(3).width = 45;
+    sheet.getColumn(4).width = 25;
+    sheet.getColumn(5).width = 12;
+    sheet.getColumn(6).width = 14;
+    sheet.getColumn(7).width = 12;
+    
+    let rowCounter = 1;
+    balances.forEach((record) => {
+      const item = record.item;
+      const balance = parseFloat(record.balance) || 0;
+      
+      const itemName = item?.standardName || item?.name || 'Unnamed';
+      
+      const row = sheet.getRow(currentRow);
+      row.getCell(1).value = rowCounter;
+      row.getCell(2).value = item?.code || 'N/A';
+      row.getCell(3).value = itemName;
+      row.getCell(4).value = item?.category?.name || 'Uncategorized';
+      row.getCell(5).value = item?.uom?.code || 'PCS';
+      row.getCell(6).value = balance;
+      row.getCell(7).value = record.status || 'Active';
+      
+      const balanceCell = row.getCell(6);
+      const minStock = parseFloat(record.minStockAlert) || 0;
+      
+      if (balance === 0) {
+        balanceCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEE2E2' }
+        };
+        balanceCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+      } else if (balance <= minStock) {
+        balanceCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEF3C7' }
+        };
+        balanceCell.font = { color: { argb: 'FFD97706' }, bold: true };
+      } else {
+        balanceCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDCFCE7' }
+        };
+        balanceCell.font = { color: { argb: 'FF166534' }, bold: true };
+      }
+      
+      const statusCell = row.getCell(7);
+      if (record.status === 'Active') {
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDCFCE7' }
+        };
+        statusCell.font = { color: { argb: 'FF166534' }, bold: true };
+      } else {
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEE2E2' }
+        };
+        statusCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+      }
+      
+      for (let col = 1; col <= 7; col++) {
+        row.getCell(col).border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+        };
+      }
+      
+      currentRow++;
+      rowCounter++;
+    });
+    
+    console.log(`✅ Added ${rowCounter - 1} data rows to Excel`);
+    
+    const headerRowNumber = headerRow2.number;
+    sheet.autoFilter = {
+      from: `A${headerRowNumber}`,
+      to: `G${headerRowNumber}`
+    };
+    
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Store_Balance_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(buffer);
+    
+  } catch (error) {
+    console.error("❌ Export error:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || "Failed to export data" 
+    });
+  }
+};
+
+// ============================================
+// 20. GET BALANCE HISTORY
+// ============================================
+exports.getBalanceHistory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+
+    const balance = await StoreBalance.findByPk(id);
+    if (!balance) {
+      return res.status(404).json({
+        success: false,
+        error: "Balance not found",
+      });
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await StoreBalanceHistory.findAndCountAll({
+      where: { balanceId: parseInt(id) },
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+        {
+          model: Store,
+          as: "sourceStore",
+          attributes: ["id", "name"],
+        },
+        {
+          model: Store,
+          as: "destinationStore",
+          attributes: ["id", "name"],
+        },
+        {
+          model: User,
+          as: "changedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: parseInt(limit),
+      offset: offset,
+    });
+
+    const formattedHistory = rows.map((record) => ({
+      id: record.id,
+      balanceId: record.balanceId,
+      storeName: record.store?.name || null,
+      groupName: record.group?.name || null,
+      itemName: record.item?.standardName || record.item?.name || null,
+      itemCode: record.item?.code || null,
+      uomCode: record.item?.uom?.code || null,
+      previousBalance: parseFloat(record.previousBalance),
+      newBalance: parseFloat(record.newBalance),
+      changeAmount: parseFloat(record.changeAmount),
+      transactionType: record.transactionType,
+      sourceStore: record.sourceStore?.name || null,
+      destinationStore: record.destinationStore?.name || null,
+      referenceType: record.referenceType,
+      referenceId: record.referenceId,
+      changedBy:
+        record.changedByUser?.fullName ||
+        record.changedByUser?.username ||
+        null,
+      remark: record.remark,
+      createdAt: record.createdAt,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedHistory,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get balance history error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 21. GET SUMMARY BY STORE
+// ============================================
+exports.getSummaryByStore = async (req, res) => {
+  try {
+    const balances = await StoreBalance.findAll({
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "conversionValue"],
+        },
+      ],
+    });
+
+    const summary = {};
+    balances.forEach((record) => {
+      const storeId = record.storeId;
+      if (!summary[storeId]) {
+        summary[storeId] = {
+          storeId: storeId,
+          storeName: record.store?.name || "Unknown",
+          storeCode: record.store?.code || null,
+          totalItems: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          activeItems: 0,
+          inactiveItems: 0,
+          lowStockItems: 0,
+          zeroStockItems: 0,
+        };
+      }
+
+      const balance = parseFloat(record.balance);
+      summary[storeId].totalItems++;
+      summary[storeId].totalBalance += balance;
+
+      const conversionValue = parseFloat(record.item?.conversionValue) || 1;
+      summary[storeId].totalBaseBalance += balance * conversionValue;
+
+      if (record.status === "Active") {
+        summary[storeId].activeItems++;
+        if (balance === 0) {
+          summary[storeId].zeroStockItems++;
+        } else if (balance <= parseFloat(record.minStockAlert)) {
+          summary[storeId].lowStockItems++;
+        }
+      } else {
+        summary[storeId].inactiveItems++;
+      }
+    });
+
+    const formattedSummary = Object.values(summary).map((s) => ({
+      ...s,
+      totalBalance: s.totalBalance.toFixed(2),
+      totalBaseBalance: s.totalBaseBalance.toFixed(2),
+      lowStockPercentage:
+        s.activeItems > 0
+          ? ((s.lowStockItems / s.activeItems) * 100).toFixed(1)
+          : 0,
+      zeroStockPercentage:
+        s.activeItems > 0
+          ? ((s.zeroStockItems / s.activeItems) * 100).toFixed(1)
+          : 0,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedSummary,
+    });
+  } catch (error) {
+    console.error("Get summary by store error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 22. GET SUMMARY BY GROUP
+// ============================================
+exports.getSummaryByGroup = async (req, res) => {
+  try {
+    const balances = await StoreBalance.findAll({
+      include: [
+        {
+          model: Group,
+          as: "group",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "conversionValue"],
+        },
+      ],
+    });
+
+    const summary = {};
+    balances.forEach((record) => {
+      const groupId = record.groupId;
+      if (!summary[groupId]) {
+        summary[groupId] = {
+          groupId: groupId,
+          groupName: record.group?.name || "Unknown",
+          groupCode: record.group?.code || null,
+          totalItems: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          activeItems: 0,
+          inactiveItems: 0,
+          lowStockItems: 0,
+          zeroStockItems: 0,
+        };
+      }
+
+      const balance = parseFloat(record.balance);
+      summary[groupId].totalItems++;
+      summary[groupId].totalBalance += balance;
+
+      const conversionValue = parseFloat(record.item?.conversionValue) || 1;
+      summary[groupId].totalBaseBalance += balance * conversionValue;
+
+      if (record.status === "Active") {
+        summary[groupId].activeItems++;
+        if (balance === 0) {
+          summary[groupId].zeroStockItems++;
+        } else if (balance <= parseFloat(record.minStockAlert)) {
+          summary[groupId].lowStockItems++;
+        }
+      } else {
+        summary[groupId].inactiveItems++;
+      }
+    });
+
+    const formattedSummary = Object.values(summary).map((s) => ({
+      ...s,
+      totalBalance: s.totalBalance.toFixed(2),
+      totalBaseBalance: s.totalBaseBalance.toFixed(2),
+      lowStockPercentage:
+        s.activeItems > 0
+          ? ((s.lowStockItems / s.activeItems) * 100).toFixed(1)
+          : 0,
+      zeroStockPercentage:
+        s.activeItems > 0
+          ? ((s.zeroStockItems / s.activeItems) * 100).toFixed(1)
+          : 0,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedSummary,
+    });
+  } catch (error) {
+    console.error("Get summary by group error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 23. GET SUMMARY BY ITEM
+// ============================================
+exports.getSummaryByItem = async (req, res) => {
+  try {
+    const balances = await StoreBalance.findAll({
+      include: [
+        {
+          model: Item,
+          as: "item",
+          attributes: ["id", "code", "name", "standardName", "conversionValue"],
+          include: [
+            {
+              model: UOM,
+              as: "uom",
+              attributes: ["id", "code", "name"],
+            },
+          ],
+        },
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name"],
+        },
+      ],
+    });
+
+    const summary = {};
+    balances.forEach((record) => {
+      const itemId = record.itemId;
+      if (!summary[itemId]) {
+        summary[itemId] = {
+          itemId: itemId,
+          itemCode: record.item?.code || null,
+          itemName: record.item?.standardName || record.item?.name || null,
+          itemCommonName:
+            record.item?.standardName || record.item?.name || null,
+          uomCode: record.item?.uom?.code || null,
+          conversionValue: parseFloat(record.item?.conversionValue) || 1,
+          totalStores: 0,
+          totalBalance: 0,
+          totalBaseBalance: 0,
+          minBalance: Infinity,
+          maxBalance: -Infinity,
+          stores: [],
+        };
+      }
+
+      const balance = parseFloat(record.balance);
+      const baseBalance =
+        balance * (parseFloat(record.item?.conversionValue) || 1);
+
+      summary[itemId].totalStores++;
+      summary[itemId].totalBalance += balance;
+      summary[itemId].totalBaseBalance += baseBalance;
+
+      if (balance < summary[itemId].minBalance)
+        summary[itemId].minBalance = balance;
+      if (balance > summary[itemId].maxBalance)
+        summary[itemId].maxBalance = balance;
+
+      summary[itemId].stores.push({
+        storeId: record.storeId,
+        storeName: record.store?.name || null,
+        balance: balance,
+        baseBalance: baseBalance,
+        status: record.status,
+      });
+    });
+
+    const formattedSummary = Object.values(summary).map((s) => ({
+      ...s,
+      totalBalance: s.totalBalance.toFixed(2),
+      totalBaseBalance: s.totalBaseBalance.toFixed(2),
+      averageBalance: (s.totalBalance / s.totalStores).toFixed(2),
+      averageBaseBalance: (s.totalBaseBalance / s.totalStores).toFixed(2),
+      minBalance: s.minBalance === Infinity ? 0 : s.minBalance,
+      maxBalance: s.maxBalance === -Infinity ? 0 : s.maxBalance,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedSummary,
+    });
+  } catch (error) {
+    console.error("Get summary by item error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 24. GET ALL ITEMS
+// ============================================
+
+exports.getItems = async (req, res) => {
+  try {
+    const { page = 1, limit = 10000, search, categoryId, status } = req.query;
+
+    const whereClause = {};
+    const include = [
+      {
+        model: UOM,
+        as: "uom",
+        attributes: ["id", "code", "name"],
+      },
+      {
+        model: UOM,
+        as: "conversionUom",
+        attributes: ["id", "code", "name"],
+      },
+    ];
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    if (categoryId) {
+      whereClause.categoryId = parseInt(categoryId);
+    }
+
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { name: { [Op.iLike]: `%${search.trim()}%` } },
+        { code: { [Op.iLike]: `%${search.trim()}%` } },
+        { standardName: { [Op.iLike]: `%${search.trim()}%` } },
+        { brand: { [Op.iLike]: `%${search.trim()}%` } },
+        { barcode: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Item.findAndCountAll({
+      where: whereClause,
+      include: include,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["name", "ASC"]],
+      attributes: [
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "description",
+        "brand",
+        "model",
+        "barcode",
+        "categoryId",
+        "uomId",
+        "conversionUomId",
+        "conversionValue",
+        "costPrice",
+        "status",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    const formattedRows = rows.map((item) => ({
+      id: item.itemId,
+      itemId: item.itemId,
+      code: item.code,
+      name: item.name,
+      standardName: item.standardName,
+      description: item.description,
+      brand: item.brand,
+      model: item.model,
+      barcode: item.barcode,
+      categoryId: item.categoryId,
+      uomId: item.uomId,
+      conversionUomId: item.conversionUomId,
+      conversionValue: parseFloat(item.conversionValue) || 1,
+      costPrice: parseFloat(item.costPrice) || 0,
+      status: item.status,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      uom: item.uom,
+      conversionUom: item.conversionUom,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedRows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get items error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 25. GET ALL USERS
+// ============================================
+exports.getUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 100, search, role } = req.query;
+
+    const whereClause = {};
+
+    if (search && search.trim()) {
+      whereClause[Op.or] = [
+        { username: { [Op.iLike]: `%${search.trim()}%` } },
+        { fullName: { [Op.iLike]: `%${search.trim()}%` } },
+        { email: { [Op.iLike]: `%${search.trim()}%` } },
+      ];
+    }
+
+    if (role) {
+      whereClause.role = role;
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await User.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["fullName", "ASC"]],
+      attributes: [
+        "userId",
+        "username",
+        "email",
+        "fullName",
+        "role",
+        "isActive",
+        "lastLogin",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get users error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// 26. GET USER BY ID
+// ============================================
+exports.getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByPk(id, {
+      attributes: [
+        "userId",
+        "username",
+        "email",
+        "fullName",
+        "role",
+        "isActive",
+        "lastLogin",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    console.error("Get user by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// GET STORE-GROUP RELATIONS
+// ============================================
+exports.getStoreGroupRelations = async (req, res) => {
+  try {
+    const { storeId } = req.query;
+
+    console.log(
+      "🔍 Fetching store-group relations, storeId:",
+      storeId || "all",
+    );
+
+    if (storeId) {
+      const store = await Store.findByPk(parseInt(storeId), {
+        include: [
+          {
+            model: Group,
+            as: "groups",
+            through: { attributes: [] },
+            attributes: ["groupId", "code", "name", "description", "status"],
+          },
+        ],
+      });
+
+      if (!store) {
+        return res.status(404).json({
+          success: false,
+          error: "Store not found",
+        });
+      }
+
+      const formattedGroups = store.groups.map((group) => ({
+        storeId: parseInt(storeId),
+        groupId: group.groupId,
+        groupName: group.name,
+        groupCode: group.code,
+        groupDescription: group.description,
+        groupStatus: group.status,
+      }));
+
+      console.log(
+        `✅ Found ${formattedGroups.length} groups for store ${storeId}`,
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: formattedGroups,
+      });
+    }
+
+    const relations = await StoreGroupRelation.findAll({
+      include: [
+        {
+          model: Store,
+          as: "store",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Group,
+          as: "group",
+          attributes: ["groupId", "code", "name", "description", "status"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+    });
+
+    const formattedRelations = relations.map((relation) => ({
+      id: relation.id,
+      storeId: relation.storeId,
+      storeName: relation.store?.name || null,
+      storeCode: relation.store?.code || null,
+      groupId: relation.groupId,
+      groupName: relation.group?.name || null,
+      groupCode: relation.group?.code || null,
+      createdAt: relation.createdAt,
+      updatedAt: relation.updatedAt,
+    }));
+
+    console.log(`✅ Found ${formattedRelations.length} store-group relations`);
+
+    res.status(200).json({
+      success: true,
+      data: formattedRelations,
+    });
+  } catch (error) {
+    console.error("❌ Get store-group relations error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// ============================================
+// GET USER STORE AND GROUP ACCESS
+// ============================================
+exports.getUserStoreAndGroupAccess = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    const result = await getUserStoreAndGroup(userId);
+
+    if (!result.success) {
+      return res.status(404).json({
+        success: false,
+        error: result.error || "Failed to get user access",
+      });
+    }
+
+    console.log("✅ User access retrieved:", {
+      userId,
+      role: result.data.role,
+      isAdmin: result.data.isAdmin,
+      hasAssignments: result.data.hasAssignments,
+      storeId: result.data.assignedStoreId,
+      groupId: result.data.assignedGroupId,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Get user store and group error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get user access",
+    });
+  }
+};
+
+
+// ============================================
+// GET REQUEST GROUP PROCESSING STATUS
+// ============================================
+
+exports.getRequestGroupStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const request = await ItemRequest.findByPk(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: "Request not found",
+      });
+    }
+
+    // Get all groups for this store
+    const storeId = request.askingStoreId || request.supplyingStoreId;
+
+    const storeWithGroups = await Store.findByPk(storeId, {
+      include: [
+        {
+          model: Group,
+          as: "groups",
+          through: { attributes: [] },
+          attributes: ["groupId", "name", "code", "description", "status"],
+        },
+      ],
+    });
+
+    const allGroups = (storeWithGroups?.groups || []).map(g => ({
+      groupId: parseInt(g.groupId),
+      groupName: g.name,
+      groupCode: g.code,
+    }));
+
+    // Get processing records for this request
+    const processingRecords = await RequestGroupProcessing.findAll({
+      where: { requestId: parseInt(requestId) },
+      include: [
+        {
+          model: Group,
+          as: "group",
+          attributes: ["groupId", "name", "code"],
+        },
+        {
+          model: User,
+          as: "processedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+    });
+
+    const groupsWithStatus = allGroups.map((group) => {
+      const record = processingRecords.find((r) => parseInt(r.groupId) === group.groupId);
+      return {
+        groupId: group.groupId,
+        groupName: group.groupName,
+        groupCode: group.groupCode,
+        status: record?.status || "pending",
+        processedAt: record?.processedAt || null,
+        processedBy: record?.processedByUser
+          ? {
+              userId: record.processedByUser.userId,
+              username: record.processedByUser.username,
+              fullName: record.processedByUser.fullName,
+            }
+          : null,
+        remark: record?.remark || null,
+      };
+    });
+
+    const processedCount = groupsWithStatus.filter(
+      (g) => g.status === "processed" || g.status === "skipped",
+    ).length;
+    const totalGroups = groupsWithStatus.length;
+    const isFullyProcessed = processedCount === totalGroups && totalGroups > 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        requestId: parseInt(requestId),
+        requestCode: request.requestCode,
+        status: request.status,
+        totalGroups: totalGroups,
+        processedCount: processedCount,
+        isFullyProcessed: isFullyProcessed,
+        groups: groupsWithStatus,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Get request group status error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
+// ================================================================
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH CORRECT BALANCE & LOCKING
+// ================================================================
+
+// ================================================================
+// PROCESS REQUEST FOR A SPECIFIC GROUP - WITH BASE & CONVERTED UOM SUPPORT
+// ================================================================
+
+exports.processRequestForGroup = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { requestId } = req.params;
+    const { groupId, storeId, grnNumber, sivNumber } = req.body;
+    const userId = req.user?.userId || 1;
+
+    console.log("📤 Processing request for group:", {
+      requestId,
+      groupId,
+      storeId,
+      userId,
+      grnNumber,
+      sivNumber,
+    });
+
+    // ================================================================
+    // 1. VALIDATE INPUTS
+    // ================================================================
+    if (!groupId || !storeId) {
+      return res.status(400).json({
+        success: false,
+        error: "Group ID and Store ID are required",
+      });
+    }
+
+    // ================================================================
+    // 2. VALIDATE GROUP
+    // ================================================================
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Group not found",
+      });
+    }
+
+    if (group.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
+      });
+    }
+
+    // ================================================================
+    // 3. VALIDATE STORE
+    // ================================================================
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Store not found",
+      });
+    }
+
+    if (store.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
+      });
+    }
+
+    // ================================================================
+    // 4. VALIDATE STORE-GROUP RELATION
+    // ================================================================
+    const storeGroupRelation = await StoreGroupRelation.findOne({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+      },
+    });
+
+    if (!storeGroupRelation) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: `Group "${group.name}" does not have access to store "${store.name}"`,
+      });
+    }
+
+    // ================================================================
+    // 5. GET THE REQUEST
+    // ================================================================
+    const request = await ItemRequest.findByPk(requestId, {
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: "items",
+          include: [
+            {
+              model: Item,
+              as: "item",
+              attributes: [
+                "itemId",
+                "code",
+                "name",
+                "standardName",
+                "conversionValue",
+                "status",
+                "uomId",
+                "conversionUomId",
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!request) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Request not found",
+      });
+    }
+
+    if (request.status !== "approved") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Request is ${request.status}. Only approved requests can be processed.`,
+      });
+    }
+
+    if (request.status === "finalized") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "This request has already been finalized",
+      });
+    }
+
+    // ================================================================
+    // 6. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
+    // ================================================================
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    const existingRecord = await RequestGroupProcessing.findOne({
+      where: {
+        requestId: parseInt(requestId),
+        groupId: parseInt(groupId),
+      },
+    });
+
+    if (existingRecord && existingRecord.status === "processed") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "This group has already processed this request",
+      });
+    }
+
+    if (existingRecord && existingRecord.status === "skipped") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "This group has been skipped for this request by an administrator",
+      });
+    }
+
+    // ================================================================
+    // 7. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
+    // ================================================================
+    if (
+      request.askingStoreId !== parseInt(storeId) &&
+      request.supplyingStoreId !== parseInt(storeId)
+    ) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "This store is neither the asking nor supplying store for this request",
+      });
+    }
+
+    // ================================================================
+    // 8. DETERMINE ACTION
+    // ================================================================
+    let action, transactionType, changeMultiplier, actionLabel;
+    if (request.askingStoreId === parseInt(storeId)) {
+      action = "STOCK_IN";
+      transactionType = "Stock In";
+      changeMultiplier = 1;
+      actionLabel = "RECEIVED";
+    } else if (request.supplyingStoreId === parseInt(storeId)) {
+      action = "STOCK_OUT";
+      transactionType = "Stock Out";
+      changeMultiplier = -1;
+      actionLabel = "SENT";
+    } else {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Store is neither the asking nor supplying store for this request",
+      });
+    }
+
+    console.log(`📋 Action: ${action} for request ${request.requestCode}`);
+
+    // ================================================================
+    // 9. GET USER
+    // ================================================================
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+    });
+
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "User account is inactive"
+      });
+    }
+
+    // ================================================================
+    // 10. PROCESS ITEMS - WITH BASE & CONVERTED UOM SUPPORT
+    // ================================================================
+    const autoInitializedItems = [];
+    const results = [];
+    const errors = [];
+    let totalProcessed = 0;
+
+    for (const item of request.items) {
+      try {
+        // Check if item exists
+        if (!item.item) {
+          errors.push(`Item ID ${item.itemId} not found in database`);
+          continue;
+        }
+
+        // Check if item is active
+        if (item.item.status !== "Active") {
+          errors.push(`Item "${item.item.code}" is ${item.item.status}`);
+          continue;
+        }
+
+        // ✅ DETERMINE IF BASE OR CONVERTED UOM
+        const isBaseUom = item.isBaseUom !== false; // Default to true
+        
+        // Get the UOM code to use
+        const uomCode = isBaseUom 
+          ? (item.item.uom?.code || "PCS")
+          : (item.conversionUomCode || item.item?.conversionUom?.code || "KG");
+
+        if (isBaseUom) {
+          // ================================================================
+          // BASE UOM OPERATION - store_balances table
+          // ================================================================
+          
+          let balance = await StoreBalance.findOne({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+            },
+            lock: transaction.LOCK.UPDATE,
+            transaction: transaction,
+          });
+
+          // Auto-initialize if not exists
+          if (!balance) {
+            console.log(`📦 Auto-initializing BASE balance for item: ${item.item.code}`);
+            
+            balance = await StoreBalance.create({
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              balance: 0,
+              minStockAlert: 0,
+              status: "Active",
+            }, { transaction });
+
+            // ✅ CREATE INITIAL HISTORY RECORD FOR BASE UOM
+            await StoreBalanceHistory.create({
+              balanceId: balance.id,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: 0,
+              newBalance: 0,
+              changeAmount: 0,
+              transactionType: "Stock In",
+              referenceType: "auto_initialization",
+              referenceId: request.requestId,
+              changedBy: userId,
+              uomUsed: uomCode,
+              isBaseUom: true,
+              remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name}`,
+            }, { transaction });
+
+            autoInitializedItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName: item.item.standardName || item.item.name || "Unknown Item",
+              uomType: "Base UOM",
+              uomCode: uomCode,
+            });
+          }
+
+          // Check if balance is active
+          if (balance.status !== "Active") {
+            errors.push(`Balance for item "${item.item.code}" is ${balance.status}`);
+            continue;
+          }
+
+          const previousBalance = parseFloat(balance.balance);
+          const quantity = parseFloat(item.quantity);
+          const changeAmount = quantity * changeMultiplier;
+          const newBalance = previousBalance + changeAmount;
+
+          // Stock Out validation
+          if (action === "STOCK_OUT" && newBalance < 0) {
+            errors.push(
+              `Insufficient balance for "${item.item.code}". ` +
+              `Current balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`
+            );
+            continue;
+          }
+
+          // Update balance
+          balance.balance = newBalance;
+          await balance.save({ transaction });
+
+          // ✅ CREATE HISTORY RECORD FOR BASE UOM
+          await StoreBalanceHistory.create({
+            balanceId: balance.id,
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: item.itemId,
+            previousBalance: previousBalance,
+            newBalance: newBalance,
+            changeAmount: Math.abs(changeAmount),
+            transactionType: action === "STOCK_IN" ? "Stock In" : "Stock Out",
+            sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+            destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+            referenceType: "request",
+            referenceId: request.requestId,
+            changedBy: userId,
+            grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+            sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
+            uomUsed: uomCode,
+            isBaseUom: true,
+            remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name}`,
+          }, { transaction });
+
+          results.push({
+            itemId: item.itemId,
+            itemCode: item.item.code,
+            itemName: item.item.standardName || item.item.name,
+            previousBalance,
+            newBalance,
+            changeAmount: Math.abs(changeAmount),
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            uomUsed: uomCode,
+            isBaseUom: true,
+            table: "store_balances",
+            balanceId: balance.id,
+          });
+
+          console.log(
+            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
+            `(Base UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`
+          );
+
+        } else {
+          // ================================================================
+          // CONVERTED UOM OPERATION - converted_balances table
+          // ================================================================
+          
+          let convertedBalance = await ConvertedBalance.findOne({
+            where: {
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+            },
+            lock: transaction.LOCK.UPDATE,
+            transaction: transaction,
+          });
+
+          // Auto-initialize if not exists
+          if (!convertedBalance) {
+            console.log(`📦 Auto-initializing CONVERTED balance for item: ${item.item.code}`);
+            
+            convertedBalance = await ConvertedBalance.create({
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              convertedBalance: 0,
+            }, { transaction });
+
+            // ✅ CREATE INITIAL HISTORY RECORD FOR CONVERTED UOM
+            await StoreBalanceHistory.create({
+              balanceId: null, // No balanceId for converted balances
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: 0,
+              newBalance: 0,
+              changeAmount: 0,
+              transactionType: "Stock In",
+              referenceType: "auto_initialization",
+              referenceId: request.requestId,
+              changedBy: userId,
+              uomUsed: uomCode,
+              isBaseUom: false,
+              remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name}`,
+            }, { transaction });
+
+            autoInitializedItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName: item.item.standardName || item.item.name || "Unknown Item",
+              uomType: "Converted UOM",
+              uomCode: uomCode,
+            });
+          }
+
+          const previousBalance = parseFloat(convertedBalance.convertedBalance);
+          const quantity = parseFloat(item.quantity);
+          const changeAmount = quantity * changeMultiplier;
+          const newBalance = previousBalance + changeAmount;
+
+          // Stock Out validation
+          if (action === "STOCK_OUT" && newBalance < 0) {
+            errors.push(
+              `Insufficient converted balance for "${item.item.code}". ` +
+              `Current balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`
+            );
+            continue;
+          }
+
+          // Update converted balance
+          convertedBalance.convertedBalance = newBalance;
+          await convertedBalance.save({ transaction });
+
+          // ✅ CREATE HISTORY RECORD FOR CONVERTED UOM
+          await StoreBalanceHistory.create({
+            balanceId: null, // No balanceId for converted balances
+            storeId: parseInt(storeId),
+            groupId: parseInt(groupId),
+            itemId: item.itemId,
+            previousBalance: previousBalance,
+            newBalance: newBalance,
+            changeAmount: Math.abs(changeAmount),
+            transactionType: action === "STOCK_IN" ? "Stock In" : "Stock Out",
+            sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+            destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+            referenceType: "request",
+            referenceId: request.requestId,
+            changedBy: userId,
+            grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+            sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
+            uomUsed: uomCode,
+            isBaseUom: false,
+            remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name}`,
+          }, { transaction });
+
+          results.push({
+            itemId: item.itemId,
+            itemCode: item.item.code,
+            itemName: item.item.standardName || item.item.name,
+            previousBalance,
+            newBalance,
+            changeAmount: Math.abs(changeAmount),
+            action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+            uomUsed: uomCode,
+            isBaseUom: false,
+            table: "converted_balances",
+            convertedBalanceId: convertedBalance.id,
+          });
+
+          console.log(
+            `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
+            `(Converted UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`
+          );
+        }
+
+        totalProcessed++;
+        
+      } catch (itemError) {
+        console.error(`❌ Error processing item ${item.itemId}:`, itemError);
+        errors.push(`Error processing item ${item.itemId}: ${itemError.message}`);
+      }
+    }
+
+    // ================================================================
+    // 11. CREATE GROUP PROCESSING RECORD
+    // ================================================================
+    const remark = results.length > 0
+      ? `Processed ${results.length} items${autoInitializedItems.length > 0 ? ` (${autoInitializedItems.length} auto-initialized)` : ""}`
+      : "No items processed";
+
+    if (existingRecord) {
+      existingRecord.status = "processed";
+      existingRecord.processedAt = new Date();
+      existingRecord.processedBy = userId;
+      existingRecord.remark = remark;
+      await existingRecord.save({ transaction });
+    } else {
+      await RequestGroupProcessing.create(
+        {
+          requestId: parseInt(requestId),
+          groupId: parseInt(groupId),
+          storeId: parseInt(storeId),
+          processedAt: new Date(),
+          status: "processed",
+          processedBy: userId,
+          remark: remark,
+        },
+        { transaction },
+      );
+    }
+
+    // ================================================================
+    // 12. CHECK IF ALL GROUPS HAVE PROCESSED
+    // ================================================================
+    const logs = [];
+    const finalizedRequests = [];
+    await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+
+    // ================================================================
+    // 13. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 14. PREPARE RESPONSE
+    // ================================================================
+    const responseData = {
+      requestId: parseInt(requestId),
+      requestCode: request.requestCode,
+      groupId: parseInt(groupId),
+      groupName: group.name,
+      storeId: parseInt(storeId),
+      storeName: store.name,
+      autoInitializedItems: autoInitializedItems,
+      processedItems: results,
+      errors: errors,
+      totalProcessed: totalProcessed,
+      isFullyProcessed: request.status === 'finalized',
+      logs: logs,
+      finalizedRequests: finalizedRequests,
+      grnNumber: action === "STOCK_IN" ? (grnNumber || null) : null,
+      sivNumber: action === "STOCK_OUT" ? (sivNumber || null) : null,
+    };
+
+    let statusMessage = `Request ${request.requestCode} processed for group ${group.name}`;
+    if (autoInitializedItems.length > 0) {
+      statusMessage += ` (${autoInitializedItems.length} item(s) auto-initialized)`;
+    }
+    if (responseData.isFullyProcessed) {
+      statusMessage += ` ✅ FULLY PROCESSED - All groups have processed this request`;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: statusMessage,
+      data: responseData,
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Process request for group error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to process request for group",
+    });
+  }
+};
+
+// ================================================================
+// PROCESS REQUESTS - BATCH WITH CORRECT BALANCE & LOCKING
+// ================================================================
+
+
+exports.processRequests = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { storeId, groupId, requestIds, documentRefs } = req.body;
+
+    console.log("📤 Processing requests payload:", {
+      storeId,
+      groupId,
+      requestIds,
+      documentRefs,
+    });
+
+    // ================================================================
+    // 1. VALIDATE INPUTS
+    // ================================================================
+    if (!storeId || !groupId || !requestIds || requestIds.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Store ID, Group ID, and Request IDs are required",
+      });
+    }
+
+    const validRequestIds = requestIds.filter((id) => id != null && id !== "");
+    if (validRequestIds.length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "No valid request IDs provided",
+      });
+    }
+
+    console.log("✅ Valid request IDs:", validRequestIds);
+
+    // ================================================================
+    // 2. GET USER ID
+    // ================================================================
+    const userId = req.user?.userId;
+    
+    console.log("👤 User from request:", {
+      userId: req.user?.userId,
+      username: req.user?.username,
+      fullName: req.user?.fullName,
+      role: req.user?.role
+    });
+    
+    if (!userId) {
+      await transaction.rollback();
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized. Please log in."
+      });
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+    });
+    
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+    
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "User account is inactive"
+      });
+    }
+
+    console.log("👤 Using userId:", userId);
+    console.log("👤 User fullName:", user.fullName);
+
+    // ================================================================
+    // 3. VALIDATE GROUP AND STORE
+    // ================================================================
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    if (!RequestGroupProcessing) {
+      throw new Error("RequestGroupProcessing model not found");
+    }
+
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Group not found",
+      });
+    }
+
+    if (group.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Group "${group.name}" is ${group.status}. Only active groups can process requests.`,
+      });
+    }
+
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "Store not found",
+      });
+    }
+
+    if (store.status !== "Active") {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Store "${store.name}" is ${store.status}. Only active stores can process requests.`,
+      });
+    }
+
+    const storeGroupRelation = await StoreGroupRelation.findOne({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+      },
+    });
+
+    if (!storeGroupRelation) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: `Group "${group.name}" does not have access to store "${store.name}"`,
+      });
+    }
+
+    // ================================================================
+    // 4. GET THE REQUESTS
+    // ================================================================
+    const requests = await ItemRequest.findAll({
+      where: {
+        requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
+        status: "approved",
+      },
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: "items",
+          include: [
+            {
+              model: Item,
+              as: "item",
+              attributes: [
+                "itemId",
+                "code",
+                "name",
+                "standardName",
+                "conversionValue",
+                "status",
+                "uomId",
+                "conversionUomId",
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: "uom",
+                  attributes: ["id", "code", "name"],
+                },
+                {
+                  model: UOM,
+                  as: "conversionUom",
+                  attributes: ["id", "code", "name"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    console.log(`✅ Found ${requests.length} requests to process`);
+
+    if (requests.length === 0) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "No approved requests found with the provided IDs",
+      });
+    }
+
+    // ================================================================
+    // 5. PROCESS EACH REQUEST
+    // ================================================================
+    let processedCount = 0;
+    let failedCount = 0;
+    const logs = [];
+    const missingItems = [];
+    const processedItems = [];
+    const allAutoInitializedItems = [];
+    const allSkippedGroups = [];
+    const processedRequestIds = [];
+    const finalizedRequests = [];
+
+    for (const request of requests) {
+      console.log(`📋 Processing request: ${request.requestCode}`);
+
+      // ================================================================
+      // 5a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
+      // ================================================================
+      const existingRecord = await RequestGroupProcessing.findOne({
+        where: {
+          requestId: request.requestId,
+          groupId: parseInt(groupId),
+        },
+      });
+
+      if (existingRecord && existingRecord.status === "processed") {
+        logs.push(
+          `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
+        );
+        processedRequestIds.push(request.requestId);
+        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        continue;
+      }
+
+      if (existingRecord && existingRecord.status === "skipped") {
+        logs.push(
+          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`,
+        );
+        allSkippedGroups.push({
+          requestCode: request.requestCode,
+          groupName: group.name,
+          reason: existingRecord.remark || "Skipped by admin",
+        });
+        processedRequestIds.push(request.requestId);
+        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        continue;
+      }
+
+      // ================================================================
+      // 5b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
+      // ================================================================
+      if (
+        request.askingStoreId !== parseInt(storeId) &&
+        request.supplyingStoreId !== parseInt(storeId)
+      ) {
+        logs.push(
+          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`,
+        );
+        failedCount++;
+        continue;
+      }
+
+      // ================================================================
+      // 5c. DETERMINE ACTION
+      // ================================================================
+      let action, transactionType, changeMultiplier, actionLabel;
+      if (request.askingStoreId === parseInt(storeId)) {
+        action = "STOCK_IN";
+        transactionType = "Stock In";
+        changeMultiplier = 1;
+        actionLabel = "RECEIVED";
+      } else if (request.supplyingStoreId === parseInt(storeId)) {
+        action = "STOCK_OUT";
+        transactionType = "Stock Out";
+        changeMultiplier = -1;
+        actionLabel = "SENT";
+      } else {
+        logs.push(
+          `❌ Request ${request.requestCode}: Store is neither asking nor supplying`,
+        );
+        failedCount++;
+        continue;
+      }
+
+      console.log(`📋 Action: ${action} for request ${request.requestCode}`);
+
+      // ================================================================
+      // 5d. PROCESS EACH ITEM - WITH BASE & CONVERTED UOM SUPPORT
+      // ================================================================
+      const requestResults = [];
+      const requestErrors = [];
+      const requestAutoInitialized = [];
+
+      for (const item of request.items) {
+        try {
+          // Check if item exists
+          if (!item.item) {
+            requestErrors.push(`Item ID ${item.itemId} not found in database`);
+            missingItems.push({
+              itemId: item.itemId,
+              itemCode: "N/A",
+              itemName: "Unknown Item (deleted)",
+              reason: "Item not found in database",
+              requestCode: request.requestCode,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+            });
+            continue;
+          }
+
+          // Check if item is active
+          if (item.item.status !== "Active") {
+            requestErrors.push(
+              `Item "${item.item.code}" is ${item.item.status}`,
+            );
+            missingItems.push({
+              itemId: item.itemId,
+              itemCode: item.item.code || "N/A",
+              itemName:
+                item.item.standardName || item.item.name || "Unknown Item",
+              reason: `Item status is ${item.item.status}`,
+              requestCode: request.requestCode,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+            });
+            continue;
+          }
+
+          // ================================================================
+          // ✅ FIX: DETERMINE IF BASE OR CONVERTED UOM
+          // Check is_base_uom from the request detail
+          // ================================================================
+          const isBaseUom = item.is_base_uom !== false; // Default to true if not specified
+          
+          // Get the UOM code to use
+          const uomCode = isBaseUom 
+            ? (item.uom_code || item.item?.uom?.code || "PCS")
+            : (item.uom_code || item.item?.conversionUom?.code || "KG");
+
+          console.log(`📋 Item: ${item.item.code}, isBaseUom: ${isBaseUom}, uomCode: ${uomCode}`);
+
+          if (isBaseUom) {
+            // ================================================================
+            // ✅ BASE UOM OPERATION - store_balances table
+            // ================================================================
+            
+            let balance = await StoreBalance.findOne({
+              where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+              },
+              lock: transaction.LOCK.UPDATE,
+              transaction: transaction,
+            });
+
+            // Auto-initialize if not exists
+            if (!balance) {
+              console.log(`📦 Auto-initializing BASE balance for item: ${item.item.code}`);
+              
+              balance = await StoreBalance.create({
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                balance: 0,
+                minStockAlert: 0,
+                status: "Active",
+              }, { transaction });
+
+              await StoreBalanceHistory.create({
+                balanceId: balance.id,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance: 0,
+                newBalance: 0,
+                changeAmount: 0,
+                transactionType: "Stock In",
+                referenceType: "auto_initialization",
+                referenceId: request.requestId,
+                changedBy: userId,
+                uomUsed: uomCode,
+                isBaseUom: true,
+                remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+              }, { transaction });
+
+              requestAutoInitialized.push({
+                itemId: item.itemId,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Base UOM",
+                uomCode: uomCode,
+              });
+
+              allAutoInitializedItems.push({
+                requestCode: request.requestCode,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Base UOM",
+                uomCode: uomCode,
+              });
+            }
+
+            // Check if balance is active
+            if (balance.status !== "Active") {
+              requestErrors.push(
+                `Balance for item "${item.item.code}" is ${balance.status}`,
+              );
+              continue;
+            }
+
+            const previousBalance = parseFloat(balance.balance);
+            const quantity = parseFloat(item.quantity);
+            const changeAmount = quantity * changeMultiplier;
+            const newBalance = previousBalance + changeAmount;
+
+            // Stock Out validation
+            if (action === "STOCK_OUT" && newBalance < 0) {
+              requestErrors.push(
+                `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+              );
+              continue;
+            }
+
+            // Update balance
+            balance.balance = newBalance;
+            await balance.save({ transaction });
+
+            // ✅ CREATE HISTORY RECORD FOR BASE UOM
+            await StoreBalanceHistory.create({
+              balanceId: balance.id,
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: previousBalance,
+              newBalance: newBalance,
+              changeAmount: Math.abs(changeAmount),
+              transactionType: transactionType,
+              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+              referenceType: "request",
+              referenceId: request.requestId,
+              changedBy: userId,
+              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
+              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
+              uomUsed: uomCode,
+              isBaseUom: true,
+              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+            }, { transaction });
+
+            // Track results
+            requestResults.push({
+              itemId: item.itemId,
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              itemCode: item.item?.code || "N/A",
+              previousBalance,
+              newBalance,
+              changeAmount: Math.abs(changeAmount),
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              uomUsed: uomCode,
+              isBaseUom: true,
+              table: "store_balances",
+              balanceId: balance.id,
+              wasAutoInitialized: requestAutoInitialized.some(
+                (ai) => ai.itemId === item.itemId,
+              ),
+            });
+
+            processedCount++;
+            processedItems.push({
+              requestCode: request.requestCode,
+              itemId: item.itemId,
+              itemCode: item.item?.code || "N/A",
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              quantity: Math.abs(changeAmount),
+              uomUsed: uomCode,
+              isBaseUom: true,
+              previousBalance,
+              newBalance,
+            });
+
+            console.log(
+              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Base UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
+            );
+
+          } else {
+            // ================================================================
+            // ✅ CONVERTED UOM OPERATION - converted_balances table
+            // ================================================================
+            
+            let convertedBalance = await ConvertedBalance.findOne({
+              where: {
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+              },
+              lock: transaction.LOCK.UPDATE,
+              transaction: transaction,
+            });
+
+            // Auto-initialize if not exists
+            if (!convertedBalance) {
+              console.log(`📦 Auto-initializing CONVERTED balance for item: ${item.item.code}`);
+              
+              convertedBalance = await ConvertedBalance.create({
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                convertedBalance: 0,
+              }, { transaction });
+
+              await StoreBalanceHistory.create({
+                balanceId: null, // No balanceId for converted balances
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance: 0,
+                newBalance: 0,
+                changeAmount: 0,
+                transactionType: "Stock In",
+                referenceType: "auto_initialization",
+                referenceId: request.requestId,
+                changedBy: userId,
+                uomUsed: uomCode,
+                isBaseUom: false,
+                remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+              }, { transaction });
+
+              requestAutoInitialized.push({
+                itemId: item.itemId,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Converted UOM",
+                uomCode: uomCode,
+              });
+
+              allAutoInitializedItems.push({
+                requestCode: request.requestCode,
+                itemCode: item.item.code || "N/A",
+                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                uomType: "Converted UOM",
+                uomCode: uomCode,
+              });
+            }
+
+            const previousBalance = parseFloat(convertedBalance.convertedBalance);
+            const quantity = parseFloat(item.quantity);
+            const changeAmount = quantity * changeMultiplier;
+            const newBalance = previousBalance + changeAmount;
+
+            // Stock Out validation
+            if (action === "STOCK_OUT" && newBalance < 0) {
+              requestErrors.push(
+                `Insufficient converted balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+              );
+              continue;
+            }
+
+            // Update converted balance
+            convertedBalance.convertedBalance = newBalance;
+            await convertedBalance.save({ transaction });
+
+            // ✅ CREATE HISTORY RECORD FOR CONVERTED UOM
+            await StoreBalanceHistory.create({
+              balanceId: null, // No balanceId for converted balances
+              storeId: parseInt(storeId),
+              groupId: parseInt(groupId),
+              itemId: item.itemId,
+              previousBalance: previousBalance,
+              newBalance: newBalance,
+              changeAmount: Math.abs(changeAmount),
+              transactionType: transactionType,
+              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
+              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
+              referenceType: "request",
+              referenceId: request.requestId,
+              changedBy: userId,
+              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
+              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
+              uomUsed: uomCode,
+              isBaseUom: false,
+              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+            }, { transaction });
+
+            // Track results
+            requestResults.push({
+              itemId: item.itemId,
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              itemCode: item.item?.code || "N/A",
+              previousBalance,
+              newBalance,
+              changeAmount: Math.abs(changeAmount),
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              uomUsed: uomCode,
+              isBaseUom: false,
+              table: "converted_balances",
+              convertedBalanceId: convertedBalance.id,
+              wasAutoInitialized: requestAutoInitialized.some(
+                (ai) => ai.itemId === item.itemId,
+              ),
+            });
+
+            processedCount++;
+            processedItems.push({
+              requestCode: request.requestCode,
+              itemId: item.itemId,
+              itemCode: item.item?.code || "N/A",
+              itemName: item.item?.standardName || item.item?.name || "Unknown",
+              action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
+              quantity: Math.abs(changeAmount),
+              uomUsed: uomCode,
+              isBaseUom: false,
+              previousBalance,
+              newBalance,
+            });
+
+            console.log(
+              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Converted UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
+            );
+          }
+
+        } catch (itemError) {
+          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
+          requestErrors.push(
+            `Error processing item ${item.itemId}: ${itemError.message}`,
+          );
+        }
+      }
+
+      // ================================================================
+      // 5e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
+      // ================================================================
+      if (requestResults.length > 0 || requestErrors.length > 0) {
+        const remark =
+          requestResults.length > 0
+            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""} - By: ${user.fullName}`
+            : `No items processed - errors occurred - By: ${user.fullName}`;
+
+        if (existingRecord) {
+          existingRecord.status = "processed";
+          existingRecord.processedAt = new Date();
+          existingRecord.processedBy = userId;
+          existingRecord.remark = remark;
+          await existingRecord.save({ transaction });
+        } else {
+          await RequestGroupProcessing.create(
+            {
+              requestId: request.requestId,
+              groupId: parseInt(groupId),
+              storeId: parseInt(storeId),
+              processedAt: new Date(),
+              status: "processed",
+              processedBy: userId,
+              remark: remark,
+            },
+            { transaction },
+          );
+        }
+
+        if (requestResults.length > 0) {
+          logs.push(
+            `✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`,
+          );
+        }
+      }
+
+      if (requestErrors.length > 0) {
+        logs.push(
+          `⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`,
+        );
+        requestErrors.forEach((err) => logs.push(`   - ${err}`));
+        failedCount += requestErrors.length;
+      }
+
+      processedRequestIds.push(request.requestId);
+
+      // ================================================================
+      // 5f. CHECK IF ALL GROUPS FROM BOTH STORES HAVE PROCESSED
+      // ================================================================
+      await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+    }
+
+    // ================================================================
+    // 6. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 7. PREPARE RESPONSE
+    // ================================================================
+    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
+
+    const detailedLogs = [...logs];
+
+    if (allAutoInitializedItems.length > 0) {
+      detailedLogs.unshift(
+        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}" by ${user.fullName}:`,
+      );
+      allAutoInitializedItems.forEach((item) => {
+        detailedLogs.push(
+          `   - ${item.itemCode}: ${item.itemName} (${item.uomType}: ${item.uomCode}) from request ${item.requestCode}`,
+        );
+      });
+      detailedLogs.push(
+        `\n💡 Items were initialized with 0 balance and activated automatically.`,
+      );
+    }
+
+    if (allSkippedGroups.length > 0) {
+      detailedLogs.push(`\n⏭️ Skipped groups:`);
+      allSkippedGroups.forEach((item) => {
+        detailedLogs.push(`   - ${item.groupName}: ${item.reason}`);
+      });
+    }
+
+    if (missingItems.length > 0) {
+      detailedLogs.push(`\n📋 Missing or inactive items:`);
+      missingItems.forEach((item) => {
+        detailedLogs.push(
+          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`,
+        );
+      });
+      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
+    }
+
+    if (finalizedRequests.length > 0) {
+      detailedLogs.push(`\n✅ Finalized requests:`);
+      finalizedRequests.forEach((req) => {
+        detailedLogs.push(`   - ${req.requestCode}: All groups from both stores have processed`);
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: responseMessage,
+      data: {
+        processed: processedCount,
+        failed: failedCount,
+        logs: detailedLogs,
+        missingItems: missingItems,
+        processedItems: processedItems,
+        autoInitializedItems: allAutoInitializedItems,
+        skippedGroups: allSkippedGroups,
+        finalizedRequests: finalizedRequests,
+        requestIds: validRequestIds,
+        processedRequestIds: processedRequestIds,
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId),
+        storeName: store.name,
+        groupName: group.name,
+        userId: userId,
+        userFullName: user.fullName,
+        totalRequests: requests.length,
+        documentRefs: documentRefs || {},
+      },
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Process requests error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to process requests",
+    });
+  }
+};
+
+// ============================================
+// GET ALL REQUEST PROCESSING STATUS
+// ============================================
+exports.getAllRequestProcessingStatus = async (req, res) => {
+  try {
+    const { storeId } = req.query;
+
+    const whereClause = { status: "approved" };
+    if (storeId) {
+      whereClause[Op.or] = [
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) },
+      ];
+    }
+
+    const requests = await ItemRequest.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: RequestGroupProcessing,
+          as: "groupProcessing",
+          include: [
+            {
+              model: Group,
+              as: "group",
+              attributes: ["groupId", "name", "code"],
+            },
+          ],
+        },
+        {
+          model: Store,
+          as: "askingStore",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: Store,
+          as: "supplyingStore",
+          attributes: ["id", "name", "code"],
+        },
+      ],
+    });
+
+    const result = requests.map((request) => {
+      const processedGroups =
+        request.groupProcessing?.filter((g) => g.status === "processed") || [];
+
+      return {
+        requestId: request.requestId,
+        requestCode: request.requestCode,
+        askingStoreId: request.askingStoreId,
+        supplyingStoreId: request.supplyingStoreId,
+        status: request.status,
+        processedGroups: processedGroups.map((g) => ({
+          groupId: parseInt(g.groupId),
+          groupName: g.group?.name || null,
+          processedAt: g.processedAt,
+        })),
+        processedCount: processedGroups.length,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("❌ Get all request processing status error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ============================================
+// SKIP GROUP PROCESSING (Admin Only)
+// ============================================
+exports.skipGroupProcessing = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { requestId } = req.params;
+    const { groupId, remark } = req.body;
+    const userId = req.user?.userId || 1;
+
+    const user = await User.findByPk(userId);
+    if (!user || (user.role !== "admin" && user.role !== "Admin")) {
+      return res.status(403).json({
+        success: false,
+        error: "Only admins can skip group processing",
+      });
+    }
+
+    const request = await ItemRequest.findByPk(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: "Request not found",
+      });
+    }
+
+    const requestIdInt = parseInt(requestId);
+    const groupIdInt = parseInt(groupId);
+
+    const [record, created] = await RequestGroupProcessing.findOrCreate({
+      where: {
+        requestId: requestIdInt,
+        groupId: groupIdInt,
+      },
+      defaults: {
+        requestId: requestIdInt,
+        groupId: groupIdInt,
+        storeId: request.askingStoreId || request.supplyingStoreId,
+        status: "skipped",
+        processedAt: new Date(),
+        processedBy: userId,
+        remark: remark || "Skipped by admin",
+      },
+      transaction,
+    });
+
+    if (!created) {
+      record.status = "skipped";
+      record.processedAt = new Date();
+      record.processedBy = userId;
+      record.remark = remark || "Skipped by admin";
+      await record.save({ transaction });
+    }
+
+    await transaction.commit();
+
+    res.status(200).json({
+      success: true,
+      message: `Group ${groupId} skipped for request ${request.requestCode}`,
+      data: record,
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("❌ Skip group processing error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to skip group processing",
+    });
+  }
+};
+
+
+
+
+/**
+ * Debug: Check processing status for a request across both stores
+ * GET /api/balances/requests/debug/:requestId
+ */
+exports.debugRequestProcessing = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    
+    // Get the request
+    const request = await ItemRequest.findByPk(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+    
+    // Get all groups for BOTH stores
+    const storeIds = [request.askingStoreId, request.supplyingStoreId];
+    const allGroups = [];
+    
+    for (const storeId of storeIds) {
+      const store = await Store.findByPk(storeId);
+      const groups = await sequelize.query(
+        `SELECT g.id, g.name, g.status, sgr.store_id
+         FROM groups g
+         INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+         WHERE sgr.store_id = ? AND g.status = 'Active'`,
+        {
+          replacements: [storeId],
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
+      groups.forEach(g => {
+        g.storeName = store ? store.name : 'Unknown';
+        g.storeType = storeId === request.askingStoreId ? 'Asking' : 'Supplying';
+      });
+      allGroups.push(...groups);
+    }
+    
+    // Get processing records
+    const processingRecords = await RequestGroupProcessing.findAll({
+      where: { requestId: parseInt(requestId) },
+      include: [
+        { model: Group, as: 'group', attributes: ['id', 'name', 'code'] },
+        { model: Store, as: 'store', attributes: ['id', 'name', 'code'] },
+        { model: User, as: 'processedByUser', attributes: ['userId', 'username', 'fullName'] }
+      ]
+    });
+    
+    // Build summary
+    const groupStatus = allGroups.map(g => {
+      const record = processingRecords.find(r => parseInt(r.groupId) === parseInt(g.id));
+      return {
+        groupId: parseInt(g.id),
+        groupName: g.name,
+        storeName: g.storeName,
+        storeType: g.storeType,
+        status: record ? record.status : 'pending',
+        processedAt: record ? record.processedAt : null,
+        processedBy: record && record.processedByUser ? record.processedByUser.fullName : null
+      };
+    });
+    
+    const processedCount = groupStatus.filter(g => g.status === 'processed').length;
+    const skippedCount = groupStatus.filter(g => g.status === 'skipped').length;
+    const pendingCount = groupStatus.filter(g => g.status === 'pending').length;
+    const totalCount = groupStatus.length;
+    const isFullyProcessed = processedCount + skippedCount === totalCount && totalCount > 0;
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        request: {
+          id: request.id,
+          code: request.requestCode,
+          status: request.status,
+          askingStoreId: request.askingStoreId,
+          supplyingStoreId: request.supplyingStoreId
+        },
+        groups: groupStatus,
+        summary: {
+          totalGroups: totalCount,
+          askingStoreGroups: groupStatus.filter(g => g.storeType === 'Asking').length,
+          supplyingStoreGroups: groupStatus.filter(g => g.storeType === 'Supplying').length,
+          processed: processedCount,
+          skipped: skippedCount,
+          pending: pendingCount,
+          isFullyProcessed: isFullyProcessed
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// ================================================================
+// BALANCE CORRECTION ENDPOINT - NO ADMIN CHECK
+// ================================================================
+
+/**
+ * POST /api/balances/correct
+ * Correct a balance and log in balance history
+ */
+exports.correctBalance = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { balanceId, newBalance, reason } = req.body;
+    
+    // ================================================================
+    // 1. GET USER ID FROM AUTHENTICATED USER
+    // ================================================================
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized. Please log in.'
+      });
+    }
+    
+    console.log('👤 User ID from auth:', userId);
+    console.log('👤 User role:', req.user?.role);
+
+    // ================================================================
+    // 2. VALIDATE INPUT
+    // ================================================================
+    if (!balanceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Balance ID is required'
+      });
+    }
+
+    if (newBalance === undefined || newBalance === null || newBalance < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'New balance must be a positive number'
+      });
+    }
+
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a valid reason (minimum 3 characters)'
+      });
+    }
+
+    // ================================================================
+    // 3. GET THE BALANCE RECORD
+    // ================================================================
+    const balance = await StoreBalance.findByPk(parseInt(balanceId), {
+      include: [
+        {
+          model: Store,
+          as: 'store',
+          attributes: ['id', 'name', 'code']
+        },
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['id', 'name', 'code']
+        },
+        {
+          model: Item,
+          as: 'item',
+          include: [
+            {
+              model: UOM,
+              as: 'uom',
+              attributes: ['id', 'code', 'name']
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!balance) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Balance record not found'
+      });
+    }
+
+    // ================================================================
+    // 4. CHECK IF BALANCE IS ACTIVE
+    // ================================================================
+    if (balance.status !== 'Active') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Cannot correct inactive balance. Current status: ${balance.status}`
+      });
+    }
+
+    // ================================================================
+    // 5. CALCULATE CHANGES
+    // ================================================================
+    const oldBalance = parseFloat(balance.balance);
+    const newBalanceValue = parseFloat(newBalance);
+    const changeAmount = newBalanceValue - oldBalance;
+
+    // Prevent negative balance
+    if (newBalanceValue < 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Balance cannot be negative'
+      });
+    }
+
+    // Check if there's actually a change
+    if (changeAmount === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'New balance is the same as current balance. No correction needed.'
+      });
+    }
+
+    // ================================================================
+    // 6. UPDATE THE BALANCE
+    // ================================================================
+    await balance.update({
+      balance: newBalanceValue
+    }, { transaction });
+
+    // ================================================================
+    // 7. REGISTER IN BALANCE HISTORY TABLE
+    // ================================================================
+    const historyRecord = await StoreBalanceHistory.create({
+      balanceId: balance.id,
+      storeId: balance.storeId,
+      groupId: balance.groupId,
+      itemId: balance.itemId,
+      previousBalance: oldBalance,
+      newBalance: newBalanceValue,
+      changeAmount: Math.abs(changeAmount),
+      transactionType: changeAmount > 0 ? 'Stock In' : 'Stock Out',
+      referenceType: 'adjustment',
+      changedBy: userId,
+      remark: `Balance correction: ${reason}`
+    }, { transaction });
+
+    // ================================================================
+    // 8. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 9. GET USER FOR RESPONSE
+    // ================================================================
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName']
+    });
+
+    // ================================================================
+    // 10. FORMAT RESPONSE
+    // ================================================================
+    const responseData = {
+      id: balance.id,
+      storeId: balance.storeId,
+      storeName: balance.store?.name || null,
+      storeCode: balance.store?.code || null,
+      groupId: balance.groupId,
+      groupName: balance.group?.name || null,
+      groupCode: balance.group?.code || null,
+      itemId: balance.itemId,
+      itemCode: balance.item?.code || null,
+      itemName: balance.item?.standardName || balance.item?.name || null,
+      uomCode: balance.item?.uom?.code || null,
+      previousBalance: oldBalance,
+      newBalance: newBalanceValue,
+      changeAmount: changeAmount,
+      changeType: changeAmount > 0 ? 'Increased' : 'Decreased',
+      status: balance.status,
+      reason: reason,
+      correctedBy: user?.fullName || user?.username || 'System',
+      historyId: historyRecord.id,
+      createdAt: balance.createdAt,
+      updatedAt: balance.updatedAt
+    };
+
+    res.status(200).json({
+      success: true,
+      message: `Balance corrected from ${oldBalance} to ${newBalanceValue}`,
+      data: responseData
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Balance correction error:', error);
+    
+    // Handle specific error types
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid user reference. Please ensure the user exists.'
+      });
+    }
+    
+    if (error.name === 'SequelizeValidationError') {
+      const messages = error.errors.map((e) => e.message);
+      return res.status(400).json({
+        success: false,
+        error: messages.join(', ')
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to correct balance'
+    });
+  }
+};
+
+
+
+
+// ============================================
+// DELETE ALL BALANCES AND HISTORY FOR STORE-GROUP
+// ============================================
+exports.deleteStoreGroupData = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { storeId, groupId } = req.body;
+    const userId = req.user?.userId;
+
+    // ================================================================
+    // 1. VALIDATE INPUT
+    // ================================================================
+    if (!storeId || !groupId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Store ID and Group ID are required'
+      });
+    }
+
+    // ================================================================
+    // 2. GET USER FOR AUDIT
+    // ================================================================
+    let user = null;
+    if (userId) {
+      user = await User.findByPk(userId, {
+        attributes: ['userId', 'username', 'fullName']
+      });
+    }
+
+    const userName = user?.fullName || user?.username || 'System';
+
+    // ================================================================
+    // 3. VALIDATE STORE EXISTS
+    // ================================================================
+    const store = await Store.findByPk(parseInt(storeId));
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: 'Store not found'
+      });
+    }
+
+    // ================================================================
+    // 4. VALIDATE GROUP EXISTS
+    // ================================================================
+    const group = await Group.findByPk(parseInt(groupId));
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        error: 'Group not found'
+      });
+    }
+
+    // ================================================================
+    // 5. CHECK IF STORE-GROUP RELATION EXISTS
+    // ================================================================
+    const relation = await StoreGroupRelation.findOne({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    if (!relation) {
+      return res.status(404).json({
+        success: false,
+        error: `Group "${group.name}" is not associated with Store "${store.name}"`
+      });
+    }
+
+    // ================================================================
+    // 6. GET COUNT OF BALANCES BEFORE DELETE
+    // ================================================================
+    const balanceCount = await StoreBalance.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    const historyCount = await StoreBalanceHistory.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    });
+
+    const convertedBalanceCount = ConvertedBalance ? await ConvertedBalance.count({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      }
+    }) : 0;
+
+    // ================================================================
+    // 7. DELETE HISTORIES FIRST (FOREIGN KEY CONSTRAINT)
+    // ================================================================
+    // Delete from StoreBalanceHistory
+    const deletedHistory = await StoreBalanceHistory.destroy({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      },
+      transaction
+    });
+
+    // ================================================================
+    // 8. DELETE CONVERTED BALANCES (if exists)
+    // ================================================================
+    let deletedConverted = 0;
+    if (ConvertedBalance) {
+      deletedConverted = await ConvertedBalance.destroy({
+        where: {
+          storeId: parseInt(storeId),
+          groupId: parseInt(groupId)
+        },
+        transaction
+      });
+    }
+
+    // ================================================================
+    // 9. DELETE STORE BALANCES
+    // ================================================================
+    const deletedBalances = await StoreBalance.destroy({
+      where: {
+        storeId: parseInt(storeId),
+        groupId: parseInt(groupId)
+      },
+      transaction
+    });
+
+    // ================================================================
+    // 10. COMMIT TRANSACTION
+    // ================================================================
+    await transaction.commit();
+
+    // ================================================================
+    // 11. RETURN RESPONSE
+    // ================================================================
+    res.status(200).json({
+      success: true,
+      message: `✅ Successfully deleted all data for ${store.name} - ${group.name}`,
+      data: {
+        store: {
+          id: store.id,
+          name: store.name,
+          code: store.code
+        },
+        group: {
+          id: group.id,
+          name: group.name,
+          code: group.code
+        },
+        deleted: {
+          storeBalances: deletedBalances,
+          storeBalanceHistory: deletedHistory,
+          convertedBalances: deletedConverted,
+          total: deletedBalances + deletedHistory + deletedConverted
+        },
+        countsBeforeDelete: {
+          storeBalances: balanceCount,
+          storeBalanceHistory: historyCount,
+          convertedBalances: convertedBalanceCount,
+          total: balanceCount + historyCount + convertedBalanceCount
+        },
+        deletedBy: userName
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Delete store-group data error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete store-group data'
+    });
+  }
+};
+
+
+
+
+

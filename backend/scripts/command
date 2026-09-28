@@ -1,0 +1,8 @@
+# Generate migrations from all models
+npm run migrate:generate
+
+# Or directly
+node scripts/generate-migrations-from-models.js
+
+# Then run all migrations
+npm run migrate:run

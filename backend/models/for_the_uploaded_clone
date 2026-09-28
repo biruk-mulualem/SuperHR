@@ -1,0 +1,19 @@
+CREATE TABLE web_sessions (
+  id                SERIAL PRIMARY KEY,
+  user_id           INTEGER NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
+  session_id        VARCHAR(100) NOT NULL UNIQUE,
+  device_id         VARCHAR(100),
+  browser           VARCHAR(60),
+  os                VARCHAR(60),
+  device_name       VARCHAR(120),
+  user_agent        VARCHAR(512),
+  ip                VARCHAR(64),
+  last_ip           VARCHAR(64),
+  status            VARCHAR(20) NOT NULL DEFAULT 'active',
+  logged_in_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at        TIMESTAMPTZ,
+  terminated_at     TIMESTAMPTZ,
+  terminated_by     INTEGER REFERENCES users (user_id) ON DELETE SET NULL,
+  terminated_reason VARCHAR(255)
+);
