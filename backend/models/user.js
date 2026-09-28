@@ -36,7 +36,7 @@ module.exports = (sequelize, DataTypes) => {
         as: 'groups'
       });
 
-  // ===== DEVICE ASSOCIATIONS =====
+      // ===== DEVICE ASSOCIATIONS =====
       // A user can have many registered devices
       User.hasMany(models.Device, {
         foreignKey: 'userId',
@@ -59,12 +59,10 @@ module.exports = (sequelize, DataTypes) => {
       });
 
       User.hasMany(models.PushToken, {
-  foreignKey: 'userId',
-  as: 'pushTokens',
-  onDelete: 'CASCADE',
-});
-
-
+        foreignKey: 'userId',
+        as: 'pushTokens',
+        onDelete: 'CASCADE',
+      });
     }
 
     // Instance method to validate password
@@ -136,17 +134,17 @@ module.exports = (sequelize, DataTypes) => {
         },
       },
   
-expoPushToken: {
-  type: DataTypes.STRING(255),
-  allowNull: true,
-  field: 'expo_push_token',
-},
+      expoPushToken: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: 'expo_push_token',
+      },
 
-pushTokenUpdatedAt: {
-  type: DataTypes.DATE,
-  allowNull: true,
-  field: 'push_token_updated_at',
-},
+      pushTokenUpdatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'push_token_updated_at',
+      },
       isActive: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

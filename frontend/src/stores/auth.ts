@@ -206,9 +206,11 @@ export const useAuthStore = defineStore('auth', () => {
     availableRoles.value = []
     localStorage.removeItem('token')
     localStorage.removeItem('refreshToken')
+    localStorage.removeItem('sessionId')   // ✅ NEW
     localStorage.removeItem('user')
     sessionStorage.removeItem('token')
     sessionStorage.removeItem('refreshToken')
+    sessionStorage.removeItem('sessionId') // ✅ NEW
     sessionStorage.removeItem('user')
     isLoggedOut.value = true
   }
@@ -476,7 +478,12 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('✅ loginWithStore response received');
 
       if (response.data.success) {
-        const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data;
+        const {
+          token: authToken,
+          refreshToken: authRefreshToken,
+          sessionId: authSessionId,   // ✅ NEW
+          user: userData,
+        } = response.data;
 
         console.log('📦 User data from server:', {
           userId: userData.userId,
@@ -492,7 +499,8 @@ export const useAuthStore = defineStore('auth', () => {
           currentGroup: userData.currentGroup,
           hasAssignedStore: !!userData.assignedStore,
           hasAssignedGroup: !!userData.assignedGroup,
-          isAdmin: userData.isAdmin
+          isAdmin: userData.isAdmin,
+          sessionId: authSessionId,   // ✅ NEW
         });
 
         // Ensure role is set
@@ -509,6 +517,7 @@ export const useAuthStore = defineStore('auth', () => {
         // ✅ Store in localStorage
         localStorage.setItem('token', authToken);
         localStorage.setItem('refreshToken', authRefreshToken);
+        localStorage.setItem('sessionId', authSessionId);   // ✅ NEW
         localStorage.setItem('user', JSON.stringify(userData));
 
         // ✅ Set store and group data
@@ -588,7 +597,12 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('✅ Legacy login response:', response.data)
 
       if (response.data.success) {
-        const { token: authToken, refreshToken: authRefreshToken, user: userData } = response.data
+        const {
+          token: authToken,
+          refreshToken: authRefreshToken,
+          sessionId: authSessionId,   // ✅ NEW
+          user: userData,
+        } = response.data
 
         if (!userData.role) {
           userData.role = 'employee'
@@ -601,6 +615,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         localStorage.setItem('token', authToken)
         localStorage.setItem('refreshToken', authRefreshToken)
+        localStorage.setItem('sessionId', authSessionId)   // ✅ NEW
         localStorage.setItem('user', JSON.stringify(userData))
 
         setUserStoreAndGroup(userData)

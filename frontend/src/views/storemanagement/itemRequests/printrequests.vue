@@ -76,7 +76,7 @@
 
       <!-- Approved -->
       <div class="meta-col">
-        <div class="block-header text-center">Approved</div>
+        <div class="block-header text-center">Approved By</div>
         <div class="block-body workflow-body">
           <p><strong>Name :-</strong> ____________________</p>
           <p><strong>Signature</strong> _______________________</p>

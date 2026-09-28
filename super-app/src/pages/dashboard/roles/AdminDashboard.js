@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 // ================================================================
-// 🔌 DEMO DATA — swap for real fetch later
+// DEMO DATA — swap for real fetch later
 // ================================================================
 const DEMO_DATA = {
   stats: {
@@ -37,7 +37,7 @@ const DEMO_DATA = {
     pendingPosts: 14,          pendingDelta: +5,
     unreadNotifications: 328,  unreadDelta: -12,
 
-    // ✅ NEW — device stats
+    // device stats
     devices: 42,               devicesDelta: +3,
     pendingDevices: 5,         pendingDevicesDelta: +2,
     approvedDevices: 36,       approvedDevicesDelta: +1,
@@ -56,11 +56,10 @@ const DEMO_DATA = {
     requirePostApproval: true,
   },
 };
-// ================================================================
 
-// ----------------------------------------------------------------
+// ================================================================
 // Helpers
-// ----------------------------------------------------------------
+// ================================================================
 const fmtNumber = (n) => {
   if (n == null) return '—';
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -89,12 +88,10 @@ export default function AdminDashboard({
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [data, setData]             = useState(DEMO_DATA);
-
-  // Local optimistic state for the toggles
-  const [settings, setSettings] = useState(DEMO_DATA.settings);
+  const [settings, setSettings]     = useState(DEMO_DATA.settings);
 
   // ------------------------------------------------------------
-  // 🔌 DEMO loader — swap for real fetch later
+  // DEMO loader — swap for real fetch later
   // ------------------------------------------------------------
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -113,62 +110,59 @@ export default function AdminDashboard({
     setRefreshing(false);
   };
 
-  // ------------------------------------------------------------
-  // Toggle handler
-  // ------------------------------------------------------------
   const toggleSetting = (key) => {
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   // ------------------------------------------------------------
-  // Derived — grouped sections
+  // Derived sections
   // ------------------------------------------------------------
   const { stats, week } = data;
 
   const peopleSection = useMemo(() => ([
-    { key: 'users',       label: 'Users',       value: stats.users,       delta: stats.usersDelta,       emoji: '👥' },
-    { key: 'departments', label: 'Departments', value: stats.departments, delta: stats.departmentsDelta, emoji: '🏢' },
-    { key: 'roles',       label: 'Roles',       value: stats.roles,       delta: stats.rolesDelta,       emoji: '🔐' },
+    { key: 'users',       label: 'Users',       value: stats.users,       delta: stats.usersDelta,       emoji: '👥', target: 'users' },
+    { key: 'departments', label: 'Departments', value: stats.departments, delta: stats.departmentsDelta, emoji: '🏢', target: 'departments' },
+    { key: 'roles',       label: 'Roles',       value: stats.roles,       delta: stats.rolesDelta,       emoji: '🔐', target: 'roles' },
   ]), [stats]);
 
-  // ✅ NEW — Security & Devices section
+  // All three device rows navigate to the same 'devices' tab
   const securitySection = useMemo(() => ([
-    { key: 'devices',         label: 'Registered Devices', value: stats.devices,         delta: stats.devicesDelta,         emoji: '📱' },
-    { key: 'devices-pending', label: 'Pending Approval',   value: stats.pendingDevices,  delta: stats.pendingDevicesDelta,  emoji: '⏳' },
-    { key: 'devices-blocked', label: 'Blocked Devices',    value: stats.blockedDevices,  delta: stats.blockedDevicesDelta,  emoji: '🚫' },
+    { key: 'devices',         label: 'Registered Devices', value: stats.devices,        delta: stats.devicesDelta,         emoji: '📱', target: 'devices' },
+    { key: 'devices-pending', label: 'Pending Approval',   value: stats.pendingDevices, delta: stats.pendingDevicesDelta,  emoji: '⏳', target: 'devices' },
+    { key: 'devices-blocked', label: 'Blocked Devices',    value: stats.blockedDevices, delta: stats.blockedDevicesDelta,  emoji: '🚫', target: 'devices' },
   ]), [stats]);
 
   const catalogSection = useMemo(() => ([
-    { key: 'categories',  label: 'Categories',  value: stats.categories,  delta: stats.categoriesDelta,  emoji: '🏷️' },
-    { key: 'uoms',        label: 'UOMs',        value: stats.uoms,        delta: stats.uomsDelta,        emoji: '📏' },
-    { key: 'items',       label: 'Items',       value: stats.items,       delta: stats.itemsDelta,       emoji: '📦' },
+    { key: 'categories', label: 'Categories', value: stats.categories, delta: stats.categoriesDelta, emoji: '🏷️', target: 'categories' },
+    { key: 'uoms',       label: 'UOMs',       value: stats.uoms,       delta: stats.uomsDelta,       emoji: '📏', target: 'uoms' },
+    { key: 'items',      label: 'Items',      value: stats.items,      delta: stats.itemsDelta,      emoji: '📦', target: 'items' },
   ]), [stats]);
 
   const inventorySection = useMemo(() => ([
-    { key: 'stores',           label: 'Stores',                     value: stats.stores,                 delta: stats.storesDelta,                 emoji: '🏬' },
-    { key: 'store-groups',     label: 'Store Groups',               value: stats.storeGroups,            delta: stats.storeGroupsDelta,            emoji: '🗂️' },
-    { key: 'balances',         label: 'Balances',                   value: stats.balances,               delta: stats.balancesDelta,               emoji: '⚖️' },
-    { key: 'converted-balance',label: 'Converted Balance',          value: stats.convertedBalances,      delta: stats.convertedBalancesDelta,      emoji: '🔄' },
-    { key: 'converted-audit',  label: 'Converted Balance Audit',    value: stats.convertedBalanceAudits, delta: stats.convertedBalanceAuditsDelta, emoji: '🧾' },
+    { key: 'stores',            label: 'Stores',                  value: stats.stores,                 delta: stats.storesDelta,                 emoji: '🏬', target: 'stores' },
+    { key: 'store-groups',      label: 'Store Groups',            value: stats.storeGroups,            delta: stats.storeGroupsDelta,            emoji: '🗂️', target: 'store-groups' },
+    { key: 'balances',          label: 'Balances',                value: stats.balances,               delta: stats.balancesDelta,               emoji: '⚖️', target: 'balances' },
+    { key: 'converted-balance', label: 'Converted Balance',       value: stats.convertedBalances,      delta: stats.convertedBalancesDelta,      emoji: '🔄', target: 'converted-balance' },
+    { key: 'converted-audit',   label: 'Converted Balance Audit', value: stats.convertedBalanceAudits, delta: stats.convertedBalanceAuditsDelta, emoji: '🧾', target: 'converted-audit' },
   ]), [stats]);
 
   const requestsSection = useMemo(() => ([
-    { key: 'pending-requests', label: 'Pending Requests', value: stats.pendingRequests, delta: stats.pendingRequestsDelta, emoji: '📥' },
+    { key: 'pending-requests', label: 'Pending Requests', value: stats.pendingRequests, delta: stats.pendingRequestsDelta, emoji: '📥', target: 'requests' },
   ]), [stats]);
 
   const maintenanceSection = useMemo(() => ([
-    { key: 'store-cleanup', label: 'Store Cleanup', value: stats.storeCleanup, delta: stats.storeCleanupDelta, emoji: '🧹' },
+    { key: 'store-cleanup', label: 'Store Cleanup', value: stats.storeCleanup, delta: stats.storeCleanupDelta, emoji: '🧹', target: 'cleanup' },
   ]), [stats]);
 
   const weekStats = useMemo(() => ([
-    { label: 'Users',     value: week.newUsers,  tint: '#3B82F6' },
-    { label: 'Items',     value: week.newItems,  tint: '#10B981' },
-    { label: 'Posts',     value: week.newPosts,  tint: '#8B5CF6' },
-    { label: 'Approved',  value: week.approvals, tint: '#10B981' },
-    { label: 'Declined',  value: week.declines,  tint: '#EF4444' },
+    { label: 'Users',    value: week.newUsers,  tint: '#3B82F6' },
+    { label: 'Items',    value: week.newItems,  tint: '#10B981' },
+    { label: 'Posts',    value: week.newPosts,  tint: '#8B5CF6' },
+    { label: 'Approved', value: week.approvals, tint: '#10B981' },
+    { label: 'Declined', value: week.declines,  tint: '#EF4444' },
   ]), [week]);
 
-  const hasPending = stats.pendingPosts > 0;
+  const hasPending        = stats.pendingPosts > 0;
   const hasPendingDevices = stats.pendingDevices > 0;
 
   // ------------------------------------------------------------
@@ -188,7 +182,7 @@ export default function AdminDashboard({
     <TouchableOpacity
       key={row.key}
       activeOpacity={0.6}
-      onPress={() => setActiveTab?.(row.key)}
+      onPress={() => setActiveTab?.(row.target || row.key)}
       style={[
         styles.row,
         !isLast && {
@@ -220,7 +214,6 @@ export default function AdminDashboard({
     </View>
   );
 
-  // ---------- System Settings renders ----------
   const renderToggle = (label, key, emoji, isLast) => (
     <View
       key={key}
@@ -322,7 +315,7 @@ export default function AdminDashboard({
         </TouchableOpacity>
       )}
 
-      {/* ✅ NEW — PENDING DEVICES BANNER */}
+      {/* PENDING DEVICES BANNER */}
       {hasPendingDevices && (
         <TouchableOpacity
           activeOpacity={0.85}
@@ -438,7 +431,7 @@ export default function AdminDashboard({
 }
 
 // ================================================================
-// STYLES — unchanged
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },

@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Role, Department, Employee, Position, Group, StoreGroupRelation, Store, PushToken } = require('../models');
+const crypto = require('crypto');
+const { User, Role, Department, Employee, Position, Group, StoreGroupRelation, Store, PushToken, WebSession } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const userStoreService = require('../services/userStoreService');
 const deviceService = require('../services/deviceService');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -188,6 +188,70 @@ async function runDeviceCheck({ device, user, res }) {
 }
 
 // ============================================================================
+// ✅ NEW: WEB SESSION REGISTRATION
+// ----------------------------------------------------------------------------
+// Called from login handlers. Creates a row in web_sessions only for web
+// clients (x-client-type: web). Mobile clients are skipped.
+// ============================================================================
+async function registerWebSessionIfNeeded(req, user, jti, expiresInSeconds = 7 * 24 * 60 * 60) {
+  console.log('[WEBSESSION] helper called', {
+    clientType: req.headers['x-client-type'],
+    jti,
+    userId: user.userId,
+  });
+
+  if (req.headers['x-client-type'] !== 'web') {
+    console.log('[WEBSESSION] skipping — not a web client');
+    return null;
+  }
+
+  const ua = req.headers['user-agent'] || '';
+  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+    .split(',')[0].trim();
+
+  console.log('[WEBSESSION] about to create row', {
+    userId: user.userId,
+    jti,
+    ua: ua.slice(0, 60),
+    ip,
+  });
+
+  try {
+    const WebSessionController = require('./webSessionController');
+    const uaParsed = WebSessionController.parseUserAgent(ua);
+
+    const existing = await WebSession.findOne({ where: { sessionId: jti } });
+    if (existing) {
+      console.log('[WEBSESSION] row already exists for jti', jti);
+      return existing;
+    }
+
+    const created = await WebSession.create({
+      userId: user.userId,
+      sessionId: jti,
+      deviceId: req.body?.deviceId || req.headers['x-device-id'] || null,
+      browser: uaParsed.browser,
+      os: uaParsed.os,
+      deviceName: `${uaParsed.browser} on ${uaParsed.os}`,
+      userAgent: ua,
+      ip,
+      lastIp: ip,
+      status: 'active',
+      loggedInAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
+    });
+
+    console.log('[WEBSESSION] ✅ row created id=' + created.id + ' session=' + created.sessionId);
+    return created;
+  } catch (e) {
+    console.error('[WEBSESSION] ❌ create failed:', e.message);
+    console.error(e.stack);
+    return null;
+  }
+}
+
+// ============================================================================
 // USER LOGIN - WITH COMPLETE USER DATA
 // ============================================================================
 exports.login = async (req, res) => {
@@ -344,7 +408,10 @@ exports.login = async (req, res) => {
       }
     }
 
-    // Generate tokens — ✅ deviceId is now included in the payload
+    // ✅ Generate a unique session id for this login
+    const jti = crypto.randomUUID();
+
+    // Generate tokens — jti is now included
     const token = jwt.sign(
       {
         userId: user.userId,
@@ -354,16 +421,20 @@ exports.login = async (req, res) => {
         departmentId: user.departmentId,
         employeeId: employee?.employeeId,
         deviceId: device?.deviceId || null,
+        jti,
       },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.userId },
+      { userId: user.userId, jti },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // ✅ Register web session (web clients only)
+    await registerWebSessionIfNeeded(req, user, jti);
 
     await user.update({ lastLogin: new Date() });
 
@@ -465,6 +536,7 @@ exports.login = async (req, res) => {
       success: true,
       token,
       refreshToken,
+      sessionId: jti,
       user: userResponse
     });
   } catch (error) {
@@ -518,7 +590,8 @@ exports.refreshToken = async (req, res) => {
         role: user.Role?.name,
         roleId: user.roleId,
         departmentId: user.departmentId,
-        employeeId: user.employeeId
+        employeeId: user.employeeId,
+        jti: decoded.jti,
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -1999,8 +2072,10 @@ exports.loginWithStore = async (req, res) => {
     });
 
     // ================================================================
-    // 7. GENERATE JWT TOKENS — ✅ deviceId included
+    // 7. GENERATE JWT TOKENS — jti included for web session tracking
     // ================================================================
+    const jti = crypto.randomUUID();
+
     const token = jwt.sign(
       {
         userId: user.userId,
@@ -2013,16 +2088,20 @@ exports.loginWithStore = async (req, res) => {
         groupId: actualGroupId,
         isAdmin: isAdmin,
         deviceId: device?.deviceId || null,
+        jti,
       },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.userId },
+      { userId: user.userId, jti },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
+
+    // ✅ Register web session (web clients only)
+    await registerWebSessionIfNeeded(req, user, jti);
 
     await user.update({ lastLogin: new Date() });
 
@@ -2184,6 +2263,7 @@ exports.loginWithStore = async (req, res) => {
       success: true,
       token,
       refreshToken,
+      sessionId: jti,
       user: userResponse
     });
 

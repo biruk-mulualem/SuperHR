@@ -36,6 +36,7 @@
         <TaxRulesPage v-if="activeTab === 'tax'" />
         <ApprovalSettingsPage v-if="activeTab === 'approval'" />
         <BackupRestorePage v-if="activeTab === 'backup'" />
+        <WebSessionsPage v-if="activeTab === 'web-sessions'" />
       </div>
     </div>
 
@@ -51,7 +52,8 @@
 </template>
 
 <script setup>
-import { ref, provide } from 'vue'
+import { ref, provide, computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import DepartmentsPage from './tabs/DepartmentsPage.vue'
 import PositionsPage from './tabs/PositionsPage.vue'
 import RolesPage from './tabs/RolesPage.vue'
@@ -59,19 +61,31 @@ import AttendanceRulesPage from './tabs/AttendanceRulesPage.vue'
 import TaxRulesPage from './tabs/TaxRulesPage.vue'
 import ApprovalSettingsPage from './tabs/ApprovalSettingsPage.vue'
 import BackupRestorePage from './tabs/BackupRestorePage.vue'
+import WebSessionsPage from './tabs/WebSessionsPage.vue'
+
+const authStore = useAuthStore()
 
 const activeTab = ref('departments')
 const toasts = ref([])
 
-const tabs = [
+// Only admins and superadmins can see the Web Sessions tab
+const isAdmin = computed(() => {
+  const role = String(authStore.user?.role || '').toLowerCase()
+  return role === 'admin' || role === 'superadmin'
+})
+
+const allTabs = [
   { id: 'departments', name: 'Departments', icon: '' },
   { id: 'positions', name: 'Positions', icon: '' },
   { id: 'roles', name: 'Roles', icon: '' },
   { id: 'attendance', name: 'Attendance', icon: '' },
   { id: 'tax', name: 'Tax Rules', icon: '' },
   { id: 'approval', name: 'Approval', icon: '' },
-  { id: 'backup', name: 'Backup', icon: '' }
+  { id: 'backup', name: 'Backup', icon: '' },
+  { id: 'web-sessions', name: 'Browser Sessions', icon: '', adminOnly: true },
 ]
+
+const tabs = computed(() => allTabs.filter(t => !t.adminOnly || isAdmin.value))
 
 const addToast = (message, type = 'success') => {
   const id = Date.now()
