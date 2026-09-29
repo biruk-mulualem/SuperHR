@@ -424,11 +424,7 @@ export default function LoginPage({ onLoginSuccess }) {
           <View style={styles.content}>
             {/* ---------- HERO ---------- */}
             <View style={styles.hero}>
-              <Image
-                source={require("../../../assets/logo2.png")}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
+             
               <Text style={styles.brand}>SUPER APP</Text>
               <Text style={styles.brandTagline}>Sign in to continue</Text>
 

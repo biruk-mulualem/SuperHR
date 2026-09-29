@@ -10,25 +10,80 @@
       <h1 class="motto">እግዚአብሔር ይባረክ!!!</h1>
 
       <h2 class="company-name">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
-      
-      <h3 class="form-subtitle-title">
-        ITEM REQUEST FROM 
-        <span class="store-name">{{ getStoreName(requestData.supplyingStoreId) }}</span> 
-        TO 
-        <span class="store-name" :class="{ 'dept-origin': isOtherStore(requestData.askingStoreId) }">
-          {{ getAskingStoreDisplay() }}
-        </span>
-      </h3>
-      
+
+      <!-- VIEW MODE -->
+      <h3
+        v-if="!isEditingHeader"
+        class="form-subtitle-title"
+      >{{ displayHeader }}</h3>
+
+      <!-- EDIT MODE -->
+      <h3
+        v-else
+        ref="headerLineRef"
+        class="form-subtitle-title is-editing"
+        contenteditable="true"
+        @keydown.enter.prevent="saveHeader"
+        @keydown.esc.prevent="cancelEditingHeader"
+        @paste="onPastePlain"
+      ></h3>
+
+      <!-- Header controls -->
+      <div class="header-edit-controls no-print">
+        <button
+          v-if="!isEditingHeader"
+          class="btn-edit-header"
+          @click="startEditingHeader"
+          title="Edit header line"
+        >✏️ Edit Header</button>
+        <template v-else>
+          <button class="btn-save-header" @click="saveHeader">💾 Save</button>
+          <button class="btn-cancel-header" @click="cancelEditingHeader">✖ Cancel</button>
+          <span class="edit-hint">Press Enter to save · Esc to cancel</span>
+        </template>
+
+        <button
+          v-if="!isEditingHeader"
+          class="btn-merge-toggle"
+          :class="{ active: isMergingRemarks }"
+          @click="toggleMergeMode"
+          :title="isMergingRemarks ? 'Exit merge mode' : 'Merge remarks across rows'"
+        >{{ isMergingRemarks ? '✖ Exit Merge' : '🔀 Merge Remarks' }}</button>
+      </div>
+
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>
         <span><strong>DATE:-</strong> {{ formatDate(requestData.requestedDate) }}</span>
       </div>
     </header>
 
+    <!-- Merge helper bar -->
+    <div v-if="isMergingRemarks" class="merge-bar no-print">
+      <span class="merge-bar-info">
+        <strong>{{ selectedRowIndexes.length }}</strong> row(s) selected
+        <span v-if="selectedRowIndexes.length < 2" class="merge-hint">
+          (select at least 2 consecutive rows)
+        </span>
+      </span>
+      <button
+        class="btn-merge-apply"
+        :disabled="selectedRowIndexes.length < 2"
+        @click="applyMerge"
+      >🔀 Merge Selected Remarks</button>
+      <button
+        class="btn-merge-clear"
+        :disabled="selectedRowIndexes.length === 0"
+        @click="clearSelection"
+      >Clear Selection</button>
+      <span v-if="mergeGroups.length > 0" class="merge-groups-info">
+        Active merges: <strong>{{ mergeGroups.length }}</strong>
+      </span>
+    </div>
+
     <table class="items-table">
       <thead>
         <tr>
+          <th v-if="isMergingRemarks" class="no-print" style="width: 3%;">☑</th>
           <th style="width: 5%;">No</th>
           <th style="width: 25%;">Item</th>
           <th style="width: 8%;">U.O.M</th>
@@ -41,9 +96,28 @@
       </thead>
       <tbody>
         <tr v-if="!requestData.items || requestData.items.length === 0">
-          <td colspan="8" class="no-items">No items in this request</td>
+          <td :colspan="isMergingRemarks ? 9 : 8" class="no-items">No items in this request</td>
         </tr>
-        <tr v-for="(item, index) in requestData.items" :key="index">
+
+        <tr
+          v-for="(item, index) in requestData.items"
+          :key="index"
+          :class="{
+            'row-selected': isRowSelected(index),
+            'row-merged-absorbed': isRowAbsorbedByMerge(index)
+          }"
+        >
+          <!-- Checkbox column (merge mode only) -->
+          <td v-if="isMergingRemarks" class="no-print cell-checkbox">
+            <input
+              v-if="!isRowMerged(index)"
+              type="checkbox"
+              :checked="isRowSelected(index)"
+              @change="toggleRowSelection(index)"
+            />
+            <span v-else class="merged-lock" title="Part of a merge">🔗</span>
+          </td>
+
           <td>{{ index + 1 }}</td>
           <td class="text-left">{{ getItemNameOnly(item) }}</td>
           <td>{{ getItemUOM(item) || 'Pcs' }}</td>
@@ -51,13 +125,33 @@
           <td>{{ getItemBrand(item) || '' }}</td>
           <td>{{ getItemModel(item) || '' }}</td>
           <td class="spec-cell">{{ stripHtml(getItemSpecification(item)) || '' }}</td>
-          <td>{{ item.remark || '' }}</td>
+
+          <td
+            v-if="isMergeStartRow(index)"
+            class="remark-cell merged-remark-cell"
+            :rowspan="getMergeSize(index)"
+          >
+            <div class="merged-remark-content">
+              <span class="merged-remark-text">
+                {{ getMergedRemarkText(index) || '—' }}
+              </span>
+              <button
+                v-if="isMergingRemarks"
+                class="btn-unmerge no-print"
+                @click="unmergeGroup(index)"
+                title="Unmerge this group"
+              >✖ Unmerge</button>
+            </div>
+          </td>
+          <td
+            v-else-if="!isRowAbsorbedByMerge(index)"
+            class="remark-cell"
+          >{{ item.remark || '' }}</td>
         </tr>
       </tbody>
     </table>
 
     <div class="meta-grid">
-      <!-- Department - Centered -->
       <div class="meta-col">
         <div class="block-header text-center">Department</div>
         <div class="block-body dept-body">
@@ -65,7 +159,6 @@
         </div>
       </div>
 
-      <!-- Requested By -->
       <div class="meta-col">
         <div class="block-header text-center">Requested By</div>
         <div class="block-body workflow-body">
@@ -74,7 +167,6 @@
         </div>
       </div>
 
-      <!-- Approved -->
       <div class="meta-col">
         <div class="block-header text-center">Approved By</div>
         <div class="block-body workflow-body">
@@ -83,8 +175,6 @@
         </div>
       </div>
     </div>
-
-  
   </div>
 
   <div v-else-if="loading" class="loading-state">
@@ -101,7 +191,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import itemRequestService from '@/stores/itemRequestService'
 import employeesService from '@/stores/employee'
@@ -120,15 +210,199 @@ const items = ref<Item[]>([])
 const departments = ref<any[]>([])
 
 // ================================================================
+// EDITABLE HEADER STATE
+// ================================================================
+
+const isEditingHeader = ref(false)
+const headerLineRef = ref<HTMLElement | null>(null)
+let headerSnapshot = ''
+const customHeader = ref<string | null>(null)
+
+// ================================================================
+// REMARK MERGE STATE
+// ================================================================
+
+const isMergingRemarks = ref(false)
+const selectedRowIndexes = ref<number[]>([])
+
+interface MergeGroup {
+  start: number
+  size: number
+  text: string
+}
+const mergeGroups = ref<MergeGroup[]>([])
+
+// ================================================================
+// HEADER — DEFAULT GENERATION
+// ================================================================
+
+const defaultHeader = computed<string>(() => {
+  if (!requestData.value) return ''
+  const fromName = getStoreName(requestData.value.supplyingStoreId)
+  const toName = getAskingStoreDisplay()
+  return `ITEM REQUEST FROM ${fromName} TO ${toName}`
+})
+
+const displayHeader = computed<string>(() => customHeader.value ?? defaultHeader.value)
+
+// ================================================================
+// RESET WHEN REQUEST CHANGES
+// ================================================================
+
+const currentRequestKey = computed<string>(() => {
+  if (!requestData.value) return ''
+  const r = requestData.value as any
+  return String(r.requestCode || r.id || '')
+})
+
+watch(currentRequestKey, () => {
+  customHeader.value = null
+  isEditingHeader.value = false
+  headerSnapshot = ''
+
+  isMergingRemarks.value = false
+  selectedRowIndexes.value = []
+  mergeGroups.value = []
+})
+
+// ================================================================
+// HEADER EDIT FLOW
+// ================================================================
+
+const startEditingHeader = async () => {
+  if (!requestData.value) return
+  headerSnapshot = displayHeader.value
+  isEditingHeader.value = true
+
+  await nextTick()
+  const el = headerLineRef.value
+  if (el) {
+    el.innerText = headerSnapshot
+    el.focus()
+    const range = document.createRange()
+    const sel = window.getSelection()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }
+}
+
+const cancelEditingHeader = () => {
+  isEditingHeader.value = false
+}
+
+const saveHeader = () => {
+  if (!requestData.value) return
+  const el = headerLineRef.value
+  const rawText = el?.innerText ?? ''
+  const cleaned = rawText.replace(/\s+/g, ' ').trim()
+
+  customHeader.value = (!cleaned || cleaned === defaultHeader.value) ? null : cleaned
+  isEditingHeader.value = false
+}
+
+const onPastePlain = (e: ClipboardEvent) => {
+  e.preventDefault()
+  const text = e.clipboardData?.getData('text/plain') ?? ''
+  document.execCommand('insertText', false, text)
+}
+
+// ================================================================
+// MERGE — MODE TOGGLE
+// ================================================================
+
+const toggleMergeMode = () => {
+  isMergingRemarks.value = !isMergingRemarks.value
+  if (!isMergingRemarks.value) {
+    selectedRowIndexes.value = []
+  }
+}
+
+const isRowSelected = (index: number): boolean => selectedRowIndexes.value.includes(index)
+
+const toggleRowSelection = (index: number) => {
+  const pos = selectedRowIndexes.value.indexOf(index)
+  if (pos >= 0) selectedRowIndexes.value.splice(pos, 1)
+  else selectedRowIndexes.value.push(index)
+}
+
+const clearSelection = () => {
+  selectedRowIndexes.value = []
+}
+
+// ================================================================
+// MERGE — ROW / GROUP LOOKUPS
+// ================================================================
+
+const isRowMerged = (index: number): boolean => {
+  return mergeGroups.value.some(g => index >= g.start && index < g.start + g.size)
+}
+
+const isRowAbsorbedByMerge = (index: number): boolean => {
+  return mergeGroups.value.some(g => index > g.start && index < g.start + g.size)
+}
+
+const isMergeStartRow = (index: number): boolean => {
+  return mergeGroups.value.some(g => g.start === index)
+}
+
+const getMergeSize = (startIndex: number): number => {
+  const g = mergeGroups.value.find(grp => grp.start === startIndex)
+  return g ? g.size : 1
+}
+
+const getMergedRemarkText = (startIndex: number): string => {
+  const g = mergeGroups.value.find(grp => grp.start === startIndex)
+  return g ? g.text : ''
+}
+
+// ================================================================
+// MERGE — APPLY / UNMERGE
+// ================================================================
+
+const applyMerge = () => {
+  const selected = [...selectedRowIndexes.value].sort((a, b) => a - b)
+  if (selected.length < 2) return
+
+  if (selected.some(i => isRowMerged(i))) {
+    alert('Some selected rows are already part of a merge. Unmerge them first.')
+    return
+  }
+
+  for (let i = 1; i < selected.length; i++) {
+    if (selected[i] !== selected[i - 1]! + 1) {
+      alert('Please select consecutive rows to merge their remarks.')
+      return
+    }
+  }
+
+  const firstRow = selected[0]
+  if (firstRow === undefined) return
+
+  const originalText = requestData.value?.items?.[firstRow]?.remark
+  const text = originalText && String(originalText).trim() ? String(originalText).trim() : '—'
+
+  mergeGroups.value = [
+    ...mergeGroups.value,
+    { start: firstRow, size: selected.length, text },
+  ]
+
+  selectedRowIndexes.value = []
+}
+
+const unmergeGroup = (startIndex: number) => {
+  mergeGroups.value = mergeGroups.value.filter(g => g.start !== startIndex)
+}
+
+// ================================================================
 // DATA LOADING
 // ================================================================
 
 const loadStores = async () => {
   try {
     const response = await itemRequestService.getActiveStores()
-    if (response.success) {
-      stores.value = response.data
-    }
+    if (response.success) stores.value = response.data
   } catch (error) {
     console.error('Load stores error:', error)
   }
@@ -137,9 +411,7 @@ const loadStores = async () => {
 const loadItems = async () => {
   try {
     const response = await itemRequestService.getActiveItems()
-    if (response.success) {
-      items.value = response.data
-    }
+    if (response.success) items.value = response.data
   } catch (error) {
     console.error('Load items error:', error)
   }
@@ -148,24 +420,17 @@ const loadItems = async () => {
 const loadDepartments = async () => {
   try {
     const response = await employeesService.getDepartments()
-    if (response.success) {
-      departments.value = response.data
-      console.log('✅ Departments loaded:', departments.value.length)
-    } else {
-      console.warn('Failed to load departments:', response.error)
-    }
+    if (response.success) departments.value = response.data
   } catch (error) {
     console.error('Load departments error:', error)
   }
 }
 
 const loadRequest = async (requestId: string) => {
+  loading.value = true
   try {
     const response = await itemRequestService.getRequestById(Number(requestId))
-    if (response.success) {
-      requestData.value = response.data
-      console.log('✅ Request loaded:', requestData.value)
-    }
+    if (response.success) requestData.value = response.data
   } catch (error) {
     console.error('Load request error:', error)
   } finally {
@@ -179,43 +444,37 @@ const loadRequest = async (requestId: string) => {
 
 const getRequestingDepartment = (): string => {
   if (!requestData.value) return 'N/A'
-  
   const req = requestData.value as any
   const user = req.requestedByUser
-  
+
   if (user?.department) {
     if (typeof user.department === 'string') return user.department
     if (typeof user.department === 'object' && user.department.name) {
       return user.department.name
     }
   }
-  
+
   if (user?.departmentId) {
-    const dept = departments.value.find(d => 
-      d.departmentId === user.departmentId || 
+    const dept = departments.value.find(d =>
+      d.departmentId === user.departmentId ||
       d.id === user.departmentId ||
       d.department_id === user.departmentId
     )
-    if (dept) {
-      return dept.name || dept.departmentName || `Department ${user.departmentId}`
-    }
+    if (dept) return dept.name || dept.departmentName || `Department ${user.departmentId}`
     return `Department ${user.departmentId}`
   }
-  
+
   return 'N/A'
 }
 
 const getRequesterName = (): string => {
   if (!requestData.value) return 'N/A'
-
   const req = requestData.value
 
-  // ✅ Prefer the manually-typed name
   if (req.requestedBy && String(req.requestedBy).trim()) {
     return String(req.requestedBy).trim()
   }
 
-  // Fall back to the joined user record
   const user = req.requestedByUser
   if (user) {
     if (user.fullName) return user.fullName
@@ -235,51 +494,25 @@ const getStoreName = (storeId: number): string => {
   return store ? store.name : 'Unknown Store'
 }
 
-// ================================================================
-// "OTHER" STORE HANDLING — show requesting department instead
-// ================================================================
-
-/**
- * Is the store the placeholder "Other" (STORE-008)?
- * Accepts either a store object or a storeId.
- */
 const isOtherStore = (storeOrId: number | Store | null | undefined): boolean => {
   if (storeOrId === null || storeOrId === undefined) return false
 
   let store: Store | undefined = undefined
-
-  if (typeof storeOrId === 'object') {
-    store = storeOrId
-  } else {
-    store = stores.value.find(s => (s.storeId || s.id) === storeOrId)
-  }
+  if (typeof storeOrId === 'object') store = storeOrId
+  else store = stores.value.find(s => (s.storeId || s.id) === storeOrId)
 
   if (!store) return false
 
   const code = ((store as any).code || '').toUpperCase()
   const name = (store.name || '').trim().toLowerCase()
-
   return code === 'STORE-008' || name === 'other'
 }
 
-/**
- * Best display name for the asking store:
- *   - If the store is "Other" → use the requester's department name
- *   - Otherwise → use the store's name
- */
 const getAskingStoreDisplay = (): string => {
   if (!requestData.value) return 'Unknown Store'
-
   const req = requestData.value
-
-  const askingStore = stores.value.find(
-    s => (s.storeId || s.id) === req.askingStoreId
-  )
-
-  if (isOtherStore(askingStore)) {
-    return getRequestingDepartment()
-  }
-
+  const askingStore = stores.value.find(s => (s.storeId || s.id) === req.askingStoreId)
+  if (isOtherStore(askingStore)) return getRequestingDepartment()
   return getStoreName(req.askingStoreId)
 }
 
@@ -289,78 +522,49 @@ const getAskingStoreDisplay = (): string => {
 
 const getItemNameOnly = (item: any): string => {
   if (!item) return 'Unknown Item'
-  
-  // Check for nested item data
   if (item.item) {
     if (item.item.name) return item.item.name
     if (item.item.standardName) return item.item.standardName
   }
-  
-  // Check direct properties
   if (item.itemName) return item.itemName
   if (item.name) return item.name
-  
   return 'Unknown Item'
 }
 
 const getItemBrand = (item: any): string => {
   if (!item) return ''
-  
-  // Check for brand in the request detail (user-entered)
   if (item.brand) return item.brand
-  
-  // Check nested item
   if (item.item?.brand) return item.item.brand
-  
-  // Fallback to global items list
   const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId)
   if (globalItem?.brand) return globalItem.brand
-  
   return ''
 }
 
 const getItemModel = (item: any): string => {
   if (!item) return ''
-  
-  // Check for model in the request detail (user-entered)
   if (item.model) return item.model
-  
-  // Check nested item
   if (item.item?.model) return item.item.model
-  
-  // Fallback to global items list
   const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId)
   if (globalItem?.model) return globalItem.model
-  
   return ''
 }
 
 const getItemUOM = (item: any): string => {
   if (!item) return ''
-  
-  // Check for UOM in the request detail
   if (item.uom_code) return item.uom_code
   if (item.uomCode) return item.uomCode
-  
-  // Check nested item
   if (item.item?.uom?.code) return item.item.uom.code
   if (item.item?.uom) {
     if (typeof item.item.uom === 'string') return item.item.uom
   }
-  
   return ''
 }
 
 const getItemSpecification = (item: any): string => {
   if (!item) return ''
-  
-  // Check for specification in the request detail (user-entered)
   if (item.specification) return item.specification
-  
-  // Check nested item
   if (item.item?.specText) return item.item.specText
   if (item.specText) return item.specText
-  
   return ''
 }
 
@@ -376,16 +580,12 @@ const formatQuantity = (value: number | string): string => {
 
 const formatDate = (dateString?: string): string => {
   if (!dateString) return 'N/A'
-
   const date = new Date(dateString)
-
   const day = String(date.getDate()).padStart(2, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const year = date.getFullYear()
-
   return `${day}/${month}/${year}`
 }
-
 
 const stripHtml = (htmlContent: string): string => {
   if (!htmlContent) return ''
@@ -409,27 +609,36 @@ const goBack = (): void => {
   router.push('/item-requests')
 }
 
-const printPage = (): void => { 
-  window.print() 
+const printPage = (): void => {
+  if (isEditingHeader.value) cancelEditingHeader()
+  if (isMergingRemarks.value) isMergingRemarks.value = false
+  setTimeout(() => window.print(), 50)
 }
 
 // ================================================================
 // LIFECYCLE
 // ================================================================
 
-onMounted(async () => {
+const initialize = async () => {
   const requestId = route.query.id as string
   if (requestId) {
-    await Promise.all([
-      loadStores(),
-      loadItems(),
-      loadDepartments()
-    ])
+    await Promise.all([loadStores(), loadItems(), loadDepartments()])
     await loadRequest(requestId)
   } else {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  initialize()
 })
+
+watch(
+  () => route.query.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) initialize()
+  }
+)
 </script>
 
 <style scoped>
@@ -509,26 +718,94 @@ onMounted(async () => {
   text-transform: uppercase;
   margin: 0 0 15px 0;
   color: #1a1a1a;
+  transition: background-color 0.15s ease, outline 0.15s ease;
+  border-radius: 6px;
+  padding: 6px 10px;
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
 }
 
-.store-name {
-  color: #000000;
-  font-weight: 800;
-  font-size: 16px;
-  text-decoration: none;
+.form-subtitle-title:not(.is-editing):hover {
+  outline-color: #cbd5e1;
+  background: #f8fafc;
 }
 
-.store-name.dept-origin {
+.form-subtitle-title.is-editing {
+  background: #eff6ff;
+  outline: 2px solid #2563eb;
+  cursor: text;
   text-transform: none;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.3px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-/* Optional: show a small label before the department name */
-.store-name.dept-origin::before {
-  content: ' ';
+.form-subtitle-title.is-editing:focus {
+  background: #dbeafe;
+}
+
+.header-edit-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: -8px 0 15px 0;
+  flex-wrap: wrap;
+}
+
+.btn-edit-header,
+.btn-save-header,
+.btn-cancel-header,
+.btn-merge-toggle {
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
   font-weight: 600;
-  font-size: 0.85em;
-  opacity: 0.75;
+  transition: filter 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-edit-header:hover,
+.btn-save-header:hover,
+.btn-cancel-header:hover,
+.btn-merge-toggle:hover {
+  filter: brightness(0.95);
+}
+
+.btn-edit-header {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+
+.btn-save-header {
+  background: #16a34a;
+  color: #fff;
+}
+
+.btn-cancel-header {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.btn-merge-toggle {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.btn-merge-toggle.active {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+
+.edit-hint {
+  font-size: 10px;
+  color: #64748b;
+  font-style: italic;
+  margin-left: 4px;
 }
 
 .date-row {
@@ -540,39 +817,111 @@ onMounted(async () => {
 }
 
 /* ================================================================
+   MERGE BAR
+   ================================================================ */
+.merge-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 0 12px 0;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.merge-bar-info {
+  color: #78350f;
+  white-space: nowrap;
+}
+
+.merge-hint {
+  color: #a16207;
+  font-style: italic;
+  margin-left: 4px;
+}
+
+.merge-groups-info {
+  color: #166534;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.btn-merge-apply,
+.btn-merge-clear {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-merge-apply {
+  background: #d97706;
+  color: #fff;
+}
+
+.btn-merge-apply:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.btn-merge-clear {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+
+.btn-merge-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ================================================================
    TABLE CONFIGURATION
    ================================================================ */
 .items-table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 25px;
-  font-size: 12px;
+  font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+  font-size: 12.5px;
   table-layout: fixed;
 }
 
-.items-table th, 
+.items-table th,
 .items-table td {
   border: 1px solid #7f7f7f;
-  padding: 6px 4px;
+  padding: 7px 5px;
   text-align: center;
-  height: 28px;
+  height: 30px;
   word-wrap: break-word;
   vertical-align: middle;
+  font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
 }
 
+/* Header row: bigger + darker background */
 .items-table th {
-  background-color: #e6e6e6;
-  font-weight: bold;
-  font-size: 11px;
+  background-color: #c8c8c8;   /* darker than the previous #e6e6e6 */
+  font-weight: 800;
+  font-size: 13.5px;            /* bigger than before (was 11px) */
+  letter-spacing: 0.4px;
+  padding: 10px 6px;            /* taller header cells */
+  color: #000;
+  text-transform: none;
 }
 
 .items-table td.text-left {
   text-align: left;
-  padding-left: 6px;
+  padding-left: 8px;
 }
 
 .font-bold {
-  font-weight: bold;
+  font-weight: 700;
 }
 
 .no-items {
@@ -583,8 +932,94 @@ onMounted(async () => {
 }
 
 .spec-cell {
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cell-checkbox {
+  text-align: center !important;
+  padding: 2px !important;
+}
+
+.cell-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.merged-lock {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.row-selected td {
+  background-color: #fef9c3;
+}
+
+/* ================================================================
+   REMARK CELL & MERGED CELL
+   ================================================================ */
+.remark-cell {
+  padding: 5px !important;
+  font-size: 12px;
+  line-height: 1.4;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+/* Merged cell spans multiple rows — remove top/bottom borders
+   so the rows look like one continuous cell. */
+.merged-remark-cell {
+  background: #ffffff;
+  vertical-align: middle !important;
+  border-top: none !important;
+  border-bottom: none !important;
+}
+
+/* Restore the top border on the first row of the merge group */
+.items-table tr td.merged-remark-cell {
+  border-top: 1px solid #7f7f7f !important;
+}
+
+.merged-remark-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px;
+  min-height: 100%;
+  height: 100%;
+  text-align: center;
+}
+
+.merged-remark-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #000;
+  word-break: break-word;
+  white-space: pre-wrap;
+  text-align: center;
+}
+
+.row-merged-absorbed td {
+  background: #fafafa;
+}
+
+.btn-unmerge {
+  font-size: 10px;
+  padding: 2px 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.btn-unmerge:hover {
+  background: #fecaca;
 }
 
 /* ================================================================
@@ -632,7 +1067,6 @@ onMounted(async () => {
   color: #0f172a;
   font-weight: 600;
   text-align: center;
-  padding: 0px 0px;
 }
 
 .workflow-body p {
@@ -658,8 +1092,8 @@ onMounted(async () => {
 }
 
 .gray-label {
-  background-color: #d9d9d9; 
-  color: #000000; 
+  background-color: #d9d9d9;
+  color: #000000;
   font-weight: bold;
   width: 220px;
   display: flex;
@@ -722,7 +1156,8 @@ onMounted(async () => {
 /* ================================================================
    LOADING & ERROR
    ================================================================ */
-.loading-state, .error-state {
+.loading-state,
+.error-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -776,90 +1211,112 @@ onMounted(async () => {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background-color: #fff !important;
   }
-  
+
   .print-page {
     max-width: 100% !important;
     padding: 10px !important;
     margin: 0 !important;
   }
-  
-  .gray-label, 
-  .block-header, 
+
+  /* Ensure darker header background + all shaded elements print */
+  .gray-label,
+  .block-header,
   .items-table th {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .items-table th {
+    background-color: #c0c0c0 !important;  /* slightly darker in print */
+    color: #000000 !important;
+    font-size: 12px !important;
+    padding: 8px 5px !important;
+  }
+
+  .gray-label,
+  .block-header {
     background-color: #d9d9d9 !important;
     color: #000000 !important;
   }
-  
-  .store-name {
-    color: #000000 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+
+  .form-subtitle-title,
+  .form-subtitle-title.is-editing {
+    outline: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    cursor: default !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: 15px !important;
   }
-  
+
+  .header-edit-controls,
+  .merge-bar,
+  .btn-unmerge {
+    display: none !important;
+  }
+
+  /* Print table font stack */
+  .items-table,
+  .items-table th,
+  .items-table td {
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif !important;
+    font-size: 11px !important;
+    letter-spacing: 0.2px !important;
+  }
+
+  .items-table td {
+    padding: 5px 4px !important;
+    height: 26px !important;
+  }
+
+  /* Keep merged cell visually continuous in print */
+  .merged-remark-cell {
+    border-top: none !important;
+    border-bottom: none !important;
+    background: #ffffff !important;
+  }
+
+  .items-table tr td.merged-remark-cell {
+    border-top: 1px solid #000000 !important;
+  }
+
+  .row-merged-absorbed td {
+    background: #ffffff !important;
+  }
+
+  .row-selected td {
+    background: transparent !important;
+  }
+
   .items-table th,
   .items-table td {
     border-color: #000000 !important;
   }
-  
-  .items-table {
-    font-size: 10px !important;
-  }
-  
-  .items-table td {
-    padding: 4px 3px !important;
-    height: 24px !important;
-  }
-  
-  .motto {
-    font-size: 16px !important;
-  }
-  
-  .company-name {
-    font-size: 18px !important;
-  }
-  
-  .form-subtitle-title {
-    font-size: 13px !important;
-  }
-  
-  .store-name {
-    font-size: 14px !important;
-  }
-  
-  .meta-grid {
-    gap: 15px !important;
-  }
-  
-  .input-row {
-    width: 90% !important;
-  }
-  
-  .input-row.short-width {
-    width: 70% !important;
-  }
-  
-  .dept-value {
-    font-size: 18px !important;
-  }
-  
-  .meta-grid {
-    page-break-inside: avoid !important;
-  }
-  
+
+  .motto { font-size: 16px !important; }
+  .company-name { font-size: 18px !important; }
+  .form-subtitle-title { font-size: 13px !important; }
+
+  .meta-grid { gap: 15px !important; }
+  .input-row { width: 90% !important; }
+  .input-row.short-width { width: 70% !important; }
+  .dept-value { font-size: 18px !important; }
+
+  .meta-grid,
   .footer-sections {
     page-break-inside: avoid !important;
   }
-  
+
   .items-table tr {
     page-break-inside: avoid !important;
   }
-  
+
   .items-table {
     page-break-after: avoid !important;
   }
@@ -869,79 +1326,65 @@ onMounted(async () => {
    RESPONSIVE
    ================================================================ */
 @media (max-width: 768px) {
-  .print-page {
-    padding: 10px;
-  }
-  
+  .print-page { padding: 10px; }
+
   .meta-grid {
     flex-direction: column;
     gap: 15px;
   }
-  
+
   .input-row,
-  .input-row.short-width {
-    width: 100%;
-  }
-  
+  .input-row.short-width { width: 100%; }
+
   .gray-label {
     width: 100px;
     font-size: 11px;
     min-height: 38px;
   }
-  
-  .inline-label {
-    width: 100px;
-  }
-  
+
+  .inline-label { width: 100px; }
+
   .top-actions {
     flex-direction: column;
     gap: 8px;
     padding: 10px;
   }
-  
+
   .top-actions button {
     width: 100%;
     justify-content: center;
   }
-  
-  .items-table {
-    font-size: 10px;
-  }
-  
+
+  .items-table { font-size: 10px; }
+
   .items-table th,
   .items-table td {
     padding: 3px 2px;
     height: 20px;
   }
-  
-  .items-table th {
-    font-size: 9px;
-  }
-  
+
+  .items-table th { font-size: 9px; }
+
   .date-row {
     flex-direction: column;
     gap: 4px;
     font-size: 11px;
   }
-  
-  .motto {
-    font-size: 15px;
+
+  .motto { font-size: 15px; }
+  .company-name { font-size: 16px; }
+  .form-subtitle-title { font-size: 12px; }
+  .dept-value { font-size: 16px !important; }
+
+  .header-edit-controls {
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  
-  .company-name {
-    font-size: 16px;
-  }
-  
-  .form-subtitle-title {
-    font-size: 12px;
-  }
-  
-  .store-name {
-    font-size: 13px;
-  }
-  
-  .dept-value {
-    font-size: 16px !important;
+
+  .merge-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
   }
 }
 </style>

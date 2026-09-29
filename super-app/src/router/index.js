@@ -54,15 +54,18 @@ import LowStockAlertsPage from '../pages/stores/LowStockAlertsPage';
 // Posts pages
 import PostsPage from '../pages/posts/PostsPage';
 
-// Admin Devices page
+// Admin pages
 import AdminDevicesPage from '../pages/admin/AdminDevicesPage';
+import AdminUsersPage from '../pages/admin/AdminUsersPage';
+import AdminDepartmentsPage from '../pages/admin/AdminDepartmentsPage';   // ✅ NEW
+import AdminRolesPage from '../pages/admin/AdminRolesPage';               // ✅ NEW
 
 // Auth service + hook
 import authService from '../stores/authService';
 import { useAuth } from '../hooks/useAuth';
 import { setUnauthorizedHandler } from '../stores/interceptor';
 
-// ✅ NEW: Socket.IO — real-time updates
+// Socket.IO — real-time updates
 import { connectSocket, disconnectSocket } from '../stores/socketService';
 
 // ================================================================
@@ -86,7 +89,14 @@ const ROLE_PERMISSIONS = {
   hr:                  { catalog: true,  alerts: true,  purchase: false },
   employee:            { catalog: true,  alerts: true,  purchase: false },
   attendance:          { catalog: false, alerts: true,  purchase: false },
+  purchase_organizer:  { catalog: true,  alerts: true,  purchase: true  },
 };
+
+// ---- Admin page access control ----
+const USERS_VIEW_ROLES       = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
+const DEVICES_VIEW_ROLES     = ['admin', 'superadmin'];
+const DEPARTMENTS_VIEW_ROLES = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
+const ROLES_VIEW_ROLES       = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
 
 export default function AppRouter() {
   // ---------- Auth (single source of truth) ----------
@@ -133,7 +143,7 @@ export default function AppRouter() {
     });
   }, []);
 
-  // ✅ NEW: Connect socket when logged in, disconnect on logout
+  // ✅ Connect socket when logged in, disconnect on logout
   useEffect(() => {
     if (booting) return;
     if (isLoggedIn) {
@@ -456,8 +466,11 @@ export default function AppRouter() {
           />
         );
 
+      // ------------------------------------------------------------
+      // ADMIN → Devices
+      // ------------------------------------------------------------
       case 'devices':
-        if (!['admin', 'superadmin'].includes(userRole)) {
+        if (!DEVICES_VIEW_ROLES.includes(userRole)) {
           alert('🛡️ Access Denied: Admin clearance required.');
           setActiveTab('home');
           return null;
@@ -469,7 +482,76 @@ export default function AppRouter() {
             subTextColor={subTextColor}
             cardBg={cardBg}
             borderColor={borderColor}
+            userRole={userRole}
             onBack={() => setActiveTab('home')}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → Users
+      // ------------------------------------------------------------
+      case 'users':
+        if (!USERS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges to view users.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AdminUsersPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → Departments
+      // ------------------------------------------------------------
+      case 'departments':
+        if (!DEPARTMENTS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges to view departments.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AdminDepartmentsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+            onOpenUsersByDepartment={(dept) => {
+              // Jump to Users page — the department filter can be applied there
+              setActiveTab('users');
+            }}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → Roles
+      // ------------------------------------------------------------
+      case 'roles':
+        if (!ROLES_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges to view roles.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AdminRolesPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+            onOpenUsersByRole={(roleObj) => {
+              // Jump to Users page — the role filter can be applied there
+              setActiveTab('users');
+            }}
           />
         );
 

@@ -119,6 +119,10 @@ export default function AdminDashboard({
   // ------------------------------------------------------------
   const { stats, week } = data;
 
+  // ✅ Each row targets a real tab key that AppRouter listens for:
+  //    users        → AdminUsersPage
+  //    departments  → AdminDepartmentsPage
+  //    roles        → AdminRolesPage
   const peopleSection = useMemo(() => ([
     { key: 'users',       label: 'Users',       value: stats.users,       delta: stats.usersDelta,       emoji: '👥', target: 'users' },
     { key: 'departments', label: 'Departments', value: stats.departments, delta: stats.departmentsDelta, emoji: '🏢', target: 'departments' },
