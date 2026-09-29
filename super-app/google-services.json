@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "970382423472",
+    "project_id": "super-app-a2e9a",
+    "storage_bucket": "super-app-a2e9a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:970382423472:android:753497438e0f7fcb805275",
+        "android_client_info": {
+          "package_name": "com.birukmulualem.superapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVge6BSyq2O1B0_GqTv7FOW5D_u3tRGBM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
