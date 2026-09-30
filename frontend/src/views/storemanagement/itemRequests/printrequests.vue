@@ -77,21 +77,18 @@
             />
             <span class="column-manager-label">{{ col.label }}</span>
 
-            <!-- Built-in structural lock -->
             <span
               v-if="col.locked"
               class="column-manager-lock"
               title="Required column — cannot be hidden or removed"
             >🔒</span>
 
-            <!-- Locked because it has data in at least one row -->
             <span
               v-else-if="!isColumnEmpty(col)"
               class="column-manager-lock-data"
               title="Has data in at least one row — cannot be hidden"
             >🔒 has data</span>
 
-            <!-- Fully empty → safe to hide -->
             <span
               v-else
               class="column-manager-empty"
@@ -278,6 +275,38 @@
             v-else-if="!isRowAbsorbedByMerge(index)"
             class="remark-cell"
           >{{ item.remark || '' }}</td>
+        </tr>
+
+        <!-- ✅ Grand total row — only shown when a Total Price column exists -->
+        <tr v-if="hasTotalPriceColumn" class="grand-total-row">
+          <!-- Leading columns (optional checkbox + No) -->
+          <td
+            :colspan="isMergingRemarks ? 2 : 1"
+            class="grand-total-spacer-cell"
+          ></td>
+
+          <!-- Walk every visible data column -->
+          <template v-for="col in dataColumns" :key="`tot-${col.key}`">
+            <!-- Under Unit Price → the word TOTAL -->
+            <td
+              v-if="col.key === 'unitPrice'"
+              class="grand-total-label-cell"
+            >TOTAL</td>
+
+            <!-- Under Total Price → the sum -->
+            <td
+              v-else-if="col.key === 'totalPrice'"
+              class="grand-total-value-cell"
+            >
+              <span class="grand-total-value">{{ grandTotalFormatted }}</span>
+            </td>
+
+            <!-- Every other column → grey spacer -->
+            <td v-else class="grand-total-spacer-cell"></td>
+          </template>
+
+          <!-- Remark column spacer -->
+          <td class="grand-total-spacer-cell"></td>
         </tr>
       </tbody>
     </table>
@@ -513,12 +542,36 @@ const hasAnyHiddenColumn = computed(() => columns.value.some((c) => !c.visible))
 const isEditableColumn = (col: ColumnDef) => !!col.editable && !col.computed
 const isComputedColumn = (col: ColumnDef) => !!col.computed
 
+// ✅ Grand total helpers
+const hasTotalPriceColumn = computed(
+  () => dataColumns.value.some((c) => c.key === 'totalPrice')
+)
+
+const grandTotal = computed<number>(() => {
+  const list = requestData.value?.items || []
+  const totalCol = dataColumns.value.find((c) => c.key === 'totalPrice')
+  if (!totalCol) return 0
+
+  let sum = 0
+  list.forEach((item, idx) => {
+    const raw = getComputedCellValue(item, idx, totalCol)
+    const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, '')) || 0
+    sum += num
+  })
+  return sum
+})
+
+const grandTotalFormatted = computed<string>(() =>
+  grandTotal.value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+)
+
 // ================================================================
 // EMPTINESS + LOCKING
 // ================================================================
 
-// A column is EMPTY only if EVERY row has no value.
-// If even ONE row has data → NOT empty → becomes locked.
 const isColumnEmpty = (col: ColumnDef): boolean => {
   const list = requestData.value?.items || []
   if (list.length === 0) return false
@@ -540,9 +593,6 @@ const isColumnEmpty = (col: ColumnDef): boolean => {
   return !list.some((it) => String(col.getValue(it) || '').trim() !== '')
 }
 
-// A column is effectively locked if:
-//  - it's a built-in structural lock (Item/U.O.M/Qty), OR
-//  - ANY row has data in it (can't be hidden once it has content)
 const isColumnLocked = (col: ColumnDef): boolean => {
   if (col.locked) return true
   if (isColumnEmpty(col)) return false
@@ -659,7 +709,6 @@ const addColumnFromDropdown = () => {
 const removeCustomColumn = (key: string) => {
   const col = columns.value.find((c) => c.key === key)
   if (!col || col.locked) return
-  // Refuse to remove a column that still has data
   if (!isColumnEmpty(col)) return
 
   const keysToRemove: string[] = [key]
@@ -695,10 +744,14 @@ const getCustomCellValue = (rowIndex: number, colKey: string): string => {
 const setCustomCellValue = (rowIndex: number, colKey: string, value: string) => {
   const reqKey = currentRequestKey.value
   if (!reqKey) return
+
   if (!customCellData.value[reqKey]) customCellData.value[reqKey] = {}
+
   const rowKey = String(rowIndex)
-  if (!customCellData.value[reqKey][rowKey]) customCellData.value[reqKey][rowKey] = {}
-  customCellData.value[reqKey][rowKey][colKey] = value
+  const rowMap = customCellData.value[reqKey][rowKey] ?? {}
+  customCellData.value[reqKey][rowKey] = rowMap
+  rowMap[colKey] = value
+
   persistCustomCells()
 }
 
@@ -1531,27 +1584,23 @@ watch(
   user-select: none;
 }
 
-/* Locked because column has data — cannot be hidden */
 .column-manager-item.is-locked-data {
   border-color: #94a3b8;
   background: #e2e8f0;
   cursor: default;
 }
 
-/* Hidden column */
 .column-manager-item.is-hidden {
   background: #f8fafc;
   color: #94a3b8;
   border-style: dashed;
 }
 
-/* Fully empty — can be hidden */
 .column-manager-item.is-empty {
   border-color: #fcd34d;
   background: #fffbeb;
 }
 
-/* Structurally locked (Item / U.O.M / Qty) */
 .column-manager-item.is-locked {
   background: #e2e8f0;
   cursor: default;
@@ -1582,15 +1631,6 @@ watch(
   border-radius: 4px;
   font-weight: 700;
   letter-spacing: 0.3px;
-}
-
-.column-manager-hasdata {
-  font-size: 10px;
-  color: #166534;
-  background: #dcfce7;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 900;
 }
 
 .column-manager-remove {
@@ -1705,6 +1745,43 @@ watch(
 .cell-checkbox input[type="checkbox"] { cursor: pointer; width: 14px; height: 14px; }
 .merged-lock { font-size: 12px; opacity: 0.6; }
 .row-selected td { background-color: #fef9c3; }
+
+/* ================================================================
+   GRAND TOTAL ROW
+   ================================================================ */
+.grand-total-row td {
+  background: #e5e7eb !important;
+  font-weight: 800;
+  border-color: #7f7f7f !important;
+  height: 32px;
+}
+
+.grand-total-spacer-cell {
+  background: #e5e7eb !important;
+}
+
+/* "TOTAL" label sits under the Unit Price column */
+.grand-total-label-cell {
+  background: #e5e7eb !important;
+  text-align: center !important;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: #111827;
+  font-size: 12.5px;
+  padding: 6px 4px !important;
+}
+
+.grand-total-value-cell {
+  background: #e5e7eb !important;
+  text-align: center !important;
+}
+
+.grand-total-value {
+  font-weight: 900;
+  font-size: 13.5px;
+  color: #111827;
+  letter-spacing: 0.3px;
+}
 
 /* ================================================================
    EDITABLE / COMPUTED CELLS
@@ -1981,7 +2058,8 @@ watch(
 
   .gray-label,
   .block-header,
-  .items-table th {
+  .items-table th,
+  .grand-total-row td {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -1991,6 +2069,18 @@ watch(
     color: #000000 !important;
     font-size: 12px !important;
     padding: 8px 5px !important;
+  }
+
+  .grand-total-row td {
+    background-color: #dcdcdc !important;
+    color: #000000 !important;
+  }
+
+  .grand-total-label-cell,
+  .grand-total-value {
+    font-weight: 900 !important;
+    font-size: 12px !important;
+    color: #000000 !important;
   }
 
   .block-header { background-color: #d9d9d9 !important; color: #000000 !important; }
@@ -2101,5 +2191,8 @@ watch(
   .column-manager-add { flex-direction: column; align-items: stretch; }
   .column-manager-select,
   .column-manager-input { min-width: 0; width: 100%; }
+
+  .grand-total-row td { font-size: 10px !important; height: 24px !important; }
+  .grand-total-value { font-size: 11px !important; }
 }
 </style>

@@ -285,6 +285,38 @@
             class="remark-cell"
           >{{ item.remark || '' }}</td>
         </tr>
+
+        <!-- ✅ Grand total row — only when a Total Price column exists -->
+        <tr v-if="hasTotalPriceColumn" class="grand-total-row">
+          <!-- Leading columns (optional checkbox + No) -->
+          <td
+            :colspan="isMergingRemarks ? 2 : 1"
+            class="grand-total-spacer-cell"
+          ></td>
+
+          <!-- Walk every visible data column -->
+          <template v-for="col in dataColumns" :key="`tot-${col.key}`">
+            <!-- Under Unit Price → the word TOTAL -->
+            <td
+              v-if="col.key === 'unitPrice'"
+              class="grand-total-label-cell"
+            >TOTAL</td>
+
+            <!-- Under Total Price → the sum -->
+            <td
+              v-else-if="col.key === 'totalPrice'"
+              class="grand-total-value-cell"
+            >
+              <span class="grand-total-value">{{ grandTotalFormatted }}</span>
+            </td>
+
+            <!-- Every other column → grey spacer -->
+            <td v-else class="grand-total-spacer-cell"></td>
+          </template>
+
+          <!-- Remark column spacer -->
+          <td class="grand-total-spacer-cell"></td>
+        </tr>
       </tbody>
     </table>
 
@@ -553,6 +585,32 @@ const hasAnyHiddenColumn = computed(() => columns.value.some((c) => !c.visible))
 const isEditableColumn = (col: ColumnDef) => !!col.editable && !col.computed
 const isComputedColumn = (col: ColumnDef) => !!col.computed
 
+// ✅ Grand total helpers
+const hasTotalPriceColumn = computed(
+  () => dataColumns.value.some((c) => c.key === 'totalPrice')
+)
+
+const grandTotal = computed<number>(() => {
+  const list = requestData.value?.items || []
+  const totalCol = dataColumns.value.find((c) => c.key === 'totalPrice')
+  if (!totalCol) return 0
+
+  let sum = 0
+  list.forEach((item, idx) => {
+    const raw = getComputedCellValue(item, idx, totalCol)
+    const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, '')) || 0
+    sum += num
+  })
+  return sum
+})
+
+const grandTotalFormatted = computed<string>(() =>
+  grandTotal.value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+)
+
 // ================================================================
 // EMPTINESS + LOCKING
 // ================================================================
@@ -613,7 +671,6 @@ const showAllColumns = () => {
 const resetColumnState = () => {
   try {
     localStorage.removeItem(LS_COLUMNS_KEY)
-    // Also drop any custom cells for the current request
     const reqKey = currentRequestKey.value
     if (reqKey) {
       delete customCellData.value[reqKey]
@@ -744,10 +801,10 @@ const setCustomCellValue = (rowIndex: number, colKey: string, value: string) => 
   const reqKey = currentRequestKey.value
   if (!reqKey) return
   if (!customCellData.value[reqKey]) customCellData.value[reqKey] = {}
-  const requestData = customCellData.value[reqKey]
+  const requestDataLocal = customCellData.value[reqKey]
   const rowKey = String(rowIndex)
-  if (!requestData[rowKey]) requestData[rowKey] = {}
-  requestData[rowKey][colKey] = value
+  if (!requestDataLocal[rowKey]) requestDataLocal[rowKey] = {}
+  requestDataLocal[rowKey][colKey] = value
   persistCustomCells()
 }
 
@@ -1785,6 +1842,43 @@ watch(
 .row-selected td { background-color: #fef9c3; }
 
 /* ================================================================
+   GRAND TOTAL ROW
+   ================================================================ */
+.grand-total-row td {
+  background: #e5e7eb !important;
+  font-weight: 800;
+  border-color: #7f7f7f !important;
+  height: 32px;
+}
+
+.grand-total-spacer-cell {
+  background: #e5e7eb !important;
+}
+
+/* "TOTAL" label sits under the Unit Price column */
+.grand-total-label-cell {
+  background: #e5e7eb !important;
+  text-align: center !important;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: #111827;
+  font-size: 12.5px;
+  padding: 6px 4px !important;
+}
+
+.grand-total-value-cell {
+  background: #e5e7eb !important;
+  text-align: center !important;
+}
+
+.grand-total-value {
+  font-weight: 900;
+  font-size: 13.5px;
+  color: #111827;
+  letter-spacing: 0.3px;
+}
+
+/* ================================================================
    EDITABLE / COMPUTED CELLS
    ================================================================ */
 .custom-cell { padding: 2px !important; }
@@ -2124,7 +2218,8 @@ watch(
 
   .gray-label,
   .block-header,
-  .items-table th {
+  .items-table th,
+  .grand-total-row td {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -2134,6 +2229,18 @@ watch(
     color: #000000 !important;
     font-size: 12px !important;
     padding: 8px 5px !important;
+  }
+
+  .grand-total-row td {
+    background-color: #dcdcdc !important;
+    color: #000000 !important;
+  }
+
+  .grand-total-label-cell,
+  .grand-total-value {
+    font-weight: 900 !important;
+    font-size: 12px !important;
+    color: #000000 !important;
   }
 
   .gray-label,
@@ -2260,5 +2367,8 @@ watch(
   .column-manager-add { flex-direction: column; align-items: stretch; }
   .column-manager-select,
   .column-manager-input { min-width: 0; width: 100%; }
+
+  .grand-total-row td { font-size: 10px !important; height: 24px !important; }
+  .grand-total-value { font-size: 11px !important; }
 }
 </style>
