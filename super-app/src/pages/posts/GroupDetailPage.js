@@ -9,6 +9,7 @@ import {
   TextInput,
   ScrollView,
   Modal,
+  KeyboardAvoidingView,
   Platform,
   BackHandler,
   Image,
@@ -18,6 +19,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
@@ -30,7 +32,6 @@ import api from '../../stores/interceptor';
 import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
 import mobilePostsPostService from '../../stores/mobilePostsPostService';
 
-// ✅ Socket.IO — real-time updates
 import {
   joinGroupRoom,
   leaveGroupRoom,
@@ -72,8 +73,6 @@ const POST_FILTERS = [
 
 const CARD_IMAGE_HEIGHT = 180;
 const SCREEN = Dimensions.get('window');
-
-// ✅ Pagination: load 10 posts per request
 const POSTS_PER_PAGE = 10;
 
 const PEN_COLORS = ['#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#111827', '#FFFFFF'];
@@ -283,7 +282,6 @@ function AnnotationScreen({
   const [saving, setSaving] = useState(false);
   const [penColor, setPenColor] = useState('#EF4444');
   const [penWidth, setPenWidth] = useState(6);
-
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
@@ -498,9 +496,25 @@ export default function GroupDetailPage({
   cardBg,
   borderColor,
 }) {
-  // ----------------------------------------------------------------
-  // Auth / permissions
-  // ----------------------------------------------------------------
+  // ✅ Adaptive insets — works on every device
+  const insets = useSafeAreaInsets();
+
+  const KEYBOARD_OFFSET = Platform.OS === 'ios'
+    ? 64 + insets.top
+    : 0;
+
+  const BOTTOM_BAR_PADDING = Platform.OS === 'ios'
+    ? Math.max(insets.bottom, 16) + 16
+    : Math.max(insets.bottom, 12) + 16;
+
+  const REVIEW_FOOTER_PADDING = Platform.OS === 'ios'
+    ? Math.max(insets.bottom, 16) + 20
+    : Math.max(insets.bottom, 12) + 20;
+
+  const CREATE_BAR_PADDING = Platform.OS === 'ios'
+    ? Math.max(insets.bottom, 16) + 20
+    : Math.max(insets.bottom, 12) + 20;
+
   const currentUserId = currentUser?.userId;
   const isManager =
     !!currentUser &&
@@ -519,7 +533,6 @@ export default function GroupDetailPage({
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(true);
 
-  // ✅ Pagination
   const [postsLoadingMore, setPostsLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const [postsPage, setPostsPage] = useState({ pending: 1, approved: 1, declined: 1 });
@@ -558,31 +571,17 @@ export default function GroupDetailPage({
   const [annotVisible, setAnnotVisible] = useState(false);
   const [annotTarget, setAnnotTarget] = useState(null);
 
+  // Comment composer
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
-  const [isComposing, setIsComposing] = useState(false);
   const commentInputRef = useRef(null);
 
-  // ✅ Comment edit/delete state
+  // Comment edit / delete
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
-  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editCommentSubmitting, setEditCommentSubmitting] = useState(false);
   const [confirmDeleteComment, setConfirmDeleteComment] = useState(null);
   const [deleteCommentSubmitting, setDeleteCommentSubmitting] = useState(false);
-
-  // ✅ Swipe-to-reveal bookkeeping
-  const swipeableRefs = useRef(new Map());
-  const openSwipeIdRef = useRef(null);
-  const editInputRef = useRef(null);
-
-  const closeAllSwipes = useCallback((exceptId = null) => {
-    swipeableRefs.current.forEach((ref, id) => {
-      if (String(id) !== String(exceptId)) {
-        try { ref?.close?.(); } catch (e) { /* noop */ }
-      }
-    });
-    openSwipeIdRef.current = exceptId;
-  }, []);
 
   const myMembership = members.find((m) => Number(m.userId) === Number(currentUserId));
   const canCreatePost = !!myMembership && myMembership.status === 'active';
@@ -657,12 +656,10 @@ export default function GroupDetailPage({
     }
   }, [group?.id]);
 
-  // Members once per group
   useEffect(() => {
     if (group?.id) loadMembers();
   }, [group?.id, loadMembers]);
 
-  // Posts page 1 whenever group OR filter changes
   useEffect(() => {
     if (!group?.id) return;
     setPosts([]);
@@ -673,7 +670,6 @@ export default function GroupDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group?.id, postFilter]);
 
-  // Infinite-scroll trigger
   const loadMorePosts = useCallback(() => {
     if (loadingMoreRef.current) return;
     if (postsLoading || postsLoadingMore) return;
@@ -693,7 +689,7 @@ export default function GroupDetailPage({
     loadPosts,
   ]);
 
-  // ✅ Live socket — join group room + subscribe to events
+  // Socket.IO
   useEffect(() => {
     if (!group?.id) return;
 
@@ -801,7 +797,6 @@ export default function GroupDetailPage({
     };
   }, [group?.id]);
 
-  // Join post room when a post is opened
   useEffect(() => {
     if (!selectedPostId) return;
     joinPostRoom(selectedPostId);
@@ -810,31 +805,24 @@ export default function GroupDetailPage({
     };
   }, [selectedPostId]);
 
-  // Reset composer + edit state when switching posts
   useEffect(() => {
     setCommentText('');
-    setIsComposing(false);
     setEditingCommentId(null);
     setEditCommentText('');
     setConfirmDeleteComment(null);
-    swipeableRefs.current.clear();
-    openSwipeIdRef.current = null;
   }, [selectedPostId]);
 
-  // ----------------------------------------------------------------
   // Hardware back
-  // ----------------------------------------------------------------
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (annotVisible) { closeAnnotation(); return true; }
       if (viewerVisible) { setViewerVisible(false); return true; }
       if (confirmDeleteComment) { setConfirmDeleteComment(null); return true; }
       if (editingCommentId) { cancelEditComment(); return true; }
-      if (openSwipeIdRef.current) { closeAllSwipes(null); return true; }
       if (reviewPage) { cancelReviewPage(); return true; }
       if (confirmDeletePost) { setConfirmDeletePost(null); return true; }
       if (selectedPostId) { setSelectedPostId(null); return true; }
-      if (showCreatePost) { setShowCreatePost(false); return true; }
+      if (showCreatePost) { cancelCreatePost(); return true; }
       if (page !== 'posts') { setPage('posts'); return true; }
       onBack?.();
       return true;
@@ -843,9 +831,7 @@ export default function GroupDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotVisible, viewerVisible, confirmDeleteComment, editingCommentId, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack]);
 
-  // ----------------------------------------------------------------
   // Derived
-  // ----------------------------------------------------------------
   const postCounts = useMemo(() => ({
     pending:  postsTotals.pending  ?? 0,
     approved: postsTotals.approved ?? 0,
@@ -876,9 +862,7 @@ export default function GroupDetailPage({
     [posts, selectedPostId]
   );
 
-  // ----------------------------------------------------------------
   // Image viewer / annotation
-  // ----------------------------------------------------------------
   const openImageViewer = (uri) => { setViewerUri(uri); setViewerVisible(true); };
   const closeImageViewer = () => setViewerVisible(false);
 
@@ -920,9 +904,7 @@ export default function GroupDetailPage({
     }
   };
 
-  // ----------------------------------------------------------------
   // Post actions
-  // ----------------------------------------------------------------
   const pickImages = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1051,6 +1033,8 @@ export default function GroupDetailPage({
 
   const submitComment = async () => {
     if (!selectedPost) return;
+    // ✅ Comments disabled once approved or declined
+    if (selectedPost.status !== 'pending') return;
     const text = commentText.trim();
     if (!text) return;
 
@@ -1081,7 +1065,7 @@ export default function GroupDetailPage({
           })
         );
         setCommentText('');
-        setIsComposing(false);
+        commentInputRef.current?.focus();
       } else {
         Alert.alert('Error', res.error || 'Could not post comment');
       }
@@ -1092,45 +1076,26 @@ export default function GroupDetailPage({
     }
   };
 
-  const openComposer = () => {
-    setIsComposing(true);
-    setTimeout(() => commentInputRef.current?.focus(), 120);
+  // Comment edit
+  const startEditComment = (c) => {
+    setEditingCommentId(c.id);
+    setEditCommentText(c.body || '');
   };
 
-  const closeComposer = () => {
-    setIsComposing(false);
-  };
-
-  // ✅ Comment permission helper
-  const canEditComment = (c) =>
-    String(c.authorId) === String(currentUserId);
-
-  const canDeleteComment = (c) =>
-    String(c.authorId) === String(currentUserId) ||
-    isManager ||
-    isGroupAdmin;
-
-  // ✅ Comment edit/delete handlers (swipe-driven)
   const cancelEditComment = () => {
     setEditingCommentId(null);
     setEditCommentText('');
   };
 
-  // ✅ Bulletproof comment edit: always merge locally, regardless of response shape.
   const submitEditComment = async () => {
     if (!selectedPost || !editingCommentId) return;
-
     const text = editCommentText.trim();
-    if (!text) {
-      Alert.alert('Empty', 'Comment cannot be empty.');
-      return;
-    }
+    if (!text) return;
 
-    // Capture ids BEFORE the await so we don't rely on stale closures
     const targetCommentId = editingCommentId;
     const targetPostId = selectedPost.id;
 
-    setEditSubmitting(true);
+    setEditCommentSubmitting(true);
     try {
       const res = await mobilePostsPostService.editComment(
         targetPostId,
@@ -1138,26 +1103,21 @@ export default function GroupDetailPage({
         text
       );
 
-      // Only bail if server explicitly says it failed
       if (res && res.success === false) {
         Alert.alert('Error', res.error || 'Could not edit comment');
         return;
       }
 
-      // Best-effort: try to read the dto out of whatever shape came back
       const dto =
         (res && res.data && typeof res.data === 'object' && res.data) ||
         (res && res.comment && typeof res.comment === 'object' && res.comment) ||
         {};
 
-      const mergedBody = typeof dto.body === 'string' && dto.body.length > 0
-        ? dto.body
-        : text;
-
+      const mergedBody =
+        typeof dto.body === 'string' && dto.body.length > 0 ? dto.body : text;
       const mergedEditedAt =
         dto.editedAt || dto.edited_at || new Date().toISOString();
 
-      // Always apply the update locally so the UI reflects it immediately
       setPosts((prev) =>
         prev.map((p) => {
           if (String(p.id) !== String(targetPostId)) return p;
@@ -1165,29 +1125,22 @@ export default function GroupDetailPage({
             ...p,
             comments: (p.comments || []).map((c) =>
               String(c.id) === String(targetCommentId)
-                ? {
-                    ...c,
-                    ...dto,
-                    id: c.id,                 // never let the server change the local id
-                    body: mergedBody,
-                    editedAt: mergedEditedAt,
-                  }
+                ? { ...c, ...dto, id: c.id, body: mergedBody, editedAt: mergedEditedAt }
                 : c
             ),
           };
         })
       );
 
-      // Close editor
-      setEditingCommentId(null);
-      setEditCommentText('');
+      cancelEditComment();
     } catch (e) {
       Alert.alert('Error', e?.message || 'Could not edit comment');
     } finally {
-      setEditSubmitting(false);
+      setEditCommentSubmitting(false);
     }
   };
 
+  // Comment delete
   const applyDeleteComment = async () => {
     const target = confirmDeleteComment;
     if (!target || !selectedPost) return;
@@ -1211,7 +1164,6 @@ export default function GroupDetailPage({
             };
           })
         );
-        swipeableRefs.current.delete(target.id);
         setConfirmDeleteComment(null);
       } else {
         Alert.alert('Error', res.error || 'Could not delete comment');
@@ -1290,9 +1242,7 @@ export default function GroupDetailPage({
     setReviewError(null);
   };
 
-  // ----------------------------------------------------------------
   // Renderers
-  // ----------------------------------------------------------------
   const renderPostMedia = (p) => {
     const images = p.images || [];
     const total = images.length;
@@ -1337,12 +1287,14 @@ export default function GroupDetailPage({
     );
   };
 
+  // ✅ Post card — NO swipe actions, just a plain tappable card
   const renderPost = ({ item: p }) => {
     const cfg = postStatusConfig(p.status, darkMode);
     const commentCount =
       Array.isArray(p.comments) && p.comments.length > 0
         ? p.comments.length
         : (Number(p.commentCount) || 0);
+
     return (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -1350,6 +1302,7 @@ export default function GroupDetailPage({
         style={[styles.postCard, {
           backgroundColor: cardBg,
           borderColor: p.unread ? (darkMode ? '#1E40AF' : '#BFDBFE') : borderColor,
+          marginBottom: 10,
         }]}
       >
         {p.unread && <View style={[styles.unreadDot, { backgroundColor: '#3B82F6' }]} />}
@@ -1381,55 +1334,41 @@ export default function GroupDetailPage({
     );
   };
 
-  // ✅ Comment renderer with SWIPE-TO-REVEAL + compact inline edit (input + send icon)
   const renderComment = ({ item: c }) => {
     const member = members.find((m) => Number(m.userId) === Number(c.authorId));
     const memberColor = member?.color || '#8B5CF6';
-    const memberInitials =
-      member?.initials || (c.author || '?').slice(0, 2).toUpperCase();
+    const memberInitials = member?.initials || (c.author || '?').slice(0, 2).toUpperCase();
 
-    const isEditing = String(editingCommentId) === String(c.id);
-    const wasEdited = !!c.editedAt;
-    const canEdit = canEditComment(c);
-    const canDelete = canDeleteComment(c);
+    const isMine = String(c.authorId) === String(currentUserId);
+    const canEdit = isMine;
+    const canDelete = isMine || isManager || isGroupAdmin;
     const canSwipe = canEdit || canDelete;
+    const isEditing = String(editingCommentId) === String(c.id);
 
-    // ---- Inline edit mode: input + round send icon on the right ----
     if (isEditing) {
-      const canSave = !!editCommentText.trim() && !editSubmitting;
+      const canSave = !!editCommentText.trim() && !editCommentSubmitting;
 
       return (
-        <View
-          style={[
-            styles.commentEditRow,
-            { backgroundColor: cardBg, borderColor },
-          ]}
-        >
+        <View style={[styles.commentEditRow, { backgroundColor: cardBg, borderColor }]}>
           <View style={[styles.avatarSmall, { backgroundColor: memberColor }]}>
             <Text style={styles.avatarSmallText}>{memberInitials}</Text>
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.commentHeaderRow}>
-              <Text
-                style={[styles.commentAuthor, { color: textColor }]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.commentAuthor, { color: textColor }]} numberOfLines={1}>
                 {c.author}
               </Text>
-              <Text style={[styles.commentTime, { color: subTextColor }]}>
-                · editing…
-              </Text>
+              <Text style={[styles.commentTime, { color: subTextColor }]}>· editing…</Text>
             </View>
 
             <View style={styles.commentEditInputRow}>
               <TextInput
-                ref={editInputRef}
                 value={editCommentText}
                 onChangeText={setEditCommentText}
                 multiline
                 autoFocus
-                editable={!editSubmitting}
+                editable={!editCommentSubmitting}
                 textAlignVertical="top"
                 style={[
                   styles.commentEditInputInline,
@@ -1454,7 +1393,7 @@ export default function GroupDetailPage({
                   },
                 ]}
               >
-                {editSubmitting ? (
+                {editCommentSubmitting ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <Text
@@ -1473,75 +1412,11 @@ export default function GroupDetailPage({
       );
     }
 
-    // ---- Right-hand action panel (revealed on swipe-left) ----
-    const renderRightActions = (progress, dragX) => {
-      const translateX = dragX.interpolate({
-        inputRange: [-160, 0],
-        outputRange: [0, 160],
-        extrapolate: 'clamp',
-      });
-
-      const actionWidth = 74;
-
-      return (
-        <Animated.View
-          style={[
-            styles.swipeActionsWrap,
-            { transform: [{ translateX }] },
-          ]}
-        >
-          {canEdit && (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                const ref = swipeableRefs.current.get(c.id);
-                try { ref?.close?.(); } catch (e) { /* noop */ }
-                openSwipeIdRef.current = null;
-                setEditingCommentId(c.id);
-                setEditCommentText(c.body || '');
-              }}
-              style={[
-                styles.swipeActionBtn,
-                { width: actionWidth, backgroundColor: '#3B82F6' },
-              ]}
-            >
-              <Text style={styles.swipeActionIcon}>✎</Text>
-              <Text style={styles.swipeActionLabel}>Edit</Text>
-            </TouchableOpacity>
-          )}
-
-          {canDelete && (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                const ref = swipeableRefs.current.get(c.id);
-                try { ref?.close?.(); } catch (e) { /* noop */ }
-                openSwipeIdRef.current = null;
-                setConfirmDeleteComment(c);
-              }}
-              style={[
-                styles.swipeActionBtn,
-                { width: actionWidth, backgroundColor: '#EF4444' },
-              ]}
-            >
-              <Text style={styles.swipeActionIcon}>🗑️</Text>
-              <Text style={styles.swipeActionLabel}>Delete</Text>
-            </TouchableOpacity>
-          )}
-        </Animated.View>
-      );
-    };
-
-    // ---- The comment row content ----
     const commentContent = (
       <View
         style={[
           styles.commentRow,
-          {
-            backgroundColor: cardBg,
-            borderColor,
-            marginBottom: 0,
-          },
+          { backgroundColor: cardBg, borderColor, marginBottom: 0 },
         ]}
       >
         <View style={[styles.avatarSmall, { backgroundColor: memberColor }]}>
@@ -1549,20 +1424,12 @@ export default function GroupDetailPage({
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.commentHeaderRow}>
-            <Text
-              style={[styles.commentAuthor, { color: textColor }]}
-              numberOfLines={1}
-            >
-              {c.author}
-            </Text>
+            <Text style={[styles.commentAuthor, { color: textColor }]} numberOfLines={1}>{c.author}</Text>
             <Text style={[styles.commentTime, { color: subTextColor }]}>
-              · {fmtTimeAgo(c.createdAt)}
-              {wasEdited ? ' · edited' : ''}
+              · {fmtTimeAgo(c.createdAt)}{c.editedAt ? ' · edited' : ''}
             </Text>
           </View>
-          <Text style={[styles.commentBody, { color: textColor }]}>
-            {c.body}
-          </Text>
+          <Text style={[styles.commentBody, { color: textColor }]}>{c.body}</Text>
         </View>
       </View>
     );
@@ -1571,25 +1438,39 @@ export default function GroupDetailPage({
       return <View style={{ marginBottom: 8 }}>{commentContent}</View>;
     }
 
+    const renderRightActions = () => (
+      <View style={styles.swipeActionsWrap}>
+        {canEdit && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => startEditComment(c)}
+            style={[styles.swipeActionBtn, { backgroundColor: '#3B82F6' }]}
+          >
+            <Text style={styles.swipeActionIcon}>✎</Text>
+            <Text style={styles.swipeActionLabel}>Edit</Text>
+          </TouchableOpacity>
+        )}
+
+        {canDelete && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setConfirmDeleteComment(c)}
+            style={[styles.swipeActionBtn, { backgroundColor: '#EF4444' }]}
+          >
+            <Text style={styles.swipeActionIcon}>🗑️</Text>
+            <Text style={styles.swipeActionLabel}>Delete</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+
     return (
       <View style={{ marginBottom: 8, borderRadius: 12, overflow: 'hidden' }}>
         <Swipeable
-          ref={(ref) => {
-            if (ref) swipeableRefs.current.set(c.id, ref);
-            else swipeableRefs.current.delete(c.id);
-          }}
           renderRightActions={renderRightActions}
           rightThreshold={40}
           overshootRight={false}
           friction={2}
-          onSwipeableWillOpen={() => {
-            closeAllSwipes(c.id);
-          }}
-          onSwipeableWillClose={() => {
-            if (String(openSwipeIdRef.current) === String(c.id)) {
-              openSwipeIdRef.current = null;
-            }
-          }}
         >
           {commentContent}
         </Swipeable>
@@ -1646,144 +1527,178 @@ export default function GroupDetailPage({
   // ================================================================
   if (showCreatePost) {
     return (
-      <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
-        <View style={styles.headerBar}>
-          <TouchableOpacity
-            onPress={cancelCreatePost}
-            hitSlop={10}
-            activeOpacity={0.7}
-            style={styles.backBtn}
-          >
-            <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
-          </TouchableOpacity>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={KEYBOARD_OFFSET}
+      >
+        <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
+          <View style={styles.headerBar}>
+            <TouchableOpacity
+              onPress={cancelCreatePost}
+              hitSlop={10}
+              activeOpacity={0.7}
+              style={styles.backBtn}
+            >
+              <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
+            </TouchableOpacity>
 
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>New Post</Text>
-            <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-              In {group?.name}
-            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.headerTitle, { color: textColor }]}>New Post</Text>
+              <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
+                In {group?.name}
+              </Text>
+            </View>
           </View>
 
-          <TouchableOpacity
-            onPress={submitPost}
-            activeOpacity={0.85}
-            disabled={submittingPost}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.createPostContent}
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.fieldLabel, { color: subTextColor }]}>TITLE</Text>
+            <TextInput
+              value={newPostTitle}
+              onChangeText={(v) => { setNewPostTitle(v); setPostError(null); }}
+              placeholder="What's this about?"
+              placeholderTextColor={subTextColor}
+              editable={!submittingPost}
+              autoFocus
+              style={[styles.input, {
+                color: textColor,
+                backgroundColor: cardBg,
+                borderColor: postError ? '#EF4444' : borderColor,
+              }]}
+            />
+
+            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>BODY</Text>
+            <TextInput
+              value={newPostBody}
+              onChangeText={setNewPostBody}
+              placeholder="Write your post…"
+              placeholderTextColor={subTextColor}
+              multiline
+              numberOfLines={6}
+              editable={!submittingPost}
+              style={[styles.input, styles.textarea, {
+                color: textColor,
+                backgroundColor: cardBg,
+                borderColor,
+              }]}
+            />
+
+            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>
+              MEDIA ({newPostImages.length})
+            </Text>
+
+            <TouchableOpacity
+              onPress={pickImages}
+              activeOpacity={0.85}
+              disabled={submittingPost}
+              style={[styles.uploadZone, {
+                backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                borderColor: '#8B5CF6',
+              }]}
+            >
+              <View style={styles.uploadIconWrap}>
+                <Text style={styles.uploadIcon}>🖼️</Text>
+              </View>
+              <Text style={[styles.uploadTitle, { color: textColor }]}>
+                Add photos
+              </Text>
+              <Text style={[styles.uploadSub, { color: subTextColor }]}>
+                Tap to choose from your library · up to 10
+              </Text>
+            </TouchableOpacity>
+
+            {newPostImages.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 14 }}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {newPostImages.map((uri, i) => (
+                  <View key={`new-img-${i}`} style={styles.attachmentPreviewWrap}>
+                    <Image source={{ uri }} style={styles.attachmentPreview} />
+                    <TouchableOpacity
+                      onPress={() => removeImageAt(i)}
+                      style={styles.attachmentRemoveBtn}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.attachmentRemoveText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={[styles.pendingInfoBox, {
+              backgroundColor: darkMode ? '#422006' : '#FEF3C7',
+              borderColor: darkMode ? '#78350F' : '#FDE68A',
+            }]}>
+              <Text style={[styles.pendingInfoText, { color: darkMode ? '#FCD34D' : '#92400E' }]}>
+                ⏳ Your post will be submitted as <Text style={{ fontWeight: '900' }}>Pending</Text> and needs review before it's approved.
+              </Text>
+            </View>
+
+            {postError && (
+              <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>
+                {postError}
+              </Text>
+            )}
+
+            <View style={{ height: 20 }} />
+          </ScrollView>
+
+          <View
             style={[
-              styles.headerActionBtn,
+              styles.createActionsBar,
               {
-                backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
+                backgroundColor: darkMode ? '#0B1220' : '#F8FAFC',
+                borderTopColor: darkMode ? '#1E293B' : '#E2E8F0',
+                paddingBottom: CREATE_BAR_PADDING,
               },
             ]}
           >
-            {submittingPost ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.headerActionText}>Post</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.createPostContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[styles.fieldLabel, { color: subTextColor }]}>TITLE</Text>
-          <TextInput
-            value={newPostTitle}
-            onChangeText={(v) => { setNewPostTitle(v); setPostError(null); }}
-            placeholder="What's this about?"
-            placeholderTextColor={subTextColor}
-            editable={!submittingPost}
-            autoFocus
-            style={[styles.input, {
-              color: textColor,
-              backgroundColor: cardBg,
-              borderColor: postError ? '#EF4444' : borderColor,
-            }]}
-          />
-
-          <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>BODY</Text>
-          <TextInput
-            value={newPostBody}
-            onChangeText={setNewPostBody}
-            placeholder="Write your post…"
-            placeholderTextColor={subTextColor}
-            multiline
-            numberOfLines={6}
-            editable={!submittingPost}
-            style={[styles.input, styles.textarea, {
-              color: textColor,
-              backgroundColor: cardBg,
-              borderColor,
-            }]}
-          />
-
-          <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>
-            MEDIA ({newPostImages.length})
-          </Text>
-
-          <TouchableOpacity
-            onPress={pickImages}
-            activeOpacity={0.85}
-            disabled={submittingPost}
-            style={[styles.uploadZone, {
-              backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
-              borderColor: '#8B5CF6',
-            }]}
-          >
-            <View style={styles.uploadIconWrap}>
-              <Text style={styles.uploadIcon}>🖼️</Text>
-            </View>
-            <Text style={[styles.uploadTitle, { color: textColor }]}>
-              Add photos
-            </Text>
-            <Text style={[styles.uploadSub, { color: subTextColor }]}>
-              Tap to choose from your library · up to 10
-            </Text>
-          </TouchableOpacity>
-
-          {newPostImages.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 14 }}
-              contentContainerStyle={{ gap: 10 }}
+            <TouchableOpacity
+              onPress={cancelCreatePost}
+              activeOpacity={0.85}
+              disabled={submittingPost}
+              style={[
+                styles.createCancelBtn,
+                {
+                  backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                  borderColor,
+                },
+              ]}
             >
-              {newPostImages.map((uri, i) => (
-                <View key={`new-img-${i}`} style={styles.attachmentPreviewWrap}>
-                  <Image source={{ uri }} style={styles.attachmentPreview} />
-                  <TouchableOpacity
-                    onPress={() => removeImageAt(i)}
-                    style={styles.attachmentRemoveBtn}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.attachmentRemoveText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          )}
+              <Text style={[styles.createCancelBtnText, { color: textColor }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
 
-          <View style={[styles.pendingInfoBox, {
-            backgroundColor: darkMode ? '#422006' : '#FEF3C7',
-            borderColor: darkMode ? '#78350F' : '#FDE68A',
-          }]}>
-            <Text style={[styles.pendingInfoText, { color: darkMode ? '#FCD34D' : '#92400E' }]}>
-              ⏳ Your post will be submitted as <Text style={{ fontWeight: '900' }}>Pending</Text> and needs review before it's approved.
-            </Text>
+            <TouchableOpacity
+              onPress={submitPost}
+              activeOpacity={0.85}
+              disabled={submittingPost}
+              style={[
+                styles.createPostBtn,
+                {
+                  backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
+                },
+              ]}
+            >
+              {submittingPost ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={styles.createPostBtnText}>Post</Text>
+              )}
+            </TouchableOpacity>
           </View>
-
-          {postError && (
-            <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>
-              {postError}
-            </Text>
-          )}
-
-          <View style={{ height: 60 }} />
-        </ScrollView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -1800,7 +1715,11 @@ export default function GroupDetailPage({
     const canSubmit = reviewNote.trim() && !reviewSubmitting;
 
     return (
-      <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={KEYBOARD_OFFSET}
+      >
         <View style={styles.headerBar}>
           <TouchableOpacity onPress={cancelReviewPage} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
             <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
@@ -1813,34 +1732,9 @@ export default function GroupDetailPage({
               {fmtPostNumber(post.id)} · in {group?.name}
             </Text>
           </View>
-
-          <TouchableOpacity
-            onPress={applyReviewPage}
-            activeOpacity={0.9}
-            disabled={!canSubmit}
-            style={[
-              styles.headerActionBtn,
-              {
-                backgroundColor: canSubmit ? accent : '#94A3B8',
-              },
-            ]}
-          >
-            {reviewSubmitting ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.headerActionText}>
-                {isApprove ? 'Approve' : 'Decline'}
-              </Text>
-            )}
-          </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.reviewPageContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={styles.reviewPageContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="always">
           <View style={[styles.reviewPostCard, { backgroundColor: cardBg, borderColor }]}>
             <Text style={[styles.reviewPostTitle, { color: textColor }]}>{post.title}</Text>
             {post.body ? <Text style={[styles.reviewPostBody, { color: subTextColor }]}>{post.body}</Text> : null}
@@ -1889,10 +1783,41 @@ export default function GroupDetailPage({
                 : '✕ Your reason will be saved on the post and visible to everyone.'}
             </Text>
           </View>
-
-          <View style={{ height: 60 }} />
         </ScrollView>
-      </View>
+
+        <View style={[styles.reviewFooter, {
+          backgroundColor: darkMode ? '#0B1220' : '#FFFFFF',
+          borderTopColor: borderColor,
+          paddingBottom: REVIEW_FOOTER_PADDING,
+        }]}>
+          <TouchableOpacity
+            onPress={cancelReviewPage}
+            activeOpacity={0.85}
+            disabled={reviewSubmitting}
+            style={[styles.reviewFooterBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
+          >
+            <Text style={[styles.reviewFooterBtnText, { color: textColor }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={applyReviewPage}
+            activeOpacity={0.9}
+            disabled={!canSubmit}
+            style={[styles.reviewFooterBtn, {
+              backgroundColor: canSubmit ? accent : '#94A3B8',
+              borderColor: canSubmit ? accent : '#94A3B8',
+              flex: 1.4,
+            }]}
+          >
+            {reviewSubmitting ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={[styles.reviewFooterBtnText, { color: '#FFFFFF' }]}>
+                {isApprove ? '✓ Approve & save' : '✕ Decline & save'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -1911,20 +1836,26 @@ export default function GroupDetailPage({
     const comments = p.comments || [];
     const num = fmtPostNumber(p.id);
 
-    const ageMs = Date.now() - new Date(p.createdAt).getTime();
-    const withinWindow = ageMs < 5 * 60 * 1000;
-    const canDelete = isManager || isGroupAdmin || (Number(p.authorId) === Number(currentUserId) && withinWindow);
+    const isMine = Number(p.authorId) === Number(currentUserId);
+    const canDelete = isManager || isGroupAdmin || isMine;
 
-    const commentsBoxHeight = Math.max(160, Math.min(400, comments.length * 96 + 12));
+    // ✅ Only allow commenting on pending posts
+    const canComment = isPending;
 
     return (
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={KEYBOARD_OFFSET}
+      >
         <View style={styles.headerBar}>
           <TouchableOpacity onPress={() => setSelectedPostId(null)} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
             <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>Post {num}</Text>
+            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
+              Post {num}
+            </Text>
             <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>In {group?.name}</Text>
           </View>
           {canDelete && (
@@ -1940,11 +1871,9 @@ export default function GroupDetailPage({
         </View>
 
         <ScrollView
-          style={{ flex: 1 }}
           contentContainerStyle={styles.detailPageContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
+          keyboardShouldPersistTaps="always"
         >
           <View style={styles.detailTopRow}>
             <View style={[styles.postStatusPill, { backgroundColor: cfg.bg }]}>
@@ -1974,7 +1903,7 @@ export default function GroupDetailPage({
           {images.length > 0 && (
             <View style={styles.galleryWrap}>
               {images.map((uri, i) => (
-                <View key={`gallery-${p.id}-${i}`} style={{ marginBottom: 10, position: 'relative' }}>
+                <View key={`img-${i}`} style={{ marginBottom: 10, position: 'relative' }}>
                   <TouchableOpacity activeOpacity={0.9} onPress={() => openImageViewer(uri)}>
                     <Image
                       source={{ uri }}
@@ -2006,124 +1935,34 @@ export default function GroupDetailPage({
           <View style={[styles.commentsSection, { borderTopColor: darkMode ? '#334155' : '#F1F5F9' }]}>
             <View style={styles.commentsHeaderRow}>
               <Text style={[styles.commentsHeader, { color: textColor }]}>Comments</Text>
-              <View style={styles.commentsHeaderRight}>
-                <Text style={[styles.commentsSub, { color: subTextColor }]}>{comments.length} total</Text>
-                {!isComposing && !editingCommentId && (
-                  <TouchableOpacity
-                    onPress={openComposer}
-                    activeOpacity={0.85}
-                    style={[
-                      styles.composeBtn,
-                      {
-                        backgroundColor: darkMode ? '#312E81' : '#EEF2FF',
-                        borderColor: darkMode ? '#4338CA' : '#C7D2FE',
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.composeBtnIcon, { color: darkMode ? '#C7D2FE' : '#4338CA' }]}>✎</Text>
-                    <Text style={[styles.composeBtnText, { color: darkMode ? '#C7D2FE' : '#4338CA' }]}>
-                      Write
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <Text style={[styles.commentsSub, { color: subTextColor }]}>{comments.length} total</Text>
             </View>
-
-            {isComposing && (
-              <View style={[styles.inlineCommentBar, {
-                backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
-                borderColor,
-              }]}>
-                <View style={[styles.inlineCommentAvatar, { backgroundColor: '#8B5CF6' }]}>
-                  <Text style={styles.inlineCommentAvatarText}>
-                    {(currentUser?.name || 'ME').slice(0, 2).toUpperCase()}
-                  </Text>
-                </View>
-
-                <TextInput
-                  ref={commentInputRef}
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  placeholder="Write a comment…"
-                  placeholderTextColor={subTextColor}
-                  editable={!submittingComment}
-                  style={[styles.inlineCommentInput, { color: textColor }]}
-                  multiline
-                  numberOfLines={3}
-                  autoFocus
-                />
-
-                <TouchableOpacity
-                  onPress={closeComposer}
-                  disabled={submittingComment}
-                  activeOpacity={0.85}
-                  style={[styles.inlineCommentCancelBtn, {
-                    backgroundColor: darkMode ? '#1E293B' : '#E2E8F0',
-                  }]}
-                >
-                  <Text style={[styles.inlineCommentCancelText, {
-                    color: darkMode ? '#94A3B8' : '#64748B',
-                  }]}>✕</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={submitComment}
-                  disabled={!commentText.trim() || submittingComment}
-                  activeOpacity={0.85}
-                  style={[styles.inlineCommentSendBtn, {
-                    backgroundColor: commentText.trim() && !submittingComment
-                      ? '#8B5CF6'
-                      : (darkMode ? '#1E293B' : '#E2E8F0'),
-                  }]}
-                >
-                  {submittingComment ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
-                    <Text style={[styles.inlineCommentSendText, {
-                      color: commentText.trim() ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8'),
-                    }]}>➤</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
 
             {comments.length === 0 ? (
               <View style={styles.commentsEmptyBox}>
                 <Text style={styles.commentsEmptyEmoji}>💬</Text>
                 <Text style={[styles.commentsEmptyTitle, { color: textColor }]}>No comments yet</Text>
                 <Text style={[styles.commentsEmptyBody, { color: subTextColor }]}>
-                  {isComposing
-                    ? 'Write the first comment above.'
-                    : 'Swipe a comment left to edit or delete it.'}
+                  {canComment
+                    ? 'Be the first to share your thoughts.'
+                    : 'Comments are closed.'}
                 </Text>
               </View>
             ) : (
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <ScrollView
-                  style={[
-                    styles.commentsScrollBox,
-                    {
-                      height: commentsBoxHeight,
-                      borderColor: darkMode ? '#334155' : '#E2E8F0',
-                      backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
-                    },
-                  ]}
-                  contentContainerStyle={styles.commentsScrollContent}
-                  nestedScrollEnabled
-                  showsVerticalScrollIndicator
-                  keyboardShouldPersistTaps="handled"
-                  onScrollBeginDrag={() => closeAllSwipes(null)}
-                >
-                  {comments
-                    .slice()
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .map((c) => (
-                      <React.Fragment key={`comment-${c.id}`}>
-                        {renderComment({ item: c })}
-                      </React.Fragment>
-                    ))}
-                </ScrollView>
-              </GestureHandlerRootView>
+              <ScrollView
+                style={[
+                  styles.commentsScroll,
+                  { height: Math.max(120, Math.min(300, comments.length * 90)) },
+                ]}
+                contentContainerStyle={styles.commentsScrollContent}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="always"
+              >
+                {comments.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((c) => (
+                  <React.Fragment key={c.id}>{renderComment({ item: c })}</React.Fragment>
+                ))}
+              </ScrollView>
             )}
           </View>
 
@@ -2176,6 +2015,7 @@ export default function GroupDetailPage({
                 }]}>
                   {isApproved ? '✓ MANAGER NOTE' : '✕ MANAGER NOTE'}
                 </Text>
+                {p.reviewedBy && <Text style={[styles.reviewNoteMeta, { color: subTextColor }]}>— {p.reviewedBy}</Text>}
               </View>
               <Text style={[styles.reviewNoteBody, { color: textColor }]}>{p.reviewNote}</Text>
             </View>
@@ -2200,12 +2040,99 @@ export default function GroupDetailPage({
             </View>
           )}
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 60 }} />
         </ScrollView>
+
+        {/* ✅ Comment composer — only for pending posts */}
+        {canComment ? (
+          <View
+            style={[
+              styles.commentBar,
+              {
+                backgroundColor: cardBg,
+                borderTopColor: borderColor,
+                paddingBottom: BOTTOM_BAR_PADDING,
+              },
+            ]}
+          >
+            <View style={[styles.commentBarAvatar, { backgroundColor: '#8B5CF6' }]}>
+              <Text style={styles.commentBarAvatarText}>
+                {(currentUser?.name || 'ME').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+
+            <TextInput
+              ref={commentInputRef}
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Write a comment…"
+              placeholderTextColor={subTextColor}
+              editable={!submittingComment}
+              style={[
+                styles.commentBarInput,
+                {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
+                },
+              ]}
+              multiline
+              numberOfLines={4}
+            />
+
+            <TouchableOpacity
+              onPress={submitComment}
+              disabled={!commentText.trim() || submittingComment}
+              activeOpacity={0.85}
+              style={[
+                styles.commentBarSendBtn,
+                {
+                  backgroundColor: commentText.trim() && !submittingComment
+                    ? '#8B5CF6'
+                    : (darkMode ? '#1E293B' : '#E2E8F0'),
+                },
+              ]}
+            >
+              {submittingComment ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text
+                  style={[
+                    styles.commentBarSendText,
+                    {
+                      color: commentText.trim()
+                        ? '#FFFFFF'
+                        : (darkMode ? '#64748B' : '#94A3B8'),
+                    },
+                  ]}
+                >
+                  ➤
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* ✅ Locked comment bar for approved/declined posts */
+          <View
+            style={[
+              styles.commentBarLocked,
+              {
+                backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                borderTopColor: borderColor,
+                paddingBottom: BOTTOM_BAR_PADDING,
+              },
+            ]}
+          >
+            <Text style={[styles.commentBarLockedIcon]}>🔒</Text>
+            <Text style={[styles.commentBarLockedText, { color: subTextColor }]}>
+              {isApproved
+                ? 'Comments are closed on approved posts'
+                : 'Comments are closed on declined posts'}
+            </Text>
+          </View>
+        )}
 
         {renderDeleteModal()}
 
-        {/* Delete comment confirmation */}
         <Modal
           visible={!!confirmDeleteComment}
           transparent
@@ -2262,7 +2189,7 @@ export default function GroupDetailPage({
           cardBg={cardBg}
           borderColor={borderColor}
         />
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -2396,7 +2323,7 @@ export default function GroupDetailPage({
         renderItem={renderPost}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
         onEndReached={loadMorePosts}
         onEndReachedThreshold={0.4}
         ListFooterComponent={
@@ -2468,8 +2395,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   headerBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, gap: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 10,
   },
   backBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   backIcon: { fontSize: 30, fontWeight: '300', marginTop: -6 },
@@ -2479,21 +2410,6 @@ const styles = StyleSheet.create({
   headerIconText: { fontSize: 20, fontWeight: '700' },
   headerDeleteBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   headerDeleteText: { fontSize: 16 },
-
-  headerActionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
-    minWidth: 74,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerActionText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center',
@@ -2524,7 +2440,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  postCard: { borderRadius: 14, borderWidth: 1, marginBottom: 10, overflow: 'hidden', position: 'relative' },
+  postCard: { borderRadius: 14, borderWidth: 1, overflow: 'hidden', position: 'relative' },
   unreadDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, zIndex: 3 },
   postTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   postStatusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
@@ -2553,7 +2469,7 @@ const styles = StyleSheet.create({
   postTime: { fontSize: 11, fontWeight: '500' },
   postStat: { fontSize: 11.5, fontWeight: '600', marginLeft: 10 },
 
-  detailPageContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  detailPageContent: { paddingHorizontal: 16, paddingBottom: 20 },
   detailTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   detailPostNumber: { fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
   detailTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4, lineHeight: 28, marginBottom: 14 },
@@ -2575,104 +2491,88 @@ const styles = StyleSheet.create({
   signImageBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 
   commentsSection: { borderTopWidth: 1, marginTop: 22, paddingTop: 16 },
-  commentsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  commentsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   commentsHeader: { fontSize: 15, fontWeight: '900', letterSpacing: -0.2 },
-  commentsHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   commentsSub: { fontSize: 11.5, fontWeight: '600' },
-
-  composeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  composeBtnIcon: { fontSize: 13, fontWeight: '900' },
-  composeBtnText: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
-
-  inlineCommentBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    padding: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  inlineCommentAvatar: {
-    width: 30, height: 30, borderRadius: 15,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-  },
-  inlineCommentAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 10.5,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-  },
-  inlineCommentInput: {
-    flex: 1,
-    minHeight: 36,
-    maxHeight: 100,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  inlineCommentSendBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 2,
-  },
-  inlineCommentSendText: {
-    fontSize: 14,
-    fontWeight: '900',
-    marginTop: -1,
-  },
-  inlineCommentCancelBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 2,
-  },
-  inlineCommentCancelText: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-
-  commentsScrollBox: {
-    marginTop: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  commentsScrollContent: {
-    padding: 10,
-    gap: 8,
-  },
-
   commentsEmptyBox: { alignItems: 'center', paddingVertical: 26 },
   commentsEmptyEmoji: { fontSize: 34, marginBottom: 6 },
   commentsEmptyTitle: { fontSize: 14, fontWeight: '800' },
   commentsEmptyBody: { fontSize: 12, fontWeight: '500', marginTop: 4, textAlign: 'center' },
 
+  commentsScroll: { marginTop: 4 },
+  commentsScrollContent: { paddingBottom: 4 },
+
   commentRow: {
     flexDirection: 'row', gap: 10, padding: 12,
-    borderRadius: 12, borderWidth: 1,
+    borderRadius: 12, borderWidth: 1, marginBottom: 8,
   },
   commentHeaderRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
   commentAuthor: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
   commentTime: { fontSize: 11, fontWeight: '500' },
   commentBody: { fontSize: 13.5, fontWeight: '500', lineHeight: 19, marginTop: 2 },
 
-  // ✅ Compact inline edit — avatar row + input with round send icon on the right
+  commentBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  commentBarAvatar: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 6,
+  },
+  commentBarAvatarText: {
+    color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4,
+  },
+  commentBarInput: {
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 110,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  commentBarSendBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 2,
+  },
+  commentBarSendText: {
+    fontSize: 15, fontWeight: '900', marginTop: -1,
+  },
+
+  // ✅ Locked comment bar (for approved/declined)
+  commentBarLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+  },
+  commentBarLockedIcon: {
+    fontSize: 16,
+  },
+  commentBarLockedText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+
   commentEditRow: {
     flexDirection: 'row',
     gap: 10,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
+    marginBottom: 8,
   },
   commentEditInputRow: {
     flexDirection: 'row',
@@ -2706,14 +2606,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: -1,
   },
-
-  // Swipe-to-reveal action panel
   swipeActionsWrap: {
     flexDirection: 'row',
     alignItems: 'stretch',
     height: '100%',
   },
   swipeActionBtn: {
+    width: 74,
     justifyContent: 'center',
     alignItems: 'center',
     height: '100%',
@@ -2731,17 +2630,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  viewerNotice: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16, alignItems: 'center' },
+  viewerNotice: {
+    padding: 14, borderRadius: 12, borderWidth: 1,
+    marginTop: 16, marginBottom: 16, alignItems: 'center',
+  },
   viewerNoticeText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
-  viewerNoticeSub: { fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9 },
+  viewerNoticeSub: {
+    fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9,
+  },
 
   reviewNoteCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   reviewNoteHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
   reviewNoteLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  reviewNoteMeta: { fontSize: 10.5, fontWeight: '600', marginLeft: 4 },
   reviewNoteBody: { fontSize: 13.5, fontWeight: '500', lineHeight: 20 },
 
-  approvalActionsInline: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  approvalBtn: { flex: 1, paddingVertical: 13, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  approvalActionsInline: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  approvalBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: 11, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   approvalBtnText: { fontSize: 13.5, fontWeight: '900', letterSpacing: 0.2 },
 
   reviewPageContent: { paddingHorizontal: 16, paddingBottom: 32 },
@@ -2749,17 +2657,35 @@ const styles = StyleSheet.create({
   reviewPostTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3, lineHeight: 24 },
   reviewPostBody: { fontSize: 13.5, fontWeight: '500', marginTop: 8, lineHeight: 20 },
   reviewImageThumb: { width: 130, height: 130, borderRadius: 12 },
-  reviewMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+  reviewMetaRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
   reviewMetaLabel: { fontSize: 12.5, fontWeight: '600' },
   reviewMetaValue: { fontSize: 13, fontWeight: '800' },
-  reviewFieldLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8, marginTop: 4 },
+  reviewFieldLabel: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    marginBottom: 8, marginTop: 4,
+  },
   reviewInput: {
-    borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14.5, fontWeight: '500', minHeight: 130, textAlignVertical: 'top',
+    borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14.5, fontWeight: '500',
+    minHeight: 130, textAlignVertical: 'top',
   },
   reviewErrorText: { color: '#EF4444', marginTop: 6, fontWeight: '700', fontSize: 12.5 },
   reviewInfoBox: { marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1 },
   reviewInfoText: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
+  reviewFooter: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: 16, paddingTop: 14,
+    borderTopWidth: 1,
+  },
+  reviewFooterBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reviewFooterBtnText: { fontSize: 14.5, fontWeight: '900', letterSpacing: 0.2 },
 
   annotBackdrop: { flex: 1, justifyContent: 'flex-end' },
   annotSheet: { height: SCREEN.height * 0.75, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
@@ -2772,16 +2698,29 @@ const styles = StyleSheet.create({
   annotTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.2 },
   annotCanvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   annotCanvas: { overflow: 'hidden', borderRadius: 12 },
-  annotHint: { fontSize: 12, fontWeight: '600', textAlign: 'center', paddingHorizontal: 24, paddingVertical: 6 },
-  annotPaletteRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14 },
+  annotHint: {
+    fontSize: 12, fontWeight: '600', textAlign: 'center',
+    paddingHorizontal: 24, paddingVertical: 6,
+  },
+  annotPaletteRow: {
+    flexDirection: 'row', justifyContent: 'center', gap: 10,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14,
+  },
   annotColorSwatch: { width: 28, height: 28, borderRadius: 14 },
   annotToolRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 20, paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 22 : 14, borderTopWidth: 1,
   },
-  annotSizeBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  annotActionBtn: { minWidth: 54, height: 36, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  annotSizeBtn: {
+    width: 36, height: 36, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  annotActionBtn: {
+    minWidth: 54, height: 36, paddingHorizontal: 10,
+    borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
   annotToolText: { fontSize: 13.5, fontWeight: '800', letterSpacing: 0.2 },
 
   viewerBackdrop: { flex: 1, backgroundColor: '#000000', justifyContent: 'center', alignItems: 'center' },
@@ -2796,7 +2735,10 @@ const styles = StyleSheet.create({
   viewerStage: { width: SCREEN.width, height: SCREEN.height, alignItems: 'center', justifyContent: 'center' },
   viewerImage: { width: SCREEN.width, height: SCREEN.height },
 
-  centerBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 24 },
+  centerBackdrop: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 24,
+  },
   centerModal: { width: '100%', maxWidth: 420, borderRadius: 18, borderWidth: 1, padding: 20 },
 
   emptyBox: { alignItems: 'center', paddingTop: 60 },
@@ -2805,26 +2747,31 @@ const styles = StyleSheet.create({
   emptyBody: { fontSize: 13, fontWeight: '500', marginTop: 6, textAlign: 'center', paddingHorizontal: 24 },
 
   fab: {
-    position: 'absolute', right: 20, bottom: 44,
-    width: 56, height: 56, borderRadius: 28,
+    position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28, shadowRadius: 10, elevation: 10,
+    shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
   },
   fabText: { color: '#FFFFFF', fontSize: 28, fontWeight: '300', marginTop: -3 },
 
-  fieldLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6, marginTop: 12 },
+  fieldLabel: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    marginBottom: 6, marginTop: 12,
+  },
   input: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
     fontSize: 14, fontWeight: '500',
   },
   textarea: { minHeight: 120, paddingTop: 12, textAlignVertical: 'top' },
 
   modalTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
   modalSub: { fontSize: 12.5, fontWeight: '600', marginTop: 3, marginBottom: 8 },
-
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  modalBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+  },
   modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 
   avatarSmall: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
@@ -2833,7 +2780,40 @@ const styles = StyleSheet.create({
   createPostContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 40,
+    paddingBottom: 20,
+  },
+  createActionsBar: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  createCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  createCancelBtnText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  createPostBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createPostBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   uploadZone: {

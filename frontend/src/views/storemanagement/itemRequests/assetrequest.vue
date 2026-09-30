@@ -1799,23 +1799,23 @@ watch(
 }
 
 /* ================================================================
-   TABLE CONFIGURATION
+   TABLE CONFIGURATION (bigger fonts)
    ================================================================ */
 .items-table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 25px;
   font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
-  font-size: 12.5px;
+  font-size: 15px;
   table-layout: fixed;
 }
 
 .items-table th,
 .items-table td {
   border: 1px solid #7f7f7f;
-  padding: 7px 5px;
+  padding: 10px 6px;
   text-align: center;
-  height: 30px;
+  height: 36px;
   word-wrap: break-word;
   vertical-align: middle;
   font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
@@ -1824,9 +1824,9 @@ watch(
 .items-table th {
   background-color: #c8c8c8;
   font-weight: 800;
-  font-size: 13.5px;
+  font-size: 16.5px;
   letter-spacing: 0.4px;
-  padding: 10px 6px;
+  padding: 12px 6px;
   color: #000;
   text-transform: none;
 }
@@ -1834,11 +1834,11 @@ watch(
 .items-table td.text-left { text-align: left; padding-left: 8px; }
 .font-bold { font-weight: 700; }
 .no-items { padding: 20px !important; color: #7f7f7f; font-style: italic; text-align: center !important; }
-.spec-cell { font-size: 12px; line-height: 1.35; }
+.spec-cell { font-size: 14.5px; line-height: 1.4; }
 
 .cell-checkbox { text-align: center !important; padding: 2px !important; }
-.cell-checkbox input[type="checkbox"] { cursor: pointer; width: 14px; height: 14px; }
-.merged-lock { font-size: 12px; opacity: 0.6; }
+.cell-checkbox input[type="checkbox"] { cursor: pointer; width: 17px; height: 17px; }
+.merged-lock { font-size: 14px; opacity: 0.6; }
 .row-selected td { background-color: #fef9c3; }
 
 /* ================================================================
@@ -1848,7 +1848,7 @@ watch(
   background: #e5e7eb !important;
   font-weight: 800;
   border-color: #7f7f7f !important;
-  height: 32px;
+  height: 40px;
 }
 
 .grand-total-spacer-cell {
@@ -1862,8 +1862,8 @@ watch(
   font-weight: 900;
   letter-spacing: 0.6px;
   color: #111827;
-  font-size: 12.5px;
-  padding: 6px 4px !important;
+  font-size: 15px;
+  padding: 8px 4px !important;
 }
 
 .grand-total-value-cell {
@@ -1873,7 +1873,7 @@ watch(
 
 .grand-total-value {
   font-weight: 900;
-  font-size: 13.5px;
+  font-size: 16px;
   color: #111827;
   letter-spacing: 0.3px;
 }
@@ -1884,11 +1884,11 @@ watch(
 .custom-cell { padding: 2px !important; }
 
 .custom-cell-editor {
-  min-height: 22px;
-  padding: 4px 6px;
+  min-height: 26px;
+  padding: 5px 6px;
   border-radius: 4px;
   outline: none;
-  font-size: 12px;
+  font-size: 14.5px;
   text-align: center;
   word-break: break-word;
   white-space: pre-wrap;
@@ -1908,14 +1908,14 @@ watch(
 .custom-cell-print { display: none; }
 
 .computed-cell { background: #f8fafc !important; }
-.computed-value { font-weight: 700; color: #0f172a; font-size: 12.5px; }
+.computed-value { font-weight: 700; color: #0f172a; font-size: 14.5px; }
 
 /* ================================================================
    REMARK CELL & MERGED CELL
    ================================================================ */
 .remark-cell {
-  padding: 5px !important;
-  font-size: 12px;
+  padding: 8px !important;
+  font-size: 14.5px;
   line-height: 1.4;
   vertical-align: middle;
   word-break: break-word;
@@ -1945,7 +1945,7 @@ watch(
 }
 
 .merged-remark-text {
-  font-size: 12px;
+  font-size: 14.5px;
   line-height: 1.4;
   color: #000;
   word-break: break-word;
@@ -1956,8 +1956,8 @@ watch(
 .row-merged-absorbed td { background: #fafafa; }
 
 .btn-unmerge {
-  font-size: 10px;
-  padding: 2px 8px;
+  font-size: 11.5px;
+  padding: 3px 8px;
   background: #fee2e2;
   color: #991b1b;
   border: 1px solid #fca5a5;
@@ -2227,19 +2227,20 @@ watch(
   .items-table th {
     background-color: #c0c0c0 !important;
     color: #000000 !important;
-    font-size: 12px !important;
-    padding: 8px 5px !important;
+    font-size: 13px !important;
+    padding: 9px 5px !important;
   }
 
   .grand-total-row td {
     background-color: #dcdcdc !important;
     color: #000000 !important;
+    font-size: 13px !important;
   }
 
   .grand-total-label-cell,
   .grand-total-value {
     font-weight: 900 !important;
-    font-size: 12px !important;
+    font-size: 13.5px !important;
     color: #000000 !important;
   }
 
@@ -2272,11 +2273,14 @@ watch(
   .items-table th,
   .items-table td {
     font-family: 'Segoe UI', Tahoma, Verdana, sans-serif !important;
-    font-size: 11px !important;
+    font-size: 12.5px !important;
     letter-spacing: 0.2px !important;
   }
 
-  .items-table td { padding: 5px 4px !important; height: 26px !important; }
+  .items-table td {
+    padding: 6px 4px !important;
+    height: 30px !important;
+  }
 
   .merged-remark-cell {
     border-top: none !important;
@@ -2307,11 +2311,12 @@ watch(
   .custom-cell-editor { display: none !important; }
   .custom-cell-print {
     display: inline !important;
-    font-size: 11px !important;
+    font-size: 12.5px !important;
     text-align: center;
   }
 
   .computed-cell { background: #ffffff !important; }
+  .computed-value { font-size: 12.5px !important; }
 
   .dept-display {
     background: transparent !important;
@@ -2347,9 +2352,9 @@ watch(
   .top-actions { flex-direction: column; gap: 8px; padding: 10px; }
   .top-actions button { width: 100%; justify-content: center; }
 
-  .items-table { font-size: 10px; }
-  .items-table th, .items-table td { padding: 3px 2px; height: 20px; }
-  .items-table th { font-size: 9px; }
+  .items-table { font-size: 12px; }
+  .items-table th, .items-table td { padding: 5px 3px; height: 26px; }
+  .items-table th { font-size: 11.5px; }
 
   .date-row { flex-direction: column; gap: 4px; font-size: 11px; }
 
@@ -2368,7 +2373,7 @@ watch(
   .column-manager-select,
   .column-manager-input { min-width: 0; width: 100%; }
 
-  .grand-total-row td { font-size: 10px !important; height: 24px !important; }
-  .grand-total-value { font-size: 11px !important; }
+  .grand-total-row td { font-size: 12px !important; height: 30px !important; }
+  .grand-total-value { font-size: 13px !important; }
 }
 </style>
