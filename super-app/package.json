@@ -11,6 +11,7 @@
     "axios": "^1.20.0",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.20",
+    "expo-android-keyboard-fix": "^2.2.0",
     "expo-application": "~57.0.3",
     "expo-build-properties": "~57.0.22",
     "expo-constants": "~57.0.19",

@@ -211,6 +211,17 @@ const router = createRouter({
           },
         },
 
+  {
+          path: "item-return",
+          name: "item-return",
+          component: () => import("@/views/storemanagement/ItremReturn/ReturnItemView.vue"),
+          meta: {
+            title: "item return",
+            roles: ["admin", "hr", "finance", "employee", "attendance","checker","storekeeper","store_it"],
+          },
+        },
+
+
 
          {
           path: "uom",

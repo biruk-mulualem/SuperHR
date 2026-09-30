@@ -201,6 +201,7 @@ const roleMenus = {
     { name: "purchase-followup", path: "/purchase-followup", icon: "CogIcon", badge: null },     
     { name: "foreign-purchase", path: "/foreign-purchase", icon: "CogIcon", badge: null },
            
+          { name: "item-return", path: "/item-return", icon: "CogIcon", badge: null },
            
     // {
     //   name: "Asset Management",

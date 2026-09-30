@@ -15,6 +15,7 @@ import {
   BackHandler,
   RefreshControl,
   Animated,
+  KeyboardAvoidingView,
 } from 'react-native';
 
 import {
@@ -49,11 +50,14 @@ export default function PostsPage({
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('active');
 
+  // ✅ Counts from the backend (both tabs, always accurate)
+  const [counts, setCounts] = useState({ active: 0, inactive: 0 });
+
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = React.useRef(false);
 
-  // Create group — full screen page
+  // Create group — bottom sheet modal
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
@@ -103,11 +107,6 @@ export default function PostsPage({
   const isOwner = (g) =>
     !!g && Number(g.createdBy) === Number(currentUserId);
 
-  // ✅ Can this group be swiped at all?
-  //   - Owner → all 3 actions (Activate/Deactivate, Delete, Leave&Transfer)
-  //   - Non-owner member → only Leave
-  //   - We can't reliably know membership here, so allow swipe for everyone;
-  //     the Leave action shows for non-owners, owner actions show for owners.
   const canSwipeGroup = () => true;
 
   const loadGroups = useCallback(async (isRefresh = false) => {
@@ -124,6 +123,14 @@ export default function PostsPage({
 
       if (res.success) {
         setGroups(res.data.items || []);
+
+        // ✅ Read both counts from the backend response
+        if (res.data.counts) {
+          setCounts({
+            active:   res.data.counts.active   || 0,
+            inactive: res.data.counts.inactive || 0,
+          });
+        }
       } else {
         Alert.alert('Error', res.error || 'Failed to load groups');
       }
@@ -132,6 +139,26 @@ export default function PostsPage({
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }, [filter, search]);
+
+  // ✅ Lightweight counts-only refresh — doesn't touch the list
+  const refreshCounts = useCallback(async () => {
+    try {
+      const res = await mobilePostsGroupService.listGroups({
+        filter,
+        search: search.trim(),
+        page: 1,
+        limit: 1,
+      });
+      if (res?.success && res.data.counts) {
+        setCounts({
+          active:   res.data.counts.active   || 0,
+          inactive: res.data.counts.inactive || 0,
+        });
+      }
+    } catch (_) {
+      // silent — counts are non-critical
     }
   }, [filter, search]);
 
@@ -157,11 +184,30 @@ export default function PostsPage({
   useEffect(() => {
     if (!showCreateGroup) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setShowCreateGroup(false);
+      cancelCreateGroup();
       return true;
     });
     return () => sub.remove();
   }, [showCreateGroup]);
+
+  // ✅ Handle back button for confirm / leave sheets
+  useEffect(() => {
+    if (!confirmAction) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancelConfirmAction();
+      return true;
+    });
+    return () => sub.remove();
+  }, [confirmAction]);
+
+  useEffect(() => {
+    if (!leaveGroupModal) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancelLeave();
+      return true;
+    });
+    return () => sub.remove();
+  }, [leaveGroupModal]);
 
   // ✅ Close any open swipe if the user starts interacting with a modal
   useEffect(() => {
@@ -169,14 +215,6 @@ export default function PostsPage({
       closeAllSwipes(null);
     }
   }, [confirmAction, leaveGroupModal, showCreateGroup, openedGroup, closeAllSwipes]);
-
-  const counts = useMemo(
-    () => ({
-      active:   groups.filter((g) => g.status === 'active').length,
-      inactive: groups.filter((g) => g.status === 'inactive').length,
-    }),
-    [groups]
-  );
 
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -232,6 +270,7 @@ export default function PostsPage({
         setNewGroupName('');
         setNewGroupDesc('');
         setGroupError(null);
+        refreshCounts();               // ✅ update pills
       } else {
         setGroupError(res.error || 'Could not create group');
       }
@@ -266,6 +305,7 @@ export default function PostsPage({
 
       if (res.success) {
         applyGroupUpdate(res.data);
+        refreshCounts();               // ✅ group moved between tabs
       } else {
         Alert.alert('Error', res.error || 'Could not update group');
       }
@@ -274,7 +314,6 @@ export default function PostsPage({
     }
   };
 
-  // ✅ Swipe action handlers — replace "setManagingGroup" entry point
   const requestActivate = (g) => {
     if (!isOwner(g)) return;
     closeAllSwipes(null);
@@ -319,6 +358,7 @@ export default function PostsPage({
         const res = await mobilePostsGroupService.deactivateGroup(group.id);
         if (res.success) {
           applyGroupUpdate(res.data);
+          refreshCounts();             // ✅ group moved to inactive
         } else {
           setConfirmError(res.error || 'Could not deactivate');
           return;
@@ -328,6 +368,7 @@ export default function PostsPage({
         if (res.success) {
           setGroups((prev) => prev.filter((g) => Number(g.id) !== Number(group.id)));
           swipeableRefs.current.delete(group.id);
+          refreshCounts();             // ✅ group removed from counts
         } else {
           setConfirmError(res.error || 'Could not delete');
           return;
@@ -371,6 +412,7 @@ export default function PostsPage({
         setLeaveGroupModal(null);
         setTransferTo(null);
         setLeaveError(null);
+        refreshCounts();               // ✅ user no longer counts toward this group
       } else {
         setLeaveError(res.error || 'Could not leave group');
       }
@@ -420,86 +462,74 @@ export default function PostsPage({
     const pendingCount = g.pendingCount || 0;
     const owner = isOwner(g);
 
-    // ---- Right-hand action panel (revealed on swipe-left) ----
+    // ---- Right-hand action panel (icon-only, revealed on swipe-left) ----
     const renderRightActions = (progress, dragX) => {
+      const btnWidth = 68;
+
+      // Owner sees Activate/Deactivate + Delete + Leave  → 3 buttons
+      // Member sees only Leave                           → 1 button
+      const buttonCount = owner ? 3 : 1;
+      const panelWidth = btnWidth * buttonCount;
+
       const translateX = dragX.interpolate({
-        inputRange: [-240, 0],
-        outputRange: [0, 240],
+        inputRange: [-panelWidth, 0],
+        outputRange: [0, panelWidth],
         extrapolate: 'clamp',
       });
 
-      const btnWidth = 78;
+      const ActionBtn = ({ icon, color, onPress }) => (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onPress}
+          style={[
+            styles.swipeActionBtn,
+            { width: btnWidth, backgroundColor: color },
+          ]}
+        >
+          <Text style={styles.swipeActionIcon}>{icon}</Text>
+        </TouchableOpacity>
+      );
 
       return (
         <Animated.View
           style={[
             styles.swipeActionsWrap,
-            { transform: [{ translateX }] },
+            { width: panelWidth, transform: [{ translateX }] },
           ]}
         >
-          {/* Owner-only: Activate / Deactivate */}
           {owner && isInactive && (
-            <TouchableOpacity
-              activeOpacity={0.85}
+            <ActionBtn
+              icon="▶"
+              color="#10B981"
               onPress={() => requestActivate(g)}
-              style={[
-                styles.swipeActionBtn,
-                { width: btnWidth, backgroundColor: '#10B981' },
-              ]}
-            >
-              <Text style={styles.swipeActionIcon}>▶</Text>
-              <Text style={styles.swipeActionLabel}>Activate</Text>
-            </TouchableOpacity>
+            />
           )}
 
           {owner && !isInactive && (
-            <TouchableOpacity
-              activeOpacity={0.85}
+            <ActionBtn
+              icon="⏸"
+              color="#F59E0B"
               onPress={() => requestDeactivate(g)}
-              style={[
-                styles.swipeActionBtn,
-                { width: btnWidth, backgroundColor: '#F59E0B' },
-              ]}
-            >
-              <Text style={styles.swipeActionIcon}>⏸</Text>
-              <Text style={styles.swipeActionLabel}>Deactivate</Text>
-            </TouchableOpacity>
+            />
           )}
 
-          {/* Owner-only: Delete */}
           {owner && (
-            <TouchableOpacity
-              activeOpacity={0.85}
+            <ActionBtn
+              icon="🗑"
+              color="#EF4444"
               onPress={() => requestDelete(g)}
-              style={[
-                styles.swipeActionBtn,
-                { width: btnWidth, backgroundColor: '#EF4444' },
-              ]}
-            >
-              <Text style={styles.swipeActionIcon}>🗑️</Text>
-              <Text style={styles.swipeActionLabel}>Delete</Text>
-            </TouchableOpacity>
+            />
           )}
 
-          {/* Everyone: Leave (owner sees "Transfer & leave") */}
-          <TouchableOpacity
-            activeOpacity={0.85}
+          <ActionBtn
+            icon={owner ? '🔁' : '🚪'}
+            color="#64748B"
             onPress={() => requestLeave(g)}
-            style={[
-              styles.swipeActionBtn,
-              { width: btnWidth, backgroundColor: '#64748B' },
-            ]}
-          >
-            <Text style={styles.swipeActionIcon}>{owner ? '🔁' : '🚪'}</Text>
-            <Text style={styles.swipeActionLabel}>
-              {owner ? 'Leave' : 'Leave'}
-            </Text>
-          </TouchableOpacity>
+          />
         </Animated.View>
       );
     };
 
-    // ---- The group card content (shared by swipeable and plain) ----
     const cardContent = (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -587,7 +617,6 @@ export default function PostsPage({
       </TouchableOpacity>
     );
 
-    // No swipe at all if you can't act on it (currently everyone can → always swipe)
     if (!canSwipeGroup(g)) {
       return <View style={{ marginBottom: 10 }}>{cardContent}</View>;
     }
@@ -603,8 +632,9 @@ export default function PostsPage({
           rightThreshold={40}
           overshootRight={false}
           friction={2}
+          activeOffsetX={[-10, 10]}
+          failOffsetY={[-15, 15]}
           onSwipeableWillOpen={() => {
-            // Auto-close any other open swipe
             closeAllSwipes(g.id);
           }}
           onSwipeableWillClose={() => {
@@ -618,109 +648,6 @@ export default function PostsPage({
       </View>
     );
   };
-
-  // ================================================================
-  // CREATE GROUP — FULL SCREEN PAGE (Create button in header)
-  // ================================================================
-  if (showCreateGroup) {
-    return (
-      <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
-        <View style={styles.headerBar}>
-          <TouchableOpacity
-            onPress={cancelCreateGroup}
-            hitSlop={10}
-            activeOpacity={0.7}
-            style={styles.backBtn}
-          >
-            <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
-          </TouchableOpacity>
-
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>New Group</Text>
-            <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-              Create a group to organize posts
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            onPress={submitGroup}
-            activeOpacity={0.85}
-            disabled={submittingGroup}
-            style={[
-              styles.headerActionBtn,
-              {
-                backgroundColor: submittingGroup ? '#94A3B8' : '#8B5CF6',
-              },
-            ]}
-          >
-            {submittingGroup ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.headerActionText}>Create</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.createGroupContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[styles.fieldLabel, { color: subTextColor }]}>NAME</Text>
-          <TextInput
-            value={newGroupName}
-            onChangeText={(v) => {
-              setNewGroupName(v);
-              setGroupError(null);
-            }}
-            placeholder="e.g. Marketing Team"
-            placeholderTextColor={subTextColor}
-            editable={!submittingGroup}
-            autoFocus
-            style={[
-              styles.input,
-              {
-                color: textColor,
-                backgroundColor: cardBg,
-                borderColor: groupError ? '#EF4444' : borderColor,
-              },
-            ]}
-          />
-
-          <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 20 }]}>
-            DESCRIPTION
-          </Text>
-          <TextInput
-            value={newGroupDesc}
-            onChangeText={setNewGroupDesc}
-            placeholder="Optional"
-            placeholderTextColor={subTextColor}
-            multiline
-            numberOfLines={5}
-            editable={!submittingGroup}
-            style={[
-              styles.input,
-              styles.textarea,
-              {
-                color: textColor,
-                backgroundColor: cardBg,
-                borderColor,
-              },
-            ]}
-          />
-
-          {groupError && (
-            <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>
-              {groupError}
-            </Text>
-          )}
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </View>
-    );
-  }
 
   // ================================================================
   // LOADING
@@ -914,15 +841,178 @@ export default function PostsPage({
           }
         />
 
-        {/* ─── Security Confirm (Delete / Deactivate) — CENTERED ─── */}
+        {/* ─── Create Group — BOTTOM SHEET MODAL ─── */}
+        <Modal
+          visible={showCreateGroup}
+          transparent
+          animationType="slide"
+          onRequestClose={cancelCreateGroup}
+          statusBarTranslucent
+        >
+          <KeyboardAvoidingView
+            style={styles.bottomSheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={StyleSheet.absoluteFillObject}
+              onPress={cancelCreateGroup}
+            />
+            <View
+              style={[
+                styles.bottomSheet,
+                { backgroundColor: cardBg, borderColor },
+              ]}
+            >
+              <View style={styles.sheetHandleWrap}>
+                <View
+                  style={[
+                    styles.sheetHandle,
+                    { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.sheetHeader}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.sheetTitle, { color: textColor }]}>
+                    New Group
+                  </Text>
+                  <Text
+                    style={[styles.sheetSub, { color: subTextColor }]}
+                    numberOfLines={1}
+                  >
+                    Create a group to organize posts
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={cancelCreateGroup}
+                  hitSlop={10}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.sheetCloseBtn,
+                    { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9' },
+                  ]}
+                >
+                  <Text style={[styles.sheetCloseIcon, { color: subTextColor }]}>
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={styles.sheetContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={[styles.fieldLabel, { color: subTextColor }]}>
+                  NAME
+                </Text>
+                <TextInput
+                  value={newGroupName}
+                  onChangeText={(v) => {
+                    setNewGroupName(v);
+                    setGroupError(null);
+                  }}
+                  placeholder="e.g. Marketing Team"
+                  placeholderTextColor={subTextColor}
+                  editable={!submittingGroup}
+                  autoFocus
+                  returnKeyType="next"
+                  style={[
+                    styles.input,
+                    {
+                      color: textColor,
+                      backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                      borderColor: groupError ? '#EF4444' : borderColor,
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[styles.fieldLabel, { color: subTextColor, marginTop: 16 }]}
+                >
+                  DESCRIPTION
+                </Text>
+                <TextInput
+                  value={newGroupDesc}
+                  onChangeText={setNewGroupDesc}
+                  placeholder="Optional"
+                  placeholderTextColor={subTextColor}
+                  multiline
+                  numberOfLines={4}
+                  editable={!submittingGroup}
+                  style={[
+                    styles.input,
+                    styles.textarea,
+                    {
+                      color: textColor,
+                      backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                      borderColor,
+                    },
+                  ]}
+                />
+
+                {groupError && (
+                  <Text style={styles.reviewErrorText}>{groupError}</Text>
+                )}
+
+                <View style={styles.sheetActions}>
+                  <TouchableOpacity
+                    onPress={cancelCreateGroup}
+                    activeOpacity={0.85}
+                    disabled={submittingGroup}
+                    style={[
+                      styles.modalBtn,
+                      {
+                        backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                        borderColor,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.modalBtnText, { color: textColor }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={submitGroup}
+                    activeOpacity={0.85}
+                    disabled={submittingGroup}
+                    style={[
+                      styles.modalBtn,
+                      {
+                        backgroundColor: submittingGroup ? '#94A3B8' : '#8B5CF6',
+                        borderColor: submittingGroup ? '#94A3B8' : '#8B5CF6',
+                      },
+                    ]}
+                  >
+                    {submittingGroup ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                        Create group
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* ─── Confirm (Delete / Deactivate) — BOTTOM SHEET ─── */}
         <Modal
           visible={!!confirmAction}
           transparent
-          animationType="fade"
+          animationType="slide"
           onRequestClose={cancelConfirmAction}
           statusBarTranslucent
         >
-          <View style={styles.centerBackdrop}>
+          <KeyboardAvoidingView
+            style={styles.bottomSheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <TouchableOpacity
               activeOpacity={1}
               style={StyleSheet.absoluteFillObject}
@@ -933,8 +1023,8 @@ export default function PostsPage({
               const isDelete = action === 'delete';
               const accent = isDelete ? '#EF4444' : '#F59E0B';
               const accentDark = isDelete
-                ? (darkMode ? '#7F1D1D' : '#FEE2E2')
-                : (darkMode ? '#422006' : '#FEF3C7');
+                ? (darkMode ? 'rgba(239,68,68,0.18)' : '#FEE2E2')
+                : (darkMode ? 'rgba(245,158,11,0.18)' : '#FEF3C7');
               const accentText = isDelete
                 ? (darkMode ? '#FCA5A5' : '#991B1B')
                 : (darkMode ? '#FCD34D' : '#92400E');
@@ -946,114 +1036,165 @@ export default function PostsPage({
               return (
                 <View
                   style={[
-                    styles.centerModal,
+                    styles.bottomSheet,
                     { backgroundColor: cardBg, borderColor },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.confirmBadge,
-                      { backgroundColor: accentDark, borderColor: accent },
-                    ]}
+                  <View style={styles.sheetHandleWrap}>
+                    <View
+                      style={[
+                        styles.sheetHandle,
+                        { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
+                      ]}
+                    />
+                  </View>
+
+                  <ScrollView
+                    style={{ flexGrow: 0 }}
+                    contentContainerStyle={styles.sheetContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                   >
-                    <Text style={[styles.confirmBadgeText, { color: accentText }]}>
-                      {isDelete ? '⚠️ PERMANENT ACTION' : '⏸ DEACTIVATION'}
-                    </Text>
-                  </View>
-
-                  <Text style={[styles.modalTitle, { color: textColor, marginTop: 12 }]}>
-                    {isDelete ? 'Delete this group?' : 'Deactivate this group?'}
-                  </Text>
-                  <Text style={[styles.modalSub, { color: subTextColor }]}>
-                    {isDelete
-                      ? `"${group.name}" and all its posts, comments and images will be permanently removed. This cannot be undone.`
-                      : `"${group.name}" will be frozen. Members can still read old posts but no one can create new content until you reactivate it.`}
-                  </Text>
-
-                  <View style={[styles.confirmDivider, { backgroundColor: borderColor }]} />
-
-                  <Text style={[styles.fieldLabel, { color: subTextColor }]}>
-                    TYPE THE GROUP NAME TO CONFIRM
-                  </Text>
-                  <TextInput
-                    value={confirmText}
-                    onChangeText={(v) => {
-                      setConfirmText(v);
-                      setConfirmError(null);
-                    }}
-                    placeholder={group.name}
-                    placeholderTextColor={subTextColor}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!confirmSubmitting}
-                    style={[
-                      styles.input,
-                      {
-                        color: textColor,
-                        backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
-                        borderColor: confirmError ? '#EF4444' : borderColor,
-                      },
-                    ]}
-                  />
-                  {confirmError && (
-                    <Text style={styles.reviewErrorText}>{confirmError}</Text>
-                  )}
-
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      onPress={cancelConfirmAction}
-                      activeOpacity={0.85}
-                      disabled={confirmSubmitting}
+                    {/* Accent banner */}
+                    <View
                       style={[
-                        styles.modalBtn,
-                        {
-                          backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                          borderColor,
-                        },
+                        styles.sheetAccentBanner,
+                        { backgroundColor: accentDark, borderColor: accent },
                       ]}
                     >
-                      <Text style={[styles.modalBtnText, { color: textColor }]}>
-                        Cancel
+                      <Text style={styles.sheetAccentEmoji}>
+                        {isDelete ? '⚠️' : '⏸'}
                       </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={applyConfirmAction}
-                      activeOpacity={0.85}
-                      disabled={!matches || confirmSubmitting}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={[
+                            styles.sheetAccentTitle,
+                            { color: accentText },
+                          ]}
+                        >
+                          {isDelete ? 'Permanent action' : 'Deactivation'}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.sheetAccentBody,
+                            { color: accentText },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {isDelete
+                            ? 'This cannot be undone.'
+                            : 'You can reactivate anytime.'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text
                       style={[
-                        styles.modalBtn,
-                        {
-                          backgroundColor:
-                            matches && !confirmSubmitting ? accent : '#94A3B8',
-                          borderColor:
-                            matches && !confirmSubmitting ? accent : '#94A3B8',
-                        },
+                        styles.sheetTitle,
+                        { color: textColor, marginTop: 14 },
                       ]}
                     >
-                      {confirmSubmitting ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
-                      ) : (
-                        <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                          {isDelete ? 'Delete permanently' : 'Deactivate'}
+                      {isDelete ? 'Delete this group?' : 'Deactivate this group?'}
+                    </Text>
+                    <Text style={[styles.sheetSub, { color: subTextColor }]}>
+                      {isDelete
+                        ? `"${group.name}" and all its posts, comments and images will be permanently removed.`
+                        : `"${group.name}" will be frozen. Members can still read old posts but no one can create new content until you reactivate it.`}
+                    </Text>
+
+                    <View
+                      style={[
+                        styles.confirmDivider,
+                        { backgroundColor: borderColor },
+                      ]}
+                    />
+
+                    <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 0 }]}>
+                      TYPE THE GROUP NAME TO CONFIRM
+                    </Text>
+                    <TextInput
+                      value={confirmText}
+                      onChangeText={(v) => {
+                        setConfirmText(v);
+                        setConfirmError(null);
+                      }}
+                      placeholder={group.name}
+                      placeholderTextColor={subTextColor}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!confirmSubmitting}
+                      style={[
+                        styles.input,
+                        {
+                          color: textColor,
+                          backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                          borderColor: confirmError ? '#EF4444' : borderColor,
+                        },
+                      ]}
+                    />
+                    {confirmError && (
+                      <Text style={styles.reviewErrorText}>{confirmError}</Text>
+                    )}
+
+                    <View style={styles.sheetActions}>
+                      <TouchableOpacity
+                        onPress={cancelConfirmAction}
+                        activeOpacity={0.85}
+                        disabled={confirmSubmitting}
+                        style={[
+                          styles.modalBtn,
+                          {
+                            backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                            borderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.modalBtnText, { color: textColor }]}>
+                          Cancel
                         </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={applyConfirmAction}
+                        activeOpacity={0.85}
+                        disabled={!matches || confirmSubmitting}
+                        style={[
+                          styles.modalBtn,
+                          {
+                            backgroundColor:
+                              matches && !confirmSubmitting ? accent : '#94A3B8',
+                            borderColor:
+                              matches && !confirmSubmitting ? accent : '#94A3B8',
+                          },
+                        ]}
+                      >
+                        {confirmSubmitting ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                            {isDelete ? 'Delete permanently' : 'Deactivate'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
                 </View>
               );
             })()}
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
-        {/* ─── Leave / Transfer — CENTERED ─── */}
+        {/* ─── Leave / Transfer — BOTTOM SHEET ─── */}
         <Modal
           visible={!!leaveGroupModal}
           transparent
-          animationType="fade"
+          animationType="slide"
           onRequestClose={cancelLeave}
           statusBarTranslucent
         >
-          <View style={styles.centerBackdrop}>
+          <KeyboardAvoidingView
+            style={styles.bottomSheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <TouchableOpacity
               activeOpacity={1}
               style={StyleSheet.absoluteFillObject}
@@ -1069,152 +1210,211 @@ export default function PostsPage({
               return (
                 <View
                   style={[
-                    styles.centerModal,
+                    styles.bottomSheet,
                     { backgroundColor: cardBg, borderColor },
                   ]}
                 >
-                  <Text style={[styles.modalTitle, { color: textColor }]}>
-                    {owner ? 'Leave & transfer ownership?' : 'Leave this group?'}
-                  </Text>
-                  <Text style={[styles.modalSub, { color: subTextColor }]}>
-                    {owner
-                      ? `You are the owner of "${group.name}". You must hand ownership to another member before you can leave.`
-                      : `You will stop receiving updates from "${group.name}".`}
-                  </Text>
-
-                  {owner && (
-                    <>
-                      <View
-                        style={[
-                          styles.confirmDivider,
-                          { backgroundColor: borderColor },
-                        ]}
-                      />
-                      <Text style={[styles.fieldLabel, { color: subTextColor }]}>
-                        NEW OWNER
-                      </Text>
-
-                      {members.length === 0 ? (
-                        <Text style={[styles.emptySmall, { color: subTextColor }]}>
-                          There are no other members to hand ownership to. Add a member first, or delete the group instead.
-                        </Text>
-                      ) : (
-                        <View style={{ maxHeight: 220 }}>
-                          <FlatList
-                            data={members}
-                            keyExtractor={(it) => String(it.userId)}
-                            keyboardShouldPersistTaps="handled"
-                            showsVerticalScrollIndicator={false}
-                            renderItem={({ item: u }) => {
-                              const selected =
-                                Number(transferTo?.userId) === Number(u.userId);
-                              return (
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    setTransferTo(u);
-                                    setLeaveError(null);
-                                  }}
-                                  activeOpacity={0.85}
-                                  style={[
-                                    styles.userPickRow,
-                                    {
-                                      backgroundColor: selected
-                                        ? darkMode
-                                          ? '#312E81'
-                                          : '#EEF2FF'
-                                        : darkMode
-                                        ? '#0F172A'
-                                        : '#FFFFFF',
-                                      borderColor: selected ? '#8B5CF6' : borderColor,
-                                    },
-                                  ]}
-                                >
-                                  <View
-                                    style={[
-                                      styles.avatarSmall,
-                                      { backgroundColor: u.color || '#8B5CF6' },
-                                    ]}
-                                  >
-                                    <Text style={styles.avatarSmallText}>
-                                      {u.initials ||
-                                        (u.name || '?').slice(0, 2).toUpperCase()}
-                                    </Text>
-                                  </View>
-                                  <Text
-                                    style={[
-                                      styles.userPickName,
-                                      { color: textColor, flex: 1 },
-                                    ]}
-                                  >
-                                    {u.name}
-                                  </Text>
-                                  {selected && (
-                                    <Text
-                                      style={[styles.checkMark, { color: '#8B5CF6' }]}
-                                    >
-                                      ✓
-                                    </Text>
-                                  )}
-                                </TouchableOpacity>
-                              );
-                            }}
-                          />
-                        </View>
-                      )}
-                      {leaveError && (
-                        <Text style={styles.reviewErrorText}>{leaveError}</Text>
-                      )}
-                    </>
-                  )}
-
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      onPress={cancelLeave}
-                      activeOpacity={0.85}
-                      disabled={leaveSubmitting}
+                  <View style={styles.sheetHandleWrap}>
+                    <View
                       style={[
-                        styles.modalBtn,
-                        {
-                          backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                          borderColor,
-                        },
+                        styles.sheetHandle,
+                        { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
                       ]}
-                    >
-                      <Text style={[styles.modalBtnText, { color: textColor }]}>
-                        Cancel
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={applyLeave}
-                      activeOpacity={0.85}
-                      disabled={(owner && !transferTo) || leaveSubmitting}
-                      style={[
-                        styles.modalBtn,
-                        {
-                          backgroundColor:
-                            (owner && !transferTo) || leaveSubmitting
-                              ? '#94A3B8'
-                              : '#EF4444',
-                          borderColor:
-                            (owner && !transferTo) || leaveSubmitting
-                              ? '#94A3B8'
-                              : '#EF4444',
-                        },
-                      ]}
-                    >
-                      {leaveSubmitting ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
-                      ) : (
-                        <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                          {owner ? 'Transfer & leave' : 'Leave group'}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
+                    />
                   </View>
+
+                  <ScrollView
+                    style={{ flexGrow: 0 }}
+                    contentContainerStyle={styles.sheetContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {/* Accent banner */}
+                    <View
+                      style={[
+                        styles.sheetAccentBanner,
+                        {
+                          backgroundColor: darkMode
+                            ? 'rgba(100,116,139,0.2)'
+                            : '#F1F5F9',
+                          borderColor: '#64748B',
+                        },
+                      ]}
+                    >
+                      <Text style={styles.sheetAccentEmoji}>
+                        {owner ? '🔁' : '🚪'}
+                      </Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={[
+                            styles.sheetAccentTitle,
+                            { color: darkMode ? '#CBD5E1' : '#334155' },
+                          ]}
+                        >
+                          {owner ? 'Transfer ownership' : 'Leave group'}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.sheetAccentBody,
+                            { color: darkMode ? '#94A3B8' : '#64748B' },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {owner
+                            ? 'Pick a new owner first.'
+                            : 'You can rejoin later.'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.sheetTitle,
+                        { color: textColor, marginTop: 14 },
+                      ]}
+                    >
+                      {owner ? 'Leave & transfer ownership?' : 'Leave this group?'}
+                    </Text>
+                    <Text style={[styles.sheetSub, { color: subTextColor }]}>
+                      {owner
+                        ? `You are the owner of "${group.name}". You must hand ownership to another member before you can leave.`
+                        : `You will stop receiving updates from "${group.name}".`}
+                    </Text>
+
+                    {owner && (
+                      <>
+                        <View
+                          style={[
+                            styles.confirmDivider,
+                            { backgroundColor: borderColor },
+                          ]}
+                        />
+                        <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 0 }]}>
+                          NEW OWNER
+                        </Text>
+
+                        {members.length === 0 ? (
+                          <Text style={[styles.emptySmall, { color: subTextColor }]}>
+                            There are no other members to hand ownership to. Add a member first, or delete the group instead.
+                          </Text>
+                        ) : (
+                          <View style={{ maxHeight: 240 }}>
+                            <FlatList
+                              data={members}
+                              keyExtractor={(it) => String(it.userId)}
+                              keyboardShouldPersistTaps="handled"
+                              showsVerticalScrollIndicator={false}
+                              renderItem={({ item: u }) => {
+                                const selected =
+                                  Number(transferTo?.userId) === Number(u.userId);
+                                return (
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      setTransferTo(u);
+                                      setLeaveError(null);
+                                    }}
+                                    activeOpacity={0.85}
+                                    style={[
+                                      styles.userPickRow,
+                                      {
+                                        backgroundColor: selected
+                                          ? darkMode
+                                            ? '#312E81'
+                                            : '#EEF2FF'
+                                          : darkMode
+                                          ? '#0F172A'
+                                          : '#FFFFFF',
+                                        borderColor: selected ? '#8B5CF6' : borderColor,
+                                      },
+                                    ]}
+                                  >
+                                    <View
+                                      style={[
+                                        styles.avatarSmall,
+                                        { backgroundColor: u.color || '#8B5CF6' },
+                                      ]}
+                                    >
+                                      <Text style={styles.avatarSmallText}>
+                                        {u.initials ||
+                                          (u.name || '?').slice(0, 2).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                    <Text
+                                      style={[
+                                        styles.userPickName,
+                                        { color: textColor, flex: 1 },
+                                      ]}
+                                    >
+                                      {u.name}
+                                    </Text>
+                                    {selected && (
+                                      <Text
+                                        style={[styles.checkMark, { color: '#8B5CF6' }]}
+                                      >
+                                        ✓
+                                      </Text>
+                                    )}
+                                  </TouchableOpacity>
+                                );
+                              }}
+                            />
+                          </View>
+                        )}
+                        {leaveError && (
+                          <Text style={styles.reviewErrorText}>{leaveError}</Text>
+                        )}
+                      </>
+                    )}
+
+                    <View style={styles.sheetActions}>
+                      <TouchableOpacity
+                        onPress={cancelLeave}
+                        activeOpacity={0.85}
+                        disabled={leaveSubmitting}
+                        style={[
+                          styles.modalBtn,
+                          {
+                            backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                            borderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.modalBtnText, { color: textColor }]}>
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={applyLeave}
+                        activeOpacity={0.85}
+                        disabled={(owner && !transferTo) || leaveSubmitting}
+                        style={[
+                          styles.modalBtn,
+                          {
+                            backgroundColor:
+                              (owner && !transferTo) || leaveSubmitting
+                                ? '#94A3B8'
+                                : '#EF4444',
+                            borderColor:
+                              (owner && !transferTo) || leaveSubmitting
+                                ? '#94A3B8'
+                                : '#EF4444',
+                          },
+                        ]}
+                      >
+                        {leaveSubmitting ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                            {owner ? 'Transfer & leave' : 'Leave group'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
                 </View>
               );
             })()}
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </GestureHandlerRootView>
@@ -1449,33 +1649,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  // ✅ Swipe-to-reveal action panel
+  // ✅ Swipe-to-reveal — icon-only buttons, vertically centered
   swipeActionsWrap: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    height: '100%',
   },
   swipeActionBtn: {
     justifyContent: 'center',
     alignItems: 'center',
-    height: '100%',
-    gap: 4,
+    height: 82,
   },
   swipeActionIcon: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '900',
   },
-  swipeActionLabel: {
-    color: '#FFFFFF',
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
 
-  // ── Centered modals (confirm + leave) ──
-  modalTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
-  modalSub: { fontSize: 12.5, fontWeight: '600', marginTop: 3, marginBottom: 8 },
+  // ── Shared sheet text ──
+  sheetTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.3 },
+  sheetSub: { fontSize: 12.5, fontWeight: '600', marginTop: 4 },
 
   fieldLabel: {
     fontSize: 10,
@@ -1492,7 +1684,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  textarea: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' },
+  textarea: { minHeight: 90, paddingTop: 12, textAlignVertical: 'top' },
 
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
   modalBtn: {
@@ -1505,32 +1697,6 @@ const styles = StyleSheet.create({
   },
   modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 
-  centerBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 24,
-  },
-  centerModal: {
-    width: '100%',
-    maxWidth: 460,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 20,
-  },
-  confirmBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  confirmBadgeText: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-  },
   confirmDivider: {
     height: 1,
     marginVertical: 14,
@@ -1567,6 +1733,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.4,
   },
+
   checkMark: { fontSize: 18, fontWeight: '900' },
   emptySmall: {
     fontSize: 12.5,
@@ -1575,9 +1742,79 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
 
-  createGroupContent: {
-    paddingHorizontal: 16,
+  // ── Bottom Sheet (shared by all three sheets) ──
+  bottomSheetBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  bottomSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '85%',
+  },
+  sheetHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 40,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  sheetSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  sheetCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseIcon: { fontSize: 15, fontWeight: '800' },
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 20,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 22,
+  },
+
+  // ── Accent banner at top of confirm / leave sheets ──
+  sheetAccentBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  sheetAccentEmoji: { fontSize: 22 },
+  sheetAccentTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  sheetAccentBody: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginTop: 2,
   },
 });

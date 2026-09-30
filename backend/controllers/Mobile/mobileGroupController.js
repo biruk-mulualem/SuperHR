@@ -124,16 +124,46 @@ exports.listGroups = async (req, res) => {
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
 
-    const where = { deletedAt: null };
-    if (filter === 'active' || filter === 'inactive') where.status = filter;
+    // Base where clause for search (shared by both count queries)
+    const searchWhere = {};
     if (search.trim()) {
       const q = `%${search.trim()}%`;
-      where[Op.or] = [
+      searchWhere[Op.or] = [
         { name: { [Op.iLike]: q } },
         { description: { [Op.iLike]: q } },
       ];
     }
 
+    // Current page's where clause (also applies the tab filter)
+    const where = { deletedAt: null, ...searchWhere };
+    if (filter === 'active' || filter === 'inactive') where.status = filter;
+
+    // ✅ Two independent counts — active & inactive — for the current user
+    //    Shares the search filter but ignores the tab filter.
+    const countInclude = [
+      {
+        model: PostGroupMember,
+        as: 'members',
+        required: true,
+        where: { userId, status: 'active' },
+        attributes: [],           // don't need the member data, just the join
+      },
+    ];
+
+    const [activeCount, inactiveCount] = await Promise.all([
+      PostGroup.count({
+        where: { deletedAt: null, ...searchWhere, status: 'active' },
+        include: countInclude,
+        distinct: true,
+      }),
+      PostGroup.count({
+        where: { deletedAt: null, ...searchWhere, status: 'inactive' },
+        include: countInclude,
+        distinct: true,
+      }),
+    ]);
+
+    // Now fetch the actual page
     const { count, rows } = await PostGroup.findAndCountAll({
       where,
       include: [
@@ -189,6 +219,11 @@ exports.listGroups = async (req, res) => {
         page: pageNum,
         pageSize,
         totalPages: Math.ceil(count / pageSize) || 1,
+        // ✅ NEW — both counts, always present, independent of `filter`
+        counts: {
+          active: activeCount,
+          inactive: inactiveCount,
+        },
       },
     });
   } catch (err) {

@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
 
 import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
@@ -143,6 +144,13 @@ export default function GroupMembersPage({
     setMemberSearch('');
   };
 
+  // ✅ Toggle selection — tap selected user again to unselect
+  const toggleSelectUser = (u) => {
+    setSelectedUser((prev) =>
+      Number(prev?.userId) === Number(u.userId) ? null : u
+    );
+  };
+
   const confirmAddMember = async () => {
     if (!isGroupAdmin) return;
     if (!selectedUser) return;
@@ -250,133 +258,149 @@ export default function GroupMembersPage({
   };
 
   // ================================================================
-  // ADD MEMBER — FULL SCREEN PAGE (Invite button in header)
+  // ADD MEMBER — FULL SCREEN PAGE
   // ================================================================
   if (showAddMember) {
     return (
-      <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
 
-        {/* Header with "Invite" button top-right */}
-        <View style={styles.headerBar}>
-          <TouchableOpacity
-            onPress={cancelAddMember}
-            hitSlop={10}
-            activeOpacity={0.7}
-            style={styles.backBtn}
-          >
-            <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
-          </TouchableOpacity>
+          {/* Header — just back + title, no action button */}
+          <View style={styles.headerBar}>
+            <TouchableOpacity
+              onPress={cancelAddMember}
+              hitSlop={10}
+              activeOpacity={0.7}
+              style={styles.backBtn}
+            >
+              <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
+            </TouchableOpacity>
 
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]}>Add Member</Text>
-            <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-              Invite someone to {group?.name || 'this group'}
-            </Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.headerTitle, { color: textColor }]}>Add Member</Text>
+              <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
+                Invite someone to {group?.name || 'this group'}
+              </Text>
+            </View>
           </View>
 
-          {/* ACTION BUTTON — top right, keyboard can never cover it */}
-          <TouchableOpacity
-            onPress={confirmAddMember}
-            activeOpacity={0.85}
-            disabled={!selectedUser || submittingAdd}
+          {/* Search bar */}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+            <View style={[styles.searchWrap, { backgroundColor: cardBg, borderColor }]}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                value={memberSearch}
+                onChangeText={setMemberSearch}
+                placeholder="Search by name or department…"
+                placeholderTextColor={subTextColor}
+                style={[styles.searchInput, { color: textColor }]}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {memberSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setMemberSearch('')} hitSlop={8}>
+                  <Text style={[styles.clearIcon, { color: subTextColor }]}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Scrollable user list — takes the rest of the screen */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {directoryLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={accentColor} />
+                <Text style={{ marginTop: 10, color: subTextColor, fontSize: 13, fontWeight: '500' }}>
+                  Loading people…
+                </Text>
+              </View>
+            ) : addableUsers.length === 0 ? (
+              <Text style={[styles.emptySmall, { color: subTextColor, marginTop: 40 }]}>
+                {memberSearch
+                  ? `No people match "${memberSearch}".`
+                  : 'Everyone is already in this group.'}
+              </Text>
+            ) : (
+              addableUsers.map((u) => {
+                const selected = Number(selectedUser?.userId) === Number(u.userId);
+                return (
+                  <TouchableOpacity
+                    key={String(u.userId)}
+                    onPress={() => toggleSelectUser(u)}   // ✅ toggle
+                    activeOpacity={0.85}
+                    style={[styles.userPickRow, {
+                      backgroundColor: selected
+                        ? (darkMode ? '#312E81' : '#EEF2FF')
+                        : cardBg,
+                      borderColor: selected ? accentColor : borderColor,
+                    }]}
+                  >
+                    <View style={[styles.avatarSmall, { backgroundColor: u.color || '#8B5CF6' }]}>
+                      <Text style={styles.avatarSmallText}>{u.initials}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.userPickName, { color: textColor }]} numberOfLines={1}>
+                        {u.name}
+                      </Text>
+                      {!!u.department && (
+                        <Text style={[styles.userPickDept, { color: subTextColor }]} numberOfLines={1}>
+                          {u.department}
+                        </Text>
+                      )}
+                    </View>
+                    {selected && (
+                      <Text style={[styles.checkMark, { color: accentColor }]}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+
+            <View style={{ height: 20 }} />
+          </ScrollView>
+
+          {/* ✅ Invite button pinned at the bottom */}
+          <View
             style={[
-              styles.headerActionBtn,
+              styles.bottomBar,
               {
-                backgroundColor:
-                  selectedUser && !submittingAdd ? accentColor : '#94A3B8',
+                backgroundColor: darkMode ? '#0B1220' : '#F8FAFC',
+                borderTopColor: darkMode ? '#1E293B' : '#E2E8F0',
               },
             ]}
           >
-            {submittingAdd ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={styles.headerActionText}>Invite</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Search bar — fixed below header */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
-          <View style={[styles.searchWrap, { backgroundColor: cardBg, borderColor }]}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              value={memberSearch}
-              onChangeText={setMemberSearch}
-              placeholder="Search by name or department…"
-              placeholderTextColor={subTextColor}
-              style={[styles.searchInput, { color: textColor }]}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            {memberSearch.length > 0 && (
-              <TouchableOpacity onPress={() => setMemberSearch('')} hitSlop={8}>
-                <Text style={[styles.clearIcon, { color: subTextColor }]}>✕</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={confirmAddMember}
+              activeOpacity={0.85}
+              disabled={!selectedUser || submittingAdd}
+              style={[
+                styles.inviteBtn,
+                {
+                  backgroundColor:
+                    selectedUser && !submittingAdd ? accentColor : '#94A3B8',
+                },
+              ]}
+            >
+              {submittingAdd ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={styles.inviteBtnText}>
+                  {selectedUser ? `Invite ${selectedUser.name}` : 'Select someone to invite'}
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
+
         </View>
-
-        {/* Scrollable user list — takes the rest of the screen */}
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {directoryLoading ? (
-            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-              <ActivityIndicator color={accentColor} />
-              <Text style={{ marginTop: 10, color: subTextColor, fontSize: 13, fontWeight: '500' }}>
-                Loading people…
-              </Text>
-            </View>
-          ) : addableUsers.length === 0 ? (
-            <Text style={[styles.emptySmall, { color: subTextColor, marginTop: 40 }]}>
-              {memberSearch
-                ? `No people match "${memberSearch}".`
-                : 'Everyone is already in this group.'}
-            </Text>
-          ) : (
-            addableUsers.map((u) => {
-              const selected = Number(selectedUser?.userId) === Number(u.userId);
-              return (
-                <TouchableOpacity
-                  key={String(u.userId)}
-                  onPress={() => setSelectedUser(u)}
-                  activeOpacity={0.85}
-                  style={[styles.userPickRow, {
-                    backgroundColor: selected
-                      ? (darkMode ? '#312E81' : '#EEF2FF')
-                      : cardBg,
-                    borderColor: selected ? accentColor : borderColor,
-                  }]}
-                >
-                  <View style={[styles.avatarSmall, { backgroundColor: u.color || '#8B5CF6' }]}>
-                    <Text style={styles.avatarSmallText}>{u.initials}</Text>
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.userPickName, { color: textColor }]} numberOfLines={1}>
-                      {u.name}
-                    </Text>
-                    {!!u.department && (
-                      <Text style={[styles.userPickDept, { color: subTextColor }]} numberOfLines={1}>
-                        {u.department}
-                      </Text>
-                    )}
-                  </View>
-                  {selected && (
-                    <Text style={[styles.checkMark, { color: accentColor }]}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })
-          )}
-
-        
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -523,22 +547,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.4 },
   headerSub: { fontSize: 11.5, fontWeight: '500', marginTop: 2 },
 
-  // Header action button (Invite) — top-right, always visible
-  headerActionBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    minWidth: 68,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerActionText: {
-    color: '#FFFFFF',
-    fontSize: 12.5,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-
   addBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   addBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
 
@@ -589,7 +597,25 @@ const styles = StyleSheet.create({
   checkMark: { fontSize: 18, fontWeight: '900' },
   emptySmall: { fontSize: 13, fontWeight: '500', textAlign: 'center', paddingVertical: 16 },
 
-  pendingHint: { fontSize: 12, fontWeight: '600', lineHeight: 17, textAlign: 'center', paddingHorizontal: 8 },
+  // ── Bottom action bar for Add Member screen ──
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    borderTopWidth: 1,
+  },
+  inviteBtn: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
 
   centerBackdrop: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
