@@ -26,6 +26,9 @@ import {
 import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
 import authService from '../../stores/authService';
 
+// ✅ Static import — no inline require() in render (that caused remounts).
+import GroupDetailPage from './GroupDetailPage';
+
 // ================================================================
 // Filters
 // ================================================================
@@ -42,6 +45,8 @@ export default function PostsPage({
   subTextColor,
   cardBg,
   borderColor,
+  pendingIntent,
+  onIntentHandled,
 }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,7 +60,7 @@ export default function PostsPage({
 
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
-  const loadingMoreRef = React.useRef(false);
+  const loadingMoreRef = useRef(false);
 
   // Create group — bottom sheet modal
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -79,8 +84,11 @@ export default function PostsPage({
   const [currentUser, setCurrentUser] = useState(authService.user);
 
   // ✅ Swipe-to-reveal bookkeeping
-  const swipeableRefs = useRef(new Map());  // Map<groupId, SwipeableRef>
-  const openSwipeIdRef = useRef(null);       // currently open swipe id
+  const swipeableRefs = useRef(new Map());
+  const openSwipeIdRef = useRef(null);
+
+  // ✅ Intent consumption guard
+  const consumedIntentRef = useRef(null);
 
   const closeAllSwipes = useCallback((exceptId = null) => {
     swipeableRefs.current.forEach((ref, id) => {
@@ -124,7 +132,6 @@ export default function PostsPage({
       if (res.success) {
         setGroups(res.data.items || []);
 
-        // ✅ Read both counts from the backend response
         if (res.data.counts) {
           setCounts({
             active:   res.data.counts.active   || 0,
@@ -142,7 +149,6 @@ export default function PostsPage({
     }
   }, [filter, search]);
 
-  // ✅ Lightweight counts-only refresh — doesn't touch the list
   const refreshCounts = useCallback(async () => {
     try {
       const res = await mobilePostsGroupService.listGroups({
@@ -158,13 +164,65 @@ export default function PostsPage({
         });
       }
     } catch (_) {
-      // silent — counts are non-critical
+      // silent
     }
   }, [filter, search]);
 
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
+
+  // ✅ Consume a pendingIntent coming from the notification page
+  useEffect(() => {
+    if (!pendingIntent) return;
+    if (pendingIntent.tab !== 'posts') return;
+
+    const sig = JSON.stringify(pendingIntent);
+    if (consumedIntentRef.current === sig) return;
+    consumedIntentRef.current = sig;
+
+    const groupId = pendingIntent.params?.groupId;
+    console.log('🟣 [PostsPage] consuming intent:', {
+      intent: pendingIntent.intent,
+      groupId,
+    });
+
+    if (!groupId) {
+      onIntentHandled?.();
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      // Prefer the group if already loaded
+      const match = groups.find((g) => Number(g.id) === Number(groupId));
+      let target = match;
+
+      // Otherwise fetch it
+      if (!target) {
+        try {
+          const res = await mobilePostsGroupService.getGroup(groupId);
+          if (res?.success) target = res.data;
+        } catch (e) {
+          // silent — fall back to list view
+        }
+      }
+
+      if (cancelled) return;
+
+      if (target) {
+        setOpenedGroup(target);
+        // If it was a group-only intent, we're done here.
+        // If it was a post intent, GroupDetailPage consumes it next.
+        if (pendingIntent.intent === 'group') onIntentHandled?.();
+      } else {
+        // Couldn't resolve — clear the intent so we don't loop
+        onIntentHandled?.();
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [pendingIntent, groups, onIntentHandled]);
 
   useEffect(() => {
     setPage(1);
@@ -190,7 +248,6 @@ export default function PostsPage({
     return () => sub.remove();
   }, [showCreateGroup]);
 
-  // ✅ Handle back button for confirm / leave sheets
   useEffect(() => {
     if (!confirmAction) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -209,7 +266,6 @@ export default function PostsPage({
     return () => sub.remove();
   }, [leaveGroupModal]);
 
-  // ✅ Close any open swipe if the user starts interacting with a modal
   useEffect(() => {
     if (confirmAction || leaveGroupModal || showCreateGroup || openedGroup) {
       closeAllSwipes(null);
@@ -270,7 +326,7 @@ export default function PostsPage({
         setNewGroupName('');
         setNewGroupDesc('');
         setGroupError(null);
-        refreshCounts();               // ✅ update pills
+        refreshCounts();
       } else {
         setGroupError(res.error || 'Could not create group');
       }
@@ -305,7 +361,7 @@ export default function PostsPage({
 
       if (res.success) {
         applyGroupUpdate(res.data);
-        refreshCounts();               // ✅ group moved between tabs
+        refreshCounts();
       } else {
         Alert.alert('Error', res.error || 'Could not update group');
       }
@@ -358,7 +414,7 @@ export default function PostsPage({
         const res = await mobilePostsGroupService.deactivateGroup(group.id);
         if (res.success) {
           applyGroupUpdate(res.data);
-          refreshCounts();             // ✅ group moved to inactive
+          refreshCounts();
         } else {
           setConfirmError(res.error || 'Could not deactivate');
           return;
@@ -368,7 +424,7 @@ export default function PostsPage({
         if (res.success) {
           setGroups((prev) => prev.filter((g) => Number(g.id) !== Number(group.id)));
           swipeableRefs.current.delete(group.id);
-          refreshCounts();             // ✅ group removed from counts
+          refreshCounts();
         } else {
           setConfirmError(res.error || 'Could not delete');
           return;
@@ -412,7 +468,7 @@ export default function PostsPage({
         setLeaveGroupModal(null);
         setTransferTo(null);
         setLeaveError(null);
-        refreshCounts();               // ✅ user no longer counts toward this group
+        refreshCounts();
       } else {
         setLeaveError(res.error || 'Could not leave group');
       }
@@ -450,11 +506,13 @@ export default function PostsPage({
       );
       return;
     }
+    // User manually opened a group — clear any pending intent
+    onIntentHandled?.();
     setOpenedGroup(g);
   };
 
   // ================================================================
-  // RENDER: Group card with swipe-to-reveal actions
+  // RENDER: Group card
   // ================================================================
   const renderGroup = ({ item: g }) => {
     const isInactive = g.status === 'inactive';
@@ -462,12 +520,8 @@ export default function PostsPage({
     const pendingCount = g.pendingCount || 0;
     const owner = isOwner(g);
 
-    // ---- Right-hand action panel (icon-only, revealed on swipe-left) ----
     const renderRightActions = (progress, dragX) => {
       const btnWidth = 68;
-
-      // Owner sees Activate/Deactivate + Delete + Leave  → 3 buttons
-      // Member sees only Leave                           → 1 button
       const buttonCount = owner ? 3 : 1;
       const panelWidth = btnWidth * buttonCount;
 
@@ -498,29 +552,14 @@ export default function PostsPage({
           ]}
         >
           {owner && isInactive && (
-            <ActionBtn
-              icon="▶"
-              color="#10B981"
-              onPress={() => requestActivate(g)}
-            />
+            <ActionBtn icon="▶" color="#10B981" onPress={() => requestActivate(g)} />
           )}
-
           {owner && !isInactive && (
-            <ActionBtn
-              icon="⏸"
-              color="#F59E0B"
-              onPress={() => requestDeactivate(g)}
-            />
+            <ActionBtn icon="⏸" color="#F59E0B" onPress={() => requestDeactivate(g)} />
           )}
-
           {owner && (
-            <ActionBtn
-              icon="🗑"
-              color="#EF4444"
-              onPress={() => requestDelete(g)}
-            />
+            <ActionBtn icon="🗑" color="#EF4444" onPress={() => requestDelete(g)} />
           )}
-
           <ActionBtn
             icon={owner ? '🔁' : '🚪'}
             color="#64748B"
@@ -676,13 +715,11 @@ export default function PostsPage({
   // GROUP DETAIL
   // ================================================================
   if (openedGroup) {
-    const GroupDetailComponent = require('./GroupDetailPage').default;
-
     const liveGroup =
       groups.find((g) => Number(g.id) === Number(openedGroup.id)) || openedGroup;
 
     return (
-      <GroupDetailComponent
+      <GroupDetailPage
         group={liveGroup}
         currentUser={currentUser}
         onGroupUpdated={applyGroupUpdate}
@@ -694,7 +731,10 @@ export default function PostsPage({
         onBack={() => {
           setOpenedGroup(null);
           loadGroups(true);
+          onIntentHandled?.();
         }}
+        pendingIntent={pendingIntent?.intent === 'post' ? pendingIntent : null}
+        onIntentHandled={onIntentHandled}
         darkMode={darkMode}
         textColor={textColor}
         subTextColor={subTextColor}
@@ -1055,7 +1095,6 @@ export default function PostsPage({
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
-                    {/* Accent banner */}
                     <View
                       style={[
                         styles.sheetAccentBanner,
@@ -1229,7 +1268,6 @@ export default function PostsPage({
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
-                    {/* Accent banner */}
                     <View
                       style={[
                         styles.sheetAccentBanner,
@@ -1422,7 +1460,7 @@ export default function PostsPage({
 }
 
 // ================================================================
-// STYLES
+// STYLES (unchanged)
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1434,10 +1472,7 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     gap: 12,
   },
-  loadingText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  loadingText: { fontSize: 13, fontWeight: '500' },
 
   headerBar: {
     flexDirection: 'row',
@@ -1649,7 +1684,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  // ✅ Swipe-to-reveal — icon-only buttons, vertically centered
   swipeActionsWrap: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -1665,7 +1699,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  // ── Shared sheet text ──
   sheetTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.3 },
   sheetSub: { fontSize: 12.5, fontWeight: '600', marginTop: 4 },
 
@@ -1742,7 +1775,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
 
-  // ── Bottom Sheet (shared by all three sheets) ──
   bottomSheetBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1795,7 +1827,6 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
 
-  // ── Accent banner at top of confirm / leave sheets ──
   sheetAccentBanner: {
     flexDirection: 'row',
     alignItems: 'center',

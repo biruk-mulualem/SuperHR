@@ -14,6 +14,7 @@ import {
 
 import mobileNotificationService from '../../stores/mobileNotificationService';
 import mobilePostsGroupService from '../../stores/mobilePostsGroupService';
+import { resolveNotificationRoute } from '../../router/notificationRoutes';
 
 // ================================================================
 // TYPE CLASSIFICATION
@@ -69,65 +70,6 @@ const getTypeColor = (type) => {
 };
 
 const getTypeIcon = (type) => mobileNotificationService.getIcon(type);
-
-// ----------------------------------------------------------------
-// ROUTE BUILDER
-// ----------------------------------------------------------------
-const buildRouteFromNotification = (item) => {
-  if (!item.referenceId && !item.metadata?.groupId) return null;
-
-  switch (item.type) {
-    case 'dispatch':
-    case 'dispatch_boss':
-    case 'approval_request':
-    case 'price_submitted':
-      return {
-        tab: 'pendingSubmissionDetail',
-        params: { id: item.referenceId },
-      };
-
-    case 'winner_selected':
-    case 'request_approved':
-    case 'request_declined':
-      return {
-        tab: 'submittedDetail',
-        params: { id: item.referenceId },
-      };
-
-    case 'request_deleted':
-      return null;
-
-    case 'posts.member_invited':
-    case 'posts.member_accepted':
-    case 'posts.member_declined':
-    case 'posts.member_removed':
-    case 'posts.group_deactivated':
-    case 'posts.ownership_transferred':
-      return {
-        tab: 'groupDetail',
-        params: { id: item.referenceId },
-      };
-
-    case 'posts.post_submitted':
-    case 'posts.post_approved':
-    case 'posts.post_declined':
-    case 'posts.post_comment':
-    case 'posts.image_signed':
-      return {
-        tab: 'postDetail',
-        params: {
-          groupId: item.metadata?.groupId,
-          postId: item.referenceId,
-        },
-      };
-
-    default:
-      return {
-        tab: 'pendingSubmissionDetail',
-        params: { id: item.referenceId },
-      };
-  }
-};
 
 // ================================================================
 // COMPONENT
@@ -212,7 +154,7 @@ export default function NotificationPage({
   }, [load]);
 
   // ----------------------------------------------------------------
-  // Close the modal (safe — blocked only while a request is running)
+  // Close the modal
   // ----------------------------------------------------------------
   const closeModal = () => {
     if (inviteBusy) return;
@@ -221,9 +163,9 @@ export default function NotificationPage({
   };
 
   // ----------------------------------------------------------------
-  // Tap:
-  //   • group invitations → open the modal
-  //   • everything else   → navigate
+  // Tap
+  //   • Invitations → open the modal
+  //   • Everything else with a route → dispatch to the parent
   // ----------------------------------------------------------------
   const handleTap = (item) => {
     if (item.type === 'posts.member_invited') {
@@ -233,7 +175,14 @@ export default function NotificationPage({
       return;
     }
 
-    const route = buildRouteFromNotification(item);
+    const route = resolveNotificationRoute(item);
+    console.log('🟡 [NotificationPage] tap', {
+      type: item.type,
+      referenceId: item.referenceId,
+      metadata: item.metadata,
+      route,
+    });
+
     if (route && typeof onOpenNotification === 'function') {
       onOpenNotification(route);
     }
@@ -312,18 +261,15 @@ export default function NotificationPage({
   };
 
   // ----------------------------------------------------------------
-  // Mark all read → marks them read on the server AND clears the list
+  // Mark all read
   // ----------------------------------------------------------------
   const handleMarkAllRead = async () => {
     const before = items;
-
-    // Optimistically clear the visible list. Read items are removed.
     setItems([]);
 
     try {
       const res = await mobileNotificationService.markAllAsRead();
       if (!res?.success) {
-        // Roll back if the server rejected
         setItems(before);
         Alert.alert('Error', res?.error || 'Failed to mark all as read');
       }
@@ -371,12 +317,22 @@ export default function NotificationPage({
   }
 
   // ----------------------------------------------------------------
-  // Row renderer (shared between both sections)
+  // Row renderer
   // ----------------------------------------------------------------
   const renderRow = (item) => {
     const typeColor = getTypeColor(item.type);
     const typeIcon = getTypeIcon(item.type);
     const isInvite = item.type === 'posts.member_invited';
+
+    // Does this notification have a route to somewhere?
+    const hasRoute = !isInvite && !!resolveNotificationRoute(item);
+    const tappable = isInvite || hasRoute;
+
+    const hint = isInvite
+      ? 'Tap to respond'
+      : hasRoute
+      ? 'Tap to open'
+      : null;
 
     return (
       <TouchableOpacity
@@ -389,8 +345,9 @@ export default function NotificationPage({
             borderLeftColor: item.read ? borderColor : typeColor,
           },
         ]}
-        onPress={() => handleTap(item)}
-        activeOpacity={0.75}
+        onPress={() => (tappable ? handleTap(item) : null)}
+        activeOpacity={tappable ? 0.75 : 1}
+        disabled={!tappable}
       >
         <View
           style={[
@@ -435,9 +392,11 @@ export default function NotificationPage({
               🕐 {item.time}
             </Text>
 
-            <Text style={[styles.clearHint, { color: subTextColor }]}>
-              {isInvite ? 'Tap to respond' : 'Tap to open'}
-            </Text>
+            {hint ? (
+              <Text style={[styles.clearHint, { color: subTextColor }]}>
+                {hint}
+              </Text>
+            ) : null}
           </View>
         </View>
 
@@ -585,7 +544,6 @@ export default function NotificationPage({
         onRequestClose={closeModal}
       >
         <View style={styles.modalBackdrop}>
-          {/* Backdrop tap-to-close */}
           <TouchableOpacity
             activeOpacity={1}
             style={StyleSheet.absoluteFillObject}
@@ -599,7 +557,6 @@ export default function NotificationPage({
                 { backgroundColor: cardBg, borderColor },
               ]}
             >
-              {/* Header with explicit ✕ */}
               <View style={styles.modalHeader}>
                 <View
                   style={[
@@ -673,7 +630,6 @@ export default function NotificationPage({
                 </TouchableOpacity>
               </View>
 
-              {/* Cancel row — explicit close */}
               <TouchableOpacity
                 onPress={closeModal}
                 activeOpacity={0.7}
@@ -735,7 +691,6 @@ const styles = StyleSheet.create({
   },
   markAllText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
 
-  // ── Section headers ──
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -834,7 +789,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
   emptyText: { fontSize: 13, textAlign: 'center' },
 
-  // ── Invitation modal ──
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
@@ -924,7 +878,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // ── Cancel row ──
   modalCancelRow: {
     marginTop: 10,
     paddingVertical: 10,

@@ -156,7 +156,6 @@ export function onCommentNew(handler) {
   return safeListener('comment:new', handler);
 }
 
-// ✅ NEW — comment edit/delete listeners
 export function onCommentUpdated(handler) {
   return safeListener('comment:updated', handler);
 }
@@ -167,4 +166,9 @@ export function onCommentDeleted(handler) {
 
 export function onPostImageUpdated(handler) {
   return safeListener('post:image-updated', handler);
+}
+
+// ✅ NEW — group-wide pin changed (payload: { groupId, pinnedPostId | null })
+export function onGroupPinned(handler) {
+  return safeListener('group:pinned', handler);
 }

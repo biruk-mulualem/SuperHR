@@ -55,7 +55,6 @@ const imageDto = (i) => ({
   annotatedFromId: i.annotatedFromId,
 });
 
-// ✅ commentDto now includes editedAt
 const commentDto = (c) => ({
   id: c.id,
   author: c.author?.fullName || c.author?.username || 'Unknown',
@@ -116,7 +115,6 @@ const getGroupMemberIdsExcept = async (groupId, excludeIds = []) => {
     .filter((id) => !excludeSet.has(String(id)));
 };
 
-// Safe socket emit wrapper — never crash the request
 const safeEmit = (fn) => {
   try {
     fn();
@@ -127,6 +125,7 @@ const safeEmit = (fn) => {
 
 // ================================================================
 // 1. LIST POSTS IN GROUP
+//    Response now includes `pinnedPostId` (group-level, single)
 // ================================================================
 exports.listGroupPosts = async (req, res) => {
   try {
@@ -140,6 +139,12 @@ exports.listGroupPosts = async (req, res) => {
     if (!member && !isManager(req)) {
       return res.status(403).json({ success: false, error: 'Not a member' });
     }
+
+    // ✅ Group's current pinned post (single, group-wide)
+    const groupRow = await PostGroup.findByPk(groupId, {
+      attributes: ['id', 'pinnedPostId'],
+    });
+    const pinnedPostId = groupRow?.pinnedPostId || null;
 
     const where = { groupId };
     if (status === 'pending' || status === 'approved' || status === 'declined') {
@@ -202,6 +207,7 @@ exports.listGroupPosts = async (req, res) => {
         page: pageNum,
         pageSize,
         totalPages: Math.ceil(count / pageSize) || 1,
+        pinnedPostId,          // ✅ group-level single pin id (or null)
       },
     });
   } catch (err) {
@@ -241,7 +247,6 @@ exports.getPost = async (req, res) => {
 
 // ================================================================
 // 3. CREATE POST
-//    emits: post:new
 // ================================================================
 exports.createPost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -338,7 +343,6 @@ exports.createPost = async (req, res) => {
 
 // ================================================================
 // 4. DELETE POST
-//    emits: post:deleted
 // ================================================================
 exports.deletePost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -364,7 +368,16 @@ exports.deletePost = async (req, res) => {
     const deletedGroupId = p.groupId;
     const deletedPostId = p.id;
 
+    // ✅ If this post is the group's pinned post, clear the pin
+    //    (also handled at the DB level by ON DELETE SET NULL, but doing it
+    //     explicitly keeps the row-level pin in sync inside the txn)
+    const group = await PostGroup.findByPk(deletedGroupId, { transaction: t });
+    if (group && Number(group.pinnedPostId) === Number(deletedPostId)) {
+      await group.update({ pinnedPostId: null }, { transaction: t });
+    }
+
     await PostGroupPost.destroy({ where: { id: p.id }, transaction: t });
+
     await audit({
       actorId: userId,
       action: 'post.delete',
@@ -372,11 +385,19 @@ exports.deletePost = async (req, res) => {
       targetId: p.id,
       groupId: p.groupId,
     });
+
     await t.commit();
 
-    safeEmit(() =>
-      emitToGroup(deletedGroupId, 'post:deleted', { id: deletedPostId })
-    );
+    safeEmit(() => {
+      emitToGroup(deletedGroupId, 'post:deleted', { id: deletedPostId });
+      // Also notify anyone watching the group about the pin clearing
+      if (group && Number(group.pinnedPostId) === Number(deletedPostId)) {
+        emitToGroup(deletedGroupId, 'group:pinned', {
+          groupId: Number(deletedGroupId),
+          pinnedPostId: null,
+        });
+      }
+    });
 
     res.json({ success: true, message: 'Post deleted' });
   } catch (err) {
@@ -387,8 +408,7 @@ exports.deletePost = async (req, res) => {
 };
 
 // ================================================================
-// 5. APPROVE POST
-//    emits: post:updated
+// 5. APPROVE POST   (note optional)
 // ================================================================
 exports.approvePost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -398,11 +418,8 @@ exports.approvePost = async (req, res) => {
       await t.rollback();
       return res.status(403).json({ success: false, error: 'Manager only' });
     }
-    const { note } = req.body;
-    if (!note || !String(note).trim()) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: 'Note required' });
-    }
+
+    const note = (req.body?.note ?? '').toString().trim();
 
     const p = await PostGroupPost.findByPk(req.params.id, { transaction: t });
     if (!p) {
@@ -418,7 +435,7 @@ exports.approvePost = async (req, res) => {
     await p.update(
       {
         status: 'approved',
-        reviewNote: String(note).trim(),
+        reviewNote: note || null,
         reviewedBy: userId,
         reviewedAt: new Date(),
       },
@@ -431,32 +448,26 @@ exports.approvePost = async (req, res) => {
       targetType: 'post',
       targetId: p.id,
       groupId: p.groupId,
-      metadata: { note: String(note).trim() },
+      metadata: note ? { note } : {},
     });
 
     await t.commit();
 
-    const full = await PostGroupPost.findByPk(p.id, {
-      include: postIncludes(),
-    });
+    const full = await PostGroupPost.findByPk(p.id, { include: postIncludes() });
     const dto = postDto(full);
 
     safeEmit(() => emitToGroup(p.groupId, 'post:updated', dto));
 
     await safeNotify(async () => {
       if (Number(p.authorId) === Number(userId)) return;
-
-      const group = await PostGroup.findByPk(p.groupId, {
-        attributes: ['id', 'name'],
-      });
-
+      const group = await PostGroup.findByPk(p.groupId, { attributes: ['id', 'name'] });
       await MobileNotification.posts.postApproved({
         recipientId: p.authorId,
         postId: p.id,
         groupId: Number(p.groupId),
         groupName: group?.name || 'a group',
         title: p.title,
-        note: String(note).trim(),
+        note: note || null,
       });
     });
 
@@ -469,8 +480,7 @@ exports.approvePost = async (req, res) => {
 };
 
 // ================================================================
-// 6. DECLINE POST
-//    emits: post:updated
+// 6. DECLINE POST   (reason optional)
 // ================================================================
 exports.declinePost = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -480,11 +490,8 @@ exports.declinePost = async (req, res) => {
       await t.rollback();
       return res.status(403).json({ success: false, error: 'Manager only' });
     }
-    const { reason } = req.body;
-    if (!reason || !String(reason).trim()) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: 'Reason required' });
-    }
+
+    const reason = (req.body?.reason ?? '').toString().trim();
 
     const p = await PostGroupPost.findByPk(req.params.id, { transaction: t });
     if (!p) {
@@ -500,7 +507,7 @@ exports.declinePost = async (req, res) => {
     await p.update(
       {
         status: 'declined',
-        reviewNote: String(reason).trim(),
+        reviewNote: reason || null,
         reviewedBy: userId,
         reviewedAt: new Date(),
       },
@@ -513,32 +520,26 @@ exports.declinePost = async (req, res) => {
       targetType: 'post',
       targetId: p.id,
       groupId: p.groupId,
-      metadata: { reason: String(reason).trim() },
+      metadata: reason ? { reason } : {},
     });
 
     await t.commit();
 
-    const full = await PostGroupPost.findByPk(p.id, {
-      include: postIncludes(),
-    });
+    const full = await PostGroupPost.findByPk(p.id, { include: postIncludes() });
     const dto = postDto(full);
 
     safeEmit(() => emitToGroup(p.groupId, 'post:updated', dto));
 
     await safeNotify(async () => {
       if (Number(p.authorId) === Number(userId)) return;
-
-      const group = await PostGroup.findByPk(p.groupId, {
-        attributes: ['id', 'name'],
-      });
-
+      const group = await PostGroup.findByPk(p.groupId, { attributes: ['id', 'name'] });
       await MobileNotification.posts.postDeclined({
         recipientId: p.authorId,
         postId: p.id,
         groupId: Number(p.groupId),
         groupName: group?.name || 'a group',
         title: p.title,
-        reason: String(reason).trim(),
+        reason: reason || null,
       });
     });
 
@@ -590,7 +591,6 @@ exports.listComments = async (req, res) => {
 
 // ================================================================
 // 9. ADD COMMENT
-//    emits: comment:new (post room + group room)
 // ================================================================
 exports.addComment = async (req, res) => {
   try {
@@ -771,9 +771,6 @@ exports.annotatePostImage = async (req, res) => {
 
 // ================================================================
 // 11. EDIT COMMENT
-//     PATCH /api/mobile/posts/:postId/comments/:commentId
-//     body: { body }
-//     emits: comment:updated (post room + group room)
 // ================================================================
 exports.editComment = async (req, res) => {
   try {
@@ -792,7 +789,6 @@ exports.editComment = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Comment not found' });
     }
 
-    // Only the author can edit
     if (Number(comment.authorId) !== Number(userId)) {
       return res.status(403).json({
         success: false,
@@ -846,8 +842,6 @@ exports.editComment = async (req, res) => {
 
 // ================================================================
 // 12. DELETE COMMENT
-//     DELETE /api/mobile/posts/:postId/comments/:commentId
-//     emits: comment:deleted (post room + group room)
 // ================================================================
 exports.deleteComment = async (req, res) => {
   try {
@@ -902,6 +896,116 @@ exports.deleteComment = async (req, res) => {
     res.json({ success: true, message: 'Comment deleted' });
   } catch (err) {
     console.error('❌ deleteComment:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ================================================================
+// 13. PIN POST   (single pin per group, any active member)
+//     POST /api/mobile/posts/:id/pin
+//     emits: group:pinned
+// ================================================================
+exports.pinPost = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const postId = req.params.id;
+
+    const p = await PostGroupPost.findByPk(postId);
+    if (!p) {
+      return res.status(404).json({ success: false, error: 'Post not found' });
+    }
+
+    const member = await isActiveMember(p.groupId, userId);
+    if (!member && !isManager(req)) {
+      return res
+        .status(403)
+        .json({ success: false, error: 'Not a member of this group' });
+    }
+
+    const group = await PostGroup.findByPk(p.groupId);
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Group not found' });
+    }
+
+    if (Number(group.pinnedPostId) === Number(p.id)) {
+      return res.json({ success: true, message: 'Already pinned' });
+    }
+
+    await group.update({ pinnedPostId: p.id });
+
+    await audit({
+      actorId: userId,
+      action: 'post.pin',
+      targetType: 'post',
+      targetId: p.id,
+      groupId: p.groupId,
+    });
+
+    safeEmit(() =>
+      emitToGroup(p.groupId, 'group:pinned', {
+        groupId: Number(p.groupId),
+        pinnedPostId: Number(p.id),
+      })
+    );
+
+    res.json({ success: true, data: { pinnedPostId: Number(p.id) } });
+  } catch (err) {
+    console.error('❌ pinPost:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ================================================================
+// 14. UNPIN POST
+//     DELETE /api/mobile/posts/:id/pin
+//     emits: group:pinned  (pinnedPostId: null)
+// ================================================================
+exports.unpinPost = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const postId = req.params.id;
+
+    const p = await PostGroupPost.findByPk(postId);
+    if (!p) {
+      return res.status(404).json({ success: false, error: 'Post not found' });
+    }
+
+    const member = await isActiveMember(p.groupId, userId);
+    if (!member && !isManager(req)) {
+      return res
+        .status(403)
+        .json({ success: false, error: 'Not a member of this group' });
+    }
+
+    const group = await PostGroup.findByPk(p.groupId);
+    if (!group) {
+      return res.status(404).json({ success: false, error: 'Group not found' });
+    }
+
+    if (Number(group.pinnedPostId) !== Number(p.id)) {
+      return res.json({ success: true, message: 'Not pinned' });
+    }
+
+    await group.update({ pinnedPostId: null });
+
+    await audit({
+      actorId: userId,
+      action: 'post.unpin',
+      targetType: 'post',
+      targetId: p.id,
+      groupId: p.groupId,
+    });
+
+    safeEmit(() =>
+      emitToGroup(p.groupId, 'group:pinned', {
+        groupId: Number(p.groupId),
+        pinnedPostId: null,
+      })
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ unpinPost:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 };

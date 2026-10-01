@@ -24,6 +24,12 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'groupId',
         as: 'auditLogs',
       });
+
+      // ✅ Single pinned post per group
+      PostGroup.belongsTo(models.PostGroupPost, {
+        foreignKey: 'pinnedPostId',
+        as: 'pinnedPost',
+      });
     }
   }
 
@@ -69,6 +75,15 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: DataTypes.NOW,
         field: 'last_activity',
       },
+
+      // ✅ Single pinned post per group
+      pinnedPostId: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+        field: 'pinned_post_id',
+        references: { model: 'post_posts', key: 'id' },
+      },
+
       deletedAt: {
         type: DataTypes.DATE,
         allowNull: true,

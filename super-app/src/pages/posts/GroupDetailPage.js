@@ -43,17 +43,14 @@ import {
   onCommentNew,
   onCommentUpdated,
   onCommentDeleted,
+  onGroupPinned,
 } from '../../stores/socketService';
 
-// Sibling pages
 import GroupMembersPage from './GroupMembersPage';
 import GroupAboutPage from './GroupAboutPage';
 
 // ================================================================
-// STATIC FILE URL HELPER
-// ================================================================
 const API_BASE = (api.defaults.baseURL || '').replace(/\/api\/?$/, '');
-
 const absoluteUrl = (u) => {
   if (!u) return u;
   if (/^https?:\/\//i.test(u)) return u;
@@ -62,8 +59,6 @@ const absoluteUrl = (u) => {
   return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
 };
 
-// ================================================================
-// CONSTANTS
 // ================================================================
 const POST_FILTERS = [
   { key: 'pending',  label: 'Pending'  },
@@ -78,9 +73,6 @@ const POSTS_PER_PAGE = 10;
 const PEN_COLORS = ['#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#111827', '#FFFFFF'];
 const PEN_SIZES = [3, 6, 10, 16];
 
-// ================================================================
-// Helpers
-// ================================================================
 const fmtTimeAgo = (ts) => {
   if (!ts) return '—';
   const t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
@@ -129,6 +121,9 @@ const normalizePost = (p) => ({
   }),
   imageRecords: p.images || [],
   commentCount: Number(p.commentCount) || 0,
+  pinnedAt: p.pinnedAt || null,
+  pinnedBy: p.pinnedBy || null,
+  isPinned: !!p.isPinned || !!p.pinnedAt,
   ...(Array.isArray(p.comments) ? { comments: p.comments } : {}),
 });
 
@@ -142,18 +137,35 @@ const normalizeMember = (m) => ({
   status: m.status,
 });
 
-// ================================================================
-// IMAGE VIEWER
+const buildSigningQueue = (post, mode) => {
+  const rawImages = Array.isArray(post?.imageRecords) ? post.imageRecords : [];
+  const images = rawImages
+    .map((rec) => {
+      const rawUri = typeof rec === 'string' ? rec : rec.url;
+      return {
+        imageRecordId: typeof rec === 'string' ? null : rec.id,
+        uri: absoluteUrl(rawUri),
+      };
+    })
+    .filter((x) => !!x.uri && x.imageRecordId != null);
+  if (images.length === 0) return null;
+  return {
+    mode,
+    postId: post.id,
+    images,
+    index: 0,
+    results: images.map(() => ({ status: 'pending' })),
+  };
+};
+
 // ================================================================
 function ImageViewer({ visible, uri, onClose }) {
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-
   const currentScale = useRef(1);
   const currentX = useRef(0);
   const currentY = useRef(0);
-
   const lastTap = useRef(0);
   const initialDistance = useRef(0);
   const initialScale = useRef(1);
@@ -169,9 +181,7 @@ function ImageViewer({ visible, uri, onClose }) {
     translateY.setValue(0);
   };
 
-  useEffect(() => {
-    if (!visible) reset();
-  }, [visible]);
+  useEffect(() => { if (!visible) reset(); }, [visible]);
 
   const distanceBetween = (touches) => {
     const [a, b] = touches;
@@ -220,9 +230,8 @@ function ImageViewer({ visible, uri, onClose }) {
       onPanResponderRelease: () => {
         const now = Date.now();
         if (now - lastTap.current < 300) {
-          if (currentScale.current > 1) {
-            reset();
-          } else {
+          if (currentScale.current > 1) reset();
+          else {
             currentScale.current = 2.5;
             Animated.spring(scale, { toValue: 2.5, useNativeDriver: true }).start();
           }
@@ -231,9 +240,7 @@ function ImageViewer({ visible, uri, onClose }) {
         if (currentScale.current < 1) reset();
         initialDistance.current = 0;
       },
-      onPanResponderTerminate: () => {
-        initialDistance.current = 0;
-      },
+      onPanResponderTerminate: () => { initialDistance.current = 0; },
     })
   ).current;
 
@@ -263,53 +270,47 @@ function ImageViewer({ visible, uri, onClose }) {
 }
 
 // ================================================================
-// ANNOTATION SCREEN
-// ================================================================
 function AnnotationScreen({
   visible,
   uri,
   onClose,
   onSave,
+  onSkip,
+  onPrev,
+  canGoBack,
   darkMode,
   textColor,
   subTextColor,
   cardBg,
   borderColor,
+  headerSubtitle,
+  saving,
+  statusLabel,
 }) {
   const viewRef = useRef(null);
   const [strokes, setStrokes] = useState([]);
   const [live, setLive] = useState('');
-  const [saving, setSaving] = useState(false);
   const [penColor, setPenColor] = useState('#EF4444');
   const [penWidth, setPenWidth] = useState(6);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
-    if (visible) {
-      setStrokes([]);
-      setLive('');
-      setSaving(false);
-    }
+    if (visible) { setStrokes([]); setLive(''); }
   }, [visible, uri]);
 
   useEffect(() => {
     if (!uri) return;
-    Image.getSize(
-      uri,
-      (w, h) => setImgSize({ w, h }),
-      () => setImgSize({ w: SCREEN.width, h: SCREEN.height * 0.48 })
-    );
+    Image.getSize(uri, (w, h) => setImgSize({ w, h }),
+      () => setImgSize({ w: SCREEN.width, h: SCREEN.height * 0.48 }));
   }, [uri]);
 
   const maxW = SCREEN.width - 24;
   const maxH = SCREEN.height * 0.48;
-
-  let frameW = maxW;
-  let frameH = maxH;
+  let frameW = maxW, frameH = maxH;
   if (imgSize.w && imgSize.h) {
-    const scaleFactor = Math.min(maxW / imgSize.w, maxH / imgSize.h);
-    frameW = imgSize.w * scaleFactor;
-    frameH = imgSize.h * scaleFactor;
+    const s = Math.min(maxW / imgSize.w, maxH / imgSize.h);
+    frameW = imgSize.w * s;
+    frameH = imgSize.h * s;
   }
 
   const handleStart = (e) => {
@@ -322,31 +323,29 @@ function AnnotationScreen({
   };
   const handleEnd = () => {
     setLive((prev) => {
-      if (prev && prev.length > 4) {
-        setStrokes((all) => [...all, { d: prev, color: penColor, width: penWidth }]);
-      }
+      if (prev && prev.length > 4) setStrokes((all) => [...all, { d: prev, color: penColor, width: penWidth }]);
       return '';
     });
   };
   const undo = () => setStrokes((prev) => prev.slice(0, -1));
   const clearAll = () => { setStrokes([]); setLive(''); };
 
-  const save = async () => {
-    if (!viewRef.current) return;
+  const handleSave = async () => {
+    if (!viewRef.current || saving) return;
     try {
-      setSaving(true);
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
       const tmpUri = await captureRef(viewRef, { format: 'jpg', quality: 0.92 });
       onSave?.(tmpUri);
     } catch (e) {
       console.warn('captureRef failed', e);
       Alert.alert('Could not save', 'Annotation could not be saved.');
-    } finally {
-      setSaving(false);
     }
   };
 
   if (!uri) return null;
+
+  const leftLabel = canGoBack ? '‹ Back' : 'Skip';
+  const handleLeft = canGoBack ? (onPrev || onClose) : (onSkip || onClose);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -354,12 +353,54 @@ function AnnotationScreen({
         <View style={[styles.annotBackdrop, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
           <View style={[styles.annotSheet, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
             <View style={[styles.annotHeader, { borderBottomColor: borderColor }]}>
-              <TouchableOpacity onPress={onClose} hitSlop={10} activeOpacity={0.7} style={styles.annotHeaderBtn}>
-                <Text style={[styles.annotHeaderBtnText, { color: textColor }]}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={[styles.annotTitle, { color: textColor }]}>Draw & Sign</Text>
               <TouchableOpacity
-                onPress={save}
+                onPress={handleLeft}
+                disabled={saving}
+                hitSlop={10}
+                activeOpacity={0.7}
+                style={styles.annotHeaderBtn}
+              >
+                <Text style={[styles.annotHeaderBtnText, { color: subTextColor, fontWeight: '700' }]}>
+                  {leftLabel}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={{ flex: 1, alignItems: 'center', minWidth: 0 }}>
+                <Text style={[styles.annotTitle, { color: textColor }]} numberOfLines={1}>
+                  {headerSubtitle || 'Draw & Sign'}
+                </Text>
+                {!!statusLabel && (
+                  <View
+                    style={{
+                      marginTop: 3,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 6,
+                      backgroundColor:
+                        statusLabel === 'Signed'
+                          ? (darkMode ? '#064E3B' : '#ECFDF5')
+                          : (darkMode ? '#422006' : '#FEF3C7'),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '900',
+                        letterSpacing: 0.4,
+                        color:
+                          statusLabel === 'Signed'
+                            ? (darkMode ? '#6EE7B7' : '#047857')
+                            : (darkMode ? '#FCD34D' : '#92400E'),
+                      }}
+                    >
+                      {statusLabel.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                onPress={handleSave}
                 disabled={saving || strokes.length === 0}
                 hitSlop={10}
                 activeOpacity={0.7}
@@ -456,21 +497,19 @@ function AnnotationScreen({
 
               <View style={{ flex: 1 }} />
 
-              <TouchableOpacity onPress={undo} disabled={strokes.length === 0} activeOpacity={0.85}
+              <TouchableOpacity onPress={undo} disabled={strokes.length === 0 || saving} activeOpacity={0.85}
                 style={[styles.annotActionBtn, {
                   backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
                   borderColor, opacity: strokes.length === 0 ? 0.5 : 1,
-                }]}
-              >
+                }]}>
                 <Text style={[styles.annotToolText, { color: textColor }]}>↶</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={clearAll} disabled={strokes.length === 0} activeOpacity={0.85}
+              <TouchableOpacity onPress={clearAll} disabled={strokes.length === 0 || saving} activeOpacity={0.85}
                 style={[styles.annotActionBtn, {
                   backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
                   borderColor, opacity: strokes.length === 0 ? 0.5 : 1,
-                }]}
-              >
+                }]}>
                 <Text style={[styles.annotToolText, { color: '#EF4444' }]}>Clear</Text>
               </TouchableOpacity>
             </View>
@@ -482,35 +521,29 @@ function AnnotationScreen({
 }
 
 // ================================================================
-// MAIN
-// ================================================================
 export default function GroupDetailPage({
   group,
   currentUser,
   onGroupUpdated,
   onGroupRemoved,
   onBack,
+  pendingIntent,
+  onIntentHandled,
   darkMode,
   textColor,
   subTextColor,
   cardBg,
   borderColor,
 }) {
-  // ✅ Adaptive insets — works on every device
   const insets = useSafeAreaInsets();
 
-  const KEYBOARD_OFFSET = Platform.OS === 'ios'
-    ? 64 + insets.top
-    : 0;
-
+  const KEYBOARD_OFFSET = Platform.OS === 'ios' ? 64 + insets.top : 0;
   const BOTTOM_BAR_PADDING = Platform.OS === 'ios'
     ? Math.max(insets.bottom, 16) + 16
     : Math.max(insets.bottom, 12) + 16;
-
   const REVIEW_FOOTER_PADDING = Platform.OS === 'ios'
     ? Math.max(insets.bottom, 16) + 20
     : Math.max(insets.bottom, 12) + 20;
-
   const CREATE_BAR_PADDING = Platform.OS === 'ios'
     ? Math.max(insets.bottom, 16) + 20
     : Math.max(insets.bottom, 12) + 20;
@@ -524,15 +557,11 @@ export default function GroupDetailPage({
       ));
 
   const groupCreatorId = group?.createdBy;
-  const isGroupAdmin =
-    !!currentUserId && Number(currentUserId) === Number(groupCreatorId);
+  const isGroupAdmin = !!currentUserId && Number(currentUserId) === Number(groupCreatorId);
 
-  // ----------------------------------------------------------------
-  // State
-  // ----------------------------------------------------------------
+  // ---- state ----
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(true);
-
   const [postsLoadingMore, setPostsLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const [postsPage, setPostsPage] = useState({ pending: 1, approved: 1, declined: 1 });
@@ -544,7 +573,6 @@ export default function GroupDetailPage({
 
   const [search, setSearch] = useState('');
   const [postFilter, setPostFilter] = useState('pending');
-
   const [page, setPage] = useState('posts');
 
   const [confirmDeletePost, setConfirmDeletePost] = useState(null);
@@ -563,20 +591,28 @@ export default function GroupDetailPage({
   const [submittingPost, setSubmittingPost] = useState(false);
 
   const [selectedPostId, setSelectedPostId] = useState(null);
+  const [deepLinkedPost, setDeepLinkedPost] = useState(null);
 
   const [viewerUri, setViewerUri] = useState(null);
   const [viewerVisible, setViewerVisible] = useState(false);
 
-  const [annotUri, setAnnotUri] = useState(null);
-  const [annotVisible, setAnnotVisible] = useState(false);
-  const [annotTarget, setAnnotTarget] = useState(null);
+  const [signingQueue, setSigningQueue] = useState(null);
+  const [annotSaving, setAnnotSaving] = useState(false);
+
+  // ✅ Group-wide single pin — initialized from group prop
+  const [pinnedPostId, setPinnedPostId] = useState(
+    group?.pinnedPostId != null ? String(group.pinnedPostId) : null
+  );
+  const [pinningBusy, setPinningBusy] = useState(false);
+
+  // ✅ Intent consumption guard
+  const consumedIntentRef = useRef(null);
 
   // Comment composer
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const commentInputRef = useRef(null);
 
-  // Comment edit / delete
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [editCommentSubmitting, setEditCommentSubmitting] = useState(false);
@@ -587,14 +623,52 @@ export default function GroupDetailPage({
   const canCreatePost = !!myMembership && myMembership.status === 'active';
 
   // ----------------------------------------------------------------
+  // Sync pinnedPostId when the group prop changes
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    const next = group?.pinnedPostId != null ? String(group.pinnedPostId) : null;
+    setPinnedPostId((curr) => (curr === next ? curr : next));
+  }, [group?.pinnedPostId]);
+
+  // ----------------------------------------------------------------
+  // Toggle pin — optimistic group-wide update via API
+  // ----------------------------------------------------------------
+  const togglePin = useCallback(async (post) => {
+    if (!group?.id || !post || pinningBusy) return;
+
+    const currentlyPinned = pinnedPostId && String(pinnedPostId) === String(post.id);
+    const nextId = currentlyPinned ? null : String(post.id);
+    const previousId = pinnedPostId;
+
+    setPinnedPostId(nextId);
+    setPinningBusy(true);
+
+    try {
+      const res = currentlyPinned
+        ? await mobilePostsPostService.unpinPost(post.id)
+        : await mobilePostsPostService.pinPost(post.id);
+
+      if (!res || res.success === false) {
+        setPinnedPostId(previousId);
+        Alert.alert('Error', (res && res.error) || 'Could not update pin');
+        return;
+      }
+      onGroupUpdated?.({ ...(group || {}), pinnedPostId: nextId });
+    } catch (e) {
+      setPinnedPostId(previousId);
+      Alert.alert('Error', e?.message || 'Could not update pin');
+    } finally {
+      setPinningBusy(false);
+    }
+  }, [group, pinnedPostId, pinningBusy, onGroupUpdated]);
+
+  // ----------------------------------------------------------------
   // Loaders
   // ----------------------------------------------------------------
   const loadPosts = useCallback(
     async (pageToLoad = 1, statusToLoad = postFilter) => {
       if (!group?.id) return;
-
       const isFirstPage = pageToLoad === 1;
-
       if (isFirstPage) setPostsLoading(true);
       else setPostsLoadingMore(true);
 
@@ -617,6 +691,10 @@ export default function GroupDetailPage({
         setPostsTotalPages((prev) => ({ ...prev, [statusToLoad]: totalPages }));
         setPostsPage((prev) => ({ ...prev, [statusToLoad]: pageToLoad }));
         setPostsTotals((prev) => ({ ...prev, [statusToLoad]: total }));
+
+        const groupPinnedId =
+          res.data.pinnedPostId != null ? String(res.data.pinnedPostId) : null;
+        setPinnedPostId((curr) => (curr === groupPinnedId ? curr : groupPinnedId));
 
         if (isFirstPage) {
           setPosts((prev) => {
@@ -646,9 +724,7 @@ export default function GroupDetailPage({
     setMembersLoading(true);
     try {
       const res = await mobilePostsGroupService.listMembers(group.id);
-      if (res.success) {
-        setMembers((res.data.items || []).map(normalizeMember));
-      }
+      if (res.success) setMembers((res.data.items || []).map(normalizeMember));
     } catch (e) {
       console.warn('loadMembers:', e);
     } finally {
@@ -656,15 +732,60 @@ export default function GroupDetailPage({
     }
   }, [group?.id]);
 
-  useEffect(() => {
-    if (group?.id) loadMembers();
-  }, [group?.id, loadMembers]);
+  useEffect(() => { if (group?.id) loadMembers(); }, [group?.id, loadMembers]);
 
+  // ----------------------------------------------------------------
+  // ✅ Consume a pendingIntent (open a specific post)
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    if (!pendingIntent) return;
+    if (pendingIntent.intent !== 'post') return;
+
+    const postId = pendingIntent.params?.postId;
+    console.log('🔵 [GroupDetail] consuming post intent:', { postId });
+
+    if (!postId) {
+      onIntentHandled?.();
+      return;
+    }
+
+    const sig = JSON.stringify(pendingIntent);
+    if (consumedIntentRef.current === sig) return;
+    consumedIntentRef.current = sig;
+
+    let cancelled = false;
+    (async () => {
+      // Prefer the post if it's already loaded
+      const inList = posts.find((p) => String(p.id) === String(postId));
+      if (inList) {
+        setSelectedPostId(inList.id);
+        onIntentHandled?.();
+        return;
+      }
+
+      // Otherwise fetch it directly
+      try {
+        const res = await mobilePostsPostService.getPost(postId);
+        if (cancelled) return;
+        if (res?.success) {
+          const norm = normalizePost(res.data);
+          setDeepLinkedPost(norm);
+          setSelectedPostId(norm.id);
+        }
+        onIntentHandled?.();
+      } catch {
+        onIntentHandled?.();
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [pendingIntent, posts, onIntentHandled]);
+
+  // ✅ Filter switch — DO NOT wipe posts; keep previously loaded other-filter posts
   useEffect(() => {
     if (!group?.id) return;
-    setPosts([]);
-    setPostsPage({ pending: 1, approved: 1, declined: 1 });
-    setPostsTotalPages({ pending: 1, approved: 1, declined: 1 });
+    setPostsPage((prev) => ({ ...prev, [postFilter]: 1 }));
+    setPostsTotalPages((prev) => ({ ...prev, [postFilter]: 1 }));
     loadingMoreRef.current = false;
     loadPosts(1, postFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -673,26 +794,41 @@ export default function GroupDetailPage({
   const loadMorePosts = useCallback(() => {
     if (loadingMoreRef.current) return;
     if (postsLoading || postsLoadingMore) return;
-
     const currentPage = postsPage[postFilter] || 1;
     const totalPages = postsTotalPages[postFilter] || 1;
     if (currentPage >= totalPages) return;
-
     loadingMoreRef.current = true;
     loadPosts(currentPage + 1, postFilter);
-  }, [
-    postsLoading,
-    postsLoadingMore,
-    postsPage,
-    postsTotalPages,
-    postFilter,
-    loadPosts,
-  ]);
+  }, [postsLoading, postsLoadingMore, postsPage, postsTotalPages, postFilter, loadPosts]);
+
+  // ✅ If pinned post isn't in cache, fetch it once so the pinned section renders
+  useEffect(() => {
+    if (!group?.id || !pinnedPostId) return;
+    const exists = posts.some((p) => String(p.id) === String(pinnedPostId));
+    if (exists) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await mobilePostsPostService.getPost(pinnedPostId);
+        if (cancelled) return;
+        if (res?.success) {
+          const norm = normalizePost(res.data);
+          setPosts((prev) => {
+            if (prev.some((p) => String(p.id) === String(norm.id))) return prev;
+            return [norm, ...prev];
+          });
+        }
+      } catch (e) {
+        // non-fatal
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [group?.id, pinnedPostId, posts]);
 
   // Socket.IO
   useEffect(() => {
     if (!group?.id) return;
-
     joinGroupRoom(group.id);
 
     const offNewPost = onPostNew((newPost) => {
@@ -701,10 +837,7 @@ export default function GroupDetailPage({
         if (prev.some((p) => String(p.id) === String(norm.id))) return prev;
         return [norm, ...prev];
       });
-      setPostsTotals((prev) => ({
-        ...prev,
-        [norm.status]: (prev[norm.status] || 0) + 1,
-      }));
+      setPostsTotals((prev) => ({ ...prev, [norm.status]: (prev[norm.status] || 0) + 1 }));
     });
 
     const offUpdatedPost = onPostUpdated((updatedPost) => {
@@ -712,11 +845,7 @@ export default function GroupDetailPage({
       setPosts((prev) => {
         const old = prev.find((p) => String(p.id) === String(norm.id));
         const oldStatus = old?.status;
-
-        const updated = prev.map((p) =>
-          String(p.id) === String(norm.id) ? { ...p, ...norm } : p
-        );
-
+        const updated = prev.map((p) => (String(p.id) === String(norm.id) ? { ...p, ...norm } : p));
         if (oldStatus && oldStatus !== norm.status) {
           return updated.filter((p) => String(p.id) !== String(norm.id));
         }
@@ -736,16 +865,16 @@ export default function GroupDetailPage({
         }
         return prev.filter((p) => String(p.id) !== String(id));
       });
+      setPinnedPostId((curr) => (curr && String(curr) === String(id) ? null : curr));
       setSelectedPostId((curr) => (String(curr) === String(id) ? null : curr));
+      setDeepLinkedPost((curr) => (curr && String(curr.id) === String(id) ? null : curr));
     });
 
     const offCommentNew = onCommentNew(({ postId, comment }) => {
       setPosts((prev) =>
         prev.map((p) => {
           if (String(p.id) !== String(postId)) return p;
-          const already = (p.comments || []).some(
-            (c) => String(c.id) === String(comment.id)
-          );
+          const already = (p.comments || []).some((c) => String(c.id) === String(comment.id));
           if (already) return p;
           return {
             ...p,
@@ -774,9 +903,7 @@ export default function GroupDetailPage({
       setPosts((prev) =>
         prev.map((p) => {
           if (String(p.id) !== String(postId)) return p;
-          const filtered = (p.comments || []).filter(
-            (c) => String(c.id) !== String(commentId)
-          );
+          const filtered = (p.comments || []).filter((c) => String(c.id) !== String(commentId));
           return {
             ...p,
             comments: filtered,
@@ -784,6 +911,14 @@ export default function GroupDetailPage({
           };
         })
       );
+    });
+
+    const offGroupPinned = onGroupPinned((payload) => {
+      if (!payload || String(payload.groupId) !== String(group.id)) return;
+      const next =
+        payload.pinnedPostId != null ? String(payload.pinnedPostId) : null;
+      setPinnedPostId(next);
+      onGroupUpdated?.({ ...(group || {}), pinnedPostId: next });
     });
 
     return () => {
@@ -794,15 +929,14 @@ export default function GroupDetailPage({
       offCommentNew();
       offCommentUpdated();
       offCommentDeleted();
+      offGroupPinned();
     };
   }, [group?.id]);
 
   useEffect(() => {
     if (!selectedPostId) return;
     joinPostRoom(selectedPostId);
-    return () => {
-      leavePostRoom(selectedPostId);
-    };
+    return () => { leavePostRoom(selectedPostId); };
   }, [selectedPostId]);
 
   useEffect(() => {
@@ -812,16 +946,73 @@ export default function GroupDetailPage({
     setConfirmDeleteComment(null);
   }, [selectedPostId]);
 
+  // ---- signing queue ----
+  const closeSigningQueue = useCallback(() => {
+    setSigningQueue(null);
+    setAnnotSaving(false);
+  }, []);
+
+  const finishSigningQueue = useCallback((queue) => {
+    const signed = (queue?.results || []).filter((r) => r.status === 'signed').length;
+    const skipped = (queue?.results || []).filter((r) => r.status === 'skipped').length;
+    const mode = queue?.mode;
+    closeSigningQueue();
+    if (mode === 'approve') {
+      setReviewPage(null);
+      setReviewNote('');
+      setReviewError(null);
+    }
+    if (signed === 0 && skipped === 0) return;
+    Alert.alert(
+      mode === 'approve' ? 'Post approved' : 'Signatures updated',
+      signed > 0 && skipped > 0
+        ? `${signed} image${signed === 1 ? '' : 's'} signed, ${skipped} skipped.`
+        : signed > 0
+          ? `${signed} image${signed === 1 ? '' : 's'} signed.`
+          : `All ${skipped} image${skipped === 1 ? '' : 's'} skipped.`,
+    );
+  }, [closeSigningQueue]);
+
+  const advanceSigningQueue = useCallback((status) => {
+    setSigningQueue((q) => {
+      if (!q) return q;
+      const nextResults = q.results.map((r, i) => (i === q.index ? { status } : r));
+      const nextIndex = q.index + 1;
+      if (nextIndex >= q.images.length) {
+        const done = { ...q, results: nextResults, index: nextIndex };
+        setTimeout(() => finishSigningQueue(done), 0);
+        return null;
+      }
+      return { ...q, results: nextResults, index: nextIndex };
+    });
+  }, [finishSigningQueue]);
+
+  const skipAnnotation = useCallback(() => {
+    if (!signingQueue) return;
+    advanceSigningQueue('skipped');
+  }, [signingQueue, advanceSigningQueue]);
+
+  const prevAnnotation = useCallback(() => {
+    setSigningQueue((q) => {
+      if (!q || q.index === 0) return q;
+      return { ...q, index: q.index - 1 };
+    });
+  }, []);
+
   // Hardware back
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (annotVisible) { closeAnnotation(); return true; }
+      if (signingQueue) {
+        if (signingQueue.index > 0) prevAnnotation();
+        else skipAnnotation();
+        return true;
+      }
       if (viewerVisible) { setViewerVisible(false); return true; }
       if (confirmDeleteComment) { setConfirmDeleteComment(null); return true; }
       if (editingCommentId) { cancelEditComment(); return true; }
       if (reviewPage) { cancelReviewPage(); return true; }
       if (confirmDeletePost) { setConfirmDeletePost(null); return true; }
-      if (selectedPostId) { setSelectedPostId(null); return true; }
+      if (selectedPostId) { setSelectedPostId(null); setDeepLinkedPost(null); return true; }
       if (showCreatePost) { cancelCreatePost(); return true; }
       if (page !== 'posts') { setPage('posts'); return true; }
       onBack?.();
@@ -829,7 +1020,7 @@ export default function GroupDetailPage({
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [annotVisible, viewerVisible, confirmDeleteComment, editingCommentId, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack]);
+  }, [signingQueue, viewerVisible, confirmDeleteComment, editingCommentId, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack, prevAnnotation, skipAnnotation]);
 
   // Derived
   const postCounts = useMemo(() => ({
@@ -843,6 +1034,7 @@ export default function GroupDetailPage({
     const numeric = raw.replace(/^#/, '');
     return posts
       .filter((p) => {
+        if (pinnedPostId && String(p.id) === String(pinnedPostId)) return false;
         const matchesFilter = p.status === postFilter;
         if (!raw) return matchesFilter;
         const numStr = String(p.id);
@@ -855,54 +1047,24 @@ export default function GroupDetailPage({
         return matchesFilter && matchesSearch;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [posts, search, postFilter]);
+  }, [posts, search, postFilter, pinnedPostId]);
 
-  const selectedPost = useMemo(
-    () => posts.find((p) => String(p.id) === String(selectedPostId)) || null,
-    [posts, selectedPostId]
+  const pinnedPost = useMemo(
+    () => (pinnedPostId ? posts.find((p) => String(p.id) === String(pinnedPostId)) || null : null),
+    [posts, pinnedPostId]
   );
 
-  // Image viewer / annotation
+  const selectedPost = useMemo(() => {
+    const fromList = posts.find((p) => String(p.id) === String(selectedPostId));
+    if (fromList) return fromList;
+    if (deepLinkedPost && String(deepLinkedPost.id) === String(selectedPostId)) {
+      return deepLinkedPost;
+    }
+    return null;
+  }, [posts, selectedPostId, deepLinkedPost]);
+
   const openImageViewer = (uri) => { setViewerUri(uri); setViewerVisible(true); };
   const closeImageViewer = () => setViewerVisible(false);
-
-  const openAnnotation = (postId, imageIndex, uri) => {
-    setAnnotTarget({ postId, imageIndex });
-    setAnnotUri(uri);
-    setAnnotVisible(true);
-  };
-  const closeAnnotation = () => {
-    setAnnotVisible(false);
-    setAnnotUri(null);
-    setAnnotTarget(null);
-  };
-
-  const applyAnnotation = async (newUri) => {
-    if (!annotTarget) return;
-    const { postId, imageIndex } = annotTarget;
-    try {
-      const res = await mobilePostsPostService.annotatePostImage(postId, imageIndex, {
-        uri: newUri,
-        name: 'annotated.jpg',
-        type: 'image/jpeg',
-      });
-      if (res.success) {
-        const fresh = await mobilePostsPostService.getPost(postId);
-        if (fresh.success) {
-          const norm = normalizePost(fresh.data);
-          setPosts((prev) =>
-            prev.map((p) => (String(p.id) === String(postId) ? norm : p))
-          );
-        }
-      } else {
-        Alert.alert('Error', res.error || 'Could not save annotation');
-      }
-    } catch (e) {
-      Alert.alert('Error', e?.message || 'Could not save annotation');
-    } finally {
-      closeAnnotation();
-    }
-  };
 
   // Post actions
   const pickImages = async () => {
@@ -944,10 +1106,7 @@ export default function GroupDetailPage({
       Alert.alert('Not allowed', 'You do not have permission to post in this group.');
       return;
     }
-    if (!newPostTitle.trim()) {
-      setPostError('Title is required');
-      return;
-    }
+    if (!newPostTitle.trim()) { setPostError('Title is required'); return; }
     setSubmittingPost(true);
     try {
       const res = await mobilePostsPostService.createPost(group.id, {
@@ -961,10 +1120,7 @@ export default function GroupDetailPage({
           if (prev.some((p) => String(p.id) === String(norm.id))) return prev;
           return [norm, ...prev];
         });
-        setPostsTotals((prev) => ({
-          ...prev,
-          [norm.status]: (prev[norm.status] || 0) + 1,
-        }));
+        setPostsTotals((prev) => ({ ...prev, [norm.status]: (prev[norm.status] || 0) + 1 }));
         setShowCreatePost(false);
         setNewPostTitle('');
         setNewPostBody('');
@@ -982,26 +1138,20 @@ export default function GroupDetailPage({
 
   const openPost = async (post) => {
     setSelectedPostId(post.id);
-
     if (post.unread) {
       mobilePostsPostService.markPostRead(post.id).catch(() => {});
       setPosts((prev) =>
         prev.map((p) => (String(p.id) === String(post.id) ? { ...p, unread: false } : p))
       );
     }
-
     if (!post.comments || post.comments.length === 0) {
       try {
         const res = await mobilePostsPostService.getPost(post.id);
         if (res.success) {
           const norm = normalizePost(res.data);
-          setPosts((prev) =>
-            prev.map((p) => (String(p.id) === String(norm.id) ? norm : p))
-          );
+          setPosts((prev) => prev.map((p) => (String(p.id) === String(norm.id) ? norm : p)));
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) { /* ignore */ }
     }
   };
 
@@ -1019,7 +1169,11 @@ export default function GroupDetailPage({
           ...prev,
           [target.status]: Math.max(0, (prev[target.status] || 0) - 1),
         }));
-        if (String(selectedPostId) === String(target.id)) setSelectedPostId(null);
+        if (String(selectedPostId) === String(target.id)) {
+          setSelectedPostId(null);
+          setDeepLinkedPost(null);
+        }
+        if (String(pinnedPostId) === String(target.id)) setPinnedPostId(null);
         setConfirmDeletePost(null);
       } else {
         Alert.alert('Error', res.error || 'Could not delete post');
@@ -1033,11 +1187,9 @@ export default function GroupDetailPage({
 
   const submitComment = async () => {
     if (!selectedPost) return;
-    // ✅ Comments disabled once approved or declined
     if (selectedPost.status !== 'pending') return;
     const text = commentText.trim();
     if (!text) return;
-
     setSubmittingComment(true);
     try {
       const res = await mobilePostsPostService.addComment(selectedPost.id, text);
@@ -1053,9 +1205,7 @@ export default function GroupDetailPage({
         setPosts((prev) =>
           prev.map((p) => {
             if (String(p.id) !== String(selectedPost.id)) return p;
-            const already = (p.comments || []).some(
-              (c) => String(c.id) === String(newComment.id)
-            );
+            const already = (p.comments || []).some((c) => String(c.id) === String(newComment.id));
             if (already) return p;
             return {
               ...p,
@@ -1076,48 +1226,28 @@ export default function GroupDetailPage({
     }
   };
 
-  // Comment edit
-  const startEditComment = (c) => {
-    setEditingCommentId(c.id);
-    setEditCommentText(c.body || '');
-  };
-
-  const cancelEditComment = () => {
-    setEditingCommentId(null);
-    setEditCommentText('');
-  };
+  const startEditComment = (c) => { setEditingCommentId(c.id); setEditCommentText(c.body || ''); };
+  const cancelEditComment = () => { setEditingCommentId(null); setEditCommentText(''); };
 
   const submitEditComment = async () => {
     if (!selectedPost || !editingCommentId) return;
     const text = editCommentText.trim();
     if (!text) return;
-
     const targetCommentId = editingCommentId;
     const targetPostId = selectedPost.id;
-
     setEditCommentSubmitting(true);
     try {
-      const res = await mobilePostsPostService.editComment(
-        targetPostId,
-        targetCommentId,
-        text
-      );
-
+      const res = await mobilePostsPostService.editComment(targetPostId, targetCommentId, text);
       if (res && res.success === false) {
         Alert.alert('Error', res.error || 'Could not edit comment');
         return;
       }
-
       const dto =
         (res && res.data && typeof res.data === 'object' && res.data) ||
         (res && res.comment && typeof res.comment === 'object' && res.comment) ||
         {};
-
-      const mergedBody =
-        typeof dto.body === 'string' && dto.body.length > 0 ? dto.body : text;
-      const mergedEditedAt =
-        dto.editedAt || dto.edited_at || new Date().toISOString();
-
+      const mergedBody = typeof dto.body === 'string' && dto.body.length > 0 ? dto.body : text;
+      const mergedEditedAt = dto.editedAt || dto.edited_at || new Date().toISOString();
       setPosts((prev) =>
         prev.map((p) => {
           if (String(p.id) !== String(targetPostId)) return p;
@@ -1131,7 +1261,6 @@ export default function GroupDetailPage({
           };
         })
       );
-
       cancelEditComment();
     } catch (e) {
       Alert.alert('Error', e?.message || 'Could not edit comment');
@@ -1140,23 +1269,17 @@ export default function GroupDetailPage({
     }
   };
 
-  // Comment delete
   const applyDeleteComment = async () => {
     const target = confirmDeleteComment;
     if (!target || !selectedPost) return;
     setDeleteCommentSubmitting(true);
     try {
-      const res = await mobilePostsPostService.deleteComment(
-        selectedPost.id,
-        target.id
-      );
+      const res = await mobilePostsPostService.deleteComment(selectedPost.id, target.id);
       if (res.success) {
         setPosts((prev) =>
           prev.map((p) => {
             if (String(p.id) !== String(selectedPost.id)) return p;
-            const filtered = (p.comments || []).filter(
-              (c) => String(c.id) !== String(target.id)
-            );
+            const filtered = (p.comments || []).filter((c) => String(c.id) !== String(target.id));
             return {
               ...p,
               comments: filtered,
@@ -1185,14 +1308,6 @@ export default function GroupDetailPage({
 
   const applyReviewPage = async () => {
     if (!reviewPage) return;
-    if (!reviewNote.trim()) {
-      setReviewError(
-        reviewPage.action === 'approve'
-          ? 'Please add a short note before approving.'
-          : 'Please explain why this post is declined.'
-      );
-      return;
-    }
     setReviewSubmitting(true);
     const { post, action } = reviewPage;
     try {
@@ -1200,35 +1315,43 @@ export default function GroupDetailPage({
         ? await mobilePostsPostService.approvePost(post.id, reviewNote.trim())
         : await mobilePostsPostService.declinePost(post.id, reviewNote.trim());
 
-      if (res.success) {
-        const norm = normalizePost(res.data);
-        const newStatus = norm.status;
-
-        setPosts((prev) => {
-          const filtered = prev.filter(
-            (p) => String(p.id) !== String(norm.id) || p.status === newStatus
-          );
-          return filtered.map((p) =>
-            String(p.id) === String(norm.id) ? { ...p, ...norm } : p
-          );
-        });
-
-        setPostsTotals((prev) => {
-          const oldStatus = 'pending';
-          if (oldStatus === newStatus) return prev;
-          return {
-            ...prev,
-            [oldStatus]: Math.max(0, (prev[oldStatus] || 0) - 1),
-            [newStatus]: (prev[newStatus] || 0) + 1,
-          };
-        });
-
-        setReviewPage(null);
-        setReviewNote('');
-        setReviewError(null);
-      } else {
+      if (!res.success) {
         setReviewError(res.error || 'Could not save review');
+        return;
       }
+
+      const norm = normalizePost(res.data);
+      const newStatus = norm.status;
+
+      setPosts((prev) => {
+        const filtered = prev.filter((p) => String(p.id) !== String(norm.id) || p.status === newStatus);
+        return filtered.map((p) => (String(p.id) === String(norm.id) ? { ...p, ...norm } : p));
+      });
+
+      setPostsTotals((prev) => {
+        const oldStatus = 'pending';
+        if (oldStatus === newStatus) return prev;
+        return {
+          ...prev,
+          [oldStatus]: Math.max(0, (prev[oldStatus] || 0) - 1),
+          [newStatus]: (prev[newStatus] || 0) + 1,
+        };
+      });
+
+      if (action === 'approve') {
+        const queue = buildSigningQueue(norm, 'approve');
+        if (queue) {
+          setReviewNote('');
+          setReviewError(null);
+          setAnnotSaving(false);
+          setSigningQueue(queue);
+          return;
+        }
+      }
+
+      setReviewPage(null);
+      setReviewNote('');
+      setReviewError(null);
     } catch (e) {
       setReviewError(e?.message || 'Could not save review');
     } finally {
@@ -1240,6 +1363,47 @@ export default function GroupDetailPage({
     setReviewPage(null);
     setReviewNote('');
     setReviewError(null);
+  };
+
+  const openEditSignatures = () => {
+    if (!selectedPost) return;
+    const queue = buildSigningQueue(selectedPost, 'edit');
+    if (!queue) { Alert.alert('No images', 'This post has no signable images.'); return; }
+    setAnnotSaving(false);
+    setSigningQueue(queue);
+  };
+
+  const applyAnnotation = async (newUri) => {
+    if (!signingQueue) return;
+    const { postId, images, index } = signingQueue;
+    const current = images[index];
+    if (!current) { advanceSigningQueue('skipped'); return; }
+
+    setAnnotSaving(true);
+    try {
+      const res = await mobilePostsPostService.annotatePostImage(
+        postId,
+        current.imageRecordId,
+        { uri: newUri, name: 'annotated.jpg', type: 'image/jpeg' }
+      );
+      if (!res.success) {
+        Alert.alert('Error', res.error || 'Could not save signature');
+        setAnnotSaving(false);
+        return;
+      }
+      try {
+        const fresh = await mobilePostsPostService.getPost(postId);
+        if (fresh.success) {
+          const norm = normalizePost(fresh.data);
+          setPosts((prev) => prev.map((p) => (String(p.id) === String(postId) ? norm : p)));
+        }
+      } catch (_) { /* non-fatal */ }
+      setAnnotSaving(false);
+      advanceSigningQueue('signed');
+    } catch (e) {
+      setAnnotSaving(false);
+      Alert.alert('Error', e?.message || 'Could not save signature');
+    }
   };
 
   // Renderers
@@ -1262,7 +1426,6 @@ export default function GroupDetailPage({
 
     const items = images.slice(0, 4);
     const extra = total - items.length;
-
     return (
       <View style={styles.cardImageGrid}>
         {items.map((m, i) => {
@@ -1287,25 +1450,41 @@ export default function GroupDetailPage({
     );
   };
 
-  // ✅ Post card — NO swipe actions, just a plain tappable card
   const renderPost = ({ item: p }) => {
     const cfg = postStatusConfig(p.status, darkMode);
     const commentCount =
       Array.isArray(p.comments) && p.comments.length > 0
         ? p.comments.length
         : (Number(p.commentCount) || 0);
+    const isPinned = pinnedPostId && String(pinnedPostId) === String(p.id);
 
     return (
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={() => openPost(p)}
+        onLongPress={() => togglePin(p)}
+        delayLongPress={400}
         style={[styles.postCard, {
           backgroundColor: cardBg,
-          borderColor: p.unread ? (darkMode ? '#1E40AF' : '#BFDBFE') : borderColor,
+          borderColor: isPinned
+            ? '#8B5CF6'
+            : (p.unread ? (darkMode ? '#1E40AF' : '#BFDBFE') : borderColor),
           marginBottom: 10,
         }]}
       >
         {p.unread && <View style={[styles.unreadDot, { backgroundColor: '#3B82F6' }]} />}
+
+        <TouchableOpacity
+          onPress={() => togglePin(p)}
+          hitSlop={8}
+          activeOpacity={0.75}
+          style={styles.pinBtn}
+        >
+          <Text style={[styles.pinBtnIcon, { color: isPinned ? '#8B5CF6' : subTextColor }]}>
+            {isPinned ? '📌' : '📍'}
+          </Text>
+        </TouchableOpacity>
+
         {renderPostMedia(p)}
         <View style={styles.postBody}>
           <View style={styles.postTopRow}>
@@ -1338,7 +1517,6 @@ export default function GroupDetailPage({
     const member = members.find((m) => Number(m.userId) === Number(c.authorId));
     const memberColor = member?.color || '#8B5CF6';
     const memberInitials = member?.initials || (c.author || '?').slice(0, 2).toUpperCase();
-
     const isMine = String(c.authorId) === String(currentUserId);
     const canEdit = isMine;
     const canDelete = isMine || isManager || isGroupAdmin;
@@ -1347,21 +1525,16 @@ export default function GroupDetailPage({
 
     if (isEditing) {
       const canSave = !!editCommentText.trim() && !editCommentSubmitting;
-
       return (
         <View style={[styles.commentEditRow, { backgroundColor: cardBg, borderColor }]}>
           <View style={[styles.avatarSmall, { backgroundColor: memberColor }]}>
             <Text style={styles.avatarSmallText}>{memberInitials}</Text>
           </View>
-
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.commentHeaderRow}>
-              <Text style={[styles.commentAuthor, { color: textColor }]} numberOfLines={1}>
-                {c.author}
-              </Text>
+              <Text style={[styles.commentAuthor, { color: textColor }]} numberOfLines={1}>{c.author}</Text>
               <Text style={[styles.commentTime, { color: subTextColor }]}>· editing…</Text>
             </View>
-
             <View style={styles.commentEditInputRow}>
               <TextInput
                 value={editCommentText}
@@ -1370,38 +1543,26 @@ export default function GroupDetailPage({
                 autoFocus
                 editable={!editCommentSubmitting}
                 textAlignVertical="top"
-                style={[
-                  styles.commentEditInputInline,
-                  {
-                    color: textColor,
-                    backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
-                    borderColor: darkMode ? '#334155' : '#E2E8F0',
-                  },
-                ]}
+                style={[styles.commentEditInputInline, {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
+                  borderColor: darkMode ? '#334155' : '#E2E8F0',
+                }]}
               />
-
               <TouchableOpacity
                 onPress={submitEditComment}
                 disabled={!canSave}
                 activeOpacity={0.85}
-                style={[
-                  styles.commentEditSendBtn,
-                  {
-                    backgroundColor: canSave
-                      ? '#8B5CF6'
-                      : (darkMode ? '#334155' : '#CBD5E1'),
-                  },
-                ]}
+                style={[styles.commentEditSendBtn, {
+                  backgroundColor: canSave ? '#8B5CF6' : (darkMode ? '#334155' : '#CBD5E1'),
+                }]}
               >
                 {editCommentSubmitting ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text
-                    style={[
-                      styles.commentEditSendIcon,
-                      { color: canSave ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8') },
-                    ]}
-                  >
+                  <Text style={[styles.commentEditSendIcon, {
+                    color: canSave ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8'),
+                  }]}>
                     ➤
                   </Text>
                 )}
@@ -1413,12 +1574,7 @@ export default function GroupDetailPage({
     }
 
     const commentContent = (
-      <View
-        style={[
-          styles.commentRow,
-          { backgroundColor: cardBg, borderColor, marginBottom: 0 },
-        ]}
-      >
+      <View style={[styles.commentRow, { backgroundColor: cardBg, borderColor, marginBottom: 0 }]}>
         <View style={[styles.avatarSmall, { backgroundColor: memberColor }]}>
           <Text style={styles.avatarSmallText}>{memberInitials}</Text>
         </View>
@@ -1434,9 +1590,7 @@ export default function GroupDetailPage({
       </View>
     );
 
-    if (!canSwipe) {
-      return <View style={{ marginBottom: 8 }}>{commentContent}</View>;
-    }
+    if (!canSwipe) return <View style={{ marginBottom: 8 }}>{commentContent}</View>;
 
     const renderRightActions = () => (
       <View style={styles.swipeActionsWrap}>
@@ -1450,7 +1604,6 @@ export default function GroupDetailPage({
             <Text style={styles.swipeActionLabel}>Edit</Text>
           </TouchableOpacity>
         )}
-
         {canDelete && (
           <TouchableOpacity
             activeOpacity={0.85}
@@ -1522,9 +1675,7 @@ export default function GroupDetailPage({
     </Modal>
   );
 
-  // ================================================================
-  // NEW POST — FULL SCREEN PAGE
-  // ================================================================
+  // ============ NEW POST ============
   if (showCreatePost) {
     return (
       <KeyboardAvoidingView
@@ -1534,20 +1685,12 @@ export default function GroupDetailPage({
       >
         <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
           <View style={styles.headerBar}>
-            <TouchableOpacity
-              onPress={cancelCreatePost}
-              hitSlop={10}
-              activeOpacity={0.7}
-              style={styles.backBtn}
-            >
+            <TouchableOpacity onPress={cancelCreatePost} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
               <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
             </TouchableOpacity>
-
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[styles.headerTitle, { color: textColor }]}>New Post</Text>
-              <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-                In {group?.name}
-              </Text>
+              <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>In {group?.name}</Text>
             </View>
           </View>
 
@@ -1604,9 +1747,7 @@ export default function GroupDetailPage({
               <View style={styles.uploadIconWrap}>
                 <Text style={styles.uploadIcon}>🖼️</Text>
               </View>
-              <Text style={[styles.uploadTitle, { color: textColor }]}>
-                Add photos
-              </Text>
+              <Text style={[styles.uploadTitle, { color: textColor }]}>Add photos</Text>
               <Text style={[styles.uploadSub, { color: subTextColor }]}>
                 Tap to choose from your library · up to 10
               </Text>
@@ -1644,51 +1785,38 @@ export default function GroupDetailPage({
             </View>
 
             {postError && (
-              <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>
-                {postError}
-              </Text>
+              <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>{postError}</Text>
             )}
 
             <View style={{ height: 20 }} />
           </ScrollView>
 
           <View
-            style={[
-              styles.createActionsBar,
-              {
-                backgroundColor: darkMode ? '#0B1220' : '#F8FAFC',
-                borderTopColor: darkMode ? '#1E293B' : '#E2E8F0',
-                paddingBottom: CREATE_BAR_PADDING,
-              },
-            ]}
+            style={[styles.createActionsBar, {
+              backgroundColor: darkMode ? '#0B1220' : '#F8FAFC',
+              borderTopColor: darkMode ? '#1E293B' : '#E2E8F0',
+              paddingBottom: CREATE_BAR_PADDING,
+            }]}
           >
             <TouchableOpacity
               onPress={cancelCreatePost}
               activeOpacity={0.85}
               disabled={submittingPost}
-              style={[
-                styles.createCancelBtn,
-                {
-                  backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                  borderColor,
-                },
-              ]}
+              style={[styles.createCancelBtn, {
+                backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                borderColor,
+              }]}
             >
-              <Text style={[styles.createCancelBtnText, { color: textColor }]}>
-                Cancel
-              </Text>
+              <Text style={[styles.createCancelBtnText, { color: textColor }]}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={submitPost}
               activeOpacity={0.85}
               disabled={submittingPost}
-              style={[
-                styles.createPostBtn,
-                {
-                  backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
-                },
-              ]}
+              style={[styles.createPostBtn, {
+                backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
+              }]}
             >
               {submittingPost ? (
                 <ActivityIndicator color="#FFF" size="small" />
@@ -1702,9 +1830,7 @@ export default function GroupDetailPage({
     );
   }
 
-  // ================================================================
-  // REVIEW PAGE
-  // ================================================================
+  // ============ REVIEW PAGE ============
   if (reviewPage) {
     const { post, action } = reviewPage;
     const isApprove = action === 'approve';
@@ -1712,7 +1838,9 @@ export default function GroupDetailPage({
     const accentDark = isApprove ? (darkMode ? '#064E3B' : '#ECFDF5') : (darkMode ? '#7F1D1D' : '#FEE2E2');
     const accentText = isApprove ? (darkMode ? '#6EE7B7' : '#047857') : (darkMode ? '#FCA5A5' : '#991B1B');
     const images = post.images || [];
-    const canSubmit = reviewNote.trim() && !reviewSubmitting;
+    const canSubmit = !reviewSubmitting && !signingQueue;
+    const hasImages = images.length > 0;
+    const signingActive = !!signingQueue;
 
     return (
       <KeyboardAvoidingView
@@ -1721,12 +1849,18 @@ export default function GroupDetailPage({
         keyboardVerticalOffset={KEYBOARD_OFFSET}
       >
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={cancelReviewPage} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
-            <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
+          <TouchableOpacity
+            onPress={signingActive ? undefined : cancelReviewPage}
+            disabled={signingActive}
+            hitSlop={10}
+            activeOpacity={0.7}
+            style={styles.backBtn}
+          >
+            <Text style={[styles.backIcon, { color: signingActive ? subTextColor : textColor }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
-              {isApprove ? 'Approve post' : 'Decline post'}
+              {signingActive ? 'Sign images' : (isApprove ? 'Approve post' : 'Decline post')}
             </Text>
             <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
               {fmtPostNumber(post.id)} · in {group?.name}
@@ -1758,7 +1892,7 @@ export default function GroupDetailPage({
           </View>
 
           <Text style={[styles.reviewFieldLabel, { color: subTextColor }]}>
-            {isApprove ? 'APPROVAL NOTE (required)' : 'REASON FOR DECLINING (required)'}
+            {isApprove ? 'APPROVAL NOTE (optional)' : 'REASON FOR DECLINING (optional)'}
           </Text>
           <TextInput
             value={reviewNote}
@@ -1767,11 +1901,12 @@ export default function GroupDetailPage({
             placeholderTextColor={subTextColor}
             multiline
             numberOfLines={6}
-            editable={!reviewSubmitting}
+            editable={!reviewSubmitting && !signingActive}
             style={[styles.reviewInput, {
               color: textColor,
               backgroundColor: cardBg,
               borderColor: reviewError ? '#EF4444' : borderColor,
+              opacity: signingActive ? 0.5 : 1,
             }]}
           />
           {reviewError && <Text style={styles.reviewErrorText}>{reviewError}</Text>}
@@ -1779,7 +1914,9 @@ export default function GroupDetailPage({
           <View style={[styles.reviewInfoBox, { backgroundColor: accentDark, borderColor: accent }]}>
             <Text style={[styles.reviewInfoText, { color: accentText }]}>
               {isApprove
-                ? '✓ Your note will be saved on the post and visible to everyone.'
+                ? (hasImages
+                  ? `✓ You'll sign ${images.length} image${images.length === 1 ? '' : 's'} next — you can skip any you don't want to sign.`
+                  : '✓ This post has no images, so no signature is needed.')
                 : '✕ Your reason will be saved on the post and visible to everyone.'}
             </Text>
           </View>
@@ -1789,11 +1926,12 @@ export default function GroupDetailPage({
           backgroundColor: darkMode ? '#0B1220' : '#FFFFFF',
           borderTopColor: borderColor,
           paddingBottom: REVIEW_FOOTER_PADDING,
+          opacity: signingActive ? 0.4 : 1,
         }]}>
           <TouchableOpacity
             onPress={cancelReviewPage}
             activeOpacity={0.85}
-            disabled={reviewSubmitting}
+            disabled={reviewSubmitting || signingActive}
             style={[styles.reviewFooterBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
           >
             <Text style={[styles.reviewFooterBtnText, { color: textColor }]}>Cancel</Text>
@@ -1812,18 +1950,39 @@ export default function GroupDetailPage({
               <ActivityIndicator color="#FFF" size="small" />
             ) : (
               <Text style={[styles.reviewFooterBtnText, { color: '#FFFFFF' }]}>
-                {isApprove ? '✓ Approve & save' : '✕ Decline & save'}
+                {isApprove
+                  ? (hasImages ? '✓ Approve and Sign' : '✓ Approve')
+                  : '✕ Decline'}
               </Text>
             )}
           </TouchableOpacity>
         </View>
+
+        <AnnotationScreen
+          visible={!!signingQueue}
+          uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
+          onClose={skipAnnotation}
+          onSkip={skipAnnotation}
+          onPrev={prevAnnotation}
+          canGoBack={!!signingQueue && signingQueue.index > 0}
+          onSave={applyAnnotation}
+          saving={annotSaving}
+          darkMode={darkMode}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          cardBg={cardBg}
+          borderColor={borderColor}
+          headerSubtitle={
+            signingQueue
+              ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
+              : undefined
+          }
+        />
       </KeyboardAvoidingView>
     );
   }
 
-  // ================================================================
-  // POST DETAIL PAGE
-  // ================================================================
+  // ============ POST DETAIL ============
   if (selectedPost) {
     const p = selectedPost;
     const images = p.images || [];
@@ -1835,12 +1994,11 @@ export default function GroupDetailPage({
     const hasReviewNote = !!p.reviewNote;
     const comments = p.comments || [];
     const num = fmtPostNumber(p.id);
-
     const isMine = Number(p.authorId) === Number(currentUserId);
     const canDelete = isManager || isGroupAdmin || isMine;
-
-    // ✅ Only allow commenting on pending posts
     const canComment = isPending;
+    const canEditSignatures = isManager && isApproved && !!buildSigningQueue(p, 'edit');
+    const isPinned = pinnedPostId && String(pinnedPostId) === String(p.id);
 
     return (
       <KeyboardAvoidingView
@@ -1849,15 +2007,28 @@ export default function GroupDetailPage({
         keyboardVerticalOffset={KEYBOARD_OFFSET}
       >
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => setSelectedPostId(null)} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => { setSelectedPostId(null); setDeepLinkedPost(null); }}
+            hitSlop={10}
+            activeOpacity={0.7}
+            style={styles.backBtn}
+          >
             <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
-              Post {num}
-            </Text>
+            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>Post {num}</Text>
             <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>In {group?.name}</Text>
           </View>
+
+          <TouchableOpacity
+            onPress={() => togglePin(p)}
+            hitSlop={10}
+            activeOpacity={0.7}
+            style={[styles.headerIconBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9' }]}
+          >
+            <Text style={{ fontSize: 16 }}>{isPinned ? '📌' : '📍'}</Text>
+          </TouchableOpacity>
+
           {canDelete && (
             <TouchableOpacity
               onPress={() => requestDeletePost(p)}
@@ -1915,20 +2086,23 @@ export default function GroupDetailPage({
                       resizeMode="cover"
                     />
                   </TouchableOpacity>
-
-                  {isManager && p.imageRecords && p.imageRecords[i] && (
-                    <TouchableOpacity
-                      onPress={() => openAnnotation(p.id, p.imageRecords[i].id, uri)}
-                      activeOpacity={0.85}
-                      hitSlop={6}
-                      style={styles.signImageBtn}
-                    >
-                      <Text style={styles.signImageBtnIcon}>✎</Text>
-                      <Text style={styles.signImageBtnText}>Sign</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               ))}
+
+              {canEditSignatures && (
+                <TouchableOpacity
+                  onPress={openEditSignatures}
+                  activeOpacity={0.85}
+                  style={[styles.editSignaturesBtn, {
+                    backgroundColor: darkMode ? '#312E81' : '#EEF2FF',
+                    borderColor: '#8B5CF6',
+                  }]}
+                >
+                  <Text style={[styles.editSignaturesBtnText, { color: '#8B5CF6' }]}>
+                    ✎ Edit signatures
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1943,21 +2117,15 @@ export default function GroupDetailPage({
                 <Text style={styles.commentsEmptyEmoji}>💬</Text>
                 <Text style={[styles.commentsEmptyTitle, { color: textColor }]}>No comments yet</Text>
                 <Text style={[styles.commentsEmptyBody, { color: subTextColor }]}>
-                  {canComment
-                    ? 'Be the first to share your thoughts.'
-                    : 'Comments are closed.'}
+                  {canComment ? 'Be the first to share your thoughts.' : 'Comments are closed.'}
                 </Text>
               </View>
             ) : (
               <ScrollView
-                style={[
-                  styles.commentsScroll,
-                  { height: Math.max(120, Math.min(300, comments.length * 90)) },
-                ]}
+                style={[styles.commentsScroll, { height: Math.max(120, Math.min(300, comments.length * 90)) }]}
                 contentContainerStyle={styles.commentsScrollContent}
                 nestedScrollEnabled
-                showsVerticalScrollIndicator
-                keyboardShouldPersistTaps="always"
+                showsVerticalScrollIndicator                keyboardShouldPersistTaps="always"
               >
                 {comments.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((c) => (
                   <React.Fragment key={c.id}>{renderComment({ item: c })}</React.Fragment>
@@ -2007,11 +2175,15 @@ export default function GroupDetailPage({
           {hasReviewNote && !isPending && (
             <View style={[styles.reviewNoteCard, {
               backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
-              borderColor: isApproved ? (darkMode ? '#065F46' : '#A7F3D0') : (darkMode ? '#991B1B' : '#FECACA'),
+              borderColor: isApproved
+                ? (darkMode ? '#065F46' : '#A7F3D0')
+                : (darkMode ? '#991B1B' : '#FECACA'),
             }]}>
               <View style={styles.reviewNoteHeader}>
                 <Text style={[styles.reviewNoteLabel, {
-                  color: isApproved ? (darkMode ? '#6EE7B7' : '#047857') : (darkMode ? '#FCA5A5' : '#991B1B'),
+                  color: isApproved
+                    ? (darkMode ? '#6EE7B7' : '#047857')
+                    : (darkMode ? '#FCA5A5' : '#991B1B'),
                 }]}>
                   {isApproved ? '✓ MANAGER NOTE' : '✕ MANAGER NOTE'}
                 </Text>
@@ -2043,17 +2215,13 @@ export default function GroupDetailPage({
           <View style={{ height: 60 }} />
         </ScrollView>
 
-        {/* ✅ Comment composer — only for pending posts */}
         {canComment ? (
           <View
-            style={[
-              styles.commentBar,
-              {
-                backgroundColor: cardBg,
-                borderTopColor: borderColor,
-                paddingBottom: BOTTOM_BAR_PADDING,
-              },
-            ]}
+            style={[styles.commentBar, {
+              backgroundColor: cardBg,
+              borderTopColor: borderColor,
+              paddingBottom: BOTTOM_BAR_PADDING,
+            }]}
           >
             <View style={[styles.commentBarAvatar, { backgroundColor: '#8B5CF6' }]}>
               <Text style={styles.commentBarAvatarText}>
@@ -2068,13 +2236,10 @@ export default function GroupDetailPage({
               placeholder="Write a comment…"
               placeholderTextColor={subTextColor}
               editable={!submittingComment}
-              style={[
-                styles.commentBarInput,
-                {
-                  color: textColor,
-                  backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
-                },
-              ]}
+              style={[styles.commentBarInput, {
+                color: textColor,
+                backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
+              }]}
               multiline
               numberOfLines={4}
             />
@@ -2083,50 +2248,32 @@ export default function GroupDetailPage({
               onPress={submitComment}
               disabled={!commentText.trim() || submittingComment}
               activeOpacity={0.85}
-              style={[
-                styles.commentBarSendBtn,
-                {
-                  backgroundColor: commentText.trim() && !submittingComment
-                    ? '#8B5CF6'
-                    : (darkMode ? '#1E293B' : '#E2E8F0'),
-                },
-              ]}
+              style={[styles.commentBarSendBtn, {
+                backgroundColor: commentText.trim() && !submittingComment
+                  ? '#8B5CF6'
+                  : (darkMode ? '#1E293B' : '#E2E8F0'),
+              }]}
             >
               {submittingComment ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Text
-                  style={[
-                    styles.commentBarSendText,
-                    {
-                      color: commentText.trim()
-                        ? '#FFFFFF'
-                        : (darkMode ? '#64748B' : '#94A3B8'),
-                    },
-                  ]}
-                >
+                <Text style={[styles.commentBarSendText, {
+                  color: commentText.trim() ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8'),
+                }]}>
                   ➤
                 </Text>
               )}
             </TouchableOpacity>
           </View>
         ) : (
-          /* ✅ Locked comment bar for approved/declined posts */
-          <View
-            style={[
-              styles.commentBarLocked,
-              {
-                backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                borderTopColor: borderColor,
-                paddingBottom: BOTTOM_BAR_PADDING,
-              },
-            ]}
-          >
+          <View style={[styles.commentBarLocked, {
+            backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+            borderTopColor: borderColor,
+            paddingBottom: BOTTOM_BAR_PADDING,
+          }]}>
             <Text style={[styles.commentBarLockedIcon]}>🔒</Text>
             <Text style={[styles.commentBarLockedText, { color: subTextColor }]}>
-              {isApproved
-                ? 'Comments are closed on approved posts'
-                : 'Comments are closed on declined posts'}
+              {isApproved ? 'Comments are closed on approved posts' : 'Comments are closed on declined posts'}
             </Text>
           </View>
         )}
@@ -2178,24 +2325,32 @@ export default function GroupDetailPage({
         </Modal>
 
         <ImageViewer visible={viewerVisible} uri={viewerUri} onClose={closeImageViewer} />
+
         <AnnotationScreen
-          visible={annotVisible}
-          uri={annotUri}
-          onClose={closeAnnotation}
+          visible={!!signingQueue}
+          uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
+          onClose={skipAnnotation}
+          onSkip={skipAnnotation}
+          onPrev={prevAnnotation}
+          canGoBack={!!signingQueue && signingQueue.index > 0}
           onSave={applyAnnotation}
+          saving={annotSaving}
           darkMode={darkMode}
           textColor={textColor}
           subTextColor={subTextColor}
           cardBg={cardBg}
           borderColor={borderColor}
+          headerSubtitle={
+            signingQueue
+              ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
+              : undefined
+          }
         />
       </KeyboardAvoidingView>
     );
   }
 
-  // ================================================================
-  // MEMBERS PAGE
-  // ================================================================
+  // ============ MEMBERS ============
   if (page === 'members') {
     return (
       <GroupMembersPage
@@ -2215,9 +2370,7 @@ export default function GroupDetailPage({
     );
   }
 
-  // ================================================================
-  // ABOUT PAGE
-  // ================================================================
+  // ============ ABOUT ============
   if (page === 'about') {
     return (
       <GroupAboutPage
@@ -2237,9 +2390,7 @@ export default function GroupDetailPage({
     );
   }
 
-  // ================================================================
-  // POSTS (default)
-  // ================================================================
+  // ============ POSTS (default) ============
   const totalPostsAcrossStatuses = (postsTotals.pending || 0)
     + (postsTotals.approved || 0)
     + (postsTotals.declined || 0);
@@ -2317,6 +2468,18 @@ export default function GroupDetailPage({
         })}
       </View>
 
+      {pinnedPost && pinnedPost.status === postFilter && (
+        <View style={styles.pinnedSection}>
+          <View style={styles.pinnedHeaderRow}>
+            <Text style={[styles.pinnedHeaderText, { color: textColor }]}>📌 Pinned</Text>
+            <TouchableOpacity onPress={() => togglePin(pinnedPost)} hitSlop={8}>
+              <Text style={[styles.pinnedUnpinText, { color: subTextColor }]}>Unpin</Text>
+            </TouchableOpacity>
+          </View>
+          {renderPost({ item: pinnedPost })}
+        </View>
+      )}
+
       <FlatList
         data={visiblePosts}
         keyExtractor={(it) => `post-${it.id}`}
@@ -2373,23 +2536,12 @@ export default function GroupDetailPage({
       {renderDeleteModal()}
 
       <ImageViewer visible={viewerVisible} uri={viewerUri} onClose={closeImageViewer} />
-      <AnnotationScreen
-        visible={annotVisible}
-        uri={annotUri}
-        onClose={closeAnnotation}
-        onSave={applyAnnotation}
-        darkMode={darkMode}
-        textColor={textColor}
-        subTextColor={subTextColor}
-        cardBg={cardBg}
-        borderColor={borderColor}
-      />
     </View>
   );
 }
 
 // ================================================================
-// STYLES
+// STYLES (unchanged)
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2427,21 +2579,29 @@ const styles = StyleSheet.create({
   },
   postFilterText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
 
+  pinnedSection: { paddingHorizontal: 16, marginBottom: 6 },
+  pinnedHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  pinnedHeaderText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.4 },
+  pinnedUnpinText: { fontSize: 12, fontWeight: '700' },
+
   listContent: { paddingHorizontal: 16, paddingBottom: 140 },
 
-  postsFooterLoader: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  postsFooterLoaderText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
+  postsFooterLoader: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  postsFooterLoaderText: { fontSize: 11.5, fontWeight: '600' },
 
   postCard: { borderRadius: 14, borderWidth: 1, overflow: 'hidden', position: 'relative' },
   unreadDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, zIndex: 3 },
+  pinBtn: {
+    position: 'absolute', top: 8, right: 50, zIndex: 5,
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  pinBtnIcon: { fontSize: 14 },
+
   postTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   postStatusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   postStatusPillText: { fontSize: 9.5, fontWeight: '900', letterSpacing: 0.4 },
@@ -2481,14 +2641,15 @@ const styles = StyleSheet.create({
   galleryWrap: { marginTop: 18 },
   galleryImage: { borderRadius: 14 },
 
-  signImageBtn: {
-    position: 'absolute', right: 10, bottom: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+  editSignaturesBtn: {
+    marginTop: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  signImageBtnIcon: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
-  signImageBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
+  editSignaturesBtnText: { fontSize: 13.5, fontWeight: '900', letterSpacing: 0.2 },
 
   commentsSection: { borderTopWidth: 1, marginTop: 22, paddingTop: 16 },
   commentsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -2524,9 +2685,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 6,
   },
-  commentBarAvatarText: {
-    color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4,
-  },
+  commentBarAvatarText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
   commentBarInput: {
     flex: 1,
     minHeight: 42,
@@ -2543,11 +2702,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 2,
   },
-  commentBarSendText: {
-    fontSize: 15, fontWeight: '900', marginTop: -1,
-  },
+  commentBarSendText: { fontSize: 15, fontWeight: '900', marginTop: -1 },
 
-  // ✅ Locked comment bar (for approved/declined)
   commentBarLocked: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2557,14 +2713,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
   },
-  commentBarLockedIcon: {
-    fontSize: 16,
-  },
-  commentBarLockedText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.1,
-  },
+  commentBarLockedIcon: { fontSize: 16 },
+  commentBarLockedText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.1 },
 
   commentEditRow: {
     flexDirection: 'row',
@@ -2601,43 +2751,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 1,
   },
-  commentEditSendIcon: {
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: -1,
-  },
-  swipeActionsWrap: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    height: '100%',
-  },
-  swipeActionBtn: {
-    width: 74,
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100%',
-    gap: 4,
-  },
-  swipeActionIcon: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  swipeActionLabel: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
+  commentEditSendIcon: { fontSize: 15, fontWeight: '900', marginTop: -1 },
+
+  swipeActionsWrap: { flexDirection: 'row', alignItems: 'stretch', height: '100%' },
+  swipeActionBtn: { width: 74, justifyContent: 'center', alignItems: 'center', height: '100%', gap: 4 },
+  swipeActionIcon: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  swipeActionLabel: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
 
   viewerNotice: {
     padding: 14, borderRadius: 12, borderWidth: 1,
     marginTop: 16, marginBottom: 16, alignItems: 'center',
   },
   viewerNoticeText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
-  viewerNoticeSub: {
-    fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9,
-  },
+  viewerNoticeSub: { fontSize: 11.5, fontWeight: '600', marginTop: 4, textAlign: 'center', opacity: 0.9 },
 
   reviewNoteCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   reviewNoteHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },

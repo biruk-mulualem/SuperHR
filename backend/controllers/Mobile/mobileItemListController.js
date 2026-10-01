@@ -130,7 +130,6 @@ exports.getItemsList = async (req, res) => {
 
     // -------- Shape --------
     const items = rows.map((it) => {
-      // Sequelize returns DECIMAL as string → parse to number
       const cost = it.costPrice != null ? parseFloat(it.costPrice) : null;
       const hasCost = cost != null && cost > 0;
 
@@ -179,6 +178,186 @@ exports.getItemsList = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to load items',
+    });
+  }
+};
+
+// ================================================================
+// GET /api/mobile/item-list/items/:itemId/balances
+//
+// Item detail → per-store per-group balances with agreement verdict.
+//
+// SEMANTICS
+//   - Each store is counted by two independent groups.
+//   - If all group balances in a store are EQUAL → store is "agreed".
+//     Its balance (the common value, counted ONCE) is added to the
+//     item's grand total.
+//   - If they DIFFER → store is "inconclusive".
+//     Its balance is NOT added to the grand total.
+//   - diff = max - min across that store's groups (0 → agreed).
+//
+// Response shape:
+// {
+//   success: true,
+//   data: {
+//     item:   { id, code, name, sku, unit, category, costPrice, hasCost, status },
+//     totals: {
+//       stores, agreedStores, conflictedStores, groups, grandTotal
+//     },
+//     stores: [
+//       {
+//         storeId, storeName, storeCode,
+//         isAgreed, diff, total,     // total = agreed value or null
+//         groups: [
+//           { balanceId, groupId, groupName, balance, minStockAlert, status, isLowStock }
+//         ]
+//       }
+//     ]
+//   }
+// }
+// ================================================================
+exports.getItemBalances = async (req, res) => {
+  try {
+    if (!canViewItems(req)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!itemId) {
+      return res.status(400).json({ success: false, error: 'Invalid itemId' });
+    }
+
+    const { Store, Group, StoreBalance } = db;
+
+    // ---- Item header ----
+    const item = await Item.findByPk(itemId, {
+      attributes: [
+        'itemId', 'code', 'name', 'standardName',
+        'costPrice', 'status', 'uomId', 'categoryId',
+      ],
+      include: [
+        { model: UOM,      as: 'uom',      attributes: ['uomId', 'code', 'name'], required: false },
+        { model: Category, as: 'category', attributes: ['categoryId', 'name'],     required: false },
+      ],
+    });
+
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Item not found' });
+    }
+
+    // ---- All balances for this item, with store + group ----
+    const balances = await StoreBalance.findAll({
+      where: { itemId },
+      include: [
+        {
+          model: Store,
+          as: 'store',
+          attributes: ['storeId', 'name', 'code'],
+          required: false,
+        },
+        {
+          model: Group,
+          as: 'group',
+          attributes: ['groupId', 'name'],
+          required: false,
+        },
+      ],
+      order: [
+        ['storeId', 'ASC'],
+        ['groupId', 'ASC'],
+      ],
+    });
+
+    // ---- Group by store ----
+    const storeMap = new Map();
+
+    for (const b of balances) {
+      const storeId = b.storeId;
+      const storeName = b.store?.name || `Store #${storeId}`;
+      const storeCode = b.store?.code || null;
+
+      if (!storeMap.has(storeId)) {
+        storeMap.set(storeId, {
+          storeId,
+          storeName,
+          storeCode,
+          groups: [],
+        });
+      }
+
+      const balance = Number(b.balance) || 0;
+      const minStockAlert = Number(b.minStockAlert) || 0;
+      const isLowStock = balance > 0 && balance <= minStockAlert;
+
+      storeMap.get(storeId).groups.push({
+        balanceId: b.id,
+        groupId: b.groupId,
+        groupName: b.group?.name || `Group #${b.groupId}`,
+        balance,
+        minStockAlert,
+        status: b.status,
+        isLowStock,
+      });
+    }
+
+    // ---- Compute agreement per store ----
+    const stores = Array.from(storeMap.values()).map((s) => {
+      const balancesN = s.groups.map((g) => Number(g.balance) || 0);
+
+      // Sanity: if a store has no groups (shouldn't happen), treat as inconclusive.
+      const hasGroups = balancesN.length > 0;
+      const maxB = hasGroups ? Math.max(...balancesN) : 0;
+      const minB = hasGroups ? Math.min(...balancesN) : 0;
+      const diff = maxB - minB;
+      const isAgreed = hasGroups && diff === 0;
+
+      // Agreed → the common value (counted once). Otherwise null (excluded).
+      const total = isAgreed ? maxB : null;
+
+      return {
+        ...s,
+        isAgreed,
+        diff,
+        total,
+      };
+    });
+
+    // ---- Totals ----
+    const agreedStores = stores.filter((s) => s.isAgreed);
+    const grandTotal = agreedStores.reduce((sum, s) => sum + (s.total || 0), 0);
+
+    const cost = item.costPrice != null ? parseFloat(item.costPrice) : 0;
+
+    return res.json({
+      success: true,
+      data: {
+        item: {
+          id: item.itemId,
+          code: item.code,
+          name: item.name || 'Unnamed item',
+          standardName: item.standardName || null,
+          sku: item.code || '—',
+          unit: (item.uom?.code || '').toLowerCase() || '—',
+          category: item.category?.name || null,
+          costPrice: cost,
+          hasCost: cost > 0,
+          status: normalizeStatus(item.status),
+        },
+        totals: {
+          stores: stores.length,
+          agreedStores: agreedStores.length,
+          conflictedStores: stores.length - agreedStores.length,
+          groups: stores.reduce((n, s) => n + s.groups.length, 0),
+          grandTotal,
+        },
+        stores,
+      },
+    });
+  } catch (error) {
+    console.error('❌ [mobile] getItemBalances error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to load item balances',
     });
   }
 };

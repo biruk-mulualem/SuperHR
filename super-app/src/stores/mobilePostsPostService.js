@@ -153,6 +153,29 @@ export const mobilePostsPostService = {
   }
 },
 
+
+
+/**
+ * Pin a post to the top of its group (single pin per group, any member).
+ * POST {API_BASE}/mobile/posts/:id/pin
+ */
+pinPost: async (postId) => {
+  const response = await api.post(`/mobile/posts/${postId}/pin`);
+  return response.data;
+},
+
+/**
+ * Unpin the group's currently pinned post.
+ * DELETE {API_BASE}/mobile/posts/:id/pin
+ */
+unpinPost: async (postId) => {
+  const response = await api.delete(`/mobile/posts/${postId}/pin`);
+  return response.data;
+},
+
+
+
+
 async deleteComment(postId, commentId) {
   try {
     const res = await api.delete(

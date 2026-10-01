@@ -57,8 +57,8 @@ import PostsPage from '../pages/posts/PostsPage';
 // Admin pages
 import AdminDevicesPage from '../pages/admin/AdminDevicesPage';
 import AdminUsersPage from '../pages/admin/AdminUsersPage';
-import AdminDepartmentsPage from '../pages/admin/AdminDepartmentsPage';   // ✅ NEW
-import AdminRolesPage from '../pages/admin/AdminRolesPage';               // ✅ NEW
+import AdminDepartmentsPage from '../pages/admin/AdminDepartmentsPage';
+import AdminRolesPage from '../pages/admin/AdminRolesPage';
 
 // Auth service + hook
 import authService from '../stores/authService';
@@ -111,6 +111,9 @@ export default function AppRouter() {
   const [pendingOrder, setPendingOrder] = useState(null);
   const [purchaseReturnTo, setPurchaseReturnTo] = useState(null);
 
+  // ✅ One-shot intent from a notification tap
+  const [pendingIntent, setPendingIntent] = useState(null);
+
   // ---------- Derived from auth ----------
   const isLoggedIn = auth.isAuthenticated;
   const userRole = (auth.userRole || 'sales').toLowerCase();
@@ -140,6 +143,7 @@ export default function AppRouter() {
       setPurchaseSubView(null);
       setPendingOrder(null);
       setPurchaseReturnTo(null);
+      setPendingIntent(null);
     });
   }, []);
 
@@ -248,6 +252,7 @@ export default function AppRouter() {
       setPurchaseSubView(null);
       setPendingOrder(null);
       setPurchaseReturnTo(null);
+      setPendingIntent(null);
     }
   };
 
@@ -276,6 +281,14 @@ export default function AppRouter() {
     const orderData = payload ?? screen;
     setPendingOrder(orderData);
     setActiveTab('pendingDetail');
+  };
+
+  // ✅ Handles a route dispatched from the notification page
+  const handleOpenNotification = (route) => {
+    if (!route) return;
+    console.log('🟠 [index] pendingIntent:', route);
+    setPendingIntent(route);
+    setActiveTab(route.tab);
   };
 
   // ================================================================
@@ -463,6 +476,8 @@ export default function AppRouter() {
             subTextColor={subTextColor}
             cardBg={cardBg}
             borderColor={borderColor}
+            pendingIntent={pendingIntent?.tab === 'posts' ? pendingIntent : null}
+            onIntentHandled={() => setPendingIntent(null)}
           />
         );
 
@@ -525,7 +540,6 @@ export default function AppRouter() {
             borderColor={borderColor}
             userRole={userRole}
             onOpenUsersByDepartment={(dept) => {
-              // Jump to Users page — the department filter can be applied there
               setActiveTab('users');
             }}
           />
@@ -549,7 +563,6 @@ export default function AppRouter() {
             borderColor={borderColor}
             userRole={userRole}
             onOpenUsersByRole={(roleObj) => {
-              // Jump to Users page — the role filter can be applied there
               setActiveTab('users');
             }}
           />
@@ -579,7 +592,12 @@ export default function AppRouter() {
             />
           );
         }
-        return <NotificationPage darkMode={darkMode} />;
+        return (
+          <NotificationPage
+            darkMode={darkMode}
+            onOpenNotification={handleOpenNotification}
+          />
+        );
 
       case 'settings':
         switch (settingsSubView) {
@@ -662,6 +680,7 @@ export default function AppRouter() {
             setPurchaseSubView(null);
             setPendingOrder(null);
             setPurchaseReturnTo(null);
+            setPendingIntent(null);
           }}
         />
       </MainLayout>
@@ -688,6 +707,7 @@ export default function AppRouter() {
         setPurchaseSubView(null);
         setPendingOrder(null);
         setPurchaseReturnTo(null);
+        setPendingIntent(null);
       }}
       onNavigateToProfile={() => {
         setActiveTab('profile');
@@ -695,6 +715,7 @@ export default function AppRouter() {
         setPurchaseSubView(null);
         setPendingOrder(null);
         setPurchaseReturnTo(null);
+        setPendingIntent(null);
       }}
       onNavigateToSettings={() => {
         setActiveTab('settings');
@@ -702,6 +723,7 @@ export default function AppRouter() {
         setPurchaseSubView(null);
         setPendingOrder(null);
         setPurchaseReturnTo(null);
+        setPendingIntent(null);
       }}
       onNavigateToNotifications={() => {
         if (!ROLE_PERMISSIONS[userRole]?.alerts) {
@@ -713,6 +735,7 @@ export default function AppRouter() {
         setPurchaseSubView(null);
         setPendingOrder(null);
         setPurchaseReturnTo(null);
+        setPendingIntent(null);
       }}
       darkMode={darkMode}
       setDarkMode={setDarkMode}

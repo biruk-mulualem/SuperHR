@@ -14,6 +14,9 @@ import {
 
 import mobileItemListService from '../../stores/mobileItemListService';
 
+// ================================================================
+// CONSTANTS
+// ================================================================
 const STATUS_FILTERS = [
   { key: 'all',      label: 'All'       },
   { key: 'active',   label: 'Active'    },
@@ -23,8 +26,122 @@ const STATUS_FILTERS = [
 
 const PAGE_SIZE = 10;
 
+// ================================================================
+// Groups table renderer
+//   Header row  = GROUP 1, GROUP 2, … + DIFF
+//   Value row   = each group's balance + the store's diff
+//   Horizontally scrollable so any N of groups fits.
+// ================================================================
+const renderGroupsTable = (
+  groups,
+  { textColor, subTextColor, darkMode, borderColor, styles }
+) => {
+  if (!groups || groups.length === 0) {
+    return (
+      <Text style={[styles.groupsTableEmpty, { color: subTextColor }]}>
+        No groups for this store.
+      </Text>
+    );
+  }
+
+  const balances = groups.map((g) => Number(g.balance) || 0);
+  const maxB = Math.max(...balances);
+  const minB = Math.min(...balances);
+  const spread = maxB - minB;
+  const hasConflict = spread !== 0;
+
+  const headerBg   = darkMode ? '#1E293B' : '#F1F5F9';
+  const valueBg    = darkMode ? '#0F172A' : '#FFFFFF';
+  const cellBorder = borderColor;
+
+  const COL_W  = 92;   // group columns
+  const DIFF_W = 76;   // diff column
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingVertical: 0 }}
+    >
+      <View style={[styles.groupsTable, { borderColor: cellBorder, marginTop: 6 }]}>
+        {/* ---------- Header row ---------- */}
+        <View
+          style={[
+            styles.groupsTableHeaderRow,
+            { backgroundColor: headerBg, borderBottomColor: cellBorder },
+          ]}
+        >
+          {groups.map((g, idx) => (
+            <View
+              key={`h-${g.groupId ?? idx}`}
+              style={[
+                styles.groupsHeaderCell,
+                { width: COL_W, borderRightColor: cellBorder },
+                styles.groupsCellBorderRight,
+              ]}
+            >
+              <Text
+                style={[styles.groupsHeaderText, { color: subTextColor }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {`GROUP ${idx + 1}`}
+              </Text>
+            </View>
+          ))}
+
+          <View style={[styles.groupsHeaderCellDiff, { width: DIFF_W }]}>
+            <Text
+              style={[styles.groupsHeaderText, { color: subTextColor }]}
+              numberOfLines={1}
+            >
+              DIFF
+            </Text>
+          </View>
+        </View>
+
+        {/* ---------- Value row ---------- */}
+        <View style={[styles.groupsTableValueRow, { backgroundColor: valueBg }]}>
+          {groups.map((g, idx) => (
+            <View
+              key={`v-${g.balanceId ?? g.groupId ?? idx}`}
+              style={[
+                styles.groupsValueCell,
+                { width: COL_W, borderRightColor: cellBorder },
+                styles.groupsCellBorderRight,
+              ]}
+            >
+              <Text
+                style={[styles.groupsValueBalance, { color: textColor }]}
+                numberOfLines={1}
+              >
+                {g.balance}
+              </Text>
+            </View>
+          ))}
+
+          <View style={[styles.groupsValueCellDiff, { width: DIFF_W }]}>
+            <Text
+              style={[
+                styles.groupsValueBalance,
+                { color: hasConflict ? '#EF4444' : '#10B981' },
+              ]}
+              numberOfLines={1}
+            >
+              {spread}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
+  );
+};
+
+// ================================================================
+// MAIN COMPONENT
+// ================================================================
 export default function ItemsListPage({
-  onNavigateToDetail,
+  onNavigateToDetail,   // optional — unused in inline mode
   darkMode,
   textColor,
   subTextColor,
@@ -44,13 +161,16 @@ export default function ItemsListPage({
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  // 👈 NEW — full-set counts from backend
   const [counts, setCounts] = useState({
     total: 0,
     active: 0,
     inactive: 0,
     noCost: 0,
   });
+
+  // Inline expansion
+  const [expandedId, setExpandedId] = useState(null);
+  const [balancesCache, setBalancesCache] = useState({});
 
   const listRef = useRef(null);
   const loadingMoreRef = useRef(false);
@@ -90,7 +210,6 @@ export default function ItemsListPage({
           setTotal(res.data?.pagination?.total ?? list.length);
           setHasMore(res.data?.pagination?.hasMore ?? false);
 
-          // 👈 NEW — capture full-set counts
           const c = res.data?.counts;
           if (c) {
             setCounts({
@@ -163,10 +282,11 @@ export default function ItemsListPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Debounced search / status filter
   useEffect(() => {
     const t = setTimeout(() => {
-      loadFirstPage();
-    }, 250);
+      loadFirstPage({ silent: true });
+    }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, query]);
@@ -176,6 +296,69 @@ export default function ItemsListPage({
     if (!hasMore) return;
     loadNextPage();
   }, [hasMore, loadNextPage]);
+
+  // -----------------------------------------------------------------
+  // Inline expansion
+  // -----------------------------------------------------------------
+  const fetchBalancesForItem = useCallback(async (itemId) => {
+    setBalancesCache((prev) => ({
+      ...prev,
+      [itemId]: { loading: true, error: null, data: prev[itemId]?.data || null },
+    }));
+
+    try {
+      const res = await mobileItemListService.getItemBalances(itemId);
+
+      if (res?.success) {
+        setBalancesCache((prev) => ({
+          ...prev,
+          [itemId]: { loading: false, error: null, data: res.data },
+        }));
+      } else {
+        setBalancesCache((prev) => ({
+          ...prev,
+          [itemId]: {
+            loading: false,
+            error: res?.error || 'Failed to load balances',
+            data: prev[itemId]?.data || null,
+          },
+        }));
+      }
+    } catch (e) {
+      const statusCode = e?.response?.status;
+      const msg =
+        statusCode === 401 ? 'Session expired.' :
+        statusCode === 403 ? 'Access denied.' :
+        statusCode === 404 ? 'Item not found.' :
+        e?.response?.data?.error || e?.message || 'Failed to load balances';
+
+      setBalancesCache((prev) => ({
+        ...prev,
+        [itemId]: { loading: false, error: msg, data: prev[itemId]?.data || null },
+      }));
+    }
+  }, []);
+
+  const toggleItem = useCallback(
+    (item) => {
+      const id = item.id;
+      if (!id) return;
+
+      if (expandedId === id) {
+        setExpandedId(null);
+        return;
+      }
+
+      setExpandedId(id);
+
+      const cached = balancesCache[id];
+      const hasGoodData = cached && cached.data && !cached.error;
+      if (!hasGoodData) {
+        fetchBalancesForItem(id);
+      }
+    },
+    [expandedId, balancesCache, fetchBalancesForItem]
+  );
 
   if (loading) {
     return (
@@ -188,6 +371,246 @@ export default function ItemsListPage({
     );
   }
 
+  // -----------------------------------------------------------------
+  // Balances block
+  // -----------------------------------------------------------------
+  const renderBalancesBlock = (item) => {
+    const cached = balancesCache[item.id];
+
+    if (!cached || (cached.loading && !cached.data)) {
+      return (
+        <View style={styles.expandLoading}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={[styles.expandLoadingText, { color: subTextColor }]}>
+            Loading balances…
+          </Text>
+        </View>
+      );
+    }
+
+    if (cached.error && !cached.data) {
+      return (
+        <TouchableOpacity
+          onPress={() => fetchBalancesForItem(item.id)}
+          activeOpacity={0.85}
+          style={[
+            styles.expandError,
+            {
+              backgroundColor: darkMode ? '#3B0A0A' : '#FEF2F2',
+              borderColor: darkMode ? '#7F1D1D' : '#FCA5A5',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.expandErrorText,
+              { color: darkMode ? '#FCA5A5' : '#991B1B' },
+            ]}
+          >
+            ⚠️  {cached.error}   ·   tap to retry
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    const data = cached.data;
+    if (!data) return null;
+
+    const { totals, stores } = data;
+
+    return (
+      <View style={[styles.expandWrap, { borderColor }]}>
+        {/* ---------- Totals strip ---------- */}
+        <View style={styles.expandTotalsRow}>
+          <View style={styles.expandTotalsCell}>
+            <Text style={[styles.expandTotalsValue, { color: '#8B5CF6' }]}>
+              {totals.grandTotal}
+            </Text>
+            <Text style={[styles.expandTotalsLabel, { color: subTextColor }]}>
+              Total
+            </Text>
+          </View>
+          <View
+            style={[styles.expandTotalsDivider, { backgroundColor: borderColor }]}
+          />
+          <View style={styles.expandTotalsCell}>
+            <Text style={[styles.expandTotalsValue, { color: '#3B82F6' }]}>
+              {totals.agreedStores}/{totals.stores}
+            </Text>
+            <Text style={[styles.expandTotalsLabel, { color: subTextColor }]}>
+              Agreed
+            </Text>
+          </View>
+          <View
+            style={[styles.expandTotalsDivider, { backgroundColor: borderColor }]}
+          />
+          <View style={styles.expandTotalsCell}>
+            <Text style={[styles.expandTotalsValue, { color: '#10B981' }]}>
+              {totals.groups}
+            </Text>
+            <Text style={[styles.expandTotalsLabel, { color: subTextColor }]}>
+              Groups
+            </Text>
+          </View>
+        </View>
+
+        {/* ---------- Stores ---------- */}
+        {stores.length === 0 ? (
+          <Text style={[styles.expandEmptyText, { color: subTextColor }]}>
+            No store balances recorded for this item.
+          </Text>
+        ) : (
+          stores.map((store) => {
+            const isAgreed = !!store.isAgreed;
+            const diff = Number(store.diff) || 0;
+            const agreedValue =
+              store.total != null ? store.total : null;
+
+            return (
+              <View
+                key={store.storeId}
+                style={[
+                  styles.expandStoreCard,
+                  {
+                    borderColor: isAgreed
+                      ? borderColor
+                      : darkMode ? '#7F1D1D' : '#FECACA',
+                  },
+                ]}
+              >
+                {/* Store header */}
+                <View style={styles.expandStoreHeader}>
+                  <View
+                    style={[
+                      styles.expandStoreIcon,
+                      {
+                        backgroundColor: isAgreed ? '#3B82F620' : '#EF444420',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.expandStoreIconText}>🏬</Text>
+                  </View>
+
+                  <View style={styles.expandStoreTitleBlock}>
+                    <Text
+                      style={[styles.expandStoreName, { color: textColor }]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
+                      {store.storeName}
+                    </Text>
+                    {store.storeCode ? (
+                      <Text
+                        style={[styles.expandStoreCode, { color: subTextColor }]}
+                        numberOfLines={1}
+                      >
+                        {store.storeCode}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* Total pill — agreed value or — */}
+                  <View
+                    style={[
+                      styles.expandStoreTotalPill,
+                      {
+                        backgroundColor: isAgreed
+                          ? darkMode ? '#1E293B' : '#F1F5F9'
+                          : darkMode ? '#7F1D1D' : '#FEE2E2',
+                        borderColor: isAgreed
+                          ? borderColor
+                          : '#EF4444',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.expandStoreTotalValue,
+                        {
+                          color: isAgreed
+                            ? textColor
+                            : darkMode ? '#FCA5A5' : '#991B1B',
+                        },
+                      ]}
+                    >
+                      {isAgreed ? agreedValue : '—'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.expandStoreTotalLabel,
+                        {
+                          color: isAgreed
+                            ? subTextColor
+                            : darkMode ? '#FCA5A5' : '#991B1B',
+                        },
+                      ]}
+                    >
+                      total
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Verdict row */}
+                <View
+                  style={[
+                    styles.expandVerdictRow,
+                    {
+                      backgroundColor: isAgreed
+                        ? darkMode ? '#064E3B' : '#ECFDF5'
+                        : darkMode ? '#7F1D1D' : '#FEE2E2',
+                      borderColor: isAgreed ? '#10B981' : '#EF4444',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.expandVerdictText,
+                      {
+                        color: isAgreed
+                          ? darkMode ? '#6EE7B7' : '#047857'
+                          : darkMode ? '#FCA5A5' : '#991B1B',
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {isAgreed
+                      ? `✓ Agreed — ${agreedValue}`
+                      : `✕ Inconclusive — diff ${diff}`}
+                  </Text>
+                  {!isAgreed ? (
+                    <Text
+                      style={[
+                        styles.expandVerdictHint,
+                        {
+                          color: darkMode ? '#FCA5A5' : '#991B1B',
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      excluded from total
+                    </Text>
+                  ) : null}
+                </View>
+
+                {/* Groups table */}
+                {renderGroupsTable(store.groups, {
+                  textColor,
+                  subTextColor,
+                  darkMode,
+                  borderColor,
+                  styles,
+                })}
+              </View>
+            );
+          })
+        )}
+      </View>
+    );
+  };
+
+  // -----------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -208,7 +631,7 @@ export default function ItemsListPage({
         </View>
       </View>
 
-      {/* Summary strip — 👈 reads from counts (full set) */}
+      {/* Summary strip */}
       <View
         style={[styles.summaryStrip, { backgroundColor: cardBg, borderColor }]}
       >
@@ -216,11 +639,11 @@ export default function ItemsListPage({
           <Text style={[styles.summaryValue, { color: '#8B5CF6' }]}>
             {counts.total}
           </Text>
-          <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            Items
-          </Text>
+          <Text style={[styles.summaryLabel, { color: subTextColor }]}>Items</Text>
         </View>
-        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+        <View
+          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
+        />
         <View style={styles.summaryCell}>
           <Text style={[styles.summaryValue, { color: '#10B981' }]}>
             {counts.active}
@@ -229,7 +652,9 @@ export default function ItemsListPage({
             Active
           </Text>
         </View>
-        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+        <View
+          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
+        />
         <View style={styles.summaryCell}>
           <Text style={[styles.summaryValue, { color: '#94A3B8' }]}>
             {counts.inactive}
@@ -238,7 +663,9 @@ export default function ItemsListPage({
             Inactive
           </Text>
         </View>
-        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+        <View
+          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
+        />
         <View style={styles.summaryCell}>
           <Text
             style={[
@@ -276,9 +703,7 @@ export default function ItemsListPage({
       </View>
 
       {/* Status filter */}
-      <Text style={[styles.filterLabel, { color: subTextColor }]}>
-        STATUS
-      </Text>
+      <Text style={[styles.filterLabel, { color: subTextColor }]}>STATUS</Text>
       <View style={styles.pillRowWrap}>
         <ScrollView
           horizontal
@@ -363,6 +788,7 @@ export default function ItemsListPage({
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
+        keyboardShouldPersistTaps="handled"
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.footerLoader}>
@@ -391,56 +817,81 @@ export default function ItemsListPage({
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => onNavigateToDetail?.(item)}
-            style={[styles.card, { backgroundColor: cardBg, borderColor }]}
-          >
-            <View style={styles.cardRow}>
-              <View style={styles.titleBlock}>
-                <Text
-                  style={[styles.itemName, { color: textColor }]}
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                >
-                  {item.name || 'Unnamed item'}
-                </Text>
+        renderItem={({ item }) => {
+          const expanded = expandedId === item.id;
 
-                <View style={styles.metaRow}>
+          return (
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: cardBg,
+                  borderColor: expanded ? '#8B5CF6' : borderColor,
+                },
+              ]}
+            >
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => toggleItem(item)}
+                style={styles.cardRow}
+              >
+                <View style={styles.titleBlock}>
                   <Text
-                    style={[styles.itemSku, { color: skuColor }]}
-                    numberOfLines={1}
-                    ellipsizeMode="middle"
+                    style={[styles.itemName, { color: textColor }]}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
                   >
-                    {item.sku || '—'}
+                    {item.name || 'Unnamed item'}
                   </Text>
 
-                  {item.unit ? (
-                    <>
-                      <Text style={[styles.metaSep, { color: subTextColor }]}>
-                        ·
-                      </Text>
-                      <Text
-                        style={[styles.itemUnit, { color: uomColor }]}
-                        numberOfLines={1}
-                      >
-                        {item.unit}
-                      </Text>
-                    </>
-                  ) : null}
+                  <View style={styles.metaRow}>
+                    <Text
+                      style={[styles.itemSku, { color: skuColor }]}
+                      numberOfLines={1}
+                      ellipsizeMode="middle"
+                    >
+                      {item.sku || '—'}
+                    </Text>
+
+                    {item.unit ? (
+                      <>
+                        <Text
+                          style={[styles.metaSep, { color: subTextColor }]}
+                        >
+                          ·
+                        </Text>
+                        <Text
+                          style={[styles.itemUnit, { color: uomColor }]}
+                          numberOfLines={1}
+                        >
+                          {item.unit}
+                        </Text>
+                      </>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+
+                <Text
+                  style={[
+                    styles.chevron,
+                    { color: expanded ? '#8B5CF6' : subTextColor },
+                  ]}
+                >
+                  {expanded ? '⌄' : '›'}
+                </Text>
+              </TouchableOpacity>
+
+              {expanded && renderBalancesBlock(item)}
             </View>
-          </TouchableOpacity>
-        )}
+          );
+        }}
       />
     </View>
   );
 }
 
 // ================================================================
-// STYLES — unchanged
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -450,6 +901,7 @@ const styles = StyleSheet.create({
     minHeight: 260,
   },
   loadingText: { marginTop: 12, fontSize: 13, fontWeight: '500' },
+
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -459,6 +911,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
   headerSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+
   summaryStrip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,6 +932,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   summaryDivider: { width: 1, height: 28, opacity: 0.6 },
+
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -493,6 +947,7 @@ const styles = StyleSheet.create({
   searchIcon: { fontSize: 15 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   clearIcon: { fontSize: 14, fontWeight: '700', padding: 4 },
+
   filterLabel: {
     fontSize: 10,
     fontWeight: '800',
@@ -515,6 +970,7 @@ const styles = StyleSheet.create({
     maxWidth: 130,
   },
   filterPillText: { fontSize: 12, fontWeight: '800', flexShrink: 1 },
+
   errorBox: {
     borderWidth: 1,
     borderRadius: 12,
@@ -524,7 +980,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   errorText: { fontSize: 12.5, fontWeight: '600' },
+
   listContent: { paddingHorizontal: 16, paddingBottom: 60 },
+
   emptyBox: { alignItems: 'center', paddingTop: 60 },
   emptyEmoji: { fontSize: 42, marginBottom: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '800' },
@@ -535,6 +993,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
   },
+
   footerLoader: { paddingVertical: 14, alignItems: 'center' },
   footerText: {
     paddingVertical: 14,
@@ -542,6 +1001,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+
   card: {
     borderRadius: 12,
     borderWidth: 1,
@@ -574,5 +1034,201 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
     textTransform: 'uppercase',
+  },
+  chevron: {
+    fontSize: 20,
+    fontWeight: '900',
+    marginLeft: 8,
+    marginTop: -2,
+  },
+
+  // ── Inline expansion ──
+  expandLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  expandLoadingText: { fontSize: 12.5, fontWeight: '600' },
+
+  expandError: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  expandErrorText: { fontSize: 12, fontWeight: '700' },
+
+  expandWrap: {
+    borderTopWidth: 1,
+    padding: 12,
+  },
+  expandEmptyText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 14,
+    fontStyle: 'italic',
+  },
+
+  expandTotalsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  expandTotalsCell: { flex: 1, alignItems: 'center' },
+  expandTotalsValue: { fontSize: 15, fontWeight: '900', letterSpacing: -0.3 },
+  expandTotalsLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  expandTotalsDivider: { width: 1, height: 22, opacity: 0.5 },
+
+  expandStoreCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 8,
+  },
+  expandStoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+  expandStoreIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  expandStoreIconText: { fontSize: 16 },
+
+  expandStoreTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  expandStoreName: {
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 17,
+  },
+  expandStoreCode: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  expandStoreTotalPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    minWidth: 54,
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  expandStoreTotalValue: { fontSize: 13, fontWeight: '900' },
+  expandStoreTotalLabel: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 1,
+  },
+
+  // ── Verdict row ──
+  expandVerdictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  expandVerdictText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+  expandVerdictHint: {
+    fontSize: 10,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+
+  // ── Groups table ──
+  groupsTable: {
+    borderWidth: 1,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  groupsTableEmpty: {
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    paddingVertical: 10,
+    fontStyle: 'italic',
+  },
+  groupsTableHeaderRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  groupsTableValueRow: {
+    flexDirection: 'row',
+  },
+  groupsCellBorderRight: {
+    borderRightWidth: 1,
+  },
+
+  groupsHeaderCell: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupsHeaderCellDiff: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupsHeaderText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+
+  groupsValueCell: {
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupsValueCellDiff: {
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupsValueBalance: {
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+    textAlign: 'center',
   },
 });

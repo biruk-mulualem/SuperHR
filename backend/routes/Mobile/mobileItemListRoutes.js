@@ -12,4 +12,8 @@ router.use(authMiddleware());
 // GET /api/mobile/item-list/items
 router.get('/items', c.getItemsList);
 
+// GET /api/mobile/item-list/items/:itemId/balances
+// Item detail → balance from every store, broken down by group.
+router.get('/items/:itemId/balances', c.getItemBalances);
+
 module.exports = router;

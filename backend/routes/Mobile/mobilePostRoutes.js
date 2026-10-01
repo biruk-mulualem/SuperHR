@@ -49,6 +49,9 @@ router.post('/:id/approve', c.approvePost);
 // body: { reason }
 router.post('/:id/decline', c.declinePost);
 
+router.post('/:id/pin', c.pinPost);
+router.delete('/:id/pin', c.unpinPost);
+
 // ================================================================
 // COMMENTS
 // ================================================================
