@@ -10,6 +10,10 @@ import {
   TextInput,
   ScrollView,
   RefreshControl,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
 
 import mobileItemListService from '../../stores/mobileItemListService';
@@ -141,7 +145,7 @@ const renderGroupsTable = (
 // MAIN COMPONENT
 // ================================================================
 export default function ItemsListPage({
-  onNavigateToDetail,   // optional — unused in inline mode
+  onNavigateToDetail,
   darkMode,
   textColor,
   subTextColor,
@@ -172,11 +176,31 @@ export default function ItemsListPage({
   const [expandedId, setExpandedId] = useState(null);
   const [balancesCache, setBalancesCache] = useState({});
 
+  // ✅ Stock alert local overrides (falls back to item.stockAlert from server)
+  const [alertOverrides, setAlertOverrides] = useState({});
+
+  // ✅ Stock alert modal
+  const [alertModalItem, setAlertModalItem] = useState(null);
+  const [alertModalValue, setAlertModalValue] = useState('');
+  const [alertModalSaving, setAlertModalSaving] = useState(false);
+  const [alertModalError, setAlertModalError] = useState(null);
+
   const listRef = useRef(null);
   const loadingMoreRef = useRef(false);
 
   const skuColor = darkMode ? '#93C5FD' : '#2563EB';
   const uomColor = darkMode ? '#FCD34D' : '#D97706';
+
+  // -----------------------------------------------------------------
+  // Fetch helpers
+  // -----------------------------------------------------------------
+  const shapeItem = (it) => ({
+    ...it,
+    balance: Number(it.balance ?? 0),
+    hasCost: it.hasCost !== false,
+    status: it.status || 'active',
+    stockAlert: it.stockAlert || null,
+  });
 
   // -----------------------------------------------------------------
   // FETCH — page 1
@@ -198,14 +222,7 @@ export default function ItemsListPage({
 
         if (res?.success) {
           const list = Array.isArray(res.data?.items) ? res.data.items : [];
-          setItems(
-            list.map((it) => ({
-              ...it,
-              balance: Number(it.balance ?? 0),
-              hasCost: it.hasCost !== false,
-              status: it.status || 'active',
-            }))
-          );
+          setItems(list.map(shapeItem));
           setPage(1);
           setTotal(res.data?.pagination?.total ?? list.length);
           setHasMore(res.data?.pagination?.hasMore ?? false);
@@ -256,15 +273,7 @@ export default function ItemsListPage({
 
       if (res?.success) {
         const list = Array.isArray(res.data?.items) ? res.data.items : [];
-        setItems((prev) => [
-          ...prev,
-          ...list.map((it) => ({
-            ...it,
-            balance: Number(it.balance ?? 0),
-            hasCost: it.hasCost !== false,
-            status: it.status || 'active',
-          })),
-        ]);
+        setItems((prev) => [...prev, ...list.map(shapeItem)]);
         setPage(next);
         setHasMore(res.data?.pagination?.hasMore ?? false);
         setTotal(res.data?.pagination?.total ?? total);
@@ -360,6 +369,71 @@ export default function ItemsListPage({
     [expandedId, balancesCache, fetchBalancesForItem]
   );
 
+  // -----------------------------------------------------------------
+  // Stock alert helpers
+  // -----------------------------------------------------------------
+  const getAlertForItem = useCallback(
+    (item) => {
+      if (!item) return null;
+      const override = alertOverrides[item.id];
+      if (override !== undefined) return override;
+      return item.stockAlert || null;
+    },
+    [alertOverrides]
+  );
+
+  const openAlertModal = useCallback((item) => {
+    const cfg = getAlertForItem(item);
+    setAlertModalItem(item);
+    setAlertModalValue(cfg?.threshold ? String(cfg.threshold) : '');
+    setAlertModalError(null);
+    setAlertModalSaving(false);
+  }, [getAlertForItem]);
+
+  const closeAlertModal = useCallback(() => {
+    if (alertModalSaving) return;
+    setAlertModalItem(null);
+    setAlertModalValue('');
+    setAlertModalError(null);
+  }, [alertModalSaving]);
+
+  const saveAlertModal = useCallback(async () => {
+    if (!alertModalItem) return;
+
+    const num = Number(alertModalValue);
+    if (Number.isNaN(num) || num < 0) {
+      setAlertModalError('Enter a non-negative number.');
+      return;
+    }
+
+    setAlertModalSaving(true);
+    setAlertModalError(null);
+
+    try {
+      const res = num === 0
+        ? await mobileItemListService.clearStockAlert(alertModalItem.id)
+        : await mobileItemListService.setStockAlert(alertModalItem.id, num);
+
+      if (!res?.success) {
+        setAlertModalError(res?.error || 'Failed to save');
+        return;
+      }
+
+      const nextConfig = num === 0 ? null : { threshold: num };
+      setAlertOverrides((prev) => ({ ...prev, [alertModalItem.id]: nextConfig }));
+      closeAlertModal();
+    } catch (e) {
+      setAlertModalError(
+        e?.response?.data?.error || e?.message || 'Failed to save'
+      );
+    } finally {
+      setAlertModalSaving(false);
+    }
+  }, [alertModalItem, alertModalValue, closeAlertModal]);
+
+  // -----------------------------------------------------------------
+  // Loading
+  // -----------------------------------------------------------------
   if (loading) {
     return (
       <View style={[styles.centerBox, { padding: 40 }]}>
@@ -417,9 +491,55 @@ export default function ItemsListPage({
     if (!data) return null;
 
     const { totals, stores } = data;
+    const cfg = getAlertForItem(item);
+    const threshold = cfg?.threshold ?? 0;
 
     return (
       <View style={[styles.expandWrap, { borderColor }]}>
+        {/* ---------- Stock alert strip ---------- */}
+        <View
+          style={[
+            styles.alertStrip,
+            {
+              backgroundColor: threshold > 0
+                ? (darkMode ? '#312E81' : '#EEF2FF')
+                : (darkMode ? '#0F172A' : '#F8FAFC'),
+              borderColor: threshold > 0 ? '#8B5CF6' : borderColor,
+            },
+          ]}
+        >
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.alertStripLabel, { color: subTextColor }]}>
+              STOCK ALERT
+            </Text>
+            <Text style={[styles.alertStripValue, { color: textColor }]} numberOfLines={1}>
+              {threshold > 0
+                ? `Notify when balance ≤ ${threshold}`
+                : 'No alert set'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => openAlertModal(item)}
+            activeOpacity={0.85}
+            style={[
+              styles.alertStripBtn,
+              {
+                backgroundColor: threshold > 0 ? '#8B5CF6' : (darkMode ? '#1E293B' : '#F1F5F9'),
+                borderColor: threshold > 0 ? '#8B5CF6' : borderColor,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.alertStripBtnText,
+                { color: threshold > 0 ? '#FFFFFF' : textColor },
+              ]}
+            >
+              {threshold > 0 ? 'Edit' : 'Set'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* ---------- Totals strip ---------- */}
         <View style={styles.expandTotalsRow}>
           <View style={styles.expandTotalsCell}>
@@ -509,7 +629,6 @@ export default function ItemsListPage({
                     ) : null}
                   </View>
 
-                  {/* Total pill — agreed value or — */}
                   <View
                     style={[
                       styles.expandStoreTotalPill,
@@ -641,9 +760,7 @@ export default function ItemsListPage({
           </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>Items</Text>
         </View>
-        <View
-          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
-        />
+        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
         <View style={styles.summaryCell}>
           <Text style={[styles.summaryValue, { color: '#10B981' }]}>
             {counts.active}
@@ -652,9 +769,7 @@ export default function ItemsListPage({
             Active
           </Text>
         </View>
-        <View
-          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
-        />
+        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
         <View style={styles.summaryCell}>
           <Text style={[styles.summaryValue, { color: '#94A3B8' }]}>
             {counts.inactive}
@@ -663,9 +778,7 @@ export default function ItemsListPage({
             Inactive
           </Text>
         </View>
-        <View
-          style={[styles.summaryDivider, { backgroundColor: borderColor }]}
-        />
+        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
         <View style={styles.summaryCell}>
           <Text
             style={[
@@ -819,6 +932,8 @@ export default function ItemsListPage({
         }
         renderItem={({ item }) => {
           const expanded = expandedId === item.id;
+          const cfg = getAlertForItem(item);
+          const hasAlert = !!cfg && Number(cfg.threshold) > 0;
 
           return (
             <View
@@ -830,46 +945,68 @@ export default function ItemsListPage({
                 },
               ]}
             >
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => toggleItem(item)}
-                style={styles.cardRow}
-              >
-                <View style={styles.titleBlock}>
-                  <Text
-                    style={[styles.itemName, { color: textColor }]}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {item.name || 'Unnamed item'}
-                  </Text>
-
-                  <View style={styles.metaRow}>
+              <View style={styles.cardRow}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => toggleItem(item)}
+                  style={styles.cardMain}
+                >
+                  <View style={styles.titleBlock}>
                     <Text
-                      style={[styles.itemSku, { color: skuColor }]}
-                      numberOfLines={1}
-                      ellipsizeMode="middle"
+                      style={[styles.itemName, { color: textColor }]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
                     >
-                      {item.sku || '—'}
+                      {item.name || 'Unnamed item'}
                     </Text>
 
-                    {item.unit ? (
-                      <>
-                        <Text
-                          style={[styles.metaSep, { color: subTextColor }]}
-                        >
-                          ·
-                        </Text>
-                        <Text
-                          style={[styles.itemUnit, { color: uomColor }]}
-                          numberOfLines={1}
-                        >
-                          {item.unit}
-                        </Text>
-                      </>
-                    ) : null}
+                    <View style={styles.metaRow}>
+                      <Text
+                        style={[styles.itemSku, { color: skuColor }]}
+                        numberOfLines={1}
+                        ellipsizeMode="middle"
+                      >
+                        {item.sku || '—'}
+                      </Text>
+
+                      {item.unit ? (
+                        <>
+                          <Text
+                            style={[styles.metaSep, { color: subTextColor }]}
+                          >
+                            ·
+                          </Text>
+                          <Text
+                            style={[styles.itemUnit, { color: uomColor }]}
+                            numberOfLines={1}
+                          >
+                            {item.unit}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
                   </View>
-                </View>
+                </TouchableOpacity>
+
+                {/* ✅ Bell button */}
+                <TouchableOpacity
+                  onPress={() => openAlertModal(item)}
+                  hitSlop={8}
+                  activeOpacity={0.75}
+                  style={[
+                    styles.alertBtn,
+                    {
+                      borderColor: hasAlert ? '#8B5CF6' : borderColor,
+                      backgroundColor: hasAlert
+                        ? (darkMode ? '#312E81' : '#EEF2FF')
+                        : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={styles.alertBtnIcon}>
+                    {hasAlert ? '🔔' : '🔕'}
+                  </Text>
+                </TouchableOpacity>
 
                 <Text
                   style={[
@@ -879,13 +1016,132 @@ export default function ItemsListPage({
                 >
                   {expanded ? '⌄' : '›'}
                 </Text>
-              </TouchableOpacity>
+              </View>
 
               {expanded && renderBalancesBlock(item)}
             </View>
           );
         }}
       />
+
+      {/* ============ Stock alert modal ============ */}
+      <Modal
+        visible={!!alertModalItem}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAlertModal}
+        statusBarTranslucent
+      >
+        <KeyboardAvoidingView
+          style={styles.alertModalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeAlertModal}
+          />
+          {alertModalItem && (
+            <View
+              style={[
+                styles.alertModalCard,
+                { backgroundColor: cardBg, borderColor },
+              ]}
+            >
+              <View style={styles.alertModalHeader}>
+                <View
+                  style={[
+                    styles.alertModalIconBubble,
+                    { backgroundColor: '#8B5CF620' },
+                  ]}
+                >
+                  <Text style={styles.alertModalIconText}>🔔</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={[styles.alertModalTitle, { color: textColor }]}
+                    numberOfLines={2}
+                  >
+                    {alertModalItem.name}
+                  </Text>
+                  <Text style={[styles.alertModalSub, { color: subTextColor }]}>
+                    Low-stock alert threshold
+                  </Text>
+                </View>
+              </View>
+
+              <Text
+                style={[styles.alertModalFieldLabel, { color: subTextColor }]}
+              >
+                THRESHOLD (in {alertModalItem.unit || 'units'})
+              </Text>
+              <TextInput
+                value={alertModalValue}
+                onChangeText={(v) => {
+                  setAlertModalValue(v);
+                  setAlertModalError(null);
+                }}
+                placeholder="e.g. 10"
+                placeholderTextColor={subTextColor}
+                keyboardType="decimal-pad"
+                editable={!alertModalSaving}
+                autoFocus
+                style={[
+                  styles.alertModalInput,
+                  {
+                    color: textColor,
+                    backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                    borderColor: alertModalError ? '#EF4444' : borderColor,
+                  },
+                ]}
+              />
+              <Text style={[styles.alertModalHint, { color: subTextColor }]}>
+                Set to 0 to disable the alert.
+              </Text>
+
+              {alertModalError && (
+                <Text style={styles.alertModalError}>{alertModalError}</Text>
+              )}
+
+              <View style={styles.alertModalActions}>
+                <TouchableOpacity
+                  onPress={closeAlertModal}
+                  activeOpacity={0.85}
+                  disabled={alertModalSaving}
+                  style={[
+                    styles.alertModalBtn,
+                    {
+                      backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                      borderColor,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.alertModalBtnText, { color: textColor }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveAlertModal}
+                  activeOpacity={0.85}
+                  disabled={alertModalSaving}
+                  style={[
+                    styles.alertModalBtn,
+                    { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                  ]}
+                >
+                  {alertModalSaving ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Text style={[styles.alertModalBtnText, { color: '#FFFFFF' }]}>
+                      Save
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1014,6 +1270,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  cardMain: {
+    flex: 1,
+    minWidth: 0,
+  },
   titleBlock: { flex: 1, minWidth: 0 },
   itemName: {
     fontSize: 13.5,
@@ -1035,6 +1295,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textTransform: 'uppercase',
   },
+
+  alertBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
+  alertBtnIcon: { fontSize: 15 },
+
   chevron: {
     fontSize: 20,
     fontWeight: '900',
@@ -1072,6 +1344,41 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 14,
     fontStyle: 'italic',
+  },
+
+  // ── Stock alert strip inside expansion ──
+  alertStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  alertStripLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  alertStripValue: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  alertStripBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  alertStripBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   expandTotalsRow: {
@@ -1231,4 +1538,90 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: 'center',
   },
-});
+
+  // ── Stock alert modal ──
+  alertModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 60,
+  },
+  alertModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 20,
+  },
+  alertModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  alertModalIconBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertModalIconText: { fontSize: 22 },
+  alertModalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+  },
+  alertModalSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  alertModalFieldLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  alertModalInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  alertModalHint: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  alertModalError: {
+    color: '#EF4444',
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  alertModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  alertModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  alertModalBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+});``

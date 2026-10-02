@@ -16,4 +16,12 @@ router.get('/items', c.getItemsList);
 // Item detail → balance from every store, broken down by group.
 router.get('/items/:itemId/balances', c.getItemBalances);
 
+// ── Stock alert config ─────────────────────────────────────────
+// GET    /api/mobile/item-list/items/:itemId/stock-alert  → read
+// PUT    /api/mobile/item-list/items/:itemId/stock-alert  → upsert (threshold 0 clears)
+// DELETE /api/mobile/item-list/items/:itemId/stock-alert  → clear
+router.get('/items/:itemId/stock-alert', c.getStockAlert);
+router.put('/items/:itemId/stock-alert', c.setStockAlert);
+router.delete('/items/:itemId/stock-alert', c.clearStockAlert);
+
 module.exports = router;

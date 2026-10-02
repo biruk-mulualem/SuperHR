@@ -6,7 +6,7 @@
 const { Op, Sequelize } = require('sequelize');
 
 const db = require('../../models');
-const { Item, UOM, Category } = db;
+const { Item, UOM, Category, StockAlert } = db;
 
 const canViewItems = (req) => !!req.user;
 
@@ -129,9 +129,14 @@ exports.getItemsList = async (req, res) => {
     });
 
     // -------- Shape --------
+    // Attach the alert threshold to each item in the page.
+    const itemIds = rows.map((it) => it.itemId);
+    const alertMap = await fetchAlertThresholds(itemIds);
+
     const items = rows.map((it) => {
       const cost = it.costPrice != null ? parseFloat(it.costPrice) : null;
       const hasCost = cost != null && cost > 0;
+      const alert = alertMap[it.itemId] || null;
 
       return {
         id: it.itemId,
@@ -143,6 +148,10 @@ exports.getItemsList = async (req, res) => {
         costPrice: cost != null ? cost : 0,
         hasCost,
         status: normalizeStatus(it.status),
+        // ✅ NEW — alert config for the list row
+        stockAlert: alert
+          ? { threshold: alert.threshold }
+          : null,
       };
     });
 
@@ -184,37 +193,6 @@ exports.getItemsList = async (req, res) => {
 
 // ================================================================
 // GET /api/mobile/item-list/items/:itemId/balances
-//
-// Item detail → per-store per-group balances with agreement verdict.
-//
-// SEMANTICS
-//   - Each store is counted by two independent groups.
-//   - If all group balances in a store are EQUAL → store is "agreed".
-//     Its balance (the common value, counted ONCE) is added to the
-//     item's grand total.
-//   - If they DIFFER → store is "inconclusive".
-//     Its balance is NOT added to the grand total.
-//   - diff = max - min across that store's groups (0 → agreed).
-//
-// Response shape:
-// {
-//   success: true,
-//   data: {
-//     item:   { id, code, name, sku, unit, category, costPrice, hasCost, status },
-//     totals: {
-//       stores, agreedStores, conflictedStores, groups, grandTotal
-//     },
-//     stores: [
-//       {
-//         storeId, storeName, storeCode,
-//         isAgreed, diff, total,     // total = agreed value or null
-//         groups: [
-//           { balanceId, groupId, groupName, balance, minStockAlert, status, isLowStock }
-//         ]
-//       }
-//     ]
-//   }
-// }
 // ================================================================
 exports.getItemBalances = async (req, res) => {
   try {
@@ -304,14 +282,12 @@ exports.getItemBalances = async (req, res) => {
     const stores = Array.from(storeMap.values()).map((s) => {
       const balancesN = s.groups.map((g) => Number(g.balance) || 0);
 
-      // Sanity: if a store has no groups (shouldn't happen), treat as inconclusive.
       const hasGroups = balancesN.length > 0;
       const maxB = hasGroups ? Math.max(...balancesN) : 0;
       const minB = hasGroups ? Math.min(...balancesN) : 0;
       const diff = maxB - minB;
       const isAgreed = hasGroups && diff === 0;
 
-      // Agreed → the common value (counted once). Otherwise null (excluded).
       const total = isAgreed ? maxB : null;
 
       return {
@@ -361,6 +337,163 @@ exports.getItemBalances = async (req, res) => {
     });
   }
 };
+
+// ================================================================
+// GET /api/mobile/item-list/items/:itemId/stock-alert
+// Returns the alert config for one item (or null).
+// ================================================================
+exports.getStockAlert = async (req, res) => {
+  try {
+    if (!canViewItems(req)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!itemId) {
+      return res.status(400).json({ success: false, error: 'Invalid itemId' });
+    }
+
+    const row = await StockAlert.findOne({ where: { itemId } });
+
+    return res.json({
+      success: true,
+      data: row
+        ? {
+            id: row.id,
+            itemId: row.itemId,
+            threshold: parseFloat(row.threshold) || 0,
+            createdBy: row.createdBy,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('❌ [mobile] getStockAlert error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ================================================================
+// PUT /api/mobile/item-list/items/:itemId/stock-alert
+// Body: { threshold: number }
+// Upsert the alert config.
+// Setting threshold to 0 removes the config (disables alerts).
+// ================================================================
+exports.setStockAlert = async (req, res) => {
+  try {
+    if (!canViewItems(req)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!itemId) {
+      return res.status(400).json({ success: false, error: 'Invalid itemId' });
+    }
+
+    const { threshold } = req.body || {};
+    const num = Number(threshold);
+
+    if (Number.isNaN(num) || num < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'threshold must be a non-negative number',
+      });
+    }
+
+    const item = await Item.findByPk(itemId, { attributes: ['itemId'] });
+    if (!item) {
+      return res.status(404).json({ success: false, error: 'Item not found' });
+    }
+
+    // threshold = 0 → delete the row
+    if (num === 0) {
+      await StockAlert.destroy({ where: { itemId } });
+      return res.json({
+        success: true,
+        message: 'Stock alert cleared',
+        data: null,
+      });
+    }
+
+    const [row] = await StockAlert.upsert(
+      {
+        itemId,
+        threshold: num,
+        createdBy: req.user?.userId ?? null,
+      },
+      { returning: true }
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        id: row.id,
+        itemId: row.itemId,
+        threshold: parseFloat(row.threshold),
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      },
+    });
+  } catch (err) {
+    console.error('❌ [mobile] setStockAlert error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ================================================================
+// DELETE /api/mobile/item-list/items/:itemId/stock-alert
+// ================================================================
+exports.clearStockAlert = async (req, res) => {
+  try {
+    if (!canViewItems(req)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!itemId) {
+      return res.status(400).json({ success: false, error: 'Invalid itemId' });
+    }
+
+    const affected = await StockAlert.destroy({ where: { itemId } });
+
+    return res.json({
+      success: true,
+      message: affected ? 'Stock alert cleared' : 'No alert existed',
+      data: { affected },
+    });
+  } catch (err) {
+    console.error('❌ [mobile] clearStockAlert error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// ================================================================
+// Helper: bulk-fetch alert thresholds for a list of item ids.
+// Returns { [itemId]: { id, threshold } }.
+// ================================================================
+async function fetchAlertThresholds(itemIds) {
+  const map = {};
+  if (!Array.isArray(itemIds) || itemIds.length === 0) return map;
+
+  try {
+    const rows = await StockAlert.findAll({
+      where: { itemId: { [Op.in]: itemIds } },
+      attributes: ['id', 'itemId', 'threshold'],
+    });
+    for (const r of rows) {
+      map[r.itemId] = {
+        id: r.id,
+        threshold: parseFloat(r.threshold) || 0,
+      };
+    }
+  } catch (err) {
+    console.error('⚠️ fetchAlertThresholds failed:', err.message);
+  }
+
+  return map;
+}
 
 // ================================================================
 // Helper: safely merge two WHERE clauses.

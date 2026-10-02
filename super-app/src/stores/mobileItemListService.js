@@ -45,6 +45,64 @@ export const mobileItemListService = {
     );
     return response.data;
   },
+
+  // ================================================================
+  // STOCK ALERTS
+  // ================================================================
+
+  /**
+   * Read the stock alert config for an item.
+   * GET /mobile/item-list/items/:itemId/stock-alert
+   *
+   * @param {number|string} itemId
+   * @returns {Promise<{
+   *   success: boolean,
+   *   data?: { id, itemId, threshold, createdBy, createdAt, updatedAt } | null,
+   *   error?: string
+   * }>}
+   */
+  getStockAlert: async (itemId) => {
+    const response = await api.get(
+      `/mobile/item-list/items/${itemId}/stock-alert`
+    );
+    return response.data;
+  },
+
+  /**
+   * Upsert the stock alert threshold for an item.
+   * Setting `threshold` to 0 clears the alert (backend deletes the row).
+   * PUT /mobile/item-list/items/:itemId/stock-alert
+   *
+   * @param {number|string} itemId
+   * @param {number} threshold
+   * @returns {Promise<{
+   *   success: boolean,
+   *   data?: { id, itemId, threshold, createdBy, createdAt, updatedAt } | null,
+   *   message?: string,
+   *   error?: string
+   * }>}
+   */
+  setStockAlert: async (itemId, threshold) => {
+    const response = await api.put(
+      `/mobile/item-list/items/${itemId}/stock-alert`,
+      { threshold }
+    );
+    return response.data;
+  },
+
+  /**
+   * Remove the stock alert config for an item.
+   * DELETE /mobile/item-list/items/:itemId/stock-alert
+   *
+   * @param {number|string} itemId
+   * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+   */
+  clearStockAlert: async (itemId) => {
+    const response = await api.delete(
+      `/mobile/item-list/items/${itemId}/stock-alert`
+    );
+    return response.data;
+  },
 };
 
 export default mobileItemListService;
