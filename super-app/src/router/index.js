@@ -16,6 +16,7 @@ import LoginPage from '../pages/auth/LoginPage';
 
 // Dashboard Pages
 import DashboardPage from '../pages/dashboard/DashboardPage';
+import AdminDashboard from '../pages/dashboard/roles/AdminDashboard';
 
 // Main Pages
 import ProfilePage from '../pages/profile/ProfilePage';
@@ -59,6 +60,13 @@ import AdminDevicesPage from '../pages/admin/AdminDevicesPage';
 import AdminUsersPage from '../pages/admin/AdminUsersPage';
 import AdminDepartmentsPage from '../pages/admin/AdminDepartmentsPage';
 import AdminRolesPage from '../pages/admin/AdminRolesPage';
+import AdminSystemSettingsPage from '../pages/admin/AdminSystemSettingsPage';
+
+// Admin → System Settings sub-pages
+import AttendanceSettingsPage from '../pages/admin/settings/AttendanceSettingsPage';
+import ApprovalSettingsPage   from '../pages/admin/settings/approvalSettingsPage';
+import FinanceSettingsPage    from '../pages/admin/settings/FinanceSettingsPage';
+import BackupSettingsPage     from '../pages/admin/settings/BackupSettingsPage';
 
 // Auth service + hook
 import authService from '../stores/authService';
@@ -93,10 +101,12 @@ const ROLE_PERMISSIONS = {
 };
 
 // ---- Admin page access control ----
+const ADMIN_HUB_ROLES        = ['admin', 'superadmin'];
 const USERS_VIEW_ROLES       = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
 const DEVICES_VIEW_ROLES     = ['admin', 'superadmin'];
 const DEPARTMENTS_VIEW_ROLES = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
 const ROLES_VIEW_ROLES       = ['admin', 'superadmin', 'checker', 'purchase_organizer'];
+const SETTINGS_VIEW_ROLES    = ['admin', 'superadmin', 'checker'];
 
 export default function AppRouter() {
   // ---------- Auth (single source of truth) ----------
@@ -263,6 +273,8 @@ export default function AppRouter() {
     return ROLE_PERMISSIONS[userRole]?.[permissionKey] ?? false;
   };
 
+  const isAdminHubUser = ADMIN_HUB_ROLES.includes(userRole);
+
   // ================================================================
   // 6) Navigation helpers
   // ================================================================
@@ -287,8 +299,19 @@ export default function AppRouter() {
   const handleOpenNotification = (route) => {
     if (!route) return;
     console.log('🟠 [index] pendingIntent:', route);
+
     setPendingIntent(route);
     setActiveTab(route.tab);
+
+    if (route.subView !== undefined && route.subView !== null) {
+      setPurchaseSubView(route.subView);
+    } else {
+      setPurchaseSubView(null);
+    }
+
+    setSettingsSubView('main');
+    setPendingOrder(null);
+    setPurchaseReturnTo(null);
   };
 
   // ================================================================
@@ -371,6 +394,10 @@ export default function AppRouter() {
               subTextColor={subTextColor}
               cardBg={cardBg}
               borderColor={borderColor}
+              pendingIntent={
+                pendingIntent?.intent === 'item-list' ? pendingIntent : null
+              }
+              onIntentHandled={() => setPendingIntent(null)}
             />
           );
 
@@ -453,6 +480,19 @@ export default function AppRouter() {
     // ---------- Main tabs ----------
     switch (activeTab) {
       case 'home':
+        // ✅ Admin users see the AdminDashboard; everyone else sees the normal one
+        if (isAdminHubUser) {
+          return (
+            <AdminDashboard
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+              setActiveTab={setActiveTab}
+            />
+          );
+        }
         return (
           <DashboardPage
             darkMode={darkMode}
@@ -465,6 +505,23 @@ export default function AppRouter() {
             subTextColor={subTextColor}
             cardBg={cardBg}
             borderColor={borderColor}
+          />
+        );
+
+      case 'adminDashboard':
+        if (!isAdminHubUser) {
+          alert('🛡️ Access Denied: Admin clearance required.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AdminDashboard
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            setActiveTab={setActiveTab}
           />
         );
 
@@ -539,9 +596,6 @@ export default function AppRouter() {
             cardBg={cardBg}
             borderColor={borderColor}
             userRole={userRole}
-            onOpenUsersByDepartment={(dept) => {
-              setActiveTab('users');
-            }}
           />
         );
 
@@ -562,9 +616,107 @@ export default function AppRouter() {
             cardBg={cardBg}
             borderColor={borderColor}
             userRole={userRole}
-            onOpenUsersByRole={(roleObj) => {
-              setActiveTab('users');
-            }}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → System Settings (hub)
+      // ------------------------------------------------------------
+      case 'systemSettings':
+        if (!SETTINGS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges to view settings.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AdminSystemSettingsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+            setActiveTab={setActiveTab}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → System Settings → Attendance
+      // ------------------------------------------------------------
+      case 'settingsAttendance':
+        if (!SETTINGS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <AttendanceSettingsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → System Settings → Approval
+      // ------------------------------------------------------------
+      case 'settingsApproval':
+        if (!SETTINGS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <ApprovalSettingsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → System Settings → Finance
+      // ------------------------------------------------------------
+      case 'settingsFinance':
+        if (!SETTINGS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <FinanceSettingsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
+          />
+        );
+
+      // ------------------------------------------------------------
+      // ADMIN → System Settings → Backup
+      // ------------------------------------------------------------
+      case 'settingsBackup':
+        if (!SETTINGS_VIEW_ROLES.includes(userRole)) {
+          alert('🛡️ Access Denied: Insufficient privileges.');
+          setActiveTab('home');
+          return null;
+        }
+        return (
+          <BackupSettingsPage
+            darkMode={darkMode}
+            textColor={textColor}
+            subTextColor={subTextColor}
+            cardBg={cardBg}
+            borderColor={borderColor}
+            userRole={userRole}
           />
         );
 
@@ -627,6 +779,18 @@ export default function AppRouter() {
         }
 
       default:
+        if (isAdminHubUser) {
+          return (
+            <AdminDashboard
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+              setActiveTab={setActiveTab}
+            />
+          );
+        }
         return (
           <DashboardPage
             darkMode={darkMode}

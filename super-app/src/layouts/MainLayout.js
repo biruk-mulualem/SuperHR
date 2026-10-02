@@ -30,6 +30,20 @@ const LIST_PAGES = [
   'adminDevices',
   'webSessions',
   'users',
+
+  // ✅ Admin pages — match the `activeTab` values used in index.js
+  'roles',
+  'departments',
+  'devices',
+  'positions',
+  'systemSettings',
+
+  // ✅ System Settings sub-pages — each owns a FlatList
+  'settingsAttendance',
+  'settingsApproval',
+  'settingsFinance',
+  'settingsBackup',
+  'settingsHR',
 ];
 
 export default function MainLayout({

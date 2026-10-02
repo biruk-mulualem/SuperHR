@@ -11,12 +11,12 @@ import {
 } from 'react-native';
 
 // ================================================================
-// PURCHASE = DEMO (service removed to avoid 500s)
+// PURCHASE — DEMO
 // ================================================================
 const DEMO_PURCHASE = { pendingApproval: 7, pendingPayment: 3 };
 
 // ================================================================
-// STORE — real services (kept as-is)
+// STORE — real service
 // ================================================================
 let mobileStoreDashboardService = null;
 try {
@@ -28,23 +28,17 @@ try {
   mobileStoreDashboardService = null;
 }
 
-let mobileManagerBalanceAuditService = null;
-try {
-  // eslint-disable-next-line global-require
-  mobileManagerBalanceAuditService =
-    require('../../../stores/mobileManagerBalanceAuditService').default ||
-    require('../../../stores/mobileManagerBalanceAuditService').mobileManagerBalanceAuditService;
-} catch (e) {
-  mobileManagerBalanceAuditService = null;
-}
-
 const EMPTY_PURCHASE = { pendingApproval: 0, pendingPayment: 0 };
-const EMPTY_STORE    = { totalItems: 0, conflicts: 0, alerts: 0 };
+const EMPTY_STORE    = {
+  activeItems: 0,     // ✅ Active items
+  alerts: 0,          // ✅ Triggered
+  alertSet: 0,        // ✅ Alert set
+};
 
 // Colour palette for the Store tile
-const C_ITEMS     = '#10B981';   // green — neutral total
-const C_CONFLICTS = '#EF4444';   // red   — always
-const C_ALERTS    = '#F59E0B';   // amber — always
+const C_ITEMS    = '#10B981';   // green — active items
+const C_ALERTSET = '#F59E0B';   // amber — alert set
+const C_ALERTS   = '#EF4444';   // red   — triggered
 
 export default function ManagerDashboard({
   textColor,
@@ -64,8 +58,6 @@ export default function ManagerDashboard({
 
   // -----------------------------------------------------------------
   // FETCH
-  //   Purchase → demo data (no service)
-  //   Store    → real service (unchanged)
   // -----------------------------------------------------------------
   const loadSummary = useCallback(async ({ silent = false } = {}) => {
     try {
@@ -81,30 +73,22 @@ export default function ManagerDashboard({
       try {
         if (mobileStoreDashboardService?.getStoreSummary) {
           const res = await mobileStoreDashboardService.getStoreSummary();
+
           if (res?.success) {
-            // Backend now sends FULL-set counters directly.
-            const totalItems   = Number(res.data?.totalItems      ?? 0);
-            const conflicts    = Number(res.data?.conflictedItems ?? 0);
+            const d = res.data || {};
 
-            // ── Alerts = triggered items from the balance-audit summary ──
-            let alerts = 0;
-            if (mobileManagerBalanceAuditService?.getSummary) {
-              try {
-                const sres = await mobileManagerBalanceAuditService.getSummary();
-                if (sres?.success) {
-                  alerts = Number(sres.data?.conflicted ?? 0);
-                }
-              } catch (e) {
-                console.warn('Stock status summary failed:', e?.message);
-              }
-            }
+            // ✅ Active items / Alert set / Triggered
+            const activeItems = Number(d.activeItems         ?? 0);
+            const alertSet    = Number(d.inventoryAlertSet   ?? 0);
+            const alerts      = Number(d.inventoryTriggered  ?? 0);
 
-            store = { totalItems, conflicts, alerts };
+            store = { activeItems, alertSet, alerts };
           }
         }
       } catch (e) {
         console.warn('Store summary failed:', e?.message);
       }
+
       setStoreData(store);
     } catch (e) {
       const status = e?.response?.status;
@@ -159,21 +143,9 @@ export default function ManagerDashboard({
       destination: 'storeDashboard',
       comingSoon: false,
       stats: [
-        {
-          label: 'Items',
-          value: storeData.totalItems,
-          color: C_ITEMS,
-        },
-        {
-          label: 'Conflicts',
-          value: storeData.conflicts,
-          color: C_CONFLICTS,
-        },
-        {
-          label: 'Alerts',
-          value: storeData.alerts,
-          color: C_ALERTS,
-        },
+        { label: 'Active items', value: storeData.activeItems, color: C_ITEMS },
+        { label: 'Alert set',    value: storeData.alertSet,    color: C_ALERTSET },
+        { label: 'Triggered',    value: storeData.alerts,      color: C_ALERTS },
       ],
     },
     {
@@ -187,21 +159,9 @@ export default function ManagerDashboard({
       destination: 'purchaseDashboard',
       comingSoon: true,
       stats: [
-        {
-          label: 'Pending',
-          value: purchaseData.pendingApproval,
-          color: '#F59E0B',
-        },
-        {
-          label: 'To Pay',
-          value: purchaseData.pendingPayment,
-          color: '#3B82F6',
-        },
-        {
-          label: 'Total',
-          value: totalPurchaseRequests,
-          color: '#8B5CF6',
-        },
+        { label: 'Pending', value: purchaseData.pendingApproval, color: '#F59E0B' },
+        { label: 'To Pay',  value: purchaseData.pendingPayment,  color: '#3B82F6' },
+        { label: 'Total',   value: totalPurchaseRequests,        color: '#8B5CF6' },
       ],
     },
     {
@@ -215,9 +175,9 @@ export default function ManagerDashboard({
       destination: 'hrDashboard',
       comingSoon: true,
       stats: [
-        { label: 'Staff', value: 0, color: '#EC4899' },
+        { label: 'Staff',  value: 0, color: '#EC4899' },
         { label: 'Absent', value: 0, color: '#F59E0B' },
-        { label: 'Total', value: 0, color: '#EC4899' },
+        { label: 'Total',  value: 0, color: '#EC4899' },
       ],
     },
     {
@@ -232,8 +192,8 @@ export default function ManagerDashboard({
       comingSoon: true,
       stats: [
         { label: 'Pending', value: 0, color: '#F59E0B' },
-        { label: 'Paid', value: 0, color: '#10B981' },
-        { label: 'Total', value: 0, color: '#F59E0B' },
+        { label: 'Paid',    value: 0, color: '#10B981' },
+        { label: 'Total',   value: 0, color: '#F59E0B' },
       ],
     },
   ];
@@ -336,7 +296,6 @@ export default function ManagerDashboard({
       {/* ───────────── Section cards ───────────── */}
       {sections.map((section) => {
         const disabled = !!section.comingSoon;
-
         const CardWrapper = disabled ? View : TouchableOpacity;
 
         const cardProps = disabled
@@ -350,15 +309,11 @@ export default function ManagerDashboard({
           : {
               activeOpacity: 0.85,
               onPress: () => goTo(section.destination),
-              style: [
-                styles.card,
-                { backgroundColor: cardBg, borderColor },
-              ],
+              style: [styles.card, { backgroundColor: cardBg, borderColor }],
             };
 
         return (
           <CardWrapper key={section.key} {...cardProps}>
-            {/* Left accent bar — dimmed when coming soon */}
             <View
               style={[
                 styles.cardAccent,
@@ -370,7 +325,6 @@ export default function ManagerDashboard({
             />
 
             <View style={styles.cardBody}>
-              {/* Top row */}
               <View style={styles.cardTop}>
                 <View
                   style={[
@@ -459,7 +413,6 @@ export default function ManagerDashboard({
                 )}
               </View>
 
-              {/* Bottom row: stats */}
               {section.stats && section.stats.length > 0 && (
                 <View
                   style={[
@@ -500,21 +453,9 @@ export default function ManagerDashboard({
 // STYLES
 // ================================================================
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    paddingTop: 4,
-  },
-
-  centerBox: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 260,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  container: { padding: 16, paddingTop: 4 },
+  centerBox: { alignItems: 'center', justifyContent: 'center', minHeight: 260 },
+  loadingText: { marginTop: 12, fontSize: 13, fontWeight: '500' },
 
   heroCard: {
     borderRadius: 22,
@@ -539,10 +480,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
     marginBottom: 4,
   },
-  heroSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  heroSubtitle: { fontSize: 13, fontWeight: '500' },
 
   errorBox: {
     borderWidth: 1,
@@ -551,10 +489,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 16,
   },
-  errorText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-  },
+  errorText: { fontSize: 12.5, fontWeight: '600' },
 
   sectionsLabel: {
     fontSize: 11,
@@ -576,17 +511,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  cardDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  cardAccent: {
-    width: 5,
-    alignSelf: 'stretch',
-  },
-  cardBody: {
-    flex: 1,
-  },
+  cardDisabled: { shadowOpacity: 0, elevation: 0 },
+  cardAccent: { width: 5, alignSelf: 'stretch' },
+  cardBody: { flex: 1 },
 
   cardTop: {
     flexDirection: 'row',
@@ -603,30 +530,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconText: {
-    fontSize: 22,
-  },
+  iconText: { fontSize: 22 },
 
-  cardTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  cardTitleBlock: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: {
     fontSize: 17,
     fontWeight: '800',
     letterSpacing: -0.3,
     flexShrink: 1,
   },
-  cardSubtitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 3,
-  },
+  cardSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 3 },
 
   comingSoonPill: {
     paddingHorizontal: 8,
@@ -648,11 +562,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  arrowText: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginTop: -3,
-  },
+  arrowText: { fontSize: 22, fontWeight: '700', marginTop: -3 },
 
   statsRow: {
     flexDirection: 'row',
@@ -660,15 +570,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 8,
   },
-  statCell: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-  },
+  statCell: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
   statLabel: {
     fontSize: 10.5,
     fontWeight: '700',

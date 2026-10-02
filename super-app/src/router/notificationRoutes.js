@@ -23,6 +23,15 @@ export const NOTIFICATION_ROUTES = {
   request_approved: { tab: 'purchase', intent: 'submitted', params: (n) => ({ id: n.referenceId }) },
   request_declined: { tab: 'purchase', intent: 'submitted', params: (n) => ({ id: n.referenceId }) },
 
+  // ── ✅ Store / Inventory ──
+  // Stock alert summary → Items page with the "Triggered" filter active
+  stock_alert: {
+    tab: 'managerDashboard',
+    subView: 'inventory',        // ← matches the `case 'inventory'` in index.js
+    intent: 'item-list',
+    params: () => ({ status: 'triggered' }),
+  },
+
   // ── No-op ──
   'posts.member_invited': null,
   request_deleted: null,
@@ -31,8 +40,10 @@ export const NOTIFICATION_ROUTES = {
 export function resolveNotificationRoute(notification) {
   const entry = NOTIFICATION_ROUTES[notification?.type];
   if (!entry) return null;
+
   return {
     tab: entry.tab,
+    subView: entry.subView ?? null,          // ✅ pass through (null when missing)
     intent: entry.intent,
     params: entry.params ? entry.params(notification) : {},
   };

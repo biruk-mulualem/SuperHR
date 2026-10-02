@@ -119,10 +119,8 @@ export default function AdminDashboard({
   // ------------------------------------------------------------
   const { stats, week } = data;
 
-  // ✅ Each row targets a real tab key that AppRouter listens for:
-  //    users        → AdminUsersPage
-  //    departments  → AdminDepartmentsPage
-  //    roles        → AdminRolesPage
+  // ✅ Each row targets a real tab key that AppRouter listens for.
+  //    Matches the switch(activeTab) cases in index.js exactly.
   const peopleSection = useMemo(() => ([
     { key: 'users',       label: 'Users',       value: stats.users,       delta: stats.usersDelta,       emoji: '👥', target: 'users' },
     { key: 'departments', label: 'Departments', value: stats.departments, delta: stats.departmentsDelta, emoji: '🏢', target: 'departments' },
@@ -246,10 +244,11 @@ export default function AdminDashboard({
     </View>
   );
 
-  const renderSettingsLink = (emoji, label, isLast) => (
+  // ✅ This now routes to the system settings page
+  const renderSettingsLink = (emoji, label, target, isLast) => (
     <TouchableOpacity
       activeOpacity={0.6}
-      onPress={() => setActiveTab?.('settings')}
+      onPress={() => setActiveTab?.(target)}
       style={[
         styles.row,
         !isLast && {
@@ -389,7 +388,7 @@ export default function AdminDashboard({
         <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
           <TouchableOpacity
             activeOpacity={0.6}
-            onPress={() => setActiveTab?.('notifications')}
+            onPress={() => setActiveTab?.('notification')}
             style={[
               styles.row,
               { borderBottomWidth: 1, borderBottomColor: darkMode ? '#1E293B' : '#F1F5F9' },
@@ -425,7 +424,7 @@ export default function AdminDashboard({
           {renderToggle('Maintenance mode',      'maintenanceMode',     '🚧', false)}
           {renderToggle('Push notifications',    'pushEnabled',         '📣', false)}
           {renderToggle('Require post approval', 'requirePostApproval', '🛡️', false)}
-          {renderSettingsLink('⚙️', 'All settings', true)}
+          {renderSettingsLink('⚙️', 'All settings', 'systemSettings', true)}
         </View>
       </View>
 

@@ -26,36 +26,19 @@ module.exports = (sequelize, DataTypes) => {
       },
 
       // ==================== SCOPE ====================
-      // Which feature module this notification belongs to.
-      //   'local'   — Local Purchase workflow
-      //   'foreign' — Foreign / Import Purchase workflow
-      //   'posts'   — Posts / Groups workflow
-      //   (future: 'hr', 'finance', 'store', etc.)
       scope: {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'local',
         validate: {
           isIn: {
-            args: [['local', 'foreign', 'posts']],
-            msg: "scope must be 'local', 'foreign', or 'posts'",
+            args: [['local', 'foreign', 'posts', 'store']],
+            msg: "scope must be 'local', 'foreign', 'posts', or 'store'",
           },
         },
       },
 
       // ==================== EVENT TYPE ====================
-      // Namespaced by scope where applicable.
-      // Purchase:
-      //   'dispatch', 'approval_request', 'price_submitted', 'winner_selected',
-      //   'request_approved', 'request_declined', 'request_deleted',
-      //   'purchase_reminder'
-      // Foreign (future):
-      //   'shipment_update', 'lc_opened', 'customs_cleared', 'delivery_scheduled'
-      // Posts:
-      //   'posts.member_invited', 'posts.member_accepted', 'posts.member_declined',
-      //   'posts.member_removed', 'posts.post_submitted', 'posts.post_approved',
-      //   'posts.post_declined', 'posts.post_comment', 'posts.image_signed',
-      //   'posts.group_deactivated', 'posts.ownership_transferred'
       type: {
         type: DataTypes.STRING(50),
         allowNull: false,
@@ -162,7 +145,6 @@ module.exports = (sequelize, DataTypes) => {
           }
         },
 
-        // Lazy require + try/catch. Never breaks the DB write on push failure.
         afterCreate: async (notification) => {
           try {
             const { sendPushToUser } = require('../../services/pushService');
@@ -199,6 +181,7 @@ module.exports = (sequelize, DataTypes) => {
     LOCAL: 'local',
     FOREIGN: 'foreign',
     POSTS: 'posts',
+    STORE: 'store',
   };
 
   // ==================== STATIC HELPERS ====================
@@ -473,6 +456,107 @@ module.exports = (sequelize, DataTypes) => {
         referenceType: 'post_group',
         metadata: { groupId, groupName, previousOwner },
       }),
+  };
+
+  // ============================================================================
+  // STORE / INVENTORY EVENT HELPERS
+  // ============================================================================
+  MobileNotification.store = {
+    // ────────────────────────────────────────────────────────────
+    // Per-item alert (kept for compatibility)
+    // ────────────────────────────────────────────────────────────
+    stockAlert: ({
+      recipientIds,
+      itemId,
+      itemName,
+      itemSku = null,
+      storeId,
+      storeName,
+      groupId = null,
+      groupName = null,
+      balance,
+      threshold,
+      unit = 'units',
+    }) =>
+      MobileNotification.notifyMany(recipientIds, {
+        scope: 'store',
+        type: 'stock_alert',
+        title: `⚠️ Low stock: ${itemName}`,
+        body:
+          `Balance at ${storeName}${groupName ? ` · ${groupName}` : ''} ` +
+          `dropped to ${balance} ${unit} (threshold ${threshold}).` +
+          (itemSku ? ` SKU: ${itemSku}.` : ''),
+        referenceId: itemId,
+        referenceType: 'item',
+        metadata: {
+          itemId,
+          itemName,
+          itemSku,
+          storeId,
+          storeName,
+          groupId: groupId ?? null,
+          groupName: groupName ?? null,
+          balance,
+          threshold,
+          unit,
+        },
+      }),
+
+    // ────────────────────────────────────────────────────────────
+    // ✅ Summary alert — ONE notification covering N triggered items
+    //
+    //   await MobileNotification.store.stockAlertSummary({
+    //     recipientIds: [12, 34],
+    //     items: [
+    //       { itemId: 5, itemName: 'Widget A', itemSku: 'WDG-001',
+    //         balance: 3, threshold: 5, unit: 'pcs' },
+    //       { itemId: 6, itemName: 'Widget B', itemSku: 'WDG-002',
+    //         balance: 1, threshold: 10, unit: 'pcs' },
+    //     ],
+    //   });
+    // ────────────────────────────────────────────────────────────
+    stockAlertSummary: ({ recipientIds, items }) => {
+      const list = Array.isArray(items) ? items.filter(Boolean) : [];
+      const count = list.length;
+      if (count === 0) return Promise.resolve([]);
+
+      const preview = list
+        .slice(0, 3)
+        .map((it) => it.itemName || `Item #${it.itemId}`)
+        .join(', ');
+      const more = count > 3 ? ` +${count - 3} more` : '';
+
+      const title =
+        count === 1
+          ? `⚠️ 1 item on low stock`
+          : `⚠️ ${count} items on low stock`;
+
+      const body =
+        `${preview}${more} — ` +
+        (count === 1
+          ? 'this item is at or below its threshold.'
+          : 'these items are at or below their thresholds.');
+
+      return MobileNotification.notifyMany(recipientIds, {
+        scope: 'store',
+        type: 'stock_alert',
+        title,
+        body,
+        referenceId: null,
+        referenceType: 'stock_alert',
+        metadata: {
+          count,
+          items: list.map((it) => ({
+            itemId: it.itemId,
+            itemName: it.itemName || null,
+            itemSku: it.itemSku || null,
+            balance: it.balance,
+            threshold: it.threshold,
+            unit: it.unit || 'units',
+          })),
+        },
+      });
+    },
   };
 
   return MobileNotification;

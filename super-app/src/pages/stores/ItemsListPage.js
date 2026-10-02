@@ -22,19 +22,15 @@ import mobileItemListService from '../../stores/mobileItemListService';
 // CONSTANTS
 // ================================================================
 const STATUS_FILTERS = [
-  { key: 'all',      label: 'All'       },
-  { key: 'active',   label: 'Active'    },
-  { key: 'inactive', label: 'Inactive'  },
-  { key: 'nocost',   label: 'No cost'   },
+  { key: 'all',       label: 'All'         },
+  { key: 'alertset',  label: 'Alert set'   },
+  { key: 'triggered', label: 'Triggered'   },
 ];
 
 const PAGE_SIZE = 10;
 
 // ================================================================
-// Groups table renderer
-//   Header row  = GROUP 1, GROUP 2, … + DIFF
-//   Value row   = each group's balance + the store's diff
-//   Horizontally scrollable so any N of groups fits.
+// Groups table renderer (unchanged)
 // ================================================================
 const renderGroupsTable = (
   groups,
@@ -58,8 +54,8 @@ const renderGroupsTable = (
   const valueBg    = darkMode ? '#0F172A' : '#FFFFFF';
   const cellBorder = borderColor;
 
-  const COL_W  = 92;   // group columns
-  const DIFF_W = 76;   // diff column
+  const COL_W  = 92;
+  const DIFF_W = 76;
 
   return (
     <ScrollView
@@ -68,7 +64,6 @@ const renderGroupsTable = (
       contentContainerStyle={{ paddingVertical: 0 }}
     >
       <View style={[styles.groupsTable, { borderColor: cellBorder, marginTop: 6 }]}>
-        {/* ---------- Header row ---------- */}
         <View
           style={[
             styles.groupsTableHeaderRow,
@@ -104,7 +99,6 @@ const renderGroupsTable = (
           </View>
         </View>
 
-        {/* ---------- Value row ---------- */}
         <View style={[styles.groupsTableValueRow, { backgroundColor: valueBg }]}>
           {groups.map((g, idx) => (
             <View
@@ -151,6 +145,8 @@ export default function ItemsListPage({
   subTextColor,
   cardBg,
   borderColor,
+   pendingIntent,       // ✅ NEW
+  onIntentHandled,     // ✅ NEW
 }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -167,19 +163,18 @@ export default function ItemsListPage({
 
   const [counts, setCounts] = useState({
     total: 0,
-    active: 0,
-    inactive: 0,
-    noCost: 0,
+    alertSet: 0,
+    triggered: 0,
   });
 
   // Inline expansion
   const [expandedId, setExpandedId] = useState(null);
   const [balancesCache, setBalancesCache] = useState({});
 
-  // ✅ Stock alert local overrides (falls back to item.stockAlert from server)
+  // Stock alert local overrides
   const [alertOverrides, setAlertOverrides] = useState({});
 
-  // ✅ Stock alert modal
+  // Stock alert modal
   const [alertModalItem, setAlertModalItem] = useState(null);
   const [alertModalValue, setAlertModalValue] = useState('');
   const [alertModalSaving, setAlertModalSaving] = useState(false);
@@ -200,7 +195,31 @@ export default function ItemsListPage({
     hasCost: it.hasCost !== false,
     status: it.status || 'active',
     stockAlert: it.stockAlert || null,
+    isTriggered: !!it.isTriggered,
   });
+
+
+
+// ✅ Consume an incoming deep-link intent (e.g. from a stock alert)
+const consumedIntentRef = useRef(null);
+
+useEffect(() => {
+  if (!pendingIntent) return;
+  if (pendingIntent.intent !== 'item-list') return;
+
+  const sig = JSON.stringify(pendingIntent);
+  if (consumedIntentRef.current === sig) return;
+  consumedIntentRef.current = sig;
+
+  const status = pendingIntent.params?.status;
+  if (status === 'triggered' || status === 'alertset' || status === 'all') {
+    console.log('🟢 [ItemsListPage] applying intent filter:', status);
+    setStatusFilter(status);
+  }
+
+  onIntentHandled?.();
+}, [pendingIntent, onIntentHandled]);
+
 
   // -----------------------------------------------------------------
   // FETCH — page 1
@@ -230,10 +249,9 @@ export default function ItemsListPage({
           const c = res.data?.counts;
           if (c) {
             setCounts({
-              total:    Number(c.total)    || 0,
-              active:   Number(c.active)   || 0,
-              inactive: Number(c.inactive) || 0,
-              noCost:   Number(c.noCost)   || 0,
+              total:     Number(c.total)     || 0,
+              alertSet:  Number(c.alertSet)  || 0,
+              triggered: Number(c.triggered) || 0,
             });
           }
         } else {
@@ -291,7 +309,6 @@ export default function ItemsListPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounced search / status filter
   useEffect(() => {
     const t = setTimeout(() => {
       loadFirstPage({ silent: true });
@@ -421,6 +438,10 @@ export default function ItemsListPage({
 
       const nextConfig = num === 0 ? null : { threshold: num };
       setAlertOverrides((prev) => ({ ...prev, [alertModalItem.id]: nextConfig }));
+
+      // Refresh so counts stay accurate
+      loadFirstPage({ silent: true });
+
       closeAlertModal();
     } catch (e) {
       setAlertModalError(
@@ -429,7 +450,7 @@ export default function ItemsListPage({
     } finally {
       setAlertModalSaving(false);
     }
-  }, [alertModalItem, alertModalValue, closeAlertModal]);
+  }, [alertModalItem, alertModalValue, closeAlertModal, loadFirstPage]);
 
   // -----------------------------------------------------------------
   // Loading
@@ -493,18 +514,26 @@ export default function ItemsListPage({
     const { totals, stores } = data;
     const cfg = getAlertForItem(item);
     const threshold = cfg?.threshold ?? 0;
+    const isTriggered =
+      threshold > 0 && Number(totals.grandTotal) <= threshold;
 
     return (
       <View style={[styles.expandWrap, { borderColor }]}>
-        {/* ---------- Stock alert strip ---------- */}
+        {/* Stock alert strip */}
         <View
           style={[
             styles.alertStrip,
             {
-              backgroundColor: threshold > 0
+              backgroundColor: isTriggered
+                ? (darkMode ? '#7F1D1D' : '#FEE2E2')
+                : threshold > 0
                 ? (darkMode ? '#312E81' : '#EEF2FF')
                 : (darkMode ? '#0F172A' : '#F8FAFC'),
-              borderColor: threshold > 0 ? '#8B5CF6' : borderColor,
+              borderColor: isTriggered
+                ? '#EF4444'
+                : threshold > 0
+                ? '#8B5CF6'
+                : borderColor,
             },
           ]}
         >
@@ -512,8 +541,20 @@ export default function ItemsListPage({
             <Text style={[styles.alertStripLabel, { color: subTextColor }]}>
               STOCK ALERT
             </Text>
-            <Text style={[styles.alertStripValue, { color: textColor }]} numberOfLines={1}>
-              {threshold > 0
+            <Text
+              style={[
+                styles.alertStripValue,
+                {
+                  color: isTriggered
+                    ? (darkMode ? '#FCA5A5' : '#991B1B')
+                    : textColor,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {isTriggered
+                ? `TRIGGERED — total ${totals.grandTotal} ≤ ${threshold}`
+                : threshold > 0
                 ? `Notify when balance ≤ ${threshold}`
                 : 'No alert set'}
             </Text>
@@ -524,15 +565,28 @@ export default function ItemsListPage({
             style={[
               styles.alertStripBtn,
               {
-                backgroundColor: threshold > 0 ? '#8B5CF6' : (darkMode ? '#1E293B' : '#F1F5F9'),
-                borderColor: threshold > 0 ? '#8B5CF6' : borderColor,
+                backgroundColor: isTriggered
+                  ? '#EF4444'
+                  : threshold > 0
+                  ? '#8B5CF6'
+                  : (darkMode ? '#1E293B' : '#F1F5F9'),
+                borderColor: isTriggered
+                  ? '#EF4444'
+                  : threshold > 0
+                  ? '#8B5CF6'
+                  : borderColor,
               },
             ]}
           >
             <Text
               style={[
                 styles.alertStripBtnText,
-                { color: threshold > 0 ? '#FFFFFF' : textColor },
+                {
+                  color:
+                    isTriggered || threshold > 0
+                      ? '#FFFFFF'
+                      : textColor,
+                },
               ]}
             >
               {threshold > 0 ? 'Edit' : 'Set'}
@@ -540,10 +594,15 @@ export default function ItemsListPage({
           </TouchableOpacity>
         </View>
 
-        {/* ---------- Totals strip ---------- */}
+        {/* Totals strip */}
         <View style={styles.expandTotalsRow}>
           <View style={styles.expandTotalsCell}>
-            <Text style={[styles.expandTotalsValue, { color: '#8B5CF6' }]}>
+            <Text
+              style={[
+                styles.expandTotalsValue,
+                { color: isTriggered ? '#EF4444' : '#8B5CF6' },
+              ]}
+            >
               {totals.grandTotal}
             </Text>
             <Text style={[styles.expandTotalsLabel, { color: subTextColor }]}>
@@ -574,7 +633,7 @@ export default function ItemsListPage({
           </View>
         </View>
 
-        {/* ---------- Stores ---------- */}
+        {/* Stores */}
         {stores.length === 0 ? (
           <Text style={[styles.expandEmptyText, { color: subTextColor }]}>
             No store balances recorded for this item.
@@ -583,8 +642,7 @@ export default function ItemsListPage({
           stores.map((store) => {
             const isAgreed = !!store.isAgreed;
             const diff = Number(store.diff) || 0;
-            const agreedValue =
-              store.total != null ? store.total : null;
+            const agreedValue = store.total != null ? store.total : null;
 
             return (
               <View
@@ -598,7 +656,6 @@ export default function ItemsListPage({
                   },
                 ]}
               >
-                {/* Store header */}
                 <View style={styles.expandStoreHeader}>
                   <View
                     style={[
@@ -636,9 +693,7 @@ export default function ItemsListPage({
                         backgroundColor: isAgreed
                           ? darkMode ? '#1E293B' : '#F1F5F9'
                           : darkMode ? '#7F1D1D' : '#FEE2E2',
-                        borderColor: isAgreed
-                          ? borderColor
-                          : '#EF4444',
+                        borderColor: isAgreed ? borderColor : '#EF4444',
                       },
                     ]}
                   >
@@ -669,7 +724,6 @@ export default function ItemsListPage({
                   </View>
                 </View>
 
-                {/* Verdict row */}
                 <View
                   style={[
                     styles.expandVerdictRow,
@@ -700,9 +754,7 @@ export default function ItemsListPage({
                     <Text
                       style={[
                         styles.expandVerdictHint,
-                        {
-                          color: darkMode ? '#FCA5A5' : '#991B1B',
-                        },
+                        { color: darkMode ? '#FCA5A5' : '#991B1B' },
                       ]}
                       numberOfLines={1}
                     >
@@ -711,7 +763,6 @@ export default function ItemsListPage({
                   ) : null}
                 </View>
 
-                {/* Groups table */}
                 {renderGroupsTable(store.groups, {
                   textColor,
                   subTextColor,
@@ -750,7 +801,7 @@ export default function ItemsListPage({
         </View>
       </View>
 
-      {/* Summary strip */}
+      {/* Summary strip — Total / Alert set / Triggered */}
       <View
         style={[styles.summaryStrip, { backgroundColor: cardBg, borderColor }]}
       >
@@ -758,24 +809,17 @@ export default function ItemsListPage({
           <Text style={[styles.summaryValue, { color: '#8B5CF6' }]}>
             {counts.total}
           </Text>
-          <Text style={[styles.summaryLabel, { color: subTextColor }]}>Items</Text>
-        </View>
-        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
-        <View style={styles.summaryCell}>
-          <Text style={[styles.summaryValue, { color: '#10B981' }]}>
-            {counts.active}
-          </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            Active
+            Items
           </Text>
         </View>
         <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
         <View style={styles.summaryCell}>
-          <Text style={[styles.summaryValue, { color: '#94A3B8' }]}>
-            {counts.inactive}
+          <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>
+            {counts.alertSet}
           </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            Inactive
+            Alert set
           </Text>
         </View>
         <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
@@ -783,13 +827,13 @@ export default function ItemsListPage({
           <Text
             style={[
               styles.summaryValue,
-              { color: counts.noCost > 0 ? '#EF4444' : '#10B981' },
+              { color: counts.triggered > 0 ? '#EF4444' : '#10B981' },
             ]}
           >
-            {counts.noCost}
+            {counts.triggered}
           </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            No cost
+            Triggered
           </Text>
         </View>
       </View>
@@ -815,7 +859,7 @@ export default function ItemsListPage({
         )}
       </View>
 
-      {/* Status filter */}
+      {/* Status filter — All / Alert set / Triggered */}
       <Text style={[styles.filterLabel, { color: subTextColor }]}>STATUS</Text>
       <View style={styles.pillRowWrap}>
         <ScrollView
@@ -825,6 +869,10 @@ export default function ItemsListPage({
         >
           {STATUS_FILTERS.map((f) => {
             const active = statusFilter === f.key;
+            const activeBg =
+              f.key === 'triggered' ? '#EF4444'
+              : f.key === 'alertset' ? '#F59E0B'
+              : '#8B5CF6';
             return (
               <TouchableOpacity
                 key={f.key}
@@ -834,11 +882,11 @@ export default function ItemsListPage({
                   styles.filterPill,
                   {
                     backgroundColor: active
-                      ? '#8B5CF6'
+                      ? activeBg
                       : darkMode
                       ? '#1E293B'
                       : '#F1F5F9',
-                    borderColor: active ? '#8B5CF6' : borderColor,
+                    borderColor: active ? activeBg : borderColor,
                   },
                 ]}
               >
@@ -934,6 +982,7 @@ export default function ItemsListPage({
           const expanded = expandedId === item.id;
           const cfg = getAlertForItem(item);
           const hasAlert = !!cfg && Number(cfg.threshold) > 0;
+          const triggered = item.isTriggered === true;
 
           return (
             <View
@@ -941,7 +990,11 @@ export default function ItemsListPage({
                 styles.card,
                 {
                   backgroundColor: cardBg,
-                  borderColor: expanded ? '#8B5CF6' : borderColor,
+                  borderColor: triggered
+                    ? '#EF4444'
+                    : expanded
+                    ? '#8B5CF6'
+                    : borderColor,
                 },
               ]}
             >
@@ -988,7 +1041,7 @@ export default function ItemsListPage({
                   </View>
                 </TouchableOpacity>
 
-                {/* ✅ Bell button */}
+                {/* Bell button — red when triggered */}
                 <TouchableOpacity
                   onPress={() => openAlertModal(item)}
                   hitSlop={8}
@@ -996,22 +1049,34 @@ export default function ItemsListPage({
                   style={[
                     styles.alertBtn,
                     {
-                      borderColor: hasAlert ? '#8B5CF6' : borderColor,
-                      backgroundColor: hasAlert
+                      borderColor: triggered
+                        ? '#EF4444'
+                        : hasAlert
+                        ? '#8B5CF6'
+                        : borderColor,
+                      backgroundColor: triggered
+                        ? (darkMode ? '#7F1D1D' : '#FEE2E2')
+                        : hasAlert
                         ? (darkMode ? '#312E81' : '#EEF2FF')
                         : 'transparent',
                     },
                   ]}
                 >
                   <Text style={styles.alertBtnIcon}>
-                    {hasAlert ? '🔔' : '🔕'}
+                    {triggered ? '🔴' : hasAlert ? '🔔' : '🔕'}
                   </Text>
                 </TouchableOpacity>
 
                 <Text
                   style={[
                     styles.chevron,
-                    { color: expanded ? '#8B5CF6' : subTextColor },
+                    {
+                      color: triggered
+                        ? '#EF4444'
+                        : expanded
+                        ? '#8B5CF6'
+                        : subTextColor,
+                    },
                   ]}
                 >
                   {expanded ? '⌄' : '›'}
@@ -1024,7 +1089,7 @@ export default function ItemsListPage({
         }}
       />
 
-      {/* ============ Stock alert modal ============ */}
+      {/* Stock alert modal */}
       <Modal
         visible={!!alertModalItem}
         transparent
@@ -1314,7 +1379,6 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
 
-  // ── Inline expansion ──
   expandLoading: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1346,7 +1410,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // ── Stock alert strip inside expansion ──
   alertStrip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1453,7 +1516,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  // ── Verdict row ──
   expandVerdictRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1477,7 +1539,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
 
-  // ── Groups table ──
   groupsTable: {
     borderWidth: 1,
     borderRadius: 6,
@@ -1539,7 +1600,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Stock alert modal ──
   alertModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.55)',
@@ -1624,4 +1684,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
-});``
+});

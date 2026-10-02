@@ -25,22 +25,10 @@ const EMPTY_DATA = {
   totalStores: 0,
   activeStores: 0,
 
-  totalItems: 0,
+  // Inventory card fields
   activeItems: 0,
-  inactiveItems: 0,
-
-  lowStock: 0,
-  outOfStock: 0,
-
-  totalStatus: 0,
-  triggeredStatus: 0,
-  pendingStatus: 0,
-
-  auditedItems: 0,
-  matchedItems: 0,
-  conflictedItems: 0,
-
-  stores: [],
+  inventoryAlertSet: 0,
+  inventoryTriggered: 0,
 };
 
 export default function ManagerStoreDashboard({
@@ -80,33 +68,17 @@ export default function ManagerStoreDashboard({
 
       const d = res.data || {};
 
-      const totalItems = Number(d.totalItems ?? 0);
+      // ✅ Active items (not total)
       const activeItems = Number(d.activeItems ?? 0);
-      const inactiveItems =
-        d.inactiveItems != null
-          ? Number(d.inactiveItems)
-          : Math.max(0, totalItems - activeItems);
 
       setStoreData({
-        totalStores:   Number(d.totalStores   ?? 0),
-        activeStores:  Number(d.activeStores  ?? 0),
+        totalStores:  Number(d.totalStores  ?? 0),
+        activeStores: Number(d.activeStores ?? 0),
 
-        totalItems,
+        // Inventory card counts
         activeItems,
-        inactiveItems,
-
-        lowStock:   Number(d.lowStock   ?? 0),
-        outOfStock: Number(d.outOfStock ?? 0),
-
-        totalStatus:     Number(d.totalStatus     ?? 0),
-        triggeredStatus: Number(d.triggeredStatus ?? 0),
-        pendingStatus:   Number(d.pendingStatus   ?? 0),
-
-        auditedItems:    Number(d.auditedItems    ?? 0),
-        matchedItems:    Number(d.matchedItems    ?? 0),
-        conflictedItems: Number(d.conflictedItems ?? 0),
-
-        stores: [],
+        inventoryAlertSet:  Number(d.inventoryAlertSet  ?? 0),
+        inventoryTriggered: Number(d.inventoryTriggered ?? 0),
       });
     } catch (e) {
       const status = e?.response?.status;
@@ -137,11 +109,14 @@ export default function ManagerStoreDashboard({
     console.warn('⚠️ No navigation callback for store destination:', destination);
   };
 
-  const hasConflicts = storeData.conflictedItems > 0;
+  // -----------------------------------------------------------------
+  // SECTIONS — Stores + Inventory
+  // -----------------------------------------------------------------
+  const idleStores = Math.max(
+    0,
+    storeData.totalStores - storeData.activeStores
+  );
 
-  // -----------------------------------------------------------------
-  // SECTIONS
-  // -----------------------------------------------------------------
   const sections = [
     {
       key: 'stores',
@@ -155,16 +130,12 @@ export default function ManagerStoreDashboard({
       stats: [
         { label: 'Total',  value: storeData.totalStores,  color: '#10B981' },
         { label: 'Active', value: storeData.activeStores, color: '#10B981' },
-        {
-          label: 'Idle',
-          value: Math.max(0, storeData.totalStores - storeData.activeStores),
-          color: '#F59E0B',
-        },
+        { label: 'Idle',   value: idleStores,             color: '#F59E0B' },
       ],
     },
     {
       key: 'inventory',
-      title: 'Inventory',
+      title: 'Inventory and Alerts',
       emoji: '📦',
       subtitle: 'All items across stores',
       accent: '#8B5CF6',
@@ -172,40 +143,10 @@ export default function ManagerStoreDashboard({
       softBgDark: '#312E81',
       destination: 'inventory',
       stats: [
-        { label: 'Total',    value: storeData.totalItems,    color: '#8B5CF6' },
-        { label: 'Active',   value: storeData.activeItems,   color: '#10B981' },
-        { label: 'Inactive', value: storeData.inactiveItems, color: '#EF4444' },
-      ],
-    },
-    {
-      key: 'audit',
-      title: 'Balance Audit',
-      emoji: '⚖️',
-      subtitle: 'Cross-checked item balances',
-      accent: hasConflicts ? '#EF4444' : '#10B981',
-      softBg: hasConflicts ? '#FEF2F2' : '#ECFDF5',
-      softBgDark: hasConflicts ? '#7F1D1D' : '#064E3B',
-      destination: 'balanceAudit',
-      stats: [
-        { label: 'Audited',   value: storeData.auditedItems,    color: '#8B5CF6' },
-        { label: 'Matched',   value: storeData.matchedItems,    color: '#10B981' },
-        { label: 'Conflicts', value: storeData.conflictedItems, color: '#EF4444' },
-      ],
-    },
-    // ── Only the visible LABEL changed — destination stays 'lowStock' ──
-    {
-      key: 'lowStock',
-      title: 'Stock Status',
-      emoji: '🔔',
-      subtitle: 'Items flagged by stock thresholds',
-      accent: '#F59E0B',
-      softBg: '#FFFBEB',
-      softBgDark: '#78350F',
-      destination: 'lowStock',       // ← unchanged
-      stats: [
-        { label: 'Total',     value: storeData.totalStatus,     color: '#8B5CF6' },
-        { label: 'Triggered', value: storeData.triggeredStatus, color: '#EF4444' },
-        { label: 'Pending',   value: storeData.pendingStatus,   color: '#3B82F6' },
+        // ✅ Active Items / Alert Set / Triggered
+        { label: 'Active Items', value: storeData.activeItems,         color: '#8B5CF6' },
+        { label: 'Alert Set',    value: storeData.inventoryAlertSet,   color: '#F59E0B' },
+        { label: 'Triggered',    value: storeData.inventoryTriggered,  color: '#EF4444' },
       ],
     },
   ];
@@ -240,7 +181,7 @@ export default function ManagerStoreDashboard({
         />
       }
     >
-      {/* ───────────── Hero greeting ───────────── */}
+      {/* ───────────── Hero ───────────── */}
       <View
         style={[
           styles.heroCard,
@@ -258,6 +199,7 @@ export default function ManagerStoreDashboard({
         >
           STORE & INVENTORY
         </Text>
+
         <Text
           style={[
             styles.heroTitle,
@@ -267,59 +209,72 @@ export default function ManagerStoreDashboard({
           {storeData.totalStores}{' '}
           {storeData.totalStores === 1 ? 'store' : 'stores'} 🏬
         </Text>
+
         <Text
           style={[
             styles.heroSubtitle,
             { color: darkMode ? '#A7F3D0' : '#059669' },
           ]}
         >
-          {storeData.totalItems} items tracked
+          {storeData.activeItems} active items
         </Text>
-      </View>
 
-      {/* ───────────── Conflict banner ───────────── */}
-      {hasConflicts && (
-        <TouchableOpacity
-          onPress={() => goTo('balanceAudit')}
-          activeOpacity={0.85}
-          style={[
-            styles.conflictBanner,
-            {
-              borderColor: darkMode ? '#7F1D1D' : '#FCA5A5',
-              backgroundColor: darkMode ? '#3B0A0A' : '#FEF2F2',
-            },
-          ]}
-        >
-          <Text
+        <View style={styles.heroPillsRow}>
+          <View
             style={[
-              styles.conflictIcon,
-              { color: darkMode ? '#FCA5A5' : '#991B1B' },
+              styles.heroPill,
+              {
+                backgroundColor: darkMode ? '#064E3B' : '#FFFFFF',
+                borderColor: darkMode ? '#065F46' : '#A7F3D0',
+              },
             ]}
           >
-            ⚠️
-          </Text>
-          <View style={{ flex: 1 }}>
             <Text
               style={[
-                styles.conflictTitle,
-                { color: darkMode ? '#FCA5A5' : '#991B1B' },
+                styles.heroPillValue,
+                { color: darkMode ? '#6EE7B7' : '#047857' },
               ]}
             >
-              Balance conflict detected
+              {storeData.activeStores}
             </Text>
             <Text
               style={[
-                styles.conflictBody,
-                { color: darkMode ? '#FCA5A5' : '#991B1B' },
+                styles.heroPillLabel,
+                { color: darkMode ? '#A7F3D0' : '#059669' },
               ]}
             >
-              {storeData.conflictedItems} item
-              {storeData.conflictedItems === 1 ? '' : 's'} with mismatched
-              balances · tap to review
+              Active stores
             </Text>
           </View>
-        </TouchableOpacity>
-      )}
+
+          <View
+            style={[
+              styles.heroPill,
+              {
+                backgroundColor: darkMode ? '#064E3B' : '#FFFFFF',
+                borderColor: darkMode ? '#065F46' : '#A7F3D0',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.heroPillValue,
+                { color: darkMode ? '#6EE7B7' : '#047857' },
+              ]}
+            >
+              {storeData.activeItems}
+            </Text>
+            <Text
+              style={[
+                styles.heroPillLabel,
+                { color: darkMode ? '#A7F3D0' : '#059669' },
+              ]}
+            >
+              Active items
+            </Text>
+          </View>
+        </View>
+      </View>
 
       {/* ───────────── Error banner ───────────── */}
       {error && (
@@ -375,6 +330,7 @@ export default function ManagerStoreDashboard({
               >
                 <Text style={styles.iconText}>{section.emoji}</Text>
               </View>
+
               <View style={styles.cardTitleBlock}>
                 <Text style={[styles.cardTitle, { color: textColor }]}>
                   {section.title}
@@ -386,6 +342,7 @@ export default function ManagerStoreDashboard({
                   {section.subtitle}
                 </Text>
               </View>
+
               <View
                 style={[
                   styles.arrowWrap,
@@ -442,6 +399,7 @@ const styles = StyleSheet.create({
   },
   loadingText: { marginTop: 12, fontSize: 13, fontWeight: '500' },
 
+  // ── Hero ──
   heroCard: {
     borderRadius: 22,
     borderWidth: 1,
@@ -467,20 +425,30 @@ const styles = StyleSheet.create({
   },
   heroSubtitle: { fontSize: 13, fontWeight: '500' },
 
-  conflictBanner: {
+  heroPillsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 14,
-    gap: 12,
+    gap: 10,
+    marginTop: 18,
   },
-  conflictIcon: { fontSize: 22 },
-  conflictTitle: { fontSize: 13.5, fontWeight: '800' },
-  conflictBody: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  heroPill: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  heroPillValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  heroPillLabel: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: 3,
+    textAlign: 'center',
+  },
 
+  // ── Error ──
   errorBox: {
     borderWidth: 1,
     borderRadius: 12,
@@ -490,6 +458,7 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 12.5, fontWeight: '600' },
 
+  // ── Sections ──
   sectionsLabel: {
     fontSize: 11,
     fontWeight: '800',
@@ -557,5 +526,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+    textAlign: 'center',
   },
 });

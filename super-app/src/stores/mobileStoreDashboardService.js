@@ -4,41 +4,40 @@ import api from './interceptor';
 /**
  * Mobile Store Dashboard Service
  * ------------------------------
- * Wraps the Manager Store Dashboard backend endpoint:
- *   GET /mobile/manager/store-dashboard/summary
+ * GET /mobile/manager/store-dashboard/summary
  *
- * Returns the raw `response.data` from the API, matching the envelope
- * used across other mobile services:
+ * Envelope:
  *   { success: true,  data: {...} }
  *   { success: false, error: 'message' }
- *
- * Errors bubble up to the caller — wrap in try/catch if you need custom UX.
  */
-
 export const mobileStoreDashboardService = {
   /**
-   * Full store dashboard summary — global counters + a preview list of
-   * stores with their groups and a small item preview.
-   *
-   * GET /mobile/manager/store-dashboard/summary
+   * Store dashboard summary.
    *
    * @param {Object}  [params]
-   * @param {number}  [params.storeLimit=5]      How many stores to preview
-   * @param {number}  [params.itemsPerStore=20]  Cap on items returned per store
+   * @param {number}  [params.storeLimit=5]
+   * @param {number}  [params.itemsPerStore=20]
    *
    * @returns {Promise<{
    *   success: boolean,
    *   data?: {
    *     totalStores: number,
    *     activeStores: number,
+   *
    *     totalItems: number,
    *     activeItems: number,
    *     inactiveItems: number,
-   *     lowStock: number,
-   *     outOfStock: number,
-   *     auditedItems: number,
-   *     matchedItems: number,
-   *     conflictedItems: number,
+   *
+   *     // ✅ Inventory card — Total / Alert set / Triggered
+   *     inventoryTotalItems: number,
+   *     inventoryAlertSet: number,
+   *     inventoryTriggered: number,
+   *
+   *     // Legacy stock status fields
+   *     totalStatus: number,
+   *     triggeredStatus: number,
+   *     pendingStatus: number,
+   *
    *     stores: Array<{
    *       id: number,
    *       name: string,

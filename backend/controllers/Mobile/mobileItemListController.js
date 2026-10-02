@@ -16,6 +16,17 @@ const normalizeStatus = (s) => {
 };
 
 // ================================================================
+// "Active only" rule.
+//
+// Mirrors normalizeStatus(): anything that is NOT inactive /
+// discontinued counts as active. This avoids missing rows whose
+// stored status is 'Active', 'ACTIVE', null, '', etc.
+// ================================================================
+const ACTIVE_CLAUSE = {
+  status: { [Op.notIn]: ['Inactive', 'Discontinued'] },
+};
+
+// ================================================================
 // "No cost" rule: costPrice IS NULL OR costPrice = 0
 //
 // ⚠️ Sequelize returns Postgres DECIMAL columns as STRINGS ("0.0000").
@@ -66,36 +77,115 @@ exports.getItemsList = async (req, res) => {
       ];
     }
 
-    // -------- Status filter (page only) --------
-    const statusWhere = {};
-    if (status === 'active') {
-      statusWhere.status = 'Active';
-    } else if (status === 'inactive') {
-      statusWhere.status = { [Op.in]: ['Inactive', 'Discontinued'] };
-    } else if (status === 'nocost') {
-      Object.assign(statusWhere, NO_COST_CLAUSE);
+    // -------- Get all item ids with an alert (threshold > 0) --------
+    const alertRows = await StockAlert.findAll({
+      where: {
+        threshold: { [Op.gt]: 0 },
+      },
+      attributes: ['itemId', 'threshold'],
+      raw: true,
+    });
+    const alertItemIds = alertRows.map((r) => r.itemId);
+    const alertThresholdMap = {};
+    for (const r of alertRows) {
+      alertThresholdMap[r.itemId] = parseFloat(r.threshold) || 0;
     }
 
-    const pageWhere = combineWhere(scopeWhere, statusWhere);
+    // -------- Compute which alert items are currently triggered --------
+    // Triggered = company-wide total (agreed stores only) <= threshold
+    let triggeredItemIds = [];
 
-    // -------- Counts --------
+    if (alertItemIds.length > 0) {
+      // Load all balances for alert items in one query
+      const balanceRows = await db.StoreBalance.findAll({
+        where: { itemId: { [Op.in]: alertItemIds }, status: 'Active' },
+        attributes: ['itemId', 'storeId', 'balance'],
+        raw: true,
+      });
+
+      // Group by itemId → storeId → [balances]
+      const byItem = new Map();
+      for (const b of balanceRows) {
+        if (!byItem.has(b.itemId)) byItem.set(b.itemId, new Map());
+        const storeMap = byItem.get(b.itemId);
+        if (!storeMap.has(b.storeId)) storeMap.set(b.storeId, []);
+        storeMap.get(b.storeId).push(Number(b.balance) || 0);
+      }
+
+      for (const itemId of alertItemIds) {
+        const storeMap = byItem.get(itemId);
+
+        // If the item has NO active balances, its company total is 0 —
+        // which still breaches any positive threshold.
+        let total = 0;
+        if (storeMap) {
+          for (const balances of storeMap.values()) {
+            const maxB = Math.max(...balances);
+            const minB = Math.min(...balances);
+            if (balances.length > 0 && maxB === minB) {
+              total += maxB;
+            }
+          }
+        }
+
+        const threshold = alertThresholdMap[itemId];
+        if (threshold > 0 && total <= threshold) {
+          triggeredItemIds.push(itemId);
+        }
+      }
+    }
+
+    // -------- Status filter (page only) --------
+    const statusWhere = {};
+
+    if (status === 'alertset') {
+      // Items with threshold > 0
+      statusWhere.itemId = alertItemIds.length
+        ? { [Op.in]: alertItemIds }
+        : { [Op.in]: [-1] };
+    } else if (status === 'triggered') {
+      // Items currently at or below their threshold
+      statusWhere.itemId = triggeredItemIds.length
+        ? { [Op.in]: triggeredItemIds }
+        : { [Op.in]: [-1] };
+    }
+    // 'all' → no extra filter
+
+    // ✅ Apply ACTIVE_CLAUSE to the page query as well, so the list
+    //    matches the active-only summary counts.
+    const pageWhere = combineWhere(
+      combineWhere(scopeWhere, ACTIVE_CLAUSE),
+      statusWhere
+    );
+
+    // -------- Counts (active items only) --------
     const [
       totalCount,
-      activeCount,
-      inactiveCount,
-      noCostCount,
+      alertSetCount,
+      triggeredCount,
     ] = await Promise.all([
-      Item.count({ where: scopeWhere }),
       Item.count({
-        where: combineWhere(scopeWhere, { status: 'Active' }),
+        where: combineWhere(scopeWhere, ACTIVE_CLAUSE),
       }),
       Item.count({
-        where: combineWhere(scopeWhere, {
-          status: { [Op.in]: ['Inactive', 'Discontinued'] },
-        }),
+        where: combineWhere(
+          combineWhere(scopeWhere, ACTIVE_CLAUSE),
+          {
+            itemId: alertItemIds.length
+              ? { [Op.in]: alertItemIds }
+              : { [Op.in]: [-1] },
+          }
+        ),
       }),
       Item.count({
-        where: combineWhere(scopeWhere, NO_COST_CLAUSE),
+        where: combineWhere(
+          combineWhere(scopeWhere, ACTIVE_CLAUSE),
+          {
+            itemId: triggeredItemIds.length
+              ? { [Op.in]: triggeredItemIds }
+              : { [Op.in]: [-1] },
+          }
+        ),
       }),
     ]);
 
@@ -129,14 +219,14 @@ exports.getItemsList = async (req, res) => {
     });
 
     // -------- Shape --------
-    // Attach the alert threshold to each item in the page.
-    const itemIds = rows.map((it) => it.itemId);
-    const alertMap = await fetchAlertThresholds(itemIds);
+    const triggeredSet = new Set(triggeredItemIds);
 
     const items = rows.map((it) => {
       const cost = it.costPrice != null ? parseFloat(it.costPrice) : null;
       const hasCost = cost != null && cost > 0;
-      const alert = alertMap[it.itemId] || null;
+      const threshold = alertThresholdMap[it.itemId] || 0;
+      const hasAlert = threshold > 0;
+      const isTriggered = triggeredSet.has(it.itemId);
 
       return {
         id: it.itemId,
@@ -148,17 +238,15 @@ exports.getItemsList = async (req, res) => {
         costPrice: cost != null ? cost : 0,
         hasCost,
         status: normalizeStatus(it.status),
-        // ✅ NEW — alert config for the list row
-        stockAlert: alert
-          ? { threshold: alert.threshold }
-          : null,
+        stockAlert: hasAlert ? { threshold } : null,
+        // ✅ NEW — tells the UI whether to color the bell red
+        isTriggered,
       };
     });
 
     const filteredTotal =
-      status === 'active'   ? activeCount   :
-      status === 'inactive' ? inactiveCount :
-      status === 'nocost'   ? noCostCount   :
+      status === 'alertset'  ? alertSetCount  :
+      status === 'triggered' ? triggeredCount :
       totalCount;
 
     const totalPages = Math.max(1, Math.ceil(filteredTotal / limitNum));
@@ -175,10 +263,9 @@ exports.getItemsList = async (req, res) => {
           hasMore: pageNum < totalPages,
         },
         counts: {
-          total:    totalCount,
-          active:   activeCount,
-          inactive: inactiveCount,
-          noCost:   noCostCount,
+          total:     totalCount,
+          alertSet:  alertSetCount,
+          triggered: triggeredCount,
         },
       },
     });
@@ -406,7 +493,7 @@ exports.setStockAlert = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Item not found' });
     }
 
-    // threshold = 0 → delete the row
+    // threshold = 0 → delete the row (disables alerts)
     if (num === 0) {
       await StockAlert.destroy({ where: { itemId } });
       return res.json({
@@ -416,7 +503,8 @@ exports.setStockAlert = async (req, res) => {
       });
     }
 
-    const [row] = await StockAlert.upsert(
+    // Upsert — insert if missing, update if itemId already exists
+    await StockAlert.upsert(
       {
         itemId,
         threshold: num,
@@ -424,6 +512,17 @@ exports.setStockAlert = async (req, res) => {
       },
       { returning: true }
     );
+
+    // ✅ Re-fetch — upsert's return shape is unreliable across
+    //    Sequelize versions & dialects. findOne is always correct.
+    const row = await StockAlert.findOne({ where: { itemId } });
+
+    if (!row) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to persist stock alert',
+      });
+    }
 
     return res.json({
       success: true,

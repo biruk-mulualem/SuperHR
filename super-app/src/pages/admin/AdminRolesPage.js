@@ -10,12 +10,15 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Platform,
   Modal,
   ScrollView,
+  KeyboardAvoidingView,
+  Switch,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import userService from '../../stores/userService';
+import settingsService from '../../stores/settingsService';
 
 const PAGE_SIZE = 20;
 
@@ -37,6 +40,12 @@ const colorFromString = (str) => {
   return palette[Math.abs(hash) % palette.length];
 };
 
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  isActive: true,
+};
+
 // ================================================================
 // MAIN
 // ================================================================
@@ -47,16 +56,26 @@ export default function AdminRolesPage({
   cardBg,
   borderColor,
   userRole,
-  onOpenUsersByRole,   // optional: jump to Users filtered by this role
 }) {
   const role = (userRole || '').toLowerCase();
   const canView = ['admin', 'superadmin', 'checker', 'purchase_organizer'].includes(role);
+  const canEdit = ['admin', 'superadmin'].includes(role);
 
   const [items, setItems]       = useState([]);
   const [search, setSearch]     = useState('');
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [detail, setDetail]     = useState(null);
+  const [error, setError]       = useState(null);
+
+  // Detail modal
+  const [detail, setDetail] = useState(null);
+
+  // Form modal (add / edit)
+  const [formVisible, setFormVisible] = useState(false);
+  const [editingId, setEditingId]     = useState(null); // null => add
+  const [form, setForm]               = useState(EMPTY_FORM);
+  const [formError, setFormError]     = useState(null);
+  const [saving, setSaving]           = useState(false);
 
   // ================================================================
   // LOAD
@@ -64,14 +83,17 @@ export default function AdminRolesPage({
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setError(null);
 
     try {
-      const res = await userService.getRoles();
+      const res = await settingsService.getRoles();
       if (res.success) {
         setItems(res.roles || []);
       } else {
-        Alert.alert('Error', res.error || 'Failed to load roles');
+        setError(res.error || 'Failed to load roles');
       }
+    } catch (e) {
+      setError(e?.response?.data?.error || e?.message || 'Failed to load roles');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -104,6 +126,113 @@ export default function AdminRolesPage({
   );
 
   // ================================================================
+  // OPEN FORM
+  // ================================================================
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError(null);
+    setFormVisible(true);
+  };
+
+  const openEdit = (r) => {
+    setEditingId(r.roleId);
+    setForm({
+      name: r.name || '',
+      description: r.description || '',
+      isActive: r.isActive !== false,
+    });
+    setFormError(null);
+    setFormVisible(true);
+    setDetail(null);
+  };
+
+  const closeForm = () => {
+    if (saving) return;
+    setFormVisible(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError(null);
+  };
+
+  // ================================================================
+  // SAVE (add or edit)
+  // ================================================================
+  const saveForm = async () => {
+    const name = form.name.trim();
+
+    if (!name) {
+      setFormError('Name is required.');
+      return;
+    }
+
+    setSaving(true);
+    setFormError(null);
+
+    try {
+      const payload = {
+        name,
+        description: form.description.trim() || null,
+        isActive: form.isActive,
+      };
+
+      const res = editingId
+        ? await settingsService.updateRole(editingId, payload)
+        : await settingsService.createRole(payload);
+
+      if (!res?.success) {
+        setFormError(res?.error || 'Failed to save role');
+        return;
+      }
+
+      closeForm();
+      await load(true);
+    } catch (e) {
+      setFormError(
+        e?.response?.data?.error || e?.message || 'Failed to save role'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ================================================================
+  // DELETE
+  // ================================================================
+  const confirmDelete = (r) => {
+    const doDelete = async () => {
+      try {
+        const res = await settingsService.deleteRole(r.roleId);
+        if (!res?.success) {
+          Alert.alert('Error', res?.error || 'Failed to delete role');
+          return;
+        }
+        await load(true);
+      } catch (e) {
+        Alert.alert(
+          'Error',
+          e?.response?.data?.error || e?.message || 'Failed to delete role'
+        );
+      }
+    };
+
+    const message = `Delete "${r.name}"? This cannot be undone.`;
+
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      if (window.confirm(message)) {
+        doDelete();
+      }
+      return;
+    }
+
+    Alert.alert('Delete role', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
+    ]);
+  };
+
+  // ================================================================
   // RENDER: card
   // ================================================================
   const renderItem = ({ item: r }) => {
@@ -111,12 +240,12 @@ export default function AdminRolesPage({
     const tint = colorFromString(r.name || `r${r.roleId}`);
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => setDetail(r)}
-        style={[styles.card, { backgroundColor: cardBg, borderColor }]}
-      >
-        <View style={styles.cardHeader}>
+      <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setDetail(r)}
+          style={styles.cardMain}
+        >
           <View style={[styles.avatar, { backgroundColor: tint }]}>
             <Text style={styles.avatarText}>{initials(r.name)}</Text>
           </View>
@@ -153,8 +282,33 @@ export default function AdminRolesPage({
               {isActive ? '● ACTIVE' : '✕ INACTIVE'}
             </Text>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+
+        {canEdit ? (
+          <View style={[styles.cardActions, { borderTopColor: borderColor }]}>
+            <TouchableOpacity
+              onPress={() => openEdit(r)}
+              activeOpacity={0.8}
+              style={[styles.actionBtn, { borderColor }]}
+            >
+              <Text style={[styles.actionBtnText, { color: textColor }]}>✎  Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => confirmDelete(r)}
+              activeOpacity={0.8}
+              style={[
+                styles.actionBtn,
+                {
+                  borderColor: '#EF4444',
+                  backgroundColor: darkMode ? '#3B0A0A' : '#FEF2F2',
+                },
+              ]}
+            >
+              <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>🗑  Delete</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -179,6 +333,10 @@ export default function AdminRolesPage({
   return (
     <GestureHandlerRootView style={styles.root}>
       <View style={styles.container}>
+        {/* ============================================================
+            PINNED AREA
+           ============================================================ */}
+
         {/* HEADER */}
         <View style={styles.headerBar}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -187,6 +345,16 @@ export default function AdminRolesPage({
               {items.length} total · {activeCount} active
             </Text>
           </View>
+
+          {canEdit ? (
+            <TouchableOpacity
+              onPress={openAdd}
+              activeOpacity={0.85}
+              style={[styles.addBtn, { backgroundColor: '#8B5CF6' }]}
+            >
+              <Text style={styles.addBtnText}>＋ Add</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* SEARCH */}
@@ -208,7 +376,29 @@ export default function AdminRolesPage({
           ) : null}
         </View>
 
-        {/* LIST */}
+        {/* ERROR */}
+        {error ? (
+          <TouchableOpacity
+            onPress={() => load(false)}
+            activeOpacity={0.85}
+            style={[
+              styles.errorBox,
+              {
+                borderColor: darkMode ? '#7F1D1D' : '#FCA5A5',
+                backgroundColor: darkMode ? '#3B0A0A' : '#FEF2F2',
+              },
+            ]}
+          >
+            <Text style={[styles.errorText, { color: darkMode ? '#FCA5A5' : '#991B1B' }]}>
+              ⚠️  {error}   ·   tap to retry
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* ============================================================
+            SCROLLABLE AREA
+           ============================================================ */}
+
         <FlatList
           data={filtered}
           keyExtractor={(it) => `role-${it.roleId}`}
@@ -217,6 +407,7 @@ export default function AdminRolesPage({
           style={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -241,14 +432,20 @@ export default function AdminRolesPage({
                   {search ? 'No matches' : 'No roles yet'}
                 </Text>
                 <Text style={[styles.emptyBody, { color: subTextColor }]}>
-                  {search ? `No roles match "${search}".` : 'Roles will appear here once created.'}
+                  {search
+                    ? `No roles match "${search}".`
+                    : canEdit
+                    ? 'Tap "Add" to create your first role.'
+                    : 'Roles will appear here once created.'}
                 </Text>
               </View>
             )
           }
         />
 
-        {/* DETAIL MODAL */}
+        {/* ============================================================
+            DETAIL MODAL
+           ============================================================ */}
         <Modal
           visible={!!detail}
           transparent
@@ -339,23 +536,36 @@ export default function AdminRolesPage({
                   </View>
 
                   <View style={styles.modalActions}>
-                    {onOpenUsersByRole ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          setDetail(null);
-                          onOpenUsersByRole(detail);
-                        }}
-                        style={[
-                          styles.modalBtn,
-                          { backgroundColor: '#0284C7', borderColor: '#0284C7' },
-                        ]}
-                      >
-                        <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
-                          View users
-                        </Text>
-                      </TouchableOpacity>
+                    {canEdit ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => openEdit(detail)}
+                          style={[
+                            styles.modalBtn,
+                            { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                          ]}
+                        >
+                          <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                            ✎  Edit
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            const r = detail;
+                            setDetail(null);
+                            confirmDelete(r);
+                          }}
+                          style={[
+                            styles.modalBtn,
+                            { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+                          ]}
+                        >
+                          <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                            🗑  Delete
+                          </Text>
+                        </TouchableOpacity>
+                      </>
                     ) : null}
-
                     <TouchableOpacity
                       onPress={() => setDetail(null)}
                       style={[
@@ -374,13 +584,141 @@ export default function AdminRolesPage({
             ) : null}
           </View>
         </Modal>
+
+        {/* ============================================================
+            FORM MODAL (ADD / EDIT)
+           ============================================================ */}
+        <Modal
+          visible={formVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeForm}
+          statusBarTranslucent
+        >
+          <KeyboardAvoidingView
+            style={styles.centerBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              style={StyleSheet.absoluteFillObject}
+              onPress={closeForm}
+            />
+            <View style={[styles.centerModal, { backgroundColor: cardBg, borderColor }]}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <Text style={[styles.modalTitle, { color: textColor }]}>
+                  {editingId ? 'Edit role' : 'New role'}
+                </Text>
+                <Text style={[styles.modalSub, { color: subTextColor, marginBottom: 16 }]}>
+                  {editingId ? 'Update the details below.' : 'Fill in the details below.'}
+                </Text>
+
+                <Text style={[styles.fieldLabel, { color: subTextColor }]}>NAME *</Text>
+                <TextInput
+                  value={form.name}
+                  onChangeText={(v) => {
+                    setForm((f) => ({ ...f, name: v }));
+                    setFormError(null);
+                  }}
+                  placeholder="e.g. manager"
+                  placeholderTextColor={subTextColor}
+                  editable={!saving}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[
+                    styles.formInput,
+                    {
+                      color: textColor,
+                      backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                      borderColor:
+                        formError && !form.name.trim() ? '#EF4444' : borderColor,
+                    },
+                  ]}
+                />
+
+                <Text style={[styles.fieldLabel, { color: subTextColor }]}>DESCRIPTION</Text>
+                <TextInput
+                  value={form.description}
+                  onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
+                  placeholder="Optional"
+                  placeholderTextColor={subTextColor}
+                  editable={!saving}
+                  multiline
+                  style={[
+                    styles.formInput,
+                    styles.formInputMultiline,
+                    {
+                      color: textColor,
+                      backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                      borderColor,
+                    },
+                  ]}
+                />
+
+                <View style={styles.switchRow}>
+                  <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 0 }]}>
+                    ACTIVE
+                  </Text>
+                  <Switch
+                    value={form.isActive}
+                    onValueChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
+                    disabled={saving}
+                    trackColor={{ false: '#64748B', true: '#8B5CF6' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+
+                {formError ? (
+                  <Text style={styles.formError}>{formError}</Text>
+                ) : null}
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    onPress={closeForm}
+                    disabled={saving}
+                    activeOpacity={0.85}
+                    style={[
+                      styles.modalBtn,
+                      {
+                        backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                        borderColor,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={saveForm}
+                    disabled={saving}
+                    activeOpacity={0.85}
+                    style={[
+                      styles.modalBtn,
+                      { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                    ]}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                        {editingId ? 'Save changes' : 'Create'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </View>
     </GestureHandlerRootView>
   );
 }
 
 // ================================================================
-// STYLES (same as departments page — copy-paste safe)
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -405,6 +743,20 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
   headerSub: { fontSize: 11.5, fontWeight: '500', marginTop: 2 },
 
+  addBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -420,19 +772,30 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
   clearIcon: { fontSize: 14, fontWeight: '700', padding: 4 },
 
+  errorBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  errorText: { fontSize: 12.5, fontWeight: '600' },
+
   list: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingBottom: 100 },
 
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    padding: 14,
     marginBottom: 10,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  cardMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    padding: 14,
   },
   avatar: {
     width: 44,
@@ -446,6 +809,23 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 11.5, fontWeight: '600', marginTop: 3 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusPillText: { fontSize: 9.5, fontWeight: '900', letterSpacing: 0.4 },
+
+  cardActions: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnText: { fontSize: 12.5, fontWeight: '800', letterSpacing: 0.2 },
 
   footerText: {
     paddingVertical: 16,
@@ -471,6 +851,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.45)',
     paddingHorizontal: 20,
+    paddingVertical: 40,
   },
   centerModal: {
     width: '100%',
@@ -512,6 +893,33 @@ const styles = StyleSheet.create({
   },
   infoText: { fontSize: 13.5, fontWeight: '600', lineHeight: 19 },
 
+  formInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  formInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+
+  formError: {
+    color: '#EF4444',
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
   modalBtn: {
     flex: 1,
@@ -520,6 +928,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+    minHeight: 46,
   },
   modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 });

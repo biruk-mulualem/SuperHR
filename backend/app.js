@@ -297,10 +297,13 @@ app.use((err, req, res, next) => {
 // ============================================================================
 // START CRON JOBS
 // ============================================================================
+// ============================================================================
+// START CRON JOBS
+// ============================================================================
 if (process.env.NODE_ENV !== "test") {
   try {
-    const { startAttendanceJobs } = require("./jobs");
-    startAttendanceJobs();
+    const { startStockAlertJob } = require("./jobs");
+    startStockAlertJob();
   } catch (error) {
     console.error("Failed to start cron jobs:", error.message);
   }

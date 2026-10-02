@@ -3,7 +3,7 @@
 
 const { Op, QueryTypes } = require('sequelize');
 const db = require('../../models');
-const { Store, Group, Item, StoreBalance, StockAlert } = db;
+const { Store, Group, StockAlert, StoreBalance } = db;
 
 const canView = (req) => !!req.user;
 
@@ -16,28 +16,23 @@ const clampInt = (v, min, max, fallback) => {
   return Math.min(max, Math.max(min, n));
 };
 
-// ================================================================
-// Balance rule — mirrors mobileLowStockController.computeBalancesByItem
-// ----------------------------------------------------------------
-// For each item, group its active balances by store. Within a store,
-// if all group balances agree → count that store's balance once.
-// If they disagree → the store is a "conflict" and its balance is
-// excluded from the item's total.
-// ================================================================
+// ────────────────────────────────────────────────────────────────
+// Balance rule — company total per item.
+//   Group balances by storeId; a store is "agreed" if all its
+//   group balances are equal. Total = sum of agreed stores.
+//   Conflicted stores are excluded.
+// ────────────────────────────────────────────────────────────────
 async function computeBalancesByItem(itemIds) {
   const out = {};
   if (!itemIds.length) return out;
 
   itemIds.forEach((id) => {
-    out[id] = { total: 0, storesCounted: 0, conflicts: [] };
+    out[id] = { total: 0 };
   });
 
   const rows = await StoreBalance.findAll({
-    where: {
-      itemId: { [Op.in]: itemIds },
-      status: 'Active',
-    },
-    attributes: ['itemId', 'storeId', 'groupId', 'balance'],
+    where: { itemId: { [Op.in]: itemIds }, status: 'Active' },
+    attributes: ['itemId', 'storeId', 'balance'],
     raw: true,
   });
 
@@ -47,49 +42,43 @@ async function computeBalancesByItem(itemIds) {
   for (const r of rows) {
     const key = `${r.itemId}::${r.storeId}`;
     if (!byItemStore.has(key)) byItemStore.set(key, []);
-    byItemStore.get(key).push({
-      groupId: r.groupId,
-      balance: Number(r.balance) || 0,
-    });
+    byItemStore.get(key).push(Number(r.balance) || 0);
   }
 
-  for (const [key, entries] of byItemStore.entries()) {
-    const [itemIdStr, storeIdStr] = key.split('::');
-    const itemId  = Number(itemIdStr);
-    const storeId = Number(storeIdStr);
-    const bucket  = out[itemId];
+  for (const [key, balances] of byItemStore.entries()) {
+    const [itemIdStr] = key.split('::');
+    const itemId = Number(itemIdStr);
+    const bucket = out[itemId];
     if (!bucket) continue;
 
-    const distinct = new Set(entries.map((e) => e.balance));
+    const maxB = Math.max(...balances);
+    const minB = Math.min(...balances);
+    const agreed = balances.length > 0 && maxB === minB;
 
-    if (distinct.size === 1) {
-      bucket.total += entries[0].balance;
-      bucket.storesCounted += 1;
-    } else {
-      bucket.conflicts.push({
-        storeId,
-        groups: entries
-          .map((e) => ({ groupId: e.groupId, balance: e.balance }))
-          .sort((a, b) => a.balance - b.balance),
-      });
+    if (agreed) {
+      bucket.total += maxB;
     }
   }
 
   return out;
 }
 
-// ================================================================
-// Stock Status counts — mirrors mobileLowStockController.computeAlertCounts
-// ================================================================
+// ────────────────────────────────────────────────────────────────
+// Stock Status counts for the Inventory card.
+//   total      = items with an alert (threshold > 0)
+//   triggered  = items whose company total ≤ threshold
+//   alertSet   = items with an alert configured (same as total)
+// ────────────────────────────────────────────────────────────────
 async function computeStockStatusCounts() {
   const rows = await StockAlert.findAll({
+    where: { threshold: { [Op.gt]: 0 } },
     attributes: ['itemId', 'threshold'],
     raw: true,
   });
 
   const total = rows.length;
   if (total === 0) {
-    return { total: 0, triggered: 0, pending: 0 };
+    return { total: 0, alertSet: 0, triggered: 0, pending: 0 };
   }
 
   const itemIds = [...new Set(rows.map((r) => r.itemId))];
@@ -106,15 +95,16 @@ async function computeStockStatusCounts() {
     else pending++;
   });
 
-  return { total, triggered, pending };
+  return {
+    total,          // items with an alert
+    alertSet: total,
+    triggered,
+    pending,
+  };
 }
 
 // ================================================================
 // GET /api/mobile/manager/store-dashboard/summary
-// ----------------------------------------------------------------
-// Query (optional):
-//   storeLimit     default 5    — how many stores to preview
-//   itemsPerStore  default 20   — cap on items returned per store
 // ================================================================
 exports.getSummary = async (req, res) => {
   try {
@@ -126,67 +116,36 @@ exports.getSummary = async (req, res) => {
     const itemsPerStore = clampInt(req.query.itemsPerStore, 1, 100, 20);
 
     // ------------------------------------------------------------
-    // 1. Store & inventory + balance audit counts (single SQL pass)
+    // 1. Store & inventory counts (one SQL pass)
     // ------------------------------------------------------------
     const [totals] = await db.sequelize.query(
       `
       WITH
       store_stats AS (
         SELECT
-          COUNT(*)                                      AS total_stores,
-          COUNT(*) FILTER (WHERE status <> 'Inactive')  AS active_stores
+          COUNT(*)::int                                      AS total_stores,
+          COUNT(*) FILTER (WHERE status <> 'Inactive')::int  AS active_stores
         FROM stores
       ),
       item_stats AS (
         SELECT
-          COUNT(*)                                    AS total_items,
-          COUNT(*) FILTER (WHERE status = 'Active')   AS active_items,
-          COUNT(*) FILTER (WHERE status <> 'Active')  AS inactive_items
+          COUNT(*)::int                                   AS total_items,
+          COUNT(*) FILTER (WHERE status = 'Active')::int  AS active_items,
+          COUNT(*) FILTER (WHERE status <> 'Active')::int AS inactive_items
         FROM items
-      ),
-      stock_stats AS (
-        SELECT
-          COUNT(*) FILTER (
-            WHERE balance <= min_stock_alert AND balance > 0
-          ) AS low_stock,
-          COUNT(*) FILTER (WHERE balance = 0) AS out_of_stock
-        FROM store_balances
-        WHERE status = 'Active'
-      ),
-      store_audit AS (
-        SELECT
-          sb.store_id,
-          sb.item_id,
-          COUNT(DISTINCT sb.balance) AS distinct_balances
-        FROM store_balances sb
-        WHERE sb.status = 'Active'
-          AND sb.balance IS NOT NULL
-        GROUP BY sb.store_id, sb.item_id
-      ),
-      audit_stats AS (
-        SELECT
-          COUNT(*)::int                                       AS audited_items,
-          COUNT(*) FILTER (WHERE distinct_balances = 1)::int  AS matched_items,
-          COUNT(*) FILTER (WHERE distinct_balances > 1)::int  AS conflicted_items
-        FROM store_audit
       )
       SELECT
-        (SELECT total_stores     FROM store_stats)::int  AS total_stores,
-        (SELECT active_stores    FROM store_stats)::int  AS active_stores,
-        (SELECT total_items      FROM item_stats)::int   AS total_items,
-        (SELECT active_items     FROM item_stats)::int   AS active_items,
-        (SELECT inactive_items   FROM item_stats)::int   AS inactive_items,
-        (SELECT low_stock        FROM stock_stats)::int  AS low_stock,
-        (SELECT out_of_stock     FROM stock_stats)::int  AS out_of_stock,
-        (SELECT audited_items    FROM audit_stats)::int  AS audited_items,
-        (SELECT matched_items    FROM audit_stats)::int  AS matched_items,
-        (SELECT conflicted_items FROM audit_stats)::int  AS conflicted_items
+        (SELECT total_stores   FROM store_stats)  AS total_stores,
+        (SELECT active_stores  FROM store_stats)  AS active_stores,
+        (SELECT total_items    FROM item_stats)   AS total_items,
+        (SELECT active_items   FROM item_stats)   AS active_items,
+        (SELECT inactive_items FROM item_stats)   AS inactive_items
       `,
       { type: QueryTypes.SELECT }
     );
 
     // ------------------------------------------------------------
-    // 2. Stock status counts (same balance rule as the Low Stock page)
+    // 2. Stock Status counts (matches the summary pipeline)
     // ------------------------------------------------------------
     const stockStatus = await computeStockStatusCounts();
 
@@ -205,7 +164,7 @@ exports.getSummary = async (req, res) => {
           FROM store_balances sb
           WHERE sb.store_id = s.id
             AND sb.status = 'Active'
-        ) AS items_count
+        )::int AS items_count
       FROM stores s
       ORDER BY s.name ASC
       LIMIT :storeLimit
@@ -216,9 +175,7 @@ exports.getSummary = async (req, res) => {
     const storeIds = stores.map((s) => s.id);
 
     // ------------------------------------------------------------
-    // 4. Groups for the preview stores
-    //    Uses the Store ↔ Group association (belongsToMany via
-    //    StoreGroupRelation) so no raw column names are guessed.
+    // 4. Groups per preview store
     // ------------------------------------------------------------
     let groupsByStore = {};
     if (storeIds.length) {
@@ -236,7 +193,6 @@ exports.getSummary = async (req, res) => {
         ],
       });
 
-      // Aggregate balances per (store, group)
       const groupAgg = await StoreBalance.findAll({
         attributes: [
           'storeId',
@@ -278,7 +234,7 @@ exports.getSummary = async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 5. Item preview — first N items per store
+    // 5. Item preview per store (unchanged)
     // ------------------------------------------------------------
     let itemsByStore = {};
     if (storeIds.length) {
@@ -344,28 +300,26 @@ exports.getSummary = async (req, res) => {
     return res.json({
       success: true,
       data: {
-        // Store & inventory
-        totalStores:   Number(totals?.total_stores   ?? 0),
-        activeStores:  Number(totals?.active_stores  ?? 0),
+        // ── Store counts ──
+        totalStores:  Number(totals?.total_stores  ?? 0),
+        activeStores: Number(totals?.active_stores ?? 0),
+
+        // ── Inventory counts (used by the redesigned card) ──
         totalItems:    Number(totals?.total_items    ?? 0),
         activeItems:   Number(totals?.active_items   ?? 0),
         inactiveItems: Number(totals?.inactive_items ?? 0),
 
-        // Stock counts
-        lowStock:   Number(totals?.low_stock    ?? 0),
-        outOfStock: Number(totals?.out_of_stock ?? 0),
+        // ── Inventory → Total / Alert set / Triggered ──
+        inventoryTotalItems:     Number(totals?.total_items ?? 0),
+        inventoryAlertSet:       stockStatus.alertSet,
+        inventoryTriggered:      stockStatus.triggered,
 
-        // Balance audit
-        auditedItems:    Number(totals?.audited_items    ?? 0),
-        matchedItems:    Number(totals?.matched_items    ?? 0),
-        conflictedItems: Number(totals?.conflicted_items ?? 0),
-
-        // Stock Status (thresholds)
+        // ── Stock Status (kept for backward compatibility) ──
         totalStatus:     stockStatus.total,
         triggeredStatus: stockStatus.triggered,
         pendingStatus:   stockStatus.pending,
 
-        // Store preview
+        // ── Store preview ──
         stores: stores.map((s) => ({
           id: s.id,
           name: s.name,

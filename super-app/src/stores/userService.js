@@ -517,6 +517,85 @@ class UsersService {
     }
   }
 
+  // ----------------------------------------------------------------------------
+  // DEPARTMENT CRUD (admin / superadmin)
+  // ----------------------------------------------------------------------------
+
+  /**
+   * Create a new department.
+   * POST /users/departments
+   *
+   * @param {{ name: string, code: string, description?: string, isActive?: boolean }} payload
+   * @returns {Promise<{ success: boolean, department?: object, message?: string, error?: string }>}
+   */
+  async createDepartment(payload) {
+    try {
+      const response = await api.post('/users/departments', payload);
+      return {
+        success: true,
+        message: response.data.message || 'Department created successfully',
+        department: response.data.data || response.data.department || null,
+      };
+    } catch (error) {
+      console.error('Create department error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to create department',
+      };
+    }
+  }
+
+  /**
+   * Update an existing department.
+   * PUT /users/departments/:id
+   *
+   * @param {number|string} departmentId
+   * @param {{ name?: string, code?: string, description?: string, isActive?: boolean }} payload
+   * @returns {Promise<{ success: boolean, department?: object, message?: string, error?: string }>}
+   */
+  async updateDepartment(departmentId, payload) {
+    try {
+      const response = await api.put(`/users/departments/${departmentId}`, payload);
+      return {
+        success: true,
+        message: response.data.message || 'Department updated successfully',
+        department: response.data.data || response.data.department || null,
+      };
+    } catch (error) {
+      console.error('Update department error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to update department',
+      };
+    }
+  }
+
+  /**
+   * Delete a department.
+   * DELETE /users/departments/:id
+   *
+   * The backend refuses (409) if employees or users are still assigned.
+   * That error message is surfaced through `error`.
+   *
+   * @param {number|string} departmentId
+   * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+   */
+  async deleteDepartment(departmentId) {
+    try {
+      const response = await api.delete(`/users/departments/${departmentId}`);
+      return {
+        success: true,
+        message: response.data.message || 'Department deleted successfully',
+      };
+    } catch (error) {
+      console.error('Delete department error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to delete department',
+      };
+    }
+  }
+
   async getPositions() {
     try {
       const response = await api.get('/users/positions');

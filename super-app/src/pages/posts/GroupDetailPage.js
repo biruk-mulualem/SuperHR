@@ -521,6 +521,159 @@ function AnnotationScreen({
 }
 
 // ================================================================
+// Write Comment Modal
+// ================================================================
+function WriteCommentModal({
+  visible,
+  commentText,
+  setCommentText,
+  submitting,
+  onCancel,
+  onSubmit,
+  darkMode,
+  textColor,
+  subTextColor,
+  cardBg,
+  borderColor,
+  currentUserName,
+  postNumber,
+}) {
+  const canSubmit = !!commentText.trim() && !submitting;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <KeyboardAvoidingView
+        style={styles.bottomSheetBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={StyleSheet.absoluteFillObject}
+          onPress={onCancel}
+        />
+
+        <View style={[styles.bottomSheet, { backgroundColor: cardBg, borderColor }]}>
+          <View style={styles.sheetHandleWrap}>
+            <View
+              style={[
+                styles.sheetHandle,
+                { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
+              ]}
+            />
+          </View>
+
+          <View style={styles.sheetHeader}>
+            <View style={[styles.avatarSmall, { backgroundColor: '#8B5CF6' }]}>
+              <Text style={styles.avatarSmallText}>
+                {(currentUserName || 'ME').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.sheetTitle, { color: textColor }]}>
+                Write a comment
+              </Text>
+              <Text style={[styles.sheetSub, { color: subTextColor }]} numberOfLines={1}>
+                On post {postNumber || ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onCancel}
+              hitSlop={10}
+              activeOpacity={0.7}
+              style={[
+                styles.sheetCloseBtn,
+                { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9' },
+              ]}
+            >
+              <Text style={[styles.sheetCloseIcon, { color: subTextColor }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.fieldLabel, { color: subTextColor }]}>
+              YOUR COMMENT
+            </Text>
+            <TextInput
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Share your thoughts…"
+              placeholderTextColor={subTextColor}
+              multiline
+              autoFocus
+              numberOfLines={6}
+              editable={!submitting}
+              textAlignVertical="top"
+              style={[
+                styles.input,
+                styles.commentTextarea,
+                {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                  borderColor,
+                },
+              ]}
+            />
+
+            <Text style={[styles.commentHint, { color: subTextColor }]}>
+              {commentText.trim().length} character{commentText.trim().length === 1 ? '' : 's'}
+            </Text>
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity
+                onPress={onCancel}
+                activeOpacity={0.85}
+                disabled={submitting}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                    borderColor,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onSubmit}
+                activeOpacity={0.9}
+                disabled={!canSubmit}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: canSubmit ? '#8B5CF6' : '#94A3B8',
+                    borderColor: canSubmit ? '#8B5CF6' : '#94A3B8',
+                    flex: 1.4,
+                  },
+                ]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                    Post comment
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ================================================================
 export default function GroupDetailPage({
   group,
   currentUser,
@@ -599,19 +752,17 @@ export default function GroupDetailPage({
   const [signingQueue, setSigningQueue] = useState(null);
   const [annotSaving, setAnnotSaving] = useState(false);
 
-  // ✅ Group-wide single pin — initialized from group prop
   const [pinnedPostId, setPinnedPostId] = useState(
     group?.pinnedPostId != null ? String(group.pinnedPostId) : null
   );
   const [pinningBusy, setPinningBusy] = useState(false);
 
-  // ✅ Intent consumption guard
   const consumedIntentRef = useRef(null);
 
-  // Comment composer
+  // ✅ Comment composer state (now used only by the modal)
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
-  const commentInputRef = useRef(null);
+  const [showCommentModal, setShowCommentModal] = useState(false);
 
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState('');
@@ -623,15 +774,11 @@ export default function GroupDetailPage({
   const canCreatePost = !!myMembership && myMembership.status === 'active';
 
   // ----------------------------------------------------------------
-  // Sync pinnedPostId when the group prop changes
-  // ----------------------------------------------------------------
   useEffect(() => {
     const next = group?.pinnedPostId != null ? String(group.pinnedPostId) : null;
     setPinnedPostId((curr) => (curr === next ? curr : next));
   }, [group?.pinnedPostId]);
 
-  // ----------------------------------------------------------------
-  // Toggle pin — optimistic group-wide update via API
   // ----------------------------------------------------------------
   const togglePin = useCallback(async (post) => {
     if (!group?.id || !post || pinningBusy) return;
@@ -662,8 +809,6 @@ export default function GroupDetailPage({
     }
   }, [group, pinnedPostId, pinningBusy, onGroupUpdated]);
 
-  // ----------------------------------------------------------------
-  // Loaders
   // ----------------------------------------------------------------
   const loadPosts = useCallback(
     async (pageToLoad = 1, statusToLoad = postFilter) => {
@@ -735,8 +880,6 @@ export default function GroupDetailPage({
   useEffect(() => { if (group?.id) loadMembers(); }, [group?.id, loadMembers]);
 
   // ----------------------------------------------------------------
-  // ✅ Consume a pendingIntent (open a specific post)
-  // ----------------------------------------------------------------
   useEffect(() => {
     if (!pendingIntent) return;
     if (pendingIntent.intent !== 'post') return;
@@ -755,7 +898,6 @@ export default function GroupDetailPage({
 
     let cancelled = false;
     (async () => {
-      // Prefer the post if it's already loaded
       const inList = posts.find((p) => String(p.id) === String(postId));
       if (inList) {
         setSelectedPostId(inList.id);
@@ -763,7 +905,6 @@ export default function GroupDetailPage({
         return;
       }
 
-      // Otherwise fetch it directly
       try {
         const res = await mobilePostsPostService.getPost(postId);
         if (cancelled) return;
@@ -781,7 +922,6 @@ export default function GroupDetailPage({
     return () => { cancelled = true; };
   }, [pendingIntent, posts, onIntentHandled]);
 
-  // ✅ Filter switch — DO NOT wipe posts; keep previously loaded other-filter posts
   useEffect(() => {
     if (!group?.id) return;
     setPostsPage((prev) => ({ ...prev, [postFilter]: 1 }));
@@ -801,7 +941,6 @@ export default function GroupDetailPage({
     loadPosts(currentPage + 1, postFilter);
   }, [postsLoading, postsLoadingMore, postsPage, postsTotalPages, postFilter, loadPosts]);
 
-  // ✅ If pinned post isn't in cache, fetch it once so the pinned section renders
   useEffect(() => {
     if (!group?.id || !pinnedPostId) return;
     const exists = posts.some((p) => String(p.id) === String(pinnedPostId));
@@ -819,9 +958,7 @@ export default function GroupDetailPage({
             return [norm, ...prev];
           });
         }
-      } catch (e) {
-        // non-fatal
-      }
+      } catch (e) {}
     })();
     return () => { cancelled = true; };
   }, [group?.id, pinnedPostId, posts]);
@@ -944,6 +1081,7 @@ export default function GroupDetailPage({
     setEditingCommentId(null);
     setEditCommentText('');
     setConfirmDeleteComment(null);
+    setShowCommentModal(false);
   }, [selectedPostId]);
 
   // ---- signing queue ----
@@ -1007,6 +1145,7 @@ export default function GroupDetailPage({
         else skipAnnotation();
         return true;
       }
+      if (showCommentModal) { setShowCommentModal(false); return true; }
       if (viewerVisible) { setViewerVisible(false); return true; }
       if (confirmDeleteComment) { setConfirmDeleteComment(null); return true; }
       if (editingCommentId) { cancelEditComment(); return true; }
@@ -1020,7 +1159,7 @@ export default function GroupDetailPage({
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signingQueue, viewerVisible, confirmDeleteComment, editingCommentId, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack, prevAnnotation, skipAnnotation]);
+  }, [signingQueue, showCommentModal, viewerVisible, confirmDeleteComment, editingCommentId, reviewPage, confirmDeletePost, selectedPostId, showCreatePost, page, onBack, prevAnnotation, skipAnnotation]);
 
   // Derived
   const postCounts = useMemo(() => ({
@@ -1185,6 +1324,12 @@ export default function GroupDetailPage({
     }
   };
 
+  // ✅ Open the Write Comment modal
+  const openCommentModal = () => {
+    setCommentText('');
+    setShowCommentModal(true);
+  };
+
   const submitComment = async () => {
     if (!selectedPost) return;
     if (selectedPost.status !== 'pending') return;
@@ -1215,7 +1360,7 @@ export default function GroupDetailPage({
           })
         );
         setCommentText('');
-        commentInputRef.current?.focus();
+        setShowCommentModal(false);   // ✅ close the modal
       } else {
         Alert.alert('Error', res.error || 'Could not post comment');
       }
@@ -1397,7 +1542,7 @@ export default function GroupDetailPage({
           const norm = normalizePost(fresh.data);
           setPosts((prev) => prev.map((p) => (String(p.id) === String(postId) ? norm : p)));
         }
-      } catch (_) { /* non-fatal */ }
+      } catch (_) {}
       setAnnotSaving(false);
       advanceSigningQueue('signed');
     } catch (e) {
@@ -2106,10 +2251,22 @@ export default function GroupDetailPage({
             </View>
           )}
 
+          {/* COMMENTS SECTION */}
           <View style={[styles.commentsSection, { borderTopColor: darkMode ? '#334155' : '#F1F5F9' }]}>
             <View style={styles.commentsHeaderRow}>
-              <Text style={[styles.commentsHeader, { color: textColor }]}>Comments</Text>
-              <Text style={[styles.commentsSub, { color: subTextColor }]}>{comments.length} total</Text>
+              <Text style={[styles.commentsHeader, { color: textColor }]}>
+                Comments {comments.length > 0 ? `(${comments.length})` : ''}
+              </Text>
+
+              {canComment && (
+                <TouchableOpacity
+                  onPress={openCommentModal}
+                  activeOpacity={0.85}
+                  style={[styles.writeCommentBtn, { backgroundColor: '#8B5CF6' }]}
+                >
+                  <Text style={styles.writeCommentBtnText}>＋ Write comment</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {comments.length === 0 ? (
@@ -2117,7 +2274,7 @@ export default function GroupDetailPage({
                 <Text style={styles.commentsEmptyEmoji}>💬</Text>
                 <Text style={[styles.commentsEmptyTitle, { color: textColor }]}>No comments yet</Text>
                 <Text style={[styles.commentsEmptyBody, { color: subTextColor }]}>
-                  {canComment ? 'Be the first to share your thoughts.' : 'Comments are closed.'}
+                  {canComment ? 'Tap the button above to write the first one.' : 'Comments are closed.'}
                 </Text>
               </View>
             ) : (
@@ -2125,7 +2282,8 @@ export default function GroupDetailPage({
                 style={[styles.commentsScroll, { height: Math.max(120, Math.min(300, comments.length * 90)) }]}
                 contentContainerStyle={styles.commentsScrollContent}
                 nestedScrollEnabled
-                showsVerticalScrollIndicator                keyboardShouldPersistTaps="always"
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="always"
               >
                 {comments.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((c) => (
                   <React.Fragment key={c.id}>{renderComment({ item: c })}</React.Fragment>
@@ -2215,69 +2373,6 @@ export default function GroupDetailPage({
           <View style={{ height: 60 }} />
         </ScrollView>
 
-        {canComment ? (
-          <View
-            style={[styles.commentBar, {
-              backgroundColor: cardBg,
-              borderTopColor: borderColor,
-              paddingBottom: BOTTOM_BAR_PADDING,
-            }]}
-          >
-            <View style={[styles.commentBarAvatar, { backgroundColor: '#8B5CF6' }]}>
-              <Text style={styles.commentBarAvatarText}>
-                {(currentUser?.name || 'ME').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-
-            <TextInput
-              ref={commentInputRef}
-              value={commentText}
-              onChangeText={setCommentText}
-              placeholder="Write a comment…"
-              placeholderTextColor={subTextColor}
-              editable={!submittingComment}
-              style={[styles.commentBarInput, {
-                color: textColor,
-                backgroundColor: darkMode ? '#0F172A' : '#F1F5F9',
-              }]}
-              multiline
-              numberOfLines={4}
-            />
-
-            <TouchableOpacity
-              onPress={submitComment}
-              disabled={!commentText.trim() || submittingComment}
-              activeOpacity={0.85}
-              style={[styles.commentBarSendBtn, {
-                backgroundColor: commentText.trim() && !submittingComment
-                  ? '#8B5CF6'
-                  : (darkMode ? '#1E293B' : '#E2E8F0'),
-              }]}
-            >
-              {submittingComment ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Text style={[styles.commentBarSendText, {
-                  color: commentText.trim() ? '#FFFFFF' : (darkMode ? '#64748B' : '#94A3B8'),
-                }]}>
-                  ➤
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={[styles.commentBarLocked, {
-            backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-            borderTopColor: borderColor,
-            paddingBottom: BOTTOM_BAR_PADDING,
-          }]}>
-            <Text style={[styles.commentBarLockedIcon]}>🔒</Text>
-            <Text style={[styles.commentBarLockedText, { color: subTextColor }]}>
-              {isApproved ? 'Comments are closed on approved posts' : 'Comments are closed on declined posts'}
-            </Text>
-          </View>
-        )}
-
         {renderDeleteModal()}
 
         <Modal
@@ -2326,25 +2421,21 @@ export default function GroupDetailPage({
 
         <ImageViewer visible={viewerVisible} uri={viewerUri} onClose={closeImageViewer} />
 
-        <AnnotationScreen
-          visible={!!signingQueue}
-          uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
-          onClose={skipAnnotation}
-          onSkip={skipAnnotation}
-          onPrev={prevAnnotation}
-          canGoBack={!!signingQueue && signingQueue.index > 0}
-          onSave={applyAnnotation}
-          saving={annotSaving}
+        {/* ✅ Write Comment modal (only on POST DETAIL) */}
+        <WriteCommentModal
+          visible={showCommentModal}
+          commentText={commentText}
+          setCommentText={setCommentText}
+          submitting={submittingComment}
+          onCancel={() => setShowCommentModal(false)}
+          onSubmit={submitComment}
           darkMode={darkMode}
           textColor={textColor}
           subTextColor={subTextColor}
           cardBg={cardBg}
           borderColor={borderColor}
-          headerSubtitle={
-            signingQueue
-              ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
-              : undefined
-          }
+          currentUserName={currentUser?.name}
+          postNumber={num}
         />
       </KeyboardAvoidingView>
     );
@@ -2541,7 +2632,7 @@ export default function GroupDetailPage({
 }
 
 // ================================================================
-// STYLES (unchanged)
+// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2652,8 +2743,21 @@ const styles = StyleSheet.create({
   editSignaturesBtnText: { fontSize: 13.5, fontWeight: '900', letterSpacing: 0.2 },
 
   commentsSection: { borderTopWidth: 1, marginTop: 22, paddingTop: 16 },
-  commentsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  commentsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10 },
   commentsHeader: { fontSize: 15, fontWeight: '900', letterSpacing: -0.2 },
+
+  writeCommentBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  writeCommentBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
   commentsSub: { fontSize: 11.5, fontWeight: '600' },
   commentsEmptyBox: { alignItems: 'center', paddingVertical: 26 },
   commentsEmptyEmoji: { fontSize: 34, marginBottom: 6 },
@@ -2671,50 +2775,6 @@ const styles = StyleSheet.create({
   commentAuthor: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
   commentTime: { fontSize: 11, fontWeight: '500' },
   commentBody: { fontSize: 13.5, fontWeight: '500', lineHeight: 19, marginTop: 2 },
-
-  commentBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-  },
-  commentBarAvatar: {
-    width: 32, height: 32, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-  },
-  commentBarAvatarText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
-  commentBarInput: {
-    flex: 1,
-    minHeight: 42,
-    maxHeight: 110,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  commentBarSendBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 2,
-  },
-  commentBarSendText: { fontSize: 15, fontWeight: '900', marginTop: -1 },
-
-  commentBarLocked: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-  },
-  commentBarLockedIcon: { fontSize: 16 },
-  commentBarLockedText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.1 },
 
   commentEditRow: {
     flexDirection: 'row',
@@ -2970,4 +3030,68 @@ const styles = StyleSheet.create({
     marginTop: 20, padding: 12, borderRadius: 10, borderWidth: 1,
   },
   pendingInfoText: { fontSize: 12, fontWeight: '700', lineHeight: 17, textAlign: 'center' },
+
+  bottomSheetBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  bottomSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '85%',
+  },
+  sheetHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+    gap: 12,
+  },
+  sheetTitle: { fontSize: 19, fontWeight: '900', letterSpacing: -0.3 },
+  sheetSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  sheetCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseIcon: { fontSize: 15, fontWeight: '800' },
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 20,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 22,
+  },
+  commentTextarea: {
+    minHeight: 130,
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  commentHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 6,
+    textAlign: 'right',
+  },
 });
