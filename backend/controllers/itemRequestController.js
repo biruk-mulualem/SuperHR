@@ -1763,6 +1763,9 @@ exports.createRequest = async (req, res) => {
 // 5. UPDATE REQUEST
 // ================================================================
 
+// ================================================================
+// 5. UPDATE REQUEST
+// ================================================================
 exports.updateRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -1779,8 +1782,19 @@ exports.updateRequest = async (req, res) => {
       isAsset,
     } = req.body;
 
-    console.log(`🔄 Updating request ${id} with data:`, req.body);
+    console.log(`🔄 Updating request ${id} with data:`, {
+      askingStoreId,
+      supplyingStoreId,
+      itemCount: items?.length ?? 0,
+      requestedById,
+      requestedBy,
+      requestedDate,
+      isAsset,
+    });
 
+    // ================================================================
+    // 1. LOAD + PERMISSION CHECKS
+    // ================================================================
     const request = await ItemRequest.findByPk(id, { transaction: t });
     if (!request) {
       await t.rollback();
@@ -1806,44 +1820,268 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    await request.update({
-      askingStoreId: askingStoreId || request.askingStoreId,
-      supplyingStoreId: supplyingStoreId || request.supplyingStoreId,
-      requestedById: requestedById !== undefined ? requestedById : request.requestedById,
-      requestedBy: requestedBy !== undefined ? requestedBy : request.requestedBy,
-      requestedDate: requestedDate || request.requestedDate,
-      status: "pending",
-      remark: remark !== undefined ? remark : request.remark,
-      isAsset: isAsset !== undefined ? isAsset : request.isAsset,
-    }, { transaction: t });
+    // ================================================================
+    // 2. RESOLVE NEXT STORE IDS (fall back to current values)
+    // ================================================================
+    const nextAskingStoreId =
+      askingStoreId !== undefined && askingStoreId !== null && askingStoreId !== ""
+        ? parseInt(askingStoreId)
+        : request.askingStoreId;
+
+    const nextSupplyingStoreId =
+      supplyingStoreId !== undefined && supplyingStoreId !== null && supplyingStoreId !== ""
+        ? parseInt(supplyingStoreId)
+        : request.supplyingStoreId;
+
+    if (nextAskingStoreId === nextSupplyingStoreId) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Asking store and supplying store cannot be the same",
+      });
+    }
+
+    // ================================================================
+    // 3. STORE VALIDATION (exists + active)
+    // ================================================================
+    const askingStore = await Store.findByPk(nextAskingStoreId, { transaction: t });
+    const supplyingStore = await Store.findByPk(nextSupplyingStoreId, { transaction: t });
+
+    if (!askingStore || !supplyingStore) {
+      await t.rollback();
+      return res.status(404).json({
+        success: false,
+        error: "One or both stores not found",
+      });
+    }
+
+    if (askingStore.status !== "Active") {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Asking store "${askingStore.name}" is not active`,
+      });
+    }
+
+    if (supplyingStore.status !== "Active") {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Supplying store "${supplyingStore.name}" is not active`,
+      });
+    }
+
+    // ================================================================
+    // 4. ITEM VALIDATION + STOCK VALIDATION
+    //    (identical to createRequest)
+    // ================================================================
+    let validatedItems = [];
+    let stockValidation = null;
 
     if (items && items.length > 0) {
+      const itemIds = items.map((item) => item.itemId);
+
+      const itemRecords = await Item.findAll({
+        where: { itemId: { [Op.in]: itemIds } },
+        include: [
+          { model: UOM, as: "uom" },
+          { model: UOM, as: "conversionUom" },
+        ],
+        transaction: t,
+      });
+
+      const itemMap = {};
+      itemRecords.forEach((record) => {
+        itemMap[record.itemId] = record;
+      });
+
+      const validationErrors = [];
+
+      for (const item of items) {
+        const itemRecord = itemMap[item.itemId];
+
+        if (!itemRecord) {
+          validationErrors.push({
+            itemId: item.itemId,
+            itemName: "Unknown Item",
+            itemCode: "N/A",
+            requestedQuantity: item.quantity,
+            message: `Item with ID ${item.itemId} not found in database`,
+          });
+          continue;
+        }
+
+        if (itemRecord.status !== "Active") {
+          validationErrors.push({
+            itemId: item.itemId,
+            itemName: itemRecord.name,
+            itemCode: itemRecord.code,
+            requestedQuantity: item.quantity,
+            message: `Item "${itemRecord.name}" is ${itemRecord.status}`,
+          });
+          continue;
+        }
+
+        if (!item.quantity || item.quantity <= 0) {
+          validationErrors.push({
+            itemId: item.itemId,
+            itemName: itemRecord.name,
+            itemCode: itemRecord.code,
+            requestedQuantity: item.quantity || 0,
+            message: "Quantity must be greater than 0",
+          });
+          continue;
+        }
+
+        const selectedUom = item.selectedUom || "base";
+
+        let uomCode = item.uomCode;
+        if (!uomCode || uomCode === "") {
+          uomCode = itemRecord.uom?.code || "Units";
+        }
+
+        const isBaseUom = item.isBaseUom !== false;
+
+        // Preserve client value if present, otherwise inherit from item record
+        const specification =
+          item.specification && String(item.specification).trim() !== ""
+            ? item.specification
+            : itemRecord.specText || null;
+
+        const brand =
+          item.brand && String(item.brand).trim() !== ""
+            ? item.brand
+            : itemRecord.brand || null;
+
+        const model =
+          item.model && String(item.model).trim() !== ""
+            ? item.model
+            : itemRecord.model || null;
+
+        validatedItems.push({
+          ...item,
+          itemRecord,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          uomCode,
+          selectedUom,
+          isBaseUom,
+          specification,
+          brand,
+          model,
+        });
+      }
+
+      if (validationErrors.length > 0) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Item validation failed",
+          message: "Some items are invalid or inactive",
+          errors: validationErrors,
+        });
+      }
+
+      // 🔥 THE CRITICAL STEP — stock availability
+      console.log(
+        `📦 Running stock validation for store ${nextSupplyingStoreId} on ${validatedItems.length} item(s)`
+      );
+
+      stockValidation = await validateStockAvailability(
+        nextSupplyingStoreId,
+        validatedItems
+      );
+
+      if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
+        console.log(
+          `❌ Stock validation FAILED — ${stockValidation.errors.length} error(s)`
+        );
+        await t.rollback();
+
+        return res.status(400).json({
+          success: false,
+          error: "Stock validation failed",
+          errors: stockValidation.errors,
+          stockInfo: stockValidation.stockInfo,
+          summary: {
+            totalItems: validatedItems.length,
+            itemsWithStock: stockValidation.stockInfo.filter(
+              (s) => s.availableQuantity > 0
+            ).length,
+            itemsWithoutStock: stockValidation.errors.filter(
+              (e) => e.availableQuantity === 0
+            ).length,
+            itemsWithShortage: stockValidation.errors.filter(
+              (e) => e.availableQuantity > 0 && e.shortage > 0
+            ).length,
+            storeName: supplyingStore.name,
+            storeId: nextSupplyingStoreId,
+            validationSkipped: false,
+          },
+        });
+      }
+
+      console.log(`✅ Stock validation passed`);
+    } else {
+      console.log(`ℹ️ No items in payload — skipping item/stock validation`);
+    }
+
+    // ================================================================
+    // 5. UPDATE REQUEST ROW
+    // ================================================================
+    await request.update(
+      {
+        askingStoreId: nextAskingStoreId,
+        supplyingStoreId: nextSupplyingStoreId,
+        requestedById:
+          requestedById !== undefined ? requestedById : request.requestedById,
+        requestedBy:
+          requestedBy !== undefined ? requestedBy : request.requestedBy,
+        requestedDate: requestedDate || request.requestedDate,
+        status: "pending",
+        remark: remark !== undefined ? remark : request.remark,
+        isAsset: isAsset !== undefined ? isAsset : request.isAsset,
+      },
+      { transaction: t }
+    );
+
+    // ================================================================
+    // 6. REPLACE ITEM DETAILS
+    // ================================================================
+    if (validatedItems.length > 0) {
       await ItemRequestDetail.destroy({
         where: { requestId: id },
         transaction: t,
       });
 
       await Promise.all(
-        items.map(async (item) => {
-          const selectedUom = item.selectedUom || 'base';
-          const uomCode = item.uomCode || 'Units';
-          const isBaseUom = item.isBaseUom !== false;
-
-          return ItemRequestDetail.create({
-            requestId: request.requestId,
-            itemId: item.itemId,
-            quantity: item.quantity,
-            remark: item.remark || null,
-            selected_uom: selectedUom,
-            uom_code: uomCode,
-            is_base_uom: isBaseUom,
-            specification: item.specification || null,
-            brand: item.brand || null,
-            model: item.model || null,
-          }, { transaction: t });
-        }),
+        validatedItems.map((item) =>
+          ItemRequestDetail.create(
+            {
+              requestId: request.requestId,
+              itemId: item.itemId,
+              quantity: item.quantity,
+              remark: item.remark || null,
+              selected_uom: item.selectedUom || "base",
+              uom_code: item.uomCode || item.itemRecord?.uom?.code || "Units",
+              is_base_uom: item.isBaseUom !== false,
+              specification: item.specification || null,
+              brand: item.brand || null,
+              model: item.model || null,
+            },
+            { transaction: t }
+          )
+        )
       );
     }
+
+    // ================================================================
+    // 7. RECREATE NOTIFICATIONS (respecting SKIP stores)
+    // ================================================================
+    const skipNotifications = shouldSkipNotifications(supplyingStore.code);
+    const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
+    const updatedRequestedById =
+      requestedById !== undefined ? requestedById : request.requestedById;
 
     console.log(`🗑️ Deleting all notifications for request ${id}`);
     await RequestNotification.destroy({
@@ -1851,32 +2089,61 @@ exports.updateRequest = async (req, res) => {
       transaction: t,
     });
 
-    const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
-    const updatedRequestedById = 
-      requestedById !== undefined ? requestedById : request.requestedById;
+    if (skipNotifications) {
+      console.log(
+        `⚠️ SKIPPED notification recreation for store ${supplyingStore.code} (${supplyingStore.name}) — Foreign/Local Purchase`
+      );
+    } else {
+      console.log(
+        `📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`
+      );
 
-    console.log(`📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`);
+      try {
+        const requestingUserGroupId = await resolveRequestingUserGroupId(
+          req,
+          updatedRequestedById,
+          t
+        );
 
-    const requestingUserGroupId = await resolveRequestingUserGroupId(
-      req,
-      updatedRequestedById,
-      t
-    );
+        await createRequestNotifications(
+          request.requestId,
+          nextSupplyingStoreId,
+          nextAskingStoreId,
+          updatedIsAsset || false,
+          t,
+          requestingUserGroupId,
+          updatedRequestedById
+        );
+      } catch (notifError) {
+        console.error("❌ Notification recreation failed — rolling back:", {
+          name: notifError?.name,
+          message: notifError?.message,
+          sql: notifError?.sql,
+          parent: notifError?.parent?.message,
+          original: notifError?.original?.message,
+        });
 
-    await createRequestNotifications(
-      request.requestId,
-      request.supplyingStoreId,
-      request.askingStoreId,
-      updatedIsAsset || false,
-      t,
-      requestingUserGroupId,
-      updatedRequestedById
-    );
+        await t.rollback();
+        return res.status(500).json({
+          success: false,
+          error: notifError.message || "Failed to recreate notifications",
+          phase: "notifications",
+        });
+      }
+    }
 
+    // ================================================================
+    // 8. COMMIT
+    // ================================================================
     await t.commit();
 
-    console.log(`✅ Request ${id} updated successfully — reset to Stage 1 (asking store)`);
+    console.log(
+      `✅ Request ${id} updated successfully — status reset to pending`
+    );
 
+    // ================================================================
+    // 9. RELOAD WITH FULL ASSOCIATIONS + RESPOND
+    // ================================================================
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
@@ -1886,14 +2153,26 @@ exports.updateRequest = async (req, res) => {
             {
               model: Item,
               as: "item",
-              include: [{ model: UOM, as: "uom" }],
+              include: [
+                { model: UOM, as: "uom" },
+                { model: UOM, as: "conversionUom" },
+              ],
             },
           ],
           attributes: [
-            'id', 'requestId', 'itemId', 'quantity', 'remark',
-            'selected_uom', 'uom_code', 'is_base_uom',
-            'specification', 'brand', 'model',
-            'created_at', 'updated_at',
+            "id",
+            "requestId",
+            "itemId",
+            "quantity",
+            "remark",
+            "selected_uom",
+            "uom_code",
+            "is_base_uom",
+            "specification",
+            "brand",
+            "model",
+            "created_at",
+            "updated_at",
           ],
         },
         { model: Store, as: "askingStore" },
@@ -1901,7 +2180,14 @@ exports.updateRequest = async (req, res) => {
         {
           model: User,
           as: "requestedByUser",
-          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
+          attributes: [
+            "userId",
+            "username",
+            "fullName",
+            "email",
+            "roleId",
+            "departmentId",
+          ],
         },
         {
           model: RequestNotification,
@@ -1915,15 +2201,41 @@ exports.updateRequest = async (req, res) => {
       ],
     });
 
-    res.json({
+    return res.json({
       success: true,
-      message: "Request updated successfully. Restarted at asking store approval stage.",
+      message: skipNotifications
+        ? `Request updated successfully. (${supplyingStore.code} - No approval required)`
+        : "Request updated successfully. Restarted at asking store approval stage.",
       data: updatedRequest,
     });
   } catch (error) {
-    await t.rollback();
-    console.error("❌ Update request error:", error);
-    res.status(500).json({
+    // ================================================================
+    // ROLLBACK + DETAILED ERROR LOGGING
+    // ================================================================
+    try {
+      await t.rollback();
+    } catch (rollbackError) {
+      console.error("⚠️ Rollback failed:", rollbackError.message);
+    }
+
+    console.error("❌ Update request error:", {
+      name: error?.name,
+      message: error?.message,
+      sql: error?.sql,
+      parent: error?.parent?.message,
+      original: error?.original?.message,
+      stack: error?.stack,
+    });
+
+    if (error.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        success: false,
+        error: "Validation error",
+        message: error.errors.map((e) => e.message).join(", "),
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       error: error.message || "Failed to update request",
     });
