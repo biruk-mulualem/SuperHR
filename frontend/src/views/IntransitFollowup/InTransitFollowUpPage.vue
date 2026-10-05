@@ -44,7 +44,7 @@
           v-if="tab.custom"
           class="tab__remove"
           title="Remove country"
-          @click.stop="removeCountry(tab.key)"
+          @click.stop="askRemoveCountry(tab.key)"
         >✕</span>
       </button>
 
@@ -64,13 +64,6 @@
         <option value="unpaid">Unpaid</option>
         <option value="partial">Partial</option>
         <option value="paid">Paid</option>
-      </select>
-      <select v-model.number="perPage" class="select-input">
-        <option :value="5">5 / page</option>
-        <option :value="10">10 / page</option>
-        <option :value="25">25 / page</option>
-        <option :value="50">50 / page</option>
-        <option :value="100">100 / page</option>
       </select>
     </div>
 
@@ -119,67 +112,113 @@
     </div>
 
     <!-- PAGINATION -->
-    <div v-if="totalPages > 1" class="pagination">
-      <div class="pagination__info">
-        Showing
-        <strong>{{ rangeStart }}</strong>–<strong>{{ rangeEnd }}</strong>
-        of <strong>{{ filteredProformas.length }}</strong>
+    <div class="pagination">
+      <div class="pagination__left">
+        <div class="pagination__perpage">
+          <span class="perpage-label">Per page</span>
+          <select v-model.number="perPage" class="perpage-select">
+            <option :value="5">5</option>
+            <option :value="10">10</option>
+            <option :value="25">25</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+          </select>
+        </div>
+
+        <div class="pagination__info">
+          Showing
+          <strong>{{ rangeStart }}</strong>–<strong>{{ rangeEnd }}</strong>
+          of <strong>{{ filteredProformas.length }}</strong>
+        </div>
       </div>
 
-      <div class="pagination__controls">
-        <button
-          class="page-btn"
-          :disabled="currentPage === 1"
-          @click="goToPage(1)"
-        >« First</button>
-
-        <button
-          class="page-btn"
-          :disabled="currentPage === 1"
-          @click="goToPage(currentPage - 1)"
-        >‹ Prev</button>
-
+      <div v-if="totalPages > 1" class="pagination__controls">
+        <button class="page-btn" :disabled="currentPage === 1" @click="goToPage(1)">
+          « First
+        </button>
+        <button class="page-btn" :disabled="currentPage === 1" @click="goToPage(currentPage - 1)">
+          ‹ Prev
+        </button>
         <span class="page-info">
           Page {{ currentPage }} of {{ totalPages }}
         </span>
-
-        <button
-          class="page-btn"
-          :disabled="currentPage === totalPages"
-          @click="goToPage(currentPage + 1)"
-        >Next ›</button>
-
-        <button
-          class="page-btn"
-          :disabled="currentPage === totalPages"
-          @click="goToPage(totalPages)"
-        >Last »</button>
+        <button class="page-btn" :disabled="currentPage === totalPages" @click="goToPage(currentPage + 1)">
+          Next ›
+        </button>
+        <button class="page-btn" :disabled="currentPage === totalPages" @click="goToPage(totalPages)">
+          Last »
+        </button>
       </div>
     </div>
 
-    <!-- ADD COUNTRY MODAL -->
-    <Modal v-if="showAddCountry" title="Add Country" @close="closeAddCountry">
-      <div class="modal-field">
-        <label class="modal-label">Country Name</label>
-        <input
-          v-model="newCountryName"
-          type="text"
-          class="modal-input"
-          placeholder="e.g. Turkey"
-          @keyup.enter="confirmAddCountry"
-          autofocus
-        />
-      </div>
+    <!-- =========================================================
+         ADD COUNTRY MODAL
+         ========================================================= -->
+    <div
+      v-if="showAddCountry"
+      class="modal-backdrop"
+      @click.self="closeAddCountry"
+    >
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 class="modal-title">Add Country</h3>
+          <button class="modal-close" @click="closeAddCountry">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-field">
+            <label class="modal-label">Country Name</label>
+            <input
+              ref="newCountryInput"
+              v-model="newCountryName"
+              type="text"
+              class="modal-input"
+              placeholder="e.g. Turkey"
+              @keyup.enter="confirmAddCountry"
+            />
+          </div>
 
-      <div class="modal-actions">
-        <button class="btn" @click="closeAddCountry">Cancel</button>
-        <button
-          class="btn btn--primary"
-          :disabled="!newCountryName.trim()"
-          @click="confirmAddCountry"
-        >Add</button>
+          <div class="modal-actions">
+            <button class="btn" @click="closeAddCountry">Cancel</button>
+            <button
+              class="btn btn--primary"
+              :disabled="!newCountryName.trim()"
+              @click="confirmAddCountry"
+            >Add</button>
+          </div>
+        </div>
       </div>
-    </Modal>
+    </div>
+
+    <!-- =========================================================
+         REMOVE COUNTRY MODAL (confirmation)
+         ========================================================= -->
+    <div
+      v-if="countryToRemove"
+      class="modal-backdrop"
+      @click.self="cancelRemoveCountry"
+    >
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 class="modal-title">Remove Country</h3>
+          <button class="modal-close" @click="cancelRemoveCountry">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-confirm-text">
+            Are you sure you want to remove
+            <strong>{{ countryToRemove }}</strong>
+            from the tabs?
+          </p>
+
+          <div class="modal-actions">
+            <button class="btn" @click="cancelRemoveCountry">Cancel</button>
+            <button
+              class="btn btn--danger"
+              @click="confirmRemoveCountry"
+            >Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -187,29 +226,6 @@
 import { ref, computed, watch } from 'vue'
 import ProformaDetailPage from './ProformaDetailPage.vue'
 import NewPurchasePage from './NewPurchasePage.vue'
-
-// ================================================================
-// INLINE MODAL (tiny — avoids extra file)
-// ================================================================
-const Modal = {
-  props: {
-    title: String,
-  },
-  emits: ['close'],
-  template: `
-    <div class="modal-backdrop" @click.self="$emit('close')">
-      <div class="modal-box">
-        <div class="modal-header">
-          <h3 class="modal-title">{{ title }}</h3>
-          <button class="modal-close" @click="$emit('close')">✕</button>
-        </div>
-        <div class="modal-body">
-          <slot />
-        </div>
-      </div>
-    </div>
-  `,
-}
 
 // ================================================================
 // STATE
@@ -228,9 +244,13 @@ const extraCountries = ref([])
 const perPage = ref(10)
 const currentPage = ref(1)
 
-// Add country modal
+// Add Country modal
 const showAddCountry = ref(false)
 const newCountryName = ref('')
+const newCountryInput = ref(null)
+
+// Remove Country modal
+const countryToRemove = ref(null)
 
 // ================================================================
 // DATA
@@ -959,7 +979,7 @@ const proformas = ref([
     paymentStatus: 'paid',
     items: [
       { itemName: 'AUTOMATIC PAINT DISPENSER (INCLUDE COMPUTER & SOFTWARE)', company: 'JIANGXI SUORUIDA INTELLIGENT EQUIPMENT', quantity: 2, unit: 'SET', unitPrice: 'USD 2,200', totalPrice: 'USD 4,400' },
-      { itemName: 'AUTOMATIC SHAKER', company: 'JIANGXI SUORUIDA INTELLIGENT EQUIPMENT', quantity: 2, unit: 'SET', unitPrice: 'USD 1,200', totalPrice: 'USD 2,400' },
+      { itemName: 'AUTOMATIC SHAKER', company: 'JIANGSU JIANGHAO GENERATOR', quantity: 2, unit: 'SET', unitPrice: 'USD 1,200', totalPrice: 'USD 2,400' },
       { itemName: 'COLOUR PASTE T SERIES', company: 'JIANGXI SUORUIDA INTELLIGENT EQUIPMENT', quantity: 20, unit: 'SET', unitPrice: 'USD 240', totalPrice: 'USD 4,800' },
     ],
     payments: [
@@ -1429,7 +1449,6 @@ const countryTabs = computed(() => {
     { key: 'all', label: 'All', count: all.length, custom: false },
   ]
 
-  // Base countries (only show if they have data OR always show)
   for (const c of baseCountries) {
     tabs.push({
       key: c,
@@ -1439,7 +1458,6 @@ const countryTabs = computed(() => {
     })
   }
 
-  // Extra countries
   for (const c of extraNames) {
     tabs.push({
       key: c,
@@ -1498,17 +1516,20 @@ function goToPage(n) {
   currentPage.value = next
 }
 
-// Reset page when filters change
 watch([activeCountry, search, statusFilter, perPage], () => {
   currentPage.value = 1
 })
 
 // ================================================================
-// ADD COUNTRY
+// ADD COUNTRY MODAL
 // ================================================================
 function openAddCountry() {
   newCountryName.value = ''
   showAddCountry.value = true
+  // Focus the input after the modal mounts
+  setTimeout(() => {
+    newCountryInput.value?.focus()
+  }, 50)
 }
 
 function closeAddCountry() {
@@ -1519,23 +1540,50 @@ function closeAddCountry() {
 function confirmAddCountry() {
   const name = newCountryName.value.trim()
   if (!name) return
-  const exists =
-    ['China', 'Dubai', 'India'].includes(name) ||
-    extraCountries.value.includes(name)
-  if (exists) {
-    alert(`"${name}" is already in the tabs.`)
+
+  const existing = countryTabs.value.some(
+    (t) => t.label.toLowerCase() === name.toLowerCase()
+  )
+  if (existing) {
+    alert(`"${name}" is already a tab.`)
     return
   }
+
   extraCountries.value = [...extraCountries.value, name]
   activeCountry.value = name
   closeAddCountry()
 }
 
-function removeCountry(name) {
-  const idx = extraCountries.value.indexOf(name)
-  if (idx === -1) return
+// ================================================================
+// REMOVE COUNTRY MODAL
+// ================================================================
+function askRemoveCountry(name) {
+  countryToRemove.value = name
+}
+
+function cancelRemoveCountry() {
+  countryToRemove.value = null
+}
+
+function confirmRemoveCountry() {
+  const name = countryToRemove.value
+  if (!name) return
+
+  // Check if there are any proformas under this country
+  const hasProformas = proformas.value.some((p) => p.country === name)
+  if (hasProformas) {
+    alert(`Cannot remove "${name}" — it has ${proformas.value.filter((p) => p.country === name).length} purchase(s). Delete those first.`)
+    countryToRemove.value = null
+    return
+  }
+
   extraCountries.value = extraCountries.value.filter((c) => c !== name)
-  if (activeCountry.value === name) activeCountry.value = 'all'
+
+  if (activeCountry.value === name) {
+    activeCountry.value = 'all'
+  }
+
+  countryToRemove.value = null
 }
 
 // ================================================================
@@ -1623,6 +1671,8 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn--primary { background: #4f46e5; color: white; border-color: #4f46e5; }
 .btn--primary:hover:not(:disabled) { background: #4338ca; }
+.btn--danger { background: #dc2626; color: white; border-color: #dc2626; }
+.btn--danger:hover:not(:disabled) { background: #b91c1c; }
 
 /* Tabs */
 .tabs {
@@ -1650,7 +1700,6 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
 }
 .tab:hover { color: #374151; }
 .tab--active { color: #4f46e5; border-bottom-color: #4f46e5; }
-.tab__label { }
 .tab__count {
   padding: 1px 7px;
   background: #f3f4f6;
@@ -1776,6 +1825,37 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
   font-size: 12.5px;
   color: #4b5563;
 }
+.pagination__left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.pagination__perpage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.perpage-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+.perpage-select {
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+.perpage-select:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+}
 .pagination__info strong { color: #111827; font-weight: 700; }
 .pagination__controls {
   display: flex;
@@ -1802,12 +1882,12 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
 }
 
 /* ================================================================
-   MODAL
+   MODAL (plain HTML — no runtime compiler needed)
    ================================================================ */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1820,7 +1900,7 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
   width: 100%;
   max-width: 420px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 .modal-header {
   display: flex;
@@ -1841,6 +1921,15 @@ function addPayment(p) { console.log('pay', p.proformaNo) }
 }
 .modal-close:hover { background: #f1f5f9; color: #0f172a; }
 .modal-body { padding: 16px 18px; }
+
+.modal-confirm-text {
+  margin: 0 0 20px 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #374151;
+}
+.modal-confirm-text strong { color: #111827; font-weight: 800; }
+
 .modal-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .modal-label {
   font-size: 10.5px;

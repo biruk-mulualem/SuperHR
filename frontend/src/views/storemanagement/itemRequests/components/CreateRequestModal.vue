@@ -92,13 +92,17 @@
           <!-- ============================================================ -->
           <div class="form-section">
             <div class="form-section-title">🏪 Store Selection</div>
-            
+
             <input type="hidden" v-model="form.askingStoreId" />
 
             <div class="form-row">
               <div class="form-group">
                 <label>Supplying Store (Target) *</label>
-                <select v-model="form.supplyingStoreId" required class="form-select">
+                <select
+                  v-model="form.supplyingStoreId"
+                  required
+                  class="form-select"
+                >
                   <option value="">Select Store</option>
                   <option
                     v-for="store in filteredSupplyingStores"
@@ -108,7 +112,9 @@
                     {{ store.name }} ({{ store.code }})
                   </option>
                 </select>
-                <span class="hint">Select the store that will supply the items</span>
+                <span class="hint"
+                  >Select the store that will supply the items</span
+                >
               </div>
             </div>
           </div>
@@ -132,30 +138,34 @@
                   v-model="itemSearch"
                   placeholder="Search items by code or name..."
                   class="search-input"
-                  :class="{ 'searching': isSearching }"
+                  :class="{ searching: isSearching }"
                   @keydown.esc="clearSearch"
                 />
                 <span v-if="isSearching" class="search-spinner">⏳</span>
-                <span 
-                  v-else-if="itemSearch && items.length > 0 && !isSearching" 
+                <span
+                  v-else-if="itemSearch && items.length > 0 && !isSearching"
                   class="search-results-count"
                 >
                   {{ items.length }} results
                 </span>
               </div>
-              
+
               <div class="add-wrapper">
-                <select 
-                  v-model="selectedItemId" 
-                  class="item-select" 
+                <select
+                  v-model="selectedItemId"
+                  class="item-select"
                   @change="onItemSelect"
                   :disabled="isSearching"
                 >
                   <option value="">
                     {{
-                      isSearching ? 'Searching...' :
-                      itemSearch ? (items.length === 0 ? 'No matching items found' : `Select an item (${items.length} results)`) :
-                      'Type to search for items...'
+                      isSearching
+                        ? "Searching..."
+                        : itemSearch
+                          ? items.length === 0
+                            ? "No matching items found"
+                            : `Select an item (${items.length} results)`
+                          : "Type to search for items..."
                     }}
                   </option>
                   <option
@@ -165,31 +175,40 @@
                     :disabled="isItemAlreadySelected(item)"
                   >
                     {{ item.code }} - {{ item.standardName || item.name }}
-                    [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
-                    {{ isItemAlreadySelected(item) ? '(added)' : '' }}
+                    [Base: {{ getBaseUOM(item) }} | Conv:
+                    {{ getConversionUOM(item) }}]
+                    {{ isItemAlreadySelected(item) ? "(added)" : "" }}
                   </option>
                 </select>
                 <button
                   type="button"
                   class="btn-add-item"
                   @click="addSelectedItem"
-                  :disabled="!selectedItemId || isItemAlreadySelectedById(selectedItemId) || isSearching"
+                  :disabled="
+                    !selectedItemId ||
+                    isItemAlreadySelectedById(selectedItemId) ||
+                    isSearching
+                  "
                 >
                   ➕ Add
                 </button>
               </div>
 
-              <div 
-                v-if="hasMoreItems && items.length > 0 && itemSearch" 
+              <div
+                v-if="hasMoreItems && items.length > 0 && itemSearch"
                 class="load-more-trigger"
               >
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   class="btn-load-more"
                   @click="loadMoreItems"
                   :disabled="isLoadingMore"
                 >
-                  {{ isLoadingMore ? 'Loading...' : `Load more (${items.length}/${totalItems})` }}
+                  {{
+                    isLoadingMore
+                      ? "Loading..."
+                      : `Load more (${items.length}/${totalItems})`
+                  }}
                 </button>
               </div>
             </div>
@@ -197,10 +216,17 @@
             <!-- ============================================================ -->
             <!-- SELECTED ITEMS -->
             <!-- ============================================================ -->
-            <div class="selected-items-container" v-if="selectedItemsList.length > 0">
+            <div
+              class="selected-items-container"
+              v-if="selectedItemsList.length > 0"
+            >
               <div class="selected-header">
                 <span class="selected-title">✅ Selected Items</span>
-                <button type="button" class="btn-clear-all" @click="clearAllItems">
+                <button
+                  type="button"
+                  class="btn-clear-all"
+                  @click="clearAllItems"
+                >
                   🗑️ Clear All
                 </button>
               </div>
@@ -211,35 +237,55 @@
                   class="selected-item-wrapper"
                 >
                   <div class="selected-item-compact">
-                    <div 
+                    <div
                       class="compact-left"
                       @click="toggleItemExpand(item.itemId)"
                     >
                       <span class="expand-icon">
-                        {{ expandedItems.has(item.itemId) ? '▼' : '▶' }}
+                        {{ expandedItems.has(item.itemId) ? "▼" : "▶" }}
                       </span>
                       <span class="item-code">{{ item.code }}</span>
                       <span class="item-name">{{ item.name }}</span>
                     </div>
 
                     <div class="compact-right">
+                      <!-- 🔥 Compact inline remark input -->
+                      <div class="compact-remark-group">
+                        <input
+                          type="text"
+                          :value="item.remark"
+                          @input.stop="
+                            updateItemField(
+                              item.itemId,
+                              'remark',
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
+                          placeholder="Remark..."
+                          class="compact-remark-input"
+                          title="Item remark"
+                        />
+                      </div>
+
                       <div class="compact-uom-group">
-                        <select 
-                          v-model="item.selectedUom" 
+                        <select
+                          v-model="item.selectedUom"
                           @change.stop="onUomChange(item)"
                           class="compact-uom-select"
                         >
                           <option value="base">{{ getBaseUOM(item) }}</option>
-                          <option 
-                            v-if="getConversionUOM(item) !== 'N/A'" 
+                          <option
+                            v-if="getConversionUOM(item) !== 'N/A'"
                             value="conversion"
-                            :disabled="getConversionUOM(item) === getBaseUOM(item)"
+                            :disabled="
+                              getConversionUOM(item) === getBaseUOM(item)
+                            "
                           >
                             {{ getConversionUOM(item) }}
                           </option>
                         </select>
                       </div>
-                      
+
                       <div class="compact-qty-group">
                         <button
                           type="button"
@@ -252,7 +298,12 @@
                         <input
                           type="number"
                           :value="item.quantity"
-                          @input.stop="updateQuantity(item.itemId, ($event.target as HTMLInputElement)?.value ?? '')"
+                          @input.stop="
+                            updateQuantity(
+                              item.itemId,
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
                           min="0.01"
                           step="0.01"
                           class="compact-qty-input"
@@ -264,7 +315,9 @@
                         >
                           +
                         </button>
-                        <span class="compact-qty-uom">{{ getSelectedUomLabel(item) }}</span>
+                        <span class="compact-qty-uom">{{
+                          getSelectedUomLabel(item)
+                        }}</span>
                       </div>
 
                       <button
@@ -278,7 +331,7 @@
                     </div>
                   </div>
 
-                  <div 
+                  <div
                     v-show="expandedItems.has(item.itemId)"
                     class="selected-item-expanded"
                   >
@@ -288,7 +341,13 @@
                         <input
                           type="text"
                           :value="item.remark"
-                          @input="updateItemField(item.itemId, 'remark', ($event.target as HTMLInputElement)?.value ?? '')"
+                          @input="
+                            updateItemField(
+                              item.itemId,
+                              'remark',
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
                           placeholder="Add remark..."
                           class="remark-input"
                         />
@@ -301,7 +360,13 @@
                         <input
                           type="text"
                           :value="item.specification"
-                          @input="updateItemField(item.itemId, 'specification', ($event.target as HTMLInputElement)?.value ?? '')"
+                          @input="
+                            updateItemField(
+                              item.itemId,
+                              'specification',
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
                           placeholder="Enter specification..."
                           class="spec-input"
                         />
@@ -311,7 +376,13 @@
                         <input
                           type="text"
                           :value="item.brand"
-                          @input="updateItemField(item.itemId, 'brand', ($event.target as HTMLInputElement)?.value ?? '')"
+                          @input="
+                            updateItemField(
+                              item.itemId,
+                              'brand',
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
                           placeholder="Enter brand..."
                           class="spec-input"
                         />
@@ -321,7 +392,13 @@
                         <input
                           type="text"
                           :value="item.model"
-                          @input="updateItemField(item.itemId, 'model', ($event.target as HTMLInputElement)?.value ?? '')"
+                          @input="
+                            updateItemField(
+                              item.itemId,
+                              'model',
+                              ($event.target as HTMLInputElement)?.value ?? '',
+                            )
+                          "
                           placeholder="Enter model..."
                           class="spec-input"
                         />
@@ -335,7 +412,9 @@
             <div v-else class="empty-items-message">
               <span class="empty-icon">📦</span>
               <p>No items selected</p>
-              <span class="empty-hint">Search and add items from the dropdown above</span>
+              <span class="empty-hint"
+                >Search and add items from the dropdown above</span
+              >
             </div>
           </div>
 
@@ -344,7 +423,7 @@
           <!-- ============================================================ -->
           <div class="form-section">
             <div class="form-section-title">📋 Request Details</div>
-            
+
             <div class="form-row">
               <div class="form-group">
                 <label>Requested By *</label>
@@ -355,40 +434,49 @@
                   class="form-input"
                   placeholder="Enter requester name..."
                 />
-                <span class="hint">Defaults to the logged-in user — edit if requesting on behalf of someone else</span>
+                <span class="hint"
+                  >Defaults to the logged-in user — edit if requesting on
+                  behalf of someone else</span
+                >
               </div>
               <div class="form-group">
                 <label>Requested Date *</label>
-                <input v-model="form.requestedDate" type="date" required class="form-input" />
+                <input
+                  v-model="form.requestedDate"
+                  type="date"
+                  required
+                  class="form-input"
+                />
               </div>
             </div>
 
-            <!-- ============================================================ -->
-            <!-- 🔥 UPDATED: Department Approval Checkbox + Departments List -->
-            <!-- ============================================================ -->
+            <!-- Department Approval -->
             <div class="form-group full-width">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.isAsset" />
-                <span class="checkbox-text">🏛️ This request requires department approval</span>
+                <span class="checkbox-text"
+                  >🏛️ This request requires department approval</span
+                >
               </label>
 
-              <!-- Show department info when checkbox is ON -->
               <div v-if="form.isAsset" class="departments-info-box">
                 <div class="departments-info-header">
                   <span class="departments-info-icon">📋</span>
                   <span class="departments-info-title">
-                    The following departments will need to approve this request:
+                    The following departments will need to approve this
+                    request:
                   </span>
                 </div>
 
-                <!-- Loading state -->
                 <div v-if="loadingDepartments" class="departments-loading">
                   <span class="departments-spinner">⏳</span>
                   Loading departments...
                 </div>
 
-                <!-- Departments list -->
-                <div v-else-if="applicableDepartments.length > 0" class="departments-list">
+                <div
+                  v-else-if="applicableDepartments.length > 0"
+                  class="departments-list"
+                >
                   <div
                     v-for="dept in applicableDepartments"
                     :key="dept.departmentId"
@@ -400,10 +488,10 @@
                   </div>
                 </div>
 
-                <!-- No departments configured -->
                 <div v-else class="departments-empty">
-                  ⚠️ No departments are configured to approve requests for this store.
-                  <br>
+                  ⚠️ No departments are configured to approve requests for this
+                  store.
+                  <br />
                   <span class="departments-empty-hint">
                     Contact your admin to configure the approval departments.
                   </span>
@@ -411,13 +499,17 @@
 
                 <div class="departments-info-footer">
                   <span class="departments-source-hint">
-                    📌 Departments are matched by the <strong>asking store</strong>'s code ({{ getAskingStoreCode() }})
+                    📌 Departments are matched by the
+                    <strong>asking store</strong>'s code ({{
+                      getAskingStoreCode()
+                    }})
                   </span>
                 </div>
               </div>
 
               <span class="hint" v-else>
-                ℹ️ Toggle on if this request requires approval from the asset department
+                ℹ️ Toggle on if this request requires approval from the asset
+                department
               </span>
             </div>
 
@@ -429,7 +521,9 @@
                 readonly
                 class="status-info-field"
               />
-              <span class="hint">Status is always reset to Pending when editing</span>
+              <span class="hint"
+                >Status is always reset to Pending when editing</span
+              >
             </div>
 
             <div class="form-group full-width">
@@ -440,7 +534,9 @@
                 placeholder="General notes or remarks..."
                 class="textarea-field"
               ></textarea>
-              <span class="hint">This remark applies to the entire request</span>
+              <span class="hint"
+                >This remark applies to the entire request</span
+              >
             </div>
 
             <div v-if="formErrors.length > 0" class="form-errors">
@@ -472,32 +568,24 @@
 import { ref, computed, watch, onBeforeUnmount, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import itemRequestService from "@/stores/itemRequestService";
-import api from "@/stores/interceptor";
-import type {
-  ItemRequest,
-  RequestItem,
-  Store,
-  Item,
-} from "@/stores/itemRequestService";
+import type { ItemRequest, RequestItem, Store, Item } from "@/stores/itemRequestService";
 
 // ================================================================
 // PROPS & EMITS
 // ================================================================
-
 const props = defineProps<{
   visible: boolean;
   editingRequest?: ItemRequest | null;
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:visible', value: boolean): void;
-  (e: 'saved'): void;
+  (e: "update:visible", value: boolean): void;
+  (e: "saved"): void;
 }>();
 
 // ================================================================
 // STATE
 // ================================================================
-
 const authStore = useAuthStore();
 
 const stores = ref<Store[]>([]);
@@ -505,12 +593,14 @@ const items = ref<Item[]>([]);
 const saving = ref(false);
 const isSearching = ref(false);
 const isLoadingMore = ref(false);
-const hasMoreItems = ref(true);
+const hasMoreItems = ref(false);
 const totalItems = ref(0);
 const searchPage = ref(1);
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
-const searchCache = ref<Map<string, { items: Item[]; total: number; page: number }>>(new Map());
+const searchCache = ref<
+  Map<string, { items: Item[]; total: number; page: number }>
+>(new Map());
 
 const userAssignedStoreId = ref<number | null>(null);
 const userAssignedStoreName = ref<string | null>(null);
@@ -520,13 +610,10 @@ const validationErrors = ref<any[]>([]);
 const validationMessage = ref<string>("");
 const showValidationErrors = ref(false);
 
-// 🔥 NEW: Departments state
 const loadingDepartments = ref(false);
-const applicableDepartments = ref<Array<{
-  departmentId: number;
-  name: string;
-  code: string;
-}>>([]);
+const applicableDepartments = ref<
+  Array<{ departmentId: number; name: string; code: string }>
+>([]);
 
 // ✅ Track which items are expanded
 const expandedItems = ref<Set<number>>(new Set());
@@ -534,14 +621,7 @@ const expandedItems = ref<Set<number>>(new Set());
 const form = ref({
   askingStoreId: "",
   supplyingStoreId: "",
-  items: [] as (RequestItem & { 
-    selectedUom?: 'base' | 'conversion';
-    uomCode?: string;
-    isBaseUom?: boolean;
-    specification?: string;
-    brand?: string;
-    model?: string;
-  })[],
+  items: [] as any[],
   requestedBy: "",
   requestedDate: "",
   status: "pending" as "pending" | "approved" | "rejected",
@@ -553,35 +633,48 @@ const formErrors = ref<string[]>([]);
 
 const selectedItemId = ref<string>("");
 const itemSearch = ref("");
-const selectedItems = ref<Map<number, { 
-  itemId: number; 
-  code: string; 
-  name: string; 
-  quantity: number;
-  remark: string;
-  conversionValue?: number;
-  selectedUom?: 'base' | 'conversion';
-  _baseUom?: string;
-  _convUom?: string;
-  specification?: string;
-  brand?: string;
-  model?: string;
-}>>(new Map());
+const selectedItems = ref<
+  Map<
+    number,
+    {
+      itemId: number;
+      code: string;
+      name: string;
+      quantity: number;
+      remark: string;
+      conversionValue?: number;
+      selectedUom?: "base" | "conversion";
+      _baseUom?: string;
+      _convUom?: string;
+      specification?: string;
+      brand?: string;
+      model?: string;
+    }
+  >
+>(new Map());
+
+// ================================================================
+// 🔥 REACTIVITY HELPER — forces Vue to detect Map changes
+// ================================================================
+const setSelectedItem = (itemId: number, item: any): void => {
+  selectedItems.value.set(itemId, item);
+  // Reassign the Map so Vue's reactivity system sees a new reference
+  selectedItems.value = new Map(selectedItems.value);
+};
 
 // ================================================================
 // COMPUTED
 // ================================================================
-
-const activeStores = computed(() => {
-  return stores.value.filter((store) => store.status === "Active");
-});
+const activeStores = computed(() =>
+  stores.value.filter((s) => s.status === "Active")
+);
 
 const filteredSupplyingStores = computed(() => {
   let result = activeStores.value;
   if (form.value.askingStoreId) {
     result = result.filter(
       (store) =>
-        (store.storeId || store.id) !== Number(form.value.askingStoreId),
+        (store.storeId || store.id) !== Number(form.value.askingStoreId)
     );
   }
   return result;
@@ -589,81 +682,80 @@ const filteredSupplyingStores = computed(() => {
 
 const itemMap = computed(() => {
   const map = new Map<number, Item>();
-  
-  items.value.forEach(item => {
+
+  items.value.forEach((item) => {
     const id = Number(item.itemId ?? item.id);
-    if (id > 0) {
-      map.set(id, item);
-    }
+    if (id > 0) map.set(id, item);
   });
-  
+
   selectedItems.value.forEach((selected, id) => {
     if (!map.has(id)) {
       map.set(id, {
-        id: id,
+        id,
         itemId: id,
-        code: selected.code || 'N/A',
-        name: selected.name || 'Unknown',
-        standardName: selected.name || '',
-        uom: { code: selected._baseUom || 'N/A' },
-        conversionUom: { code: selected._convUom || 'N/A' },
+        code: selected.code || "N/A",
+        name: selected.name || "Unknown",
+        standardName: selected.name || "",
+        uom: { code: selected._baseUom || "N/A" },
+        conversionUom: { code: selected._convUom || "N/A" },
         conversionValue: selected.conversionValue || 1,
-        specText: selected.specification || '',
-        brand: selected.brand || '',
-        model: selected.model || '',
+        specText: selected.specification || "",
+        brand: selected.brand || "",
+        model: selected.model || "",
       } as any);
     }
   });
-  
+
   if (props.editingRequest && props.editingRequest.items) {
     props.editingRequest.items.forEach((item: any) => {
       const id = Number(item.itemId || item.id || 0);
       if (id > 0 && !map.has(id)) {
-        const baseUom = item.uom_code || item.uomCode || item.uom?.code || 'N/A';
-        const convUom = item.conversion_uom_code || item.conversionUomCode || item.conversionUom?.code || 'N/A';
-        
+        const baseUom = item.uom_code || item.uomCode || item.uom?.code || "N/A";
+        const convUom =
+          item.conversion_uom_code ||
+          item.conversionUomCode ||
+          item.conversionUom?.code ||
+          "N/A";
         map.set(id, {
-          id: id,
+          id,
           itemId: id,
-          code: item.code || item.itemCode || 'N/A',
-          name: item.name || item.itemName || 'Unknown',
-          standardName: item.standardName || '',
+          code: item.code || item.itemCode || "N/A",
+          name: item.name || item.itemName || "Unknown",
+          standardName: item.standardName || "",
           uom: { code: baseUom },
           conversionUom: { code: convUom },
           conversionValue: item.conversionValue || 1,
-          specText: item.specification || item.specText || '',
-          brand: item.brand || '',
-          model: item.model || '',
+          specText: item.specification || item.specText || "",
+          brand: item.brand || "",
+          model: item.model || "",
         } as any);
       }
     });
   }
-  
+
   return map;
 });
 
 const selectedItemsList = computed(() => {
-  return Array.from(selectedItems.value.values()).map(item => {
+  return Array.from(selectedItems.value.values()).map((item) => {
     const fullItem = itemMap.value.get(item.itemId);
     if (fullItem) {
-      const updatedItem = {
+      const updated = {
         ...item,
         _baseUom: getBaseUOM(fullItem),
         _convUom: getConversionUOM(fullItem),
         conversionValue: fullItem.conversionValue || 1,
-        specification: item.specification || (fullItem as any).specText || '',
-        brand: item.brand || (fullItem as any).brand || '',
-        model: item.model || (fullItem as any).model || '',
+        specification: item.specification || (fullItem as any).specText || "",
+        brand: item.brand || (fullItem as any).brand || "",
+        model: item.model || (fullItem as any).model || "",
       };
-      
-      if (fullItem.code && (item.code === 'N/A' || item.code === '')) {
-        updatedItem.code = fullItem.code;
+      if (fullItem.code && (item.code === "N/A" || item.code === "")) {
+        updated.code = fullItem.code;
       }
-      if (fullItem.name && (item.name === 'Unknown' || item.name === '')) {
-        updatedItem.name = fullItem.standardName || fullItem.name;
+      if (fullItem.name && (item.name === "Unknown" || item.name === "")) {
+        updated.name = fullItem.standardName || fullItem.name;
       }
-      
-      return updatedItem;
+      return updated;
     }
     return item;
   });
@@ -671,144 +763,109 @@ const selectedItemsList = computed(() => {
 
 const isFormValid = computed(() => {
   if (selectedItemsList.value.length === 0) return false;
-  const allValid = selectedItemsList.value.every(item => item.quantity > 0);
+  const allValid = selectedItemsList.value.every((item) => item.quantity > 0);
   if (!allValid) return false;
-  return !!((( 
+  return !!(
     form.value.askingStoreId &&
     form.value.supplyingStoreId &&
     form.value.requestedBy &&
     form.value.requestedDate
-  )));
+  );
 });
 
 // ================================================================
-// UOM HELPER METHODS
+// UOM HELPERS
 // ================================================================
-
 const getBaseUOM = (item: any): string => {
-  if (!item) return 'N/A';
-  
+  if (!item) return "N/A";
   if (item._baseUom) return item._baseUom;
   if (item.baseUom) return item.baseUom;
-  
+
   let target = item;
   if (item.itemId) {
-    const cachedItem = itemMap.value.get(item.itemId);
-    if (cachedItem) {
-      target = cachedItem;
-    }
+    const cached = itemMap.value.get(item.itemId);
+    if (cached) target = cached;
   }
-  
+
   if (target.uom) {
-    if (typeof target.uom === 'object' && target.uom.code) {
-      return target.uom.code;
-    }
-    if (typeof target.uom === 'string') return target.uom;
+    if (typeof target.uom === "object" && target.uom.code) return target.uom.code;
+    if (typeof target.uom === "string") return target.uom;
   }
-  
   if (target.uomCode) return target.uomCode;
   if (target.uom_code) return target.uom_code;
-  
-  return 'N/A';
+  return "N/A";
 };
 
 const getConversionUOM = (item: any): string => {
-  if (!item) return 'N/A';
-  
+  if (!item) return "N/A";
   if (item._convUom) return item._convUom;
   if (item.convUom) return item.convUom;
-  
+
   let target = item;
   if (item.itemId) {
-    const cachedItem = itemMap.value.get(item.itemId);
-    if (cachedItem) {
-      target = cachedItem;
-    }
+    const cached = itemMap.value.get(item.itemId);
+    if (cached) target = cached;
   }
-  
+
   if (target.conversionUom) {
-    if (typeof target.conversionUom === 'object' && target.conversionUom.code) {
+    if (typeof target.conversionUom === "object" && target.conversionUom.code)
       return target.conversionUom.code;
-    }
-    if (typeof target.conversionUom === 'string') return target.conversionUom;
+    if (typeof target.conversionUom === "string") return target.conversionUom;
   }
-  
   if (target.conversionUomCode) return target.conversionUomCode;
   if (target.conversion_uom_code) return target.conversion_uom_code;
-  
+
   if (target.conversionUomId) {
     for (const i of items.value) {
       if (i.uom && i.uom.uomId === target.conversionUomId) {
-        return i.uom.code || i.uom.name || 'N/A';
+        return i.uom.code || i.uom.name || "N/A";
       }
       if (i.conversionUom && i.conversionUom.uomId === target.conversionUomId) {
-        return i.conversionUom.code || i.conversionUom.name || 'N/A';
+        return i.conversionUom.code || i.conversionUom.name || "N/A";
       }
     }
   }
-  
-  return 'N/A';
+  return "N/A";
 };
 
 const getSelectedUomLabel = (item: any): string => {
-  if (item.selectedUom === 'conversion') {
-    const convUom = getConversionUOM(item);
-    return convUom !== 'N/A' ? convUom : getBaseUOM(item);
+  if (item.selectedUom === "conversion") {
+    const conv = getConversionUOM(item);
+    return conv !== "N/A" ? conv : getBaseUOM(item);
   }
   return getBaseUOM(item);
 };
 
 // ================================================================
-// 🔥 DEPARTMENT HELPERS
+// DEPARTMENT HELPERS
 // ================================================================
-
-/**
- * Get the asking store's code from the loaded stores list.
- */
 const getAskingStoreCode = (): string => {
-  if (!form.value.askingStoreId) return 'N/A';
+  if (!form.value.askingStoreId) return "N/A";
   const store = stores.value.find(
     (s) => String(s.storeId || s.id) === String(form.value.askingStoreId)
   );
-  return store?.code || 'N/A';
+  return store?.code || "N/A";
 };
 
-/**
- * Load the approval department config and filter to only the
- * departments that apply to the asking store's code.
- *
- * The backend stores the config in SystemSetting with key 'approval.department'.
- * Each entry has: { departmentId, appliesTo: string[] }
- */
-/**
- * Load the departments that need to approve requests for the
- * current asking store.
- */
 const loadApplicableDepartments = async (): Promise<void> => {
   loadingDepartments.value = true;
   applicableDepartments.value = [];
 
   try {
     const storeCode = getAskingStoreCode();
+    if (!storeCode || storeCode === "N/A") return;
 
-    if (!storeCode || storeCode === 'N/A') {
-      console.log('ℹ️ No asking store code — cannot fetch departments');
-      return;
-    }
+    const response =
+      await itemRequestService.getApprovalDepartmentsForStore(storeCode);
 
-    console.log(`📤 Fetching approval departments for store: ${storeCode}`);
-
-    const response = await itemRequestService.getApprovalDepartmentsForStore(storeCode);
-
-    if (!response.success || !response.data) {
-      console.warn('⚠️ Failed to fetch departments:', response.error);
-      return;
-    }
+    if (!response.success || !response.data) return;
 
     const data = response.data;
-
-    if (!data.requiresApproval || !data.departments || data.departments.length === 0) {
-      console.log(`ℹ️ No approval departments for store ${storeCode}`);
+    if (
+      !data.requiresApproval ||
+      !data.departments ||
+      data.departments.length === 0
+    ) {
       return;
     }
 
@@ -817,22 +874,16 @@ const loadApplicableDepartments = async (): Promise<void> => {
       name: d.name,
       code: d.code,
     }));
-
-    console.log(
-      `✅ Loaded ${applicableDepartments.value.length} department(s):`,
-      applicableDepartments.value
-    );
   } catch (error: any) {
-    console.warn('⚠️ Failed to load approval departments:', error);
+    console.warn("⚠️ Failed to load approval departments:", error);
   } finally {
     loadingDepartments.value = false;
   }
 };
 
 // ================================================================
-// COLLAPSIBLE FUNCTIONS
+// COLLAPSE / EXPAND
 // ================================================================
-
 const toggleItemExpand = (itemId: number): void => {
   if (expandedItems.value.has(itemId)) {
     expandedItems.value.delete(itemId);
@@ -845,12 +896,15 @@ const toggleItemExpand = (itemId: number): void => {
 // ================================================================
 // SERVER-SIDE SEARCH
 // ================================================================
-
-const loadItems = async (searchQuery: string = "", page: number = 1, append: boolean = false) => {
+const loadItems = async (
+  searchQuery = "",
+  page = 1,
+  append = false
+): Promise<void> => {
   try {
-    const trimmedQuery = searchQuery.trim();
-    
-    if (!trimmedQuery && !append) {
+    const trimmed = searchQuery.trim();
+
+    if (!trimmed && !append) {
       items.value = [];
       hasMoreItems.value = false;
       totalItems.value = 0;
@@ -858,13 +912,10 @@ const loadItems = async (searchQuery: string = "", page: number = 1, append: boo
       return;
     }
 
-    if (page === 1) {
-      isSearching.value = true;
-    } else {
-      isLoadingMore.value = true;
-    }
+    if (page === 1) isSearching.value = true;
+    else isLoadingMore.value = true;
 
-    const cacheKey = `${trimmedQuery}_${page}`;
+    const cacheKey = `${trimmed}_${page}`;
     if (page === 1 && searchCache.value.has(cacheKey) && !append) {
       const cached = searchCache.value.get(cacheKey)!;
       items.value = cached.items;
@@ -876,25 +927,29 @@ const loadItems = async (searchQuery: string = "", page: number = 1, append: boo
     }
 
     const response = await itemRequestService.getActiveItems({
-      search: trimmedQuery,
-      page: page,
-      limit: 20
+      search: trimmed,
+      page,
+      limit: 20,
     });
 
     if (response.success) {
       const responseItems = response.data || [];
       const pagination = response.pagination;
-      
+
       if (append) {
-        const existingIds = new Set(items.value.map(i => Number(i.itemId ?? i.id)));
-        const newItems = responseItems.filter(i => !existingIds.has(Number(i.itemId ?? i.id)));
+        const existingIds = new Set(
+          items.value.map((i) => Number(i.itemId ?? i.id))
+        );
+        const newItems = responseItems.filter(
+          (i) => !existingIds.has(Number(i.itemId ?? i.id))
+        );
         items.value = [...items.value, ...newItems];
       } else {
         items.value = responseItems;
         searchCache.value.set(cacheKey, {
           items: responseItems,
           total: pagination?.total || 0,
-          page: page
+          page,
         });
       }
 
@@ -905,12 +960,10 @@ const loadItems = async (searchQuery: string = "", page: number = 1, append: boo
       } else {
         hasMoreItems.value = false;
       }
-    } else {
-      if (!append) {
-        items.value = [];
-        hasMoreItems.value = false;
-        totalItems.value = 0;
-      }
+    } else if (!append) {
+      items.value = [];
+      hasMoreItems.value = false;
+      totalItems.value = 0;
     }
   } catch (error) {
     console.error("Load items error:", error);
@@ -920,20 +973,17 @@ const loadItems = async (searchQuery: string = "", page: number = 1, append: boo
       totalItems.value = 0;
     }
   } finally {
-    if (page === 1) {
-      isSearching.value = false;
-    } else {
-      isLoadingMore.value = false;
-    }
+    if (page === 1) isSearching.value = false;
+    else isLoadingMore.value = false;
   }
 };
 
 const loadMoreItems = async () => {
   if (isLoadingMore.value || !hasMoreItems.value) return;
   const nextPage = searchPage.value + 1;
-  const trimmedQuery = itemSearch.value.trim();
-  if (!trimmedQuery) return;
-  await loadItems(trimmedQuery, nextPage, true);
+  const trimmed = itemSearch.value.trim();
+  if (!trimmed) return;
+  await loadItems(trimmed, nextPage, true);
 };
 
 const clearSearch = () => {
@@ -942,18 +992,15 @@ const clearSearch = () => {
 };
 
 // ================================================================
-// WATCH: Search with Debounce
+// WATCHERS
 // ================================================================
-
 watch(itemSearch, (newQuery) => {
   if (searchTimeout) {
     clearTimeout(searchTimeout);
     searchTimeout = null;
   }
-
-  const trimmedQuery = newQuery.trim();
-
-  if (!trimmedQuery) {
+  const trimmed = newQuery.trim();
+  if (!trimmed) {
     items.value = [];
     hasMoreItems.value = false;
     totalItems.value = 0;
@@ -961,33 +1008,28 @@ watch(itemSearch, (newQuery) => {
     searchCache.value.clear();
     return;
   }
-
-  searchTimeout = setTimeout(() => {
-    loadItems(trimmedQuery, 1, false);
-  }, 500);
+  searchTimeout = setTimeout(() => loadItems(trimmed, 1, false), 500);
 });
 
-// 🔥 Watch: Reload departments when asking store changes
-watch(() => form.value.askingStoreId, () => {
-  if (form.value.isAsset) {
-    loadApplicableDepartments();
+watch(
+  () => form.value.askingStoreId,
+  () => {
+    if (form.value.isAsset) loadApplicableDepartments();
   }
-});
+);
 
-// 🔥 Watch: Load departments when checkbox is toggled on
-watch(() => form.value.isAsset, (newVal) => {
-  if (newVal) {
-    loadApplicableDepartments();
+watch(
+  () => form.value.isAsset,
+  (newVal) => {
+    if (newVal) loadApplicableDepartments();
   }
-});
+);
 
 // ================================================================
-// ITEM SELECTION METHODS
+// ITEM SELECTION
 // ================================================================
-
-const getItemId = (item: any): number => {
-  return Number(item?.itemId ?? item?.id ?? 0);
-};
+const getItemId = (item: any): number =>
+  Number(item?.itemId ?? item?.id ?? 0);
 
 const isItemAlreadySelected = (item: any): boolean => {
   const id = getItemId(item);
@@ -996,58 +1038,47 @@ const isItemAlreadySelected = (item: any): boolean => {
 
 const isItemAlreadySelectedById = (id: string | number): boolean => {
   const numericId = Number(id);
-  if (!Number.isFinite(numericId) || numericId <= 0) {
-    return false;
-  }
+  if (!Number.isFinite(numericId) || numericId <= 0) return false;
   return selectedItems.value.has(numericId);
 };
 
 const onItemSelect = (): void => {};
 
 // ================================================================
-// UPDATE ITEM FIELD
+// ITEM FIELD UPDATES
 // ================================================================
-
-const updateItemField = (itemId: number, field: string, value: string): void => {
+const updateItemField = (
+  itemId: number,
+  field: string,
+  value: string
+): void => {
   const item = selectedItems.value.get(itemId);
-  if (!item) {
-    console.warn(`⚠️ Item ${itemId} not found in selectedItems`);
-    return;
-  }
-  
-  const validFields = ['specification', 'brand', 'model', 'remark'];
-  if (!validFields.includes(field)) {
-    console.warn(`⚠️ Invalid field: ${field}`);
-    return;
-  }
-  
-  const updatedItem = {
-    ...item,
-    [field]: value,
-  };
-  
-  selectedItems.value.set(itemId, updatedItem);
+  if (!item) return;
+
+  const validFields = ["specification", "brand", "model", "remark"];
+  if (!validFields.includes(field)) return;
+
+  setSelectedItem(itemId, { ...item, [field]: value });
   syncSelectedItemsToForm();
 };
 
 const updateQuantity = (itemId: number, value: string): void => {
   const item = selectedItems.value.get(itemId);
   if (!item) return;
-  
+
   let newQty = parseFloat(value);
   if (isNaN(newQty) || newQty < 0.01) newQty = 0.01;
   newQty = Math.round(newQty * 100) / 100;
-  
-  selectedItems.value.set(itemId, { ...item, quantity: newQty });
+
+  setSelectedItem(itemId, { ...item, quantity: newQty });
   syncSelectedItemsToForm();
 };
 
 const onUomChange = (item: any): void => {
-  item.quantity = 1;
   const existing = selectedItems.value.get(item.itemId);
   if (existing) {
-    selectedItems.value.set(item.itemId, { 
-      ...existing, 
+    setSelectedItem(item.itemId, {
+      ...existing,
       selectedUom: item.selectedUom,
       quantity: 1,
     });
@@ -1056,9 +1087,8 @@ const onUomChange = (item: any): void => {
 };
 
 // ================================================================
-// ADD SELECTED ITEM
+// ADD ITEM
 // ================================================================
-
 const addSelectedItem = (): void => {
   if (!selectedItemId.value) return;
 
@@ -1066,31 +1096,22 @@ const addSelectedItem = (): void => {
   if (!Number.isFinite(id) || id <= 0) return;
   if (selectedItems.value.has(id)) return;
 
-  const item = items.value.find(
-    i => Number(i.itemId ?? i.id) === id
-  );
-
+  const item = items.value.find((i) => Number(i.itemId ?? i.id) === id);
   if (!item) return;
 
-  const baseUom = getBaseUOM(item);
-  const convUom = getConversionUOM(item);
-  const specText = (item as any).specText || '';
-  const brand = (item as any).brand || '';
-  const model = (item as any).model || '';
-
-  selectedItems.value.set(id, {
+  setSelectedItem(id, {
     itemId: id,
     code: item.code || "",
     name: item.standardName || item.name || "Unknown",
     quantity: 1,
     remark: "",
     conversionValue: (item as any).conversionValue ?? 1,
-    selectedUom: 'base',
-    _baseUom: baseUom,
-    _convUom: convUom,
-    specification: specText || '',
-    brand: brand || '',
-    model: model || '',
+    selectedUom: "base",
+    _baseUom: getBaseUOM(item),
+    _convUom: getConversionUOM(item),
+    specification: (item as any).specText || "",
+    brand: (item as any).brand || "",
+    model: (item as any).model || "",
   });
 
   selectedItemId.value = "";
@@ -1098,87 +1119,82 @@ const addSelectedItem = (): void => {
 };
 
 // ================================================================
-// ITEM MANAGEMENT METHODS
+// ITEM MANAGEMENT
 // ================================================================
-
 const adjustQuantity = (itemId: number, delta: number): void => {
   const item = selectedItems.value.get(itemId);
   if (!item) return;
-  
+
   let newQty = Math.round((item.quantity + delta) * 100) / 100;
   if (newQty < 0.01) newQty = 0.01;
-  
-  selectedItems.value.set(itemId, { ...item, quantity: newQty });
+
+  setSelectedItem(itemId, { ...item, quantity: newQty });
   syncSelectedItemsToForm();
 };
 
 const removeSelectedItem = (itemId: number): void => {
   selectedItems.value.delete(itemId);
+  selectedItems.value = new Map(selectedItems.value);
+
   expandedItems.value.delete(itemId);
+  expandedItems.value = new Set(expandedItems.value);
+
   syncSelectedItemsToForm();
 };
 
 const clearAllItems = (): void => {
   if (selectedItemsList.value.length === 0) return;
   if (confirm("Remove all items from this request?")) {
-    selectedItems.value.clear();
-    expandedItems.value.clear();
+    selectedItems.value = new Map();
+    expandedItems.value = new Set();
     syncSelectedItemsToForm();
   }
 };
 
 // ================================================================
-// SYNC SELECTED ITEMS TO FORM
+// SYNC TO FORM
 // ================================================================
-
 const syncSelectedItemsToForm = (): void => {
-  const items = Array.from(selectedItems.value.values()).map(item => {
+  const items = Array.from(selectedItems.value.values()).map((item) => {
     const baseUom = getBaseUOM(item);
     const convUom = getConversionUOM(item);
-    
-    let uomCode = '';
+
+    let uomCode = "";
     let isBaseUom = true;
-    
-    if (item.selectedUom === 'conversion' && convUom !== 'N/A') {
+
+    if (item.selectedUom === "conversion" && convUom !== "N/A") {
       uomCode = convUom;
       isBaseUom = false;
     } else {
       uomCode = baseUom;
       isBaseUom = true;
     }
-    
+
     return {
       itemId: item.itemId,
       quantity: item.quantity,
       remark: item.remark || "",
-      selectedUom: item.selectedUom || 'base',
-      uomCode: uomCode,
-      isBaseUom: isBaseUom,
+      selectedUom: item.selectedUom || "base",
+      uomCode,
+      isBaseUom,
       specification: item.specification || "",
       brand: item.brand || "",
       model: item.model || "",
     };
   });
-  
   form.value.items = items as any;
 };
 
 // ================================================================
-// HELPER METHODS
+// HELPERS
 // ================================================================
+const getCurrentUser = (): string =>
+  authStore.user?.fullName ||
+  authStore.user?.username ||
+  authStore.user?.email ||
+  "Unknown User";
 
-const getCurrentUser = (): string => {
-  return (
-    authStore.user?.fullName ||
-    authStore.user?.username ||
-    authStore.user?.email ||
-    "Unknown User"
-  );
-};
-
-const getCurrentUserId = (): number | undefined => {
-  return authStore.user?.userId;
-};
+const getCurrentUserId = (): number | undefined => authStore.user?.userId;
 
 const closeValidationErrors = (): void => {
   showValidationErrors.value = false;
@@ -1187,48 +1203,170 @@ const closeValidationErrors = (): void => {
 };
 
 // ================================================================
-// DATA LOADING
+// LOAD USER + STORES
 // ================================================================
-
-const loadUserData = () => {
+const loadUserData = (): void => {
   const user = authStore.user;
   if (!user) return;
-  
+
   const userData = user as any;
-  userIsAdmin.value = userData.isAdmin || user.role === "admin" || user.role === "Admin";
-  
+  userIsAdmin.value =
+    userData.isAdmin || user.role === "admin" || user.role === "Admin";
+
   let storeId = authStore.userStoreId;
-  
   if (!storeId) {
-    storeId = userData.storeId || 
-              userData.assignedStore?.id || 
-              userData.currentStore?.id ||
-              userData.store?.id ||
-              null;
+    storeId =
+      userData.storeId ||
+      userData.assignedStore?.id ||
+      userData.currentStore?.id ||
+      userData.store?.id ||
+      null;
   }
-  
+
   if (storeId) {
     userAssignedStoreId.value = storeId;
-    userAssignedStoreName.value = userData.storeName || userData.assignedStore?.name || userData.currentStore?.name || 'Assigned Store';
-    form.value.askingStoreId = String(storeId);
+    userAssignedStoreName.value =
+      userData.storeName ||
+      userData.assignedStore?.name ||
+      userData.currentStore?.name ||
+      "Assigned Store";
+    // Only set askingStoreId on NEW request — initializeForm handles editing
+    if (!props.editingRequest) {
+      form.value.askingStoreId = String(storeId);
+    }
   }
 };
 
-const loadStores = async () => {
+const loadStores = async (): Promise<void> => {
   try {
     const response = await itemRequestService.getActiveStores();
-    if (response.success) {
-      stores.value = response.data;
-    }
+    if (response.success) stores.value = response.data;
   } catch (error) {
     console.error("Load stores error:", error);
   }
 };
 
 // ================================================================
+// 🔥 ATOMIC INITIALIZE FORM
+// ================================================================
+const initializeForm = (): void => {
+  const today: string = new Date().toISOString().split("T")[0] || "";
+
+  const newMap = new Map<number, any>();
+  const newExpanded = new Set<number>();
+
+  applicableDepartments.value = [];
+
+  if (props.editingRequest) {
+    const req = props.editingRequest;
+    const requestedDate: string = String(req.requestedDate || today);
+
+    (req.items || []).forEach((item: any) => {
+      const itemId = Number(item.itemId || item.id || 0);
+      if (itemId <= 0) return;
+
+      const baseUom =
+        item.uom_code || item.item?.uom?.code || item.uomCode || "N/A";
+      const convUom =
+        item.conversion_uom_code ||
+        item.item?.conversionUom?.code ||
+        item.conversionUomCode ||
+        "N/A";
+
+      const remark = item.remark || "";
+      const specification =
+        item.specification || item.item?.specText || item.specText || "";
+      const brand = item.brand || item.item?.brand || "";
+      const model = item.model || item.item?.model || "";
+
+      newMap.set(itemId, {
+        itemId,
+        code: item.item?.code || item.itemCode || item.code || "N/A",
+        name:
+          item.item?.name ||
+          item.itemName ||
+          item.name ||
+          "Unknown",
+        quantity: Number(item.quantity) || 1,
+        remark,
+        conversionValue: item.conversionValue || 1,
+        selectedUom: item.selected_uom || "base",
+        _baseUom: baseUom,
+        _convUom: convUom,
+        specification,
+        brand,
+        model,
+      });
+
+      // Auto-expand rows that already have content
+      if (remark || specification || brand || model) {
+        newExpanded.add(itemId);
+      }
+    });
+
+    form.value = {
+      askingStoreId: String(
+        req.askingStoreId || userAssignedStoreId.value || ""
+      ),
+      supplyingStoreId: String(req.supplyingStoreId || ""),
+      items: (req.items || []).map((item: any) => ({
+        itemId: Number(item.itemId || item.id || 0),
+        quantity: item.quantity || 1,
+        remark: item.remark || "",
+        selectedUom: item.selected_uom || "base",
+        uomCode: item.uom_code || item.uomCode || "",
+        isBaseUom: item.is_base_uom !== false,
+        specification: item.specification || item.item?.specText || "",
+        brand: item.brand || item.item?.brand || "",
+        model: item.model || item.item?.model || "",
+      })),
+      requestedBy:
+        req.requestedBy ||
+        req.requestedByUser?.fullName ||
+        req.requestedByUser?.username ||
+        getCurrentUser(),
+      requestedDate,
+      status: "pending",
+      remark: req.remark || "",
+      isAsset: (req as any).isAsset || false,
+    };
+
+    if (form.value.isAsset) {
+      setTimeout(() => loadApplicableDepartments(), 100);
+    }
+  } else {
+    form.value = {
+      askingStoreId: String(userAssignedStoreId.value || ""),
+      supplyingStoreId: "",
+      items: [],
+      requestedBy: getCurrentUser(),
+      requestedDate: today,
+      status: "pending",
+      remark: "",
+      isAsset: false,
+    };
+  }
+
+  // 🔥 Atomic assignment — triggers reactivity exactly once
+  selectedItems.value = newMap;
+  expandedItems.value = newExpanded;
+
+  selectedItemId.value = "";
+  itemSearch.value = "";
+  items.value = [];
+  searchCache.value.clear();
+  hasMoreItems.value = false;
+  totalItems.value = 0;
+  searchPage.value = 1;
+  formErrors.value = [];
+  closeValidationErrors();
+
+  syncSelectedItemsToForm();
+};
+
+// ================================================================
 // SAVE REQUEST
 // ================================================================
-
 const saveRequest = async (): Promise<void> => {
   closeValidationErrors();
   formErrors.value = [];
@@ -1242,78 +1380,51 @@ const saveRequest = async (): Promise<void> => {
     formErrors.value.push("Please select the supplying store");
   }
   if (form.value.askingStoreId === form.value.supplyingStoreId) {
-    formErrors.value.push("Asking store and supplying store cannot be the same");
+    formErrors.value.push(
+      "Asking store and supplying store cannot be the same"
+    );
   }
   if (form.value.items.length === 0) {
     formErrors.value.push("Please add at least one item");
   }
 
-  const itemIds = form.value.items.map(item => item.itemId).filter(id => id && id !== 0);
-  const duplicateIds = itemIds.filter((id, index) => itemIds.indexOf(id) !== index);
-  
+  const itemIds = form.value.items
+    .map((item: any) => item.itemId)
+    .filter((id: any) => id && id !== 0);
+  const duplicateIds = itemIds.filter(
+    (id: number, index: number) => itemIds.indexOf(id) !== index
+  );
+
   if (duplicateIds.length > 0) {
-    const duplicateItems = form.value.items.filter(item => 
+    const dupItems = form.value.items.filter((item: any) =>
       duplicateIds.includes(item.itemId)
     );
-    
-    duplicateItems.forEach(item => {
-      const selectedItem = selectedItems.value.get(item.itemId);
-      
-      let itemName = 'Unknown Item';
-      let itemCode = 'N/A';
-      
-      if (selectedItem) {
-        itemName = selectedItem.name || 'Unknown Item';
-        itemCode = selectedItem.code || 'N/A';
-      } else {
-        const fullItem = itemMap.value.get(item.itemId);
-        if (fullItem) {
-          itemName = fullItem.standardName || fullItem.name || 'Unknown Item';
-          itemCode = fullItem.code || 'N/A';
-        }
-      }
-      
-      formErrors.value.push(
-        `⚠️ "${itemName}" (${itemCode}) is already added.`
-      );
-    });
-    
-    validationErrors.value = duplicateItems.map(item => {
-      const selectedItem = selectedItems.value.get(item.itemId);
-      let itemName = 'Unknown Item';
-      let itemCode = 'N/A';
-      
-      if (selectedItem) {
-        itemName = selectedItem.name || 'Unknown Item';
-        itemCode = selectedItem.code || 'N/A';
-      } else {
-        const fullItem = itemMap.value.get(item.itemId);
-        if (fullItem) {
-          itemName = fullItem.standardName || fullItem.name || 'Unknown Item';
-          itemCode = fullItem.code || 'N/A';
-        }
-      }
-      
+
+    validationErrors.value = dupItems.map((item: any) => {
+      const selected = selectedItems.value.get(item.itemId);
       return {
         itemId: item.itemId,
-        itemName: itemName,
-        itemCode: itemCode,
+        itemName: selected?.name || "Unknown Item",
+        itemCode: selected?.code || "N/A",
         requestedQuantity: item.quantity,
-        message: 'This item is already added to the request. Please remove the duplicate entry.'
+        message:
+          "This item is already added to the request. Please remove the duplicate entry.",
       };
     });
-    
-    validationMessage.value = 'Duplicate items found in the request.';
+
+    validationMessage.value = "Duplicate items found in the request.";
     showValidationErrors.value = true;
     return;
   }
 
-  form.value.items.forEach((item, index) => {
+  form.value.items.forEach((item: any, index: number) => {
     if (!item.itemId) {
       formErrors.value.push(`Item #${index + 1}: Please select an item`);
     }
     if (!item.quantity || item.quantity <= 0) {
-      formErrors.value.push(`Item #${index + 1}: Please enter a valid quantity`);
+      formErrors.value.push(
+        `Item #${index + 1}: Please enter a valid quantity`
+      );
     }
   });
 
@@ -1324,15 +1435,13 @@ const saveRequest = async (): Promise<void> => {
     formErrors.value.push("Please enter the requester name");
   }
 
-  if (formErrors.value.length > 0) {
-    return;
-  }
+  if (formErrors.value.length > 0) return;
 
   saving.value = true;
-  
+
   try {
     const userId = getCurrentUserId();
-    
+
     const requestData = {
       askingStoreId: Number(form.value.askingStoreId),
       supplyingStoreId: Number(form.value.supplyingStoreId),
@@ -1340,9 +1449,9 @@ const saveRequest = async (): Promise<void> => {
         itemId: Number(item.itemId),
         quantity: item.quantity,
         remark: item.remark || "",
-        selectedUom: item.selectedUom || 'base',
-        uomCode: item.uomCode || '',
-        isBaseUom: item.selectedUom !== 'conversion',
+        selectedUom: item.selectedUom || "base",
+        uomCode: item.uomCode || "",
+        isBaseUom: item.selectedUom !== "conversion",
         specification: item.specification || "",
         brand: item.brand || "",
         model: item.model || "",
@@ -1356,40 +1465,49 @@ const saveRequest = async (): Promise<void> => {
     };
 
     let response;
-    
     if (props.editingRequest) {
-      const requestId = props.editingRequest.requestId || props.editingRequest.id;
-      response = await itemRequestService.updateRequest(requestId!, requestData);
+      const requestId =
+        props.editingRequest.requestId || props.editingRequest.id;
+      response = await itemRequestService.updateRequest(
+        requestId!,
+        requestData
+      );
     } else {
       response = await itemRequestService.createRequest(requestData);
     }
-    
+
     if (response.success === true) {
-      emit('saved');
+      emit("saved");
       closeModal();
     } else {
       if (response.errors && response.errors.length > 0) {
         validationErrors.value = response.errors;
-        validationMessage.value = response.message || "Validation failed. Please fix the issues below.";
+        validationMessage.value =
+          response.message ||
+          "Validation failed. Please fix the issues below.";
         showValidationErrors.value = true;
       } else {
-        const errorMsg = response.error || response.message || 'Failed to save request';
-        if (errorMsg) {
-          console.error('Save error:', errorMsg);
-        }
-        emit('update:visible', false);
+        // 🔥 Show the error instead of closing silently
+        formErrors.value.push(
+          response.error || response.message || "Failed to save request"
+        );
+        console.error("❌ Save failed:", response);
       }
     }
   } catch (error: any) {
     console.error("Save request error:", error);
     const errorData = error.response?.data;
-    
+
     if (errorData && errorData.errors && errorData.errors.length > 0) {
       validationErrors.value = errorData.errors;
-      validationMessage.value = errorData.message || "Validation failed. Please fix the issues below.";
+      validationMessage.value =
+        errorData.message ||
+        "Validation failed. Please fix the issues below.";
       showValidationErrors.value = true;
     } else {
-      formErrors.value.push(errorData?.error || error.message || 'Failed to save request');
+      formErrors.value.push(
+        errorData?.error || error.message || "Failed to save request"
+      );
     }
   } finally {
     saving.value = false;
@@ -1399,15 +1517,13 @@ const saveRequest = async (): Promise<void> => {
 // ================================================================
 // MODAL CONTROLS
 // ================================================================
-
 const closeModal = (): void => {
-  emit('update:visible', false);
+  emit("update:visible", false);
 };
 
 // ================================================================
 // CLEANUP
 // ================================================================
-
 onBeforeUnmount(() => {
   if (searchTimeout) {
     clearTimeout(searchTimeout);
@@ -1416,159 +1532,23 @@ onBeforeUnmount(() => {
 });
 
 // ================================================================
-// INITIALIZE FORM
+// 🔥 WATCH — reacts to BOTH visible AND editingRequest
 // ================================================================
-
-const initializeForm = () => {
-  const today: string = new Date().toISOString().split("T")[0] || "";
-  
-  selectedItems.value.clear();
-  expandedItems.value.clear();
-  applicableDepartments.value = [];
-  
-  if (props.editingRequest) {
-    const req = props.editingRequest;
-    const requestedDate: string = String(req.requestedDate || today);
-    
-    if (req.items && req.items.length > 0) {
-      req.items.forEach((item: any) => {
-        const itemId = Number(item.itemId || item.id || 0);
-        
-        if (itemId > 0) {
-          const baseUom = item.uom_code || 
-                          item.item?.uom?.code || 
-                          item.uomCode || 
-                          'N/A';
-          
-          const convUom = item.conversion_uom_code || 
-                          item.item?.conversionUom?.code || 
-                          item.conversionUomCode || 
-                          'N/A';
-          
-          const specification = item.specification || 
-                               item.item?.specText || 
-                               item.specText || 
-                               '';
-          
-          const brand = item.brand || 
-                       item.item?.brand || 
-                       '';
-          
-          const model = item.model || 
-                       item.item?.model || 
-                       '';
-          
-          const itemName = item.item?.name || 
-                          item.itemName || 
-                          item.name || 
-                          'Unknown';
-          
-          const itemCode = item.item?.code || 
-                          item.itemCode || 
-                          item.code || 
-                          'N/A';
-          
-          selectedItems.value.set(itemId, {
-            itemId: itemId,
-            code: itemCode,
-            name: itemName,
-            quantity: Number(item.quantity) || 1,
-            remark: item.remark || "",
-            conversionValue: item.conversionValue || 1,
-            selectedUom: item.selected_uom || 'base',
-            _baseUom: baseUom,
-            _convUom: convUom,
-            specification: specification,
-            brand: brand,
-            model: model,
-          });
-        }
-      });
-    }
-    
-    form.value = {
-      askingStoreId: String(req.askingStoreId || userAssignedStoreId.value || ""),
-      supplyingStoreId: String(req.supplyingStoreId || ""),
-      items: req.items ? req.items.map((item: any) => ({
-        itemId: Number(item.itemId || item.id || 0),
-        quantity: item.quantity || 1,
-        remark: item.remark || "",
-        selectedUom: item.selected_uom || 'base',
-        uomCode: item.uom_code || item.uomCode || '',
-        isBaseUom: item.is_base_uom !== false,
-        specification: item.specification || item.item?.specText || '',
-        brand: item.brand || item.item?.brand || '',
-        model: item.model || item.item?.model || '',
-      })) : [],
-      requestedBy: req.requestedBy || 
-             req.requestedByUser?.fullName || 
-             req.requestedByUser?.username || 
-             getCurrentUser(),
-      requestedDate: requestedDate,
-      status: "pending",
-      remark: req.remark || "",
-      isAsset: (req as any).isAsset || false,
-    };
-    
-    // 🔥 If editing an asset request, load departments immediately
-    if (form.value.isAsset) {
-      setTimeout(() => loadApplicableDepartments(), 100);
-    }
-    
-  } else {
-    form.value = {
-      askingStoreId: String(userAssignedStoreId.value || ""),
-      supplyingStoreId: "",
-      items: [],
-      requestedBy: getCurrentUser(),
-      requestedDate: today,
-      status: "pending",
-      remark: "",
-      isAsset: false,
-    };
-    selectedItems.value.clear();
-  }
-  
-  selectedItemId.value = "";
-  itemSearch.value = "";
-  items.value = [];
-  searchCache.value.clear();
-  hasMoreItems.value = false;
-  totalItems.value = 0;
-  searchPage.value = 1;
-  formErrors.value = [];
-  closeValidationErrors();
-  
-  syncSelectedItemsToForm();
-};
-
-// ================================================================
-// LIFECYCLE
-// ================================================================
-
 watch(
-  () => props.visible,
-  (newVal) => {
-    if (newVal) {
+  () => [props.visible, props.editingRequest],
+  ([visible]) => {
+    if (visible) {
       loadUserData();
       loadStores();
-      
-      if (props.editingRequest) {
-        itemRequestService.getActiveItems({ limit: 1 })
-          .then(() => {
-            initializeForm();
-          })
-          .catch(() => {
-            initializeForm();
-          });
-      } else {
-        initializeForm();
-      }
+      initializeForm();
     }
   },
   { immediate: true }
 );
 
+// ================================================================
+// LIFECYCLE
+// ================================================================
 onMounted(() => {
   loadUserData();
   loadStores();
@@ -1646,6 +1626,28 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* 🔥 Compact remark input */
+.compact-remark-group {
+  flex-shrink: 0;
+}
+
+.compact-remark-input {
+  width: 140px;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 11px;
+  background: white;
+  height: 30px;
+  transition: all 0.2s;
+}
+
+.compact-remark-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .compact-uom-group {
@@ -1739,12 +1741,11 @@ onMounted(() => {
   font-size: 9px;
   color: #475569;
   font-weight: 600;
-  padding: 0 6px;
+  padding: 2px 6px;
   min-width: 28px;
   text-align: center;
   background: #f1f5f9;
   border-radius: 3px;
-  padding: 2px 6px;
   letter-spacing: 0.3px;
   text-transform: uppercase;
 }
@@ -1871,8 +1872,12 @@ onMounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-container {
@@ -2135,7 +2140,7 @@ onMounted(() => {
 }
 
 /* ================================================================ */
-/* 🔥 NEW: DEPARTMENTS INFO BOX */
+/* DEPARTMENTS INFO BOX */
 /* ================================================================ */
 
 .departments-info-box {
@@ -2178,7 +2183,6 @@ onMounted(() => {
 
 .departments-spinner {
   font-size: 14px;
-  animation: spin 1s linear infinite;
 }
 
 .departments-list {
@@ -2307,7 +2311,6 @@ onMounted(() => {
   top: 50%;
   transform: translateY(-50%);
   font-size: 14px;
-  animation: spin 1s linear infinite;
 }
 
 .search-results-count {
@@ -2320,11 +2323,6 @@ onMounted(() => {
   background: #f1f5f9;
   padding: 1px 10px;
   border-radius: 10px;
-}
-
-@keyframes spin {
-  from { transform: translateY(-50%) rotate(0deg); }
-  to { transform: translateY(-50%) rotate(360deg); }
 }
 
 .add-wrapper {
@@ -2655,6 +2653,10 @@ onMounted(() => {
     padding-top: 2px;
   }
 
+  .compact-remark-input {
+    width: 100px;
+  }
+
   .expanded-row-specs {
     grid-template-columns: 1fr;
     gap: 8px;
@@ -2727,6 +2729,11 @@ onMounted(() => {
 
   .item-name {
     font-size: 11px;
+  }
+
+  .compact-remark-input {
+    width: 80px;
+    font-size: 10px;
   }
 
   .compact-qty-group {
