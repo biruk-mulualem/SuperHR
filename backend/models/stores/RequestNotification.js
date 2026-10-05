@@ -66,15 +66,12 @@ module.exports = (sequelize) => {
         defaultValue: false,
         allowNull: false,
       },
-      // ❌ REMOVE THESE - they don't exist in DB
-      // department_code: {
-      //   type: DataTypes.STRING(20),
-      //   allowNull: true,
-      // },
-      // department_name: {
-      //   type: DataTypes.STRING(100),
-      //   allowNull: true,
-      // },
+      // 🔥 NEW: Stage tracking for sequential approval flow
+      stage: {
+        type: DataTypes.ENUM('asking_store', 'supplying_store'),
+        allowNull: false,
+        defaultValue: 'supplying_store',
+      },
       status: {
         type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
         defaultValue: 'pending',

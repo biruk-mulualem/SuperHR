@@ -103,6 +103,7 @@ const roleTitle = computed(() => {
     purchasing_checkers:"purchasing_checkers",
     purchasing_auditor:"purchasing_auditor",
     purchaser:"purchaser",
+    financial_controller:"financial_controller",
   };
   return titles[userRole.value] || "User";
 });
@@ -335,19 +336,19 @@ const roleMenus = {
   ],
   checker: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
-    { name: "Users", path: "/users", icon: "UsersIcon", badge: null },
-    {
-      name: "stores List",
-      path: "/store-management",
-      icon: "ClockIcon",
-      badge: null,
-    },
-    {
-      name: "store groups",
-      path: "/group-management",
-      icon: "UserIcon",
-      badge: null,
-    },
+    // { name: "Users", path: "/users", icon: "UsersIcon", badge: null },
+    // {
+    //   name: "stores List",
+    //   path: "/store-management",
+    //   icon: "ClockIcon",
+    //   badge: null,
+    // },
+    // {
+    //   name: "store groups",
+    //   path: "/group-management",
+    //   icon: "UserIcon",
+    //   badge: null,
+    // },
     {
       name: "inventory",
       path: "/inventory",
@@ -480,6 +481,18 @@ const roleMenus = {
       badge: null,
     },
    { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
+  ],
+
+   financial_controller: [
+    { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
+    {
+      name: "item-requests ",
+      path: "/item-requests",
+      icon: "UserIcon",
+      badge: null,
+    },
+     { name: "InTransit-FollowUp", path: "/InTransit-FollowUp", icon: "HomeIcon", badge: null },
+  
   ],
 
 

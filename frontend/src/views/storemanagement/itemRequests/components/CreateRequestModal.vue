@@ -195,7 +195,7 @@
             </div>
 
             <!-- ============================================================ -->
-            <!-- SELECTED ITEMS - UOM & QTY Always Visible -->
+            <!-- SELECTED ITEMS -->
             <!-- ============================================================ -->
             <div class="selected-items-container" v-if="selectedItemsList.length > 0">
               <div class="selected-header">
@@ -210,11 +210,7 @@
                   :key="item.itemId"
                   class="selected-item-wrapper"
                 >
-                  <!-- ========================================================== -->
-                  <!-- COMPACT VIEW - UOM & QTY always visible -->
-                  <!-- ========================================================== -->
                   <div class="selected-item-compact">
-                    <!-- Left: Expand icon + Item info -->
                     <div 
                       class="compact-left"
                       @click="toggleItemExpand(item.itemId)"
@@ -226,7 +222,6 @@
                       <span class="item-name">{{ item.name }}</span>
                     </div>
 
-                    <!-- Right: UOM + QTY (always visible) -->
                     <div class="compact-right">
                       <div class="compact-uom-group">
                         <select 
@@ -283,21 +278,16 @@
                     </div>
                   </div>
 
-                  <!-- ========================================================== -->
-                  <!-- EXPANDED VIEW - Only Spec, Brand, Model, Remark -->
-                  <!-- ========================================================== -->
                   <div 
                     v-show="expandedItems.has(item.itemId)"
                     class="selected-item-expanded"
                   >
-                    <!-- Remark -->
                     <div class="expanded-row-remark">
                       <div class="control-group full-width">
                         <label class="control-label">REMARK</label>
                         <input
                           type="text"
                           :value="item.remark"
-                         
                           @input="updateItemField(item.itemId, 'remark', ($event.target as HTMLInputElement)?.value ?? '')"
                           placeholder="Add remark..."
                           class="remark-input"
@@ -305,7 +295,6 @@
                       </div>
                     </div>
 
-                    <!-- Specification, Brand, Model -->
                     <div class="expanded-row-specs">
                       <div class="spec-field">
                         <label class="spec-label">SPECIFICATION</label>
@@ -358,32 +347,77 @@
             
             <div class="form-row">
               <div class="form-group">
-  <label>Requested By *</label>
-  <input
-    v-model="form.requestedBy"
-    type="text"
-    required
-    class="form-input"
-    placeholder="Enter requester name..."
-  />
-  <span class="hint">Defaults to the logged-in user — edit if requesting on behalf of someone else</span>
-</div>
+                <label>Requested By *</label>
+                <input
+                  v-model="form.requestedBy"
+                  type="text"
+                  required
+                  class="form-input"
+                  placeholder="Enter requester name..."
+                />
+                <span class="hint">Defaults to the logged-in user — edit if requesting on behalf of someone else</span>
+              </div>
               <div class="form-group">
                 <label>Requested Date *</label>
                 <input v-model="form.requestedDate" type="date" required class="form-input" />
               </div>
             </div>
 
+            <!-- ============================================================ -->
+            <!-- 🔥 UPDATED: Department Approval Checkbox + Departments List -->
+            <!-- ============================================================ -->
             <div class="form-group full-width">
               <label class="checkbox-label">
                 <input type="checkbox" v-model="form.isAsset" />
-                <span class="checkbox-text">🔧 This request contains ASSET items</span>
+                <span class="checkbox-text">🏛️ This request requires department approval</span>
               </label>
-              <span class="hint" v-if="form.isAsset">
-                📌 Department approval will be required (configured in system settings)
-              </span>
+
+              <!-- Show department info when checkbox is ON -->
+              <div v-if="form.isAsset" class="departments-info-box">
+                <div class="departments-info-header">
+                  <span class="departments-info-icon">📋</span>
+                  <span class="departments-info-title">
+                    The following departments will need to approve this request:
+                  </span>
+                </div>
+
+                <!-- Loading state -->
+                <div v-if="loadingDepartments" class="departments-loading">
+                  <span class="departments-spinner">⏳</span>
+                  Loading departments...
+                </div>
+
+                <!-- Departments list -->
+                <div v-else-if="applicableDepartments.length > 0" class="departments-list">
+                  <div
+                    v-for="dept in applicableDepartments"
+                    :key="dept.departmentId"
+                    class="department-chip"
+                  >
+                    <span class="department-chip-icon">🏛️</span>
+                    <span class="department-chip-name">{{ dept.name }}</span>
+                    <span class="department-chip-code">{{ dept.code }}</span>
+                  </div>
+                </div>
+
+                <!-- No departments configured -->
+                <div v-else class="departments-empty">
+                  ⚠️ No departments are configured to approve requests for this store.
+                  <br>
+                  <span class="departments-empty-hint">
+                    Contact your admin to configure the approval departments.
+                  </span>
+                </div>
+
+                <div class="departments-info-footer">
+                  <span class="departments-source-hint">
+                    📌 Departments are matched by the <strong>asking store</strong>'s code ({{ getAskingStoreCode() }})
+                  </span>
+                </div>
+              </div>
+
               <span class="hint" v-else>
-                ℹ️ Toggle on if this request contains asset items that need department approval
+                ℹ️ Toggle on if this request requires approval from the asset department
               </span>
             </div>
 
@@ -420,9 +454,7 @@
 
       <!-- ==================== FOOTER ==================== -->
       <div class="modal-footer">
-        
         <button class="btn-secondary" @click="closeModal">Cancel</button>
-        
         <button
           v-show="!showValidationErrors"
           class="btn-primary"
@@ -431,7 +463,6 @@
         >
           {{ saving ? "Saving..." : editingRequest ? "Update" : "Create" }}
         </button>
-    
       </div>
     </div>
   </div>
@@ -441,6 +472,7 @@
 import { ref, computed, watch, onBeforeUnmount, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import itemRequestService from "@/stores/itemRequestService";
+import api from "@/stores/interceptor";
 import type {
   ItemRequest,
   RequestItem,
@@ -487,6 +519,14 @@ const userIsAdmin = ref(false);
 const validationErrors = ref<any[]>([]);
 const validationMessage = ref<string>("");
 const showValidationErrors = ref(false);
+
+// 🔥 NEW: Departments state
+const loadingDepartments = ref(false);
+const applicableDepartments = ref<Array<{
+  departmentId: number;
+  name: string;
+  code: string;
+}>>([]);
 
 // ✅ Track which items are expanded
 const expandedItems = ref<Set<number>>(new Set());
@@ -719,6 +759,77 @@ const getSelectedUomLabel = (item: any): string => {
 };
 
 // ================================================================
+// 🔥 DEPARTMENT HELPERS
+// ================================================================
+
+/**
+ * Get the asking store's code from the loaded stores list.
+ */
+const getAskingStoreCode = (): string => {
+  if (!form.value.askingStoreId) return 'N/A';
+  const store = stores.value.find(
+    (s) => String(s.storeId || s.id) === String(form.value.askingStoreId)
+  );
+  return store?.code || 'N/A';
+};
+
+/**
+ * Load the approval department config and filter to only the
+ * departments that apply to the asking store's code.
+ *
+ * The backend stores the config in SystemSetting with key 'approval.department'.
+ * Each entry has: { departmentId, appliesTo: string[] }
+ */
+/**
+ * Load the departments that need to approve requests for the
+ * current asking store.
+ */
+const loadApplicableDepartments = async (): Promise<void> => {
+  loadingDepartments.value = true;
+  applicableDepartments.value = [];
+
+  try {
+    const storeCode = getAskingStoreCode();
+
+    if (!storeCode || storeCode === 'N/A') {
+      console.log('ℹ️ No asking store code — cannot fetch departments');
+      return;
+    }
+
+    console.log(`📤 Fetching approval departments for store: ${storeCode}`);
+
+    const response = await itemRequestService.getApprovalDepartmentsForStore(storeCode);
+
+    if (!response.success || !response.data) {
+      console.warn('⚠️ Failed to fetch departments:', response.error);
+      return;
+    }
+
+    const data = response.data;
+
+    if (!data.requiresApproval || !data.departments || data.departments.length === 0) {
+      console.log(`ℹ️ No approval departments for store ${storeCode}`);
+      return;
+    }
+
+    applicableDepartments.value = data.departments.map((d) => ({
+      departmentId: d.departmentId,
+      name: d.name,
+      code: d.code,
+    }));
+
+    console.log(
+      `✅ Loaded ${applicableDepartments.value.length} department(s):`,
+      applicableDepartments.value
+    );
+  } catch (error: any) {
+    console.warn('⚠️ Failed to load approval departments:', error);
+  } finally {
+    loadingDepartments.value = false;
+  }
+};
+
+// ================================================================
 // COLLAPSIBLE FUNCTIONS
 // ================================================================
 
@@ -728,7 +839,6 @@ const toggleItemExpand = (itemId: number): void => {
   } else {
     expandedItems.value.add(itemId);
   }
-  // Trigger reactivity
   expandedItems.value = new Set(expandedItems.value);
 };
 
@@ -857,6 +967,20 @@ watch(itemSearch, (newQuery) => {
   }, 500);
 });
 
+// 🔥 Watch: Reload departments when asking store changes
+watch(() => form.value.askingStoreId, () => {
+  if (form.value.isAsset) {
+    loadApplicableDepartments();
+  }
+});
+
+// 🔥 Watch: Load departments when checkbox is toggled on
+watch(() => form.value.isAsset, (newVal) => {
+  if (newVal) {
+    loadApplicableDepartments();
+  }
+});
+
 // ================================================================
 // ITEM SELECTION METHODS
 // ================================================================
@@ -903,7 +1027,6 @@ const updateItemField = (itemId: number, field: string, value: string): void => 
   };
   
   selectedItems.value.set(itemId, updatedItem);
-  console.log(`🔄 Updated item ${itemId} ${field}: "${value}"`);
   syncSelectedItemsToForm();
 };
 
@@ -1232,8 +1355,6 @@ const saveRequest = async (): Promise<void> => {
       isAsset: form.value.isAsset,
     };
 
-    console.log('📤 Sending to backend:', JSON.stringify(requestData, null, 2));
-
     let response;
     
     if (props.editingRequest) {
@@ -1303,13 +1424,11 @@ const initializeForm = () => {
   
   selectedItems.value.clear();
   expandedItems.value.clear();
+  applicableDepartments.value = [];
   
   if (props.editingRequest) {
     const req = props.editingRequest;
     const requestedDate: string = String(req.requestedDate || today);
-    
-    console.log('📝 Editing request:', req);
-    console.log('📝 Items to edit:', req.items);
     
     if (req.items && req.items.length > 0) {
       req.items.forEach((item: any) => {
@@ -1381,7 +1500,7 @@ const initializeForm = () => {
         brand: item.brand || item.item?.brand || '',
         model: item.model || item.item?.model || '',
       })) : [],
-    requestedBy: req.requestedBy || 
+      requestedBy: req.requestedBy || 
              req.requestedByUser?.fullName || 
              req.requestedByUser?.username || 
              getCurrentUser(),
@@ -1390,6 +1509,11 @@ const initializeForm = () => {
       remark: req.remark || "",
       isAsset: (req as any).isAsset || false,
     };
+    
+    // 🔥 If editing an asset request, load departments immediately
+    if (form.value.isAsset) {
+      setTimeout(() => loadApplicableDepartments(), 100);
+    }
     
   } else {
     form.value = {
@@ -1524,7 +1648,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* UOM Select */
 .compact-uom-group {
   flex-shrink: 0;
 }
@@ -1545,7 +1668,6 @@ onMounted(() => {
   border-color: #3b82f6;
 }
 
-/* Quantity Controls */
 .compact-qty-group {
   display: flex;
   align-items: center;
@@ -1584,12 +1706,14 @@ onMounted(() => {
 }
 
 .compact-qty-input {
-  width: 40px;
+  width: 100px;
+  min-width: 70px;
+  max-width: 140px;
   text-align: center;
   border: none;
   background: transparent;
-  padding: 2px 2px;
-  font-size: 13px;
+  padding: 2px 8px;
+  font-size: 15px;
   font-weight: 600;
   color: #0f172a;
 }
@@ -1598,12 +1722,13 @@ onMounted(() => {
   outline: none;
   background: #ffffff;
   border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .compact-qty-input::-webkit-inner-spin-button,
 .compact-qty-input::-webkit-outer-spin-button {
   opacity: 0.5;
-  height: 16px;
+  height: 20px;
 }
 
 .compact-qty-input[type="number"] {
@@ -1624,7 +1749,6 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-/* Remove Button */
 .remove-btn-compact {
   background: transparent;
   border: none;
@@ -1643,7 +1767,7 @@ onMounted(() => {
 }
 
 /* ================================================================ */
-/* EXPANDED VIEW - Only Spec, Brand, Model, Remark */
+/* EXPANDED VIEW */
 /* ================================================================ */
 
 .selected-item-expanded {
@@ -1708,23 +1832,7 @@ onMounted(() => {
   letter-spacing: 0.5px;
 }
 
-.remark-input {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  background: white;
-  transition: all 0.2s;
-  width: 100%;
-}
-
-.remark-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: white;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
-}
-
+.remark-input,
 .spec-input {
   padding: 6px 12px;
   border: 1px solid #e2e8f0;
@@ -1735,6 +1843,7 @@ onMounted(() => {
   width: 100%;
 }
 
+.remark-input:focus,
 .spec-input:focus {
   outline: none;
   border-color: #3b82f6;
@@ -2023,6 +2132,125 @@ onMounted(() => {
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
+}
+
+/* ================================================================ */
+/* 🔥 NEW: DEPARTMENTS INFO BOX */
+/* ================================================================ */
+
+.departments-info-box {
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  animation: slideDown 0.2s ease;
+}
+
+.departments-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.departments-info-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.departments-info-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.departments-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.departments-spinner {
+  font-size: 14px;
+  animation: spin 1s linear infinite;
+}
+
+.departments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.department-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: white;
+  border: 1.5px solid #fcd34d;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #78350f;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.15);
+  transition: all 0.2s;
+}
+
+.department-chip:hover {
+  border-color: #f59e0b;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.25);
+}
+
+.department-chip-icon {
+  font-size: 14px;
+}
+
+.department-chip-name {
+  font-weight: 600;
+}
+
+.department-chip-code {
+  font-size: 11px;
+  color: #a16207;
+  font-weight: 500;
+  background: #fef3c7;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+.departments-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 6px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.departments-empty-hint {
+  font-size: 11px;
+  color: #a16207;
+  font-style: italic;
+}
+
+.departments-info-footer {
+  padding-top: 8px;
+  border-top: 1px dashed #fcd34d;
+}
+
+.departments-source-hint {
+  font-size: 11px;
+  color: #a16207;
+  font-style: italic;
 }
 
 /* ================================================================ */
@@ -2442,12 +2670,21 @@ onMounted(() => {
   }
 
   .compact-qty-input {
-    width: 35px;
+    width: 60px;
   }
 
   .compact-uom-select {
     min-width: 40px;
     font-size: 10px;
+  }
+
+  .departments-list {
+    flex-direction: column;
+  }
+
+  .department-chip {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
@@ -2504,7 +2741,7 @@ onMounted(() => {
   }
 
   .compact-qty-input {
-    width: 30px;
+    width: 50px;
     font-size: 11px;
   }
 
@@ -2549,51 +2786,5 @@ onMounted(() => {
     font-size: 11px;
     padding: 3px 12px;
   }
-}
-
-/* ================================================================ */
-/* COMPACT VIEW - UOM & QTY Always Visible - WIDER QTY */
-/* ================================================================ */
-
-.compact-qty-input {
-  width: 60px;  /* ✅ Changed from 40px to 60px */
-  text-align: center;
-  border: none;
-  background: transparent;
-  padding: 2px 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-  min-width: 45px;  /* ✅ Added min-width */
-}
-
-.compact-qty-input:focus {
-  outline: none;
-  background: #ffffff;
-  border-radius: 3px;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.compact-qty-input::-webkit-inner-spin-button,
-.compact-qty-input::-webkit-outer-spin-button {
-  opacity: 0.5;
-  height: 20px;
-}
-
-.compact-qty-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.compact-qty-input {
-  width: 100px;  /* ✅ Wider - enough for 8-10 digits */
-  min-width: 70px;
-  max-width: 140px;
-  text-align: center;
-  border: none;
-  background: transparent;
-  padding: 2px 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #0f172a;
 }
 </style>

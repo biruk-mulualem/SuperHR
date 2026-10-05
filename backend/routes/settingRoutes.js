@@ -11,7 +11,29 @@ router.post('/roles', authMiddleware('admin'), settingsController.createRole);
 router.put('/roles/:id', authMiddleware('admin'), settingsController.updateRole);
 router.patch('/roles/:id/status', authMiddleware('admin'), settingsController.toggleRoleStatus);
 router.delete('/roles/:id', authMiddleware('admin'), settingsController.deleteRole);
+// ================================================================
+// 🔥 ASK-STORE APPROVAL TOGGLE ROUTES
+// ================================================================
 
+/**
+ * GET /api/settings/approval/ask-store-enabled
+ * Returns { success, data: { enabled, settingExists } }
+ */
+router.get(
+  '/approval/ask-store-enabled',
+  authMiddleware('admin'),
+  settingsController.getAskStoreApprovalEnabled
+);
+
+/**
+ * POST /api/settings/approval/ask-store-enabled
+ * Body: { enabled: boolean }
+ */
+router.post(
+  '/approval/ask-store-enabled',
+  authMiddleware('admin'),
+  settingsController.setAskStoreApprovalEnabled
+);
 // ==================== DEPARTMENTS ROUTES ====================
 router.get('/departments', authMiddleware(), settingsController.getAllDepartments);
 router.get('/departments/tree', authMiddleware(), settingsController.getDepartmentTree);

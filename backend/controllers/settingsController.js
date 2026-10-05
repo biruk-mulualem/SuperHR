@@ -1095,7 +1095,105 @@ exports.getDepartmentStatistics = async (req, res) => {
 
 
 
+// ============================================================================
+// 🔥 ASK-STORE APPROVAL TOGGLE (Stage 1 on/off)
+// ============================================================================
 
+/**
+ * GET: Get whether the asking-store group approval flow is enabled.
+ * GET /api/settings/approval/ask-store-enabled
+ *
+ * Response: { success: true, data: { enabled: boolean, settingExists: boolean } }
+ */
+exports.getAskStoreApprovalEnabled = async (req, res) => {
+  try {
+    const setting = await SystemSetting.findOne({
+      where: { settingKey: 'approval.ask_store_enabled' },
+    });
+
+    let enabled = true; // Default: enabled (preserves current behavior)
+
+    if (setting && setting.settingValue) {
+      const value = setting.settingValue;
+      if (typeof value === 'boolean') {
+        enabled = value;
+      } else if (typeof value === 'object' && typeof value.enabled === 'boolean') {
+        enabled = value.enabled;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        enabled,
+        settingExists: !!setting,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Get ask-store approval error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * POST: Enable or disable the asking-store group approval flow.
+ * POST /api/settings/approval/ask-store-enabled
+ *
+ * Body: { enabled: boolean }
+ */
+exports.setAskStoreApprovalEnabled = async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const userId = req.user?.userId;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'enabled must be a boolean (true or false)',
+      });
+    }
+
+    const [setting, created] = await SystemSetting.findOrCreate({
+      where: { settingKey: 'approval.ask_store_enabled' },
+      defaults: {
+        settingKey: 'approval.ask_store_enabled',
+        settingValue: {
+          enabled,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: userId,
+        },
+        category: 'approval',
+        description:
+          'If true, asking store groups approve item requests before supplying store groups',
+        dataType: 'json',
+        isEditable: true,
+        updatedBy: userId,
+      },
+    });
+
+    if (!created) {
+      await setting.update({
+        settingValue: {
+          enabled,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: userId,
+        },
+        updatedBy: userId,
+      });
+    }
+
+    console.log(`✅ Ask-store approval ${enabled ? 'ENABLED' : 'DISABLED'} by user ${userId}`);
+
+    res.json({
+      success: true,
+      message: `Asking-store approval ${enabled ? 'enabled' : 'disabled'} successfully`,
+      data: { enabled },
+    });
+  } catch (error) {
+    console.error('❌ Set ask-store approval error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 
 

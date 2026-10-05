@@ -101,6 +101,37 @@ static normalizeApprovalConfig(raw) {
   };
 }
 
+// ================================================================
+// HELPER: Ask-Store Approval flag (Stage 1 on/off)
+// ================================================================
+/**
+ * Returns true if the asking-store group approval flow is enabled.
+ * Default: true (preserves current behavior).
+ */
+// Add this method inside the class, next to `normalizeApprovalConfig`
+static async getAskStoreApprovalEnabled() {
+  try {
+    const setting = await this.findOne({
+      where: { settingKey: 'approval.ask_store_enabled' },
+    });
+
+    if (!setting || !setting.settingValue) {
+      return true; // Default = enabled (current behavior)
+    }
+
+    const value = setting.settingValue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'object' && value !== null) {
+      if (typeof value.enabled === 'boolean') return value.enabled;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('❌ Error reading ask_store_enabled:', err);
+    return true;
+  }
+}
+
 
     // Get default attendance rules
     static getDefaultAttendanceRules() {

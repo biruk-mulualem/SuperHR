@@ -33,6 +33,30 @@ const shouldSkipNotifications = (storeCode) => {
 };
 
 // ================================================================
+// HELPER: Check if the current user is admin
+// ================================================================
+function isAdminUser(req) {
+  return req?.user?.isAdmin === true || 
+         req?.user?.role === 'admin' || 
+         req?.user?.role === 'Admin';
+}
+
+// ================================================================
+// HELPER: Check if the current user created the given request
+// ================================================================
+function isRequestCreator(req, request) {
+  if (isAdminUser(req)) return true;
+  
+  const currentUserId = req?.user?.userId;
+  if (!currentUserId) return false;
+  
+  const creatorId = request?.requestedById;
+  if (!creatorId) return false;
+  
+  return Number(creatorId) === Number(currentUserId);
+}
+
+// ================================================================
 // HELPER: Get department from SystemSetting for asset approvals
 // ================================================================
 async function getApprovalDepartmentConfig() {
@@ -61,6 +85,48 @@ async function getApprovalDepartmentConfig() {
   }
 }
 
+// ================================================================
+// HELPER: Resolve the requesting user's group ID
+// ================================================================
+async function resolveRequestingUserGroupId(req, requestingUserId, transaction = null) {
+  const tokenGroupId =
+    req?.user?.groupId ||
+    req?.user?.assignedGroupId ||
+    null;
+
+  if (tokenGroupId) {
+    const num = parseInt(tokenGroupId);
+    if (!isNaN(num) && num > 0) {
+      console.log(`🔍 Resolved requesting user's group ID from JWT: ${num}`);
+      return num;
+    }
+  }
+
+  if (requestingUserId) {
+    try {
+      const user = await User.findByPk(requestingUserId, {
+        attributes: ['userId', 'groupId', 'assignedGroupId'],
+        transaction,
+      });
+
+      if (user) {
+        const dbGroupId = user.groupId || user.assignedGroupId;
+        if (dbGroupId) {
+          const num = parseInt(dbGroupId);
+          if (!isNaN(num) && num > 0) {
+            console.log(`🔍 Resolved requesting user's group ID from DB: ${num}`);
+            return num;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️ Could not fetch user ${requestingUserId} to resolve groupId:`, err.message);
+    }
+  }
+
+  console.log(`ℹ️ Could not resolve requesting user's group ID — no exclusion will be applied`);
+  return null;
+}
 
 // ================================================================
 // HELPER: Validate stock availability with dual UOM support
@@ -78,7 +144,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
-  // Skip validation for exempt stores
   if (shouldSkipStockValidation(store.code)) {
     console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
 
@@ -121,16 +186,11 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
-  // ================================================================
-  // NORMAL STOCK VALIDATION - CHECK BOTH TABLES
-  // ================================================================
-  
   for (const item of items) {
-    // 1. Get full item details with UOMs
     const itemRecord = await Item.findByPk(item.itemId, {
       include: [
-        { model: UOM, as: "uom" },          // Base UOM (DRUM, ROLL)
-        { model: UOM, as: "conversionUom" } // Conversion UOM (KG, MTR)
+        { model: UOM, as: "uom" },
+        { model: UOM, as: "conversionUom" }
       ],
     });
 
@@ -143,12 +203,10 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
       continue;
     }
 
-    // 2. Determine if user requested base UOM or conversion UOM
-    const isBaseUom = item.isBaseUom !== false; // true = DRUM, false = KG
+    const isBaseUom = item.isBaseUom !== false;
     const userUomCode = item.uomCode || itemRecord.uom?.code || "Units";
     const userQuantity = parseFloat(item.quantity);
 
-    // Get base UOM and conversion UOM info
     const baseUomCode = itemRecord.uom?.code || "Units";
     const conversionUomCode = itemRecord.conversionUom?.code || null;
     const conversionValue = itemRecord.conversionValue ? parseFloat(itemRecord.conversionValue) : null;
@@ -157,9 +215,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     console.log(`   User wants: ${userQuantity} ${userUomCode}`);
     console.log(`   Base UOM: ${baseUomCode}, Conversion UOM: ${conversionUomCode}`);
 
-    // 3. Query BOTH balance tables
     const [storeBalance, convertedBalance] = await Promise.all([
-      // Check StoreBalance (Base UOM - DRUM, ROLL)
       StoreBalance.findOne({
         where: {
           storeId: supplyingStoreId,
@@ -167,7 +223,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
           status: "Active",
         },
       }),
-      // Check ConvertedBalance (Conversion UOM - KG, MTR)
       db.ConvertedBalance ? db.ConvertedBalance.findOne({
         where: {
           storeId: supplyingStoreId,
@@ -185,15 +240,8 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     console.log(`   StoreBalance (${baseUomCode}): ${baseBalance}`);
     console.log(`   ConvertedBalance (${conversionUomCode}): ${conversionBalance}`);
 
-    // 4. CHECK BASED ON USER'S REQUESTED UOM
-    
     if (isBaseUom) {
-      // ============================================================
-      // USER REQUESTED IN BASE UOM (DRUM, ROLL)
-      // ============================================================
-      
       if (hasBaseBalance) {
-        // ✅ FOUND in Base UOM - Check quantity
         const availableQuantity = baseBalance;
         
         stockInfo.push({
@@ -214,7 +262,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         });
 
         if (userQuantity > availableQuantity) {
-          // ❌ Insufficient stock in Base UOM
           errors.push({
             itemId: item.itemId,
             itemName: itemRecord.name,
@@ -229,9 +276,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         }
         
       } else if (hasConversionBalance) {
-        // ⚠️ NOT FOUND in Base UOM, but FOUND in Conversion UOM
-        // Tell user to request in Conversion UOM instead
-        
         stockInfo.push({
           itemId: item.itemId,
           itemName: itemRecord.name,
@@ -267,7 +311,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         });
         
       } else {
-        // ❌ NOT FOUND in either table
         stockInfo.push({
           itemId: item.itemId,
           itemName: itemRecord.name,
@@ -295,12 +338,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
       }
       
     } else {
-      // ============================================================
-      // USER REQUESTED IN CONVERSION UOM (KG, MTR)
-      // ============================================================
-      
       if (hasConversionBalance) {
-        // ✅ FOUND in Conversion UOM - Check quantity
         const availableQuantity = conversionBalance;
         
         stockInfo.push({
@@ -321,7 +359,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         });
 
         if (userQuantity > availableQuantity) {
-          // ❌ Insufficient stock in Conversion UOM
           errors.push({
             itemId: item.itemId,
             itemName: itemRecord.name,
@@ -336,9 +373,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         }
         
       } else if (hasBaseBalance) {
-        // ⚠️ NOT FOUND in Conversion UOM, but FOUND in Base UOM
-        // Tell user to request in Base UOM instead
-        
         stockInfo.push({
           itemId: item.itemId,
           itemName: itemRecord.name,
@@ -374,7 +408,6 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
         });
         
       } else {
-        // ❌ NOT FOUND in either table
         stockInfo.push({
           itemId: item.itemId,
           itemName: itemRecord.name,
@@ -410,71 +443,253 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     validationSkipped: false,
   };
 };
-
 // ================================================================
-// HELPER: Create notifications (GROUPS + DEPARTMENT for ASSET)
+// HELPER: Create notifications - STAGE 1 (Asking Store Groups ONLY)
 // ================================================================
-// ================================================================
-// HELPER: Create notifications (GROUPS + MULTIPLE DEPARTMENTS for ASSET)
-// ================================================================
+/**
+ * Creates notification records for the asking store groups (Stage 1).
+ *
+ * 🔥 If 'approval.ask_store_enabled' is DISABLED, this function skips
+ *    Stage 1 entirely and goes straight to Stage 2 (supplying store).
+ *
+ * @param {number} requestId          - The item request ID
+ * @param {number} supplyingStoreId   - Supplying store ID
+ * @param {number} askingStoreId      - Asking store ID
+ * @param {boolean} isAsset           - Whether the request is an asset request
+ * @param {Transaction} transaction   - Sequelize transaction
+ * @param {number|null} requestingUserGroupId - The requesting user's group (excluded from Stage 1)
+ * @param {number|null} requestingUserId      - The requesting user ID (for logging)
+ */
 async function createRequestNotifications(
   requestId,
-  storeId,
+  supplyingStoreId,
   askingStoreId,
   isAsset = false,
-  transaction = null
+  transaction = null,
+  requestingUserGroupId = null,
+  requestingUserId = null
 ) {
   try {
-    console.log(
-      `📤 Creating notifications for request ${requestId}, supplying store ${storeId}, asking store ${askingStoreId}, isAsset: ${isAsset}`
-    );
+    console.log(`📤 [STAGE 1] Creating ASKING STORE notifications for request ${requestId}`);
+    console.log(`   Asking store: ${askingStoreId}`);
+    console.log(`   Supplying store: ${supplyingStoreId} (will be notified AFTER asking approves)`);
+    console.log(`   Requesting user ID: ${requestingUserId}`);
+    console.log(`   🔥 Excluding requesting user's group ID: ${requestingUserGroupId}`);
 
-    // 🔥 STEP 1: Get the asking store details
-    const askingStore = await Store.findByPk(askingStoreId);
-    if (!askingStore) {
-      console.log(`⚠️ Asking store ${askingStoreId} not found`);
-      return 0;
+    // ================================================================
+    // 🔥 STAGE 1 TOGGLE CHECK
+    // If the "approval.ask_store_enabled" setting is DISABLED, skip
+    // Stage 1 and create supplying store notifications immediately.
+    // ================================================================
+    let askStoreApprovalEnabled = true;
+    try {
+      askStoreApprovalEnabled = await db.SystemSetting.getAskStoreApprovalEnabled();
+    } catch (err) {
+      console.warn('⚠️ Could not read ask_store_enabled setting — defaulting to ENABLED:', err.message);
+      askStoreApprovalEnabled = true;
     }
 
-    console.log(`📋 Asking Store: ${askingStore.code} (${askingStore.name})`);
+    console.log(`🔍 Stage 1 toggle (ask_store_enabled): ${askStoreApprovalEnabled ? 'ENABLED' : 'DISABLED'}`);
 
-    // 🔥 STEP 2: Get all active groups for the supplying store
-    const groups = await db.sequelize.query(
+    if (!askStoreApprovalEnabled) {
+      console.log(`⏭️ Stage 1 (asking store approval) is DISABLED — skipping to supplying stage`);
+      console.log(`📤 Creating supplying store notifications directly`);
+
+      await createSupplyingStageNotifications(
+        requestId,
+        supplyingStoreId,
+        askingStoreId,
+        isAsset,
+        transaction
+      );
+
+      return 0; // No asking store notifications created
+    }
+
+    console.log(`✅ Stage 1 is ENABLED — proceeding with asking store groups`);
+
+    // ================================================================
+    // FETCH ALL GROUPS FOR THE ASKING STORE
+    // ================================================================
+    let allAskingGroups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
        FROM groups g
        INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
        WHERE sgr.store_id = :storeId AND g.status = 'Active'`,
       {
-        replacements: { storeId: parseInt(storeId) },
+        replacements: { storeId: parseInt(askingStoreId) },
         type: db.sequelize.QueryTypes.SELECT,
         transaction: transaction,
       }
     );
 
-    console.log(`📋 Found ${groups.length} groups for supplying store`);
+    console.log(`📋 Found ${allAskingGroups.length} total asking store groups`);
 
-    // 🔥 STEP 3: Create notifications
-    let totalCount = 0;
+    // ================================================================
+    // 🔥 FILTER BY STORE-GROUP APPROVAL CONFIG (if configured)
+    // ================================================================
+    try {
+      const storeGroupConfig = await getStoreGroupApprovalConfig();
+      const allowedGroupIds = getAllowedApproverGroupIds(storeGroupConfig, askingStoreId);
 
-    // ============================================================
-    // 3a. Create group notifications using bulkCreate
-    // ============================================================
-    const groupNotifications = [];
-    for (const group of groups) {
-      const groupId = parseInt(group.id);
-      if (!groupId || isNaN(groupId)) continue;
+      if (allowedGroupIds) {
+        console.log(
+          `🔒 Store ${askingStoreId} has ${allowedGroupIds.length} allowed approver group(s): ` +
+          `[${allowedGroupIds.join(', ')}]`
+        );
+        allAskingGroups = allAskingGroups.filter((g) =>
+          allowedGroupIds.includes(Number(g.id))
+        );
+        console.log(`📋 Filtered down to ${allAskingGroups.length} allowed group(s)`);
+      } else {
+        console.log(`ℹ️ No store-group config for store ${askingStoreId} — allowing all groups`);
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not apply store-group approval filter — using all groups:', err.message);
+    }
 
-      groupNotifications.push({
+    // ================================================================
+    // EXCLUDE THE REQUESTING USER'S OWN GROUP
+    // ================================================================
+    let askingGroups = allAskingGroups;
+    let excludedGroup = null;
+
+    if (requestingUserGroupId) {
+      const targetGroupId = parseInt(requestingUserGroupId);
+      excludedGroup = allAskingGroups.find(
+        (g) => parseInt(g.id) === targetGroupId
+      );
+      askingGroups = allAskingGroups.filter(
+        (g) => parseInt(g.id) !== targetGroupId
+      );
+
+      if (excludedGroup) {
+        console.log(
+          `🚫 EXCLUDED group "${excludedGroup.name}" (ID ${excludedGroup.id}) — ` +
+          `this is the requesting user's own group`
+        );
+      } else {
+        console.log(
+          `⚠️ Requesting user's group ID ${targetGroupId} not found in asking store groups ` +
+          `— no exclusion applied`
+        );
+      }
+    } else {
+      console.log(`ℹ️ No requesting user group ID provided — no group excluded`);
+    }
+
+    console.log(`📋 Will create notifications for ${askingGroups.length} asking store groups`);
+
+    // ================================================================
+    // 🔥 SAFETY: If NO asking store groups remain, advance directly
+    // ================================================================
+    if (askingGroups.length === 0) {
+      console.log(
+        `⚠️ No asking store groups to notify (after exclusion) — ` +
+        `advancing directly to supplying stage`
+      );
+
+      await createSupplyingStageNotifications(
+        requestId,
+        supplyingStoreId,
+        askingStoreId,
+        isAsset,
+        transaction
+      );
+      return 0;
+    }
+
+    // ================================================================
+    // CREATE NOTIFICATIONS FOR THE REMAINING ASKING STORE GROUPS
+    // ================================================================
+    const askingNotifications = askingGroups
+      .filter((g) => g.id && !isNaN(parseInt(g.id)))
+      .map((group) => ({
         request_id: parseInt(requestId),
-        group_id: groupId,
-        store_id: parseInt(storeId),
+        group_id: parseInt(group.id),
+        department_id: null,
+        store_id: parseInt(askingStoreId),
         status: "pending",
         approval_type: "group",
         is_department_approval: false,
+        stage: "asking_store",
         created_at: new Date(),
         updated_at: new Date(),
+      }));
+
+    if (askingNotifications.length > 0) {
+      const result = await RequestNotification.bulkCreate(askingNotifications, {
+        validate: false,
+        returning: true,
+        transaction: transaction,
       });
+      console.log(`✅ [STAGE 1] Created ${result.length} asking store group notifications`);
+      return result.length;
     }
+
+    return 0;
+  } catch (error) {
+    console.error("❌ Error creating asking store notifications:", error);
+    throw error;
+  }
+}
+
+// ================================================================
+// HELPER: Create notifications - STAGE 2 (Supplying Store Groups + Departments)
+// ================================================================
+async function createSupplyingStageNotifications(
+  requestId,
+  supplyingStoreId,
+  askingStoreId,
+  isAsset = false,
+  transaction = null
+) {
+  try {
+    console.log(`📤 [STAGE 2] Creating SUPPLYING STORE notifications for request ${requestId}`);
+
+    const existingCount = await RequestNotification.count({
+      where: {
+        request_id: requestId,
+        stage: "supplying_store",
+      },
+      transaction,
+    });
+
+    if (existingCount > 0) {
+      console.log(`ℹ️ [STAGE 2] Supplying notifications already exist (${existingCount}) — skipping`);
+      return { created: false, count: existingCount };
+    }
+
+    let totalCount = 0;
+
+    const supplyingGroups = await db.sequelize.query(
+      `SELECT g.id, g.name, g.code, g.status
+       FROM groups g
+       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+       WHERE sgr.store_id = :storeId AND g.status = 'Active'`,
+      {
+        replacements: { storeId: parseInt(supplyingStoreId) },
+        type: db.sequelize.QueryTypes.SELECT,
+        transaction: transaction,
+      }
+    );
+
+    console.log(`📋 Found ${supplyingGroups.length} supplying store groups`);
+
+    const groupNotifications = supplyingGroups
+      .filter((g) => g.id && !isNaN(parseInt(g.id)))
+      .map((group) => ({
+        request_id: parseInt(requestId),
+        group_id: parseInt(group.id),
+        department_id: null,
+        store_id: parseInt(supplyingStoreId),
+        status: "pending",
+        approval_type: "group",
+        is_department_approval: false,
+        stage: "supplying_store",
+        created_at: new Date(),
+        updated_at: new Date(),
+      }));
 
     if (groupNotifications.length > 0) {
       const result = await RequestNotification.bulkCreate(groupNotifications, {
@@ -483,100 +698,146 @@ async function createRequestNotifications(
         transaction: transaction,
       });
       totalCount += result.length;
-      console.log(`✅ Created ${result.length} group notifications`);
+      console.log(`✅ [STAGE 2] Created ${result.length} supplying store group notifications`);
     }
 
-    // ============================================================
-    // 3b. 🔥 CREATE DEPARTMENT NOTIFICATIONS — loop over all
-    //     configured departments whose appliesTo includes the
-    //     asking store's code.
-    // ============================================================
     if (isAsset) {
-      console.log(`📋 isAsset is true, checking department config...`);
+      console.log(`📋 isAsset is true — checking department config...`);
 
-      const askingStoreCode = askingStore.code;
-      console.log(`📋 Asking store code: ${askingStoreCode}`);
+      const askingStore = await Store.findByPk(askingStoreId, { transaction });
+      if (!askingStore) {
+        console.log(`⚠️ Asking store ${askingStoreId} not found — skipping department notifications`);
+        return { created: true, count: totalCount };
+      }
 
-      // Get normalized config (single or multiple departments)
       const config = await getApprovalDepartmentConfig();
 
       if (!config || !config.departments || config.departments.length === 0) {
-        console.log(
-          `⚠️ No approval departments configured — skipping department notifications`
-        );
+        console.log(`⚠️ No approval departments configured — skipping`);
       } else {
-        // Filter to departments whose appliesTo includes the asking store code
         const applicableDepartments = config.departments.filter(
-          (d) =>
-            Array.isArray(d.appliesTo) &&
-            d.appliesTo.includes(askingStoreCode)
+          (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code)
         );
 
         console.log(
           `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
-            `department(s) apply to store ${askingStoreCode}`
+          `department(s) apply to store ${askingStore.code}`
         );
 
-        if (applicableDepartments.length === 0) {
-          console.log(
-            `⚠️ No department applies to store ${askingStoreCode} — ` +
-              `no department notifications created`
-          );
-        }
-
         for (const entry of applicableDepartments) {
-          const department = await db.Department.findByPk(entry.departmentId);
+          const department = await db.Department.findByPk(entry.departmentId, { transaction });
 
           if (!department) {
-            console.log(
-              `⚠️ Department ${entry.departmentId} not found — skipping`
-            );
+            console.log(`⚠️ Department ${entry.departmentId} not found — skipping`);
             continue;
           }
 
-          const deptNotification = await RequestNotification.create(
+          await RequestNotification.create(
             {
               request_id: parseInt(requestId),
               group_id: null,
               department_id: department.departmentId,
-              store_id: parseInt(storeId),
+              store_id: parseInt(supplyingStoreId),
               status: "pending",
               approval_type: "department",
               is_department_approval: true,
+              stage: "supplying_store",
               created_at: new Date(),
               updated_at: new Date(),
             },
-            { transaction: transaction }
+            { transaction }
           );
 
           totalCount++;
-          console.log(
-            `✅ Added department notification for ${department.name} ` +
-              `(ID ${department.departmentId}) — applies to ${askingStoreCode}`
-          );
-          console.log(
-            "📋 Created department notification:",
-            deptNotification.toJSON()
-          );
+          console.log(`✅ [STAGE 2] Created department notification for ${department.name}`);
         }
       }
     } else {
-      console.log(
-        `ℹ️ isAsset is false — no department notifications created`
-      );
+      console.log(`ℹ️ isAsset is false — no department notifications`);
     }
 
-    console.log(`✅ Total notifications created: ${totalCount}`);
-    return totalCount;
+    console.log(`✅ [STAGE 2] Total supplying notifications created: ${totalCount}`);
+    return { created: true, count: totalCount };
   } catch (error) {
-    console.error("❌ Error creating notifications:", error);
+    console.error("❌ Error creating supplying stage notifications:", error);
     throw error;
   }
 }
 
 // ================================================================
-// HELPER: Check if all groups have accepted a request
+// HELPER: Check if all asking store groups accepted → advance to Stage 2
 // ================================================================
+async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
+  try {
+    console.log(`🔄 Checking if request ${requestId} should advance to supplying stage`);
+
+    const request = await ItemRequest.findByPk(requestId, { transaction });
+    if (!request) {
+      console.log(`⚠️ Request ${requestId} not found`);
+      return { advanced: false, reason: "request_not_found" };
+    }
+
+    const existingSupplying = await RequestNotification.count({
+      where: {
+        request_id: requestId,
+        stage: "supplying_store",
+      },
+      transaction,
+    });
+
+    if (existingSupplying > 0) {
+      console.log(`ℹ️ Supplying notifications already exist — no advancement needed`);
+      return { advanced: false, reason: "already_advanced" };
+    }
+
+    const askingNotifications = await RequestNotification.findAll({
+      where: {
+        request_id: requestId,
+        stage: "asking_store",
+      },
+      transaction,
+    });
+
+    if (askingNotifications.length === 0) {
+      console.log(`⚠️ No asking notifications found for request ${requestId}`);
+      return { advanced: false, reason: "no_asking_notifications" };
+    }
+
+    const total = askingNotifications.length;
+    const accepted = askingNotifications.filter((n) => n.status === "accepted").length;
+    const rejected = askingNotifications.filter((n) => n.status === "rejected").length;
+    const pending = askingNotifications.filter((n) => n.status === "pending").length;
+
+    console.log(`📊 Asking store progress: ${accepted}/${total} accepted, ${rejected} rejected, ${pending} pending`);
+
+    if (rejected > 0) {
+      console.log(`❌ Asking store has rejections — NOT advancing to supplying stage`);
+      return { advanced: false, reason: "has_rejection" };
+    }
+
+    if (pending > 0) {
+      console.log(`⏳ Asking store still has ${pending} pending — waiting`);
+      return { advanced: false, reason: "still_pending" };
+    }
+
+    console.log(`✅ All asking store groups accepted — ADVANCING to supplying stage`);
+
+    const result = await createSupplyingStageNotifications(
+      requestId,
+      request.supplyingStoreId,
+      request.askingStoreId,
+      request.isAsset || false,
+      transaction
+    );
+
+    console.log(`🚀 Advanced to supplying stage: ${result.count} notifications created`);
+    return { advanced: true, count: result.count };
+  } catch (error) {
+    console.error("❌ Error advancing to supplying stage:", error);
+    throw error;
+  }
+}
+
 // ================================================================
 // HELPER: Check if all groups (and department for asset) have accepted
 // ================================================================
@@ -593,71 +854,55 @@ async function isRequestFullyAccepted(requestId) {
       acceptedCount: 0,
       rejectedCount: 0,
       pendingCount: 0,
-      groups: {
-        total: 0,
-        accepted: 0,
-        rejected: 0,
-        pending: 0,
-        allAccepted: false,
-      },
-      department: {
-        total: 0,
-        accepted: 0,
-        rejected: 0,
-        pending: 0,
-        allAccepted: false,
-      },
+      askingStore: { total: 0, accepted: 0, rejected: 0, pending: 0, allAccepted: false },
+      supplyingStore: { total: 0, accepted: 0, rejected: 0, pending: 0, allAccepted: false },
     };
   }
 
-  // Separate group and department notifications
-  const groupNotifications = notifications.filter(
-    (n) => n.approval_type === 'group' || !n.approval_type
-  );
-  const departmentNotifications = notifications.filter(
-    (n) => n.approval_type === 'department'
-  );
+  const askingNotifications = notifications.filter((n) => n.stage === 'asking_store');
+  const supplyingNotifications = notifications.filter((n) => n.stage === 'supplying_store');
 
-  // Group stats
-  const groupsAccepted = groupNotifications.filter((n) => n.status === 'accepted').length;
-  const groupsRejected = groupNotifications.filter((n) => n.status === 'rejected').length;
-  const groupsPending = groupNotifications.filter((n) => n.status === 'pending').length;
+  const askingAccepted = askingNotifications.filter((n) => n.status === 'accepted').length;
+  const askingRejected = askingNotifications.filter((n) => n.status === 'rejected').length;
+  const askingPending = askingNotifications.filter((n) => n.status === 'pending').length;
+  const askingAllAccepted =
+    askingNotifications.length > 0 && askingAccepted === askingNotifications.length;
 
-  const allGroupsAccepted = groupNotifications.length > 0 && 
-    groupsAccepted === groupNotifications.length;
+  const supplyingAccepted = supplyingNotifications.filter((n) => n.status === 'accepted').length;
+  const supplyingRejected = supplyingNotifications.filter((n) => n.status === 'rejected').length;
+  const supplyingPending = supplyingNotifications.filter((n) => n.status === 'pending').length;
+  const supplyingAllAccepted =
+    supplyingNotifications.length > 0 &&
+    supplyingAccepted === supplyingNotifications.length;
 
-  // Department stats
-  const deptAccepted = departmentNotifications.filter((n) => n.status === 'accepted').length;
-  const deptRejected = departmentNotifications.filter((n) => n.status === 'rejected').length;
-  const deptPending = departmentNotifications.filter((n) => n.status === 'pending').length;
+  const allAccepted =
+    askingNotifications.length > 0 &&
+    supplyingNotifications.length > 0 &&
+    askingAllAccepted &&
+    supplyingAllAccepted;
 
-  const allDepartmentsAccepted = departmentNotifications.length === 0 || 
-    (departmentNotifications.length > 0 && deptAccepted === departmentNotifications.length);
-
-  // Overall status
-  const allAccepted = allGroupsAccepted && allDepartmentsAccepted;
-  const hasRejection = groupsRejected > 0 || deptRejected > 0;
+  const hasRejection = askingRejected > 0 || supplyingRejected > 0;
 
   return {
     allAccepted,
     hasRejection,
     total: notifications.length,
-    acceptedCount: groupsAccepted + deptAccepted,
-    rejectedCount: groupsRejected + deptRejected,
-    pendingCount: groupsPending + deptPending,
-    groups: {
-      total: groupNotifications.length,
-      accepted: groupsAccepted,
-      rejected: groupsRejected,
-      pending: groupsPending,
-      allAccepted: allGroupsAccepted,
+    acceptedCount: askingAccepted + supplyingAccepted,
+    rejectedCount: askingRejected + supplyingRejected,
+    pendingCount: askingPending + supplyingPending,
+    askingStore: {
+      total: askingNotifications.length,
+      accepted: askingAccepted,
+      rejected: askingRejected,
+      pending: askingPending,
+      allAccepted: askingAllAccepted,
     },
-    department: {
-      total: departmentNotifications.length,
-      accepted: deptAccepted,
-      rejected: deptRejected,
-      pending: deptPending,
-      allAccepted: allDepartmentsAccepted,
+    supplyingStore: {
+      total: supplyingNotifications.length,
+      accepted: supplyingAccepted,
+      rejected: supplyingRejected,
+      pending: supplyingPending,
+      allAccepted: supplyingAllAccepted,
     },
   };
 }
@@ -741,7 +986,7 @@ exports.checkStockAvailability = async (req, res) => {
 };
 
 // ================================================================
-// 2. GET REQUESTS (with pagination, filters, and spec fields)
+// 2. GET REQUESTS
 // ================================================================
 
 exports.getRequests = async (req, res) => {
@@ -762,22 +1007,12 @@ exports.getRequests = async (req, res) => {
     } = req.query;
 
     console.log("📋 Request Query Parameters:", {
-      page,
-      limit,
-      search,
-      status,
-      storeId,
-      userId,
-      sortBy,
-      sortOrder,
+      page, limit, search, status, storeId, userId, sortBy, sortOrder,
     });
 
     const offset = (page - 1) * limit;
     const where = {};
 
-    // ================================================================
-    // 🔥 GET USER INFORMATION
-    // ================================================================
     const currentUser = req.user;
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
@@ -800,20 +1035,12 @@ exports.getRequests = async (req, res) => {
       console.log("🔍 No storeId in token, fetching from database...");
       try {
         const accessResult = await getUserStoreAndGroup(currentUserId);
-        console.log(
-          "📊 Database access result:",
-          JSON.stringify(accessResult, null, 2)
-        );
+        console.log("📊 Database access result:", JSON.stringify(accessResult, null, 2));
 
         if (accessResult.success && accessResult.data) {
           userStoreId = accessResult.data.assignedStoreId;
           userIsAdmin = accessResult.data.isAdmin || false;
-          console.log(
-            "✅ Retrieved from database - storeId:",
-            userStoreId,
-            "isAdmin:",
-            userIsAdmin
-          );
+          console.log("✅ Retrieved from database - storeId:", userStoreId, "isAdmin:", userIsAdmin);
         }
       } catch (err) {
         console.warn("⚠️ Could not get user store from database:", err);
@@ -831,9 +1058,6 @@ exports.getRequests = async (req, res) => {
       hasStore: !!userStoreId,
     });
 
-    // ================================================================
-    // 🔥 STATUS FILTER
-    // ================================================================
     console.log("\n📌 STATUS FILTER:");
     if (status !== "all") {
       where.status = status;
@@ -842,14 +1066,10 @@ exports.getRequests = async (req, res) => {
       console.log("ℹ️ No status filter (status = 'all')");
     }
 
-    // ================================================================
-    // 🔥 PERMISSION LOGIC
-    // ================================================================
     console.log("\n" + "=".repeat(80));
     console.log("🔒 PERMISSION LOGIC START");
     console.log("=".repeat(80));
 
-    // ✅ ADMIN: Can see everything
     if (currentUserRole === "admin" || userIsAdmin) {
       console.log("\n👑 ADMIN USER DETECTED - showing all requests");
 
@@ -866,16 +1086,9 @@ exports.getRequests = async (req, res) => {
         console.log("  - Store filter applied:", storeId);
       }
 
-      console.log(
-        "📋 Admin WHERE clause so far:",
-        JSON.stringify(where, null, 2)
-      );
+      console.log("📋 Admin WHERE clause so far:", JSON.stringify(where, null, 2));
 
-      // ✅ STORE USER (storekeeper / store_it)
-    } else if (
-      currentUserRole === "storekeeper" ||
-      currentUserRole === "store_it"
-    ) {
+    } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
       console.log("\n📦 STORE USER DETECTED:", currentUserRole);
 
       if (!userStoreId) {
@@ -884,16 +1097,10 @@ exports.getRequests = async (req, res) => {
           where.requestedById = currentUserId;
           console.log("  - Filtering by requestedById:", currentUserId);
         }
-        console.log(
-          "📋 WHERE clause for user with no store:",
-          JSON.stringify(where, null, 2)
-        );
+        console.log("📋 WHERE clause for user with no store:", JSON.stringify(where, null, 2));
       } else {
         console.log("✅ User has store assigned:", userStoreId);
 
-        // ✅ CORRECT PERMISSION LOGIC
-
-        // RULE 1: User is the ASKING store → Can see ALL statuses
         const askingStoreCondition = { askingStoreId: userStoreId };
         console.log(`\n📌 RULE 1 - Asking Store (ID: ${userStoreId}):`);
         console.log("  - Can see ALL statuses (pending, approved, finalized)");
@@ -903,7 +1110,6 @@ exports.getRequests = async (req, res) => {
         }
         console.log("  - Condition:", JSON.stringify(askingStoreCondition));
 
-        // RULE 2: User is the SUPPLYING store → Can ONLY see approved/finalized
         const supplyingStoreCondition = {
           supplyingStoreId: userStoreId,
           status: { [Op.in]: ["approved", "finalized"] },
@@ -912,25 +1118,18 @@ exports.getRequests = async (req, res) => {
         console.log("  - Can ONLY see approved/finalized");
         if (status !== "all" && ["approved", "finalized"].includes(status)) {
           supplyingStoreCondition.status = status;
-          console.log(
-            "  - Status filter applied to supplying condition:",
-            status
-          );
+          console.log("  - Status filter applied to supplying condition:", status);
         }
         if (status === "pending") {
-          console.log(
-            "  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!"
-          );
+          console.log("  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!");
         }
         console.log("  - Condition:", JSON.stringify(supplyingStoreCondition));
 
-        // Combine with OR
         where[Op.or] = [askingStoreCondition, supplyingStoreCondition];
 
         console.log("\n📋 Combined WHERE clause with OR:");
         console.log(JSON.stringify(where, null, 2));
 
-        // ✅ If a specific store filter is requested, apply it WITHIN the permission
         if (storeId !== "all" && parseInt(storeId) !== userStoreId) {
           console.log(`\n📌 Additional store filter applied (${storeId}):`);
           where[Op.and] = [
@@ -950,14 +1149,9 @@ exports.getRequests = async (req, res) => {
 
         console.log("\n📋 FINAL PERMISSION SUMMARY:");
         console.log("  - Asking Store:", userStoreId, "→ ALL statuses");
-        console.log(
-          "  - Supplying Store:",
-          userStoreId,
-          "→ ONLY approved/finalized"
-        );
+        console.log("  - Supplying Store:", userStoreId, "→ ONLY approved/finalized");
       }
 
-      // ✅ CHECKER / FINANCE: Only see approved/finalized
     } else if (currentUserRole === "checker" || currentUserRole === "finance") {
       console.log("\n📊 CHECKER/FINANCE USER DETECTED:", currentUserRole);
 
@@ -979,7 +1173,6 @@ exports.getRequests = async (req, res) => {
 
       console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
 
-      // ✅ OTHER USERS: Only see requests they created
     } else {
       console.log("\n👤 OTHER USER ROLE DETECTED:", currentUserRole);
 
@@ -990,9 +1183,6 @@ exports.getRequests = async (req, res) => {
       console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
     }
 
-    // ================================================================
-    // 🔥 USER FILTER (overrides all other filters)
-    // ================================================================
     console.log("\n" + "=".repeat(80));
     console.log("📌 USER FILTER CHECK:");
     if (userId !== "all") {
@@ -1002,9 +1192,6 @@ exports.getRequests = async (req, res) => {
       console.log("ℹ️ No user filter (userId = 'all')");
     }
 
-    // ================================================================
-    // 🔥 SEARCH FILTER
-    // ================================================================
     console.log("\n📌 SEARCH FILTER CHECK:");
     if (search) {
       const searchCondition = {
@@ -1025,18 +1212,12 @@ exports.getRequests = async (req, res) => {
       console.log("ℹ️ No search filter (search = '')");
     }
 
-    // ================================================================
-    // 🔥 FINAL WHERE CLAUSE
-    // ================================================================
     console.log("\n" + "=".repeat(80));
     console.log("📋 FINAL WHERE CLAUSE:");
     console.log("=".repeat(80));
     console.log(JSON.stringify(where, null, 2));
     console.log("=".repeat(80));
 
-    // ================================================================
-    // 🔥 QUERY DATABASE
-    // ================================================================
     console.log("\n📊 EXECUTING DATABASE QUERY:");
     console.log("  - Page:", page);
     console.log("  - Limit:", limit);
@@ -1064,47 +1245,25 @@ exports.getRequests = async (req, res) => {
             },
           ],
           attributes: [
-            "id",
-            "requestId",
-            "itemId",
-            "quantity",
-            "remark",
-            "selected_uom",
-            "uom_code",
-            "is_base_uom",
-            "specification",
-            "brand",
-            "model",
-            "created_at",
-            "updated_at",
+            "id", "requestId", "itemId", "quantity", "remark",
+            "selected_uom", "uom_code", "is_base_uom",
+            "specification", "brand", "model",
+            "created_at", "updated_at",
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
           as: "notifications",
           include: [
             { model: Group, as: "group" },
-            { model: Department, as: "department" },   // 👈 ADDED
+            { model: Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -1112,46 +1271,6 @@ exports.getRequests = async (req, res) => {
     });
 
     console.log(`\n📊 Query returned ${rows.length} requests`);
-
-    // ================================================================
-    // 🔥 LOG RETURNED REQUESTS
-    // ================================================================
-    console.log("\n" + "=".repeat(80));
-    console.log("📋 RETURNED REQUESTS:");
-    console.log("=".repeat(80));
-
-    if (rows.length === 0) {
-      console.log("ℹ️ No requests found");
-    } else {
-      rows.forEach((req, index) => {
-        const request = req.toJSON ? req.toJSON() : req;
-        console.log(`\n📌 Request ${index + 1}:`);
-        console.log(`  - ID: ${request.requestId}`);
-        console.log(`  - Code: ${request.requestCode}`);
-        console.log(`  - Status: ${request.status}`);
-        console.log(`  - Asking Store ID: ${request.askingStoreId}`);
-        console.log(`  - Supplying Store ID: ${request.supplyingStoreId}`);
-        console.log(
-          `  - Requested By: ${request.requestedByUser?.username || "Unknown"}`
-        );
-        console.log(`  - Created At: ${request.createdAt}`);
-
-        // Check role visibility
-        if (request.askingStoreId === userStoreId) {
-          console.log(
-            `  - ✅ User's store is ASKING → SHOWN (status: ${request.status})`
-          );
-        } else if (request.supplyingStoreId === userStoreId) {
-          console.log(
-            `  - ✅ User's store is SUPPLYING → SHOWN (status: ${request.status})`
-          );
-        }
-      });
-    }
-
-    console.log("\n" + "=".repeat(80));
-    console.log("✅ GET REQUESTS COMPLETED");
-    console.log("=".repeat(80));
 
     res.json({
       success: true,
@@ -1201,43 +1320,19 @@ exports.getRequestById = async (req, res) => {
               ],
             },
           ],
-          // ✅ Include spec fields
           attributes: [
-            'id',
-            'requestId',
-            'itemId',
-            'quantity',
-            'remark',
-            'selected_uom',
-            'uom_code',
-            'is_base_uom',
-            'specification',  // ← ADD
-            'brand',          // ← ADD
-            'model',          // ← ADD
-            'created_at',
-            'updated_at',
+            'id', 'requestId', 'itemId', 'quantity', 'remark',
+            'selected_uom', 'uom_code', 'is_base_uom',
+            'specification', 'brand', 'model',
+            'created_at', 'updated_at',
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
-          // ✅ ADD DEPARTMENT INCLUDE
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
           include: [
             {
               model: db.Department,
@@ -1277,12 +1372,9 @@ exports.getRequestById = async (req, res) => {
     });
   }
 };
-// ================================================================
-// 4. CREATE REQUEST - GROUP ONLY (NO DEPARTMENT)
-// ================================================================
 
 // ================================================================
-// 4. CREATE REQUEST - GROUP + DEPARTMENT (if isAsset)
+// 4. CREATE REQUEST
 // ================================================================
 
 exports.createRequest = async (req, res) => {
@@ -1294,22 +1386,18 @@ exports.createRequest = async (req, res) => {
       supplyingStoreId,
       items,
       requestedById,
-      requestedBy,          // ← ADDED
+      requestedBy,
       requestedDate,
       status = "pending",
       remark,
       isAsset = false,
     } = req.body;
 
-    // ✅ Logging
     console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
     console.log(JSON.stringify(items, null, 2));
     console.log('👤 requestedById:', requestedById);
-    console.log('👤 requestedBy  :', requestedBy);   // ← ADDED
+    console.log('👤 requestedBy  :', requestedBy);
 
-    // ================================================================
-    // 1. VALIDATE REQUIRED FIELDS
-    // ================================================================
     if (!askingStoreId || !supplyingStoreId) {
       await t.rollback();
       return res.status(400).json({
@@ -1326,9 +1414,6 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 2. VALIDATE STORES
-    // ================================================================
     const askingStore = await Store.findByPk(askingStoreId);
     const supplyingStore = await Store.findByPk(supplyingStoreId);
 
@@ -1356,9 +1441,6 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 3. CHECK IF SKIP STORE (FOREIGN/LOCAL PURCHASE)
-    // ================================================================
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
     if (skipNotifications) {
       console.log(
@@ -1366,9 +1448,6 @@ exports.createRequest = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // 4. VALIDATE USER
-    // ================================================================
     if (requestedById) {
       const user = await User.findByPk(requestedById);
       if (!user) {
@@ -1380,9 +1459,6 @@ exports.createRequest = async (req, res) => {
       }
     }
 
-    // ================================================================
-    // 5. VALIDATE ITEMS
-    // ================================================================
     if (!items || items.length === 0) {
       await t.rollback();
       return res.status(400).json({
@@ -1443,14 +1519,11 @@ exports.createRequest = async (req, res) => {
         continue;
       }
 
-      // ✅ Get UOM info from the request (sent from frontend)
       const selectedUom = item.selectedUom || 'base';
-
       let uomCode = item.uomCode;
       if (!uomCode || uomCode === '') {
         uomCode = itemRecord.uom?.code || 'Units';
       }
-
       const isBaseUom = item.isBaseUom !== false;
 
       console.log(`📦 Item ${itemRecord.code}: selectedUom=${selectedUom}, uomCode=${uomCode}, isBaseUom=${isBaseUom}`);
@@ -1479,18 +1552,12 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 6. STOCK AVAILABILITY VALIDATION
-    // ================================================================
     const stockValidation = await validateStockAvailability(
       supplyingStoreId,
       validatedItems,
     );
 
-    if (
-      !stockValidation.validationSkipped &&
-      stockValidation.errors.length > 0
-    ) {
+    if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
       await t.rollback();
 
       return res.status(400).json({
@@ -1500,15 +1567,9 @@ exports.createRequest = async (req, res) => {
         stockInfo: stockValidation.stockInfo,
         summary: {
           totalItems: validatedItems.length,
-          itemsWithStock: stockValidation.stockInfo.filter(
-            (s) => s.availableQuantity > 0,
-          ).length,
-          itemsWithoutStock: stockValidation.errors.filter(
-            (e) => e.availableQuantity === 0,
-          ).length,
-          itemsWithShortage: stockValidation.errors.filter(
-            (e) => e.availableQuantity > 0 && e.shortage > 0,
-          ).length,
+          itemsWithStock: stockValidation.stockInfo.filter((s) => s.availableQuantity > 0).length,
+          itemsWithoutStock: stockValidation.errors.filter((e) => e.availableQuantity === 0).length,
+          itemsWithShortage: stockValidation.errors.filter((e) => e.availableQuantity > 0 && e.shortage > 0).length,
           storeName: supplyingStore.name,
           storeId: supplyingStoreId,
           validationSkipped: false,
@@ -1516,21 +1577,15 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 7. GENERATE REQUEST CODE
-    // ================================================================
     const requestCode = await ItemRequest.generateRequestCode();
 
-    // ================================================================
-    // 8. CREATE THE REQUEST (with isAsset + requestedBy)
-    // ================================================================
     const request = await ItemRequest.create(
       {
         requestCode,
         askingStoreId: parseInt(askingStoreId),
         supplyingStoreId: parseInt(supplyingStoreId),
         requestedById: requestedById || null,
-        requestedBy: requestedBy || null,          // ← ADDED
+        requestedBy: requestedBy || null,
         requestedDate: requestedDate || new Date().toISOString().split("T")[0],
         status: status || "pending",
         remark: remark || null,
@@ -1539,9 +1594,6 @@ exports.createRequest = async (req, res) => {
       { transaction: t },
     );
 
-    // ================================================================
-    // 9. CREATE ITEM DETAILS with UOM AND SPEC FIELDS
-    // ================================================================
     await Promise.all(
       validatedItems.map(async (item) => {
         return ItemRequestDetail.create(
@@ -1562,23 +1614,28 @@ exports.createRequest = async (req, res) => {
       }),
     );
 
-    // ================================================================
-    // 10. CREATE NOTIFICATIONS - GROUPS + DEPARTMENT (if isAsset)
-    // ================================================================
     let notificationCount = 0;
 
     if (!skipNotifications) {
       console.log(
-        `📤 Creating notifications for request ${request.requestId}, isAsset: ${isAsset}`,
+        `📤 [STAGE 1] Creating asking store notifications for request ${request.requestId}, isAsset: ${isAsset}`,
       );
 
       try {
+        const requestingUserGroupId = await resolveRequestingUserGroupId(
+          req,
+          requestedById,
+          t
+        );
+
         notificationCount = await createRequestNotifications(
           request.requestId,
           supplyingStoreId,
           askingStoreId,
           isAsset,
-          t
+          t,
+          requestingUserGroupId,
+          requestedById
         );
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
@@ -1589,14 +1646,8 @@ exports.createRequest = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // 11. COMMIT TRANSACTION
-    // ================================================================
     await t.commit();
 
-    // ================================================================
-    // 12. FETCH COMPLETE REQUEST
-    // ================================================================
     const completeRequest = await ItemRequest.findByPk(request.requestId, {
       include: [
         {
@@ -1613,25 +1664,12 @@ exports.createRequest = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -1645,9 +1683,6 @@ exports.createRequest = async (req, res) => {
       ],
     });
 
-    // ================================================================
-    // 13. PREPARE RESPONSE
-    // ================================================================
     const stockInfoResponse = stockValidation.validationSkipped
       ? stockValidation.stockInfo.map((s) => ({
           itemId: s.itemId,
@@ -1676,9 +1711,7 @@ exports.createRequest = async (req, res) => {
 
     const responseMessage = skipNotifications
       ? `✅ Request created successfully. (${supplyingStore.code} - No approval required - Foreign/Local Purchase)`
-      : isAsset
-        ? `✅ Asset request created successfully. Notifications sent to groups and asset department.`
-        : `✅ Request created successfully. Notifications sent to all groups.`;
+      : `✅ Request created successfully. Notifications sent to asking store groups first.`;
 
     res.status(201).json({
       success: true,
@@ -1691,16 +1724,15 @@ exports.createRequest = async (req, res) => {
           ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)`
           : null,
         notificationCount: notificationCount,
+        currentStage: 'asking_store',
         stockValidation: {
-          allItemsAvailable:
-            stockValidation.isValid || stockValidation.validationSkipped,
+          allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
           validationSkipped: stockValidation.validationSkipped,
           skipReason: stockValidation.skipReason || null,
           items: stockInfoResponse,
           summary: {
             totalItems: validatedItems.length,
-            allItemsAvailable:
-              stockValidation.isValid || stockValidation.validationSkipped,
+            allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
             storeName: supplyingStore.name,
             storeCode: supplyingStore.code,
             validationSkipped: stockValidation.validationSkipped,
@@ -1731,8 +1763,9 @@ exports.createRequest = async (req, res) => {
 // 5. UPDATE REQUEST
 // ================================================================
 
-
 exports.updateRequest = async (req, res) => {
+  const t = await db.sequelize.transaction();
+
   try {
     const { id } = req.params;
     const {
@@ -1740,49 +1773,54 @@ exports.updateRequest = async (req, res) => {
       supplyingStoreId,
       items,
       requestedById,
-      requestedBy,          // ← ADDED
+      requestedBy,
       requestedDate,
       remark,
       isAsset,
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, req.body);
-    console.log(`👤 requestedById: ${requestedById}`);
-    console.log(`👤 requestedBy  : ${requestedBy}`);   // ← ADDED
 
-    const request = await ItemRequest.findByPk(id);
+    const request = await ItemRequest.findByPk(id, { transaction: t });
     if (!request) {
+      await t.rollback();
       return res.status(404).json({
         success: false,
         error: "Request not found",
       });
     }
 
+    if (!isRequestCreator(req, request)) {
+      await t.rollback();
+      return res.status(403).json({
+        success: false,
+        error: "Only the request creator can edit this request",
+      });
+    }
+
     if (request.status === "finalized") {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         error: "Cannot edit finalized requests",
       });
     }
 
-    // ✅ Update request with isAsset and requestedBy
     await request.update({
       askingStoreId: askingStoreId || request.askingStoreId,
       supplyingStoreId: supplyingStoreId || request.supplyingStoreId,
-      requestedById:
-        requestedById !== undefined ? requestedById : request.requestedById,
-      requestedBy:
-        requestedBy !== undefined ? requestedBy : request.requestedBy,   // ← ADDED
+      requestedById: requestedById !== undefined ? requestedById : request.requestedById,
+      requestedBy: requestedBy !== undefined ? requestedBy : request.requestedBy,
       requestedDate: requestedDate || request.requestedDate,
       status: "pending",
       remark: remark !== undefined ? remark : request.remark,
       isAsset: isAsset !== undefined ? isAsset : request.isAsset,
-    });
+    }, { transaction: t });
 
-    // ✅ Update items with UOM AND SPEC FIELDS
     if (items && items.length > 0) {
       await ItemRequestDetail.destroy({
         where: { requestId: id },
+        transaction: t,
       });
 
       await Promise.all(
@@ -1802,32 +1840,43 @@ exports.updateRequest = async (req, res) => {
             specification: item.specification || null,
             brand: item.brand || null,
             model: item.model || null,
-          });
+          }, { transaction: t });
         }),
       );
     }
 
-    // ✅ Delete existing notifications
-    console.log(`🗑️ Deleting existing notifications for request ${id}`);
+    console.log(`🗑️ Deleting all notifications for request ${id}`);
     await RequestNotification.destroy({
       where: { request_id: id },
+      transaction: t,
     });
 
-    // ✅ Recreate notifications with updated isAsset
     const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
-    console.log(`📤 Creating new notifications for request ${id}, isAsset: ${updatedIsAsset}`);
-    
+    const updatedRequestedById = 
+      requestedById !== undefined ? requestedById : request.requestedById;
+
+    console.log(`📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`);
+
+    const requestingUserGroupId = await resolveRequestingUserGroupId(
+      req,
+      updatedRequestedById,
+      t
+    );
+
     await createRequestNotifications(
       request.requestId,
       request.supplyingStoreId,
       request.askingStoreId,
       updatedIsAsset || false,
-      null
+      t,
+      requestingUserGroupId,
+      updatedRequestedById
     );
 
-    console.log(`✅ Request ${id} updated successfully`);
+    await t.commit();
 
-    // ✅ Fetch updated request
+    console.log(`✅ Request ${id} updated successfully — reset to Stage 1 (asking store)`);
+
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
@@ -1841,40 +1890,18 @@ exports.updateRequest = async (req, res) => {
             },
           ],
           attributes: [
-            'id',
-            'requestId',
-            'itemId',
-            'quantity',
-            'remark',
-            'selected_uom',
-            'uom_code',
-            'is_base_uom',
-            'specification',
-            'brand',
-            'model',
-            'created_at',
-            'updated_at',
+            'id', 'requestId', 'itemId', 'quantity', 'remark',
+            'selected_uom', 'uom_code', 'is_base_uom',
+            'specification', 'brand', 'model',
+            'created_at', 'updated_at',
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -1890,10 +1917,11 @@ exports.updateRequest = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Request updated successfully. New notifications sent.",
+      message: "Request updated successfully. Restarted at asking store approval stage.",
       data: updatedRequest,
     });
   } catch (error) {
+    await t.rollback();
     console.error("❌ Update request error:", error);
     res.status(500).json({
       success: false,
@@ -1914,8 +1942,7 @@ exports.updateStatus = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error:
-          "Invalid status. Must be one of: pending, approved, rejected, finalized",
+        error: "Invalid status. Must be one of: pending, approved, rejected, finalized",
       });
     }
 
@@ -1924,6 +1951,13 @@ exports.updateStatus = async (req, res) => {
       return res.status(404).json({
         success: false,
         error: "Request not found",
+      });
+    }
+
+    if (!isRequestCreator(req, request)) {
+      return res.status(403).json({
+        success: false,
+        error: "Only the request creator can change status",
       });
     }
 
@@ -1937,8 +1971,7 @@ exports.updateStatus = async (req, res) => {
     if (request.status === "rejected" && status === "approved") {
       return res.status(400).json({
         success: false,
-        error:
-          "Cannot approve a rejected request. Edit the request to reset status to pending",
+        error: "Cannot approve a rejected request. Edit the request to reset status to pending",
       });
     }
 
@@ -1959,25 +1992,12 @@ exports.updateStatus = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
       ],
     });
@@ -2025,25 +2045,12 @@ exports.getByUser = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -2091,25 +2098,12 @@ exports.getMyRequests = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -2147,8 +2141,7 @@ exports.getByStatus = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        error:
-          "Invalid status. Must be one of: pending, approved, rejected, finalized",
+        error: "Invalid status. Must be one of: pending, approved, rejected, finalized",
       });
     }
 
@@ -2166,25 +2159,12 @@ exports.getByStatus = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -2243,25 +2223,12 @@ exports.getByDateRange = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
@@ -2303,11 +2270,17 @@ exports.deleteRequest = async (req, res) => {
       });
     }
 
+    if (!isRequestCreator(req, request)) {
+      return res.status(403).json({
+        success: false,
+        error: "Only the request creator can delete this request",
+      });
+    }
+
     if (request.status === "approved") {
       return res.status(400).json({
         success: false,
-        error:
-          "Cannot delete approved requests. Edit the request to reset status to pending first",
+        error: "Cannot delete approved requests. Edit the request to reset status to pending first",
       });
     }
 
@@ -2357,32 +2330,19 @@ exports.getRequestWithNotifications = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
           model: RequestNotification,
           as: "notifications",
           include: [
             { model: Group, as: "group" },
-            { model: Department, as: "department" },  // ✅ ADD THIS
+            { model: Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
@@ -2397,13 +2357,13 @@ exports.getRequestWithNotifications = async (req, res) => {
     }
 
     const notifications = request.notifications || [];
+
+    const askingNotifs = notifications.filter((n) => n.stage === 'asking_store');
+    const supplyingNotifs = notifications.filter((n) => n.stage === 'supplying_store');
+
     const total = notifications.length;
-    const accepted = notifications.filter(
-      (n) => n.status === "accepted",
-    ).length;
-    const rejected = notifications.filter(
-      (n) => n.status === "rejected",
-    ).length;
+    const accepted = notifications.filter((n) => n.status === "accepted").length;
+    const rejected = notifications.filter((n) => n.status === "rejected").length;
     const pending = notifications.filter((n) => n.status === "pending").length;
     const allAccepted = total > 0 && accepted === total;
     const hasRejection = rejected > 0;
@@ -2420,6 +2380,7 @@ exports.getRequestWithNotifications = async (req, res) => {
         return {
           id: n.id,
           type: n.approval_type || "group",
+          stage: n.stage || "supplying_store",
           name: name,
           reason: n.rejected_reason,
           respondedBy:
@@ -2442,6 +2403,18 @@ exports.getRequestWithNotifications = async (req, res) => {
           allAccepted,
           hasRejection,
           rejectionReasons,
+          askingStore: {
+            total: askingNotifs.length,
+            accepted: askingNotifs.filter((n) => n.status === 'accepted').length,
+            rejected: askingNotifs.filter((n) => n.status === 'rejected').length,
+            pending: askingNotifs.filter((n) => n.status === 'pending').length,
+          },
+          supplyingStore: {
+            total: supplyingNotifs.length,
+            accepted: supplyingNotifs.filter((n) => n.status === 'accepted').length,
+            rejected: supplyingNotifs.filter((n) => n.status === 'rejected').length,
+            pending: supplyingNotifs.filter((n) => n.status === 'pending').length,
+          },
         },
       },
     });
@@ -2480,20 +2453,26 @@ exports.checkRequestNotificationStatus = async (req, res) => {
 // 14. ACCEPT NOTIFICATION
 // ================================================================
 exports.acceptNotification = async (req, res) => {
+  const t = await db.sequelize.transaction();
+
   try {
     const { notificationId } = req.params;
     const userId = req.user?.userId;
 
     if (!userId) {
+      await t.rollback();
       return res.status(401).json({
         success: false,
         error: "User not authenticated",
       });
     }
 
-    const notification = await RequestNotification.findByPk(notificationId);
+    const notification = await RequestNotification.findByPk(notificationId, {
+      transaction: t,
+    });
 
     if (!notification) {
+      await t.rollback();
       return res.status(404).json({
         success: false,
         error: "Notification not found",
@@ -2501,25 +2480,56 @@ exports.acceptNotification = async (req, res) => {
     }
 
     if (notification.status !== "pending") {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         error: `Notification is already ${notification.status}`,
       });
     }
 
-    await notification.update({
-      status: "accepted",
-      responded_by: userId,
-      responded_at: new Date(),
-    });
+    await notification.update(
+      {
+        status: "accepted",
+        responded_by: userId,
+        responded_at: new Date(),
+      },
+      { transaction: t }
+    );
+
+    console.log(`✅ Notification ${notificationId} accepted (stage: ${notification.stage})`);
+
+    let stageAdvanced = false;
+    let advancementResult = null;
+
+    if (notification.stage === "asking_store") {
+      console.log(`🔄 Asking store notification accepted — checking advancement...`);
+
+      advancementResult = await checkAndAdvanceToSupplyingStage(
+        notification.request_id,
+        t
+      );
+
+      stageAdvanced = advancementResult.advanced;
+
+      if (stageAdvanced) {
+        console.log(`🚀 ADVANCED TO SUPPLYING STAGE!`);
+      }
+    }
+
+    await t.commit();
 
     res.status(200).json({
       success: true,
-      message: "Notification accepted successfully",
+      message: stageAdvanced
+        ? "Notification accepted. Request advanced to supplying store stage."
+        : "Notification accepted successfully",
       data: notification,
+      stageAdvanced,
+      advancementReason: advancementResult?.reason || null,
     });
   } catch (error) {
-    console.error("Error accepting notification:", error);
+    await t.rollback();
+    console.error("❌ Error accepting notification:", error);
     res.status(500).json({
       success: false,
       error: error.message || "Failed to accept notification",
@@ -2573,6 +2583,11 @@ exports.rejectNotification = async (req, res) => {
       responded_at: new Date(),
     });
 
+    console.log(
+      `❌ Notification ${notificationId} REJECTED (stage: ${notification.stage}) — ` +
+      `request ${notification.request_id} will NOT advance`
+    );
+
     res.status(200).json({
       success: true,
       message: "Notification rejected",
@@ -2608,6 +2623,7 @@ exports.getRejectionReasons = async (req, res) => {
     const reasons = notifications.map((n) => ({
       groupId: n.group_id,
       groupName: n.group?.name || "Unknown Group",
+      stage: n.stage,
       reason: n.rejected_reason,
       respondedBy:
         n.respondedByUser?.fullName || n.respondedByUser?.username || "Unknown",
@@ -2665,14 +2681,8 @@ exports.exportRequests = async (req, res) => {
             },
           ],
         },
-        {
-          model: Store,
-          as: "askingStore",
-        },
-        {
-          model: Store,
-          as: "supplyingStore",
-        },
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
         {
           model: User,
           as: "requestedByUser",
@@ -2761,16 +2771,10 @@ exports.getStats = async (req, res) => {
       } else {
         return res.json({
           success: true,
-          data: {
-            total: 0,
-            pending: 0,
-            approved: 0,
-            rejected: 0,
-            finalized: 0
-          }
+          data: { total: 0, pending: 0, approved: 0, rejected: 0, finalized: 0 },
         });
       }
-      
+
       if (userStoreId) {
         where[Op.or] = [
           { requestedById: currentUserId },
@@ -2784,22 +2788,10 @@ exports.getStats = async (req, res) => {
     console.log("📋 Stats WHERE clause:", JSON.stringify(where, null, 2));
 
     const total = await ItemRequest.count({ where });
-
-    const pending = await ItemRequest.count({
-      where: { ...where, status: 'pending' }
-    });
-
-    const approved = await ItemRequest.count({
-      where: { ...where, status: 'approved' }
-    });
-
-    const rejected = await ItemRequest.count({
-      where: { ...where, status: 'rejected' }
-    });
-
-    const finalized = await ItemRequest.count({
-      where: { ...where, status: 'finalized' }
-    });
+    const pending = await ItemRequest.count({ where: { ...where, status: 'pending' } });
+    const approved = await ItemRequest.count({ where: { ...where, status: 'approved' } });
+    const rejected = await ItemRequest.count({ where: { ...where, status: 'rejected' } });
+    const finalized = await ItemRequest.count({ where: { ...where, status: 'finalized' } });
 
     const statusBreakdown = await ItemRequest.findAll({
       attributes: [
@@ -2811,11 +2803,7 @@ exports.getStats = async (req, res) => {
     });
 
     console.log('📊 Stats result:', {
-      total,
-      pending,
-      approved,
-      rejected,
-      finalized,
+      total, pending, approved, rejected, finalized,
       breakdown: statusBreakdown.map(s => ({
         status: s.status,
         count: parseInt(s.dataValues.count)
@@ -2825,11 +2813,7 @@ exports.getStats = async (req, res) => {
     res.json({
       success: true,
       data: {
-        total,
-        pending,
-        approved,
-        rejected,
-        finalized,
+        total, pending, approved, rejected, finalized,
         breakdown: statusBreakdown.map(s => ({
           status: s.status,
           count: parseInt(s.dataValues.count)
@@ -2873,11 +2857,6 @@ exports.getActiveStores = async (req, res) => {
 // ================================================================
 // 20. GET ACTIVE ITEMS
 // ================================================================
-// controllers/itemRequestController.js
-
-// ================================================================
-// 20. GET ACTIVE ITEMS (with search support)
-// ================================================================
 exports.getActiveItems = async (req, res) => {
   try {
     const { search, limit = 20, page = 1 } = req.query;
@@ -2885,7 +2864,6 @@ exports.getActiveItems = async (req, res) => {
     const where = { status: "Active" };
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // ✅ Add search filter if provided
     if (search && search.trim()) {
       const searchTerm = search.trim().toLowerCase();
       where[Op.or] = [
@@ -2900,28 +2878,12 @@ exports.getActiveItems = async (req, res) => {
     const { count, rows } = await Item.findAndCountAll({
       where,
       attributes: [
-        "itemId",
-        "code",
-        "name",
-        "standardName",
-        "brand",
-        "model",
-        "uomId",
-        "conversionUomId",
-        "conversionValue",
-        "specText",
+        "itemId", "code", "name", "standardName", "brand", "model",
+        "uomId", "conversionUomId", "conversionValue", "specText",
       ],
       include: [
-        {
-          model: UOM,
-          as: "uom",
-          attributes: ["uomId", "code", "name"],
-        },
-        {
-          model: UOM,
-          as: "conversionUom",
-          attributes: ["uomId", "code", "name"],
-        },
+        { model: UOM, as: "uom", attributes: ["uomId", "code", "name"] },
+        { model: UOM, as: "conversionUom", attributes: ["uomId", "code", "name"] },
       ],
       order: [["code", "ASC"]],
       limit: parseInt(limit),
@@ -2963,7 +2925,6 @@ exports.getGroupNotifications = async (req, res) => {
       });
     }
 
-    // 🔥 Verify the group belongs to the store
     const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
         store_id: parseInt(storeId),
@@ -2978,7 +2939,6 @@ exports.getGroupNotifications = async (req, res) => {
       });
     }
 
-    // 🔥 Build where clause - GROUP NOTIFICATIONS ONLY
     const whereClause = {
       group_id: parseInt(groupId),
       store_id: parseInt(storeId),
@@ -3004,14 +2964,7 @@ exports.getGroupNotifications = async (req, res) => {
             {
               model: User,
               as: "requestedByUser",
-              attributes: [
-                "userId",
-                "username",
-                "fullName",
-                "email",
-                "roleId",
-                "departmentId",
-              ],
+              attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
               include: [
                 {
                   model: Department,
@@ -3044,15 +2997,9 @@ exports.getGroupNotifications = async (req, res) => {
 
     const summary = {
       total: totalCount,
-      pending: await RequestNotification.count({
-        where: { ...whereClause, status: "pending" },
-      }),
-      accepted: await RequestNotification.count({
-        where: { ...whereClause, status: "accepted" },
-      }),
-      rejected: await RequestNotification.count({
-        where: { ...whereClause, status: "rejected" },
-      }),
+      pending: await RequestNotification.count({ where: { ...whereClause, status: "pending" } }),
+      accepted: await RequestNotification.count({ where: { ...whereClause, status: "accepted" } }),
+      rejected: await RequestNotification.count({ where: { ...whereClause, status: "rejected" } }),
     };
 
     res.json({
@@ -3082,9 +3029,123 @@ exports.getGroupNotifications = async (req, res) => {
 };
 
 // ================================================================
-// 22. GET DEPARTMENT NOTIFICATIONS - REMOVED
+// 22. GET DEPARTMENT NOTIFICATIONS (for ASSET requests)
 // ================================================================
-// This endpoint has been removed as department validation is no longer used.
+exports.getDepartmentNotifications = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const { page = 1, limit = 10, status } = req.query;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    const deptId = parseInt(departmentId);
+    if (isNaN(deptId) || deptId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid department ID",
+      });
+    }
+
+    const { Department } = db;
+
+    const department = await Department.findByPk(deptId);
+    if (!department) {
+      return res.status(404).json({
+        success: false,
+        error: "Department not found",
+      });
+    }
+
+    const whereClause = {
+      department_id: deptId,
+      approval_type: "department",
+      is_department_approval: true,
+    };
+
+    if (status && status !== "all") {
+      whereClause.status = status;
+    }
+
+    const totalCount = await RequestNotification.count({ where: whereClause });
+
+    const notifications = await RequestNotification.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: ItemRequest,
+          as: "request",
+          include: [
+            { model: Store, as: "askingStore" },
+            { model: Store, as: "supplyingStore" },
+            { model: User, as: "requestedByUser" },
+            {
+              model: ItemRequestDetail,
+              as: "items",
+              include: [
+                {
+                  model: Item,
+                  as: "item",
+                  include: [{ model: UOM, as: "uom" }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          model: Department,
+          as: "department",
+          attributes: ["department_id", "name", "code", "description"]
+        },
+        {
+          model: User,
+          as: "respondedByUser",
+          attributes: ["userId", "username", "fullName"]
+        }
+      ],
+      order: [["created_at", "DESC"]],
+      limit: parseInt(limit) || 10,
+      offset: ((parseInt(page) || 1) - 1) * (parseInt(limit) || 10),
+    });
+
+    const summary = {
+      total: totalCount,
+      pending: await RequestNotification.count({ where: { ...whereClause, status: "pending" } }),
+      accepted: await RequestNotification.count({ where: { ...whereClause, status: "accepted" } }),
+      rejected: await RequestNotification.count({ where: { ...whereClause, status: "rejected" } }),
+    };
+
+    res.json({
+      success: true,
+      data: {
+        notifications,
+        summary,
+        pagination: {
+          page: parseInt(page) || 1,
+          limit: parseInt(limit) || 10,
+          total: totalCount,
+          pages: Math.ceil(totalCount / (parseInt(limit) || 10)),
+        },
+        department: {
+          department_id: department.department_id,
+          name: department.name,
+          code: department.code,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting department notifications:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get department notifications",
+    });
+  }
+};
 
 // ================================================================
 // 23. GET STORE GROUPS (Helper endpoint)
@@ -3117,142 +3178,6 @@ exports.getStoreGroups = async (req, res) => {
   }
 };
 
-
-// ================================================================
-// 22. GET DEPARTMENT NOTIFICATIONS (for ASSET requests)
-// ================================================================
-exports.getDepartmentNotifications = async (req, res) => {
-  try {
-    const { departmentId } = req.params;
-    const { page = 1, limit = 10, status } = req.query;
-    const userId = req.user?.userId;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: "User not authenticated",
-      });
-    }
-
-    const deptId = parseInt(departmentId);
-    if (isNaN(deptId) || deptId <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid department ID",
-      });
-    }
-
-    // Get Department model
-    const { Department } = db;
-
-    // ✅ Verify department exists
-    const department = await Department.findByPk(deptId);
-    if (!department) {
-      return res.status(404).json({
-        success: false,
-        error: "Department not found",
-      });
-    }
-
-    // ✅ Build where clause - DEPARTMENT NOTIFICATIONS ONLY
-    const whereClause = {
-      department_id: deptId,
-      approval_type: "department",
-      is_department_approval: true,
-    };
-
-    if (status && status !== "all") {
-      whereClause.status = status;
-    }
-
-    // ✅ Get total count
-    const totalCount = await RequestNotification.count({
-      where: whereClause,
-    });
-
-    // ✅ Get paginated notifications
-    const notifications = await RequestNotification.findAll({
-      where: whereClause,
-      include: [
-        {
-          model: ItemRequest,
-          as: "request",
-          include: [
-            { model: Store, as: "askingStore" },
-            { model: Store, as: "supplyingStore" },
-            { model: User, as: "requestedByUser" },
-            { 
-              model: ItemRequestDetail, 
-              as: "items",
-              include: [
-                {
-                  model: Item,
-                  as: "item",
-                  include: [{ model: UOM, as: "uom" }]
-                }
-              ]
-            }
-          ]
-        },
-        { 
-          model: Department, 
-          as: "department",
-          attributes: ["department_id", "name", "code", "description"]
-        },
-        { 
-          model: User, 
-          as: "respondedByUser",
-          attributes: ["userId", "username", "fullName"]
-        }
-      ],
-      order: [["created_at", "DESC"]],
-      limit: parseInt(limit) || 10,
-      offset: ((parseInt(page) || 1) - 1) * (parseInt(limit) || 10),
-    });
-
-    // ✅ Get summary counts
-    const summary = {
-      total: totalCount,
-      pending: await RequestNotification.count({
-        where: { ...whereClause, status: "pending" },
-      }),
-      accepted: await RequestNotification.count({
-        where: { ...whereClause, status: "accepted" },
-      }),
-      rejected: await RequestNotification.count({
-        where: { ...whereClause, status: "rejected" },
-      }),
-    };
-
-    res.json({
-      success: true,
-      data: {
-        notifications,
-        summary,
-        pagination: {
-          page: parseInt(page) || 1,
-          limit: parseInt(limit) || 10,
-          total: totalCount,
-          pages: Math.ceil(totalCount / (parseInt(limit) || 10)),
-        },
-        department: {
-          department_id: department.department_id,
-          name: department.name,
-          code: department.code,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("❌ Error getting department notifications:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to get department notifications",
-    });
-  }
-};
-
-
-
 // ================================================================
 // 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
 // ================================================================
@@ -3279,16 +3204,10 @@ exports.getPendingNotifications = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // ✅ FIX: For ADMIN or CHECKER, show ALL pending notifications
-    // For other roles, filter by their store/group/department
-    // ================================================================
-
     const isAdmin = userRole === 'admin' || userRole === 'Admin' || userRole === 'superadmin';
     const isChecker = userRole === 'checker' || userRole === 'Checker';
 
-    // ✅ GROUP notifications: status = pending AND approval_type IS NULL OR 'group'
-    let groupWhere = { 
+    let groupWhere = {
       status: 'pending',
       [Op.or]: [
         { approval_type: 'group' },
@@ -3296,22 +3215,16 @@ exports.getPendingNotifications = async (req, res) => {
       ]
     };
 
-    // ✅ DEPARTMENT notifications: status = pending AND approval_type = 'department'
-    let deptWhere = { 
-      status: 'pending', 
-      approval_type: 'department', 
-      is_department_approval: true 
+    let deptWhere = {
+      status: 'pending',
+      approval_type: 'department',
+      is_department_approval: true
     };
 
-    // ✅ ADMIN or CHECKER: Show ALL pending notifications (no filters)
     if (isAdmin || isChecker) {
       console.log(`👑 ${userRole} user - showing ALL pending notifications`);
     } else {
-      // ✅ NON-ADMIN/NON-CHECKER: Filter by their assignments
-    
-      // Group notifications - if user has store & group
       if (userStoreId && userGroupId) {
-        // Verify the group belongs to the store
         const storeGroupRelation = await StoreGroupRelation.findOne({
           where: {
             store_id: parseInt(userStoreId),
@@ -3325,26 +3238,21 @@ exports.getPendingNotifications = async (req, res) => {
           console.log('✅ Group notifications will be fetched for store:', userStoreId, 'group:', userGroupId);
         } else {
           console.log('⚠️ Group not found in this store, skipping group notifications');
-          groupWhere.id = -1; // No results
+          groupWhere.id = -1;
         }
       } else {
         console.log('⚠️ No store/group found, skipping group notifications');
-        groupWhere.id = -1; // No results
+        groupWhere.id = -1;
       }
 
-      // Department notifications - if user has department
       if (departmentId) {
         deptWhere.department_id = parseInt(departmentId);
         console.log('✅ Department notifications will be fetched for department:', departmentId);
       } else {
         console.log('⚠️ No department found, skipping department notifications');
-        deptWhere.id = -1; // No results
+        deptWhere.id = -1;
       }
     }
-
-    // ================================================================
-    // FETCH NOTIFICATIONS - SEPARATE QUERIES
-    // ================================================================
 
     const limitVal = parseInt(limit) || 10;
     const offsetVal = ((parseInt(page) || 1) - 1) * limitVal;
@@ -3354,7 +3262,6 @@ exports.getPendingNotifications = async (req, res) => {
     let groupTotal = 0;
     let deptTotal = 0;
 
-    // ✅ Fetch GROUP notifications (approval_type = 'group' OR NULL)
     if (groupWhere.id !== -1) {
       const groupResult = await RequestNotification.findAndCountAll({
         where: groupWhere,
@@ -3393,7 +3300,6 @@ exports.getPendingNotifications = async (req, res) => {
       console.log(`📊 Found ${groupTotal} group notifications`);
     }
 
-    // ✅ Fetch DEPARTMENT notifications (approval_type = 'department')
     if (deptWhere.id !== -1) {
       const deptResult = await RequestNotification.findAndCountAll({
         where: deptWhere,
@@ -3439,10 +3345,6 @@ exports.getPendingNotifications = async (req, res) => {
       console.log(`📊 Found ${deptTotal} department notifications`);
     }
 
-    // ================================================================
-    // COMBINE AND SORT - NO DUPLICATES
-    // ================================================================
-
     const allNotifications = [
       ...groupNotifications.map(n => ({
         ...(n.toJSON ? n.toJSON() : n),
@@ -3456,7 +3358,6 @@ exports.getPendingNotifications = async (req, res) => {
       }))
     ];
 
-    // Sort by created_at (newest first)
     allNotifications.sort((a, b) => {
       return new Date(b.created_at) - new Date(a.created_at);
     });
@@ -3495,6 +3396,104 @@ exports.getPendingNotifications = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get pending notifications",
+    });
+  }
+};
+
+// ================================================================
+// 25. 🔥 NEW: GET APPROVAL DEPARTMENTS FOR A STORE
+// ================================================================
+/**
+ * GET /api/item-requests/approval-departments/:storeCode
+ *
+ * Returns the list of departments that need to approve requests
+ * for the given asking store code.
+ */
+exports.getApprovalDepartmentsForStore = async (req, res) => {
+  try {
+    const { storeCode } = req.params;
+
+    if (!storeCode) {
+      return res.status(400).json({
+        success: false,
+        error: "Store code is required",
+      });
+    }
+
+    console.log(`📤 Fetching approval departments for store: ${storeCode}`);
+
+    // Verify the store exists
+    const store = await Store.findOne({ where: { code: storeCode } });
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: `Store with code "${storeCode}" not found`,
+      });
+    }
+
+    // Get the approval department config
+    const config = await getApprovalDepartmentConfig();
+
+    if (!config || !config.departments || config.departments.length === 0) {
+      console.log(`ℹ️ No approval departments configured`);
+      return res.json({
+        success: true,
+        data: {
+          storeCode,
+          storeName: store.name,
+          requiresApproval: false,
+          departments: [],
+        },
+      });
+    }
+
+    // Filter departments whose appliesTo includes the store code
+    const applicableDepartments = config.departments.filter(
+      (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(storeCode)
+    );
+
+    console.log(
+      `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
+      `department(s) apply to store ${storeCode}`
+    );
+
+    // Fetch department details for each applicable one
+    const enriched = await Promise.all(
+      applicableDepartments.map(async (entry) => {
+        const department = await db.Department.findByPk(entry.departmentId);
+        if (!department) {
+          return {
+            departmentId: entry.departmentId,
+            name: `Department ${entry.departmentId}`,
+            code: 'N/A',
+            description: null,
+            appliesTo: entry.appliesTo,
+          };
+        }
+        return {
+          departmentId: department.departmentId,
+          name: department.name,
+          code: department.code,
+          description: department.description || null,
+          appliesTo: entry.appliesTo,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        storeCode,
+        storeName: store.name,
+        requiresApproval: true,
+        departments: enriched,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting approval departments for store:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch approval departments",
     });
   }
 };

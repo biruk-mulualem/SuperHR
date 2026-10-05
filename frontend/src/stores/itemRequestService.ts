@@ -81,9 +81,20 @@ export interface Department {
   status?: string;
 }
 
+// 🔥 NEW: Approval department type
+export interface ApprovalDepartment {
+  departmentId: number;
+  name: string;
+  code: string;
+  description?: string | null;
+  appliesTo?: string[];
+}
+
 // ================================================================
 // NOTIFICATION TYPES
 // ================================================================
+
+export type NotificationStage = 'asking_store' | 'supplying_store';
 
 export interface RequestNotification {
   id: number;
@@ -93,6 +104,7 @@ export interface RequestNotification {
   store_id: number;
   approval_type?: 'group' | 'department';
   is_department_approval?: boolean;
+  stage?: NotificationStage;
   status: 'pending' | 'accepted' | 'rejected';
   rejected_reason: string | null;
   responded_by: number | null;
@@ -127,10 +139,23 @@ export interface RequestNotificationSummary {
   rejectionReasons: Array<{
     groupId: number;
     groupName: string;
+    stage?: NotificationStage;
     reason: string;
     respondedBy: string;
     respondedAt: string;
   }>;
+  askingStore?: {
+    total: number;
+    accepted: number;
+    rejected: number;
+    pending: number;
+  };
+  supplyingStore?: {
+    total: number;
+    accepted: number;
+    rejected: number;
+    pending: number;
+  };
 }
 
 export interface ItemRequest {
@@ -264,7 +289,7 @@ export interface CreateRequestData {
     model?: string;
   }[];
   requestedById?: number;
-  requestedBy?: string;      // ← ADDED
+  requestedBy?: string;
   requestedDate: string;
   status?: 'pending' | 'approved' | 'rejected';
   remark?: string;
@@ -287,7 +312,7 @@ export interface UpdateRequestData {
     model?: string;
   }[];
   requestedById?: number;
-  requestedBy?: string;      // ← ADDED
+  requestedBy?: string;
   requestedDate?: string;
   remark?: string;
   isAsset?: boolean;
@@ -319,6 +344,7 @@ export interface GroupNotificationsResponse {
       group_id: number | null;
       department_id: number | null;
       store_id: number;
+      stage?: NotificationStage;
       status: 'pending' | 'accepted' | 'rejected';
       rejected_reason: string | null;
       responded_by: number | null;
@@ -450,6 +476,50 @@ class ItemRequestService {
         success: false,
         data: [],
         error: error.response?.data?.error || 'Failed to fetch store groups'
+      };
+    }
+  }
+
+  // ================================================================
+  // 🔥 NEW: APPROVAL DEPARTMENTS
+  // ================================================================
+
+  /**
+   * Get the departments that need to approve requests for a given store.
+   * GET /api/item-requests/approval-departments/:storeCode
+   *
+   * Example: getApprovalDepartmentsForStore('STORE-001')
+   *
+   * Returns the departments whose `appliesTo` array includes the given
+   * store code, based on the `approval.department` SystemSetting.
+   */
+  async getApprovalDepartmentsForStore(storeCode: string): Promise<{
+    success: boolean;
+    data?: {
+      storeCode: string;
+      storeName: string;
+      requiresApproval: boolean;
+      departments: ApprovalDepartment[];
+    };
+    error?: string;
+  }> {
+    try {
+      if (!storeCode || storeCode === 'N/A') {
+        return {
+          success: false,
+          error: 'Invalid store code',
+        };
+      }
+
+      const response = await api.get(
+        `/item-requests/approval-departments/${encodeURIComponent(storeCode)}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Get approval departments error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to fetch approval departments',
       };
     }
   }
@@ -889,6 +959,7 @@ class ItemRequestService {
         request_id: number;
         department_id: number;
         store_id: number;
+        stage?: NotificationStage;
         status: 'pending' | 'accepted' | 'rejected';
         rejected_reason: string | null;
         responded_by: number | null;
@@ -977,6 +1048,7 @@ class ItemRequestService {
         store_id: number;
         approval_type: 'group' | 'department';
         is_department_approval: boolean;
+        stage?: NotificationStage;
         status: 'pending' | 'accepted' | 'rejected';
         rejected_reason: string | null;
         responded_by: number | null;
@@ -1082,6 +1154,20 @@ class ItemRequestService {
       acceptedCount: number;
       rejectedCount: number;
       pendingCount: number;
+      askingStore?: {
+        total: number;
+        accepted: number;
+        rejected: number;
+        pending: number;
+        allAccepted: boolean;
+      };
+      supplyingStore?: {
+        total: number;
+        accepted: number;
+        rejected: number;
+        pending: number;
+        allAccepted: boolean;
+      };
     };
     error?: string;
   }> {
@@ -1106,6 +1192,7 @@ class ItemRequestService {
     data?: Array<{
       groupId: number;
       groupName: string;
+      stage?: NotificationStage;
       reason: string;
       respondedBy: string;
       respondedAt: string;
@@ -1132,6 +1219,8 @@ class ItemRequestService {
     success: boolean;
     message?: string;
     data?: RequestNotification;
+    stageAdvanced?: boolean;
+    advancementReason?: string;
     error?: string;
   }> {
     try {
@@ -1169,11 +1258,11 @@ class ItemRequestService {
   }
 
   // ================================================================
-  // NOTIFICATION HELPER METHODS
+  // NOTIFICATION HELPER METHODS (Stage-aware)
   // ================================================================
 
   /**
-   * Check if a request can be approved (all groups and department accepted)
+   * Check if a request can be approved (both stages fully accepted)
    */
   canApproveRequest(request: ItemRequest): boolean {
     if (!request || request.status !== 'pending') return false;
@@ -1195,20 +1284,53 @@ class ItemRequestService {
   }
 
   /**
-   * Get acceptance summary for display
+   * Get acceptance summary for display — STAGE-AWARE
    */
   getAcceptanceSummary(request: ItemRequest): string {
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return 'No approvals';
-    
-    const total = notifications.length;
-    const accepted = notifications.filter((n: any) => n.status === 'accepted').length;
-    const rejected = notifications.filter((n: any) => n.status === 'rejected').length;
-    const pending = notifications.filter((n: any) => n.status === 'pending').length;
-    
-    if (rejected > 0) return `❌ ${rejected} rejected`;
-    if (accepted === total) return `✅ All ${total} accepted`;
-    return `⏳ ${accepted}/${total} accepted`;
+
+    const askingNotifs = notifications.filter((n: any) => n.stage === 'asking_store');
+    const supplyingNotifs = notifications.filter((n: any) => n.stage === 'supplying_store');
+
+    const summarize = (notifs: any[]) => {
+      const total = notifs.length;
+      const accepted = notifs.filter((n: any) => n.status === 'accepted').length;
+      const rejected = notifs.filter((n: any) => n.status === 'rejected').length;
+      const pending = notifs.filter((n: any) => n.status === 'pending').length;
+      return { total, accepted, rejected, pending };
+    };
+
+    const asking = summarize(askingNotifs);
+    const supplying = summarize(supplyingNotifs);
+
+    if (asking.total > 0) {
+      if (asking.rejected > 0) {
+        return `❌ Asking: ${asking.rejected} rejected`;
+      }
+      if (asking.accepted < asking.total) {
+        return `⏳ Asking: ${asking.accepted}/${asking.total} accepted`;
+      }
+    }
+
+    if (supplying.total > 0) {
+      if (supplying.rejected > 0) {
+        return `❌ Supplying: ${supplying.rejected} rejected`;
+      }
+      if (supplying.accepted < supplying.total) {
+        return `⏳ Supplying: ${supplying.accepted}/${supplying.total} accepted`;
+      }
+    }
+
+    if (
+      asking.total > 0 &&
+      asking.accepted === asking.total &&
+      supplying.total === 0
+    ) {
+      return `✅ Asking done — sending to supplying...`;
+    }
+
+    return `✅ All ${notifications.length} accepted`;
   }
 
   /**
@@ -1228,7 +1350,7 @@ class ItemRequestService {
   }
 
   /**
-   * Get group acceptance status for display
+   * Get group acceptance status for display — STAGE-AWARE
    */
   getGroupStatusDisplay(request: ItemRequest): {
     total: number;
@@ -1238,6 +1360,20 @@ class ItemRequestService {
     allAccepted: boolean;
     hasRejection: boolean;
     progress: number;
+    askingStore: {
+      total: number;
+      accepted: number;
+      rejected: number;
+      pending: number;
+      allAccepted: boolean;
+    };
+    supplyingStore: {
+      total: number;
+      accepted: number;
+      rejected: number;
+      pending: number;
+      allAccepted: boolean;
+    };
   } {
     const notifications = (request as any).notifications || [];
     const total = notifications.length;
@@ -1248,6 +1384,23 @@ class ItemRequestService {
     const hasRejection = rejected > 0;
     const progress = total > 0 ? (accepted / total) * 100 : 0;
 
+    const askingNotifs = notifications.filter((n: any) => n.stage === 'asking_store');
+    const supplyingNotifs = notifications.filter((n: any) => n.stage === 'supplying_store');
+
+    const summarize = (notifs: any[]) => {
+      const t = notifs.length;
+      const a = notifs.filter((n: any) => n.status === 'accepted').length;
+      const r = notifs.filter((n: any) => n.status === 'rejected').length;
+      const p = notifs.filter((n: any) => n.status === 'pending').length;
+      return {
+        total: t,
+        accepted: a,
+        rejected: r,
+        pending: p,
+        allAccepted: t > 0 && a === t,
+      };
+    };
+
     return {
       total,
       accepted,
@@ -1255,7 +1408,9 @@ class ItemRequestService {
       pending,
       allAccepted,
       hasRejection,
-      progress
+      progress,
+      askingStore: summarize(askingNotifs),
+      supplyingStore: summarize(supplyingNotifs),
     };
   }
 
@@ -1263,9 +1418,6 @@ class ItemRequestService {
   // HELPER METHODS
   // ================================================================
 
-  /**
-   * Get user display name from request
-   */
   getRequesterName(request: ItemRequest): string {
     if (request?.requestedByUser) {
       return request.requestedByUser.fullName || 
@@ -1276,16 +1428,10 @@ class ItemRequestService {
     return request?.requestedBy || 'Unknown User';
   }
 
-  /**
-   * Get user email from request
-   */
   getRequesterEmail(request: ItemRequest): string {
     return request?.requestedByUser?.email || 'N/A';
   }
 
-  /**
-   * Check if user can perform action on request
-   */
   canPerformAction(request: ItemRequest, action: 'edit' | 'approve' | 'reject' | 'finalize'): boolean {
     if (!request) return false;
     
@@ -1299,9 +1445,6 @@ class ItemRequestService {
     return actions[action] || false;
   }
 
-  /**
-   * Get available status options for a request
-   */
   getAvailableStatuses(request: ItemRequest): Array<'pending' | 'approved' | 'rejected' | 'finalized'> {
     if (!request) return [];
     
@@ -1314,9 +1457,6 @@ class ItemRequestService {
     return statuses;
   }
 
-  /**
-   * Get status badge color
-   */
   getStatusBadge(status: string): string {
     const badgeMap: Record<string, string> = {
       pending: 'warning',
@@ -1327,9 +1467,6 @@ class ItemRequestService {
     return badgeMap[status] || 'secondary';
   }
 
-  /**
-   * Get status display name
-   */
   getStatusDisplay(status: string): string {
     const displayMap: Record<string, string> = {
       pending: 'Pending',
@@ -1340,9 +1477,6 @@ class ItemRequestService {
     return displayMap[status] || status;
   }
 
-  /**
-   * Get status icon
-   */
   getStatusIcon(status: string): string {
     const iconMap: Record<string, string> = {
       pending: '⏳',
@@ -1353,9 +1487,6 @@ class ItemRequestService {
     return iconMap[status] || '📦';
   }
 
-  /**
-   * Format date
-   */
   formatDate(date: string | Date | null): string {
     if (!date) return 'N/A';
     const d = new Date(date);
@@ -1367,9 +1498,6 @@ class ItemRequestService {
     });
   }
 
-  /**
-   * Format date time
-   */
   formatDateTime(date: string | Date | null): string {
     if (!date) return 'N/A';
     const d = new Date(date);
@@ -1383,91 +1511,55 @@ class ItemRequestService {
     });
   }
 
-  /**
-   * Get total quantity of items in request
-   */
   getTotalQuantity(request: ItemRequest): number {
     if (!request || !request.items) return 0;
     return request.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
   }
 
-  /**
-   * Get total number of items in request
-   */
   getTotalItems(request: ItemRequest): number {
     return request?.items?.length || 0;
   }
 
-  /**
-   * Check if request is editable
-   */
   isEditable(request: ItemRequest): boolean {
     return request?.status !== 'finalized';
   }
 
-  /**
-   * Check if request is pending
-   */
   isPending(request: ItemRequest): boolean {
     return request?.status === 'pending';
   }
 
-  /**
-   * Check if request is approved
-   */
   isApproved(request: ItemRequest): boolean {
     return request?.status === 'approved';
   }
 
-  /**
-   * Check if request is rejected
-   */
   isRejected(request: ItemRequest): boolean {
     return request?.status === 'rejected';
   }
 
-  /**
-   * Check if request is finalized
-   */
   isFinalized(request: ItemRequest): boolean {
     return request?.status === 'finalized';
   }
 
-  /**
-   * Check if request has all groups accepted
-   */
   hasAllGroupsAccepted(request: ItemRequest): boolean {
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return false;
     return notifications.every((n: any) => n.status === 'accepted');
   }
 
-  /**
-   * Check if request has any rejection
-   */
   hasAnyRejection(request: ItemRequest): boolean {
     const notifications = (request as any).notifications || [];
     return notifications.some((n: any) => n.status === 'rejected');
   }
 
-  /**
-   * Get pending groups count
-   */
   getPendingGroupsCount(request: ItemRequest): number {
     const notifications = (request as any).notifications || [];
     return notifications.filter((n: any) => n.status === 'pending').length;
   }
 
-  /**
-   * Check if request is an asset request
-   */
   isAssetRequest(request: ItemRequest): boolean {
     return (request as any).isAsset === true;
   }
 
-  /**
-   * Get department name for asset request
-   */
   getAssetDepartment(request: ItemRequest): string {
     const dept = (request as any).department;
     if (dept) {

@@ -38,6 +38,11 @@ export default function ApprovalSettingsPage({
   const [saving, setSaving]                 = useState(false);
   const [fetchError, setFetchError]         = useState(null);
 
+  // 🔥 ASK-STORE APPROVAL TOGGLE
+  const [askStoreApprovalEnabled, setAskStoreApprovalEnabled] = useState(true);
+  const [loadingAskToggle, setLoadingAskToggle]               = useState(true);
+  const [savingAskToggle, setSavingAskToggle]                 = useState(false);
+
   const [approvalConfig, setApprovalConfig] = useState({
     configured: false,
     departments: [],
@@ -60,6 +65,25 @@ export default function ApprovalSettingsPage({
   // ---------------------------------------------------------------
   // LOADERS
   // ---------------------------------------------------------------
+  const loadAskStoreApproval = useCallback(async () => {
+    setLoadingAskToggle(true);
+    try {
+      const res = await settingsService.getAskStoreApprovalEnabled();
+      if (res && res.success && res.data) {
+        // Respect explicit boolean, default to true if missing
+        setAskStoreApprovalEnabled(
+          typeof res.data.enabled === 'boolean' ? res.data.enabled : true
+        );
+      }
+    } catch (e) {
+      console.warn('loadAskStoreApproval failed:', e);
+      // Fail-safe: default to ON so existing behavior is preserved
+      setAskStoreApprovalEnabled(true);
+    } finally {
+      setLoadingAskToggle(false);
+    }
+  }, []);
+
   const loadApprovalDepartment = useCallback(async () => {
     try {
       const res = await settingsService.getApprovalDepartment();
@@ -108,6 +132,7 @@ export default function ApprovalSettingsPage({
       setFetchError(null);
       try {
         await Promise.all([
+          loadAskStoreApproval(),
           loadApprovalDepartment(),
           loadDepartmentsForApproval(),
           loadStoresForApproval(),
@@ -119,7 +144,12 @@ export default function ApprovalSettingsPage({
         setRefreshing(false);
       }
     },
-    [loadApprovalDepartment, loadDepartmentsForApproval, loadStoresForApproval]
+    [
+      loadAskStoreApproval,
+      loadApprovalDepartment,
+      loadDepartmentsForApproval,
+      loadStoresForApproval,
+    ]
   );
 
   useEffect(() => {
@@ -127,6 +157,44 @@ export default function ApprovalSettingsPage({
     loadAll(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---------------------------------------------------------------
+  // ASK-STORE TOGGLE HANDLER
+  // ---------------------------------------------------------------
+  const onToggleAskStoreApproval = async (newValue) => {
+    if (!canEdit) return;
+    const enabled = Boolean(newValue);
+    const previous = askStoreApprovalEnabled;
+
+    // Optimistic update
+    setAskStoreApprovalEnabled(enabled);
+    setSavingAskToggle(true);
+
+    try {
+      const res = await settingsService.setAskStoreApprovalEnabled(enabled);
+      if (res && res.success) {
+        Alert.alert(
+          'Saved',
+          enabled
+            ? '✅ Asking store group approval enabled'
+            : '⏭️ Asking store group approval disabled'
+        );
+      } else {
+        // Revert on failure
+        setAskStoreApprovalEnabled(previous);
+        Alert.alert('Error', (res && res.error) || 'Failed to update toggle');
+      }
+    } catch (e) {
+      // Revert on error
+      setAskStoreApprovalEnabled(previous);
+      Alert.alert(
+        'Error',
+        e?.response?.data?.error || e?.message || 'Failed to update toggle'
+      );
+    } finally {
+      setSavingAskToggle(false);
+    }
+  };
 
   // ---------------------------------------------------------------
   // DERIVED
@@ -533,6 +601,169 @@ export default function ApprovalSettingsPage({
           ) : null}
 
           {/* =========================================================
+              🔥 SECTION 1: ASKING STORE GROUP APPROVAL TOGGLE
+             ========================================================= */}
+          <View
+            style={[
+              styles.askStoreCard,
+              {
+                backgroundColor: askStoreApprovalEnabled
+                  ? darkMode ? '#0C2A4A' : '#F0F9FF'
+                  : darkMode ? '#3A2A00' : '#FFFBEB',
+                borderColor: askStoreApprovalEnabled
+                  ? darkMode ? '#0369A1' : '#BAE6FD'
+                  : darkMode ? '#92400E' : '#FCD34D',
+                borderLeftColor: askStoreApprovalEnabled ? '#0EA5E9' : '#F59E0B',
+              },
+            ]}
+          >
+            {/* Title row */}
+            <View style={styles.askStoreTitleRow}>
+              <Text style={styles.askStoreIcon}>🏪</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={styles.askStoreTitleInner}>
+                  <Text
+                    style={[
+                      styles.askStoreTitle,
+                      {
+                        color: askStoreApprovalEnabled
+                          ? darkMode ? '#7DD3FC' : '#0C4A6E'
+                          : darkMode ? '#FCD34D' : '#78350F',
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Asking Store Group Approval
+                  </Text>
+                  <View
+                    style={[
+                      styles.askStoreBadge,
+                      {
+                        backgroundColor: askStoreApprovalEnabled
+                          ? '#10B981'
+                          : '#F59E0B',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.askStoreBadgeText}>
+                      {askStoreApprovalEnabled ? 'ACTIVE' : 'BYPASSED'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Description */}
+            <Text
+              style={[
+                styles.askStoreDesc,
+                { color: darkMode ? '#CBD5E1' : '#475569' },
+              ]}
+            >
+              When <Text style={{ fontWeight: '900' }}>enabled</Text>, the asking
+              store's groups approve a request <Text style={{ fontStyle: 'italic' }}>before</Text>{' '}
+              it reaches the supplying store. When{' '}
+              <Text style={{ fontWeight: '900' }}>disabled</Text>, requests go
+              straight to the supplying store.
+            </Text>
+
+            {/* Hint */}
+            {loadingAskToggle ? (
+              <View
+                style={[
+                  styles.askStoreHint,
+                  { backgroundColor: 'rgba(255,255,255,0.5)' },
+                ]}
+              >
+                <Text style={[styles.askStoreHintText, { color: '#64748B' }]}>
+                  ⏳ Loading current setting…
+                </Text>
+              </View>
+            ) : !askStoreApprovalEnabled ? (
+              <View
+                style={[
+                  styles.askStoreHint,
+                  {
+                    backgroundColor: 'rgba(255,255,255,0.5)',
+                    borderLeftColor: '#F59E0B',
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.askStoreHintText, { color: '#92400E' }]}
+                >
+                  ⚠️ <Text style={{ fontWeight: '900' }}>Stage 1 is bypassed.</Text>{' '}
+                  New requests skip asking-store group approval.
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.askStoreHint,
+                  {
+                    backgroundColor: 'rgba(255,255,255,0.5)',
+                    borderLeftColor: '#10B981',
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.askStoreHintText, { color: '#065F46' }]}
+                >
+                  ✅ <Text style={{ fontWeight: '900' }}>Stage 1 is active.</Text>{' '}
+                  Asking-store groups approve first.
+                </Text>
+              </View>
+            )}
+
+            {/* Switch row */}
+            <View style={styles.askStoreSwitchRow}>
+              <View style={styles.askStoreSwitchLabels}>
+                <Text
+                  style={[
+                    styles.askStoreSwitchLabel,
+                    {
+                      color: askStoreApprovalEnabled ? '#10B981' : '#94A3B8',
+                      fontWeight: askStoreApprovalEnabled ? '900' : '700',
+                    },
+                  ]}
+                >
+                  ON
+                </Text>
+                <Text
+                  style={[
+                    styles.askStoreSwitchLabel,
+                    {
+                      color: !askStoreApprovalEnabled ? '#F59E0B' : '#94A3B8',
+                      fontWeight: !askStoreApprovalEnabled ? '900' : '700',
+                    },
+                  ]}
+                >
+                  OFF
+                </Text>
+              </View>
+
+              <Switch
+                value={askStoreApprovalEnabled}
+                onValueChange={onToggleAskStoreApproval}
+                disabled={!canEdit || loadingAskToggle || savingAskToggle}
+                trackColor={{ false: '#CBD5E1', true: '#10B981' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            {savingAskToggle ? (
+              <Text
+                style={[
+                  styles.askStoreSaving,
+                  { color: darkMode ? '#94A3B8' : '#64748B' },
+                ]}
+              >
+                💾 Saving…
+              </Text>
+            ) : null}
+          </View>
+
+          {/* =========================================================
               STATUS SUMMARY
              ========================================================= */}
           <View
@@ -554,7 +785,9 @@ export default function ApprovalSettingsPage({
               </Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.summaryTitle, { color: textColor }]}>
-                  {approvalConfig.configured ? 'Configured' : 'Not configured'}
+                  {approvalConfig.configured
+                    ? 'Department approval configured'
+                    : 'Department approval not configured'}
                 </Text>
                 <Text
                   style={[styles.summaryBody, { color: subTextColor }]}
@@ -578,15 +811,15 @@ export default function ApprovalSettingsPage({
           >
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[styles.toggleLabel, { color: textColor }]}>
-                Requires Approval
+                Requires Department Approval
               </Text>
               <Text
                 style={[styles.toggleHint, { color: subTextColor }]}
                 numberOfLines={2}
               >
                 {requiresApproval
-                  ? 'Requests must be approved before proceeding'
-                  : 'Requests skip approval and are auto-accepted'}
+                  ? 'Requests must be approved by a department before proceeding'
+                  : 'Requests skip department approval and are auto-accepted'}
               </Text>
             </View>
             <Switch
@@ -910,6 +1143,88 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   errorText: { fontSize: 12.5, fontWeight: '600' },
+
+  // ================================================================
+  // ASK-STORE CARD (🔥 NEW)
+  // ================================================================
+  askStoreCard: {
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 14,
+  },
+  askStoreTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  askStoreIcon: { fontSize: 22, marginTop: 1 },
+  askStoreTitleInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  askStoreTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  askStoreBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  askStoreBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  askStoreDesc: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  askStoreHint: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    marginBottom: 12,
+  },
+  askStoreHintText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  askStoreSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  askStoreSwitchLabels: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  askStoreSwitchLabel: {
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  askStoreSaving: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'right',
+  },
 
   // Summary card
   summaryCard: {

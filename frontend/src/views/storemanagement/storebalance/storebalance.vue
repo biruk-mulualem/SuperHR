@@ -1,4 +1,4 @@
-<!-- views/storemanagement/storebalance/storebalance.vue - WITH STANDALONE INITIALIZE MODAL -->
+<!-- views/storemanagement/storebalance/storebalance.vue -->
 
 <template>
   <div class="section-card">
@@ -32,7 +32,6 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="filter-bar">
-      <!-- Only show Store filter for admin users -->
       <select
         v-if="isAdmin"
         v-model="filterStore"
@@ -49,7 +48,6 @@
         </option>
       </select>
 
-      <!-- Only show Group filter for admin users -->
       <select
         v-if="isAdmin"
         v-model="filterGroup"
@@ -80,6 +78,7 @@
           {{ cat.name }}
         </option>
       </select>
+
       <select
         v-model="filterStatus"
         class="filter-select"
@@ -89,6 +88,7 @@
         <option value="Active">Active</option>
         <option value="Inactive">Inactive</option>
       </select>
+
       <button
         class="btn-clear-filters"
         @click="clearFilters"
@@ -96,6 +96,7 @@
       >
         ✕ Clear Filters
       </button>
+
       <div class="filter-actions">
         <button class="btn-export" @click="openExportModal">📊 Report</button>
       </div>
@@ -418,18 +419,6 @@
       </div>
     </div>
 
-    <!-- ==================== PROCESS REQUESTS MODAL ==================== -->
-    <ProcessRequestsModal
-      v-if="showProcessModal"
-      :is-admin="isAdmin"
-      :stores="availableStores"
-      :groups="availableGroups"
-      :user-data="userData"
-      :inventory-items="inventoryItems"
-      @close="closeProcessModal"
-      @success="onProcessSuccess"
-    />
-
     <!-- ==================== INITIALIZE BALANCE MODAL ==================== -->
     <InitializeBalanceModal
       v-if="showBalanceModal"
@@ -455,7 +444,6 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import balanceService from "@/stores/balanceService";
-import ProcessRequestsModal from "./components/ProcessRequestsModal.vue";
 import InitializeBalanceModal from "./components/InitializeBalanceModal.vue";
 
 const router = useRouter();
@@ -485,7 +473,7 @@ const allGroups = ref([]);
 const categories = ref([]);
 const inventoryItems = ref([]);
 const balances = ref([]);
-const itemRequests = ref([]);
+const itemRequests = ref([]); // ✅ Storage for approved requests
 
 // ================================================================
 // LOADING STATES
@@ -510,7 +498,6 @@ const toggleNewStatus = ref("");
 const exporting = ref(false);
 const exportType = ref("full");
 const showExportModal = ref(false);
-const showProcessModal = ref(false);
 const showDeleteModal = ref(false);
 const deleteTarget = ref(null);
 
@@ -677,6 +664,7 @@ const lowStockItems = computed(() => {
   ).length;
 });
 
+// ✅ Count of approved requests for the button badge
 const pendingRequestsCount = computed(() => {
   return itemRequests.value.filter((req) => {
     if (req.status !== "approved") return false;
@@ -874,6 +862,7 @@ const fetchBalances = async () => {
   }
 };
 
+// ✅ Fetch approved requests (for the count badge)
 const fetchApprovedRequests = async () => {
   try {
     let response;
@@ -992,22 +981,11 @@ const confirmDelete = async () => {
 };
 
 // ================================================================
-// PROCESS REQUESTS
+// PROCESS REQUESTS — Navigate to dedicated page
 // ================================================================
 
-const processApprovedRequests = async () => {
-  showProcessModal.value = true;
-  await fetchApprovedRequests();
-};
-
-const closeProcessModal = () => {
-  showProcessModal.value = false;
-};
-
-const onProcessSuccess = () => {
-  showToastMessage("Requests processed successfully!", "success");
-  fetchBalances();
-  fetchApprovedRequests();
+const processApprovedRequests = () => {
+  router.push({ name: "process-requests" });
 };
 
 // ================================================================
@@ -1131,6 +1109,7 @@ onMounted(async () => {
     await fetchBalances();
   }
 
+  // ✅ Fetch pending requests for the count badge
   await fetchApprovedRequests();
 });
 
@@ -1140,7 +1119,7 @@ watch(
     if (newVal) {
       userData.value = getUserData();
       fetchBalances();
-      fetchApprovedRequests();
+      fetchApprovedRequests(); // ✅ Reload count on user change
     }
   },
 );
@@ -1266,6 +1245,7 @@ watch(
   background: #7c3aed;
 }
 
+/* ✅ Badge count for approved requests */
 .badge-count {
   display: inline-block;
   background: #ef4444;

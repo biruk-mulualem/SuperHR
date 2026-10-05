@@ -184,10 +184,18 @@ export interface UpdateBalancePayload {
     status?: 'Active' | 'Inactive';
 }
 
+export interface ItemsToProcess {
+    requestId: number;
+    requestDetailId: number;
+    quantity: number;
+}
+
 export interface ProcessRequestsPayload {
     storeId: number;
     groupId: number;
     requestIds: number[];
+    documentRefs?: Record<number, string>;
+    itemsToProcess?: ItemsToProcess[];
 }
 
 export interface ProcessRequestsResult {
@@ -802,6 +810,64 @@ async exportBalances(
         const response = await api.get(url);
         return response.data;
     }
+
+    /**
+ * Get processable items for a request (PARTIAL PROCESSING SUPPORT)
+ * Returns item-level info: how much has been processed, how much remains
+ */
+async getProcessableItems(
+    requestId: number,
+    groupId: number,
+    storeId: number
+): Promise<{
+    success: boolean;
+    data: {
+        requestId: number;
+        requestCode: string;
+        overallStatus: 'pending' | 'partial' | 'completed';
+        isFullyProcessed: boolean;
+        items: Array<{
+            requestDetailId: number;
+            itemId: number;
+            itemCode: string | null;
+            itemName: string | null;
+            requestedQuantity: number;
+            processedQuantity: number;
+            remainingQuantity: number;
+            canProcess: boolean;
+            status: 'pending' | 'partial' | 'completed';
+            uomCode: string | null;
+            isBaseUom: boolean;
+            baseUomCode: string | null;
+            conversionUomCode: string | null;
+            conversionValue: number;
+            itemStatus: string;
+        }>;
+    };
+    error?: string;
+}> {
+    try {
+        const url = `/balances/requests/${requestId}/processable-items?groupId=${groupId}&storeId=${storeId}`;
+        const response = await api.get(url);
+        return response.data;
+    } catch (error: any) {
+        console.error('Get processable items error:', error);
+        return {
+            success: false,
+            data: {
+                requestId,
+                requestCode: '',
+                overallStatus: 'pending',
+                isFullyProcessed: false,
+                items: [],
+            },
+            error:
+                error.response?.data?.error ||
+                error.response?.data?.message ||
+                'Failed to fetch processable items',
+        };
+    }
+}
 
     /**
      * Process approved requests for a specific group

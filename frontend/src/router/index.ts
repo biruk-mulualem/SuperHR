@@ -193,7 +193,16 @@ const router = createRouter({
 
 
 
-
+{
+  path: "store-balance/process-requests",
+  name: "process-requests",
+  component: () =>
+    import("@/views/storemanagement/storebalance/ProcessRequestsPage.vue"),
+  meta: {
+    title: "Process Approved Requests",
+    roles: ["admin", "storekeeper", "store_it", "checker"],
+  },
+},
 
 
 
@@ -743,6 +752,34 @@ const router = createRouter({
           },
         },
 
+
+
+ {
+          path: "InTransit-FollowUp",
+          name: "inTransit-FollowUp",
+          component: () =>
+            import("@/views/IntransitFollowup/InTransitFollowUpPage.vue"),
+          meta: {
+            title: "In-Transit Follow-Up",
+            roles: ["admin", "financial_controller"],
+         
+          },
+        },
+
+        
+ {
+          path: "Proforma-Detail",
+          name: "Proforma-Detail",
+          component: () =>
+            import("@/views/IntransitFollowup/ProformaDetailPage.vue"),
+          meta: {
+            title: "In-Transit Follow-Up",
+            roles: ["admin", "financial_controller"],
+         
+          },
+        },
+
+
         {
           path: "item-requests",
           name: "item-requests",
@@ -750,9 +787,13 @@ const router = createRouter({
             import("@/views/storemanagement/itemRequests/itemRequests.vue"),
           meta: {
             title: "item requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
+            roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser","financial_controller"],
           },
         },
+
+
+
+        
 
             {
           path: "orders",

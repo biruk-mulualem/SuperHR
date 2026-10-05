@@ -15,12 +15,6 @@ class SettingsService {
   /**
    * Get all departments.
    * GET /settings/departments
-   *
-   * @param {Object} [params]
-   * @param {number} [params.page=1]
-   * @param {number} [params.limit=20]
-   * @param {boolean} [params.includeInactive=false]
-   * @returns {Promise<{ success: boolean, departments?: object[], pagination?: object, error?: string }>}
    */
   async getDepartments(params = {}) {
     try {
@@ -138,8 +132,6 @@ class SettingsService {
   /**
    * Delete a department.
    * DELETE /settings/departments/:id
-   *
-   * The backend refuses (400) if employees, positions, or sub-departments exist.
    */
   async deleteDepartment(departmentId) {
     try {
@@ -202,10 +194,6 @@ class SettingsService {
   // POSITIONS
   // ============================================================================
 
-  /**
-   * Get all positions.
-   * GET /settings/positions
-   */
   async getPositions(params = {}) {
     try {
       const query = new URLSearchParams();
@@ -232,10 +220,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Get single position by ID.
-   * GET /settings/positions/:id
-   */
   async getPositionById(positionId) {
     try {
       const response = await api.get(`/settings/positions/${positionId}`);
@@ -252,10 +236,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Create a position.
-   * POST /settings/positions
-   */
   async createPosition(payload) {
     try {
       const response = await api.post('/settings/positions', payload);
@@ -273,10 +253,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Update a position.
-   * PUT /settings/positions/:id
-   */
   async updatePosition(positionId, payload) {
     try {
       const response = await api.put(`/settings/positions/${positionId}`, payload);
@@ -294,10 +270,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Toggle position active status.
-   * PATCH /settings/positions/:id/status
-   */
   async togglePositionStatus(positionId, isActive) {
     try {
       const response = await api.patch(
@@ -320,10 +292,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Delete a position.
-   * DELETE /settings/positions/:id
-   */
   async deletePosition(positionId) {
     try {
       const response = await api.delete(`/settings/positions/${positionId}`);
@@ -344,10 +312,6 @@ class SettingsService {
   // ROLES
   // ============================================================================
 
-  /**
-   * Get all roles.
-   * GET /settings/roles
-   */
   async getRoles(params = {}) {
     try {
       const query = new URLSearchParams();
@@ -373,10 +337,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Get single role by ID.
-   * GET /settings/roles/:id
-   */
   async getRoleById(roleId) {
     try {
       const response = await api.get(`/settings/roles/${roleId}`);
@@ -393,10 +353,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Create a role.
-   * POST /settings/roles
-   */
   async createRole(payload) {
     try {
       const response = await api.post('/settings/roles', payload);
@@ -414,10 +370,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Update a role.
-   * PUT /settings/roles/:id
-   */
   async updateRole(roleId, payload) {
     try {
       const response = await api.put(`/settings/roles/${roleId}`, payload);
@@ -435,10 +387,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Toggle role active status.
-   * PATCH /settings/roles/:id/status
-   */
   async toggleRoleStatus(roleId, isActive) {
     try {
       const response = await api.patch(
@@ -461,10 +409,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Delete a role.
-   * DELETE /settings/roles/:id
-   */
   async deleteRole(roleId) {
     try {
       const response = await api.delete(`/settings/roles/${roleId}`);
@@ -485,10 +429,6 @@ class SettingsService {
   // SYSTEM SETTINGS
   // ============================================================================
 
-  /**
-   * Get all system settings (flat list + grouped).
-   * GET /settings/settings
-   */
   async getAllSettings() {
     try {
       const response = await api.get('/settings/settings');
@@ -508,10 +448,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Get a single setting by key.
-   * GET /settings/settings/:key
-   */
   async getSettingByKey(key) {
     try {
       const response = await api.get(`/settings/settings/${key}`);
@@ -528,10 +464,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Create or update a setting.
-   * POST /settings/settings
-   */
   async upsertSetting(payload) {
     try {
       const response = await api.post('/settings/settings', payload);
@@ -549,12 +481,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Batch update settings.
-   * PUT /settings/settings/batch
-   *
-   * @param {Object} settings  e.g. { 'attendance.startTime': '08:30', ... }
-   */
   async batchUpdateSettings(settings) {
     try {
       const response = await api.put('/settings/settings/batch', { settings });
@@ -573,10 +499,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Delete a setting.
-   * DELETE /settings/settings/:key
-   */
   async deleteSetting(key) {
     try {
       const response = await api.delete(`/settings/settings/${key}`);
@@ -597,10 +519,6 @@ class SettingsService {
   // ATTENDANCE RULES
   // ============================================================================
 
-  /**
-   * Get attendance rules.
-   * GET /settings/attendance/rules
-   */
   async getAttendanceRules() {
     try {
       const response = await api.get('/settings/attendance/rules');
@@ -620,10 +538,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Update attendance rules.
-   * PUT /settings/attendance/rules
-   */
   async updateAttendanceRules(rules) {
     try {
       const response = await api.put('/settings/attendance/rules', rules);
@@ -643,13 +557,71 @@ class SettingsService {
   }
 
   // ============================================================================
-  // APPROVAL DEPARTMENT CONFIG
+  // 🔥 ASK-STORE APPROVAL TOGGLE
   // ============================================================================
 
   /**
-   * Get the approval-department configuration.
-   * GET /settings/approval/department
+   * Get whether the asking-store group approval flow is enabled.
+   *
+   * When ENABLED  → asking store groups approve first, then supplying store.
+   * When DISABLED → request goes straight to supplying store (original flow).
+   *
+   * Default: true (enabled).
+   *
+   * GET /settings/approval/ask-store-enabled
    */
+  async getAskStoreApprovalEnabled() {
+    try {
+      const response = await api.get('/settings/approval/ask-store-enabled');
+      return {
+        success: true,
+        data: response.data.data || { enabled: true, settingExists: false },
+      };
+    } catch (error) {
+      console.error('Get ask-store approval error:', error);
+      return {
+        success: false,
+        error:
+          error.response?.data?.error ||
+          'Failed to fetch ask-store approval status',
+        data: { enabled: true, settingExists: false },
+      };
+    }
+  }
+
+  /**
+   * Enable or disable the asking-store group approval flow.
+   *
+   * POST /settings/approval/ask-store-enabled
+   * Body: { enabled: boolean }
+   */
+  async setAskStoreApprovalEnabled(enabled) {
+    try {
+      const response = await api.post('/settings/approval/ask-store-enabled', {
+        enabled: Boolean(enabled),
+      });
+      return {
+        success: true,
+        message:
+          response.data.message ||
+          `Asking-store approval ${enabled ? 'enabled' : 'disabled'} successfully`,
+        data: response.data.data || { enabled: Boolean(enabled) },
+      };
+    } catch (error) {
+      console.error('Set ask-store approval error:', error);
+      return {
+        success: false,
+        error:
+          error.response?.data?.error ||
+          'Failed to update ask-store approval status',
+      };
+    }
+  }
+
+  // ============================================================================
+  // APPROVAL DEPARTMENT CONFIG
+  // ============================================================================
+
   async getApprovalDepartment() {
     try {
       const response = await api.get('/settings/approval/department');
@@ -666,15 +638,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Save the approval-department configuration.
-   * POST /settings/approval/department
-   *
-   * @param {{
-   *   departments: Array<{ departmentId: number, appliesTo: number[] }>,
-   *   requiresApproval: boolean
-   * }} payload
-   */
   async setApprovalDepartment(payload) {
     try {
       const response = await api.post('/settings/approval/department', payload);
@@ -692,10 +655,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Disable approval requirement (keeps config so it can be re-enabled).
-   * DELETE /settings/approval/department
-   */
   async removeApprovalDepartment() {
     try {
       const response = await api.delete('/settings/approval/department');
@@ -712,11 +671,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Get all active departments for the approval dropdown,
-   * each flagged with `isConfigured`.
-   * GET /settings/approval/departments
-   */
   async getDepartmentsForApproval() {
     try {
       const response = await api.get('/settings/approval/departments');
@@ -734,10 +688,6 @@ class SettingsService {
     }
   }
 
-  /**
-   * Get all active stores for the "Apply To" dropdown.
-   * GET /settings/approval/stores
-   */
   async getStoresForApproval() {
     try {
       const response = await api.get('/settings/approval/stores');

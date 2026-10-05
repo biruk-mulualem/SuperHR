@@ -611,6 +611,10 @@ exports.refreshToken = async (req, res) => {
 // GET USERS WITH ADVANCED PAGINATION, FILTERS, AND SEARCH
 // ============================================================================
 
+// ============================================================================
+// GET USERS WITH ADVANCED PAGINATION, FILTERS, AND SEARCH
+// ============================================================================
+
 exports.getUsers = async (req, res) => {
   try {
     if (!canViewUsers(req.user)) {
@@ -738,7 +742,8 @@ exports.getUsers = async (req, res) => {
       where: whereCondition,
       attributes: [
         'userId', 'username', 'email', 'fullName', 'isActive',
-        'created_at', 'roleId', 'departmentId', 'lastLogin'
+        'created_at', 'roleId', 'departmentId', 'lastLogin',
+        'createdBy'                                       // ✅ ADDED
       ],
       include: [
         { model: Role, attributes: ['name', 'description'] },
@@ -756,6 +761,23 @@ exports.getUsers = async (req, res) => {
       distinct: true
     });
 
+    // ✅ Collect unique creator IDs from this page
+    const creatorIds = [...new Set(users.map(u => u.createdBy).filter(Boolean))];
+
+    // ✅ Fetch creator names in a single query
+    let creatorsMap = {};
+    if (creatorIds.length > 0) {
+      const creators = await User.findAll({
+        where: { userId: { [Op.in]: creatorIds } },
+        attributes: ['userId', 'fullName', 'username'],
+        raw: true
+      });
+      creatorsMap = creators.reduce((acc, c) => {
+        acc[c.userId] = c.fullName || c.username || `User #${c.userId}`;
+        return acc;
+      }, {});
+    }
+
     const formattedUsers = users.map(user => ({
       userId: user.userId,
       username: user.username,
@@ -769,6 +791,8 @@ exports.getUsers = async (req, res) => {
       isActive: user.isActive,
       lastLogin: user.lastLogin,
       createdAt: user.created_at,
+      createdBy: user.createdBy || null,                                       // ✅ ADDED
+      createdByName: user.createdBy ? (creatorsMap[user.createdBy] || null) : null,  // ✅ ADDED
       isAdminRole: ['admin', 'Admin', 'superadmin', 'Superadmin'].includes(user.Role?.name),
       employee: user.employee ? {
         employeeId: user.employee.employeeId,

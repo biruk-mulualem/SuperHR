@@ -347,8 +347,9 @@ function AnnotationScreen({
   const leftLabel = canGoBack ? '‹ Back' : 'Skip';
   const handleLeft = canGoBack ? (onPrev || onClose) : (onSkip || onClose);
 
+  // ⚡ CHANGED: animationType="slide" → "fade" so the sign modal appears instantly
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.annotBackdrop, { backgroundColor: 'rgba(0,0,0,0.4)' }]}>
           <View style={[styles.annotSheet, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
@@ -516,6 +517,477 @@ function AnnotationScreen({
           </View>
         </View>
       </GestureHandlerRootView>
+    </Modal>
+  );
+}
+
+// ================================================================
+// Create Post Modal
+// ================================================================
+function CreatePostModal({
+  visible,
+  groupName,
+  title,
+  setTitle,
+  body,
+  setBody,
+  images,
+  pickImages,
+  removeImageAt,
+  error,
+  submitting,
+  onCancel,
+  onSubmit,
+  darkMode,
+  textColor,
+  subTextColor,
+  cardBg,
+  borderColor,
+}) {
+  const canPost = !!title.trim() && !submitting;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <KeyboardAvoidingView
+        style={styles.bottomSheetBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={StyleSheet.absoluteFillObject}
+          onPress={onCancel}
+        />
+
+        <View style={[styles.bottomSheet, { backgroundColor: cardBg, borderColor }]}>
+          <View style={styles.sheetHandleWrap}>
+            <View
+              style={[
+                styles.sheetHandle,
+                { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
+              ]}
+            />
+          </View>
+
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.sheetTitle, { color: textColor }]}>New Post</Text>
+              <Text style={[styles.sheetSub, { color: subTextColor }]} numberOfLines={1}>
+                {groupName ? `In ${groupName}` : 'Write something'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onCancel}
+              hitSlop={10}
+              activeOpacity={0.7}
+              style={[
+                styles.sheetCloseBtn,
+                { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9' },
+              ]}
+            >
+              <Text style={[styles.sheetCloseIcon, { color: subTextColor }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.fieldLabel, { color: subTextColor }]}>TITLE</Text>
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="What's this about?"
+              placeholderTextColor={subTextColor}
+              editable={!submitting}
+              autoFocus
+              style={[
+                styles.input,
+                {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                  borderColor: error ? '#EF4444' : borderColor,
+                },
+              ]}
+            />
+
+            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 16 }]}>
+              BODY
+            </Text>
+            <TextInput
+              value={body}
+              onChangeText={setBody}
+              placeholder="Write your post…"
+              placeholderTextColor={subTextColor}
+              multiline
+              numberOfLines={5}
+              editable={!submitting}
+              style={[
+                styles.input,
+                styles.textarea,
+                {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                  borderColor,
+                },
+              ]}
+            />
+
+            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 16 }]}>
+              MEDIA ({images.length})
+            </Text>
+
+            <TouchableOpacity
+              onPress={pickImages}
+              activeOpacity={0.85}
+              disabled={submitting}
+              style={[
+                styles.uploadZone,
+                {
+                  backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                  borderColor: '#8B5CF6',
+                },
+              ]}
+            >
+              <View style={styles.uploadIconWrap}>
+                <Text style={styles.uploadIcon}>🖼️</Text>
+              </View>
+              <Text style={[styles.uploadTitle, { color: textColor }]}>Add photos</Text>
+              <Text style={[styles.uploadSub, { color: subTextColor }]}>
+                Tap to choose from your library · up to 10
+              </Text>
+            </TouchableOpacity>
+
+            {images.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 12 }}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {images.map((uri, i) => (
+                  <View key={`new-img-${i}`} style={styles.attachmentPreviewWrap}>
+                    <Image source={{ uri }} style={styles.attachmentPreview} />
+                    <TouchableOpacity
+                      onPress={() => removeImageAt(i)}
+                      style={styles.attachmentRemoveBtn}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.attachmentRemoveText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <View
+              style={[
+                styles.pendingInfoBox,
+                {
+                  backgroundColor: darkMode ? '#422006' : '#FEF3C7',
+                  borderColor: darkMode ? '#78350F' : '#FDE68A',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.pendingInfoText,
+                  { color: darkMode ? '#FCD34D' : '#92400E' },
+                ]}
+              >
+                ⏳ Your post will be submitted as{' '}
+                <Text style={{ fontWeight: '900' }}>Pending</Text> and needs review before
+                it's approved.
+              </Text>
+            </View>
+
+            {error && <Text style={styles.reviewErrorText}>{error}</Text>}
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity
+                onPress={onCancel}
+                activeOpacity={0.85}
+                disabled={submitting}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                    borderColor,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onSubmit}
+                activeOpacity={0.85}
+                disabled={!canPost}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: canPost ? '#8B5CF6' : '#94A3B8',
+                    borderColor: canPost ? '#8B5CF6' : '#94A3B8',
+                  },
+                ]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Post</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ================================================================
+// Review Post Modal
+// ================================================================
+function ReviewPostModal({
+  visible,
+  post,
+  action,
+  groupName,
+  reviewNote,
+  setReviewNote,
+  reviewError,
+  setReviewError,
+  submitting,
+  onCancel,
+  onSubmit,
+  darkMode,
+  textColor,
+  subTextColor,
+  cardBg,
+  borderColor,
+}) {
+  if (!post) return null;
+
+  const isApprove = action === 'approve';
+  const accent = isApprove ? '#10B981' : '#EF4444';
+  const accentDark = isApprove
+    ? (darkMode ? 'rgba(16,185,129,0.18)' : '#ECFDF5')
+    : (darkMode ? 'rgba(239,68,68,0.18)' : '#FEE2E2');
+  const accentText = isApprove
+    ? (darkMode ? '#6EE7B7' : '#047857')
+    : (darkMode ? '#FCA5A5' : '#991B1B');
+  const images = post.images || [];
+  const hasImages = images.length > 0;
+
+  // ⚡ CHANGED: animationType="slide" → "fade" for a clean instant handoff to the sign modal
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      statusBarTranslucent
+    >
+      <KeyboardAvoidingView
+        style={styles.bottomSheetBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={StyleSheet.absoluteFillObject}
+          onPress={submitting ? undefined : onCancel}
+        />
+
+        <View style={[styles.bottomSheet, { backgroundColor: cardBg, borderColor }]}>
+          <View style={styles.sheetHandleWrap}>
+            <View
+              style={[
+                styles.sheetHandle,
+                { backgroundColor: darkMode ? '#334155' : '#CBD5E1' },
+              ]}
+            />
+          </View>
+
+          <View style={styles.sheetHeader}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.sheetTitle, { color: textColor }]}>
+                {isApprove ? 'Approve post' : 'Decline post'}
+              </Text>
+              <Text style={[styles.sheetSub, { color: subTextColor }]} numberOfLines={1}>
+                {fmtPostNumber(post.id)}{groupName ? ` · in ${groupName}` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onCancel}
+              disabled={submitting}
+              hitSlop={10}
+              activeOpacity={0.7}
+              style={[
+                styles.sheetCloseBtn,
+                { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9' },
+              ]}
+            >
+              <Text style={[styles.sheetCloseIcon, { color: subTextColor }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={styles.sheetContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View
+              style={[
+                styles.sheetAccentBanner,
+                { backgroundColor: accentDark, borderColor: accent },
+              ]}
+            >
+              <Text style={styles.sheetAccentEmoji}>{isApprove ? '✓' : '✕'}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.sheetAccentTitle, { color: accentText }]}>
+                  {isApprove ? 'Approving' : 'Declining'}
+                </Text>
+                <Text style={[styles.sheetAccentBody, { color: accentText }]} numberOfLines={2}>
+                  {isApprove
+                    ? hasImages
+                      ? `${images.length} image${images.length === 1 ? '' : 's'} will be signed next.`
+                      : 'No images to sign.'
+                    : 'Your reason will be visible to everyone.'}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.reviewPostCard,
+                { backgroundColor: darkMode ? '#0F172A' : '#FFFFFF', borderColor },
+              ]}
+            >
+              <Text style={[styles.reviewPostTitle, { color: textColor }]}>
+                {post.title}
+              </Text>
+              {post.body ? (
+                <Text style={[styles.reviewPostBody, { color: subTextColor }]}>
+                  {post.body}
+                </Text>
+              ) : null}
+
+              {images.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 12 }}
+                  contentContainerStyle={{ gap: 10 }}
+                >
+                  {images.map((uri, i) => (
+                    <Image
+                      key={`review-img-${i}`}
+                      source={{ uri }}
+                      style={[styles.reviewImageThumb, { backgroundColor: borderColor }]}
+                      resizeMode="cover"
+                    />
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={[styles.reviewMetaRow, { borderTopColor: borderColor }]}>
+                <Text style={[styles.reviewMetaLabel, { color: subTextColor }]}>Author</Text>
+                <Text style={[styles.reviewMetaValue, { color: textColor }]}>
+                  {post.author}
+                </Text>
+              </View>
+              <View style={styles.reviewMetaRow}>
+                <Text style={[styles.reviewMetaLabel, { color: subTextColor }]}>
+                  Submitted
+                </Text>
+                <Text style={[styles.reviewMetaValue, { color: textColor }]}>
+                  {fmtTimeAgo(post.createdAt)}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: subTextColor }]}>
+              {isApprove ? 'APPROVAL NOTE (OPTIONAL)' : 'REASON FOR DECLINING (OPTIONAL)'}
+            </Text>
+            <TextInput
+              value={reviewNote}
+              onChangeText={(v) => {
+                setReviewNote(v);
+                setReviewError(null);
+              }}
+              placeholder={
+                isApprove
+                  ? 'e.g. Looks good — go ahead.'
+                  : 'e.g. Needs more details before publishing.'
+              }
+              placeholderTextColor={subTextColor}
+              multiline
+              numberOfLines={4}
+              editable={!submitting}
+              style={[
+                styles.input,
+                styles.textarea,
+                {
+                  color: textColor,
+                  backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
+                  borderColor: reviewError ? '#EF4444' : borderColor,
+                  minHeight: 90,
+                },
+              ]}
+            />
+            {reviewError && <Text style={styles.reviewErrorText}>{reviewError}</Text>}
+
+            <View style={styles.sheetActions}>
+              <TouchableOpacity
+                onPress={onCancel}
+                activeOpacity={0.85}
+                disabled={submitting}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
+                    borderColor,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onSubmit}
+                activeOpacity={0.9}
+                disabled={submitting}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: submitting ? '#94A3B8' : accent,
+                    borderColor: submitting ? '#94A3B8' : accent,
+                    flex: 1.4,
+                  },
+                ]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>
+                    {isApprove
+                      ? hasImages
+                        ? '✓ Approve and Sign'
+                        : '✓ Approve'
+                      : '✕ Decline'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -691,15 +1163,6 @@ export default function GroupDetailPage({
   const insets = useSafeAreaInsets();
 
   const KEYBOARD_OFFSET = Platform.OS === 'ios' ? 64 + insets.top : 0;
-  const BOTTOM_BAR_PADDING = Platform.OS === 'ios'
-    ? Math.max(insets.bottom, 16) + 16
-    : Math.max(insets.bottom, 12) + 16;
-  const REVIEW_FOOTER_PADDING = Platform.OS === 'ios'
-    ? Math.max(insets.bottom, 16) + 20
-    : Math.max(insets.bottom, 12) + 20;
-  const CREATE_BAR_PADDING = Platform.OS === 'ios'
-    ? Math.max(insets.bottom, 16) + 20
-    : Math.max(insets.bottom, 12) + 20;
 
   const currentUserId = currentUser?.userId;
   const isManager =
@@ -759,7 +1222,6 @@ export default function GroupDetailPage({
 
   const consumedIntentRef = useRef(null);
 
-  // ✅ Comment composer state (now used only by the modal)
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -1290,7 +1752,7 @@ export default function GroupDetailPage({
           const norm = normalizePost(res.data);
           setPosts((prev) => prev.map((p) => (String(p.id) === String(norm.id) ? norm : p)));
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {}
     }
   };
 
@@ -1324,7 +1786,6 @@ export default function GroupDetailPage({
     }
   };
 
-  // ✅ Open the Write Comment modal
   const openCommentModal = () => {
     setCommentText('');
     setShowCommentModal(true);
@@ -1360,7 +1821,7 @@ export default function GroupDetailPage({
           })
         );
         setCommentText('');
-        setShowCommentModal(false);   // ✅ close the modal
+        setShowCommentModal(false);
       } else {
         Alert.alert('Error', res.error || 'Could not post comment');
       }
@@ -1451,6 +1912,10 @@ export default function GroupDetailPage({
     setReviewPage({ post, action });
   };
 
+  // ⚡ FIXED: sign modal opens IMMEDIATELY after tapping "Approve and Sign"
+  // Removed the 220ms setTimeout — setReviewPage(null) and setSigningQueue(queue)
+  // are batched in the same render cycle, so the signing modal appears as
+  // soon as the review modal closes. No gap, no delay.
   const applyReviewPage = async () => {
     if (!reviewPage) return;
     setReviewSubmitting(true);
@@ -1489,6 +1954,10 @@ export default function GroupDetailPage({
           setReviewNote('');
           setReviewError(null);
           setAnnotSaving(false);
+          // ⚡ Close review modal and open signing queue back-to-back.
+          // Both state updates are batched in the same render cycle,
+          // so the signing modal appears as soon as the review modal closes.
+          setReviewPage(null);
           setSigningQueue(queue);
           return;
         }
@@ -1820,312 +2289,51 @@ export default function GroupDetailPage({
     </Modal>
   );
 
-  // ============ NEW POST ============
-  if (showCreatePost) {
-    return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={KEYBOARD_OFFSET}
-      >
-        <View style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}>
-          <View style={styles.headerBar}>
-            <TouchableOpacity onPress={cancelCreatePost} hitSlop={10} activeOpacity={0.7} style={styles.backBtn}>
-              <Text style={[styles.backIcon, { color: textColor }]}>‹</Text>
-            </TouchableOpacity>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.headerTitle, { color: textColor }]}>New Post</Text>
-              <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>In {group?.name}</Text>
-            </View>
-          </View>
-
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.createPostContent}
-            keyboardShouldPersistTaps="always"
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={[styles.fieldLabel, { color: subTextColor }]}>TITLE</Text>
-            <TextInput
-              value={newPostTitle}
-              onChangeText={(v) => { setNewPostTitle(v); setPostError(null); }}
-              placeholder="What's this about?"
-              placeholderTextColor={subTextColor}
-              editable={!submittingPost}
-              autoFocus
-              style={[styles.input, {
-                color: textColor,
-                backgroundColor: cardBg,
-                borderColor: postError ? '#EF4444' : borderColor,
-              }]}
-            />
-
-            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>BODY</Text>
-            <TextInput
-              value={newPostBody}
-              onChangeText={setNewPostBody}
-              placeholder="Write your post…"
-              placeholderTextColor={subTextColor}
-              multiline
-              numberOfLines={6}
-              editable={!submittingPost}
-              style={[styles.input, styles.textarea, {
-                color: textColor,
-                backgroundColor: cardBg,
-                borderColor,
-              }]}
-            />
-
-            <Text style={[styles.fieldLabel, { color: subTextColor, marginTop: 18 }]}>
-              MEDIA ({newPostImages.length})
-            </Text>
-
-            <TouchableOpacity
-              onPress={pickImages}
-              activeOpacity={0.85}
-              disabled={submittingPost}
-              style={[styles.uploadZone, {
-                backgroundColor: darkMode ? '#0F172A' : '#FFFFFF',
-                borderColor: '#8B5CF6',
-              }]}
-            >
-              <View style={styles.uploadIconWrap}>
-                <Text style={styles.uploadIcon}>🖼️</Text>
-              </View>
-              <Text style={[styles.uploadTitle, { color: textColor }]}>Add photos</Text>
-              <Text style={[styles.uploadSub, { color: subTextColor }]}>
-                Tap to choose from your library · up to 10
-              </Text>
-            </TouchableOpacity>
-
-            {newPostImages.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginTop: 14 }}
-                contentContainerStyle={{ gap: 10 }}
-              >
-                {newPostImages.map((uri, i) => (
-                  <View key={`new-img-${i}`} style={styles.attachmentPreviewWrap}>
-                    <Image source={{ uri }} style={styles.attachmentPreview} />
-                    <TouchableOpacity
-                      onPress={() => removeImageAt(i)}
-                      style={styles.attachmentRemoveBtn}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.attachmentRemoveText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            <View style={[styles.pendingInfoBox, {
-              backgroundColor: darkMode ? '#422006' : '#FEF3C7',
-              borderColor: darkMode ? '#78350F' : '#FDE68A',
-            }]}>
-              <Text style={[styles.pendingInfoText, { color: darkMode ? '#FCD34D' : '#92400E' }]}>
-                ⏳ Your post will be submitted as <Text style={{ fontWeight: '900' }}>Pending</Text> and needs review before it's approved.
-              </Text>
-            </View>
-
-            {postError && (
-              <Text style={{ color: '#EF4444', marginTop: 10, fontWeight: '600' }}>{postError}</Text>
-            )}
-
-            <View style={{ height: 20 }} />
-          </ScrollView>
-
-          <View
-            style={[styles.createActionsBar, {
-              backgroundColor: darkMode ? '#0B1220' : '#F8FAFC',
-              borderTopColor: darkMode ? '#1E293B' : '#E2E8F0',
-              paddingBottom: CREATE_BAR_PADDING,
-            }]}
-          >
-            <TouchableOpacity
-              onPress={cancelCreatePost}
-              activeOpacity={0.85}
-              disabled={submittingPost}
-              style={[styles.createCancelBtn, {
-                backgroundColor: darkMode ? '#1E293B' : '#F1F5F9',
-                borderColor,
-              }]}
-            >
-              <Text style={[styles.createCancelBtnText, { color: textColor }]}>Cancel</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={submitPost}
-              activeOpacity={0.85}
-              disabled={submittingPost}
-              style={[styles.createPostBtn, {
-                backgroundColor: submittingPost ? '#94A3B8' : '#8B5CF6',
-              }]}
-            >
-              {submittingPost ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <Text style={styles.createPostBtnText}>Post</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    );
-  }
-
-  // ============ REVIEW PAGE ============
-  if (reviewPage) {
-    const { post, action } = reviewPage;
-    const isApprove = action === 'approve';
-    const accent = isApprove ? '#10B981' : '#EF4444';
-    const accentDark = isApprove ? (darkMode ? '#064E3B' : '#ECFDF5') : (darkMode ? '#7F1D1D' : '#FEE2E2');
-    const accentText = isApprove ? (darkMode ? '#6EE7B7' : '#047857') : (darkMode ? '#FCA5A5' : '#991B1B');
-    const images = post.images || [];
-    const canSubmit = !reviewSubmitting && !signingQueue;
-    const hasImages = images.length > 0;
-    const signingActive = !!signingQueue;
-
-    return (
-      <KeyboardAvoidingView
-        style={[styles.container, { backgroundColor: darkMode ? '#0B1220' : '#F8FAFC' }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={KEYBOARD_OFFSET}
-      >
-        <View style={styles.headerBar}>
-          <TouchableOpacity
-            onPress={signingActive ? undefined : cancelReviewPage}
-            disabled={signingActive}
-            hitSlop={10}
-            activeOpacity={0.7}
-            style={styles.backBtn}
-          >
-            <Text style={[styles.backIcon, { color: signingActive ? subTextColor : textColor }]}>‹</Text>
-          </TouchableOpacity>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
-              {signingActive ? 'Sign images' : (isApprove ? 'Approve post' : 'Decline post')}
-            </Text>
-            <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-              {fmtPostNumber(post.id)} · in {group?.name}
-            </Text>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.reviewPageContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="always">
-          <View style={[styles.reviewPostCard, { backgroundColor: cardBg, borderColor }]}>
-            <Text style={[styles.reviewPostTitle, { color: textColor }]}>{post.title}</Text>
-            {post.body ? <Text style={[styles.reviewPostBody, { color: subTextColor }]}>{post.body}</Text> : null}
-
-            {images.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ gap: 10 }}>
-                {images.map((uri, i) => (
-                  <Image key={`review-img-${i}`} source={{ uri }} style={[styles.reviewImageThumb, { backgroundColor: borderColor }]} resizeMode="cover" />
-                ))}
-              </ScrollView>
-            )}
-
-            <View style={[styles.reviewMetaRow, { borderTopColor: borderColor }]}>
-              <Text style={[styles.reviewMetaLabel, { color: subTextColor }]}>Author</Text>
-              <Text style={[styles.reviewMetaValue, { color: textColor }]}>{post.author}</Text>
-            </View>
-            <View style={styles.reviewMetaRow}>
-              <Text style={[styles.reviewMetaLabel, { color: subTextColor }]}>Submitted</Text>
-              <Text style={[styles.reviewMetaValue, { color: textColor }]}>{fmtTimeAgo(post.createdAt)}</Text>
-            </View>
-          </View>
-
-          <Text style={[styles.reviewFieldLabel, { color: subTextColor }]}>
-            {isApprove ? 'APPROVAL NOTE (optional)' : 'REASON FOR DECLINING (optional)'}
-          </Text>
-          <TextInput
-            value={reviewNote}
-            onChangeText={(v) => { setReviewNote(v); setReviewError(null); }}
-            placeholder={isApprove ? 'e.g. Looks good — go ahead.' : 'e.g. Needs more details before publishing.'}
-            placeholderTextColor={subTextColor}
-            multiline
-            numberOfLines={6}
-            editable={!reviewSubmitting && !signingActive}
-            style={[styles.reviewInput, {
-              color: textColor,
-              backgroundColor: cardBg,
-              borderColor: reviewError ? '#EF4444' : borderColor,
-              opacity: signingActive ? 0.5 : 1,
-            }]}
-          />
-          {reviewError && <Text style={styles.reviewErrorText}>{reviewError}</Text>}
-
-          <View style={[styles.reviewInfoBox, { backgroundColor: accentDark, borderColor: accent }]}>
-            <Text style={[styles.reviewInfoText, { color: accentText }]}>
-              {isApprove
-                ? (hasImages
-                  ? `✓ You'll sign ${images.length} image${images.length === 1 ? '' : 's'} next — you can skip any you don't want to sign.`
-                  : '✓ This post has no images, so no signature is needed.')
-                : '✕ Your reason will be saved on the post and visible to everyone.'}
-            </Text>
-          </View>
-        </ScrollView>
-
-        <View style={[styles.reviewFooter, {
-          backgroundColor: darkMode ? '#0B1220' : '#FFFFFF',
-          borderTopColor: borderColor,
-          paddingBottom: REVIEW_FOOTER_PADDING,
-          opacity: signingActive ? 0.4 : 1,
-        }]}>
-          <TouchableOpacity
-            onPress={cancelReviewPage}
-            activeOpacity={0.85}
-            disabled={reviewSubmitting || signingActive}
-            style={[styles.reviewFooterBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
-          >
-            <Text style={[styles.reviewFooterBtnText, { color: textColor }]}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={applyReviewPage}
-            activeOpacity={0.9}
-            disabled={!canSubmit}
-            style={[styles.reviewFooterBtn, {
-              backgroundColor: canSubmit ? accent : '#94A3B8',
-              borderColor: canSubmit ? accent : '#94A3B8',
-              flex: 1.4,
-            }]}
-          >
-            {reviewSubmitting ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <Text style={[styles.reviewFooterBtnText, { color: '#FFFFFF' }]}>
-                {isApprove
-                  ? (hasImages ? '✓ Approve and Sign' : '✓ Approve')
-                  : '✕ Decline'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <AnnotationScreen
-          visible={!!signingQueue}
-          uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
-          onClose={skipAnnotation}
-          onSkip={skipAnnotation}
-          onPrev={prevAnnotation}
-          canGoBack={!!signingQueue && signingQueue.index > 0}
-          onSave={applyAnnotation}
-          saving={annotSaving}
-          darkMode={darkMode}
-          textColor={textColor}
-          subTextColor={subTextColor}
-          cardBg={cardBg}
-          borderColor={borderColor}
-          headerSubtitle={
-            signingQueue
-              ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
-              : undefined
-          }
+  const renderDeleteCommentModal = () => (
+    <Modal
+      visible={!!confirmDeleteComment}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setConfirmDeleteComment(null)}
+      statusBarTranslucent
+    >
+      <View style={styles.centerBackdrop}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => setConfirmDeleteComment(null)}
         />
-      </KeyboardAvoidingView>
-    );
-  }
+        {confirmDeleteComment && (
+          <View style={[styles.centerModal, { backgroundColor: cardBg, borderColor }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Delete comment?</Text>
+            <Text style={[styles.modalSub, { color: subTextColor }]}>
+              This comment will be permanently removed. This cannot be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setConfirmDeleteComment(null)}
+                disabled={deleteCommentSubmitting}
+                style={[styles.modalBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
+              >
+                <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={applyDeleteComment}
+                disabled={deleteCommentSubmitting}
+                style={[styles.modalBtn, { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}
+              >
+                {deleteCommentSubmitting ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
 
   // ============ POST DETAIL ============
   if (selectedPost) {
@@ -2370,58 +2578,34 @@ export default function GroupDetailPage({
             </View>
           )}
 
-          <View style={{ height: 60 }} />
+          <View style={{ height: 40 }} />
         </ScrollView>
 
         {renderDeleteModal()}
-
-        <Modal
-          visible={!!confirmDeleteComment}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setConfirmDeleteComment(null)}
-          statusBarTranslucent
-        >
-          <View style={styles.centerBackdrop}>
-            <TouchableOpacity
-              activeOpacity={1}
-              style={StyleSheet.absoluteFillObject}
-              onPress={() => setConfirmDeleteComment(null)}
-            />
-            {confirmDeleteComment && (
-              <View style={[styles.centerModal, { backgroundColor: cardBg, borderColor }]}>
-                <Text style={[styles.modalTitle, { color: textColor }]}>Delete comment?</Text>
-                <Text style={[styles.modalSub, { color: subTextColor }]}>
-                  This comment will be permanently removed. This cannot be undone.
-                </Text>
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    onPress={() => setConfirmDeleteComment(null)}
-                    disabled={deleteCommentSubmitting}
-                    style={[styles.modalBtn, { backgroundColor: darkMode ? '#1E293B' : '#F1F5F9', borderColor }]}
-                  >
-                    <Text style={[styles.modalBtnText, { color: textColor }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={applyDeleteComment}
-                    disabled={deleteCommentSubmitting}
-                    style={[styles.modalBtn, { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}
-                  >
-                    {deleteCommentSubmitting ? (
-                      <ActivityIndicator color="#FFF" size="small" />
-                    ) : (
-                      <Text style={[styles.modalBtnText, { color: '#FFFFFF' }]}>Delete</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        </Modal>
+        {renderDeleteCommentModal()}
 
         <ImageViewer visible={viewerVisible} uri={viewerUri} onClose={closeImageViewer} />
 
-        {/* ✅ Write Comment modal (only on POST DETAIL) */}
+        {/* ✅ Review modal renders BEFORE AnnotationScreen so signing stacks on top */}
+        <ReviewPostModal
+          visible={!!reviewPage}
+          post={reviewPage?.post || null}
+          action={reviewPage?.action || 'approve'}
+          groupName={group?.name}
+          reviewNote={reviewNote}
+          setReviewNote={setReviewNote}
+          reviewError={reviewError}
+          setReviewError={setReviewError}
+          submitting={reviewSubmitting}
+          onCancel={cancelReviewPage}
+          onSubmit={applyReviewPage}
+          darkMode={darkMode}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          cardBg={cardBg}
+          borderColor={borderColor}
+        />
+
         <WriteCommentModal
           visible={showCommentModal}
           commentText={commentText}
@@ -2436,6 +2620,28 @@ export default function GroupDetailPage({
           borderColor={borderColor}
           currentUserName={currentUser?.name}
           postNumber={num}
+        />
+
+        {/* ✅ Signing queue LAST so it stacks on top of everything */}
+        <AnnotationScreen
+          visible={!!signingQueue}
+          uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
+          onClose={skipAnnotation}
+          onSkip={skipAnnotation}
+          onPrev={prevAnnotation}
+          canGoBack={!!signingQueue && signingQueue.index > 0}
+          onSave={applyAnnotation}
+          saving={annotSaving}
+          darkMode={darkMode}
+          textColor={textColor}
+          subTextColor={subTextColor}
+          cardBg={cardBg}
+          borderColor={borderColor}
+          headerSubtitle={
+            signingQueue
+              ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
+              : undefined
+          }
         />
       </KeyboardAvoidingView>
     );
@@ -2625,14 +2831,79 @@ export default function GroupDetailPage({
       )}
 
       {renderDeleteModal()}
+      {renderDeleteCommentModal()}
+
+      <CreatePostModal
+        visible={showCreatePost}
+        groupName={group?.name}
+        title={newPostTitle}
+        setTitle={(v) => { setNewPostTitle(v); setPostError(null); }}
+        body={newPostBody}
+        setBody={setNewPostBody}
+        images={newPostImages}
+        pickImages={pickImages}
+        removeImageAt={removeImageAt}
+        error={postError}
+        submitting={submittingPost}
+        onCancel={cancelCreatePost}
+        onSubmit={submitPost}
+        darkMode={darkMode}
+        textColor={textColor}
+        subTextColor={subTextColor}
+        cardBg={cardBg}
+        borderColor={borderColor}
+      />
+
+      <ReviewPostModal
+        visible={!!reviewPage}
+        post={reviewPage?.post || null}
+        action={reviewPage?.action || 'approve'}
+        groupName={group?.name}
+        reviewNote={reviewNote}
+        setReviewNote={setReviewNote}
+        reviewError={reviewError}
+        setReviewError={setReviewError}
+        submitting={reviewSubmitting}
+        onCancel={cancelReviewPage}
+        onSubmit={applyReviewPage}
+        darkMode={darkMode}
+        textColor={textColor}
+        subTextColor={subTextColor}
+        cardBg={cardBg}
+        borderColor={borderColor}
+      />
 
       <ImageViewer visible={viewerVisible} uri={viewerUri} onClose={closeImageViewer} />
+
+      {/* ✅ FIX: AnnotationScreen now lives in the default posts view too.
+          Before, it only lived inside the `if (selectedPost)` branch, so
+          tapping "Approve and Sign" from the pending list set signingQueue
+          but nothing rendered — the modal only appeared after navigating
+          to a post detail or switching tabs. Now it opens right away. */}
+      <AnnotationScreen
+        visible={!!signingQueue}
+        uri={signingQueue ? signingQueue.images[signingQueue.index]?.uri : null}
+        onClose={skipAnnotation}
+        onSkip={skipAnnotation}
+        onPrev={prevAnnotation}
+        canGoBack={!!signingQueue && signingQueue.index > 0}
+        onSave={applyAnnotation}
+        saving={annotSaving}
+        darkMode={darkMode}
+        textColor={textColor}
+        subTextColor={subTextColor}
+        cardBg={cardBg}
+        borderColor={borderColor}
+        headerSubtitle={
+          signingQueue
+            ? `Image ${signingQueue.index + 1} of ${signingQueue.images.length}`
+            : undefined
+        }
+      />
     </View>
   );
 }
 
-// ================================================================
-// STYLES
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -2838,40 +3109,16 @@ const styles = StyleSheet.create({
   },
   approvalBtnText: { fontSize: 13.5, fontWeight: '900', letterSpacing: 0.2 },
 
-  reviewPageContent: { paddingHorizontal: 16, paddingBottom: 32 },
-  reviewPostCard: { padding: 16, borderRadius: 14, borderWidth: 1, marginBottom: 20 },
-  reviewPostTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3, lineHeight: 24 },
-  reviewPostBody: { fontSize: 13.5, fontWeight: '500', marginTop: 8, lineHeight: 20 },
-  reviewImageThumb: { width: 130, height: 130, borderRadius: 12 },
+  reviewPostCard: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  reviewPostTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3, lineHeight: 22 },
+  reviewPostBody: { fontSize: 13, fontWeight: '500', marginTop: 6, lineHeight: 19 },
+  reviewImageThumb: { width: 110, height: 110, borderRadius: 10 },
   reviewMetaRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 8,
   },
   reviewMetaLabel: { fontSize: 12.5, fontWeight: '600' },
   reviewMetaValue: { fontSize: 13, fontWeight: '800' },
-  reviewFieldLabel: {
-    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
-    marginBottom: 8, marginTop: 4,
-  },
-  reviewInput: {
-    borderWidth: 1, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 14.5, fontWeight: '500',
-    minHeight: 130, textAlignVertical: 'top',
-  },
-  reviewErrorText: { color: '#EF4444', marginTop: 6, fontWeight: '700', fontSize: 12.5 },
-  reviewInfoBox: { marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1 },
-  reviewInfoText: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
-  reviewFooter: {
-    flexDirection: 'row', gap: 10,
-    paddingHorizontal: 16, paddingTop: 14,
-    borderTopWidth: 1,
-  },
-  reviewFooterBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  reviewFooterBtnText: { fontSize: 14.5, fontWeight: '900', letterSpacing: 0.2 },
 
   annotBackdrop: { flex: 1, justifyContent: 'flex-end' },
   annotSheet: { height: SCREEN.height * 0.75, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
@@ -2940,67 +3187,12 @@ const styles = StyleSheet.create({
   },
   fabText: { color: '#FFFFFF', fontSize: 28, fontWeight: '300', marginTop: -3 },
 
-  fieldLabel: {
-    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
-    marginBottom: 6, marginTop: 12,
-  },
-  input: {
-    borderWidth: 1, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
-    fontSize: 14, fontWeight: '500',
-  },
-  textarea: { minHeight: 120, paddingTop: 12, textAlignVertical: 'top' },
-
   modalTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
   modalSub: { fontSize: 12.5, fontWeight: '600', marginTop: 3, marginBottom: 8 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
-  modalBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
-  },
-  modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 
   avatarSmall: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   avatarSmallText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
-
-  createPostContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 20,
-  },
-  createActionsBar: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  },
-  createCancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  createCancelBtnText: {
-    fontSize: 14.5,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  createPostBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createPostBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
 
   uploadZone: {
     borderWidth: 2, borderStyle: 'dashed', borderRadius: 12,
@@ -3027,7 +3219,7 @@ const styles = StyleSheet.create({
   attachmentRemoveText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
 
   pendingInfoBox: {
-    marginTop: 20, padding: 12, borderRadius: 10, borderWidth: 1,
+    marginTop: 16, padding: 12, borderRadius: 10, borderWidth: 1,
   },
   pendingInfoText: { fontSize: 12, fontWeight: '700', lineHeight: 17, textAlign: 'center' },
 
@@ -3083,6 +3275,46 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 22,
   },
+  sheetAccentBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  sheetAccentEmoji: { fontSize: 22 },
+  sheetAccentTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  sheetAccentBody: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  fieldLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  textarea: { minHeight: 90, paddingTop: 12, textAlignVertical: 'top' },
+
   commentTextarea: {
     minHeight: 130,
     paddingTop: 12,
@@ -3093,5 +3325,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
     textAlign: 'right',
+  },
+
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  modalBtnText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+  reviewErrorText: {
+    color: '#EF4444',
+    marginTop: 6,
+    fontWeight: '700',
+    fontSize: 12.5,
   },
 });

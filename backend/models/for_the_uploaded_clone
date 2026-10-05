@@ -1,0 +1,83 @@
+-- ================================================================
+-- REQUEST ITEM PROCESSING TABLE
+-- Tracks per-item, per-group progress for partial request processing
+-- ================================================================
+
+CREATE TABLE IF NOT EXISTS request_item_processing (
+  id                    SERIAL PRIMARY KEY,
+  request_id            INTEGER NOT NULL,
+  request_detail_id     INTEGER NOT NULL,
+  group_id              INTEGER NOT NULL,
+  store_id              INTEGER NOT NULL,
+  item_id               INTEGER NOT NULL,
+  requested_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
+  processed_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
+  remaining_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
+  status                VARCHAR(20) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'partial', 'completed')),
+  uom_code              VARCHAR(20),
+  is_base_uom           BOOLEAN NOT NULL DEFAULT TRUE,
+  processed_at          TIMESTAMP WITH TIME ZONE,
+  processed_by          INTEGER,
+  remark                TEXT,
+  created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- ================================================================
+-- INDEXES
+-- ================================================================
+
+-- One row per (request, item, group) — prevents duplicates
+CREATE UNIQUE INDEX IF NOT EXISTS unique_request_item_group
+  ON request_item_processing (request_id, request_detail_id, group_id);
+
+-- Fast lookups by request + group (most common query pattern)
+CREATE INDEX IF NOT EXISTS idx_request_group
+  ON request_item_processing (request_id, group_id);
+
+-- Fast lookups by status (for finding pending/partial rows)
+CREATE INDEX IF NOT EXISTS idx_status
+  ON request_item_processing (status);
+
+-- Fast lookups by item (for cross-request item reports)
+CREATE INDEX IF NOT EXISTS idx_item
+  ON request_item_processing (item_id);
+
+-- ================================================================
+-- VERIFY
+-- ================================================================
+
+-- Should return 0 rows
+SELECT * FROM request_item_processing LIMIT 1;
+
+-- Should list all 4 indexes plus the primary key
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'request_item_processing'
+ORDER BY indexname;
+
+
+
+
+
+UPDATE users SET created_by = 19;
+
+DELETE FROM users WHERE is_active = false;
+
+
+
+-- Add stage column to track which stage each notification belongs to
+ALTER TABLE request_notifications 
+ADD COLUMN stage VARCHAR(30) DEFAULT 'supplying_store';
+
+-- Existing notifications belong to the supplying stage (preserves current behavior)
+UPDATE request_notifications SET stage = 'supplying_store' WHERE stage IS NULL;
+
+-- Index for fast lookups by stage
+CREATE INDEX idx_notifications_request_stage 
+ON request_notifications(request_id, stage);
+
+-- Index for filtering by status + stage
+CREATE INDEX idx_notifications_stage_status 
+ON request_notifications(stage, status);

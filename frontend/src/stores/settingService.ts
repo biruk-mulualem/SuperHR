@@ -185,6 +185,12 @@ export interface StoreForApproval {
   isSelected: boolean;
 }
 
+// 🔥 NEW: ask-store approval toggle
+export interface AskStoreApprovalStatus {
+  enabled: boolean;
+  settingExists: boolean;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];
@@ -556,6 +562,52 @@ class SettingService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || { success: false, error: 'Failed to remove approval configuration' };
+    }
+  }
+
+  // ==================== 🔥 ASK-STORE APPROVAL TOGGLE ====================
+
+  /**
+   * Get whether the asking-store group approval flow is enabled.
+   *
+   * When ENABLED  → asking store groups approve first, then supplying store.
+   * When DISABLED → request goes straight to supplying store (original flow).
+   *
+   * Default: true (enabled).
+   *
+   * GET /settings/approval/ask-store-enabled
+   */
+  async getAskStoreApprovalEnabled(): Promise<ApiResponse<AskStoreApprovalStatus>> {
+    try {
+      const response = await api.get('/settings/approval/ask-store-enabled');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || {
+        success: false,
+        error: 'Failed to fetch ask-store approval status',
+      };
+    }
+  }
+
+  /**
+   * Enable or disable the asking-store group approval flow.
+   *
+   * POST /settings/approval/ask-store-enabled
+   * Body: { enabled: boolean }
+   */
+  async setAskStoreApprovalEnabled(
+    enabled: boolean
+  ): Promise<ApiResponse<{ enabled: boolean }>> {
+    try {
+      const response = await api.post('/settings/approval/ask-store-enabled', {
+        enabled,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || {
+        success: false,
+        error: 'Failed to update ask-store approval status',
+      };
     }
   }
 

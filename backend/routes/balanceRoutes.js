@@ -28,6 +28,11 @@ router.get(
 );
 
 
+router.get(
+  '/requests/:requestId/processable-items',
+  authMiddleware(),
+  balanceController.getProcessableItems
+);
 
 // Correct balance - requires authentication
 router.post('/correct', 

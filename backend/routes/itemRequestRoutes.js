@@ -28,8 +28,22 @@ router.get('/active-stores', itemRequestController.getActiveStores);
 router.get('/active-items', itemRequestController.getActiveItems);
 
 
-
 router.get('/notifications/pending', itemRequestController.getPendingNotifications);
+
+// ================================================================
+// 🔥 APPROVAL DEPARTMENTS (NEW)
+// MUST come before /:id wildcards
+// ================================================================
+
+/**
+ * GET /api/item-requests/approval-departments/:storeCode
+ * Returns the departments that need to approve requests for a given store.
+ * Example: /api/item-requests/approval-departments/STORE-001
+ */
+router.get(
+  '/approval-departments/:storeCode',
+  itemRequestController.getApprovalDepartmentsForStore
+);
 
 // ================================================================
 // STORE GROUPS ROUTE (Get groups for a specific store)

@@ -1164,14 +1164,6 @@ exports.deleteBalance = async (req, res) => {
 // ============================================
 
 
-// ================================================================
-// GET APPROVED REQUESTS - Shows requests for the specific group
-// ================================================================
-
-// ================================================================
-// GET APPROVED REQUESTS - Shows requests for the specific group
-// ================================================================
-
 exports.getApprovedRequests = async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -1287,7 +1279,7 @@ exports.getApprovedRequests = async (req, res) => {
       isAsset: request.isAsset || false,
       items:
         request.items?.map((item) => ({
-          id: item.id,
+            id: item.id ?? item.detailId,
           itemId: item.itemId,
           itemName: item.item?.standardName || item.item?.name || null,
           itemCode: item.item?.code || null,
@@ -1320,6 +1312,167 @@ exports.getApprovedRequests = async (req, res) => {
 };
 
 
+// ================================================================
+// GET PROCESSABLE ITEMS (for partial processing UI)
+// GET /api/balances/requests/:requestId/processable-items
+// ================================================================
+exports.getProcessableItems = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { groupId, storeId } = req.query;
+
+    console.log('🔍 getProcessableItems called:', {
+      requestId,
+      groupId,
+      storeId,
+    });
+
+    if (!groupId || !storeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'groupId and storeId are required',
+      });
+    }
+
+    // Fetch the request with its items
+    const request = await ItemRequest.findByPk(parseInt(requestId), {
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: 'items',
+          include: [
+            {
+              model: Item,
+              as: 'item',
+              attributes: [
+                'itemId',
+                'code',
+                'name',
+                'standardName',
+                'conversionValue',
+                'uomId',
+                'conversionUomId',
+                'status',
+              ],
+              include: [
+                {
+                  model: UOM,
+                  as: 'uom',
+                  attributes: ['id', 'code', 'name'],
+                },
+                {
+                  model: UOM,
+                  as: 'conversionUom',
+                  attributes: ['id', 'code', 'name'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found',
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // Fetch existing per-item processing records (if the table exists)
+    // ----------------------------------------------------------------
+    const RequestItemProcessing = sequelize.models.RequestItemProcessing;
+
+    let existingRecords = [];
+    if (RequestItemProcessing) {
+      try {
+        existingRecords = await RequestItemProcessing.findAll({
+          where: {
+            requestId: parseInt(requestId),
+            groupId: parseInt(groupId),
+          },
+        });
+      } catch (err) {
+        console.warn(
+          '⚠️ RequestItemProcessing table not ready, using fallback:',
+          err.message
+        );
+      }
+    }
+
+    // Build item-level processing info
+    const items = (request.items || []).map((item) => {
+      // ✅ FIX: Sequelize may rename `id` → `detailId` in nested includes
+      const itemDetailId = item.id ?? item.detailId;
+
+      const requestedQty = parseFloat(item.quantity) || 0;
+
+      // Find existing processing record for this item
+      const record = existingRecords.find(
+        (r) => parseInt(r.requestDetailId) === parseInt(itemDetailId)
+      );
+
+      const processedQty = record
+        ? parseFloat(record.processedQuantity) || 0
+        : 0;
+      const remainingQty = Math.max(0, requestedQty - processedQty);
+
+      let status = 'pending';
+      if (remainingQty <= 0) status = 'completed';
+      else if (processedQty > 0) status = 'partial';
+
+      // Determine UOM
+      const isBaseUom = item.is_base_uom !== false;
+      const uomCode = isBaseUom
+        ? item.uom_code || item.item?.uom?.code || null
+        : item.uom_code || item.item?.conversionUom?.code || null;
+
+      return {
+        requestDetailId: itemDetailId,   // ✅ FIXED
+        itemId: item.itemId,
+        itemCode: item.item?.code || null,
+        itemName: item.item?.standardName || item.item?.name || null,
+        requestedQuantity: requestedQty,
+        processedQuantity: processedQty,
+        remainingQuantity: remainingQty,
+        canProcess: remainingQty > 0,
+        status,
+        uomCode,
+        isBaseUom,
+        baseUomCode: item.item?.uom?.code || null,
+        conversionUomCode: item.item?.conversionUom?.code || null,
+        conversionValue: parseFloat(item.item?.conversionValue) || 1,
+        itemStatus: item.item?.status || 'Unknown',
+      };
+    });
+
+    const allCompleted =
+      items.length > 0 && items.every((i) => i.remainingQuantity <= 0);
+    const anyProcessed = items.some((i) => i.processedQuantity > 0);
+
+    let overallStatus = 'pending';
+    if (allCompleted) overallStatus = 'completed';
+    else if (anyProcessed) overallStatus = 'partial';
+
+    res.status(200).json({
+      success: true,
+      data: {
+        requestId: request.requestId,
+        requestCode: request.requestCode,
+        overallStatus,
+        isFullyProcessed: allCompleted,
+        items,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Get processable items error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
 
 
 // ============================================
@@ -3806,22 +3959,30 @@ exports.processRequestForGroup = async (req, res) => {
   }
 };
 
-// ================================================================
-// PROCESS REQUESTS - BATCH WITH CORRECT BALANCE & LOCKING
-// ================================================================
 
-
+// ================================================================
+// PROCESS REQUESTS - BATCH WITH PARTIAL PROCESSING SUPPORT
+// Honors itemsToProcess, records progress, keeps multi-group
+// finalization logic untouched.
+// ================================================================
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { storeId, groupId, requestIds, documentRefs } = req.body;
+    const {
+      storeId,
+      groupId,
+      requestIds,
+      documentRefs,
+      itemsToProcess, // ✅ NEW: optional partial processing specs
+    } = req.body;
 
     console.log("📤 Processing requests payload:", {
       storeId,
       groupId,
       requestIds,
       documentRefs,
+      itemsToProcessCount: itemsToProcess?.length || 0,
     });
 
     // ================================================================
@@ -3835,7 +3996,10 @@ exports.processRequests = async (req, res) => {
       });
     }
 
-    const validRequestIds = requestIds.filter((id) => id != null && id !== "");
+    const validRequestIds = requestIds
+      .filter((id) => id != null && id !== "")
+      .map((id) => parseInt(id));
+
     if (validRequestIds.length === 0) {
       await transaction.rollback();
       return res.status(400).json({
@@ -3847,63 +4011,59 @@ exports.processRequests = async (req, res) => {
     console.log("✅ Valid request IDs:", validRequestIds);
 
     // ================================================================
-    // 2. GET USER ID
+    // 2. GET USER
     // ================================================================
     const userId = req.user?.userId;
-    
+
     console.log("👤 User from request:", {
       userId: req.user?.userId,
       username: req.user?.username,
       fullName: req.user?.fullName,
-      role: req.user?.role
+      role: req.user?.role,
     });
-    
+
     if (!userId) {
       await transaction.rollback();
       return res.status(401).json({
         success: false,
-        error: "Unauthorized. Please log in."
+        error: "Unauthorized. Please log in.",
       });
     }
 
     const user = await User.findByPk(userId, {
-      attributes: ['userId', 'username', 'fullName', 'email', 'isActive']
+      attributes: ["userId", "username", "fullName", "email", "isActive"],
     });
-    
+
     if (!user) {
       await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "User not found"
-      });
+      return res.status(404).json({ success: false, error: "User not found" });
     }
-    
+
     if (!user.isActive) {
       await transaction.rollback();
       return res.status(403).json({
         success: false,
-        error: "User account is inactive"
+        error: "User account is inactive",
       });
     }
 
-    console.log("👤 Using userId:", userId);
-    console.log("👤 User fullName:", user.fullName);
-
     // ================================================================
-    // 3. VALIDATE GROUP AND STORE
+    // 3. VALIDATE GROUP + STORE + RELATION
     // ================================================================
     const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    const RequestItemProcessing = sequelize.models.RequestItemProcessing;
+
     if (!RequestGroupProcessing) {
       throw new Error("RequestGroupProcessing model not found");
+    }
+    if (!RequestItemProcessing) {
+      throw new Error("RequestItemProcessing model not found");
     }
 
     const group = await Group.findByPk(parseInt(groupId));
     if (!group) {
       await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Group not found",
-      });
+      return res.status(404).json({ success: false, error: "Group not found" });
     }
 
     if (group.status !== "Active") {
@@ -3917,10 +4077,7 @@ exports.processRequests = async (req, res) => {
     const store = await Store.findByPk(parseInt(storeId));
     if (!store) {
       await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Store not found",
-      });
+      return res.status(404).json({ success: false, error: "Store not found" });
     }
 
     if (store.status !== "Active") {
@@ -3947,11 +4104,11 @@ exports.processRequests = async (req, res) => {
     }
 
     // ================================================================
-    // 4. GET THE REQUESTS
+    // 4. LOAD REQUESTS WITH ITEMS
     // ================================================================
     const requests = await ItemRequest.findAll({
       where: {
-        requestId: { [Op.in]: validRequestIds.map((id) => parseInt(id)) },
+        requestId: { [Op.in]: validRequestIds },
         status: "approved",
       },
       include: [
@@ -3973,11 +4130,7 @@ exports.processRequests = async (req, res) => {
                 "conversionUomId",
               ],
               include: [
-                {
-                  model: UOM,
-                  as: "uom",
-                  attributes: ["id", "code", "name"],
-                },
+                { model: UOM, as: "uom", attributes: ["id", "code", "name"] },
                 {
                   model: UOM,
                   as: "conversionUom",
@@ -4001,7 +4154,30 @@ exports.processRequests = async (req, res) => {
     }
 
     // ================================================================
-    // 5. PROCESS EACH REQUEST
+    // 5. BUILD PROCESS SPECS MAP (requestId → [{ requestDetailId, quantity }])
+    // ================================================================
+    const processSpecsByRequest = {};
+    if (Array.isArray(itemsToProcess)) {
+      itemsToProcess.forEach((spec) => {
+        const rId = parseInt(spec.requestId);
+        if (!processSpecsByRequest[rId]) processSpecsByRequest[rId] = [];
+        processSpecsByRequest[rId].push({
+          requestDetailId: parseInt(spec.requestDetailId),
+          quantity: parseFloat(spec.quantity),
+        });
+      });
+    }
+
+    console.log(
+      "📋 Process specs by request:",
+      Object.keys(processSpecsByRequest).map((k) => ({
+        requestId: k,
+        items: processSpecsByRequest[k].length,
+      }))
+    );
+
+    // ================================================================
+    // 6. PROCESS EACH REQUEST
     // ================================================================
     let processedCount = 0;
     let failedCount = 0;
@@ -4012,13 +4188,14 @@ exports.processRequests = async (req, res) => {
     const allSkippedGroups = [];
     const processedRequestIds = [];
     const finalizedRequests = [];
+    const partialRequests = [];
 
     for (const request of requests) {
       console.log(`📋 Processing request: ${request.requestCode}`);
 
-      // ================================================================
-      // 5a. CHECK IF THIS GROUP HAS ALREADY PROCESSED THIS REQUEST
-      // ================================================================
+      // ----------------------------------------------------------
+      // 6a. Has this group already fully processed this request?
+      // ----------------------------------------------------------
       const existingRecord = await RequestGroupProcessing.findOne({
         where: {
           requestId: request.requestId,
@@ -4028,16 +4205,22 @@ exports.processRequests = async (req, res) => {
 
       if (existingRecord && existingRecord.status === "processed") {
         logs.push(
-          `⏭️ Group "${group.name}" has already processed request ${request.requestCode}`,
+          `⏭️ Group "${group.name}" has already fully processed request ${request.requestCode}`
         );
         processedRequestIds.push(request.requestId);
-        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        await checkAndFinalizeRequest(
+          request,
+          parseInt(storeId),
+          transaction,
+          logs,
+          finalizedRequests
+        );
         continue;
       }
 
       if (existingRecord && existingRecord.status === "skipped") {
         logs.push(
-          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`,
+          `⏭️ Group "${group.name}" was skipped for request ${request.requestCode} by admin`
         );
         allSkippedGroups.push({
           requestCode: request.requestCode,
@@ -4045,58 +4228,114 @@ exports.processRequests = async (req, res) => {
           reason: existingRecord.remark || "Skipped by admin",
         });
         processedRequestIds.push(request.requestId);
-        await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
+        await checkAndFinalizeRequest(
+          request,
+          parseInt(storeId),
+          transaction,
+          logs,
+          finalizedRequests
+        );
         continue;
       }
 
-      // ================================================================
-      // 5b. CHECK IF THE REQUEST IS RELEVANT TO THIS STORE
-      // ================================================================
+      // ----------------------------------------------------------
+      // 6b. Is this request relevant to this store?
+      // ----------------------------------------------------------
       if (
         request.askingStoreId !== parseInt(storeId) &&
         request.supplyingStoreId !== parseInt(storeId)
       ) {
         logs.push(
-          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`,
+          `❌ Request ${request.requestCode} is not relevant to store ${store.name}`
         );
         failedCount++;
         continue;
       }
 
-      // ================================================================
-      // 5c. DETERMINE ACTION
-      // ================================================================
-      let action, transactionType, changeMultiplier, actionLabel;
+      // ----------------------------------------------------------
+      // 6c. Determine action
+      // ----------------------------------------------------------
+      let action, transactionType, changeMultiplier;
       if (request.askingStoreId === parseInt(storeId)) {
         action = "STOCK_IN";
         transactionType = "Stock In";
         changeMultiplier = 1;
-        actionLabel = "RECEIVED";
-      } else if (request.supplyingStoreId === parseInt(storeId)) {
+      } else {
         action = "STOCK_OUT";
         transactionType = "Stock Out";
         changeMultiplier = -1;
-        actionLabel = "SENT";
-      } else {
-        logs.push(
-          `❌ Request ${request.requestCode}: Store is neither asking nor supplying`,
-        );
-        failedCount++;
-        continue;
       }
 
       console.log(`📋 Action: ${action} for request ${request.requestCode}`);
 
-      // ================================================================
-      // 5d. PROCESS EACH ITEM - WITH BASE & CONVERTED UOM SUPPORT
-      // ================================================================
+      // ----------------------------------------------------------
+      // 6d. Determine which items to process and how much
+      //     (partial mode if specs exist, otherwise full)
+      // ----------------------------------------------------------
+      const specsForThisRequest = processSpecsByRequest[request.requestId];
+
+      // 🔍 DEBUG: Show what's arriving vs what's in the request
+      console.log("🔍 ============================================");
+      console.log("🔍 DEBUG MATCH CHECK for request:", request.requestId);
+      console.log("🔍 Specs received from frontend:");
+      console.log("   ", JSON.stringify(specsForThisRequest, null, 2));
+      console.log("🔍 Items in this request (from DB):");
+      (request.items || []).forEach((i, idx) => {
+        console.log(
+          `    [${idx}] id=${i.id} | detailId=${i.detailId} | itemId=${i.itemId} | qty=${i.quantity}`
+        );
+      });
+      console.log("🔍 Comparing: spec.requestDetailId === parseInt(item.id)");
+      (request.items || []).forEach((i) => {
+        const spec = specsForThisRequest
+          ? specsForThisRequest.find(
+              (s) => s.requestDetailId === parseInt(i.id)
+            )
+          : null;
+        console.log(
+          `    item.id=${i.id} (as number: ${parseInt(i.id)}) → match: ${!!spec}`
+        );
+      });
+      console.log("🔍 ============================================");
+
+      let itemsToProcessNow;
+      if (specsForThisRequest && specsForThisRequest.length > 0) {
+        // Partial mode: only process specified items
+        itemsToProcessNow = request.items
+          .map((item) => {
+            // ✅ FIX: Sequelize may alias `id` → `detailId` when there's a collision
+            const itemDetailId = item.id ?? item.detailId;
+            const spec = specsForThisRequest.find(
+              (s) => s.requestDetailId === parseInt(itemDetailId)
+            );
+            if (!spec) return null;
+            return { item, quantityToProcess: spec.quantity };
+          })
+          .filter(Boolean);
+      } else {
+        // Full mode (backward compatible)
+        itemsToProcessNow = request.items.map((item) => ({
+          item,
+          quantityToProcess: parseFloat(item.quantity),
+        }));
+      }
+
+      if (itemsToProcessNow.length === 0) {
+        logs.push(
+          `⚠️ Request ${request.requestCode}: no items selected for processing`
+        );
+        continue;
+      }
+
+      // ----------------------------------------------------------
+      // 6e. Process each item
+      // ----------------------------------------------------------
       const requestResults = [];
       const requestErrors = [];
       const requestAutoInitialized = [];
 
-      for (const item of request.items) {
+      for (const { item, quantityToProcess } of itemsToProcessNow) {
         try {
-          // Check if item exists
           if (!item.item) {
             requestErrors.push(`Item ID ${item.itemId} not found in database`);
             missingItems.push({
@@ -4111,10 +4350,9 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // Check if item is active
           if (item.item.status !== "Active") {
             requestErrors.push(
-              `Item "${item.item.code}" is ${item.item.status}`,
+              `Item "${item.item.code}" is ${item.item.status}`
             );
             missingItems.push({
               itemId: item.itemId,
@@ -4129,24 +4367,53 @@ exports.processRequests = async (req, res) => {
             continue;
           }
 
-          // ================================================================
-          // ✅ FIX: DETERMINE IF BASE OR CONVERTED UOM
-          // Check is_base_uom from the request detail
-          // ================================================================
-          const isBaseUom = item.is_base_uom !== false; // Default to true if not specified
-          
-          // Get the UOM code to use
-          const uomCode = isBaseUom 
-            ? (item.uom_code || item.item?.uom?.code || "PCS")
-            : (item.uom_code || item.item?.conversionUom?.code || "KG");
+          // ------------------------------------------------------
+          // Load or create the per-item processing record
+          // ------------------------------------------------------
+          // ✅ FIX: support both id and detailId
+          const itemDetailId = item.id ?? item.detailId;
 
-          console.log(`📋 Item: ${item.item.code}, isBaseUom: ${isBaseUom}, uomCode: ${uomCode}`);
+          let processingRecord = await RequestItemProcessing.findOne({
+            where: {
+              requestId: request.requestId,
+              requestDetailId: itemDetailId,
+              groupId: parseInt(groupId),
+            },
+            lock: transaction.LOCK.UPDATE,
+            transaction,
+          });
 
+          const requestedQty = parseFloat(item.quantity);
+          const alreadyProcessed = processingRecord
+            ? parseFloat(processingRecord.processedQuantity)
+            : 0;
+          const remainingBefore = Math.max(0, requestedQty - alreadyProcessed);
+
+          // Validate quantity to process
+          if (quantityToProcess <= 0) {
+            requestErrors.push(
+              `Item "${item.item.code}": quantity to process must be > 0`
+            );
+            continue;
+          }
+          if (quantityToProcess > remainingBefore + 0.0001) {
+            requestErrors.push(
+              `Item "${item.item.code}": quantity to process (${quantityToProcess}) exceeds remaining (${remainingBefore})`
+            );
+            continue;
+          }
+
+          // UOM determination
+          const isBaseUom = item.is_base_uom !== false;
+          const uomCode = isBaseUom
+            ? item.uom_code || item.item?.uom?.code || "PCS"
+            : item.uom_code || item.item?.conversionUom?.code || "KG";
+
+          // ------------------------------------------------------
+          // Update balance (base or converted)
+          // ------------------------------------------------------
           if (isBaseUom) {
-            // ================================================================
-            // ✅ BASE UOM OPERATION - store_balances table
-            // ================================================================
-            
+            // ============ BASE UOM ============
             let balance = await StoreBalance.findOne({
               where: {
                 storeId: parseInt(storeId),
@@ -4154,104 +4421,114 @@ exports.processRequests = async (req, res) => {
                 itemId: item.itemId,
               },
               lock: transaction.LOCK.UPDATE,
-              transaction: transaction,
+              transaction,
             });
 
-            // Auto-initialize if not exists
             if (!balance) {
-              console.log(`📦 Auto-initializing BASE balance for item: ${item.item.code}`);
-              
-              balance = await StoreBalance.create({
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                balance: 0,
-                minStockAlert: 0,
-                status: "Active",
-              }, { transaction });
+              balance = await StoreBalance.create(
+                {
+                  storeId: parseInt(storeId),
+                  groupId: parseInt(groupId),
+                  itemId: item.itemId,
+                  balance: 0,
+                  minStockAlert: 0,
+                  status: "Active",
+                },
+                { transaction }
+              );
 
-              await StoreBalanceHistory.create({
-                balanceId: balance.id,
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                previousBalance: 0,
-                newBalance: 0,
-                changeAmount: 0,
-                transactionType: "Stock In",
-                referenceType: "auto_initialization",
-                referenceId: request.requestId,
-                changedBy: userId,
-                uomUsed: uomCode,
-                isBaseUom: true,
-                remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
-              }, { transaction });
+              await StoreBalanceHistory.create(
+                {
+                  balanceId: balance.id,
+                  storeId: parseInt(storeId),
+                  groupId: parseInt(groupId),
+                  itemId: item.itemId,
+                  previousBalance: 0,
+                  newBalance: 0,
+                  changeAmount: 0,
+                  transactionType: "Stock In",
+                  referenceType: "auto_initialization",
+                  referenceId: request.requestId,
+                  changedBy: userId,
+                  uomUsed: uomCode,
+                  isBaseUom: true,
+                  remark: `Auto-initialized Base UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+                },
+                { transaction }
+              );
 
               requestAutoInitialized.push({
                 itemId: item.itemId,
                 itemCode: item.item.code || "N/A",
-                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                itemName:
+                  item.item.standardName || item.item.name || "Unknown Item",
                 uomType: "Base UOM",
-                uomCode: uomCode,
+                uomCode,
               });
-
               allAutoInitializedItems.push({
                 requestCode: request.requestCode,
                 itemCode: item.item.code || "N/A",
-                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                itemName:
+                  item.item.standardName || item.item.name || "Unknown Item",
                 uomType: "Base UOM",
-                uomCode: uomCode,
+                uomCode,
               });
             }
 
-            // Check if balance is active
             if (balance.status !== "Active") {
               requestErrors.push(
-                `Balance for item "${item.item.code}" is ${balance.status}`,
+                `Balance for item "${item.item.code}" is ${balance.status}`
               );
               continue;
             }
 
             const previousBalance = parseFloat(balance.balance);
-            const quantity = parseFloat(item.quantity);
-            const changeAmount = quantity * changeMultiplier;
+            const changeAmount = quantityToProcess * changeMultiplier;
             const newBalance = previousBalance + changeAmount;
 
-            // Stock Out validation
             if (action === "STOCK_OUT" && newBalance < 0) {
               requestErrors.push(
-                `Insufficient balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+                `Insufficient balance for "${item.item.code}". ` +
+                  `Balance: ${previousBalance} ${uomCode}, Requested: ${quantityToProcess}`
               );
               continue;
             }
 
-            // Update balance
             balance.balance = newBalance;
             await balance.save({ transaction });
 
-            // ✅ CREATE HISTORY RECORD FOR BASE UOM
-            await StoreBalanceHistory.create({
-              balanceId: balance.id,
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              previousBalance: previousBalance,
-              newBalance: newBalance,
-              changeAmount: Math.abs(changeAmount),
-              transactionType: transactionType,
-              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
-              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
-              referenceType: "request",
-              referenceId: request.requestId,
-              changedBy: userId,
-              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
-              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
-              uomUsed: uomCode,
-              isBaseUom: true,
-              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
-            }, { transaction });
+            await StoreBalanceHistory.create(
+              {
+                balanceId: balance.id,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance,
+                newBalance,
+                changeAmount: Math.abs(changeAmount),
+                transactionType,
+                sourceStoreId:
+                  action === "STOCK_IN" ? request.supplyingStoreId : null,
+                destinationStoreId:
+                  action === "STOCK_OUT" ? request.askingStoreId : null,
+                referenceType: "request",
+                referenceId: request.requestId,
+                changedBy: userId,
+                grnNumber:
+                  action === "STOCK_IN"
+                    ? documentRefs?.[request.requestId] || null
+                    : null,
+                sivNumber:
+                  action === "STOCK_OUT"
+                    ? documentRefs?.[request.requestId] || null
+                    : null,
+                uomUsed: uomCode,
+                isBaseUom: true,
+                remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+              },
+              { transaction }
+            );
 
-            // Track results
             requestResults.push({
               itemId: item.itemId,
               itemName: item.item?.standardName || item.item?.name || "Unknown",
@@ -4262,11 +4539,6 @@ exports.processRequests = async (req, res) => {
               action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
               uomUsed: uomCode,
               isBaseUom: true,
-              table: "store_balances",
-              balanceId: balance.id,
-              wasAutoInitialized: requestAutoInitialized.some(
-                (ai) => ai.itemId === item.itemId,
-              ),
             });
 
             processedCount++;
@@ -4281,17 +4553,10 @@ exports.processRequests = async (req, res) => {
               isBaseUom: true,
               previousBalance,
               newBalance,
+              isPartial: quantityToProcess < requestedQty,
             });
-
-            console.log(
-              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Base UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
-            );
-
           } else {
-            // ================================================================
-            // ✅ CONVERTED UOM OPERATION - converted_balances table
-            // ================================================================
-            
+            // ============ CONVERTED UOM ============
             let convertedBalance = await ConvertedBalance.findOne({
               where: {
                 storeId: parseInt(storeId),
@@ -4299,94 +4564,107 @@ exports.processRequests = async (req, res) => {
                 itemId: item.itemId,
               },
               lock: transaction.LOCK.UPDATE,
-              transaction: transaction,
+              transaction,
             });
 
-            // Auto-initialize if not exists
             if (!convertedBalance) {
-              console.log(`📦 Auto-initializing CONVERTED balance for item: ${item.item.code}`);
-              
-              convertedBalance = await ConvertedBalance.create({
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                convertedBalance: 0,
-              }, { transaction });
+              convertedBalance = await ConvertedBalance.create(
+                {
+                  storeId: parseInt(storeId),
+                  groupId: parseInt(groupId),
+                  itemId: item.itemId,
+                  convertedBalance: 0,
+                },
+                { transaction }
+              );
 
-              await StoreBalanceHistory.create({
-                balanceId: null, // No balanceId for converted balances
-                storeId: parseInt(storeId),
-                groupId: parseInt(groupId),
-                itemId: item.itemId,
-                previousBalance: 0,
-                newBalance: 0,
-                changeAmount: 0,
-                transactionType: "Stock In",
-                referenceType: "auto_initialization",
-                referenceId: request.requestId,
-                changedBy: userId,
-                uomUsed: uomCode,
-                isBaseUom: false,
-                remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
-              }, { transaction });
+              await StoreBalanceHistory.create(
+                {
+                  balanceId: null,
+                  storeId: parseInt(storeId),
+                  groupId: parseInt(groupId),
+                  itemId: item.itemId,
+                  previousBalance: 0,
+                  newBalance: 0,
+                  changeAmount: 0,
+                  transactionType: "Stock In",
+                  referenceType: "auto_initialization",
+                  referenceId: request.requestId,
+                  changedBy: userId,
+                  uomUsed: uomCode,
+                  isBaseUom: false,
+                  remark: `Auto-initialized Converted UOM (${uomCode}) for request ${request.requestCode} - Group: ${group.name} - By: ${user.fullName}`,
+                },
+                { transaction }
+              );
 
               requestAutoInitialized.push({
                 itemId: item.itemId,
                 itemCode: item.item.code || "N/A",
-                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                itemName:
+                  item.item.standardName || item.item.name || "Unknown Item",
                 uomType: "Converted UOM",
-                uomCode: uomCode,
+                uomCode,
               });
-
               allAutoInitializedItems.push({
                 requestCode: request.requestCode,
                 itemCode: item.item.code || "N/A",
-                itemName: item.item.standardName || item.item.name || "Unknown Item",
+                itemName:
+                  item.item.standardName || item.item.name || "Unknown Item",
                 uomType: "Converted UOM",
-                uomCode: uomCode,
+                uomCode,
               });
             }
 
-            const previousBalance = parseFloat(convertedBalance.convertedBalance);
-            const quantity = parseFloat(item.quantity);
-            const changeAmount = quantity * changeMultiplier;
+            const previousBalance = parseFloat(
+              convertedBalance.convertedBalance
+            );
+            const changeAmount = quantityToProcess * changeMultiplier;
             const newBalance = previousBalance + changeAmount;
 
-            // Stock Out validation
             if (action === "STOCK_OUT" && newBalance < 0) {
               requestErrors.push(
-                `Insufficient converted balance for "${item.item.code || item.itemId}". Balance: ${previousBalance} ${uomCode}, Requested: ${quantity}`,
+                `Insufficient converted balance for "${item.item.code}". ` +
+                  `Balance: ${previousBalance} ${uomCode}, Requested: ${quantityToProcess}`
               );
               continue;
             }
 
-            // Update converted balance
             convertedBalance.convertedBalance = newBalance;
             await convertedBalance.save({ transaction });
 
-            // ✅ CREATE HISTORY RECORD FOR CONVERTED UOM
-            await StoreBalanceHistory.create({
-              balanceId: null, // No balanceId for converted balances
-              storeId: parseInt(storeId),
-              groupId: parseInt(groupId),
-              itemId: item.itemId,
-              previousBalance: previousBalance,
-              newBalance: newBalance,
-              changeAmount: Math.abs(changeAmount),
-              transactionType: transactionType,
-              sourceStoreId: action === "STOCK_IN" ? request.supplyingStoreId : null,
-              destinationStoreId: action === "STOCK_OUT" ? request.askingStoreId : null,
-              referenceType: "request",
-              referenceId: request.requestId,
-              changedBy: userId,
-              grnNumber: action === "STOCK_IN" ? (documentRefs?.[request.requestId] || null) : null,
-              sivNumber: action === "STOCK_OUT" ? (documentRefs?.[request.requestId] || null) : null,
-              uomUsed: uomCode,
-              isBaseUom: false,
-              remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
-            }, { transaction });
+            await StoreBalanceHistory.create(
+              {
+                balanceId: null,
+                storeId: parseInt(storeId),
+                groupId: parseInt(groupId),
+                itemId: item.itemId,
+                previousBalance,
+                newBalance,
+                changeAmount: Math.abs(changeAmount),
+                transactionType,
+                sourceStoreId:
+                  action === "STOCK_IN" ? request.supplyingStoreId : null,
+                destinationStoreId:
+                  action === "STOCK_OUT" ? request.askingStoreId : null,
+                referenceType: "request",
+                referenceId: request.requestId,
+                changedBy: userId,
+                grnNumber:
+                  action === "STOCK_IN"
+                    ? documentRefs?.[request.requestId] || null
+                    : null,
+                sivNumber:
+                  action === "STOCK_OUT"
+                    ? documentRefs?.[request.requestId] || null
+                    : null,
+                uomUsed: uomCode,
+                isBaseUom: false,
+                remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
+              },
+              { transaction }
+            );
 
-            // Track results
             requestResults.push({
               itemId: item.itemId,
               itemName: item.item?.standardName || item.item?.name || "Unknown",
@@ -4397,11 +4675,6 @@ exports.processRequests = async (req, res) => {
               action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
               uomUsed: uomCode,
               isBaseUom: false,
-              table: "converted_balances",
-              convertedBalanceId: convertedBalance.id,
-              wasAutoInitialized: requestAutoInitialized.some(
-                (ai) => ai.itemId === item.itemId,
-              ),
             });
 
             processedCount++;
@@ -4416,29 +4689,87 @@ exports.processRequests = async (req, res) => {
               isBaseUom: false,
               previousBalance,
               newBalance,
+              isPartial: quantityToProcess < requestedQty,
             });
-
-            console.log(
-              `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item?.code || item.itemId} (Converted UOM: ${uomCode} - Balance: ${previousBalance} → ${newBalance})`,
-            );
           }
 
+          // ------------------------------------------------------
+          // Update or create RequestItemProcessing row
+          // ------------------------------------------------------
+          const newProcessedQty = alreadyProcessed + quantityToProcess;
+          const newRemaining = Math.max(0, requestedQty - newProcessedQty);
+          const newStatus = newRemaining <= 0.0001 ? "completed" : "partial";
+
+          if (processingRecord) {
+            processingRecord.processedQuantity = newProcessedQty;
+            processingRecord.remainingQuantity = newRemaining;
+            processingRecord.status = newStatus;
+            processingRecord.processedAt = new Date();
+            processingRecord.processedBy = userId;
+            processingRecord.uomCode = uomCode;
+            processingRecord.isBaseUom = isBaseUom;
+            processingRecord.remark = `Processed ${quantityToProcess} ${uomCode} by ${user.fullName}`;
+            await processingRecord.save({ transaction });
+          } else {
+            await RequestItemProcessing.create(
+              {
+                requestId: request.requestId,
+                requestDetailId: itemDetailId,
+                groupId: parseInt(groupId),
+                storeId: parseInt(storeId),
+                itemId: item.itemId,
+                requestedQuantity: requestedQty,
+                processedQuantity: quantityToProcess,
+                remainingQuantity: newRemaining,
+                status: newStatus,
+                uomCode,
+                isBaseUom,
+                processedAt: new Date(),
+                processedBy: userId,
+                remark: `Processed ${quantityToProcess} ${uomCode} by ${user.fullName}`,
+              },
+              { transaction }
+            );
+          }
         } catch (itemError) {
-          console.error(`❌ Error processing item ${item.itemId}:`, itemError);
+          console.error(
+            `❌ Error processing item ${item.itemId}:`,
+            itemError
+          );
           requestErrors.push(
-            `Error processing item ${item.itemId}: ${itemError.message}`,
+            `Error processing item ${item.itemId}: ${itemError.message}`
           );
         }
       }
 
-      // ================================================================
-      // 5e. CREATE OR UPDATE THE GROUP PROCESSING RECORD
-      // ================================================================
-      if (requestResults.length > 0 || requestErrors.length > 0) {
-        const remark =
-          requestResults.length > 0
-            ? `Processed ${requestResults.length} items for request ${request.requestCode}${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""} - By: ${user.fullName}`
-            : `No items processed - errors occurred - By: ${user.fullName}`;
+      // ----------------------------------------------------------
+      // 6f. Check if ALL items for this group are now complete
+      // ----------------------------------------------------------
+      const allProcessingRecords = await RequestItemProcessing.findAll({
+        where: {
+          requestId: request.requestId,
+          groupId: parseInt(groupId),
+        },
+        transaction,
+      });
+
+      const allItemsCompleted = request.items.every((item) => {
+        const itemDetailId = item.id ?? item.detailId;
+        const record = allProcessingRecords.find(
+          (r) => parseInt(r.requestDetailId) === parseInt(itemDetailId)
+        );
+        return record && parseFloat(record.remainingQuantity) <= 0;
+      });
+
+      const anyItemProcessed = allProcessingRecords.some(
+        (r) => parseFloat(r.processedQuantity) > 0
+      );
+
+      // ----------------------------------------------------------
+      // 6g. Only mark group as "processed" if ALL items are complete
+      // ----------------------------------------------------------
+      if (allItemsCompleted) {
+        const remark = `All ${request.items.length} items fully processed for request ${request.requestCode} by ${user.fullName}`;
 
         if (existingRecord) {
           existingRecord.status = "processed";
@@ -4455,59 +4786,86 @@ exports.processRequests = async (req, res) => {
               processedAt: new Date(),
               status: "processed",
               processedBy: userId,
-              remark: remark,
+              remark,
             },
-            { transaction },
+            { transaction }
           );
         }
 
         if (requestResults.length > 0) {
           logs.push(
-            `✅ Request ${request.requestCode}: Processed ${requestResults.length} items${requestAutoInitialized.length > 0 ? ` (${requestAutoInitialized.length} auto-initialized)` : ""}`,
+            `✅ Request ${request.requestCode}: Group "${group.name}" FULLY processed (${requestResults.length} items)`
           );
         }
+
+        // ✅ Only NOW check finalization across all groups
+        await checkAndFinalizeRequest(
+          request,
+          parseInt(storeId),
+          transaction,
+          logs,
+          finalizedRequests
+        );
+
+        processedRequestIds.push(request.requestId);
+      } else if (anyItemProcessed) {
+        // Partial — group still has work to do; do NOT call finalize
+        partialRequests.push({
+          requestId: request.requestId,
+          requestCode: request.requestCode,
+          remainingItems:
+            request.items.length -
+            allProcessingRecords.filter(
+              (r) => parseFloat(r.remainingQuantity) <= 0
+            ).length,
+        });
+
+        logs.push(
+          `⏳ Request ${request.requestCode}: Group "${group.name}" PARTIALLY processed — still has items remaining`
+        );
       }
 
       if (requestErrors.length > 0) {
         logs.push(
-          `⚠️ Request ${request.requestCode}: ${requestErrors.length} errors occurred`,
+          `⚠️ Request ${request.requestCode}: ${requestErrors.length} error(s)`
         );
         requestErrors.forEach((err) => logs.push(`   - ${err}`));
         failedCount += requestErrors.length;
       }
-
-      processedRequestIds.push(request.requestId);
-
-      // ================================================================
-      // 5f. CHECK IF ALL GROUPS FROM BOTH STORES HAVE PROCESSED
-      // ================================================================
-      await checkAndFinalizeRequest(request, parseInt(storeId), transaction, logs, finalizedRequests);
     }
 
     // ================================================================
-    // 6. COMMIT TRANSACTION
+    // 7. COMMIT
     // ================================================================
     await transaction.commit();
 
     // ================================================================
-    // 7. PREPARE RESPONSE
+    // 8. RESPONSE
     // ================================================================
-    const responseMessage = `Processed ${processedCount} items successfully${failedCount > 0 ? `, ${failedCount} items failed` : ""}`;
+    const responseMessage = `Processed ${processedCount} item(s) successfully${
+      failedCount > 0 ? `, ${failedCount} item(s) failed` : ""
+    }`;
 
     const detailedLogs = [...logs];
 
     if (allAutoInitializedItems.length > 0) {
       detailedLogs.unshift(
-        `\n📦 Auto-initialized ${allAutoInitializedItems.length} items for Group "${group.name}" by ${user.fullName}:`,
+        `\n📦 Auto-initialized ${allAutoInitializedItems.length} item(s) for Group "${group.name}" by ${user.fullName}:`
       );
       allAutoInitializedItems.forEach((item) => {
         detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (${item.uomType}: ${item.uomCode}) from request ${item.requestCode}`,
+          `   - ${item.itemCode}: ${item.itemName} (${item.uomType}: ${item.uomCode}) from request ${item.requestCode}`
         );
       });
-      detailedLogs.push(
-        `\n💡 Items were initialized with 0 balance and activated automatically.`,
-      );
+    }
+
+    if (partialRequests.length > 0) {
+      detailedLogs.push(`\n⏳ Partially processed requests (still open):`);
+      partialRequests.forEach((p) => {
+        detailedLogs.push(
+          `   - ${p.requestCode}: ${p.remainingItems} item(s) remaining for this group`
+        );
+      });
     }
 
     if (allSkippedGroups.length > 0) {
@@ -4521,16 +4879,17 @@ exports.processRequests = async (req, res) => {
       detailedLogs.push(`\n📋 Missing or inactive items:`);
       missingItems.forEach((item) => {
         detailedLogs.push(
-          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`,
+          `   - ${item.itemCode}: ${item.itemName} (${item.reason || "Not found"})`
         );
       });
-      detailedLogs.push(`\n💡 To fix: Initialize or activate these items.`);
     }
 
     if (finalizedRequests.length > 0) {
       detailedLogs.push(`\n✅ Finalized requests:`);
       finalizedRequests.forEach((req) => {
-        detailedLogs.push(`   - ${req.requestCode}: All groups from both stores have processed`);
+        detailedLogs.push(
+          `   - ${req.requestCode}: All groups from both stores have processed`
+        );
       });
     }
 
@@ -4541,24 +4900,24 @@ exports.processRequests = async (req, res) => {
         processed: processedCount,
         failed: failedCount,
         logs: detailedLogs,
-        missingItems: missingItems,
-        processedItems: processedItems,
+        missingItems,
+        processedItems,
         autoInitializedItems: allAutoInitializedItems,
         skippedGroups: allSkippedGroups,
-        finalizedRequests: finalizedRequests,
+        partialRequests,
+        finalizedRequests,
         requestIds: validRequestIds,
-        processedRequestIds: processedRequestIds,
+        processedRequestIds,
         storeId: parseInt(storeId),
         groupId: parseInt(groupId),
         storeName: store.name,
         groupName: group.name,
-        userId: userId,
+        userId,
         userFullName: user.fullName,
         totalRequests: requests.length,
         documentRefs: documentRefs || {},
       },
     });
-
   } catch (error) {
     await transaction.rollback();
     console.error("❌ Process requests error:", error);
@@ -4568,7 +4927,6 @@ exports.processRequests = async (req, res) => {
     });
   }
 };
-
 // ============================================
 // GET ALL REQUEST PROCESSING STATUS
 // ============================================

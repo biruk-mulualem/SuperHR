@@ -19,7 +19,7 @@
           />
         </div>
         <button 
-          v-if="userIsAdmin || userIsAskingStore" 
+          v-if="canCreateRequests" 
           class="btn-add" 
           @click="openCreateModal"
         >
@@ -154,7 +154,8 @@
                       :class="[
                         'notification-dot', 
                         notification.status,
-                        notification.approval_type === 'department' ? 'dept-dot' : 'group-dot'
+                        notification.approval_type === 'department' ? 'dept-dot' : 'group-dot',
+                        notification.stage === 'asking_store' ? 'asking-dot' : 'supplying-dot'
                       ]"
                     ></span>
                     <span class="notification-type-label">
@@ -167,8 +168,9 @@
               </td>
               <td>
                 <div class="action-buttons">
+                  <!-- 🔥 Only the creator (or admin) sees these buttons -->
                   <button
-                    v-if="canPrintRequest(req) && userIsAskingStore"
+                    v-if="canManageThisRequest(req) && canPrintRequest(req)"
                     class="icon-btn print-btn"
                     @click="printRequest(req)"
                     :disabled="!canPrintRequest(req)"
@@ -178,7 +180,7 @@
                   </button>
                   
                   <button
-                    v-if="canEditRequest(req) && userIsAskingStore"
+                    v-if="canManageThisRequest(req) && canEditRequest(req)"
                     class="icon-btn"
                     @click="editRequest(req)"
                     :title="canEditRequest(req) ? 'Edit' : 'Cannot edit this request'"
@@ -187,7 +189,7 @@
                   </button>
                   
                   <button
-                    v-if="canApproveRequest(req) && userIsAskingStore"
+                    v-if="canManageThisRequest(req) && canApproveRequest(req)"
                     class="icon-btn"
                     @click="openStatusConfirmation(req, 'approved')"
                     :disabled="!canApproveRequest(req)"
@@ -283,6 +285,79 @@
                       </div>
                     </div>
 
+                    <!-- 🔥 APPROVAL PROGRESS - STAGE-AWARE -->
+                    <div v-if="req.status === 'pending' && !isSkipStore(req)" class="detail-card full-width approval-progress-card">
+                      <h4>📊 Approval Progress</h4>
+                      <div class="approval-stages">
+                        <!-- STAGE 1: ASKING STORE -->
+                        <div 
+                          class="approval-stage"
+                          :class="{
+                            'stage-active': getStageInfo(req).askingStore.isActive,
+                            'stage-complete': getStageInfo(req).askingStore.isComplete,
+                            'stage-rejected': getStageInfo(req).askingStore.hasRejection,
+                            'stage-pending': !getStageInfo(req).askingStore.isActive && !getStageInfo(req).askingStore.isComplete && !getStageInfo(req).askingStore.hasRejection
+                          }"
+                        >
+                          <div class="stage-header">
+                            <span class="stage-icon">
+                              {{ getStageInfo(req).askingStore.isComplete ? '✅' : 
+                                 getStageInfo(req).askingStore.hasRejection ? '❌' : 
+                                 getStageInfo(req).askingStore.isActive ? '⏳' : '⏸️' }}
+                            </span>
+                            <span class="stage-name">Stage 1: Asking Store Groups</span>
+                          </div>
+                          <div v-if="getStageInfo(req).askingStore.total > 0" class="stage-progress">
+                            <span class="stage-count">
+                              {{ getStageInfo(req).askingStore.accepted }}/{{ getStageInfo(req).askingStore.total }} accepted
+                            </span>
+                            <span v-if="getStageInfo(req).askingStore.rejected > 0" class="stage-rejected-count">
+                              ❌ {{ getStageInfo(req).askingStore.rejected }} rejected
+                            </span>
+                          </div>
+                          <div v-else class="stage-empty">
+                            No asking store groups
+                          </div>
+                        </div>
+
+                        <!-- STAGE 2: SUPPLYING STORE -->
+                        <div 
+                          class="approval-stage"
+                          :class="{
+                            'stage-active': getStageInfo(req).supplyingStore.isActive,
+                            'stage-complete': getStageInfo(req).supplyingStore.isComplete,
+                            'stage-rejected': getStageInfo(req).supplyingStore.hasRejection,
+                            'stage-waiting': getStageInfo(req).supplyingStore.isWaiting,
+                            'stage-pending': !getStageInfo(req).supplyingStore.isActive && !getStageInfo(req).supplyingStore.isComplete && !getStageInfo(req).supplyingStore.hasRejection && !getStageInfo(req).supplyingStore.isWaiting
+                          }"
+                        >
+                          <div class="stage-header">
+                            <span class="stage-icon">
+                              {{ getStageInfo(req).supplyingStore.isWaiting ? '⏸️' :
+                                 getStageInfo(req).supplyingStore.isComplete ? '✅' : 
+                                 getStageInfo(req).supplyingStore.hasRejection ? '❌' : 
+                                 getStageInfo(req).supplyingStore.isActive ? '⏳' : '⏸️' }}
+                            </span>
+                            <span class="stage-name">Stage 2: Supplying Store Groups</span>
+                          </div>
+                          <div v-if="getStageInfo(req).supplyingStore.isWaiting" class="stage-waiting-message">
+                            ⏸️ Waiting for asking store approval...
+                          </div>
+                          <div v-else-if="getStageInfo(req).supplyingStore.total > 0" class="stage-progress">
+                            <span class="stage-count">
+                              {{ getStageInfo(req).supplyingStore.accepted }}/{{ getStageInfo(req).supplyingStore.total }} accepted
+                            </span>
+                            <span v-if="getStageInfo(req).supplyingStore.rejected > 0" class="stage-rejected-count">
+                              ❌ {{ getStageInfo(req).supplyingStore.rejected }} rejected
+                            </span>
+                          </div>
+                          <div v-else-if="!getStageInfo(req).supplyingStore.isWaiting" class="stage-empty">
+                            No supplying store notifications yet
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="detail-card full-width">
                       <h4>📦 Items Requested</h4>
                       <table class="items-detail-table">
@@ -305,7 +380,6 @@
                               No items in this request
                             </td>
                           </tr>
-                          <!-- ✅ FIXED: Using req.items directly -->
                           <tr v-for="(item, index) in req.items" :key="index">
                             <td class="text-center">{{ index + 1 }}</td>
                             <td>{{ getItemNameFromRequest(item) }}</td>
@@ -359,6 +433,9 @@
                         <div class="rejection-header">
                           <span class="rejection-group">
                             <span class="rejection-icon">❌</span>
+                            <span v-if="reason.stage" class="rejection-stage-badge" :class="reason.stage">
+                              {{ reason.stage === 'asking_store' ? '🏪 Asking' : '📦 Supplying' }}
+                            </span>
                             {{ reason.groupName }}
                           </span>
                           <span class="rejection-date">{{ formatDateTime(reason.respondedAt) }}</span>
@@ -379,7 +456,8 @@
                       </div>
                     </div>
 
-                    <div v-if="userIsAskingStore" class="detail-actions">
+                    <!-- 🔥 Detail actions — ONLY for creator / admin -->
+                    <div v-if="canManageThisRequest(req)" class="detail-actions">
                       <button
                         v-if="canPrintRequest(req)"
                         class="btn-print-detail"
@@ -405,10 +483,7 @@
                         ✅ Approve
                       </button>
                     </div>
-                    
-                    <div v-else class="detail-actions readonly-actions">
-                      <span class="readonly-badge">📄 Read Only View</span>
-                    </div>
+                    <!-- 🔥 No v-else — nothing shown to non-creators -->
                   </div>
                 </div>
               </td>
@@ -589,6 +664,8 @@ const userAssignedStoreId = ref<number | null>(null);
 const userAssignedStoreName = ref<string | null>(null);
 const userIsAdmin = ref(false);
 const userIsAskingStore = ref(false);
+const userRole = ref<string>('');
+const currentUserId = ref<number | null>(null);
 
 // Filters & Search
 const searchQuery = ref("");
@@ -642,10 +719,36 @@ const totalPages = computed(() => {
   return Math.ceil(totalItems.value / pageSize.value) || 1;
 });
 
+// 🔥 Anyone with a store (or admin) can create
 const canCreateRequests = computed(() => {
   if (userIsAdmin.value) return true;
   return !!userAssignedStoreId.value;
 });
+
+// ================================================================
+// 🔥 CREATOR CHECK — Only the request creator (or admin) can manage
+// ================================================================
+/**
+ * Returns true ONLY if the current user is:
+ *   - An admin, OR
+ *   - The user who created the request (requestedById === current user)
+ *     AND they belong to the asking store
+ */
+const canManageThisRequest = (req: ItemRequest): boolean => {
+  // Admin can always manage
+  if (userIsAdmin.value) return true;
+
+  // Must be the asking store
+  if (!isUserAskingStore(req)) return false;
+
+  // Must be the actual creator of the request
+  const reqCreatorId = Number(req.requestedById || 0);
+  const me = Number(currentUserId.value || 0);
+
+  if (!reqCreatorId || !me) return false;
+
+  return reqCreatorId === me;
+};
 
 // ================================================================
 // SKIP NOTIFICATION STORES
@@ -662,18 +765,10 @@ const isSkipStore = (req: ItemRequest): boolean => {
   return supplyingStore ? shouldSkipNotifications(supplyingStore.code) : false;
 };
 
-
 // ================================================================
 // ASSET REQUEST DETECTION
 // ================================================================
 
-/**
- * An "asset request" is one where at least one notification carries
- * is_department_approval === true.
- *
- *   is_department_approval === true  →  asset  →  print-asset-requests
- *   otherwise                        →  normal →  print-requests
- */
 const isAssetRequest = (req: ItemRequest): boolean => {
   if (!req) return false;
 
@@ -681,6 +776,70 @@ const isAssetRequest = (req: ItemRequest): boolean => {
   if (!notifications || notifications.length === 0) return false;
 
   return notifications.some((n) => n?.is_department_approval === true);
+};
+
+// ================================================================
+// 🔥 STAGE INFO HELPER
+// ================================================================
+
+interface StageInfo {
+  total: number;
+  accepted: number;
+  rejected: number;
+  pending: number;
+  isComplete: boolean;
+  hasRejection: boolean;
+  isActive: boolean;
+  isWaiting: boolean;
+}
+
+const getStageInfo = (req: ItemRequest) => {
+  const notifications = (req as any).notifications || [];
+
+  const askingNotifs = notifications.filter((n: any) => n.stage === 'asking_store');
+  const supplyingNotifs = notifications.filter((n: any) => n.stage === 'supplying_store');
+
+  const summarize = (notifs: any[]): StageInfo => {
+    const total = notifs.length;
+    const accepted = notifs.filter((n: any) => n.status === 'accepted').length;
+    const rejected = notifs.filter((n: any) => n.status === 'rejected').length;
+    const pending = notifs.filter((n: any) => n.status === 'pending').length;
+    const isComplete = total > 0 && accepted === total;
+    const hasRejection = rejected > 0;
+    const isActive = total > 0 && pending > 0 && !hasRejection;
+
+    return {
+      total,
+      accepted,
+      rejected,
+      pending,
+      isComplete,
+      hasRejection,
+      isActive,
+      isWaiting: false,
+    };
+  };
+
+  const asking = summarize(askingNotifs);
+  const supplying = summarize(supplyingNotifs);
+
+  const isWaitingForAsking = 
+    asking.total > 0 && 
+    asking.isComplete && 
+    supplyingNotifs.length === 0;
+
+  const isWaitingBecauseAskingNotDone = 
+    asking.total > 0 && 
+    !asking.isComplete && 
+    !asking.hasRejection &&
+    supplyingNotifs.length === 0;
+
+  supplying.isWaiting = isWaitingForAsking || isWaitingBecauseAskingNotDone;
+
+  return {
+    askingStore: asking,
+    supplyingStore: supplying,
+  };
 };
 
 // ================================================================
@@ -697,18 +856,9 @@ const isUserSupplyingStore = (req: ItemRequest): boolean => {
   return Number(req.supplyingStoreId) === userAssignedStoreId.value;
 };
 
-
-
 const canEditRequest = (req: ItemRequest): boolean => {
-  // Only finalized requests are locked
   if (req.status === 'finalized') return false;
-
-  // Admins can edit anything else
-  if (userIsAdmin.value) return true;
-
-  // Otherwise, only the asking store can edit
   if (!isUserAskingStore(req)) return false;
-
   return true;
 };
 
@@ -738,43 +888,67 @@ const getApproveTooltip = (req: ItemRequest): string => {
   const hasRejection = req.notifications?.some((n: { status: string; }) => n.status === 'rejected') || false;
   if (hasRejection) return 'Some groups have rejected - Edit and resubmit';
   const allAccepted = req.notifications?.every((n: { status: string; }) => n.status === 'accepted') || false;
-  if (!allAccepted) return 'Waiting for all groups to accept';
+  if (!allAccepted) {
+    const stageInfo = getStageInfo(req);
+    if (stageInfo.askingStore.isActive) {
+      return `⏳ Waiting for asking store groups (${stageInfo.askingStore.accepted}/${stageInfo.askingStore.total} accepted)`;
+    }
+    if (stageInfo.supplyingStore.isWaiting) {
+      return `⏸️ Asking store complete — sending to supplying store...`;
+    }
+    if (stageInfo.supplyingStore.isActive) {
+      return `⏳ Waiting for supplying store groups (${stageInfo.supplyingStore.accepted}/${stageInfo.supplyingStore.total} accepted)`;
+    }
+    return 'Waiting for all approvals';
+  }
   return 'All groups accepted - Ready to proceed';
 };
 
 // ================================================================
-// ACCEPTANCE SUMMARY
+// ACCEPTANCE SUMMARY (STAGE-AWARE)
 // ================================================================
 
 const getAcceptanceSummary = (req: ItemRequest): string => {
   if (isSkipStore(req)) return '📦 No acceptance required';
   if (!req.notifications || req.notifications.length === 0) return 'No approvals';
-  
-  const total = req.notifications.length;
-  const accepted = req.notifications.filter((n: { status: string; }) => n.status === 'accepted').length;
-  const rejected = req.notifications.filter((n: { status: string; }) => n.status === 'rejected').length;
-  const pending = req.notifications.filter((n: { status: string; }) => n.status === 'pending').length;
-  
-  let summary = '';
-  
-  if (rejected > 0) {
-    summary = `❌ ${rejected} rejected`;
-  } else if (accepted === total) {
-    summary = `✅ All ${total} accepted`;
-  } else {
-    summary = `⏳ ${accepted}/${total} accepted`;
+
+  const stageInfo = getStageInfo(req);
+  const asking = stageInfo.askingStore;
+  const supplying = stageInfo.supplyingStore;
+
+  if (asking.total > 0) {
+    if (asking.hasRejection) {
+      return `❌ Asking: ${asking.rejected} rejected`;
+    }
+    if (!asking.isComplete) {
+      return `⏳ Asking: ${asking.accepted}/${asking.total} accepted`;
+    }
   }
-  
-  return summary;
+
+  if (supplying.isWaiting) {
+    return `✅ Asking done — sending to supplying...`;
+  }
+
+  if (supplying.total > 0) {
+    if (supplying.hasRejection) {
+      return `❌ Supplying: ${supplying.rejected} rejected`;
+    }
+    if (!supplying.isComplete) {
+      return `⏳ Supplying: ${supplying.accepted}/${supplying.total} accepted`;
+    }
+  }
+
+  return `✅ All ${req.notifications.length} accepted`;
 };
 
 // ================================================================
-// NOTIFICATION TOOLTIP
+// NOTIFICATION TOOLTIP (STAGE-AWARE)
 // ================================================================
 
 const getNotificationTooltip = (notification: any): string => {
   let name = '';
   let type = '';
+  let stageLabel = '';
   let responder = '';
   
   if (notification.approval_type === 'department' || notification.is_department_approval) {
@@ -784,6 +958,14 @@ const getNotificationTooltip = (notification: any): string => {
     type = 'Group';
     name = notification.group?.name || 'Unknown Group';
   }
+
+  if (notification.stage === 'asking_store') {
+    stageLabel = '🏪 ASKING STORE';
+  } else if (notification.stage === 'supplying_store') {
+    stageLabel = '📦 SUPPLYING STORE';
+  } else {
+    stageLabel = '❓ UNKNOWN STAGE';
+  }
   
   if (notification.status === 'accepted' || notification.status === 'rejected') {
     const user = notification.respondedByUser;
@@ -792,7 +974,7 @@ const getNotificationTooltip = (notification: any): string => {
     }
   }
   
-  let tooltip = `${type}: ${name}`;
+  let tooltip = `[${stageLabel}]\n${type}: ${name}`;
   
   if (notification.status === 'accepted') {
     tooltip += `\n✅ Accepted`;
@@ -816,6 +998,7 @@ const getNotificationTooltip = (notification: any): string => {
 
 const getRejectionReasons = (req: ItemRequest): Array<{
   groupName: string;
+  stage?: 'asking_store' | 'supplying_store';
   reason: string;
   respondedBy: string;
   respondedAt: string;
@@ -824,7 +1007,10 @@ const getRejectionReasons = (req: ItemRequest): Array<{
   return req.notifications
     .filter((n: { status: string; }) => n.status === 'rejected')
     .map((n: any) => ({
-      groupName: n.group?.name || `Group ${n.group_id}`,
+      groupName: n.group?.name || 
+                 n.department?.name || 
+                 `Group ${n.group_id}`,
+      stage: n.stage,
       reason: n.rejected_reason || 'No reason provided',
       respondedBy: n.respondedByUser?.fullName || n.respondedByUser?.username || 'Unknown',
       respondedAt: n.responded_at,
@@ -845,6 +1031,17 @@ const loadUserData = () => {
   
   const userData = user as any;
   userIsAdmin.value = userData.isAdmin || user.role === "admin" || user.role === "Admin";
+  userRole.value = userData.role || '';
+
+  // 🔥 Store current user ID for creator comparison
+  currentUserId.value = userData.userId || userData.id || authStore.user?.userId || null;
+
+  // 🔥 DEBUG — remove after verifying
+  console.log('🔍 loadUserData resolved:', {
+    role: userRole.value,
+    isAdmin: userIsAdmin.value,
+    userId: currentUserId.value,
+  });
   
   let storeId = authStore.userStoreId;
   
@@ -944,12 +1141,9 @@ const loadRequests = async () => {
 };
 
 // ================================================================
-// HELPER METHODS - REQUEST ITEM SPECIFIC (UPDATED)
+// HELPER METHODS - REQUEST ITEM SPECIFIC
 // ================================================================
 
-/**
- * Get item name from a request item
- */
 const getItemNameFromRequest = (item: any): string => {
   if (item.item?.name) return item.item.name;
   if (item.item?.standardName) return item.item.standardName;
@@ -958,9 +1152,6 @@ const getItemNameFromRequest = (item: any): string => {
   return "Unknown Item";
 };
 
-/**
- * Get item code from a request item
- */
 const getItemCodeFromRequest = (item: any): string => {
   if (item.item?.code) return item.item.code;
   if (item.itemCode) return item.itemCode;
@@ -968,51 +1159,30 @@ const getItemCodeFromRequest = (item: any): string => {
   return "N/A";
 };
 
-/**
- * Get item brand from a request item (checks request detail first, then item)
- */
 const getItemBrandFromRequest = (item: any): string => {
-  // Check if brand is stored directly on the request detail
   if (item.brand) return item.brand;
-  // Check if brand is on the nested item
   if (item.item?.brand) return item.item.brand;
-  // Fallback to global items list
   const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
   if (globalItem?.brand) return globalItem.brand;
   return "";
 };
 
-/**
- * Get item model from a request item (checks request detail first, then item)
- */
 const getItemModelFromRequest = (item: any): string => {
-  // Check if model is stored directly on the request detail
   if (item.model) return item.model;
-  // Check if model is on the nested item
   if (item.item?.model) return item.item.model;
-  // Fallback to global items list
   const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
   if (globalItem?.model) return globalItem.model;
   return "";
 };
 
-/**
- * Get item specification from a request item (checks request detail first, then item)
- */
 const getItemSpecificationFromRequest = (item: any): string => {
-  // Check if specification is stored directly on the request detail
   if (item.specification) return item.specification;
-  // Check if specText is on the nested item
   if (item.item?.specText) return item.item.specText;
-  // Fallback to global items list
   const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
   if (globalItem?.specText) return globalItem.specText;
   return "";
 };
 
-/**
- * Get item UOM from a request item
- */
 const getItemUOMFromRequest = (item: any): string => {
   if (item.uom_code) return item.uom_code;
   if (item.item?.uom?.code) return item.item.uom.code;
@@ -1034,7 +1204,6 @@ const getStoreCode = (storeId: number): string => {
   return store ? store.code : "N/A";
 };
 
-// Legacy methods for backward compatibility (used in the table)
 const getItemName = (itemId: number, requestItems?: any[]): string => {
   if (requestItems) {
     const found = requestItems.find((i) => Number(i.itemId || i.id) === itemId);
@@ -1071,11 +1240,9 @@ const getItemNames = (items: RequestItem[] | undefined): string => {
 };
 
 const getRequesterName = (req: ItemRequest): string => {
-  // ✅ Prefer the manually-typed name
   if (req.requestedBy && String(req.requestedBy).trim()) {
     return String(req.requestedBy).trim();
   }
-  // Fall back to the joined user record
   const u = req.requestedByUser;
   if (u) {
     return u.fullName || u.full_name || u.username || "N/A";
@@ -1125,13 +1292,17 @@ const toggleExpand = (id?: number): void => {
 // ================================================================
 
 const openCreateModal = (): void => {
+  if (!canCreateRequests.value) {
+    showToastMessage("You need an assigned store to create requests", "error");
+    return;
+  }
   editingRequestData.value = null;
   showCreateModal.value = true;
 };
 
 const editRequest = (req: ItemRequest): void => {
-  if (!isUserAskingStore(req)) {
-    showToastMessage("You don't have permission to edit this request", "error");
+  if (!canManageThisRequest(req)) {
+    showToastMessage("Only the request creator can edit this request", "error");
     return;
   }
   editingRequestData.value = req;
@@ -1152,6 +1323,10 @@ const handleModalClosed = (): void => {
 // ================================================================
 
 const openStatusConfirmation = (req: ItemRequest, action: "approved" | "finalized"): void => {
+  if (!canManageThisRequest(req)) {
+    showToastMessage("Only the request creator can change status", "error");
+    return;
+  }
   statusTarget.value = req;
   statusAction.value = action;
   showStatusModal.value = true;
@@ -1184,14 +1359,13 @@ const confirmStatusChange = async (): Promise<void> => {
 
 /**
  * Navigate to the correct print page based on request type.
- *
- *   asset request  →  print-asset-requests  (has "Checked By" section)
- *   normal request →  print-requests        (no "Checked By" section)
- *
- * The asset flag is derived from the notifications: if any notification
- * has is_department_approval === true, the request is an asset request.
  */
 const printRequest = (req: ItemRequest): void => {
+  if (!canManageThisRequest(req)) {
+    showToastMessage("Only the request creator can print this request", "error");
+    return;
+  }
+
   const requestId = req.requestId || req.id;
   if (!requestId) {
     showToastMessage('Cannot print: missing request ID', 'error');
@@ -1216,6 +1390,7 @@ const printRequest = (req: ItemRequest): void => {
     query: { id: String(requestId) },
   });
 };
+
 // ================================================================
 // FILTERS & PAGINATION
 // ================================================================
@@ -1346,7 +1521,6 @@ onMounted(async () => {
 
 
 <style scoped>
-
 /* UOM Display */
 .uom-display {
   display: inline-flex;
@@ -1371,6 +1545,7 @@ onMounted(async () => {
   background: #ede9fe;
   color: #5b21b6;
 }
+
 /* ================================================================
    NOTIFICATION STATUS STYLES
    ================================================================ */
@@ -1422,6 +1597,14 @@ onMounted(async () => {
   margin: 1px;
 }
 
+.notification-dot.asking-dot {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.notification-dot.supplying-dot {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
 .notification-type-label {
   font-size: 7px;
   font-weight: 700;
@@ -1444,6 +1627,130 @@ onMounted(async () => {
   padding: 1px 8px;
   border-radius: 10px;
   margin-top: 2px;
+}
+
+/* ================================================================
+   APPROVAL PROGRESS STYLES
+   ================================================================ */
+.approval-progress-card {
+  background: #f0f9ff;
+  border-left: 4px solid #3b82f6;
+}
+
+.approval-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.approval-stage {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+  background: white;
+  transition: all 0.2s;
+}
+
+.approval-stage.stage-active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.approval-stage.stage-complete {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+
+.approval-stage.stage-rejected {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.approval-stage.stage-waiting {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  opacity: 0.7;
+}
+
+.approval-stage.stage-pending {
+  border-color: #e2e8f0;
+  background: #fafbfc;
+  opacity: 0.6;
+}
+
+.stage-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.stage-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.stage-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.stage-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 24px;
+  flex-wrap: wrap;
+}
+
+.stage-count {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.stage-rejected-count {
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.stage-empty {
+  font-size: 11px;
+  color: #94a3b8;
+  padding-left: 24px;
+  font-style: italic;
+}
+
+.stage-waiting-message {
+  font-size: 12px;
+  color: #64748b;
+  padding-left: 24px;
+  font-style: italic;
+}
+
+.rejection-stage-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-right: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.rejection-stage-badge.asking_store {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.rejection-stage-badge.supplying_store {
+  background: #d1fae5;
+  color: #065f46;
 }
 
 /* ================================================================
@@ -1669,32 +1976,15 @@ onMounted(async () => {
   z-index: 10;
 }
 
-.col-expand {
-  width: 30px;
-}
-.col-code {
-  min-width: 100px;
-}
-.col-items {
-  min-width: 150px;
-}
-.col-store {
-  min-width: 120px;
-}
-.col-arrow {
-  width: 30px;
-  text-align: center;
-}
-.col-status {
-  min-width: 90px;
-}
-.col-actions {
-  min-width: 200px;
-}
+.col-expand { width: 30px; }
+.col-code { min-width: 100px; }
+.col-items { min-width: 150px; }
+.col-store { min-width: 120px; }
+.col-arrow { width: 30px; text-align: center; }
+.col-status { min-width: 90px; }
+.col-actions { min-width: 200px; }
 
-.text-center {
-  text-align: center;
-}
+.text-center { text-align: center; }
 
 .code-cell {
   font-weight: 600;
@@ -1790,9 +2080,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.rejection-item:last-child {
-  margin-bottom: 0;
-}
+.rejection-item:last-child { margin-bottom: 0; }
 
 .rejection-item:hover {
   border-color: #f87171;
@@ -1817,9 +2105,7 @@ onMounted(async () => {
   gap: 6px;
 }
 
-.rejection-icon {
-  font-size: 16px;
-}
+.rejection-icon { font-size: 16px; }
 
 .rejection-date {
   font-size: 11px;
@@ -1829,9 +2115,7 @@ onMounted(async () => {
   border-radius: 12px;
 }
 
-.rejection-reason-textarea {
-  margin: 4px 0 6px 0;
-}
+.rejection-reason-textarea { margin: 4px 0 6px 0; }
 
 .rejection-textarea-readonly {
   width: 100%;
@@ -1846,27 +2130,12 @@ onMounted(async () => {
   min-height: 60px;
   cursor: default;
   line-height: 1.6;
-  transition: all 0.2s;
 }
 
 .rejection-textarea-readonly:focus {
   outline: none;
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
-}
-
-.rejection-textarea-readonly::-webkit-scrollbar {
-  width: 4px;
-}
-
-.rejection-textarea-readonly::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 2px;
-}
-
-.rejection-textarea-readonly::-webkit-scrollbar-thumb {
-  background: #f87171;
-  border-radius: 2px;
 }
 
 .rejection-by {
@@ -1880,16 +2149,12 @@ onMounted(async () => {
   gap: 6px;
 }
 
-.rejection-by-icon {
-  font-size: 14px;
-}
+.rejection-by-icon { font-size: 14px; }
 
 /* ================================================================
    EXPAND ROW
    ================================================================ */
-.expanded-row {
-  background: #f8fafc;
-}
+.expanded-row { background: #f8fafc; }
 
 .expand-btn {
   background: none;
@@ -1902,9 +2167,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.expand-btn:hover {
-  background: #e0e7ff;
-}
+.expand-btn:hover { background: #e0e7ff; }
 
 /* ================================================================
    ACTION BUTTONS
@@ -1935,13 +2198,9 @@ onMounted(async () => {
   color: #0f172a;
 }
 
-.icon-btn:active {
-  transform: scale(0.95);
-}
+.icon-btn:active { transform: scale(0.95); }
 
-.print-btn {
-  color: #8b5cf6;
-}
+.print-btn { color: #8b5cf6; }
 
 .print-btn:hover {
   background: #ede9fe;
@@ -1951,9 +2210,7 @@ onMounted(async () => {
 /* ================================================================
    EXPAND DETAILS
    ================================================================ */
-.detail-expand-row td {
-  padding: 0 !important;
-}
+.detail-expand-row td { padding: 0 !important; }
 
 .expand-details {
   padding: 16px 20px;
@@ -1982,9 +2239,7 @@ onMounted(async () => {
   border: 1px solid #e2e8f0;
 }
 
-.detail-card.full-width {
-  grid-column: 1 / -1;
-}
+.detail-card.full-width { grid-column: 1 / -1; }
 
 .detail-card h4 {
   margin: 0 0 10px 0;
@@ -2003,9 +2258,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.detail-card > div:last-child {
-  border-bottom: none;
-}
+.detail-card > div:last-child { border-bottom: none; }
 
 .detail-card .value {
   font-weight: 500;
@@ -2089,9 +2342,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-print-detail:hover {
-  background: #7c3aed;
-}
+.btn-print-detail:hover { background: #7c3aed; }
 
 .btn-edit-detail {
   background: #3b82f6;
@@ -2107,9 +2358,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-edit-detail:hover {
-  background: #2563eb;
-}
+.btn-edit-detail:hover { background: #2563eb; }
 
 .btn-approve-detail {
   background: #22c55e;
@@ -2125,23 +2374,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-approve-detail:hover {
-  background: #16a34a;
-}
-
-.readonly-actions {
-  justify-content: center;
-  padding: 8px 0;
-}
-
-.readonly-badge {
-  font-size: 13px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 4px 16px;
-  border-radius: 20px;
-  font-weight: 500;
-}
+.btn-approve-detail:hover { background: #16a34a; }
 
 /* ================================================================
    EMPTY STATE
@@ -2180,9 +2413,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-secondary:hover {
-  background: #e2e8f0;
-}
+.btn-secondary:hover { background: #e2e8f0; }
 
 /* ================================================================
    PAGINATION
@@ -2209,9 +2440,7 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.page-btn:hover:not(:disabled) {
-  background: #e2e8f0;
-}
+.page-btn:hover:not(:disabled) { background: #e2e8f0; }
 
 .page-btn:disabled {
   opacity: 0.4;
@@ -2325,10 +2554,7 @@ onMounted(async () => {
   background: #fafbfc;
 }
 
-/* Status Confirmation Modal */
-.status-modal {
-  max-width: 450px;
-}
+.status-modal { max-width: 450px; }
 
 .confirmation-icon {
   font-size: 48px;
@@ -2358,9 +2584,7 @@ onMounted(async () => {
   border-bottom: 1px solid #e2e8f0;
 }
 
-.detail-row:last-child {
-  border-bottom: none;
-}
+.detail-row:last-child { border-bottom: none; }
 
 .detail-label {
   font-weight: 500;
@@ -2386,7 +2610,6 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-/* Export Modal */
 .export-options {
   display: flex;
   flex-direction: column;
@@ -2454,105 +2677,60 @@ onMounted(async () => {
   }
 }
 
-.toast.success {
-  background: #22c55e;
-}
-
-.toast.error {
-  background: #ef4444;
-}
-
-.toast.info {
-  background: #3b82f6;
-}
-
-.toast.warning {
-  background: #f59e0b;
-}
+.toast.success { background: #22c55e; }
+.toast.error { background: #ef4444; }
+.toast.info { background: #3b82f6; }
+.toast.warning { background: #f59e0b; }
 
 /* ================================================================
    RESPONSIVE
    ================================================================ */
 @media (max-width: 1024px) {
-  .requests-table {
-    min-width: 800px;
-  }
+  .requests-table { min-width: 800px; }
 }
 
 @media (max-width: 768px) {
-  .section-card {
-    padding: 12px;
-  }
-
+  .section-card { padding: 12px; }
   .card-header {
     flex-direction: column;
     align-items: stretch;
   }
-
   .header-title {
     justify-content: space-between;
     width: 100%;
   }
-
   .header-actions {
     flex-direction: column;
     width: 100%;
   }
-
-  .search-box {
-    width: 100%;
-  }
-
-  .search-box input {
-    width: 100%;
-  }
-
+  .search-box { width: 100%; }
+  .search-box input { width: 100%; }
   .btn-add {
     width: 100%;
     justify-content: center;
   }
-
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .filter-actions {
-    margin-left: 0;
-  }
-
-  .detail-row-two-cols {
-    grid-template-columns: 1fr;
-  }
-
+  .filter-actions { margin-left: 0; }
+  .detail-row-two-cols { grid-template-columns: 1fr; }
   .modal-container {
     width: 98%;
     max-height: 95vh;
   }
-
-  .modal-body {
-    padding: 16px;
-  }
-
+  .modal-body { padding: 16px; }
   .requests-table {
     font-size: 11px;
     min-width: 700px;
   }
-
   .requests-table th,
-  .requests-table td {
-    padding: 6px 8px;
-  }
-
-  .pagination {
-    gap: 8px;
-  }
-
+  .requests-table td { padding: 6px 8px; }
+  .pagination { gap: 8px; }
   .page-btn {
     padding: 4px 12px;
     font-size: 12px;
   }
-
   .toast {
     bottom: 16px;
     right: 16px;
@@ -2561,84 +2739,45 @@ onMounted(async () => {
     font-size: 13px;
     padding: 10px 16px;
   }
-
-  .detail-actions {
-    flex-direction: column;
-  }
-
+  .detail-actions { flex-direction: column; }
   .detail-actions button {
     width: 100%;
     justify-content: center;
   }
-
-  .col-actions {
-    min-width: 180px;
-  }
-
-  .rejection-item {
-    padding: 12px 14px;
-  }
-  
+  .col-actions { min-width: 180px; }
+  .rejection-item { padding: 12px 14px; }
   .rejection-textarea-readonly {
     font-size: 12px;
     padding: 8px 12px;
     min-height: 50px;
   }
-  
   .rejection-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
-  .rejection-date {
-    font-size: 10px;
-  }
+  .rejection-date { font-size: 10px; }
 }
 
 @media (max-width: 480px) {
-  .requests-table {
-    min-width: 600px;
-  }
-
+  .requests-table { min-width: 600px; }
   .requests-table th,
   .requests-table td {
     padding: 4px 6px;
     font-size: 10px;
   }
-
   .status-badge {
     padding: 2px 8px;
     font-size: 9px;
   }
-
   .icon-btn {
     padding: 3px 4px;
     font-size: 11px;
   }
-
-  .modal-header h3 {
-    font-size: 16px;
-  }
-
-  .col-code {
-    min-width: 80px;
-  }
-  .col-items {
-    min-width: 100px;
-  }
-  .col-store {
-    min-width: 80px;
-  }
-  .col-actions {
-    min-width: 160px;
-  }
-
-  .btn-back-top,
-  .btn-print-top {
-    width: 100%;
-    text-align: center;
-    justify-content: center;
-  }
+  .modal-header h3 { font-size: 16px; }
+  .col-code { min-width: 80px; }
+  .col-items { min-width: 100px; }
+  .col-store { min-width: 80px; }
+  .col-actions { min-width: 160px; }
 }
 
 /* ================================================================
@@ -2678,26 +2817,13 @@ onMounted(async () => {
     print-color-adjust: exact !important;
   }
 
-  .status-badge.pending {
-    background: #fef3c7 !important;
-  }
-  .status-badge.approved {
-    background: #dbeafe !important;
-  }
-  .status-badge.rejected {
-    background: #fee2e2 !important;
-  }
-  .status-badge.finalized {
-    background: #dcfce7 !important;
-  }
+  .status-badge.pending { background: #fef3c7 !important; }
+  .status-badge.approved { background: #dbeafe !important; }
+  .status-badge.rejected { background: #fee2e2 !important; }
+  .status-badge.finalized { background: #dcfce7 !important; }
 
-  .modal-overlay {
-    display: none !important;
-  }
-
-  .toast {
-    display: none !important;
-  }
+  .modal-overlay { display: none !important; }
+  .toast { display: none !important; }
 
   .expand-details {
     border: none !important;
@@ -2705,8 +2831,6 @@ onMounted(async () => {
     margin: 0 !important;
   }
 
-  .detail-expand-row td {
-    padding: 0 !important;
-  }
+  .detail-expand-row td { padding: 0 !important; }
 }
 </style>
