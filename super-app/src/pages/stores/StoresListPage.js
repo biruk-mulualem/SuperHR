@@ -1,5 +1,5 @@
 // super-app/src/pages/stores/StoresListPage.js
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,17 +9,27 @@ import {
   FlatList,
   TextInput,
   RefreshControl,
+  Alert,
+  Platform,
 } from 'react-native';
+
+// ✅ Modern expo-file-system API (SDK 54+)
+import { File, Paths } from 'expo-file-system';
+// ✅ Legacy import only for getContentUriAsync (still valid in SDK 54)
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 
 import mobileStoreListService from '../../stores/mobileStoreListService';
 
 const PAGE_SIZE = 10;
 
-const FILTERS = [
-  { key: 'all',      label: 'All'      },
-  { key: 'active',   label: 'Active'   },
-  { key: 'inactive', label: 'Inactive' },
-];
+// ✅ Only active stores are ever requested
+const STATUS_FILTER = 'active';
+
+// MIME for xlsx
+const XLSX_MIME =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export default function StoresListPage({
   onNavigateToDetail,
@@ -30,26 +40,43 @@ export default function StoresListPage({
   borderColor,
 }) {
   const [stores, setStores] = useState([]);
-  const [loading, setLoading] = useState(true);         // initial load only
-  const [refreshing, setRefreshing] = useState(false);  // pull-to-refresh
-  const [loadingMore, setLoadingMore] = useState(false); // next-page spinner
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
 
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [total, setTotal] = useState(0);
 
-  // Guard against parallel "load more" calls from rapid scroll events
+  const [summary, setSummary] = useState({
+    totalStores: 0,
+    totalItems: 0,
+  });
+
+  const [exporting, setExporting] = useState(false);
+
   const isLoadingMoreRef = useRef(false);
 
   // -----------------------------------------------------------------
-  // FETCH — page 1 (or refresh)
+  // Shape a raw store from the API
+  // -----------------------------------------------------------------
+  const shapeStore = useCallback(
+    (s) => ({
+      ...s,
+      items: Number(s.items ?? 0),
+      groups: Array.isArray(s.groups) ? s.groups : [],
+      status: s.status || 'active',
+    }),
+    []
+  );
+
+  // -----------------------------------------------------------------
+  // FETCH — page 1
   // -----------------------------------------------------------------
   const loadFirstPage = useCallback(
-    async ({ silent = false, status, q } = {}) => {
+    async ({ silent = false, q } = {}) => {
       try {
         if (silent) setRefreshing(true);
         else setLoading(true);
@@ -59,23 +86,24 @@ export default function StoresListPage({
         const res = await mobileStoreListService.getStoreSummary({
           page: 1,
           limit: PAGE_SIZE,
-          status: status !== undefined ? status : filter,
+          status: STATUS_FILTER,
           q: q !== undefined ? q : query.trim(),
         });
 
         if (res?.success) {
           const list = Array.isArray(res.data?.stores) ? res.data.stores : [];
-          setStores(
-            list.map((s) => ({
-              ...s,
-              items: Number(s.items ?? 0),
-              groups: Array.isArray(s.groups) ? s.groups : [],
-              status: s.status || 'active',
-            }))
-          );
+          const shaped = list.map(shapeStore);
+
+          setStores(shaped);
           setPage(1);
           setHasMore(res.data?.pagination?.hasMore ?? false);
-          setTotal(res.data?.pagination?.total ?? list.length);
+
+          setSummary(
+            res.data?.summary || {
+              totalStores: res.data?.pagination?.total ?? shaped.length,
+              totalItems: 0,
+            }
+          );
         } else {
           setError(res?.error || 'Failed to load stores');
         }
@@ -91,11 +119,11 @@ export default function StoresListPage({
         setRefreshing(false);
       }
     },
-    [filter, query]
+    [query, shapeStore]
   );
 
   // -----------------------------------------------------------------
-  // FETCH — next page (append)
+  // FETCH — next page
   // -----------------------------------------------------------------
   const loadNextPage = useCallback(async () => {
     if (isLoadingMoreRef.current || !hasMore) return;
@@ -107,33 +135,29 @@ export default function StoresListPage({
       const res = await mobileStoreListService.getStoreSummary({
         page: nextPage,
         limit: PAGE_SIZE,
-        status: filter,
+        status: STATUS_FILTER,
         q: query.trim(),
       });
 
       if (res?.success) {
         const list = Array.isArray(res.data?.stores) ? res.data.stores : [];
-        setStores((prev) => [
-          ...prev,
-          ...list.map((s) => ({
-            ...s,
-            items: Number(s.items ?? 0),
-            groups: Array.isArray(s.groups) ? s.groups : [],
-            status: s.status || 'active',
-          })),
-        ]);
+        const shaped = list.map(shapeStore);
+
+        setStores((prev) => [...prev, ...shaped]);
         setPage(nextPage);
         setHasMore(res.data?.pagination?.hasMore ?? false);
-        setTotal(res.data?.pagination?.total ?? stores.length + list.length);
+
+        if (res.data?.summary) {
+          setSummary(res.data.summary);
+        }
       }
     } catch (e) {
-      // Non-fatal — keep whatever we already have
       console.warn('[stores] loadNextPage failed:', e?.message);
     } finally {
       setLoadingMore(false);
       isLoadingMoreRef.current = false;
     }
-  }, [page, hasMore, filter, query]);
+  }, [page, hasMore, query, shapeStore]);
 
   // -----------------------------------------------------------------
   // INITIAL LOAD
@@ -144,36 +168,54 @@ export default function StoresListPage({
   }, []);
 
   // -----------------------------------------------------------------
-  // RESET when filter / search change
+  // RESET when search changes (debounced)
   // -----------------------------------------------------------------
   useEffect(() => {
-    // debounce search a bit
     const t = setTimeout(() => {
       loadFirstPage();
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, query]);
+  }, [query]);
 
   // -----------------------------------------------------------------
-  // DERIVED
+  // EXPORT TO EXCEL — server-rendered .xlsx, single request
   // -----------------------------------------------------------------
-  const totalGroups = useMemo(
-    () =>
-      stores.reduce(
-        (sum, s) => sum + ((s.groups && s.groups.length) || 0),
-        0
-      ),
-    [stores]
-  );
+  const handleExportExcel = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
 
-  const totalActive = useMemo(
-    () => stores.filter((s) => s.status !== 'inactive').length,
-    [stores]
-  );
+    try {
+      // 1. Build the download URL (with the current search applied)
+      const url = mobileStoreListService.getStoreListXlsxUrl({
+        status: STATUS_FILTER,
+        q: query.trim(),
+      });
+
+      // 2. Read the token from AsyncStorage (same source as the interceptor)
+      const headers = await mobileStoreListService.getAuthHeaders();
+
+      // Optional debug — remove after verifying
+      // console.log('🔎 export headers:', JSON.stringify(headers));
+
+      // 3. Download the styled .xlsx into the cache
+      const fileName = `stores_export_${Date.now()}.xlsx`;
+      const outFile = new File(Paths.cache, fileName);
+
+      await File.downloadFileAsync(url, outFile, { headers });
+
+      // 4. Let the user Open / Share / Cancel
+      await showExportActions(outFile.uri);
+    } catch (e) {
+      console.error('[stores] export failed:', e);
+      Alert.alert('Export failed', e?.message || 'Could not export stores.');
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, query]);
 
   // -----------------------------------------------------------------
-  // LOADING (first paint)
+  // LOADING
   // -----------------------------------------------------------------
   if (loading) {
     return (
@@ -194,101 +236,89 @@ export default function StoresListPage({
       {/* Header */}
       <View style={styles.headerBar}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
+          <Text
+            style={[styles.headerTitle, { color: textColor }]}
+            numberOfLines={1}
+          >
             Stores
           </Text>
-          <Text style={[styles.headerSub, { color: subTextColor }]} numberOfLines={1}>
-            {stores.length} of {total}
+          <Text
+            style={[styles.headerSub, { color: subTextColor }]}
+            numberOfLines={1}
+          >
+            {summary.totalStores} stores
           </Text>
         </View>
       </View>
 
-      {/* Summary strip — reflects CURRENT page, not the whole DB */}
+      {/* Summary strip */}
       <View
         style={[styles.summaryStrip, { backgroundColor: cardBg, borderColor }]}
       >
         <View style={styles.summaryCell}>
           <Text style={[styles.summaryValue, { color: '#10B981' }]}>
-            {total}
+            {summary.totalStores}
           </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>
             Stores
           </Text>
         </View>
+
         <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+
         <View style={styles.summaryCell}>
-          <Text style={[styles.summaryValue, { color: '#10B981' }]}>
-            {totalActive}
+          <Text style={[styles.summaryValue, { color: '#8B5CF6' }]}>
+            {summary.totalItems}
           </Text>
           <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            Active
-          </Text>
-        </View>
-        <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
-        <View style={styles.summaryCell}>
-          <Text style={[styles.summaryValue, { color: '#3B82F6' }]}>
-            {totalGroups}
-          </Text>
-          <Text style={[styles.summaryLabel, { color: subTextColor }]}>
-            Groups
+            Total Items
           </Text>
         </View>
       </View>
 
-      {/* Search */}
-      <View
-        style={[styles.searchWrap, { backgroundColor: cardBg, borderColor }]}
-      >
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search by name or location"
-          placeholderTextColor={subTextColor}
-          style={[styles.searchInput, { color: textColor }]}
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-        {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
-            <Text style={[styles.clearIcon, { color: subTextColor }]}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Filter pills */}
-      <View style={styles.filtersRow}>
-        {FILTERS.map((f) => {
-          const active = filter === f.key;
-          return (
-            <TouchableOpacity
-              key={f.key}
-              onPress={() => setFilter(f.key)}
-              activeOpacity={0.8}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor: active
-                    ? '#10B981'
-                    : darkMode
-                    ? '#1E293B'
-                    : '#F1F5F9',
-                  borderColor: active ? '#10B981' : borderColor,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  { color: active ? '#FFFFFF' : textColor },
-                ]}
-                numberOfLines={1}
-              >
-                {f.label}
-              </Text>
+      {/* Search + Export row */}
+      <View style={styles.searchRow}>
+        <View
+          style={[
+            styles.searchWrap,
+            { flex: 1, backgroundColor: cardBg, borderColor },
+          ]}
+        >
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search by name or location"
+            placeholderTextColor={subTextColor}
+            style={[styles.searchInput, { color: textColor }]}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
+              <Text style={[styles.clearIcon, { color: subTextColor }]}>✕</Text>
             </TouchableOpacity>
-          );
-        })}
+          )}
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          disabled={exporting}
+          onPress={handleExportExcel}
+          style={[
+            styles.exportBtn,
+            {
+              backgroundColor: exporting ? '#94A3B8' : '#16A34A',
+              opacity: exporting ? 0.85 : 1,
+            },
+          ]}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.exportBtnText}>📊 Excel</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Error */}
@@ -318,7 +348,9 @@ export default function StoresListPage({
       {/* List */}
       <FlatList
         data={stores}
-        keyExtractor={(item, idx) => String(item.id ?? item.name ?? idx)}
+        keyExtractor={(item, idx) =>
+          String(item.id ?? item.code ?? item.name ?? idx)
+        }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         refreshControl={
@@ -341,12 +373,6 @@ export default function StoresListPage({
                 Loading more…
               </Text>
             </View>
-          ) : !hasMore && stores.length > PAGE_SIZE ? (
-            <View style={styles.footerBox}>
-              <Text style={[styles.footerText, { color: subTextColor }]}>
-                End of list
-              </Text>
-            </View>
           ) : null
         }
         ListEmptyComponent={
@@ -356,9 +382,9 @@ export default function StoresListPage({
               No stores found
             </Text>
             <Text style={[styles.emptyBody, { color: subTextColor }]}>
-              {query || filter !== 'all'
-                ? 'Try a different search or filter.'
-                : 'No stores available.'}
+              {query
+                ? 'Try a different search.'
+                : 'No active stores available.'}
             </Text>
           </View>
         }
@@ -367,11 +393,7 @@ export default function StoresListPage({
           const groupCount = (item.groups || []).length;
 
           return (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => onNavigateToDetail?.(item)}
-              style={[styles.card, { backgroundColor: cardBg, borderColor }]}
-            >
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor }]}>
               <View
                 style={[
                   styles.cardAccent,
@@ -384,9 +406,7 @@ export default function StoresListPage({
                   <View
                     style={[
                       styles.iconWrap,
-                      {
-                        backgroundColor: darkMode ? '#064E3B' : '#ECFDF5',
-                      },
+                      { backgroundColor: darkMode ? '#064E3B' : '#ECFDF5' },
                     ]}
                   >
                     <Text style={styles.iconText}>🏬</Text>
@@ -454,6 +474,7 @@ export default function StoresListPage({
                       Items
                     </Text>
                   </View>
+
                   <View style={styles.statCell}>
                     <Text
                       style={[styles.statValue, { color: '#3B82F6' }]}
@@ -466,8 +487,26 @@ export default function StoresListPage({
                     </Text>
                   </View>
                 </View>
+
+                <View
+                  style={[
+                    styles.cardFooter,
+                    { borderTopColor: darkMode ? '#334155' : '#F1F5F9' },
+                  ]}
+                >
+                  <Text style={[styles.footerHint, { color: subTextColor }]}>
+                    Tap to view items & groups
+                  </Text>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => onNavigateToDetail?.(item)}
+                    style={styles.viewDetailBtn}
+                  >
+                    <Text style={styles.viewDetailBtnText}>View Detail →</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </TouchableOpacity>
+            </View>
           );
         }}
       />
@@ -476,7 +515,59 @@ export default function StoresListPage({
 }
 
 // ================================================================
-// STYLES
+// Export actions — Open / Share / Cancel
+// ================================================================
+async function showExportActions(fileUri) {
+  Alert.alert(
+    'Export ready',
+    'What would you like to do with the file?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share', onPress: () => shareFile(fileUri) },
+      { text: 'Open', onPress: () => openFile(fileUri) },
+    ],
+    { cancelable: true }
+  );
+}
+
+async function openFile(fileUri) {
+  if (Platform.OS === 'android') {
+    try {
+      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1,
+        type: XLSX_MIME,
+      });
+      return;
+    } catch (e) {
+      console.warn('[stores] open failed, falling back to share:', e);
+      Alert.alert(
+        'No app found',
+        'No spreadsheet app is available to open the file. You can share it instead.'
+      );
+      return;
+    }
+  }
+
+  await shareFile(fileUri);
+}
+
+async function shareFile(fileUri) {
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(fileUri, {
+      mimeType: XLSX_MIME,
+      dialogTitle: 'Share stores export',
+      UTI: 'com.microsoft.excel.xlsx',
+    });
+  } else {
+    Alert.alert('Export complete', `Saved to: ${fileUri}`);
+  }
+}
+
+// ================================================================
+// STYLES — RN component styles
 // ================================================================
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -518,11 +609,16 @@ const styles = StyleSheet.create({
   },
   summaryDivider: { width: 1, height: 24, opacity: 0.6 },
 
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 8,
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
@@ -533,19 +629,20 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 13, paddingVertical: 0 },
   clearIcon: { fontSize: 13, fontWeight: '700', padding: 4 },
 
-  filtersRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    gap: 6,
-  },
-  filterPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  exportBtn: {
+    height: 40,
+    paddingHorizontal: 14,
     borderRadius: 10,
-    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 96,
   },
-  filterPillText: { fontSize: 11, fontWeight: '700' },
+  exportBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
 
   errorBox: {
     borderWidth: 1,
@@ -640,6 +737,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  cardFooter: {
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  footerHint: {
+    fontSize: 10.5,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    flex: 1,
+    marginRight: 8,
+  },
+  viewDetailBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#10B981',
+  },
+  viewDetailBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '800',
     letterSpacing: 0.3,
   },
 });

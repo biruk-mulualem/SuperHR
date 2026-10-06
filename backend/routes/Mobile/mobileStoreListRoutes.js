@@ -7,11 +7,18 @@ const router = express.Router();
 const c = require('../../controllers/Mobile/mobileStoreListController');
 const { authMiddleware } = require('../../middleware/authMiddleware');
 
-// Apply auth to every route in this file
 router.use(authMiddleware());
 
-// Store list summary
-// GET /api/mobile/store-list/summary
+// ================================================================
+// STORE LIST
+// ================================================================
 router.get('/summary', c.getStoreSummary);
+router.get('/export', c.getStoreListExport);
+router.get('/export.xlsx', c.exportStoreListXlsx);   // ← ADD THIS
+
+// ================================================================
+// STORE DETAIL
+// ================================================================
+router.get('/:storeId/detail', c.getStoreComparison);
 
 module.exports = router;

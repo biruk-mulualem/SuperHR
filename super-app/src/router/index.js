@@ -48,6 +48,7 @@ import ManagerFinanceDashboard from '../pages/dashboard/roles/manager/ManagerFin
 
 // Store pages
 import StoresListPage from '../pages/stores/StoresListPage';
+import StoreDetailPage from '../pages/stores/StoreDetailPage';
 import ItemsListPage from '../pages/stores/ItemsListPage';
 import BalanceAuditPage from '../pages/stores/BalanceAuditPage';
 import LowStockAlertsPage from '../pages/stores/LowStockAlertsPage';
@@ -121,6 +122,9 @@ export default function AppRouter() {
   const [pendingOrder, setPendingOrder] = useState(null);
   const [purchaseReturnTo, setPurchaseReturnTo] = useState(null);
 
+  // Store drill-in state
+  const [selectedStore, setSelectedStore] = useState(null);
+
   // ✅ One-shot intent from a notification tap
   const [pendingIntent, setPendingIntent] = useState(null);
 
@@ -154,6 +158,7 @@ export default function AppRouter() {
       setPendingOrder(null);
       setPurchaseReturnTo(null);
       setPendingIntent(null);
+      setSelectedStore(null);
     });
   }, []);
 
@@ -197,10 +202,17 @@ export default function AppRouter() {
 
       // ---------- Inside a manager drill-in ----------
       if (activeTab === 'managerDashboard' && purchaseSubView !== null) {
+        // Store detail → back to store list
+        if (purchaseSubView === 'storeDetail') {
+          setSelectedStore(null);
+          setPurchaseSubView('storesList');
+          return true;
+        }
+
+        // Other store drill-ins → back to store dashboard
         if (
           purchaseSubView === 'storesList' ||
           purchaseSubView === 'inventory' ||
-          purchaseSubView === 'storeDetail' ||
           purchaseSubView === 'balanceAudit' ||
           purchaseSubView === 'lowStock' ||
           purchaseSubView === 'transfers'
@@ -208,6 +220,7 @@ export default function AppRouter() {
           setPurchaseSubView('storeDashboard');
           return true;
         }
+
         setPurchaseSubView(null);
         setActiveTab('home');
         return true;
@@ -226,6 +239,7 @@ export default function AppRouter() {
         setPurchaseSubView(null);
         setPendingOrder(null);
         setPurchaseReturnTo(null);
+        setSelectedStore(null);
         return true;
       }
 
@@ -263,6 +277,7 @@ export default function AppRouter() {
       setPendingOrder(null);
       setPurchaseReturnTo(null);
       setPendingIntent(null);
+      setSelectedStore(null);
     }
   };
 
@@ -312,6 +327,7 @@ export default function AppRouter() {
     setSettingsSubView('main');
     setPendingOrder(null);
     setPurchaseReturnTo(null);
+    setSelectedStore(null);
   };
 
   // ================================================================
@@ -373,7 +389,9 @@ export default function AppRouter() {
           return (
             <StoresListPage
               onNavigateToDetail={(store) => {
-                console.log('Open store detail:', store);
+                console.log('🟢 Open store detail:', store?.name);
+                setSelectedStore(store);
+                setPurchaseSubView('storeDetail');
               }}
               darkMode={darkMode}
               textColor={textColor}
@@ -405,7 +423,9 @@ export default function AppRouter() {
           return (
             <BalanceAuditPage
               onNavigateToStoreDetail={(store) => {
-                console.log('Open store detail:', store);
+                console.log('🟢 Open store detail (from audit):', store?.name);
+                setSelectedStore(store);
+                setPurchaseSubView('storeDetail');
               }}
               darkMode={darkMode}
               textColor={textColor}
@@ -430,6 +450,39 @@ export default function AppRouter() {
           );
 
         case 'storeDetail':
+          // ⚠️ IMPORTANT: Do NOT call setState during render.
+          // If no store is selected, render the list directly as a fallback.
+          if (!selectedStore) {
+            return (
+              <StoresListPage
+                onNavigateToDetail={(store) => {
+                  console.log('🟢 Open store detail (fallback):', store?.name);
+                  setSelectedStore(store);
+                  setPurchaseSubView('storeDetail');
+                }}
+                darkMode={darkMode}
+                textColor={textColor}
+                subTextColor={subTextColor}
+                cardBg={cardBg}
+                borderColor={borderColor}
+              />
+            );
+          }
+          return (
+            <StoreDetailPage
+              store={selectedStore}
+              onBack={() => {
+                setSelectedStore(null);
+                setPurchaseSubView('storesList');
+              }}
+              darkMode={darkMode}
+              textColor={textColor}
+              subTextColor={subTextColor}
+              cardBg={cardBg}
+              borderColor={borderColor}
+            />
+          );
+
         case 'transfers':
           return <ManagerStoreDashboard {...commonProps} />;
 
@@ -845,6 +898,7 @@ export default function AppRouter() {
             setPendingOrder(null);
             setPurchaseReturnTo(null);
             setPendingIntent(null);
+            setSelectedStore(null);
           }}
         />
       </MainLayout>
@@ -872,6 +926,7 @@ export default function AppRouter() {
         setPendingOrder(null);
         setPurchaseReturnTo(null);
         setPendingIntent(null);
+        setSelectedStore(null);
       }}
       onNavigateToProfile={() => {
         setActiveTab('profile');
@@ -880,6 +935,7 @@ export default function AppRouter() {
         setPendingOrder(null);
         setPurchaseReturnTo(null);
         setPendingIntent(null);
+        setSelectedStore(null);
       }}
       onNavigateToSettings={() => {
         setActiveTab('settings');
@@ -888,6 +944,7 @@ export default function AppRouter() {
         setPendingOrder(null);
         setPurchaseReturnTo(null);
         setPendingIntent(null);
+        setSelectedStore(null);
       }}
       onNavigateToNotifications={() => {
         if (!ROLE_PERMISSIONS[userRole]?.alerts) {
@@ -900,6 +957,7 @@ export default function AppRouter() {
         setPendingOrder(null);
         setPurchaseReturnTo(null);
         setPendingIntent(null);
+        setSelectedStore(null);
       }}
       darkMode={darkMode}
       setDarkMode={setDarkMode}

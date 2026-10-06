@@ -769,13 +769,29 @@ const isSkipStore = (req: ItemRequest): boolean => {
 // ASSET REQUEST DETECTION
 // ================================================================
 
+// 🔧 Asset requests are ONLY those whose department approval is sent to
+//    Nebert Astedader (department_id === 15).
+const ASSET_DEPARTMENT_ID = 15;
+
 const isAssetRequest = (req: ItemRequest): boolean => {
   if (!req) return false;
 
   const notifications = (req as any).notifications as Array<any> | undefined;
   if (!notifications || notifications.length === 0) return false;
 
-  return notifications.some((n) => n?.is_department_approval === true);
+  return notifications.some((n) => {
+    if (n?.is_department_approval !== true) return false;
+
+    const deptId = Number(
+      n.department_id ??
+      n.departmentId ??
+      n.department?.id ??
+      n.department?.departmentId ??
+      0
+    );
+
+    return deptId === ASSET_DEPARTMENT_ID;
+  });
 };
 
 // ================================================================

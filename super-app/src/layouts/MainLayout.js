@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 
-// ✅ Use SafeAreaView from react-native-safe-area-context (edge-to-edge aware)
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Header from '../components/shared/Header';
@@ -25,20 +24,27 @@ const LIST_PAGES = [
   'notification',
   'profile',
   'pendingDetail',
-  'managerDashboard',
+
+  // ✅ Manager drill-ins own their own scroll container
+  'managerDashboard',   // ← the missing one
+  'storesList',
+  'storeDetail',
+  'inventory',
+  'balanceAudit',
+  'lowStock',
+  'transfers',
+
   'posts',
   'adminDevices',
   'webSessions',
   'users',
 
-  // ✅ Admin pages — match the `activeTab` values used in index.js
   'roles',
   'departments',
   'devices',
   'positions',
   'systemSettings',
 
-  // ✅ System Settings sub-pages — each owns a FlatList
   'settingsAttendance',
   'settingsApproval',
   'settingsFinance',
@@ -55,7 +61,7 @@ export default function MainLayout({
   onNavigateToProfile,
   onNavigateToSettings,
   onNavigateToNotifications,
-  darkMode,                 // ✅ kept — this was the missing prop
+  darkMode,
   setDarkMode,
   onNavigateToCatalog,
   permissions,
@@ -66,11 +72,9 @@ export default function MainLayout({
   const insets = useSafeAreaInsets();
   const layoutBg = darkMode ? '#0F172A' : '#F8FAFC';
 
-  // Floating capsule navbar is only visible on the dashboard hub tab
   const isFooterVisible = showHeader && activeTab === 'home';
   const isListPage = LIST_PAGES.includes(activeTab);
 
-  // Login / no-header screens
   if (!showHeader) {
     return (
       <View style={styles.loginWrapper}>
@@ -96,31 +100,22 @@ export default function MainLayout({
         onNavigateToSettings={onNavigateToSettings}
         onNavigateToNotifications={onNavigateToNotifications}
         onNavigateToCatalog={onNavigateToCatalog}
-        darkMode={darkMode}               
+        darkMode={darkMode}
         setDarkMode={setDarkMode}
         permissions={permissions}
         userRole={userRole}
         onNavigateToPurchase={onNavigateToPurchase}
       />
 
-      {/* ✅ KeyboardAvoidingView so inputs aren't hidden by the keyboard */}
       <KeyboardAvoidingView
         style={styles.flex1}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
       >
         {isListPage ? (
-          // List pages — no ScrollView, let FlatList handle scrolling
-          <View
-            style={[
-              styles.content,
-              isFooterVisible && styles.globalScrollBuffer,
-            ]}
-          >
-            {children}
-          </View>
+          // ✅ No outer ScrollView — page owns its own scroll
+          <View style={styles.content}>{children}</View>
         ) : (
-          // Non-list pages — wrap in ScrollView
           <ScrollView
             style={styles.content}
             contentContainerStyle={
@@ -140,7 +135,7 @@ export default function MainLayout({
         <FloatingFooter
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          darkMode={darkMode}            
+          darkMode={darkMode}
         />
       )}
     </SafeAreaView>

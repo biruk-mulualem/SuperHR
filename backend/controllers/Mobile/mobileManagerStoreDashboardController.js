@@ -8,6 +8,13 @@ const { Store, Group, StockAlert, StoreBalance } = db;
 const canView = (req) => !!req.user;
 
 // ================================================================
+// CONFIG
+// ================================================================
+
+// Store codes that should never be counted on the dashboard.
+const EXCLUDED_STORE_CODES = ['STORE-007', 'STORE-006'];
+
+// ================================================================
 // Helpers
 // ================================================================
 const clampInt = (v, min, max, fallback) => {
@@ -18,9 +25,6 @@ const clampInt = (v, min, max, fallback) => {
 
 // ────────────────────────────────────────────────────────────────
 // Balance rule — company total per item.
-//   Group balances by storeId; a store is "agreed" if all its
-//   group balances are equal. Total = sum of agreed stores.
-//   Conflicted stores are excluded.
 // ────────────────────────────────────────────────────────────────
 async function computeBalancesByItem(itemIds) {
   const out = {};
@@ -64,10 +68,7 @@ async function computeBalancesByItem(itemIds) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Stock Status counts for the Inventory card.
-//   total      = items with an alert (threshold > 0)
-//   triggered  = items whose company total ≤ threshold
-//   alertSet   = items with an alert configured (same as total)
+// Stock Status counts
 // ────────────────────────────────────────────────────────────────
 async function computeStockStatusCounts() {
   const rows = await StockAlert.findAll({
@@ -96,7 +97,7 @@ async function computeStockStatusCounts() {
   });
 
   return {
-    total,          // items with an alert
+    total,
     alertSet: total,
     triggered,
     pending,
@@ -116,15 +117,23 @@ exports.getSummary = async (req, res) => {
     const itemsPerStore = clampInt(req.query.itemsPerStore, 1, 100, 20);
 
     // ------------------------------------------------------------
-    // 1. Store & inventory counts (one SQL pass)
+    // 1. Store & inventory counts
+    //    - Stores: only Active, excluding the blacklisted codes
+    //    - Items:  raw COUNT(*) FROM items (same rule as the stores list)
     // ------------------------------------------------------------
     const [totals] = await db.sequelize.query(
       `
       WITH
       store_stats AS (
         SELECT
-          COUNT(*)::int                                      AS total_stores,
-          COUNT(*) FILTER (WHERE status <> 'Inactive')::int  AS active_stores
+          COUNT(*) FILTER (
+            WHERE status = 'Active'
+              AND code NOT IN (:excludedCodes)
+          )::int AS total_stores,
+          COUNT(*) FILTER (
+            WHERE status = 'Active'
+              AND code NOT IN (:excludedCodes)
+          )::int AS active_stores
         FROM stores
       ),
       item_stats AS (
@@ -141,16 +150,19 @@ exports.getSummary = async (req, res) => {
         (SELECT active_items   FROM item_stats)   AS active_items,
         (SELECT inactive_items FROM item_stats)   AS inactive_items
       `,
-      { type: QueryTypes.SELECT }
+      {
+        replacements: { excludedCodes: EXCLUDED_STORE_CODES },
+        type: QueryTypes.SELECT,
+      }
     );
 
     // ------------------------------------------------------------
-    // 2. Stock Status counts (matches the summary pipeline)
+    // 2. Stock Status counts
     // ------------------------------------------------------------
     const stockStatus = await computeStockStatusCounts();
 
     // ------------------------------------------------------------
-    // 3. Preview stores — first N
+    // 3. Preview stores — active only, excluding the blacklist
     // ------------------------------------------------------------
     const stores = await db.sequelize.query(
       `
@@ -166,10 +178,18 @@ exports.getSummary = async (req, res) => {
             AND sb.status = 'Active'
         )::int AS items_count
       FROM stores s
+      WHERE s.status = 'Active'
+        AND s.code NOT IN (:excludedCodes)
       ORDER BY s.name ASC
       LIMIT :storeLimit
       `,
-      { replacements: { storeLimit }, type: QueryTypes.SELECT }
+      {
+        replacements: {
+          storeLimit,
+          excludedCodes: EXCLUDED_STORE_CODES,
+        },
+        type: QueryTypes.SELECT,
+      }
     );
 
     const storeIds = stores.map((s) => s.id);
@@ -234,7 +254,7 @@ exports.getSummary = async (req, res) => {
     }
 
     // ------------------------------------------------------------
-    // 5. Item preview per store (unchanged)
+    // 5. Item preview per store
     // ------------------------------------------------------------
     let itemsByStore = {};
     if (storeIds.length) {
@@ -304,7 +324,7 @@ exports.getSummary = async (req, res) => {
         totalStores:  Number(totals?.total_stores  ?? 0),
         activeStores: Number(totals?.active_stores ?? 0),
 
-        // ── Inventory counts (used by the redesigned card) ──
+        // ── Inventory counts ──
         totalItems:    Number(totals?.total_items    ?? 0),
         activeItems:   Number(totals?.active_items   ?? 0),
         inactiveItems: Number(totals?.inactive_items ?? 0),
@@ -314,7 +334,7 @@ exports.getSummary = async (req, res) => {
         inventoryAlertSet:       stockStatus.alertSet,
         inventoryTriggered:      stockStatus.triggered,
 
-        // ── Stock Status (kept for backward compatibility) ──
+        // ── Stock Status ──
         totalStatus:     stockStatus.total,
         triggeredStatus: stockStatus.triggered,
         pendingStatus:   stockStatus.pending,
