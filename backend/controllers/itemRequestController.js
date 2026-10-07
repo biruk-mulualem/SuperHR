@@ -3179,10 +3179,10 @@ exports.getActiveStores = async (req, res) => {
 exports.getActiveItems = async (req, res) => {
   try {
     const { search, limit = 20, page = 1 } = req.query;
-    
+
     const where = { status: "Active" };
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    
+
     if (search && search.trim()) {
       const searchTerm = search.trim().toLowerCase();
       where[Op.or] = [
@@ -3197,12 +3197,35 @@ exports.getActiveItems = async (req, res) => {
     const { count, rows } = await Item.findAndCountAll({
       where,
       attributes: [
-        "itemId", "code", "name", "standardName", "brand", "model",
-        "uomId", "conversionUomId", "conversionValue", "specText",
+        "itemId",
+        "code",
+        "name",
+        "standardName",
+        "brand",
+        "model",
+        "uomId",
+        "conversionUomId",
+        "conversionValue",
+        "specText",
+        "categoryId",           // ✅ ADDED
       ],
       include: [
-        { model: UOM, as: "uom", attributes: ["uomId", "code", "name"] },
-        { model: UOM, as: "conversionUom", attributes: ["uomId", "code", "name"] },
+        {
+          model: UOM,
+          as: "uom",
+          attributes: ["uomId", "code", "name"],
+        },
+        {
+          model: UOM,
+          as: "conversionUom",
+          attributes: ["uomId", "code", "name"],
+        },
+        {
+          model: db.Category,   // ✅ ADDED
+          as: "category",
+          attributes: ["categoryId", "name"],
+          required: false,
+        },
       ],
       order: [["code", "ASC"]],
       limit: parseInt(limit),

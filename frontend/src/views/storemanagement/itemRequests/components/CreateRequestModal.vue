@@ -168,17 +168,17 @@
                           : "Type to search for items..."
                     }}
                   </option>
-                  <option
-                    v-for="item in items"
-                    :key="getItemId(item)"
-                    :value="getItemId(item)"
-                    :disabled="isItemAlreadySelected(item)"
-                  >
-                    {{ item.code }} - {{ item.standardName || item.name }}
-                    [Base: {{ getBaseUOM(item) }} | Conv:
-                    {{ getConversionUOM(item) }}]
-                    {{ isItemAlreadySelected(item) ? "(added)" : "" }}
-                  </option>
+               <option
+  v-for="item in items"
+  :key="getItemId(item)"
+  :value="getItemId(item)"
+  :disabled="isItemAlreadySelected(item)"
+>
+  {{ item.code }} - {{ item.standardName || item.name }}
+  [Category: {{ (item as any).category?.name || "Uncategorized" }}]
+  [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
+  {{ isItemAlreadySelected(item) ? "(added)" : "" }}
+</option>
                 </select>
                 <button
                   type="button"
