@@ -270,6 +270,7 @@
                         <th class="nt-th-num">#</th>
                         <th>Code</th>
                         <th>Item</th>
+                            <th>Category</th>
                         <th>UOM</th>
                         <th class="nt-th-qty">Qty</th>
                         <th>Brand</th>
@@ -286,7 +287,11 @@
                           <span v-else class="nt-muted">—</span>
                         </td>
                         <td class="nt-td-item" data-label="Item">{{ item.item?.name || 'Unknown Item' }}</td>
-                        <td class="nt-td-uom" data-label="UOM">{{ getUomDisplay(item) }}</td>
+<td class="nt-td-category" data-label="Category">
+  <span v-if="item.item?.category?.name">{{ item.item.category.name }}</span>
+  <span v-else-if="item.item?.categoryId" class="nt-muted">#{{ item.item.categoryId }}</span>
+  <span v-else class="nt-muted">—</span>
+</td>                  <td class="nt-td-uom" data-label="UOM">{{ getUomDisplay(item) }}</td>
                         <td class="nt-td-qty" data-label="Qty">{{ formatQty(item.quantity) }}</td>
                         <td class="nt-td-brand" data-label="Brand">
                           <span v-if="item.brand">{{ item.brand }}</span>

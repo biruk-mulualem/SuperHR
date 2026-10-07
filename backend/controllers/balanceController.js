@@ -3965,6 +3965,16 @@ exports.processRequestForGroup = async (req, res) => {
 // Honors itemsToProcess, records progress, keeps multi-group
 // finalization logic untouched.
 // ================================================================
+// ================================================================
+// PROCESS REQUESTS - BATCH WITH PARTIAL PROCESSING SUPPORT
+// Honors itemsToProcess, records progress, keeps multi-group
+// finalization logic untouched.
+//
+// ✅ NOW SUPPORTS PER-ITEM DOCUMENT REFERENCES
+//    documentRefs is keyed by "requestId::itemId" (composite key).
+//    Falls back to "requestId::detailId" and finally the legacy
+//    "requestId" key for backward compatibility.
+// ================================================================
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -3974,7 +3984,7 @@ exports.processRequests = async (req, res) => {
       groupId,
       requestIds,
       documentRefs,
-      itemsToProcess, // ✅ NEW: optional partial processing specs
+      itemsToProcess, // ✅ optional partial processing specs
     } = req.body;
 
     console.log("📤 Processing requests payload:", {
@@ -4336,6 +4346,25 @@ exports.processRequests = async (req, res) => {
 
       for (const { item, quantityToProcess } of itemsToProcessNow) {
         try {
+          // ================================================================
+          // ✅ PER-ITEM DOC REFERENCE LOOKUP
+          // Frontend sends documentRefs keyed by "requestId::itemId".
+          // Fallback 1: "requestId::detailId"
+          // Fallback 2: legacy "requestId" (single doc per request)
+          // ================================================================
+          const itemDetailId = item.id ?? item.detailId;
+          const compositeKeyByItemId = `${request.requestId}::${item.itemId}`;
+          const compositeKeyByDetailId = `${request.requestId}::${itemDetailId}`;
+          const itemDoc =
+            documentRefs?.[compositeKeyByItemId] ||
+            documentRefs?.[compositeKeyByDetailId] ||
+            documentRefs?.[request.requestId] ||
+            null;
+
+          console.log(
+            `📄 Item ${item.itemId}: docKey=${compositeKeyByItemId} → itemDoc=${itemDoc}`
+          );
+
           if (!item.item) {
             requestErrors.push(`Item ID ${item.itemId} not found in database`);
             missingItems.push({
@@ -4371,12 +4400,12 @@ exports.processRequests = async (req, res) => {
           // Load or create the per-item processing record
           // ------------------------------------------------------
           // ✅ FIX: support both id and detailId
-          const itemDetailId = item.id ?? item.detailId;
+          const itemDetailIdForRecord = item.id ?? item.detailId;
 
           let processingRecord = await RequestItemProcessing.findOne({
             where: {
               requestId: request.requestId,
-              requestDetailId: itemDetailId,
+              requestDetailId: itemDetailIdForRecord,
               groupId: parseInt(groupId),
             },
             lock: transaction.LOCK.UPDATE,
@@ -4514,14 +4543,9 @@ exports.processRequests = async (req, res) => {
                 referenceType: "request",
                 referenceId: request.requestId,
                 changedBy: userId,
-                grnNumber:
-                  action === "STOCK_IN"
-                    ? documentRefs?.[request.requestId] || null
-                    : null,
-                sivNumber:
-                  action === "STOCK_OUT"
-                    ? documentRefs?.[request.requestId] || null
-                    : null,
+                // ✅ PER-ITEM DOC
+                grnNumber: action === "STOCK_IN" ? itemDoc : null,
+                sivNumber: action === "STOCK_OUT" ? itemDoc : null,
                 uomUsed: uomCode,
                 isBaseUom: true,
                 remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Base UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
@@ -4539,6 +4563,8 @@ exports.processRequests = async (req, res) => {
               action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
               uomUsed: uomCode,
               isBaseUom: true,
+              grnNumber: action === "STOCK_IN" ? itemDoc : null,
+              sivNumber: action === "STOCK_OUT" ? itemDoc : null,
             });
 
             processedCount++;
@@ -4554,6 +4580,7 @@ exports.processRequests = async (req, res) => {
               previousBalance,
               newBalance,
               isPartial: quantityToProcess < requestedQty,
+              docRef: itemDoc,
             });
           } else {
             // ============ CONVERTED UOM ============
@@ -4650,14 +4677,9 @@ exports.processRequests = async (req, res) => {
                 referenceType: "request",
                 referenceId: request.requestId,
                 changedBy: userId,
-                grnNumber:
-                  action === "STOCK_IN"
-                    ? documentRefs?.[request.requestId] || null
-                    : null,
-                sivNumber:
-                  action === "STOCK_OUT"
-                    ? documentRefs?.[request.requestId] || null
-                    : null,
+                // ✅ PER-ITEM DOC
+                grnNumber: action === "STOCK_IN" ? itemDoc : null,
+                sivNumber: action === "STOCK_OUT" ? itemDoc : null,
                 uomUsed: uomCode,
                 isBaseUom: false,
                 remark: `${action === "STOCK_IN" ? "Received" : "Sent"} ${Math.abs(changeAmount)} ${uomCode} (Converted UOM) from request ${request.requestCode} for group ${group.name} - By: ${user.fullName}`,
@@ -4675,6 +4697,8 @@ exports.processRequests = async (req, res) => {
               action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
               uomUsed: uomCode,
               isBaseUom: false,
+              grnNumber: action === "STOCK_IN" ? itemDoc : null,
+              sivNumber: action === "STOCK_OUT" ? itemDoc : null,
             });
 
             processedCount++;
@@ -4690,6 +4714,7 @@ exports.processRequests = async (req, res) => {
               previousBalance,
               newBalance,
               isPartial: quantityToProcess < requestedQty,
+              docRef: itemDoc,
             });
           }
 
@@ -4714,7 +4739,7 @@ exports.processRequests = async (req, res) => {
             await RequestItemProcessing.create(
               {
                 requestId: request.requestId,
-                requestDetailId: itemDetailId,
+                requestDetailId: itemDetailIdForRecord,
                 groupId: parseInt(groupId),
                 storeId: parseInt(storeId),
                 itemId: item.itemId,
@@ -4754,9 +4779,9 @@ exports.processRequests = async (req, res) => {
       });
 
       const allItemsCompleted = request.items.every((item) => {
-        const itemDetailId = item.id ?? item.detailId;
+        const itemDetailIdForCheck = item.id ?? item.detailId;
         const record = allProcessingRecords.find(
-          (r) => parseInt(r.requestDetailId) === parseInt(itemDetailId)
+          (r) => parseInt(r.requestDetailId) === parseInt(itemDetailIdForCheck)
         );
         return record && parseFloat(record.remainingQuantity) <= 0;
       });
@@ -4927,6 +4952,8 @@ exports.processRequests = async (req, res) => {
     });
   }
 };
+
+
 // ============================================
 // GET ALL REQUEST PROCESSING STATUS
 // ============================================

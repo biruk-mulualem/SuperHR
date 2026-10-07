@@ -1,6 +1,6 @@
 // models/ItemRequest.js
 'use strict';
-const { Model,Op } = require('sequelize');
+const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
   class ItemRequest extends Model {
@@ -214,19 +214,20 @@ ItemRequest.hasMany(models.RequestNotification, {
       createdAt: 'created_at',
       updatedAt: 'updated_at',
       hooks: {
-    beforeCreate: async (request) => {
-  if (!request.requestCode) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    
-    const count = await ItemRequest.count();      // ← 🚨 still the old logic
-    const sequence = String(count + 1).padStart(3, '0');
-    
-    request.requestCode = `REQ-${year}${month}${day}-${sequence}`;
-  }
-},
+        beforeCreate: async (request) => {
+          // Generate request code if not provided
+          if (!request.requestCode) {
+            const date = new Date();
+            const year = date.getFullYear().toString().slice(-2);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            const count = await ItemRequest.count();
+            const sequence = String(count + 1).padStart(3, '0');
+            
+            request.requestCode = `REQ-${year}${month}${day}-${sequence}`;
+          }
+        },
         beforeUpdate: async (request) => {
           // Set approval/finalization timestamps when status changes
           if (request.changed('status')) {
@@ -247,43 +248,17 @@ ItemRequest.hasMany(models.RequestNotification, {
   // ================================================================
 
   // Generate next request code
- ItemRequest.generateRequestCode = async function({ maxAttempts = 20 } = {}) {
-  const prefix = "REQ";
-  const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, ""); // "261005"
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // Find the highest existing code for TODAY, not the row count.
-    const last = await ItemRequest.findOne({
-      where: {
-        requestCode: { [Op.like]: `${prefix}-${dateStr}-%` },
-      },
-      order: [["id", "DESC"]],
-      attributes: ["requestCode"],
-    });
-
-    let next = 1;
-    if (last?.requestCode) {
-      const parts = String(last.requestCode).split("-");
-      const n = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(n)) next = n + 1;
-    }
-
-    const candidate = `${prefix}-${dateStr}-${String(next).padStart(3, "0")}`;
-
-    // Verify no row exists with this code
-    const exists = await ItemRequest.findOne({
-      where: { requestCode: candidate },
-      attributes: ["id"],
-    });
-    if (!exists) return candidate;
-
-    // Collision — wait a tick and try again with the bumped number
-    await new Promise((r) => setTimeout(r, 15 + attempt * 5));
-  }
-
-  // Extreme fallback — timestamp-based, guaranteed unique
-  return `${prefix}-${dateStr}-${Date.now().toString(36).toUpperCase()}`;
-};
+  ItemRequest.generateRequestCode = async function() {
+    const date = new Date();
+    const year = date.getFullYear().toString().slice(-2);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    
+    const count = await this.count();
+    const sequence = String(count + 1).padStart(3, '0');
+    
+    return `REQ-${year}${month}${day}-${sequence}`;
+  };
 
   // Get requests by user
   ItemRequest.getByUser = function(userId) {

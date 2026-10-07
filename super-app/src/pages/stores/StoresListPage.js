@@ -20,6 +20,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as IntentLauncher from 'expo-intent-launcher';
 
+import api from '../../stores/interceptor';
 import mobileStoreListService from '../../stores/mobileStoreListService';
 
 const PAGE_SIZE = 10;
@@ -30,6 +31,15 @@ const STATUS_FILTER = 'active';
 // MIME for xlsx
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// ✅ Export tuning
+const EXPORT_TIMEOUT_MS = 190000;   // 3 min 10 s per attempt
+const EXPORT_MAX_ATTEMPTS = 2;      // try twice if the first times out
+const EXPORT_RETRY_DELAY_MS = 1000; // 1 s pause between attempts
+
+const isTimeoutError = (e) =>
+  e?.code === 'ECONNABORTED' ||
+  /timeout/i.test(String(e?.message || ''));
 
 export default function StoresListPage({
   onNavigateToDetail,
@@ -179,36 +189,95 @@ export default function StoresListPage({
   }, [query]);
 
   // -----------------------------------------------------------------
-  // EXPORT TO EXCEL — server-rendered .xlsx, single request
+  // EXPORT TO EXCEL
+  //   Uses axios (190 s timeout, token from interceptor) instead of
+  //   File.downloadFileAsync (which has a hardcoded 10 s timeout).
+  //   Retries once on timeout — first call warms Postgres + Node caches,
+  //   so the second attempt is typically fast.
   // -----------------------------------------------------------------
   const handleExportExcel = useCallback(async () => {
     if (exporting) return;
     setExporting(true);
 
-    try {
-      // 1. Build the download URL (with the current search applied)
-      const url = mobileStoreListService.getStoreListXlsxUrl({
-        status: STATUS_FILTER,
-        q: query.trim(),
+    // One-shot flag so we only show "still building" toast once
+    let showedSlowHint = false;
+
+    const fetchXlsx = () =>
+      api.get('/mobile/store-list/export.xlsx', {
+        params: {
+          status: STATUS_FILTER,
+          q: query.trim(),
+        },
+        responseType: 'arraybuffer',   // ✅ raw binary
+        timeout: EXPORT_TIMEOUT_MS,    // ✅ 190 s per attempt
       });
 
-      // 2. Read the token from AsyncStorage (same source as the interceptor)
-      const headers = await mobileStoreListService.getAuthHeaders();
+    try {
+      let response = null;
+      let lastErr = null;
 
-      // Optional debug — remove after verifying
-      // console.log('🔎 export headers:', JSON.stringify(headers));
+      for (let attempt = 1; attempt <= EXPORT_MAX_ATTEMPTS; attempt++) {
+        try {
+          response = await fetchXlsx();
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
 
-      // 3. Download the styled .xlsx into the cache
+          // Only retry on timeout; other errors bail immediately
+          if (!isTimeoutError(err) || attempt >= EXPORT_MAX_ATTEMPTS) {
+            throw err;
+          }
+
+          if (!showedSlowHint) {
+            showedSlowHint = true;
+            console.log(
+              `[stores] export timed out on attempt ${attempt} — retrying once (caches warm up on first call)…`
+            );
+          }
+
+          // Small pause before the retry so the server can finish warming up
+          await new Promise((r) => setTimeout(r, EXPORT_RETRY_DELAY_MS));
+        }
+      }
+
+      if (!response) throw lastErr || new Error('Export failed');
+
+      // -------- Write the bytes to a cache file --------
       const fileName = `stores_export_${Date.now()}.xlsx`;
       const outFile = new File(Paths.cache, fileName);
 
-      await File.downloadFileAsync(url, outFile, { headers });
+      outFile.create({ overwrite: true });
+      outFile.write(new Uint8Array(response.data));
 
-      // 4. Let the user Open / Share / Cancel
+      // -------- Let the user Open / Share / Cancel --------
       await showExportActions(outFile.uri);
     } catch (e) {
       console.error('[stores] export failed:', e);
-      Alert.alert('Export failed', e?.message || 'Could not export stores.');
+
+      let msg = 'Could not export stores.';
+      const status = e?.response?.status;
+
+      if (isTimeoutError(e)) {
+        msg =
+          'Export is taking too long. The server may be busy — please try again in a moment.';
+      } else if (status === 401) {
+        msg = 'Session expired. Please log in again.';
+      } else if (status === 403) {
+        msg = 'Access denied.';
+      } else if (status === 404) {
+        msg = 'Export endpoint not available. Contact support.';
+      } else if (status === 500) {
+        msg =
+          e?.response?.data?.error ||
+          'Server error while building the export.';
+      } else if (e?.response?.data?.error) {
+        msg = e.response.data.error;
+      } else if (e?.message) {
+        msg = e.message;
+      }
+
+      Alert.alert('Export failed', msg);
     } finally {
       setExporting(false);
     }

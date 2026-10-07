@@ -1,6 +1,5 @@
 // controllers/itemRequestController.js
 "use strict";
-
 const db = require("../models");
 const {
   ItemRequest,
@@ -1241,7 +1240,15 @@ exports.getRequests = async (req, res) => {
             {
               model: Item,
               as: "item",
-              include: [{ model: UOM, as: "uom" }],
+              include: [
+                { model: UOM, as: "uom" },
+                {
+                  model: db.Category,
+                  as: "category",
+                  attributes: ["categoryId", "name"],
+                  required: false,
+                },
+              ],
             },
           ],
           attributes: [
@@ -3292,7 +3299,15 @@ exports.getGroupNotifications = async (req, res) => {
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }],
+                  include: [
+                    { model: UOM, as: "uom" },
+                    {
+                      model: db.Category,
+                      as: "category",
+                      attributes: ["categoryId", "name"],
+                      required: false,
+                    },
+                  ],
                 },
               ],
             },
@@ -3403,22 +3418,30 @@ exports.getDepartmentNotifications = async (req, res) => {
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }]
-                }
-              ]
-            }
-          ]
+                  include: [
+                    { model: UOM, as: "uom" },
+                    {
+                      model: db.Category,
+                      as: "category",
+                      attributes: ["categoryId", "name"],
+                      required: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
         },
         {
           model: Department,
           as: "department",
-          attributes: ["department_id", "name", "code", "description"]
+          attributes: ["department_id", "name", "code", "description"],
         },
         {
           model: User,
           as: "respondedByUser",
-          attributes: ["userId", "username", "fullName"]
-        }
+          attributes: ["userId", "username", "fullName"],
+        },
       ],
       order: [["created_at", "DESC"]],
       limit: parseInt(limit) || 10,
@@ -3490,6 +3513,9 @@ exports.getStoreGroups = async (req, res) => {
   }
 };
 
+// ================================================================
+// 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
+// ================================================================
 // ================================================================
 // 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
 // ================================================================
@@ -3592,11 +3618,19 @@ exports.getPendingNotifications = async (req, res) => {
                   {
                     model: Item,
                     as: "item",
-                    include: [{ model: UOM, as: "uom" }]
-                  }
-                ]
-              }
-            ]
+                    include: [
+                      { model: UOM, as: "uom" },
+                      {
+                        model: db.Category,
+                        as: "category",
+                        attributes: ["categoryId", "name"],
+                        required: false,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
           { model: Group, as: "group" },
           { model: Store, as: "store" },
@@ -3630,11 +3664,19 @@ exports.getPendingNotifications = async (req, res) => {
                   {
                     model: Item,
                     as: "item",
-                    include: [{ model: UOM, as: "uom" }]
-                  }
-                ]
-              }
-            ]
+                    include: [
+                      { model: UOM, as: "uom" },
+                      {
+                        model: db.Category,
+                        as: "category",
+                        attributes: ["categoryId", "name"],
+                        required: false,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
           {
             model: Department,

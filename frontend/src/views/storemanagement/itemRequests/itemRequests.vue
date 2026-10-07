@@ -366,6 +366,7 @@
                             <th>#</th>
                             <th>Item Name</th>
                             <th>Item Code</th>
+                             <th>Category</th>
                             <th>Brand</th>
                             <th>Model</th>
                             <th>UOM</th>
@@ -375,15 +376,19 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-if="!req.items || req.items.length === 0">
-                            <td colspan="9" class="text-center no-items">
-                              No items in this request
-                            </td>
-                          </tr>
+                        <tr class="total-row">
+  <td colspan="8" class="text-right">
+    <strong>Total Items:</strong>
+  </td>
+  <td class="text-center">
+    <strong>{{ req.items?.length || 0 }}</strong>
+  </td>
+</tr>
                           <tr v-for="(item, index) in req.items" :key="index">
                             <td class="text-center">{{ index + 1 }}</td>
                             <td>{{ getItemNameFromRequest(item) }}</td>
                             <td>{{ getItemCodeFromRequest(item) }}</td>
+                            <td>{{ getItemCategoryFromRequest(item) || "-" }}</td>
                             <td>{{ getItemBrandFromRequest(item) || "-" }}</td>
                             <td>{{ getItemModelFromRequest(item) || "-" }}</td>
                             <td>
@@ -1173,6 +1178,19 @@ const getItemCodeFromRequest = (item: any): string => {
   if (item.itemCode) return item.itemCode;
   if (item.code) return item.code;
   return "N/A";
+};
+
+
+const getItemCategoryFromRequest = (item: any): string => {
+  if (item.item?.category?.name) return item.item.category.name;
+  if (item.category?.name) return item.category.name;
+
+  // Fallback: look up the item in the loaded items array
+  const globalItem = items.value.find(i => (i.itemId || i.id) === item.itemId);
+  const anyItem = globalItem as any;
+  if (anyItem?.category?.name) return anyItem.category.name;
+
+  return "";
 };
 
 const getItemBrandFromRequest = (item: any): string => {

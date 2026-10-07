@@ -198,7 +198,6 @@
                       <div class="partial-item-info">
                         <div class="partial-item-name">
                           {{ getItemCommonName(item.itemId) }}
-                          <!-- ✅ NEW: Done indicator -->
                           <span
                             v-if="getItemProcessingStatus(getItemKey(req.id, item)) === 'completed'"
                             class="item-done-tag"
@@ -345,7 +344,7 @@
                 v-for="req in selectedRequests"
                 :key="req.id"
                 class="preview-request"
-                :class="{ 'has-error': requestDocsErrors[req.id] }"
+                :class="{ 'has-error': requestHasErrors(req) }"
               >
                 <div class="preview-request-header">
                   <span class="preview-request-code">{{ req.requestCode }}</span>
@@ -355,75 +354,79 @@
                   <span v-if="hasCustomConfig(req.id)" class="custom-badge">
                     🔀 Partial
                   </span>
-                  <span v-if="requestDocsErrors[req.id]" class="doc-error-badge">
+                  <span v-if="requestHasErrors(req)" class="doc-error-badge">
                     ⚠️ Required
                   </span>
                   <span
-                    v-else-if="requestDocs[req.id] && requestDocs[req.id].trim()"
+                    v-else-if="requestAllDocsFilled(req)"
                     class="doc-valid-badge"
                   >
                     ✅
                   </span>
                 </div>
 
+                <!-- ============================================ -->
+                <!-- PER-ITEM DOC INPUTS                          -->
+                <!-- ============================================ -->
                 <div class="preview-request-items">
-                  <span
+                  <div
                     v-for="item in getPreviewItems(req)"
                     :key="item.key"
-                    class="preview-item"
-                    :class="{ 'preview-item--skipped': !item.included }"
+                    class="preview-item-row"
+                    :class="{ 'preview-item-row--skipped': !item.included }"
                   >
-                    {{ getItemCommonName(item.itemId) }}
-                    <span class="preview-qty" v-if="item.included">
-                      ×{{ Number(item.qty).toFixed(2) }} {{ getUomDisplay(item) }}
-                    </span>
-                    <span class="preview-qty preview-qty--skipped" v-else>
-                      skipped
-                    </span>
-                  </span>
-                </div>
+                    <!-- Item name + qty -->
+                    <div class="preview-item-info">
+                      <span class="preview-item-name">
+                        {{ getItemCommonName(item.itemId) }}
+                      </span>
+                      <span class="preview-item-qty" v-if="item.included">
+                        ×{{ Number(item.qty).toFixed(2) }} {{ getUomDisplay(item) }}
+                      </span>
+                      <span class="preview-item-qty preview-qty--skipped" v-else>
+                        skipped
+                      </span>
+                    </div>
 
-                <div class="preview-request-doc">
-                  <div
-                    class="doc-input-wrapper"
-                    :class="[
-                      getItemActionClass(req),
-                      { 'has-error': requestDocsErrors[req.id] },
-                    ]"
-                  >
-                    <span class="doc-input-icon">
-                      {{ getItemActionLabel(req).includes('ADD') ? '📥' : '📤' }}
-                    </span>
-                    <span class="doc-input-label">
-                      {{
-                        getItemActionLabel(req).includes('ADD')
-                          ? 'GRN No.'
-                          : 'S.I.V No.'
-                      }}
-                    </span>
-                    <input
-                      v-model="requestDocs[req.id]"
-                      type="text"
-                      class="doc-input-field"
-                      :class="{ 'has-error': requestDocsErrors[req.id] }"
-                      :placeholder="
-                        getItemActionLabel(req).includes('ADD')
-                          ? 'Enter GRN Number...'
-                          : 'Enter S.I.V Number...'
-                      "
-                      :disabled="processing"
-                      @input="validateDoc(req.id)"
-                      @blur="validateDoc(req.id)"
-                    />
-                    <span v-if="requestDocsErrors[req.id]" class="doc-error-msg">
-                      Required
-                    </span>
-                    <span
-                      v-else-if="requestDocs[req.id] && requestDocs[req.id].trim()"
-                      class="doc-valid-icon"
+                    <!-- Per-item doc input -->
+                    <div
+                      v-if="item.included"
+                      class="doc-input-wrapper doc-input-wrapper--item"
+                      :class="[
+                        getItemActionClass(req),
+                        { 'has-error': requestDocsErrors[item.key] },
+                      ]"
                     >
-                      ✅
-                    </span>
+                      <span class="doc-input-icon">
+                        {{ getItemActionLabel(req).includes('ADD') ? '📥' : '📤' }}
+                      </span>
+                      <span class="doc-input-label">
+                        {{ getItemActionLabel(req).includes('ADD') ? 'GRN No.' : 'S.I.V No.' }}
+                      </span>
+                      <input
+                        v-model="requestDocs[item.key]"
+                        type="text"
+                        class="doc-input-field"
+                        :class="{ 'has-error': requestDocsErrors[item.key] }"
+                        :placeholder="
+                          getItemActionLabel(req).includes('ADD')
+                            ? 'Enter GRN Number...'
+                            : 'Enter S.I.V Number...'
+                        "
+                        :disabled="processing"
+                        @input="validateDoc(item.key)"
+                        @blur="validateDoc(item.key)"
+                      />
+                      <span v-if="requestDocsErrors[item.key]" class="doc-error-msg">
+                        Required
+                      </span>
+                      <span
+                        v-else-if="requestDocs[item.key] && requestDocs[item.key].trim()"
+                        class="doc-valid-icon"
+                      >
+                        ✅
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -436,14 +439,13 @@
             <div v-if="selectedRequestIds.length > 0" class="doc-summary">
               <span class="doc-summary-icon">📋</span>
               <span class="doc-summary-text">
-                {{ getFilledDocCount() }} of {{ selectedRequestIds.length }} requests
-                have document references
+                {{ getFilledDocCount() }} of {{ getTotalRequiredDocCount() }} item docs filled
               </span>
               <span v-if="!isAllDocsValid" class="doc-summary-warning">
                 ⚠️ Please fill all required fields
               </span>
               <span v-else class="doc-summary-success">
-                ✅ All document references provided
+                ✅ All item document references provided
               </span>
             </div>
           </div>
@@ -570,12 +572,16 @@
                 {{ totalCustomizedCount }} request(s) will process partially
               </span>
             </div>
+            <!-- Document references — now per-item -->
             <div
-              v-for="(doc, reqId) in getDocumentReferences()"
-              :key="reqId"
+              v-for="(doc, itemKey) in getDocumentReferences()"
+              :key="itemKey"
               class="detail-row"
             >
-              <span class="detail-label">📄 {{ getRequestCode(Number(reqId)) }}</span>
+              <span class="detail-label">
+                📄 {{ getRequestCodeFromComposite(itemKey) }} ·
+                {{ getItemNameFromComposite(itemKey) }}
+              </span>
               <span class="detail-value">{{ doc }}</span>
             </div>
           </div>
@@ -670,6 +676,7 @@ const processing = ref(false);
 const selectAllRequests = ref(false);
 const showConfirmation = ref(false);
 
+// ✅ Now keyed by composite key "reqId::itemId"
 const requestDocs = ref({});
 const requestDocsErrors = ref({});
 
@@ -697,18 +704,19 @@ const selectedRequests = computed(() =>
   )
 );
 
+/**
+ * ✅ CHANGED: Now validates every INCLUDED item per selected request.
+ * For each item returned by getPreviewItems() with included === true,
+ * a non-empty doc must exist at requestDocs[item.key].
+ */
 const isAllDocsValid = computed(() => {
   if (selectedRequestIds.value.length === 0) return false;
-  for (const id of selectedRequestIds.value) {
-    const req = selectedRequests.value.find((r) => r.id === id);
-    if (!req) continue;
-    const actionLabel = getItemActionLabel(req);
-    const docValue = requestDocs.value[id] || '';
-    if (
-      (actionLabel.includes('ADD') || actionLabel.includes('REMOVE')) &&
-      !docValue.trim()
-    ) {
-      return false;
+
+  for (const req of selectedRequests.value) {
+    const includedItems = getPreviewItems(req).filter((i) => i.included);
+    for (const item of includedItems) {
+      const val = (requestDocs.value[item.key] || '').trim();
+      if (!val) return false;
     }
   }
   return true;
@@ -728,7 +736,7 @@ const buildItemsToProcess = computed(() => {
         if (itemSelection.value[key] && qty > 0) {
           out.push({
             requestId: req.id,
-            requestDetailId: item.id,
+            requestDetailId: item.id ?? item.detailId,
             quantity: qty,
           });
         }
@@ -737,7 +745,7 @@ const buildItemsToProcess = computed(() => {
       (req.items || []).forEach((item) => {
         out.push({
           requestId: req.id,
-          requestDetailId: item.id,
+          requestDetailId: item.id ?? item.detailId,
           quantity: Number(item.quantity),
         });
       });
@@ -750,16 +758,15 @@ const buildItemsToProcess = computed(() => {
    WATCHERS
    ================================================================ */
 watch(selectedRequestIds, (newIds) => {
-  const currentIds = new Set(newIds);
+  const currentReqIds = new Set(newIds);
 
-  Object.keys(requestDocs.value).forEach((id) => {
-    if (!currentIds.has(Number(id))) {
-      delete requestDocs.value[id];
-      delete requestDocsErrors.value[id];
+  // ✅ CHANGED: clean doc entries whose composite key doesn't belong to a still-selected request
+  Object.keys(requestDocs.value).forEach((compositeKey) => {
+    const [reqIdStr] = String(compositeKey).split('::');
+    if (!currentReqIds.has(Number(reqIdStr))) {
+      delete requestDocs.value[compositeKey];
+      delete requestDocsErrors.value[compositeKey];
     }
-  });
-  newIds.forEach((id) => {
-    if (!requestDocs.value[id]) requestDocs.value[id] = '';
   });
 
   // Clean item state for deselected requests (parse composite keys)
@@ -782,12 +789,12 @@ watch(selectedRequestIds, (newIds) => {
   itemProcessingInfo.value = newInfo;
 
   Object.keys(configuredRequests.value).forEach((reqId) => {
-    if (!currentIds.has(Number(reqId))) {
+    if (!currentReqIds.has(Number(reqId))) {
       delete configuredRequests.value[reqId];
     }
   });
 
-  if (expandedRequestId.value && !currentIds.has(expandedRequestId.value)) {
+  if (expandedRequestId.value && !currentReqIds.has(expandedRequestId.value)) {
     expandedRequestId.value = null;
   }
 }, { immediate: true });
@@ -884,21 +891,45 @@ const getItemsByAction = (action) => {
   return count;
 };
 
+/**
+ * ✅ CHANGED: counts filled per-item docs across all selected requests.
+ */
 const getFilledDocCount = () => {
   let count = 0;
-  selectedRequestIds.value.forEach((id) => {
-    if (requestDocs.value[id] && requestDocs.value[id].trim()) count++;
-  });
+  for (const req of selectedRequests.value) {
+    const includedItems = getPreviewItems(req).filter((i) => i.included);
+    for (const item of includedItems) {
+      if ((requestDocs.value[item.key] || '').trim()) count++;
+    }
+  }
   return count;
 };
 
+/**
+ * ✅ NEW: total number of included items across all selected requests
+ * that need a doc.
+ */
+const getTotalRequiredDocCount = () => {
+  let count = 0;
+  for (const req of selectedRequests.value) {
+    count += getPreviewItems(req).filter((i) => i.included).length;
+  }
+  return count;
+};
+
+/**
+ * ✅ CHANGED: emits flat map keyed by composite "reqId::itemId".
+ * The backend reads documentRefs[`${requestId}::${itemDetailId}`].
+ */
 const getDocumentReferences = () => {
   const docs = {};
-  selectedRequestIds.value.forEach((id) => {
-    if (requestDocs.value[id] && requestDocs.value[id].trim()) {
-      docs[id] = requestDocs.value[id].trim();
+  for (const req of selectedRequests.value) {
+    const includedItems = getPreviewItems(req).filter((i) => i.included);
+    for (const item of includedItems) {
+      const val = (requestDocs.value[item.key] || '').trim();
+      if (val) docs[item.key] = val;
     }
-  });
+  }
   return docs;
 };
 
@@ -907,14 +938,46 @@ const getRequestCode = (reqId) => {
   return req ? req.requestCode : reqId;
 };
 
-const validateDoc = (reqId) => {
-  const req = selectedRequests.value.find((r) => r.id === reqId);
-  if (!req) return;
-  const label = getItemActionLabel(req);
-  const val = requestDocs.value[reqId] || '';
-  if (label.includes('ADD') || label.includes('REMOVE')) {
-    requestDocsErrors.value[reqId] = !val.trim();
-  }
+const getRequestCodeFromComposite = (compositeKey) => {
+  const [reqIdStr] = String(compositeKey).split('::');
+  return getRequestCode(Number(reqIdStr));
+};
+
+const getItemNameFromComposite = (compositeKey) => {
+  const [, itemIdStr] = String(compositeKey).split('::');
+  return getItemCommonName(Number(itemIdStr));
+};
+
+/* ================================================================
+   ✅ PER-REQUEST DOC VALIDATION HELPERS
+   ================================================================ */
+
+/**
+ * Returns true if any included item in the given request is missing a doc.
+ */
+const requestHasErrors = (req) => {
+  const includedItems = getPreviewItems(req).filter((i) => i.included);
+  return includedItems.some((item) => !(requestDocs.value[item.key] || '').trim());
+};
+
+/**
+ * Returns true if every included item in the given request has a doc.
+ */
+const requestAllDocsFilled = (req) => {
+  const includedItems = getPreviewItems(req).filter((i) => i.included);
+  if (includedItems.length === 0) return false;
+  return includedItems.every((item) => (requestDocs.value[item.key] || '').trim());
+};
+
+/**
+ * ✅ CHANGED: now takes a composite key instead of a request id.
+ */
+const validateDoc = (itemKey) => {
+  const val = (requestDocs.value[itemKey] || '').trim();
+  requestDocsErrors.value = {
+    ...requestDocsErrors.value,
+    [itemKey]: !val,
+  };
 };
 
 /* ================================================================
@@ -958,7 +1021,6 @@ const closePartialPanel = () => {
         const qty = Number(itemQuantities.value[key] || 0);
         const original = Number(item.quantity);
         const remaining = getRemainingQty(key);
-        // If item has no remaining qty (already completed), skip the check
         if (remaining <= 0) return true;
         return sel && Math.abs(qty - original) < 0.0001;
       });
@@ -1082,7 +1144,6 @@ const loadItemDetailsForRequest = async (reqId) => {
       Number(selectedStoreId.value)
     );
 
-    // 🔍 DEBUG: What did the backend return?
     console.log('🔍 ================================');
     console.log('🔍 loadItemDetailsForRequest reqId:', reqId);
     console.log('🔍 Backend response items:');
@@ -1114,15 +1175,12 @@ const loadItemDetailsForRequest = async (reqId) => {
 
     (req?.items || []).forEach((item) => {
       const key = getItemKey(reqId, item);
-      // ✅ FIX: item.id may be undefined if Sequelize renamed it to detailId
       const itemDetailId = item.id ?? item.detailId;
       const apiInfo = apiInfoByDetailId[itemDetailId] || {
         processedQuantity: 0,
         remainingQuantity: Number(item.quantity) || 0,
         status: 'pending',
       };
-
-      console.log(`🔍 Item key=${key} | itemDetailId=${itemDetailId} | found API info? ${!!apiInfoByDetailId[itemDetailId]} | remaining=${apiInfo.remainingQuantity}`);
 
       newInfo[key] = apiInfo;
       if (newQuantities[key] === undefined) {
@@ -1133,12 +1191,10 @@ const loadItemDetailsForRequest = async (reqId) => {
       }
     });
 
-    // ✅ Unselect items that have no remaining quantity
     (req?.items || []).forEach((item) => {
       const key = getItemKey(reqId, item);
       const info = newInfo[key];
       if (info && Number(info.remainingQuantity) <= 0) {
-        console.log(`🔍 UNSELECTING key=${key} (remaining=${info.remainingQuantity})`);
         newSelection[key] = false;
         newQuantities[key] = 0;
       }
@@ -1192,7 +1248,6 @@ const getRemainingQty = (itemKey) => {
   const info = itemProcessingInfo.value[itemKey];
   if (info) return Number(info.remainingQuantity) || 0;
 
-  // Fallback: parse composite key → reqId + itemId
   const [reqIdStr, itemIdStr] = String(itemKey).split('::');
   const reqId = Number(reqIdStr);
   const numericItemId = Number(itemIdStr);
@@ -1241,7 +1296,7 @@ const getPreviewItems = (req) => {
       : remaining;
     return {
       key,
-      id: item.id,
+      id: item.id ?? item.detailId,
       itemId: item.itemId,
       quantity: item.quantity,
       qty,
@@ -1259,7 +1314,6 @@ const getFinalProcessedItemCount = () => {
         return itemSelection.value[key] && getRemainingQty(key) > 0;
       }).length;
     } else {
-      // Count only items with remaining qty
       n += (req.items || []).filter((i) => {
         const key = getItemKey(req.id, i);
         return getRemainingQty(key) > 0;
@@ -1377,6 +1431,7 @@ const processRequests = async () => {
   processing.value = true;
 
   try {
+    // ✅ Now flat map keyed by "reqId::itemId"
     const documentRefs = getDocumentReferences();
 
     const payload = {
@@ -2069,7 +2124,6 @@ onMounted(async () => {
   color: #16a34a;
 }
 
-/* ✅ NEW: Done indicator tag */
 .item-done-tag {
   display: inline-block;
   font-size: 10px;
@@ -2259,7 +2313,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 4px;
 }
@@ -2297,30 +2351,50 @@ onMounted(async () => {
   border-radius: 10px;
 }
 
+/* ================================================================
+   PER-ITEM DOC ROWS
+   ================================================================ */
 .preview-request-items {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #f1f5f9;
   flex-wrap: wrap;
-  gap: 4px 8px;
 }
 
-.preview-item {
-  font-size: 12px;
-  color: #1e293b;
-  background: white;
-  padding: 2px 10px;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
+.preview-item-row:last-child {
+  border-bottom: none;
 }
 
-.preview-item--skipped {
+.preview-item-row--skipped {
   opacity: 0.55;
-  text-decoration: line-through;
 }
 
-.preview-qty {
+.preview-item-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 220px;
+  flex: 0 0 auto;
+}
+
+.preview-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.preview-item-qty {
   font-weight: 600;
   color: #64748b;
-  margin-left: 2px;
+  font-size: 12px;
 }
 
 .preview-qty--skipped {
@@ -2338,12 +2412,9 @@ onMounted(async () => {
   border-radius: 6px;
 }
 
-.preview-request-doc {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed #e2e8f0;
-}
-
+/* ================================================================
+   DOC INPUT (shared + per-item variant)
+   ================================================================ */
 .doc-input-wrapper {
   display: flex;
   align-items: center;
@@ -2373,6 +2444,11 @@ onMounted(async () => {
 .doc-input-wrapper.has-error {
   border-color: #ef4444;
   background: #fef2f2;
+}
+
+.doc-input-wrapper--item {
+  flex: 1;
+  min-width: 320px;
 }
 
 .doc-input-icon {
@@ -2883,6 +2959,14 @@ onMounted(async () => {
   .partial-item-qty {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .preview-item-info {
+    min-width: 100%;
+  }
+
+  .doc-input-wrapper--item {
+    min-width: 100%;
   }
 
   .doc-input-field {
