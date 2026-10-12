@@ -142,6 +142,18 @@
                       {{ expandedRequestId === req.id ? 'Close' : 'Partial' }}
                     </span>
                   </button>
+
+                  <!-- 🚫 Skip button (next to Partial) -->
+                  <button
+                    v-if="selectedRequestIds.includes(req.id)"
+                    type="button"
+                    class="btn-skip"
+                    @click.stop="openCancelModal(req)"
+                    title="Skip this request for your group"
+                  >
+                    <span class="skip-icon">🚫</span>
+                    <span class="skip-label">Skip</span>
+                  </button>
                 </div>
 
                 <!-- 🔀 PARTIAL PANEL -->
@@ -633,6 +645,96 @@
         </div>
       </div>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- SKIP-FOR-GROUP MODAL                                         -->
+    <!-- ============================================================ -->
+    <div
+      v-if="showCancelModal"
+      class="modal-overlay"
+      @click.self="closeCancelModal"
+    >
+      <div class="modal-container confirmation-modal">
+        <div class="modal-header">
+          <div class="modal-header-content">
+            <span class="modal-icon">🚫</span>
+            <div>
+              <h3>Skip Request</h3>
+              <p class="modal-subtitle">{{ cancelTargetRequest?.requestCode }}</p>
+            </div>
+          </div>
+          <button class="modal-close" @click="closeCancelModal">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="confirmation-icon">🚫</div>
+          <p class="confirmation-title">
+            Skip this request for your group?
+          </p>
+
+          <div class="confirmation-details">
+            <div class="detail-row">
+              <span class="detail-label">Request</span>
+              <span class="detail-value">{{ cancelTargetRequest?.requestCode }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Items</span>
+              <span class="detail-value">
+                {{ cancelTargetRequest?.items?.length || 0 }} items
+              </span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Requested Date</span>
+              <span class="detail-value">
+                {{ formatDate(cancelTargetRequest?.requestedDate) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="warning-box" style="background:#eff6ff;border-color:#bfdbfe;">
+            <span class="warning-icon">ℹ️</span>
+            <span class="warning-text" style="color:#1e40af;">
+              This request will stop appearing in <strong>your group's</strong>
+              process list. Other groups are not affected.
+            </span>
+          </div>
+
+          <div class="cancel-reason-field">
+            <label>
+              Reason <span class="req">*</span>
+            </label>
+            <textarea
+              v-model="cancelReason"
+              rows="3"
+              placeholder="Why are you skipping this request…"
+              :class="{ 'has-error': cancelReasonError }"
+              :disabled="cancelling"
+              @input="cancelReasonError = ''"
+            ></textarea>
+            <span v-if="cancelReasonError" class="cancel-error">
+              {{ cancelReasonError }}
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            class="btn-secondary"
+            @click="closeCancelModal"
+            :disabled="cancelling"
+          >
+            Keep
+          </button>
+          <button
+            class="btn-primary skip-confirm-btn"
+            @click="confirmCancel"
+            :disabled="cancelling || cancelReason.trim().length < 3"
+          >
+            {{ cancelling ? 'Skipping…' : '🚫 Confirm Skip' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -686,6 +788,15 @@ const itemQuantities = ref({});
 const itemProcessingInfo = ref({});
 const configuredRequests = ref({});
 const loadingItemDetails = ref(false);
+
+// ================================================================
+// CANCEL (SKIP-FOR-GROUP) STATE
+// ================================================================
+const showCancelModal = ref(false);
+const cancelTargetRequest = ref(null);
+const cancelReason = ref('');
+const cancelReasonError = ref('');
+const cancelling = ref(false);
 
 /* ================================================================
    ✅ COMPOSITE KEY — unique per item per request
@@ -1400,6 +1511,86 @@ const onRequestSelect = () => {
 };
 
 /* ================================================================
+   CANCEL (SKIP-FOR-GROUP) HANDLERS
+   ================================================================ */
+const openCancelModal = (req) => {
+  cancelTargetRequest.value = req;
+  cancelReason.value = '';
+  cancelReasonError.value = '';
+  showCancelModal.value = true;
+};
+
+const closeCancelModal = () => {
+  showCancelModal.value = false;
+  cancelTargetRequest.value = null;
+  cancelReason.value = '';
+  cancelReasonError.value = '';
+  cancelling.value = false;
+};
+
+const confirmCancel = async () => {
+  const reason = cancelReason.value.trim();
+  if (reason.length < 3) {
+    cancelReasonError.value = 'Please provide a reason (min 3 characters)';
+    return;
+  }
+
+  const req = cancelTargetRequest.value;
+  if (!req) return;
+
+  const groupId = isAdmin.value
+    ? Number(selectedGroupId.value)
+    : userData.value?.assignedGroup?.id;
+
+  if (!groupId) {
+    cancelReasonError.value = 'No group selected';
+    return;
+  }
+
+  cancelling.value = true;
+  try {
+    const response = await balanceService.skipGroupProcessing(req.id, {
+      groupId,
+      remark: reason,
+    });
+
+    if (response.success) {
+      storeRequests.value = storeRequests.value.filter((r) => r.id !== req.id);
+
+      selectedRequestIds.value = selectedRequestIds.value.filter(
+        (id) => id !== req.id
+      );
+      selectAllRequests.value =
+        storeRequests.value.length > 0 &&
+        selectedRequestIds.value.length === storeRequests.value.length;
+
+      // Clean per-item state for this request
+      const prefix = `${req.id}::`;
+      [requestDocs, requestDocsErrors, itemSelection,
+       itemQuantities, itemProcessingInfo].forEach((mapRef) => {
+        Object.keys(mapRef.value).forEach((k) => {
+          if (k.startsWith(prefix)) delete mapRef.value[k];
+        });
+      });
+      delete configuredRequests.value[req.id];
+
+      if (expandedRequestId.value === req.id) {
+        expandedRequestId.value = null;
+      }
+
+      closeCancelModal();
+    } else {
+      cancelReasonError.value = response.error || 'Failed to cancel request';
+    }
+  } catch (err) {
+    console.error('Cancel request failed:', err);
+    cancelReasonError.value = 'Failed to cancel request';
+  } finally {
+    cancelling.value = false;
+  }
+};
+
+/* ================================================================
    CONFIRMATION & PROCESS
    ================================================================ */
 const openConfirmation = () => {
@@ -1923,6 +2114,36 @@ onMounted(async () => {
 .partial-label {
   font-size: 11px;
 }
+
+/* ================================================================
+   SKIP BUTTON (next to Partial)
+   ================================================================ */
+.btn-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1.5px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 6px;
+}
+
+.btn-skip:hover {
+  border-color: #ef4444;
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.skip-icon { font-size: 14px; }
+.skip-label { font-size: 11px; }
 
 /* ================================================================
    PARTIAL PANEL
@@ -2891,6 +3112,61 @@ onMounted(async () => {
 }
 
 /* ================================================================
+   SKIP MODAL
+   ================================================================ */
+.cancel-reason-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.cancel-reason-field label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.cancel-reason-field .req {
+  color: #ef4444;
+}
+
+.cancel-reason-field textarea {
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  padding: 11px 13px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.cancel-reason-field textarea:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.cancel-reason-field textarea.has-error {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.cancel-error {
+  font-size: 11.5px;
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.skip-confirm-btn {
+  background: #dc2626 !important;
+}
+
+.skip-confirm-btn:hover:not(:disabled) {
+  background: #b91c1c !important;
+}
+
+/* ================================================================
    ANIMATIONS
    ================================================================ */
 @keyframes fadeIn {
@@ -2947,7 +3223,13 @@ onMounted(async () => {
     margin-top: 4px;
   }
 
-  .partial-label {
+  .btn-skip {
+    margin-left: 0;
+    margin-top: 4px;
+  }
+
+  .partial-label,
+  .skip-label {
     display: none;
   }
 

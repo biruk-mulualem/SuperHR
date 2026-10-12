@@ -5026,7 +5026,11 @@ exports.getAllRequestProcessingStatus = async (req, res) => {
 };
 
 // ============================================
-// SKIP GROUP PROCESSING (Admin Only)
+// SKIP GROUP PROCESSING
+// - Admins can skip any group
+// - Non-admins can only skip their own group
+//   (membership resolved via UserGroupRelation;
+//    role resolved via Role table since users has no `role` column)
 // ============================================
 exports.skipGroupProcessing = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -5034,70 +5038,321 @@ exports.skipGroupProcessing = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { groupId, remark } = req.body;
-    const userId = req.user?.userId || 1;
+    const userId = req.user?.userId;
 
-    const user = await User.findByPk(userId);
-    if (!user || (user.role !== "admin" && user.role !== "Admin")) {
-      return res.status(403).json({
+    console.log('🚫 skipGroupProcessing called:', {
+      requestId,
+      groupId,
+      remark,
+      userId,
+    });
+
+    // ================================================================
+    // 1. VALIDATE INPUT
+    // ================================================================
+    if (!userId) {
+      await transaction.rollback();
+      return res.status(401).json({
         success: false,
-        error: "Only admins can skip group processing",
+        error: 'Unauthorized. Please log in.',
       });
     }
 
-    const request = await ItemRequest.findByPk(requestId);
-    if (!request) {
-      return res.status(404).json({
+    if (!groupId) {
+      await transaction.rollback();
+      return res.status(400).json({
         success: false,
-        error: "Request not found",
+        error: 'Group ID is required',
       });
     }
 
     const requestIdInt = parseInt(requestId);
     const groupIdInt = parseInt(groupId);
 
-    const [record, created] = await RequestGroupProcessing.findOrCreate({
+    if (isNaN(requestIdInt) || isNaN(groupIdInt)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request ID or group ID',
+      });
+    }
+
+    // ================================================================
+    // 2. VALIDATE USER (with role eager-loaded)
+    //    users table has NO `role` column — role lives in `roles`
+    //    and is referenced via users.role_id
+    // ================================================================
+    const user = await User.findByPk(userId, {
+      attributes: ['userId', 'username', 'fullName', 'roleId', 'isActive'],
+      include: [
+        {
+          model: Role,
+          attributes: ['roleId', 'name'],
+        },
+      ],
+      transaction,
+    });
+
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    if (!user.isActive) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: 'User account is inactive',
+      });
+    }
+
+    // ================================================================
+    // 3. PERMISSION CHECK
+    //    Admin → any group
+    //    Non-admin → must belong to the target group (UserGroupRelation)
+    // ================================================================
+    const userRole =
+      user.Role?.name ||
+      user.Role?.roleName ||
+      req.user?.role ||
+      null;
+
+    console.log('👤 Resolved userRole:', userRole);
+
+    const isAdmin =
+      userRole === 'admin' ||
+      userRole === 'Admin' ||
+      userRole === 'superadmin';
+
+    if (!isAdmin) {
+      const UserGroupRelation = sequelize.models.UserGroupRelation;
+
+      if (!UserGroupRelation) {
+        await transaction.rollback();
+        return res.status(500).json({
+          success: false,
+          error: 'UserGroupRelation model not found',
+        });
+      }
+
+      const membership = await UserGroupRelation.findOne({
+        where: {
+          userId: user.userId,
+          groupId: groupIdInt,
+        },
+        transaction,
+      });
+
+      if (!membership) {
+        await transaction.rollback();
+        return res.status(403).json({
+          success: false,
+          error: 'You can only cancel requests for your own group',
+        });
+      }
+    }
+
+    // ================================================================
+    // 4. VALIDATE REQUEST EXISTS
+    // ================================================================
+    const request = await ItemRequest.findByPk(requestIdInt, {
+      transaction,
+    });
+
+    if (!request) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found',
+      });
+    }
+
+    // ================================================================
+    // 5. VALIDATE GROUP EXISTS + IS ACTIVE
+    // ================================================================
+    const group = await Group.findByPk(groupIdInt, {
+      transaction,
+    });
+
+    if (!group) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Group not found',
+      });
+    }
+
+    if (group.status !== 'Active') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Group "${group.name}" is ${group.status}. Only active groups can skip.`,
+      });
+    }
+
+    // ================================================================
+    // 6. VALIDATE GROUP BELONGS TO ONE OF THE REQUEST'S STORES
+    // ================================================================
+    const storeGroupRelation = await StoreGroupRelation.findOne({
       where: {
-        requestId: requestIdInt,
         groupId: groupIdInt,
-      },
-      defaults: {
-        requestId: requestIdInt,
-        groupId: groupIdInt,
-        storeId: request.askingStoreId || request.supplyingStoreId,
-        status: "skipped",
-        processedAt: new Date(),
-        processedBy: userId,
-        remark: remark || "Skipped by admin",
+        storeId: {
+          [Op.in]: [request.askingStoreId, request.supplyingStoreId],
+        },
       },
       transaction,
     });
 
-    if (!created) {
-      record.status = "skipped";
-      record.processedAt = new Date();
-      record.processedBy = userId;
-      record.remark = remark || "Skipped by admin";
-      await record.save({ transaction });
+    if (!storeGroupRelation) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        error: `Group "${group.name}" is not associated with either store of this request`,
+      });
     }
 
+    // ================================================================
+    // 7. VALIDATE REQUEST IS STILL IN A SKIPPABLE STATE
+    // ================================================================
+    if (request.status === 'finalized') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'This request has already been finalized and cannot be skipped',
+      });
+    }
+
+    if (request.status !== 'approved' && request.status !== 'pending') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: `Cannot skip a request with status "${request.status}"`,
+      });
+    }
+
+    // ================================================================
+    // 8. CHECK EXISTING PROCESSING RECORD FOR THIS GROUP
+    // ================================================================
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+
+    if (!RequestGroupProcessing) {
+      await transaction.rollback();
+      return res.status(500).json({
+        success: false,
+        error: 'RequestGroupProcessing model not found',
+      });
+    }
+
+    const existingRecord = await RequestGroupProcessing.findOne({
+      where: {
+        requestId: requestIdInt,
+        groupId: groupIdInt,
+      },
+      transaction,
+    });
+
+    if (existingRecord && existingRecord.status === 'processed') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'This group has already processed this request and cannot skip it',
+      });
+    }
+
+    if (existingRecord && existingRecord.status === 'skipped') {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'This group has already skipped this request',
+      });
+    }
+
+    // ================================================================
+    // 9. CREATE OR UPDATE THE SKIP RECORD
+    // ================================================================
+    const skipRemark =
+      remark && remark.trim().length > 0
+        ? remark.trim()
+        : `Skipped by ${user.fullName || user.username}`;
+
+    let record;
+    if (existingRecord) {
+      existingRecord.status = 'skipped';
+      existingRecord.processedAt = new Date();
+      existingRecord.processedBy = userId;
+      existingRecord.remark = skipRemark;
+      record = await existingRecord.save({ transaction });
+    } else {
+      record = await RequestGroupProcessing.create(
+        {
+          requestId: requestIdInt,
+          groupId: groupIdInt,
+          storeId: storeGroupRelation.storeId,
+          status: 'skipped',
+          processedAt: new Date(),
+          processedBy: userId,
+          remark: skipRemark,
+        },
+        { transaction }
+      );
+    }
+
+    // ================================================================
+    // 10. CHECK IF THE REQUEST CAN NOW BE FINALIZED
+    //     (every group in both stores is processed or skipped)
+    // ================================================================
+    const logs = [];
+    const finalizedRequests = [];
+
+    await checkAndFinalizeRequest(
+      request,
+      storeGroupRelation.storeId,
+      transaction,
+      logs,
+      finalizedRequests
+    );
+
+    // ================================================================
+    // 11. COMMIT
+    // ================================================================
     await transaction.commit();
 
+    // ================================================================
+    // 12. RESPOND
+    // ================================================================
     res.status(200).json({
       success: true,
-      message: `Group ${groupId} skipped for request ${request.requestCode}`,
-      data: record,
+      message: `Request ${request.requestCode} skipped for group "${group.name}"`,
+      data: {
+        requestId: requestIdInt,
+        requestCode: request.requestCode,
+        groupId: groupIdInt,
+        groupName: group.name,
+        status: 'skipped',
+        remark: skipRemark,
+        skippedBy: {
+          userId: user.userId,
+          username: user.username,
+          fullName: user.fullName,
+        },
+        skippedAt: record.processedAt,
+        finalized: finalizedRequests.length > 0,
+        finalizedRequests,
+        logs,
+      },
     });
   } catch (error) {
     await transaction.rollback();
-    console.error("❌ Skip group processing error:", error);
+    console.error('❌ Skip group processing error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Failed to skip group processing",
+      error: error.message || 'Failed to skip group processing',
     });
   }
 };
-
-
 
 
 /**

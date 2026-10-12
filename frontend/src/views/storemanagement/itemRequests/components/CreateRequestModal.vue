@@ -168,17 +168,17 @@
                           : "Type to search for items..."
                     }}
                   </option>
-               <option
-  v-for="item in items"
-  :key="getItemId(item)"
-  :value="getItemId(item)"
-  :disabled="isItemAlreadySelected(item)"
->
-  {{ item.code }} - {{ item.standardName || item.name }}
-  [Category: {{ (item as any).category?.name || "Uncategorized" }}]
-  [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
-  {{ isItemAlreadySelected(item) ? "(added)" : "" }}
-</option>
+                  <option
+                    v-for="item in items"
+                    :key="getItemId(item)"
+                    :value="getItemId(item)"
+                    :disabled="isItemAlreadySelected(item)"
+                  >
+                    {{ item.code }} - {{ item.standardName || item.name }}
+                    [Category: {{ (item as any).category?.name || "Uncategorized" }}]
+                    [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
+                    {{ isItemAlreadySelected(item) ? "(added)" : "" }}
+                  </option>
                 </select>
                 <button
                   type="button"
@@ -249,7 +249,6 @@
                     </div>
 
                     <div class="compact-right">
-                      <!-- 🔥 Compact inline remark input -->
                       <div class="compact-remark-group">
                         <input
                           type="text"
@@ -464,7 +463,7 @@
                   <span class="departments-info-icon">📋</span>
                   <span class="departments-info-title">
                     The following departments will need to approve this
-                    request:
+                    request. Click ✕ to remove any you don't want notified.
                   </span>
                 </div>
 
@@ -481,10 +480,34 @@
                     v-for="dept in applicableDepartments"
                     :key="dept.departmentId"
                     class="department-chip"
+                    :class="{
+                      'department-chip-removed': removedDepartmentIds.has(
+                        dept.departmentId,
+                      ),
+                    }"
                   >
                     <span class="department-chip-icon">🏛️</span>
                     <span class="department-chip-name">{{ dept.name }}</span>
                     <span class="department-chip-code">{{ dept.code }}</span>
+
+                    <button
+                      v-if="!removedDepartmentIds.has(dept.departmentId)"
+                      type="button"
+                      class="department-chip-remove"
+                      title="Don't notify this department"
+                      @click.stop="removeDepartment(dept.departmentId)"
+                    >
+                      ✕
+                    </button>
+                    <button
+                      v-else
+                      type="button"
+                      class="department-chip-restore"
+                      title="Restore this department"
+                      @click.stop="restoreDepartment(dept.departmentId)"
+                    >
+                      ↺
+                    </button>
                   </div>
                 </div>
 
@@ -500,9 +523,16 @@
                 <div class="departments-info-footer">
                   <span class="departments-source-hint">
                     📌 Departments are matched by the
-                    <strong>asking store</strong>'s code ({{
-                      getAskingStoreCode()
-                    }})
+                    <strong>asking store</strong>'s code ({{ getAskingStoreCode() }}).
+                    <br />
+                    <strong>
+                      {{ selectedDepartments.length }} of
+                      {{ applicableDepartments.length }}
+                    </strong>
+                    department(s) will be notified.
+                    <span v-if="removedDepartmentIds.size > 0">
+                      ({{ removedDepartmentIds.size }} removed)
+                    </span>
                   </span>
                 </div>
               </div>
@@ -526,19 +556,18 @@
               >
             </div>
 
-            <div class="form-group full-width">
-              <label>General Remark</label>
-              <textarea
-                v-model="form.remark"
-                rows="3"
-                placeholder="General notes or remarks..."
-                class="textarea-field"
-              ></textarea>
-              <span class="hint"
-                >This remark applies to the entire request</span
-              >
-            </div>
-
+  <div v-if="form.isAsset" class="form-group full-width">
+  <label>General Remark</label>
+  <textarea
+    v-model="form.remark"
+    rows="3"
+    placeholder="General notes or remarks..."
+    class="textarea-field"
+  ></textarea>
+  <span class="hint"
+    >This remark applies to the entire request</span
+  >
+</div>
             <div v-if="formErrors.length > 0" class="form-errors">
               <div v-for="error in formErrors" :key="error" class="form-error">
                 ⚠️ {{ error }}
@@ -615,6 +644,16 @@ const applicableDepartments = ref<
   Array<{ departmentId: number; name: string; code: string }>
 >([]);
 
+// ✅ Departments the user has manually removed (won't be notified)
+const removedDepartmentIds = ref<Set<number>>(new Set());
+
+// ✅ Departments that WILL be notified (applicable minus removed)
+const selectedDepartments = computed(() =>
+  applicableDepartments.value.filter(
+    (d) => !removedDepartmentIds.value.has(d.departmentId),
+  ),
+);
+
 // ✅ Track which items are expanded
 const expandedItems = ref<Set<number>>(new Set());
 
@@ -658,7 +697,6 @@ const selectedItems = ref<
 // ================================================================
 const setSelectedItem = (itemId: number, item: any): void => {
   selectedItems.value.set(itemId, item);
-  // Reassign the Map so Vue's reactivity system sees a new reference
   selectedItems.value = new Map(selectedItems.value);
 };
 
@@ -666,7 +704,7 @@ const setSelectedItem = (itemId: number, item: any): void => {
 // COMPUTED
 // ================================================================
 const activeStores = computed(() =>
-  stores.value.filter((s) => s.status === "Active")
+  stores.value.filter((s) => s.status === "Active"),
 );
 
 const filteredSupplyingStores = computed(() => {
@@ -674,7 +712,7 @@ const filteredSupplyingStores = computed(() => {
   if (form.value.askingStoreId) {
     result = result.filter(
       (store) =>
-        (store.storeId || store.id) !== Number(form.value.askingStoreId)
+        (store.storeId || store.id) !== Number(form.value.askingStoreId),
     );
   }
   return result;
@@ -842,7 +880,7 @@ const getSelectedUomLabel = (item: any): string => {
 const getAskingStoreCode = (): string => {
   if (!form.value.askingStoreId) return "N/A";
   const store = stores.value.find(
-    (s) => String(s.storeId || s.id) === String(form.value.askingStoreId)
+    (s) => String(s.storeId || s.id) === String(form.value.askingStoreId),
   );
   return store?.code || "N/A";
 };
@@ -881,6 +919,21 @@ const loadApplicableDepartments = async (): Promise<void> => {
   }
 };
 
+// ✅ Remove / Restore department handlers
+const removeDepartment = (departmentId: number): void => {
+  removedDepartmentIds.value.add(departmentId);
+  removedDepartmentIds.value = new Set(removedDepartmentIds.value);
+};
+
+const restoreDepartment = (departmentId: number): void => {
+  removedDepartmentIds.value.delete(departmentId);
+  removedDepartmentIds.value = new Set(removedDepartmentIds.value);
+};
+
+const clearRemovedDepartments = (): void => {
+  removedDepartmentIds.value = new Set();
+};
+
 // ================================================================
 // COLLAPSE / EXPAND
 // ================================================================
@@ -899,7 +952,7 @@ const toggleItemExpand = (itemId: number): void => {
 const loadItems = async (
   searchQuery = "",
   page = 1,
-  append = false
+  append = false,
 ): Promise<void> => {
   try {
     const trimmed = searchQuery.trim();
@@ -938,10 +991,10 @@ const loadItems = async (
 
       if (append) {
         const existingIds = new Set(
-          items.value.map((i) => Number(i.itemId ?? i.id))
+          items.value.map((i) => Number(i.itemId ?? i.id)),
         );
         const newItems = responseItems.filter(
-          (i) => !existingIds.has(Number(i.itemId ?? i.id))
+          (i) => !existingIds.has(Number(i.itemId ?? i.id)),
         );
         items.value = [...items.value, ...newItems];
       } else {
@@ -1014,15 +1067,17 @@ watch(itemSearch, (newQuery) => {
 watch(
   () => form.value.askingStoreId,
   () => {
+    clearRemovedDepartments();
     if (form.value.isAsset) loadApplicableDepartments();
-  }
+  },
 );
 
 watch(
   () => form.value.isAsset,
   (newVal) => {
+    clearRemovedDepartments();
     if (newVal) loadApplicableDepartments();
-  }
+  },
 );
 
 // ================================================================
@@ -1050,7 +1105,7 @@ const onItemSelect = (): void => {};
 const updateItemField = (
   itemId: number,
   field: string,
-  value: string
+  value: string,
 ): void => {
   const item = selectedItems.value.get(itemId);
   if (!item) return;
@@ -1230,7 +1285,6 @@ const loadUserData = (): void => {
       userData.assignedStore?.name ||
       userData.currentStore?.name ||
       "Assigned Store";
-    // Only set askingStoreId on NEW request — initializeForm handles editing
     if (!props.editingRequest) {
       form.value.askingStoreId = String(storeId);
     }
@@ -1256,6 +1310,7 @@ const initializeForm = (): void => {
   const newExpanded = new Set<number>();
 
   applicableDepartments.value = [];
+  removedDepartmentIds.value = new Set();
 
   if (props.editingRequest) {
     const req = props.editingRequest;
@@ -1282,11 +1337,7 @@ const initializeForm = (): void => {
       newMap.set(itemId, {
         itemId,
         code: item.item?.code || item.itemCode || item.code || "N/A",
-        name:
-          item.item?.name ||
-          item.itemName ||
-          item.name ||
-          "Unknown",
+        name: item.item?.name || item.itemName || item.name || "Unknown",
         quantity: Number(item.quantity) || 1,
         remark,
         conversionValue: item.conversionValue || 1,
@@ -1298,7 +1349,6 @@ const initializeForm = (): void => {
         model,
       });
 
-      // Auto-expand rows that already have content
       if (remark || specification || brand || model) {
         newExpanded.add(itemId);
       }
@@ -1306,7 +1356,7 @@ const initializeForm = (): void => {
 
     form.value = {
       askingStoreId: String(
-        req.askingStoreId || userAssignedStoreId.value || ""
+        req.askingStoreId || userAssignedStoreId.value || "",
       ),
       supplyingStoreId: String(req.supplyingStoreId || ""),
       items: (req.items || []).map((item: any) => ({
@@ -1347,7 +1397,6 @@ const initializeForm = (): void => {
     };
   }
 
-  // 🔥 Atomic assignment — triggers reactivity exactly once
   selectedItems.value = newMap;
   expandedItems.value = newExpanded;
 
@@ -1381,7 +1430,7 @@ const saveRequest = async (): Promise<void> => {
   }
   if (form.value.askingStoreId === form.value.supplyingStoreId) {
     formErrors.value.push(
-      "Asking store and supplying store cannot be the same"
+      "Asking store and supplying store cannot be the same",
     );
   }
   if (form.value.items.length === 0) {
@@ -1392,12 +1441,12 @@ const saveRequest = async (): Promise<void> => {
     .map((item: any) => item.itemId)
     .filter((id: any) => id && id !== 0);
   const duplicateIds = itemIds.filter(
-    (id: number, index: number) => itemIds.indexOf(id) !== index
+    (id: number, index: number) => itemIds.indexOf(id) !== index,
   );
 
   if (duplicateIds.length > 0) {
     const dupItems = form.value.items.filter((item: any) =>
-      duplicateIds.includes(item.itemId)
+      duplicateIds.includes(item.itemId),
     );
 
     validationErrors.value = dupItems.map((item: any) => {
@@ -1423,7 +1472,7 @@ const saveRequest = async (): Promise<void> => {
     }
     if (!item.quantity || item.quantity <= 0) {
       formErrors.value.push(
-        `Item #${index + 1}: Please enter a valid quantity`
+        `Item #${index + 1}: Please enter a valid quantity`,
       );
     }
   });
@@ -1462,6 +1511,8 @@ const saveRequest = async (): Promise<void> => {
       status: form.value.status as "pending" | "approved" | "rejected",
       remark: form.value.remark,
       isAsset: form.value.isAsset,
+      // ✅ Send department exclusions to backend
+      excludedDepartmentIds: Array.from(removedDepartmentIds.value),
     };
 
     let response;
@@ -1470,7 +1521,7 @@ const saveRequest = async (): Promise<void> => {
         props.editingRequest.requestId || props.editingRequest.id;
       response = await itemRequestService.updateRequest(
         requestId!,
-        requestData
+        requestData,
       );
     } else {
       response = await itemRequestService.createRequest(requestData);
@@ -1487,9 +1538,8 @@ const saveRequest = async (): Promise<void> => {
           "Validation failed. Please fix the issues below.";
         showValidationErrors.value = true;
       } else {
-        // 🔥 Show the error instead of closing silently
         formErrors.value.push(
-          response.error || response.message || "Failed to save request"
+          response.error || response.message || "Failed to save request",
         );
         console.error("❌ Save failed:", response);
       }
@@ -1506,7 +1556,7 @@ const saveRequest = async (): Promise<void> => {
       showValidationErrors.value = true;
     } else {
       formErrors.value.push(
-        errorData?.error || error.message || "Failed to save request"
+        errorData?.error || error.message || "Failed to save request",
       );
     }
   } finally {
@@ -1543,7 +1593,7 @@ watch(
       initializeForm();
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ================================================================
@@ -1628,7 +1678,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* 🔥 Compact remark input */
 .compact-remark-group {
   flex-shrink: 0;
 }
@@ -2193,10 +2242,11 @@ onMounted(() => {
 }
 
 .department-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 6px 34px 6px 14px;
   background: white;
   border: 1.5px solid #fcd34d;
   border-radius: 20px;
@@ -2210,6 +2260,17 @@ onMounted(() => {
 .department-chip:hover {
   border-color: #f59e0b;
   box-shadow: 0 2px 6px rgba(245, 158, 11, 0.25);
+}
+
+.department-chip-removed {
+  opacity: 0.55;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.department-chip-removed .department-chip-name {
+  text-decoration: line-through;
 }
 
 .department-chip-icon {
@@ -2228,6 +2289,38 @@ onMounted(() => {
   padding: 1px 8px;
   border-radius: 10px;
   margin-left: 4px;
+}
+
+.department-chip-removed .department-chip-code {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.department-chip-remove,
+.department-chip-restore {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 50%;
+  color: #94a3b8;
+  transition: all 0.15s;
+}
+
+.department-chip-remove:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.department-chip-restore:hover {
+  color: #16a34a;
+  background: #f0fdf4;
 }
 
 .departments-empty {

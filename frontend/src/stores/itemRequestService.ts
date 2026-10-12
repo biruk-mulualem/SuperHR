@@ -196,6 +196,8 @@ export interface ItemRequest {
     name: string;
     code: string;
   };
+  // ✅ NEW: Departments the requester chose NOT to notify
+  excludedDepartmentIds?: number[];
 }
 
 export interface ItemRequestStats {
@@ -273,7 +275,7 @@ export interface StatsResponse {
   error?: string;
 }
 
-// ✅ UPDATED: CreateRequestData with spec fields
+// ✅ UPDATED: CreateRequestData with spec fields + excludedDepartmentIds
 export interface CreateRequestData {
   askingStoreId: number;
   supplyingStoreId: number;
@@ -294,9 +296,11 @@ export interface CreateRequestData {
   status?: 'pending' | 'approved' | 'rejected';
   remark?: string;
   isAsset?: boolean;
+  // ✅ NEW: Departments the requester chose NOT to notify
+  excludedDepartmentIds?: number[];
 }
 
-// ✅ UPDATED: UpdateRequestData with spec fields
+// ✅ UPDATED: UpdateRequestData with spec fields + excludedDepartmentIds
 export interface UpdateRequestData {
   askingStoreId?: number;
   supplyingStoreId?: number;
@@ -316,6 +320,8 @@ export interface UpdateRequestData {
   requestedDate?: string;
   remark?: string;
   isAsset?: boolean;
+  // ✅ NEW: Departments the requester chose NOT to notify
+  excludedDepartmentIds?: number[];
 }
 
 export interface ExportItemData {
@@ -481,7 +487,7 @@ class ItemRequestService {
   }
 
   // ================================================================
-  // 🔥 NEW: APPROVAL DEPARTMENTS
+  // 🔥 APPROVAL DEPARTMENTS
   // ================================================================
 
   /**

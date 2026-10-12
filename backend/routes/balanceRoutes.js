@@ -27,7 +27,6 @@ router.get(
     balanceController.getBalances
 );
 
-
 router.get(
   '/requests/:requestId/processable-items',
   authMiddleware(),

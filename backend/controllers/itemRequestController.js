@@ -442,6 +442,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     validationSkipped: false,
   };
 };
+
 // ================================================================
 // HELPER: Create notifications - STAGE 1 (Asking Store Groups ONLY)
 // ================================================================
@@ -458,6 +459,7 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
  * @param {Transaction} transaction   - Sequelize transaction
  * @param {number|null} requestingUserGroupId - The requesting user's group (excluded from Stage 1)
  * @param {number|null} requestingUserId      - The requesting user ID (for logging)
+ * @param {number[]} excludedDepartmentIds    - Departments the requester chose NOT to notify
  */
 async function createRequestNotifications(
   requestId,
@@ -466,7 +468,8 @@ async function createRequestNotifications(
   isAsset = false,
   transaction = null,
   requestingUserGroupId = null,
-  requestingUserId = null
+  requestingUserId = null,
+  excludedDepartmentIds = []
 ) {
   try {
     console.log(`📤 [STAGE 1] Creating ASKING STORE notifications for request ${requestId}`);
@@ -474,6 +477,7 @@ async function createRequestNotifications(
     console.log(`   Supplying store: ${supplyingStoreId} (will be notified AFTER asking approves)`);
     console.log(`   Requesting user ID: ${requestingUserId}`);
     console.log(`   🔥 Excluding requesting user's group ID: ${requestingUserGroupId}`);
+    console.log(`   🔥 Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
 
     // ================================================================
     // 🔥 STAGE 1 TOGGLE CHECK
@@ -499,7 +503,8 @@ async function createRequestNotifications(
         supplyingStoreId,
         askingStoreId,
         isAsset,
-        transaction
+        transaction,
+        excludedDepartmentIds
       );
 
       return 0; // No asking store notifications created
@@ -593,7 +598,8 @@ async function createRequestNotifications(
         supplyingStoreId,
         askingStoreId,
         isAsset,
-        transaction
+        transaction,
+        excludedDepartmentIds
       );
       return 0;
     }
@@ -641,10 +647,12 @@ async function createSupplyingStageNotifications(
   supplyingStoreId,
   askingStoreId,
   isAsset = false,
-  transaction = null
+  transaction = null,
+  excludedDepartmentIds = []
 ) {
   try {
     console.log(`📤 [STAGE 2] Creating SUPPLYING STORE notifications for request ${requestId}`);
+    console.log(`   Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
 
     const existingCount = await RequestNotification.count({
       where: {
@@ -714,13 +722,29 @@ async function createSupplyingStageNotifications(
       if (!config || !config.departments || config.departments.length === 0) {
         console.log(`⚠️ No approval departments configured — skipping`);
       } else {
-        const applicableDepartments = config.departments.filter(
-          (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code)
+        // ✅ NEW: Build the exclusion set
+        const excludedSet = new Set(
+          (excludedDepartmentIds || []).map((id) => Number(id))
         );
+
+        // ✅ UPDATED: Filter by store AND exclude requester-removed departments
+        const applicableDepartments = config.departments.filter((d) => {
+          const matchesStore =
+            Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code);
+          const isExcluded = excludedSet.has(Number(d.departmentId));
+
+          if (matchesStore && isExcluded) {
+            console.log(
+              `🚫 Skipping department ${d.departmentId} — excluded by requester`
+            );
+          }
+          return matchesStore && !isExcluded;
+        });
 
         console.log(
           `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
-          `department(s) apply to store ${askingStore.code}`
+          `department(s) apply to store ${askingStore.code} ` +
+          `(excluded: ${excludedSet.size})`
         );
 
         for (const entry of applicableDepartments) {
@@ -821,12 +845,16 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
 
     console.log(`✅ All asking store groups accepted — ADVANCING to supplying stage`);
 
+    // ✅ NEW: read persisted exclusions from the request row
+    const excludedDepartmentIds = request.excludedDepartmentIds || [];
+
     const result = await createSupplyingStageNotifications(
       requestId,
       request.supplyingStoreId,
       request.askingStoreId,
       request.isAsset || false,
-      transaction
+      transaction,
+      excludedDepartmentIds
     );
 
     console.log(`🚀 Advanced to supplying stage: ${result.count} notifications created`);
@@ -1398,12 +1426,14 @@ exports.createRequest = async (req, res) => {
       status = "pending",
       remark,
       isAsset = false,
+      excludedDepartmentIds = [],   // ✅ NEW
     } = req.body;
 
     console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
     console.log(JSON.stringify(items, null, 2));
     console.log('👤 requestedById:', requestedById);
     console.log('👤 requestedBy  :', requestedBy);
+    console.log('🚫 excludedDepartmentIds:', excludedDepartmentIds);
 
     if (!askingStoreId || !supplyingStoreId) {
       await t.rollback();
@@ -1597,6 +1627,9 @@ exports.createRequest = async (req, res) => {
         status: status || "pending",
         remark: remark || null,
         isAsset: isAsset || false,
+        excludedDepartmentIds: Array.isArray(excludedDepartmentIds)
+          ? excludedDepartmentIds
+          : [],   // ✅ NEW: persist exclusions
       },
       { transaction: t },
     );
@@ -1642,7 +1675,8 @@ exports.createRequest = async (req, res) => {
           isAsset,
           t,
           requestingUserGroupId,
-          requestedById
+          requestedById,
+          excludedDepartmentIds   // ✅ NEW: pass through
         );
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
@@ -1732,6 +1766,7 @@ exports.createRequest = async (req, res) => {
           : null,
         notificationCount: notificationCount,
         currentStage: 'asking_store',
+        excludedDepartmentIds: excludedDepartmentIds,   // ✅ NEW
         stockValidation: {
           allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
           validationSkipped: stockValidation.validationSkipped,
@@ -1770,9 +1805,6 @@ exports.createRequest = async (req, res) => {
 // 5. UPDATE REQUEST
 // ================================================================
 
-// ================================================================
-// 5. UPDATE REQUEST
-// ================================================================
 exports.updateRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -1787,6 +1819,7 @@ exports.updateRequest = async (req, res) => {
       requestedDate,
       remark,
       isAsset,
+      excludedDepartmentIds = [],   // ✅ NEW
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, {
@@ -1797,6 +1830,7 @@ exports.updateRequest = async (req, res) => {
       requestedBy,
       requestedDate,
       isAsset,
+      excludedDepartmentIds,
     });
 
     // ================================================================
@@ -2048,6 +2082,10 @@ exports.updateRequest = async (req, res) => {
         status: "pending",
         remark: remark !== undefined ? remark : request.remark,
         isAsset: isAsset !== undefined ? isAsset : request.isAsset,
+        // ✅ NEW: persist exclusions
+        excludedDepartmentIds: Array.isArray(excludedDepartmentIds)
+          ? excludedDepartmentIds
+          : [],
       },
       { transaction: t }
     );
@@ -2119,7 +2157,8 @@ exports.updateRequest = async (req, res) => {
           updatedIsAsset || false,
           t,
           requestingUserGroupId,
-          updatedRequestedById
+          updatedRequestedById,
+          excludedDepartmentIds   // ✅ NEW: pass through
         );
       } catch (notifError) {
         console.error("❌ Notification recreation failed — rolling back:", {
@@ -3433,7 +3472,27 @@ exports.getDepartmentNotifications = async (req, res) => {
           include: [
             { model: Store, as: "askingStore" },
             { model: Store, as: "supplyingStore" },
-            { model: User, as: "requestedByUser" },
+
+            {
+              model: User,
+              as: "requestedByUser",
+              attributes: [
+                "userId",
+                "username",
+                "fullName",
+                "email",
+                "roleId",
+                "departmentId",
+              ],
+              include: [
+                {
+                  model: Department,
+                  as: "Department",
+                  attributes: ["department_id", "name", "code", "description"],
+                },
+              ],
+            },
+
             {
               model: ItemRequestDetail,
               as: "items",
@@ -3473,9 +3532,15 @@ exports.getDepartmentNotifications = async (req, res) => {
 
     const summary = {
       total: totalCount,
-      pending: await RequestNotification.count({ where: { ...whereClause, status: "pending" } }),
-      accepted: await RequestNotification.count({ where: { ...whereClause, status: "accepted" } }),
-      rejected: await RequestNotification.count({ where: { ...whereClause, status: "rejected" } }),
+      pending: await RequestNotification.count({
+        where: { ...whereClause, status: "pending" },
+      }),
+      accepted: await RequestNotification.count({
+        where: { ...whereClause, status: "accepted" },
+      }),
+      rejected: await RequestNotification.count({
+        where: { ...whereClause, status: "rejected" },
+      }),
     };
 
     res.json({
@@ -3536,9 +3601,6 @@ exports.getStoreGroups = async (req, res) => {
   }
 };
 
-// ================================================================
-// 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
-// ================================================================
 // ================================================================
 // 24. GET PENDING NOTIFICATIONS (Combined - Group + Department)
 // ================================================================
@@ -3778,7 +3840,7 @@ exports.getPendingNotifications = async (req, res) => {
 };
 
 // ================================================================
-// 25. 🔥 NEW: GET APPROVAL DEPARTMENTS FOR A STORE
+// 25. GET APPROVAL DEPARTMENTS FOR A STORE
 // ================================================================
 /**
  * GET /api/item-requests/approval-departments/:storeCode
