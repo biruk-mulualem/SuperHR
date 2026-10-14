@@ -166,7 +166,7 @@
                 </div>
                 <div v-if="isAssetRequest(req)" class="asset-badge">🔧 Asset</div>
                 <!-- ✅ Temelash marker -->
-<div v-if="isTemelashRequest(req)" class="temelash-badge">🔄 Temelash</div>
+                <div v-if="isTemelashRequest(req)" class="temelash-badge">🔄 Temelash</div>
               </td>
               <td>
                 <div class="action-buttons">
@@ -252,15 +252,15 @@
                             formatDateTime(req.updatedAt)
                           }}</span>
                         </div>
-   <div v-if="isTemelashRequest(req)">
-  <span>🔄 Temelash</span>
-  <span class="value">
-    Yes
-    <template v-if="req.temelashFromDate || req.temelashToDate">
-      — {{ formatTemelashWindow(req) }}
-    </template>
-  </span>
-</div>
+                        <div v-if="isTemelashRequest(req)">
+                          <span>🔄 Temelash</span>
+                          <span class="value">
+                            Yes
+                            <template v-if="req.temelashFromDate || req.temelashToDate">
+                              — {{ formatTemelashWindow(req) }}
+                            </template>
+                          </span>
+                        </div>
                       </div>
 
                       <div class="detail-card">
@@ -293,8 +293,21 @@
                     </div>
 
                     <!-- 🔥 APPROVAL PROGRESS - STAGE-AWARE -->
-                    <div v-if="req.status === 'pending' && !isSkipStore(req)" class="detail-card full-width approval-progress-card">
-                      <h4>📊 Approval Progress</h4>
+                    <div 
+                      v-if="(
+                              req.status === 'pending' ||
+                              (isUserAskingStore(req) && (req.status === 'approved' || req.status === 'finalized'))
+                            ) 
+                            && !isSkipStore(req)" 
+                      class="detail-card full-width approval-progress-card"
+                      :class="{ 'approval-progress-readonly': req.status !== 'pending' }"
+                    >
+                      <h4>
+                        📊 Approval Progress
+                        <span v-if="req.status !== 'pending'" class="readonly-tag">
+                          🔒 Record ({{ req.status }})
+                        </span>
+                      </h4>
                       <div class="approval-stages">
                         <!-- STAGE 1: ASKING STORE -->
                         <div 
@@ -321,6 +334,33 @@
                             <span v-if="getStageInfo(req).askingStore.rejected > 0" class="stage-rejected-count">
                               ❌ {{ getStageInfo(req).askingStore.rejected }} rejected
                             </span>
+
+                            <!-- 🔒 Who approved (record mode only) -->
+                            <div 
+                              v-if="req.status !== 'pending'" 
+                              class="approver-list"
+                            >
+                              <div 
+                                v-for="n in getStageNotifications(req, 'asking_store')" 
+                                :key="n.id" 
+                                class="approver-row"
+                                :class="n.status"
+                              >
+                                <span class="approver-icon">
+                                  {{ (n.approval_type === 'department' || n.is_department_approval) ? '🏢' : '👥' }}
+                                </span>
+                                <span class="approver-name">
+                                  {{ n.department?.name || n.group?.name || 'Unknown' }}
+                                </span>
+                                <span :class="['status-badge', n.status]">{{ n.status }}</span>
+                                <span v-if="n.respondedByUser" class="approver-user">
+                                  👤 {{ n.respondedByUser.fullName || n.respondedByUser.username }}
+                                </span>
+                                <span v-if="n.responded_at" class="approver-time">
+                                  {{ formatDateTime(n.responded_at) }}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                           <div v-else class="stage-empty">
                             No asking store groups
@@ -357,6 +397,33 @@
                             <span v-if="getStageInfo(req).supplyingStore.rejected > 0" class="stage-rejected-count">
                               ❌ {{ getStageInfo(req).supplyingStore.rejected }} rejected
                             </span>
+
+                            <!-- 🔒 Who approved (record mode only) -->
+                            <div 
+                              v-if="req.status !== 'pending'" 
+                              class="approver-list"
+                            >
+                              <div 
+                                v-for="n in getStageNotifications(req, 'supplying_store')" 
+                                :key="n.id" 
+                                class="approver-row"
+                                :class="n.status"
+                              >
+                                <span class="approver-icon">
+                                  {{ (n.approval_type === 'department' || n.is_department_approval) ? '🏢' : '👥' }}
+                                </span>
+                                <span class="approver-name">
+                                  {{ n.department?.name || n.group?.name || 'Unknown' }}
+                                </span>
+                                <span :class="['status-badge', n.status]">{{ n.status }}</span>
+                                <span v-if="n.respondedByUser" class="approver-user">
+                                  👤 {{ n.respondedByUser.fullName || n.respondedByUser.username }}
+                                </span>
+                                <span v-if="n.responded_at" class="approver-time">
+                                  {{ formatDateTime(n.responded_at) }}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                           <div v-else-if="!getStageInfo(req).supplyingStore.isWaiting" class="stage-empty">
                             No supplying store notifications yet
@@ -373,7 +440,7 @@
                             <th>#</th>
                             <th>Item Name</th>
                             <th>Item Code</th>
-                             <th>Category</th>
+                            <th>Category</th>
                             <th>Brand</th>
                             <th>Model</th>
                             <th>UOM</th>
@@ -383,14 +450,14 @@
                           </tr>
                         </thead>
                         <tbody>
-                        <tr class="total-row">
-  <td colspan="8" class="text-right">
-    <strong>Total Items:</strong>
-  </td>
-  <td class="text-center">
-    <strong>{{ req.items?.length || 0 }}</strong>
-  </td>
-</tr>
+                          <tr class="total-row">
+                            <td colspan="8" class="text-right">
+                              <strong>Total Items:</strong>
+                            </td>
+                            <td class="text-center">
+                              <strong>{{ req.items?.length || 0 }}</strong>
+                            </td>
+                          </tr>
                           <tr v-for="(item, index) in req.items" :key="index">
                             <td class="text-center">{{ index + 1 }}</td>
                             <td>{{ getItemNameFromRequest(item) }}</td>
@@ -894,6 +961,21 @@ const getStageInfo = (req: ItemRequest) => {
     askingStore: asking,
     supplyingStore: supplying,
   };
+};
+
+// ================================================================
+// STAGE NOTIFICATIONS HELPER
+// ================================================================
+/**
+ * Returns the notifications belonging to a specific stage.
+ * Used to render the "who approved" list in record mode.
+ */
+const getStageNotifications = (
+  req: ItemRequest,
+  stage: 'asking_store' | 'supplying_store'
+) => {
+  const notifications = (req as any).notifications || [];
+  return notifications.filter((n: any) => n.stage === stage);
 };
 
 // ================================================================
@@ -1426,9 +1508,6 @@ const confirmStatusChange = async (): Promise<void> => {
 
 /**
  * Navigate to the correct print page based on request type.
- */
-/**
- * Navigate to the correct print page based on request type.
  *
  * Priority:
  *   1. Temelash request → temelash-print  (always wins, even if also asset)
@@ -1748,6 +1827,33 @@ onMounted(async () => {
   border-left: 4px solid #3b82f6;
 }
 
+/* ================================================================
+   READ-ONLY RECORD STATE (after approval / finalization)
+   ================================================================ */
+.approval-progress-readonly {
+  opacity: 0.95;
+  border-left-color: #10b981;
+  background: #f0fdf4;
+}
+
+.approval-progress-readonly h4 {
+  border-left-color: #10b981;
+}
+
+.readonly-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
 .approval-stages {
   display: flex;
   flex-direction: column;
@@ -1841,6 +1947,66 @@ onMounted(async () => {
   color: #64748b;
   padding-left: 24px;
   font-style: italic;
+}
+
+/* ================================================================
+   APPROVER LIST (inside Approval Progress, record mode)
+   ================================================================ */
+.approver-list {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.approver-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  font-size: 11px;
+}
+
+.approver-row.accepted {
+  border-left: 3px solid #10b981;
+}
+
+.approver-row.rejected {
+  border-left: 3px solid #ef4444;
+  background: #fef2f2;
+}
+
+.approver-row.pending {
+  border-left: 3px solid #f59e0b;
+}
+
+.approver-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.approver-name {
+  font-weight: 600;
+  color: #1e293b;
+  flex: 1;
+  min-width: 100px;
+}
+
+.approver-user {
+  color: #475569;
+  font-size: 11px;
+}
+
+.approver-time {
+  color: #94a3b8;
+  font-size: 10px;
 }
 
 .rejection-stage-badge {

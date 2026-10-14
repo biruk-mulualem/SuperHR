@@ -160,7 +160,44 @@
 
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>
-        <span><strong>DATE:-</strong> {{ formatDate(requestData.requestedDate) }}</span>
+
+        <span class="date-field">
+          <strong>DATE:-</strong>
+
+          <!-- Display mode -->
+          <span
+            v-if="!isEditingDate"
+            class="date-display"
+            @click="startEditingDate"
+            title="Click to edit date"
+          >
+            {{ displayDate }}
+            <span class="date-edit-pencil no-print" aria-hidden="true">✏️</span>
+          </span>
+
+          <!-- Edit mode -->
+          <span v-else class="date-edit-wrap">
+            <input
+              ref="dateInputRef"
+              v-model="dateDraft"
+              type="date"
+              class="date-input no-print"
+              @keydown.enter.prevent="saveDate"
+              @keydown.esc.prevent="cancelEditingDate"
+              @blur="saveDate"
+            />
+            <span class="date-edit-actions no-print">
+              <button class="btn-save-header" @click="saveDate">💾</button>
+              <button class="btn-cancel-header" @click="cancelEditingDate">✖</button>
+              <button
+                v-if="dateOverride !== null"
+                class="btn-cancel-header"
+                @click="resetDate"
+                title="Reset to API value"
+              >↺</button>
+            </span>
+          </span>
+        </span>
       </div>
     </header>
 
@@ -471,6 +508,14 @@ const departmentDraft = ref('')
 const departmentInputRef = ref<HTMLInputElement | null>(null)
 const departmentOverride = ref<string | null>(null)
 const approvedByName = ref('')
+
+// ================================================================
+// EDITABLE DATE STATE
+// ================================================================
+const isEditingDate = ref(false)
+const dateDraft = ref('')                      // "YYYY-MM-DD" for <input type="date">
+const dateInputRef = ref<HTMLInputElement | null>(null)
+const dateOverride = ref<string | null>(null)  // stored as "YYYY-MM-DD" or null
 
 // ================================================================
 // REMARK MERGE STATE
@@ -891,6 +936,69 @@ const onApprovedNameBlur = (e: FocusEvent) => {
 }
 
 // ================================================================
+// DATE — display + edit
+// ================================================================
+
+// Convert the API's date into "YYYY-MM-DD" for the <input type="date">.
+const toInputDate = (value?: string | null): string => {
+  if (!value) return ''
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return ''
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+// Convert our "YYYY-MM-DD" override to the same "DD/MM/YYYY"
+// format used by the rest of this print form.
+const fromInputDate = (value: string): string => {
+  if (!value) return ''
+  const [y, m, d] = value.split('-')
+  if (!y || !m || !d) return ''
+  return `${d}/${m}/${y}`
+}
+
+// What the user sees: override takes priority, otherwise the API value.
+const displayDate = computed<string>(() => {
+  if (dateOverride.value) return fromInputDate(dateOverride.value)
+  return formatDate(requestData.value?.requestedDate)
+})
+
+const startEditingDate = async () => {
+  // Pre-fill the input with the current displayed value.
+  dateDraft.value = dateOverride.value
+    ? dateOverride.value
+    : toInputDate(requestData.value?.requestedDate)
+
+  isEditingDate.value = true
+  await nextTick()
+  dateInputRef.value?.focus()
+  dateInputRef.value?.select?.()
+}
+
+const saveDate = () => {
+  if (!isEditingDate.value) return
+  const cleaned = (dateDraft.value || '').trim()
+  // Empty → clear the override (falls back to the API date).
+  dateOverride.value = cleaned === '' ? null : cleaned
+  isEditingDate.value = false
+  persistExtras()
+}
+
+const cancelEditingDate = () => {
+  isEditingDate.value = false
+  dateDraft.value = ''
+}
+
+const resetDate = () => {
+  dateOverride.value = null
+  isEditingDate.value = false
+  dateDraft.value = ''
+  persistExtras()
+}
+
+// ================================================================
 // RESET WHEN REQUEST CHANGES
 // ================================================================
 
@@ -1047,6 +1155,7 @@ const LS_EXTRAS_KEY = 'itemRequest:extras:v2'
 interface ExtrasShape {
   department?: string
   approvedBy?: string
+  date?: string   // stored as "YYYY-MM-DD"
 }
 const extrasByRequest = ref<Record<string, ExtrasShape>>({})
 
@@ -1063,6 +1172,8 @@ const persistExtras = () => {
     }
     if (approvedByName.value) next.approvedBy = approvedByName.value
     else delete next.approvedBy
+    if (dateOverride.value) next.date = dateOverride.value
+    else delete next.date
     extrasByRequest.value = { ...extrasByRequest.value, [reqKey]: next }
     localStorage.setItem(LS_EXTRAS_KEY, JSON.stringify(extrasByRequest.value))
   } catch { /* ignore */ }
@@ -1082,8 +1193,11 @@ const applyExtrasForCurrentRequest = () => {
   const extras = reqKey ? extrasByRequest.value[reqKey] : undefined
   departmentOverride.value = extras?.department ?? null
   approvedByName.value = extras?.approvedBy ?? ''
+  dateOverride.value = extras?.date ?? null
   isEditingDepartment.value = false
   departmentDraft.value = ''
+  isEditingDate.value = false
+  dateDraft.value = ''
 }
 
 const persistColumnState = () => {
@@ -1419,6 +1533,7 @@ const printPage = (): void => {
   if (isMergingRemarks.value) isMergingRemarks.value = false
   if (isManagingColumns.value) isManagingColumns.value = false
   if (isEditingDepartment.value) saveDepartment()
+  if (isEditingDate.value) saveDate()
   setTimeout(() => window.print(), 50)
 }
 
@@ -1601,6 +1716,64 @@ watch(
   align-items: center;
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+/* ================================================================
+   EDITABLE DATE
+   ================================================================ */
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.date-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, outline 0.15s ease;
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+}
+
+.date-display:hover {
+  background: #f1f5f9;
+  outline-color: #cbd5e1;
+}
+
+.date-edit-pencil { font-size: 12px; opacity: 0.5; }
+.date-display:hover .date-edit-pencil { opacity: 1; }
+
+.date-edit-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.date-input {
+  padding: 4px 8px;
+  border: 2px solid #2563eb;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  background: #eff6ff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.date-input:focus {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.date-edit-actions {
+  display: inline-flex;
+  gap: 4px;
 }
 
 /* ================================================================
@@ -2333,6 +2506,17 @@ watch(
     font-weight: 500 !important;
     color: #000 !important;
   }
+
+  /* Date: hide editor & pencil on print */
+  .date-edit-pencil { display: none !important; }
+  .date-display {
+    background: transparent !important;
+    outline: none !important;
+    padding: 0 !important;
+    cursor: default !important;
+  }
+  .date-input,
+  .date-edit-actions { display: none !important; }
 }
 
 /* ================================================================
