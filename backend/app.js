@@ -130,6 +130,9 @@ app.use('/api/mobile/notifications', mobileNotificationRoutes);
 const mobileGroupRoutes = require('./routes/Mobile/mobileGroupRoutes');
 const mobilePostRoutes  = require('./routes/Mobile/mobilePostRoutes');
 const adminDeviceRoutes = require('./routes/adminDeviceRoutes');
+
+const temelashRoutes = require("./routes/temelashRoutes");
+
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -209,6 +212,9 @@ app.use('/api', webSessionsRoutes);
 app.use('/api/mobile/groups', mobileGroupRoutes);
 app.use('/api/mobile/posts',  mobilePostRoutes);
 app.use('/api/admin', adminDeviceRoutes);
+
+app.use("/api/temelash", temelashRoutes);
+
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

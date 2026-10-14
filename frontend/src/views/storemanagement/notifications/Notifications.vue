@@ -128,6 +128,16 @@
                 <span class="nt-status-pill" :class="req.summaryStatus">
                   {{ capitalize(req.summaryStatus) }}
                 </span>
+
+                <!-- ✅ Temelash badge -->
+                <span v-if="req.request.isTemelash" class="nt-badge nt-badge-temelash" title="Temporary loan">
+                  🔄 Temelash
+                </span>
+
+                <!-- ✅ Asset / department badge -->
+                <span v-if="req.request.isAsset" class="nt-badge nt-badge-asset" title="Department approval required">
+                  🏛️ Department
+                </span>
               </span>
 
               <span class="nt-header-row-2">
@@ -155,6 +165,14 @@
                   </svg>
                   {{ req.request.requestedByUser?.fullName || 'Unknown' }}
                 </span>
+
+                <!-- ✅ Inline Temelash window in the header when it exists -->
+                <template v-if="req.request.isTemelash && hasTemelashWindow(req.request)">
+                  <span class="nt-meta-sep">·</span>
+                  <span class="nt-meta nt-meta-window">
+                    📅 {{ formatTemelashWindow(req.request) }}
+                  </span>
+                </template>
               </span>
             </span>
 
@@ -186,6 +204,36 @@
                   <span class="nt-route-label">To</span>
                   <span class="nt-route-value">{{ req.request.supplyingStore?.name || '—' }}</span>
                   <span class="nt-route-code">{{ req.request.supplyingStore?.code || '—' }}</span>
+                </div>
+
+                <!-- ✅ Temelash flag on the route card -->
+                <span
+                  v-if="req.request.isTemelash"
+                  class="nt-route-flag nt-route-flag-temelash"
+                  title="Temporary loan — must be returned"
+                >
+                  🔄 Temelash
+                </span>
+              </div>
+
+              <!-- ✅ Temelash loan window detail card -->
+              <div v-if="req.request.isTemelash && hasTemelashWindow(req.request)" class="nt-window-card">
+                <div class="nt-window-header">
+                  <span class="nt-window-icon">📅</span>
+                  <span class="nt-window-title">Temelash Loan Window</span>
+                </div>
+                <div class="nt-window-body">
+                  <div class="nt-window-side">
+                    <span class="nt-window-label">From</span>
+                    <span class="nt-window-value">{{ formatTemelashDate(req.request.temelashFromDate) }}</span>
+                  </div>
+                  <svg class="nt-window-arrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                  <div class="nt-window-side right">
+                    <span class="nt-window-label">Return by</span>
+                    <span class="nt-window-value">{{ formatTemelashDate(req.request.temelashToDate) }}</span>
+                  </div>
                 </div>
               </div>
 
@@ -259,6 +307,15 @@
                   <span class="nt-block-badge">{{ req.request.items?.length || 0 }}</span>
                 </div>
 
+                <!-- ✅ Temelash banner above the items (now includes the window) -->
+                <div v-if="req.request.isTemelash" class="nt-temelash-banner">
+                  🔄 This is a <strong>Temelash</strong> request — items are given temporarily and must be returned.
+                  <template v-if="hasTemelashWindow(req.request)">
+                    <br />
+                    📅 <strong>Loan window:</strong> {{ formatTemelashWindow(req.request) }}
+                  </template>
+                </div>
+
                 <div v-if="(req.request.items || []).length === 0" class="nt-items-empty">
                   No items in this request.
                 </div>
@@ -270,7 +327,7 @@
                         <th class="nt-th-num">#</th>
                         <th>Code</th>
                         <th>Item</th>
-                            <th>Category</th>
+                        <th>Category</th>
                         <th>UOM</th>
                         <th class="nt-th-qty">Qty</th>
                         <th>Brand</th>
@@ -287,11 +344,12 @@
                           <span v-else class="nt-muted">—</span>
                         </td>
                         <td class="nt-td-item" data-label="Item">{{ item.item?.name || 'Unknown Item' }}</td>
-<td class="nt-td-category" data-label="Category">
-  <span v-if="item.item?.category?.name">{{ item.item.category.name }}</span>
-  <span v-else-if="item.item?.categoryId" class="nt-muted">#{{ item.item.categoryId }}</span>
-  <span v-else class="nt-muted">—</span>
-</td>                  <td class="nt-td-uom" data-label="UOM">{{ getUomDisplay(item) }}</td>
+                        <td class="nt-td-category" data-label="Category">
+                          <span v-if="item.item?.category?.name">{{ item.item.category.name }}</span>
+                          <span v-else-if="item.item?.categoryId" class="nt-muted">#{{ item.item.categoryId }}</span>
+                          <span v-else class="nt-muted">—</span>
+                        </td>
+                        <td class="nt-td-uom" data-label="UOM">{{ getUomDisplay(item) }}</td>
                         <td class="nt-td-qty" data-label="Qty">{{ formatQty(item.quantity) }}</td>
                         <td class="nt-td-brand" data-label="Brand">
                           <span v-if="item.brand">{{ item.brand }}</span>
@@ -415,9 +473,27 @@
               <span class="nt-modal-label">Approvals pending</span>
               <span class="nt-modal-value">{{ currentRequestForAction?.pendingCount || 0 }}</span>
             </div>
+
+            <!-- ✅ Temelash loan window in accept modal -->
+            <template v-if="currentRequestForAction?.request?.isTemelash">
+              <div class="nt-modal-row">
+                <span class="nt-modal-label">Temelash from</span>
+                <span class="nt-modal-value">{{ formatTemelashDate(currentRequestForAction.request.temelashFromDate) }}</span>
+              </div>
+              <div class="nt-modal-row">
+                <span class="nt-modal-label">Return by</span>
+                <span class="nt-modal-value">{{ formatTemelashDate(currentRequestForAction.request.temelashToDate) }}</span>
+              </div>
+            </template>
+
             <div v-if="currentRequestForAction?.request?.remark" class="nt-modal-row column">
               <span class="nt-modal-label">Remark</span>
               <span class="nt-modal-value small">{{ currentRequestForAction.request.remark }}</span>
+            </div>
+
+            <!-- ✅ Temelash notice in accept modal -->
+            <div v-if="currentRequestForAction?.request?.isTemelash" class="nt-temelash-banner" style="margin-top: 8px;">
+              🔄 This is a <strong>Temelash</strong> request — items will be recorded as a temporary loan and must be returned by the date above.
             </div>
           </div>
 
@@ -706,6 +782,30 @@ const getOriginCode = (request) => {
   if (!request) return ''
   if (isOther(request)) return request.requestedByUser?.Department?.code || ''
   return request.askingStore?.code || ''
+}
+
+// ---------------- Temelash helpers ----------------
+const hasTemelashWindow = (request) => {
+  if (!request) return false
+  return !!(request.temelashFromDate || request.temelashToDate)
+}
+
+const formatTemelashDate = (date) => {
+  if (!date) return '—'
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+const formatTemelashWindow = (request) => {
+  const from = request?.temelashFromDate
+  const to = request?.temelashToDate
+  if (!from && !to) return '—'
+  return `${formatTemelashDate(from)} → ${formatTemelashDate(to)}`
 }
 
 // ---------------- expand / collapse ----------------
@@ -1274,6 +1374,16 @@ watch([filterStatus], () => {
 .nt-meta svg { color: #94a3b8; }
 .nt-meta-sep { color: #cbd5e1; }
 
+/* ✅ NEW: Temelash window meta in header */
+.nt-meta-window {
+  color: #9a3412;
+  font-weight: 700;
+  background: #fff7ed;
+  padding: 1px 8px;
+  border-radius: 6px;
+  border: 1px solid #fed7aa;
+}
+
 .nt-header-chevron {
   display: flex;
   align-items: center;
@@ -1299,6 +1409,7 @@ watch([filterStatus], () => {
 
 /* Route */
 .nt-route-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1340,6 +1451,85 @@ watch([filterStatus], () => {
 }
 
 .nt-route-arrow-icon { flex-shrink: 0; color: #cbd5e1; }
+
+/* ✅ Temelash flag inside the route card */
+.nt-route-flag {
+  position: absolute;
+  top: -8px;
+  right: 14px;
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+  box-shadow: 0 2px 4px rgba(154, 52, 18, 0.12);
+}
+
+/* ================= TEMELASH WINDOW CARD ================= */
+.nt-window-card {
+  margin-top: 4px;
+  padding: 14px 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #f59e0b;
+  border-radius: 10px;
+}
+
+.nt-window-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.nt-window-icon {
+  font-size: 16px;
+}
+
+.nt-window-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #9a3412;
+}
+
+.nt-window-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nt-window-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nt-window-side.right { text-align: right; }
+
+.nt-window-label {
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #a16207;
+}
+
+.nt-window-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: #78350f;
+  letter-spacing: -0.2px;
+}
+
+.nt-window-arrow { color: #f59e0b; flex-shrink: 0; }
 
 /* Inline user */
 .nt-inline-user { display: flex; align-items: center; gap: 12px; }
@@ -1943,6 +2133,50 @@ watch([filterStatus], () => {
 .nt-toast.warning { background: #f59e0b; }
 .nt-toast-icon { display: inline-flex; align-items: center; }
 
+/* ================= BADGES (Temelash / Asset) ================= */
+.nt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+.nt-badge-temelash {
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+}
+
+.nt-badge-asset {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+/* ================= TEMELASH BANNER ================= */
+.nt-temelash-banner {
+  font-size: 12px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.nt-temelash-banner strong {
+  font-weight: 900;
+}
+
 /* ================= TRANSITIONS ================= */
 .expand-enter-active, .expand-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -2020,5 +2254,25 @@ watch([filterStatus], () => {
     text-align: right;
   }
   .nt-request-body { padding: 4px 14px 16px 14px; }
+
+  .nt-route-flag {
+    position: static;
+    align-self: flex-start;
+    margin-top: 6px;
+  }
+  .nt-route-card { flex-wrap: wrap; }
+
+  .nt-window-body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .nt-window-side.right {
+    text-align: left;
+  }
+  .nt-window-arrow {
+    align-self: center;
+    transform: rotate(90deg);
+  }
 }
 </style>

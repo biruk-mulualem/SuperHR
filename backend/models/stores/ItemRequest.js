@@ -30,6 +30,11 @@ ItemRequest.hasMany(models.RequestNotification, {
   as: 'notifications',
 });
 
+      ItemRequest.hasMany(models.TemelashRecord, {
+        foreignKey: 'request_id',
+        as: 'temelashRecords',
+      });
+
       
     }
 
@@ -193,6 +198,33 @@ ItemRequest.hasMany(models.RequestNotification, {
         allowNull: true,
         field: 'finalized_at',
       },
+
+       // ✅ Departments the requester chose NOT to notify
+      excludedDepartmentIds: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        field: 'excluded_department_ids',
+      },
+
+      // ✅ Temelash (temporary loan) flag
+      isTemelash: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'is_temelash',
+      },
+      // ✅ NEW: Temelash loan window (only meaningful when isTemelash = true)
+temelashFromDate: {
+  type: DataTypes.DATEONLY,
+  allowNull: true,
+  field: 'temelash_from_date',
+},
+temelashToDate: {
+  type: DataTypes.DATEONLY,
+  allowNull: true,
+  field: 'temelash_to_date',
+},
       createdAt: {
         type: DataTypes.DATE,
         allowNull: false,

@@ -616,11 +616,7 @@ const uploadPurchaseRequest = multer({
   fileFilter: purchaseRequestFileFilter,
 });
 
-/**
- * Accepts two files:
- *   - approvedDocFront
- *   - approvedDocBack
- */
+
 const uploadPurchaseRequestDocs = (req, res, next) => {
   console.log('=== uploadPurchaseRequestDocs called ===');
 
@@ -637,23 +633,24 @@ const uploadPurchaseRequestDocs = (req, res, next) => {
             error: 'File too large. Maximum size is 5MB.',
           });
         }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return res.status(400).json({
+            success: false,
+            error: `Unexpected file field: ${err.field}`,
+          });
+        }
         return res.status(400).json({ success: false, error: err.message });
       }
       return res.status(400).json({ success: false, error: err.message });
     }
 
+    // 👈 Only log — no validation here. The controller decides.
     const front = req.files?.approvedDocFront?.[0];
     const back = req.files?.approvedDocBack?.[0];
 
-    if (!front || !back) {
-      return res.status(400).json({
-        success: false,
-        error: 'Both front and back documents are required',
-      });
-    }
+    console.log('📎 Front uploaded:', front ? front.filename : '(MISSING)');
+    console.log('📎 Back uploaded:', back ? back.filename : '(not provided)');
 
-    console.log('✅ Front uploaded:', front.filename);
-    console.log('✅ Back uploaded:', back.filename);
     next();
   });
 };

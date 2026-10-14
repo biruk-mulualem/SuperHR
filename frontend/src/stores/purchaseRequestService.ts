@@ -4,22 +4,11 @@ import api from './interceptor';
 // ================================================================
 // API ORIGIN (derived from the axios instance's baseURL)
 // ================================================================
-//
-// `api.defaults.baseURL` looks like: "http://localhost:4000/api"
-// We strip "/api" (and anything after it) to get the domain root,
-// so uploaded files served at /uploads/... resolve correctly.
-//
+
 const API_ORIGIN = (api.defaults.baseURL ?? '')
   .replace(/\/api(?:\/.*)?$/, '')
   .replace(/\/$/, '');
 
-/**
- * Resolves a relative upload URL (returned by the backend) into
- * a fully-qualified URL that <img src=""> can display.
- *
- *   resolveDocUrl('/uploads/purchase-requests/approved/foo.png')
- *   → 'http://localhost:4000/uploads/purchase-requests/approved/foo.png'
- */
 export function resolveDocUrl(url?: string | null): string {
   if (!url) return '';
   if (
@@ -38,7 +27,7 @@ export function resolveDocUrl(url?: string | null): string {
 // ================================================================
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent';
-export type RequestStatus = 'draft' | 'approved';
+export type RequestStatus = 'draft' | 'pending' | 'approved' | 'rejected';
 
 export interface PurchaseItem {
   id?: number;
@@ -61,9 +50,8 @@ export interface ListParams {
   status?: 'all' | RequestStatus;
   priority?: 'all' | Priority;
   department?: string;
-  // ✅ Date range filters
-  dateFrom?: string; // "YYYY-MM-DD"
-  dateTo?: string;   // "YYYY-MM-DD"
+  dateFrom?: string;
+  dateTo?: string;
   dateField?: 'created_at' | 'updated_at' | 'approved_at' | 'requested_date';
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
@@ -75,6 +63,8 @@ export interface PurchaseRequest {
   department?: string;
   expertName?: string;
   preparedBy?: string;
+  preparedById?: string | null;
+  createdById?: number | null;
   requestedDate: string;
   priority: Priority;
   status: RequestStatus;
@@ -82,11 +72,20 @@ export interface PurchaseRequest {
   createdAt: string;
   updatedAt?: string;
 
-  // ✅ Approved documents
   approvedDocFront?: string;
   approvedDocFrontName?: string;
   approvedDocBack?: string;
   approvedDocBackName?: string;
+
+  // Approval workflow
+  currentStageIndex?: number;
+  currentStageId?: number | null;
+  currentStage?: { id: number; label: string; orderIndex: number } | null;
+  submittedAt?: string | null;
+  completedAt?: string | null;
+  rejectedAt?: string | null;
+  rejectedByStageIndex?: number | null;
+  rejectedBySubgroupId?: number | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -112,13 +111,15 @@ export interface ApprovePayload {
   prId: number | string;
   prNumber: string;
   front: File;
-  back: File;
+  back?: File;
 }
 
 export interface PurchaseRequestStats {
   total: number;
   drafts: number;
+  pending: number;
   approved: number;
+  rejected: number;
 }
 
 export interface StatsResponse {
@@ -144,6 +145,37 @@ export interface UpdatePurchaseRequestData {
   priority?: Priority;
   items?: PurchaseItem[];
 }
+
+// ================================================================
+// APPROVAL WORKFLOW TYPES
+// ================================================================
+
+export interface SubgroupStatusRow {
+  subgroupId: number;
+  subgroupName: string;
+  subgroupCode: string;
+  groupId: number;
+  groupName: string | null;
+  decision: 'approve' | 'reject' | null;
+  decidedByName: string | null;
+  comment: string | null;
+  actedAt: string | null;
+}
+
+export interface ApprovalStatus {
+  stageId: number | null;
+  stageIndex: number;
+  stageLabel: string;
+  totalSubgroups: number;
+  approvedCount: number;
+  decidedCount: number;
+  subgroups: SubgroupStatusRow[];
+  mySubgroupId: number | null;
+  myDecision: 'approve' | 'reject' | null;
+  futureStages: { id: number; label: string; orderIndex: number }[];
+}
+
+export type ApprovalDecision = 'approve' | 'reject';
 
 // ================================================================
 // BALANCE CHECK TYPES
@@ -192,10 +224,6 @@ class PurchaseRequestService {
   // LIST + STATS
   // ================================================================
 
-  /**
-   * Get paginated list of purchase requests
-   * GET /api/purchase-requests
-   */
   async getRequests(
     params: ListParams = {}
   ): Promise<PaginatedResponse<PurchaseRequest>> {
@@ -224,23 +252,13 @@ class PurchaseRequestService {
       console.error('Get purchase requests error:', error);
       return {
         success: false,
-        data: {
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 10,
-          totalPages: 1,
-        },
+        data: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 },
         error:
           error.response?.data?.error || 'Failed to fetch purchase requests',
       };
     }
   }
 
-  /**
-   * Get paginated list of APPROVED purchase requests
-   * GET /api/purchase-requests/approved
-   */
   async getApprovedRequests(
     params: Omit<ListParams, 'status'> = {}
   ): Promise<PaginatedResponse<PurchaseRequest>> {
@@ -268,13 +286,7 @@ class PurchaseRequestService {
       console.error('Get approved purchase requests error:', error);
       return {
         success: false,
-        data: {
-          items: [],
-          total: 0,
-          page: 1,
-          pageSize: 10,
-          totalPages: 1,
-        },
+        data: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 },
         error:
           error.response?.data?.error ||
           'Failed to fetch approved purchase requests',
@@ -282,10 +294,45 @@ class PurchaseRequestService {
     }
   }
 
-  /**
-   * Get statistics
-   * GET /api/purchase-requests/stats
-   */
+  // ================================================================
+  // PENDING FOR ME — GET /api/purchase-requests/pending-my-approval
+  // ================================================================
+  async getPendingApprovals(
+    params: ListParams = {}
+  ): Promise<PaginatedResponse<PurchaseRequest>> {
+    try {
+      const qp = new URLSearchParams();
+
+      if (params.page) qp.append('page', String(params.page));
+      if (params.limit) qp.append('limit', String(params.limit));
+      if (params.search) qp.append('search', params.search);
+      if (params.priority && params.priority !== 'all') {
+        qp.append('priority', params.priority);
+      }
+      if (params.department) qp.append('department', params.department);
+      if (params.dateFrom) qp.append('dateFrom', params.dateFrom);
+      if (params.dateTo) qp.append('dateTo', params.dateTo);
+      if (params.dateField) qp.append('dateField', params.dateField);
+      if (params.sortBy) qp.append('sortBy', params.sortBy);
+      if (params.sortOrder) qp.append('sortOrder', params.sortOrder);
+
+      const url = qp.toString()
+        ? `/purchase-requests/pending-my-approval?${qp.toString()}`
+        : '/purchase-requests/pending-my-approval';
+
+      const res = await api.get(url);
+      return res.data;
+    } catch (error: any) {
+      console.error('Get pending approvals error:', error);
+      return {
+        success: false,
+        data: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 },
+        error:
+          error.response?.data?.error || 'Failed to fetch pending approvals',
+      };
+    }
+  }
+
   async getStats(): Promise<StatsResponse> {
     try {
       const res = await api.get('/purchase-requests/stats');
@@ -294,7 +341,7 @@ class PurchaseRequestService {
       console.error('Get purchase request stats error:', error);
       return {
         success: false,
-        data: { total: 0, drafts: 0, approved: 0 },
+        data: { total: 0, drafts: 0, pending: 0, approved: 0, rejected: 0 },
         error: error.response?.data?.error || 'Failed to fetch statistics',
       };
     }
@@ -304,10 +351,6 @@ class PurchaseRequestService {
   // SINGLE
   // ================================================================
 
-  /**
-   * Get single purchase request by ID
-   * GET /api/purchase-requests/:id
-   */
   async getRequestById(
     id: number | string
   ): Promise<SingleResponse<PurchaseRequest>> {
@@ -329,10 +372,6 @@ class PurchaseRequestService {
   // CREATE / UPDATE / DELETE
   // ================================================================
 
-  /**
-   * Create a new purchase request
-   * POST /api/purchase-requests
-   */
   async createRequest(
     data: CreatePurchaseRequestData
   ): Promise<SingleResponse<PurchaseRequest>> {
@@ -352,10 +391,6 @@ class PurchaseRequestService {
     }
   }
 
-  /**
-   * Update an existing purchase request (drafts only)
-   * PUT /api/purchase-requests/:id
-   */
   async updateRequest(
     id: number | string,
     data: UpdatePurchaseRequestData
@@ -376,10 +411,6 @@ class PurchaseRequestService {
     }
   }
 
-  /**
-   * Delete a purchase request (drafts only)
-   * DELETE /api/purchase-requests/:id
-   */
   async deleteRequest(
     id: number | string
   ): Promise<{ success: boolean; message?: string; error?: string }> {
@@ -397,35 +428,99 @@ class PurchaseRequestService {
   }
 
   // ================================================================
-  // APPROVE (with front & back documents)
+  // SUBMIT FOR APPROVAL (submitter action)
+  // POST /api/purchase-requests/submit  (multipart/form-data)
   // ================================================================
 
-  /**
-   * Approve a purchase request with front & back documents
-   * POST /api/purchase-requests/approve  (multipart/form-data)
-   */
-  async approveRequest(
-    payload: ApprovePayload
+  async submitForApproval(
+    prId: number | string,
+    front: File,
+    back?: File
   ): Promise<SingleResponse<PurchaseRequest>> {
     try {
       const formData = new FormData();
-      formData.append('prId', String(payload.prId));
-      formData.append('prNumber', payload.prNumber);
-      formData.append('status', 'approved');
-      formData.append('approvedDocFront', payload.front);
-      formData.append('approvedDocBack', payload.back);
+      formData.append('prId', String(prId));
+      formData.append('approvedDocFront', front);
+      if (back) formData.append('approvedDocBack', back);
 
-      const res = await api.post('/purchase-requests/approve', formData, {
+      const res = await api.post('/purchase-requests/submit', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return res.data;
     } catch (error: any) {
-      console.error('Approve purchase request error:', error);
+      console.error('Submit for approval error:', error);
       return {
         success: false,
         data: {} as PurchaseRequest,
         error:
-          error.response?.data?.error || 'Failed to approve purchase request',
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          'Failed to submit purchase request',
+      };
+    }
+  }
+
+  /**
+   * @deprecated Use submitForApproval instead.
+   */
+  async approveRequest(
+    payload: ApprovePayload
+  ): Promise<SingleResponse<PurchaseRequest>> {
+    return this.submitForApproval(payload.prId, payload.front, payload.back);
+  }
+
+  // ================================================================
+  // APPROVAL WORKFLOW — status + decision
+  // ================================================================
+
+  async getApprovalStatus(
+    id: number | string
+  ): Promise<SingleResponse<ApprovalStatus>> {
+    try {
+      const res = await api.get(`/purchase-requests/${id}/approval-status`);
+      return res.data;
+    } catch (error: any) {
+      console.error('Get approval status error:', error);
+      return {
+        success: false,
+        data: {
+          stageId: null,
+          stageIndex: 0,
+          stageLabel: '',
+          totalSubgroups: 0,
+          approvedCount: 0,
+          decidedCount: 0,
+          subgroups: [],
+          mySubgroupId: null,
+          myDecision: null,
+          futureStages: [],
+        },
+        error:
+          error.response?.data?.error || 'Failed to fetch approval status',
+      };
+    }
+  }
+
+  async decide(
+    id: number | string,
+    decision: ApprovalDecision,
+    comment?: string
+  ): Promise<SingleResponse<PurchaseRequest>> {
+    try {
+      const res = await api.post(`/purchase-requests/${id}/decision`, {
+        decision,
+        comment: comment || undefined,
+      });
+      return res.data;
+    } catch (error: any) {
+      console.error('Decide error:', error);
+      return {
+        success: false,
+        data: {} as PurchaseRequest,
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          `Failed to ${decision} purchase request`,
       };
     }
   }
@@ -434,10 +529,6 @@ class PurchaseRequestService {
   // BALANCE CHECK
   // ================================================================
 
-  /**
-   * Check if any of the requested items already have balance in a store.
-   * POST /api/purchase-requests/check-balance
-   */
   async checkBalance(
     items: BalanceCheckPayloadItem[]
   ): Promise<BalanceCheckResponse> {
@@ -456,23 +547,20 @@ class PurchaseRequestService {
   }
 
   // ================================================================
-  // HELPER METHODS (for the template)
+  // HELPER METHODS
   // ================================================================
 
-  /** Join item names for the summary column */
   getItemNames(items: PurchaseItem[] | undefined): string {
     if (!items || items.length === 0) return '';
     return items.map((i) => i.name).join(', ');
   }
 
-  /** Sum of quantities */
   getTotalQuantity(items: PurchaseItem[] | undefined): number {
     if (!items || items.length === 0) return 0;
     return items.reduce((sum, i) => sum + (i.quantity || 0), 0);
   }
 
-  /** Short date: "Sep 12, 2026" */
-  formatDate(dateString?: string): string {
+  formatDate(dateString?: string | null): string {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return 'N/A';
@@ -483,8 +571,7 @@ class PurchaseRequestService {
     });
   }
 
-  /** Full date-time: "Sep 12, 2026, 10:30 AM" */
-  formatDateTime(dateString?: string): string {
+  formatDateTime(dateString?: string | null): string {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return 'N/A';
@@ -497,8 +584,7 @@ class PurchaseRequestService {
     });
   }
 
-  /** Extract file name from any URL (data:, blob:, relative, absolute) */
-  getFileName(url?: string): string {
+  getFileName(url?: string | null): string {
     if (!url) return 'document';
     if (url.startsWith('data:')) return 'approved-document';
     if (url.startsWith('blob:')) return 'approved-document';
@@ -511,34 +597,36 @@ class PurchaseRequestService {
     }
   }
 
-  /** Friendly status display */
   getStatusDisplay(status: RequestStatus | string): string {
     const map: Record<string, string> = {
       draft: 'Draft',
+      pending: 'Pending',
       approved: 'Approved',
+      rejected: 'Rejected',
     };
     return map[status] || status;
   }
 
-  /** Status icon */
   getStatusIcon(status: RequestStatus | string): string {
     const map: Record<string, string> = {
       draft: '📝',
+      pending: '⏳',
       approved: '✅',
+      rejected: '❌',
     };
     return map[status] || '📦';
   }
 
-  /** Status badge color (for `<Badge :variant="">`) */
   getStatusBadge(status: RequestStatus | string): string {
     const map: Record<string, string> = {
       draft: 'secondary',
+      pending: 'warning',
       approved: 'success',
+      rejected: 'danger',
     };
     return map[status] || 'secondary';
   }
 
-  /** Priority icon */
   getPriorityIcon(priority: Priority | string): string {
     const map: Record<string, string> = {
       low: '🟢',
@@ -549,9 +637,8 @@ class PurchaseRequestService {
     return map[priority] || '⚪';
   }
 
-  /** Client-side file validation (mirrors backend) */
   validateFile(file: File): string | null {
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
       return 'File size must be less than 5MB.';
     }
@@ -568,7 +655,6 @@ class PurchaseRequestService {
     return null;
   }
 
-  /** Convert File → base64 data URL for local preview */
   fileToDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -578,23 +664,25 @@ class PurchaseRequestService {
     });
   }
 
-  /** Check if a request is editable */
   isEditable(request: PurchaseRequest | null): boolean {
-    return request?.status === 'draft';
+    if (!request) return false;
+    return request.status === 'draft' || request.status === 'rejected';
   }
 
-  /** Check if a request can be approved */
+  canSubmit(request: PurchaseRequest | null): boolean {
+    if (!request) return false;
+    return request.status === 'draft';
+  }
+
   canApprove(request: PurchaseRequest | null): boolean {
-    return request?.status === 'draft';
+    return this.canSubmit(request);
   }
 
-  /** Check if a request has both documents */
   hasDocuments(request: PurchaseRequest | null): boolean {
     if (!request) return false;
-    return !!(request.approvedDocFront && request.approvedDocBack);
+    return !!request.approvedDocFront;
   }
 
-  /** Friendly label for balance check store entry */
   getStoreBalanceLabel(store: BalanceCheckStore): string {
     const parts: string[] = [store.storeName];
     if (store.storeCode) parts.push(`(${store.storeCode})`);
@@ -603,7 +691,4 @@ class PurchaseRequestService {
   }
 }
 
-// ================================================================
-// EXPORT SINGLETON
-// ================================================================
 export default new PurchaseRequestService();

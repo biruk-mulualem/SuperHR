@@ -25,9 +25,94 @@ export interface PurchasingGroup {
   description?: string | null;
   status: 'active' | 'inactive';
   members: PurchasingGroupMember[];
+  subgroups: PurchasingSubgroup[];
   createdAt?: string;
   updatedAt?: string;
 }
+
+// ================================================================
+// SUBGROUP TYPES
+// ================================================================
+
+export interface PurchasingSubgroupMember {
+  id: number;
+  userId: number;
+  username: string;
+  fullName?: string;
+  full_name?: string;
+  email?: string;
+  department?: string | null;
+  role?: string;
+  isActive?: boolean;
+  joinedAt?: string;
+}
+
+export interface PurchasingSubgroup {
+  id: number;
+  code: string;
+  groupId: number;
+  name: string;
+  description?: string | null;
+  status: 'active' | 'inactive';
+  members: PurchasingSubgroupMember[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateSubgroupData {
+  name: string;
+  description?: string;
+  status?: 'active' | 'inactive';
+}
+
+export interface UpdateSubgroupData {
+  name?: string;
+  description?: string;
+  status?: 'active' | 'inactive';
+}
+
+export interface SingleSubgroupResponse {
+  success: boolean;
+  data: PurchasingSubgroup;
+  message?: string;
+  error?: string;
+  details?: {
+    conflicts?: Array<{ userId: number; subgroup: string | null }>;
+  };
+}
+
+// ================================================================
+// SEQUENCE TYPES  (NEW)
+// ================================================================
+
+export interface SequenceGroup {
+  id: number;
+  name: string;
+  code: string;
+  subgroupCount: number;
+  memberCount: number;
+  subgroupNames: string[];
+}
+
+export interface SequenceStage {
+  id: number;
+  label: string;
+  orderIndex: number;
+  groups: SequenceGroup[];
+}
+
+export interface SequenceResponse {
+  success: boolean;
+  data: {
+    items: SequenceStage[];
+  };
+  message?: string;
+  error?: string;
+}
+
+// ================================================================
+// EXISTING TYPES
+// ================================================================
 
 export interface AvailableUser {
   userId: number;
@@ -96,6 +181,8 @@ export interface GroupStats {
   active: number;
   inactive: number;
   totalMembers: number;
+  totalSubgroups?: number;
+  totalSubgroupMembers?: number;
 }
 
 export interface GroupStatsResponse {
@@ -113,10 +200,6 @@ class PurchasingGroupService {
   // LIST + STATS
   // ================================================================
 
-  /**
-   * Get paginated list of purchasing groups
-   * GET /api/purchasing-groups
-   */
   async getGroups(params: GroupListParams = {}): Promise<PaginatedGroupsResponse> {
     try {
       const queryParams = new URLSearchParams();
@@ -150,10 +233,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Get statistics (counts by status + total members)
-   * GET /api/purchasing-groups/stats
-   */
   async getStats(): Promise<GroupStatsResponse> {
     try {
       const response = await api.get('/purchasing-groups/stats');
@@ -167,6 +246,8 @@ class PurchasingGroupService {
           active: 0,
           inactive: 0,
           totalMembers: 0,
+          totalSubgroups: 0,
+          totalSubgroupMembers: 0,
         },
         error: error.response?.data?.error || 'Failed to fetch group statistics',
       };
@@ -177,10 +258,6 @@ class PurchasingGroupService {
   // SINGLE GROUP
   // ================================================================
 
-  /**
-   * Get single group by ID (includes members)
-   * GET /api/purchasing-groups/:id
-   */
   async getGroupById(id: number | string): Promise<SingleGroupResponse> {
     try {
       const response = await api.get(`/purchasing-groups/${id}`);
@@ -196,13 +273,9 @@ class PurchasingGroupService {
   }
 
   // ================================================================
-  // CREATE / UPDATE / DELETE
+  // CREATE / UPDATE / DELETE (group)
   // ================================================================
 
-  /**
-   * Create a new purchasing group
-   * POST /api/purchasing-groups
-   */
   async createGroup(data: CreateGroupData): Promise<SingleGroupResponse> {
     try {
       const response = await api.post('/purchasing-groups', data);
@@ -220,10 +293,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Update an existing purchasing group
-   * PUT /api/purchasing-groups/:id
-   */
   async updateGroup(
     id: number | string,
     data: UpdateGroupData
@@ -244,10 +313,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Delete a purchasing group
-   * DELETE /api/purchasing-groups/:id
-   */
   async deleteGroup(id: number | string): Promise<{
     success: boolean;
     message?: string;
@@ -266,13 +331,9 @@ class PurchasingGroupService {
   }
 
   // ================================================================
-  // MEMBERS
+  // GROUP-LEVEL MEMBERS
   // ================================================================
 
-  /**
-   * Get users not yet in the group (for Add-Members panel)
-   * GET /api/purchasing-groups/:id/available-users?search=
-   */
   async getAvailableUsers(
     groupId: number | string,
     search = ''
@@ -294,10 +355,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Replace the full set of members (used by "Save Changes")
-   * PUT /api/purchasing-groups/:id/members
-   */
   async setMembers(
     groupId: number | string,
     userIds: number[]
@@ -321,10 +378,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Add members (append, does not replace)
-   * POST /api/purchasing-groups/:id/members
-   */
   async addMembers(
     groupId: number | string,
     userIds: number[]
@@ -348,10 +401,6 @@ class PurchasingGroupService {
     }
   }
 
-  /**
-   * Remove a single member
-   * DELETE /api/purchasing-groups/:id/members/:userId
-   */
   async removeMember(
     groupId: number | string,
     userId: number | string
@@ -372,13 +421,210 @@ class PurchasingGroupService {
   }
 
   // ================================================================
-  // HELPER METHODS
+  // SUBGROUPS
+  // ================================================================
+
+  async createSubgroup(
+    groupId: number | string,
+    data: CreateSubgroupData
+  ): Promise<SingleSubgroupResponse> {
+    try {
+      const response = await api.post(
+        `/purchasing-groups/${groupId}/subgroups`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Create subgroup error:', error);
+      return {
+        success: false,
+        data: {} as PurchasingSubgroup,
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          'Failed to create subgroup',
+      };
+    }
+  }
+
+  async updateSubgroup(
+    groupId: number | string,
+    subgroupId: number | string,
+    data: UpdateSubgroupData
+  ): Promise<SingleSubgroupResponse> {
+    try {
+      const response = await api.put(
+        `/purchasing-groups/${groupId}/subgroups/${subgroupId}`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Update subgroup error:', error);
+      return {
+        success: false,
+        data: {} as PurchasingSubgroup,
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          'Failed to update subgroup',
+      };
+    }
+  }
+
+  async deleteSubgroup(
+    groupId: number | string,
+    subgroupId: number | string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      const response = await api.delete(
+        `/purchasing-groups/${groupId}/subgroups/${subgroupId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Delete subgroup error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to delete subgroup',
+      };
+    }
+  }
+
+  // ================================================================
+  // SUBGROUP MEMBERS
+  // ================================================================
+
+  async getAvailableSubgroupUsers(
+    groupId: number | string,
+    subgroupId: number | string,
+    search = ''
+  ): Promise<AvailableUsersResponse> {
+    try {
+      const url = search
+        ? `/purchasing-groups/${groupId}/subgroups/${subgroupId}/available-users?search=${encodeURIComponent(search)}`
+        : `/purchasing-groups/${groupId}/subgroups/${subgroupId}/available-users`;
+
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error('Get available subgroup users error:', error);
+      return {
+        success: false,
+        data: { items: [] },
+        error:
+          error.response?.data?.error || 'Failed to fetch available users',
+      };
+    }
+  }
+
+  async addSubgroupMembers(
+    groupId: number | string,
+    subgroupId: number | string,
+    userIds: number[]
+  ): Promise<SingleSubgroupResponse> {
+    try {
+      const response = await api.post(
+        `/purchasing-groups/${groupId}/subgroups/${subgroupId}/members`,
+        { userIds }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Add subgroup members error:', error);
+      return {
+        success: false,
+        data: {} as PurchasingSubgroup,
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          'Failed to add members',
+        details: error.response?.data?.details,
+      };
+    }
+  }
+
+  async removeSubgroupMember(
+    groupId: number | string,
+    subgroupId: number | string,
+    userId: number | string
+  ): Promise<SingleSubgroupResponse> {
+    try {
+      const response = await api.delete(
+        `/purchasing-groups/${groupId}/subgroups/${subgroupId}/members/${userId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Remove subgroup member error:', error);
+      return {
+        success: false,
+        data: {} as PurchasingSubgroup,
+        error: error.response?.data?.error || 'Failed to remove member',
+      };
+    }
+  }
+
+  // ================================================================
+  // APPROVAL SEQUENCE  (NEW)
   // ================================================================
 
   /**
-   * Get initials from a member's name
+   * Get the current approval sequence (ordered stages with their groups)
+   * GET /api/purchasing-groups/sequence
    */
-  getMemberInitials(member: PurchasingGroupMember | AvailableUser | null): string {
+  async getSequence(): Promise<SequenceResponse> {
+    try {
+      const response = await api.get('/purchasing-groups/sequence');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get sequence error:', error);
+      return {
+        success: false,
+        data: { items: [] },
+        error: error.response?.data?.error || 'Failed to load sequence',
+      };
+    }
+  }
+
+  /**
+   * Replace the entire approval sequence with a new set of stages
+   * PUT /api/purchasing-groups/sequence
+   *
+   * Note: only `id` and `name` fields matter on each group; the backend
+   * ignores the rest and reconstructs full group info from the DB.
+   */
+  async saveSequence(stages: SequenceStage[]): Promise<SequenceResponse> {
+    try {
+      const payload = {
+        stages: stages.map((s, i) => ({
+          label: s.label || '',
+          orderIndex: i + 1,
+          groups: (s.groups || []).map((g) => ({
+            id: g.id,
+            name: g.name,
+          })),
+        })),
+      };
+
+      const response = await api.put('/purchasing-groups/sequence', payload);
+      return response.data;
+    } catch (error: any) {
+      console.error('Save sequence error:', error);
+      return {
+        success: false,
+        data: { items: [] },
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          'Failed to save sequence',
+      };
+    }
+  }
+
+  // ================================================================
+  // HELPER METHODS
+  // ================================================================
+
+  getMemberInitials(
+    member: PurchasingGroupMember | PurchasingSubgroupMember | AvailableUser | null
+  ): string {
     const name = member?.fullName || member?.full_name || member?.username || '';
     if (!name.trim()) return '?';
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -391,10 +637,9 @@ class PurchasingGroupService {
     return (firstInitial + lastInitial).toUpperCase();
   }
 
-  /**
-   * Get display name for a member
-   */
-  getMemberDisplayName(member: PurchasingGroupMember | AvailableUser | null): string {
+  getMemberDisplayName(
+    member: PurchasingGroupMember | PurchasingSubgroupMember | AvailableUser | null
+  ): string {
     if (!member) return 'Unknown User';
     return (
       member.fullName ||
@@ -404,9 +649,6 @@ class PurchasingGroupService {
     );
   }
 
-  /**
-   * Format date
-   */
   formatDate(date: string | Date | null | undefined): string {
     if (!date) return 'N/A';
     const d = new Date(date);
@@ -418,9 +660,6 @@ class PurchasingGroupService {
     });
   }
 
-  /**
-   * Format date-time
-   */
   formatDateTime(date: string | Date | null | undefined): string {
     if (!date) return 'N/A';
     const d = new Date(date);
@@ -434,17 +673,11 @@ class PurchasingGroupService {
     });
   }
 
-  /**
-   * Get member count label
-   */
   getMemberCountLabel(group: PurchasingGroup | null): string {
     const count = group?.members?.length || 0;
     return `${count} member${count === 1 ? '' : 's'}`;
   }
 
-  /**
-   * Get member names for a group (comma separated, truncated)
-   */
   getMemberNames(group: PurchasingGroup | null, max = 3): string {
     const members = group?.members || [];
     if (members.length === 0) return 'No members';
@@ -459,9 +692,6 @@ class PurchasingGroupService {
       : names;
   }
 
-  /**
-   * Get status badge class
-   */
   getStatusBadge(status: string): string {
     const map: Record<string, string> = {
       active: 'success',
@@ -470,9 +700,6 @@ class PurchasingGroupService {
     return map[status] || 'secondary';
   }
 
-  /**
-   * Get status icon
-   */
   getStatusIcon(status: string): string {
     const map: Record<string, string> = {
       active: '✅',
@@ -481,9 +708,6 @@ class PurchasingGroupService {
     return map[status] || '📦';
   }
 
-  /**
-   * Get status display name
-   */
   getStatusDisplay(status: string): string {
     const map: Record<string, string> = {
       active: 'Active',
@@ -492,25 +716,15 @@ class PurchasingGroupService {
     return map[status] || status;
   }
 
-  /**
-   * Check if group is active
-   */
   isActive(group: PurchasingGroup | null): boolean {
     return group?.status === 'active';
   }
 
-  /**
-   * Check if a user is already a member of the group
-   */
   isMember(group: PurchasingGroup | null, userId: number): boolean {
     if (!group?.members) return false;
     return group.members.some((m) => m.userId === userId);
   }
 
-  /**
-   * Compute diff of members to know what changed
-   * Useful for optimistic UI or "unsaved changes" badge
-   */
   diffMembers(
     original: PurchasingGroupMember[],
     next: PurchasingGroupMember[]
@@ -525,9 +739,6 @@ class PurchasingGroupService {
     return { added, removed, unchanged };
   }
 
-  /**
-   * Validate group form data
-   */
   validateGroupForm(data: { name?: string }): string[] {
     const errors: string[] = [];
     if (!data.name || !data.name.trim()) {
@@ -538,6 +749,62 @@ class PurchasingGroupService {
       errors.push('Group name must be at most 120 characters');
     }
     return errors;
+  }
+
+  validateSubgroupForm(data: { name?: string }): string[] {
+    const errors: string[] = [];
+    if (!data.name || !data.name.trim()) {
+      errors.push('Subgroup name is required');
+    } else if (data.name.trim().length < 2) {
+      errors.push('Subgroup name must be at least 2 characters');
+    } else if (data.name.trim().length > 120) {
+      errors.push('Subgroup name must be at most 120 characters');
+    }
+    return errors;
+  }
+
+  // ================================================================
+  // SUBGROUP HELPERS
+  // ================================================================
+
+  countGroupSubgroupMembers(group: PurchasingGroup | null): number {
+    if (!group?.subgroups) return 0;
+    return group.subgroups.reduce((sum, sg) => sum + (sg.members?.length || 0), 0);
+  }
+
+  findSubgroupOfUser(
+    group: PurchasingGroup | null,
+    userId: number
+  ): PurchasingSubgroup | null {
+    if (!group?.subgroups) return null;
+    return (
+      group.subgroups.find((sg) =>
+        sg.members.some((m) => m.userId === userId)
+      ) || null
+    );
+  }
+
+  isUserInAnySubgroup(group: PurchasingGroup | null, userId: number): boolean {
+    return this.findSubgroupOfUser(group, userId) !== null;
+  }
+
+  getSubgroupMemberCountLabel(subgroup: PurchasingSubgroup | null): string {
+    const count = subgroup?.members?.length || 0;
+    return `${count} member${count === 1 ? '' : 's'}`;
+  }
+
+  getSubgroupMemberNames(subgroup: PurchasingSubgroup | null, max = 3): string {
+    const members = subgroup?.members || [];
+    if (members.length === 0) return 'No members';
+
+    const names = members
+      .slice(0, max)
+      .map((m) => this.getMemberDisplayName(m))
+      .join(', ');
+
+    return members.length > max
+      ? `${names} +${members.length - max} more`
+      : names;
   }
 }
 

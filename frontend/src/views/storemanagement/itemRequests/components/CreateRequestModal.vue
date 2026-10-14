@@ -449,15 +449,59 @@
               </div>
             </div>
 
-            <!-- Department Approval -->
+            <!-- Request Flags: Department approval + Temelash side-by-side -->
             <div class="form-group full-width">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="form.isAsset" />
-                <span class="checkbox-text"
-                  >🏛️ This request requires department approval</span
-                >
-              </label>
+              <div class="checkbox-row">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="form.isAsset" />
+                  <span class="checkbox-text"
+                    >🏛️ This request requires department approval</span
+                  >
+                </label>
 
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="form.isTemelash" />
+                  <span class="checkbox-text"
+                    >🔄 Temelash</span
+                  >
+                </label>
+              </div>
+
+              <!-- Temelash loan period -->
+              <div v-if="form.isTemelash" class="temelash-period-box">
+                <div class="temelash-period-header">
+                  <span class="temelash-period-icon">🔄</span>
+                  <span class="temelash-period-title">
+                    Temelash items are given temporarily and must be returned between the selected dates.
+                  </span>
+                </div>
+
+                <div class="temelash-period-row">
+                  <div class="form-group">
+                    <label>Temelash From *</label>
+                    <input
+                      v-model="form.temelashFromDate"
+                      type="date"
+                      class="form-input"
+                      :min="form.requestedDate"
+                    />
+                    <span class="hint">When the items are given out</span>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Temelash To *</label>
+                    <input
+                      v-model="form.temelashToDate"
+                      type="date"
+                      class="form-input"
+                      :min="form.temelashFromDate || form.requestedDate"
+                    />
+                    <span class="hint">Must be returned by this date</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Department Approval sub-block -->
               <div v-if="form.isAsset" class="departments-info-box">
                 <div class="departments-info-header">
                   <span class="departments-info-icon">📋</span>
@@ -556,18 +600,19 @@
               >
             </div>
 
-  <div v-if="form.isAsset" class="form-group full-width">
-  <label>General Remark</label>
-  <textarea
-    v-model="form.remark"
-    rows="3"
-    placeholder="General notes or remarks..."
-    class="textarea-field"
-  ></textarea>
-  <span class="hint"
-    >This remark applies to the entire request</span
-  >
-</div>
+            <div v-if="form.isAsset" class="form-group full-width">
+              <label>General Remark</label>
+              <textarea
+                v-model="form.remark"
+                rows="3"
+                placeholder="General notes or remarks..."
+                class="textarea-field"
+              ></textarea>
+              <span class="hint"
+                >This remark applies to the entire request</span
+              >
+            </div>
+
             <div v-if="formErrors.length > 0" class="form-errors">
               <div v-for="error in formErrors" :key="error" class="form-error">
                 ⚠️ {{ error }}
@@ -666,6 +711,9 @@ const form = ref({
   status: "pending" as "pending" | "approved" | "rejected",
   remark: "",
   isAsset: false,
+  isTemelash: false,
+  temelashFromDate: "",   // ✅ NEW
+  temelashToDate: "",     // ✅ NEW
 });
 
 const formErrors = ref<string[]>([]);
@@ -803,12 +851,19 @@ const isFormValid = computed(() => {
   if (selectedItemsList.value.length === 0) return false;
   const allValid = selectedItemsList.value.every((item) => item.quantity > 0);
   if (!allValid) return false;
-  return !!(
+  const baseValid = !!(
     form.value.askingStoreId &&
     form.value.supplyingStoreId &&
     form.value.requestedBy &&
     form.value.requestedDate
   );
+  if (!baseValid) return false;
+  // ✅ Temelash requires both dates
+  if (form.value.isTemelash) {
+    if (!form.value.temelashFromDate || !form.value.temelashToDate) return false;
+    if (form.value.temelashToDate < form.value.temelashFromDate) return false;
+  }
+  return true;
 });
 
 // ================================================================
@@ -1077,6 +1132,17 @@ watch(
   (newVal) => {
     clearRemovedDepartments();
     if (newVal) loadApplicableDepartments();
+  },
+);
+
+// ✅ Clear Temelash dates when unchecking
+watch(
+  () => form.value.isTemelash,
+  (newVal) => {
+    if (!newVal) {
+      form.value.temelashFromDate = "";
+      form.value.temelashToDate = "";
+    }
   },
 );
 
@@ -1379,6 +1445,9 @@ const initializeForm = (): void => {
       status: "pending",
       remark: req.remark || "",
       isAsset: (req as any).isAsset || false,
+      isTemelash: (req as any).isTemelash || false,
+      temelashFromDate: (req as any).temelashFromDate || "",   // ✅ NEW
+      temelashToDate: (req as any).temelashToDate || "",       // ✅ NEW
     };
 
     if (form.value.isAsset) {
@@ -1394,6 +1463,9 @@ const initializeForm = (): void => {
       status: "pending",
       remark: "",
       isAsset: false,
+      isTemelash: false,
+      temelashFromDate: "",   // ✅ NEW
+      temelashToDate: "",     // ✅ NEW
     };
   }
 
@@ -1484,6 +1556,25 @@ const saveRequest = async (): Promise<void> => {
     formErrors.value.push("Please enter the requester name");
   }
 
+  // ✅ Temelash date validation
+  if (form.value.isTemelash) {
+    if (!form.value.temelashFromDate) {
+      formErrors.value.push("Temelash: Please select the 'From' date");
+    }
+    if (!form.value.temelashToDate) {
+      formErrors.value.push("Temelash: Please select the 'To' date");
+    }
+    if (
+      form.value.temelashFromDate &&
+      form.value.temelashToDate &&
+      form.value.temelashToDate < form.value.temelashFromDate
+    ) {
+      formErrors.value.push(
+        "Temelash: 'To' date must be on or after the 'From' date",
+      );
+    }
+  }
+
   if (formErrors.value.length > 0) return;
 
   saving.value = true;
@@ -1511,7 +1602,14 @@ const saveRequest = async (): Promise<void> => {
       status: form.value.status as "pending" | "approved" | "rejected",
       remark: form.value.remark,
       isAsset: form.value.isAsset,
-      // ✅ Send department exclusions to backend
+      isTemelash: form.value.isTemelash,
+      // ✅ Send the Temelash window (null when not Temelash)
+      temelashFromDate: form.value.isTemelash
+        ? form.value.temelashFromDate || null
+        : null,
+      temelashToDate: form.value.isTemelash
+        ? form.value.temelashToDate || null
+        : null,
       excludedDepartmentIds: Array.from(removedDepartmentIds.value),
     };
 
@@ -2147,6 +2245,18 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* ✅ Checkbox row — side by side */
+.checkbox-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.checkbox-row .checkbox-label {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -2186,6 +2296,44 @@ onMounted(() => {
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
+}
+
+/* ================================================================ */
+/* TEMELASH PERIOD BOX */
+/* ================================================================ */
+
+.temelash-period-box {
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  animation: slideDown 0.2s ease;
+}
+
+.temelash-period-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.temelash-period-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.temelash-period-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.temelash-period-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
 /* ================================================================ */
@@ -2780,6 +2928,18 @@ onMounted(() => {
   .department-chip {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .checkbox-row {
+    flex-direction: column;
+  }
+
+  .checkbox-row .checkbox-label {
+    min-width: 0;
+  }
+
+  .temelash-period-row {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -1,83 +1,666 @@
 -- ================================================================
--- REQUEST ITEM PROCESSING TABLE
--- Tracks per-item, per-group progress for partial request processing
+-- TEMELASH FEATURE — PostgreSQL DDL
 -- ================================================================
 
-CREATE TABLE IF NOT EXISTS request_item_processing (
-  id                    SERIAL PRIMARY KEY,
-  request_id            INTEGER NOT NULL,
-  request_detail_id     INTEGER NOT NULL,
-  group_id              INTEGER NOT NULL,
-  store_id              INTEGER NOT NULL,
-  item_id               INTEGER NOT NULL,
-  requested_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  processed_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  remaining_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  status                VARCHAR(20) NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'partial', 'completed')),
-  uom_code              VARCHAR(20),
-  is_base_uom           BOOLEAN NOT NULL DEFAULT TRUE,
-  processed_at          TIMESTAMP WITH TIME ZONE,
-  processed_by          INTEGER,
-  remark                TEXT,
-  created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+-- ----------------------------------------------------------------
+-- 1. Add is_temelash flag to item_requests
+-- ----------------------------------------------------------------
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS is_temelash BOOLEAN NOT NULL DEFAULT false;
+
+-- ----------------------------------------------------------------
+-- 2. Create the ENUM type for temelash status
+-- ----------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_temelash_records_status') THEN
+    CREATE TYPE enum_temelash_records_status AS ENUM ('out', 'returned');
+  END IF;
+END$$;
+
+-- ----------------------------------------------------------------
+-- 3. Create temelash_records table
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS temelash_records (
+  id                 SERIAL PRIMARY KEY,
+
+  request_id         INTEGER NOT NULL,
+  request_code       VARCHAR(50) NOT NULL,
+
+  asking_store_id    INTEGER NOT NULL,
+  supplying_store_id INTEGER NOT NULL,
+
+  requested_by_id    INTEGER NULL,
+  requested_by       VARCHAR(255) NULL,
+
+  items              JSONB NOT NULL DEFAULT '[]'::jsonb,
+  remark             TEXT NULL,
+
+  status             enum_temelash_records_status NOT NULL DEFAULT 'out',
+
+  issued_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  returned_at        TIMESTAMP WITH TIME ZONE NULL,
+  returned_by_id     INTEGER NULL,
+  return_remark      TEXT NULL,
+
+  created_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+  -- Foreign keys (matching the PK column names in your existing tables)
+  CONSTRAINT fk_temelash_request
+    FOREIGN KEY (request_id)
+    REFERENCES item_requests (id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_temelash_asking_store
+    FOREIGN KEY (asking_store_id)
+    REFERENCES stores (id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_supplying_store
+    FOREIGN KEY (supplying_store_id)
+    REFERENCES stores (id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_requested_by
+    FOREIGN KEY (requested_by_id)
+    REFERENCES users (user_id)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL,
+
+  CONSTRAINT fk_temelash_returned_by
+    FOREIGN KEY (returned_by_id)
+    REFERENCES users (user_id)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
+);
+
+-- ----------------------------------------------------------------
+-- 4. Indexes for common queries
+-- ----------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS temelash_records_request_id_idx
+  ON temelash_records (request_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_status_idx
+  ON temelash_records (status);
+
+CREATE INDEX IF NOT EXISTS temelash_records_asking_store_idx
+  ON temelash_records (asking_store_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_supplying_store_idx
+  ON temelash_records (supplying_store_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_issued_at_idx
+  ON temelash_records (issued_at DESC);
+
+-- ----------------------------------------------------------------
+-- 5. Auto-update updated_at on every UPDATE
+-- ----------------------------------------------------------------
+CREATE OR REPLACE FUNCTION set_temelash_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_temelash_updated_at ON temelash_records;
+CREATE TRIGGER trg_temelash_updated_at
+  BEFORE UPDATE ON temelash_records
+  FOR EACH ROW
+  EXECUTE FUNCTION set_temelash_updated_at();
+
+-- ----------------------------------------------------------------
+-- 6. Backfill safety (existing rows)
+-- ----------------------------------------------------------------
+UPDATE item_requests
+  SET is_temelash = false
+  WHERE is_temelash IS NULL;
+
+-- ================================================================
+-- DONE
+-- ================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- ================================================================
+-- 1. Add is_temelash flag to item_requests
+-- ================================================================
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS is_temelash BOOLEAN NOT NULL DEFAULT false;
+
+-- ================================================================
+-- 2. Add excluded_department_ids to item_requests
+-- ================================================================
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS excluded_department_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ================================================================
+-- 3. Create enum type for temelash_records status
+-- ================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_temelash_records_status') THEN
+    CREATE TYPE enum_temelash_records_status AS ENUM ('out', 'returned');
+  END IF;
+END$$;
+
+-- ================================================================
+-- 4. Create temelash_records table
+-- ================================================================
+CREATE TABLE IF NOT EXISTS temelash_records (
+  id                 SERIAL PRIMARY KEY,
+
+  request_id         INTEGER NOT NULL,
+  request_code       VARCHAR(50) NOT NULL,
+
+  asking_store_id    INTEGER NOT NULL,
+  supplying_store_id INTEGER NOT NULL,
+
+  requested_by_id    INTEGER NULL,
+  requested_by       VARCHAR(255) NULL,
+
+  items              JSONB NOT NULL DEFAULT '[]'::jsonb,
+  remark             TEXT NULL,
+
+  status             enum_temelash_records_status NOT NULL DEFAULT 'out',
+
+  issued_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  returned_at        TIMESTAMP WITH TIME ZONE NULL,
+  returned_by_id     INTEGER NULL,
+  return_remark      TEXT NULL,
+
+  created_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+  -- Foreign keys
+  CONSTRAINT fk_temelash_request
+    FOREIGN KEY (request_id)
+    REFERENCES item_requests (id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_temelash_asking_store
+    FOREIGN KEY (asking_store_id)
+    REFERENCES stores (id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_supplying_store
+    FOREIGN KEY (supplying_store_id)
+    REFERENCES stores (id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_requested_by
+    FOREIGN KEY (requested_by_id)
+    REFERENCES users (user_id)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL,
+
+  CONSTRAINT fk_temelash_returned_by
+    FOREIGN KEY (returned_by_id)
+    REFERENCES users (user_id)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
 );
 
 -- ================================================================
--- INDEXES
+-- 5. Indexes for temelash_records
 -- ================================================================
+CREATE INDEX IF NOT EXISTS temelash_records_request_id_idx
+  ON temelash_records (request_id);
 
--- One row per (request, item, group) — prevents duplicates
-CREATE UNIQUE INDEX IF NOT EXISTS unique_request_item_group
-  ON request_item_processing (request_id, request_detail_id, group_id);
+CREATE INDEX IF NOT EXISTS temelash_records_status_idx
+  ON temelash_records (status);
 
--- Fast lookups by request + group (most common query pattern)
-CREATE INDEX IF NOT EXISTS idx_request_group
-  ON request_item_processing (request_id, group_id);
+CREATE INDEX IF NOT EXISTS temelash_records_asking_store_idx
+  ON temelash_records (asking_store_id);
 
--- Fast lookups by status (for finding pending/partial rows)
-CREATE INDEX IF NOT EXISTS idx_status
-  ON request_item_processing (status);
+CREATE INDEX IF NOT EXISTS temelash_records_supplying_store_idx
+  ON temelash_records (supplying_store_id);
 
--- Fast lookups by item (for cross-request item reports)
-CREATE INDEX IF NOT EXISTS idx_item
-  ON request_item_processing (item_id);
+CREATE INDEX IF NOT EXISTS temelash_records_issued_at_idx
+  ON temelash_records (issued_at DESC);
 
 -- ================================================================
--- VERIFY
+-- 6. Auto-update updated_at trigger
+-- ================================================================
+CREATE OR REPLACE FUNCTION set_temelash_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_temelash_updated_at ON temelash_records;
+CREATE TRIGGER trg_temelash_updated_at
+  BEFORE UPDATE ON temelash_records
+  FOR EACH ROW
+  EXECUTE FUNCTION set_temelash_updated_at();
+
+-- ================================================================
+-- 7. Backfill safety
+-- ================================================================
+UPDATE item_requests
+  SET is_temelash = false
+  WHERE is_temelash IS NULL;
+
+UPDATE item_requests
+  SET excluded_department_ids = '[]'::jsonb
+  WHERE excluded_department_ids IS NULL;
+
+-- ================================================================
+-- DONE
 -- ================================================================
 
--- Should return 0 rows
-SELECT * FROM request_item_processing LIMIT 1;
-
--- Should list all 4 indexes plus the primary key
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'request_item_processing'
-ORDER BY indexname;
 
 
 
 
 
-UPDATE users SET created_by = 19;
-
-DELETE FROM users WHERE is_active = false;
 
 
 
--- Add stage column to track which stage each notification belongs to
-ALTER TABLE request_notifications 
-ADD COLUMN stage VARCHAR(30) DEFAULT 'supplying_store';
 
--- Existing notifications belong to the supplying stage (preserves current behavior)
-UPDATE request_notifications SET stage = 'supplying_store' WHERE stage IS NULL;
 
--- Index for fast lookups by stage
-CREATE INDEX idx_notifications_request_stage 
-ON request_notifications(request_id, stage);
 
--- Index for filtering by status + stage
-CREATE INDEX idx_notifications_stage_status 
-ON request_notifications(stage, status);
+
+
+-- ================================================================
+-- 1. Add is_temelash flag to item_requests
+-- ================================================================
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS is_temelash BOOLEAN NOT NULL DEFAULT false;
+
+-- ================================================================
+-- 2. Add excluded_department_ids to item_requests
+-- ================================================================
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS excluded_department_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ================================================================
+-- 3. Create enum type for temelash_records status
+-- ================================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_temelash_records_status') THEN
+    CREATE TYPE enum_temelash_records_status AS ENUM ('out', 'returned');
+  END IF;
+END$$;
+
+-- ================================================================
+-- 4. Create temelash_records table
+-- ================================================================
+CREATE TABLE IF NOT EXISTS temelash_records (
+  id                 SERIAL PRIMARY KEY,
+
+  request_id         INTEGER NOT NULL,
+  request_code       VARCHAR(50) NOT NULL,
+
+  asking_store_id    INTEGER NOT NULL,
+  supplying_store_id INTEGER NOT NULL,
+
+  requested_by_id    INTEGER NULL,
+  requested_by       VARCHAR(255) NULL,
+
+  items              JSONB NOT NULL DEFAULT '[]'::jsonb,
+  remark             TEXT NULL,
+
+  status             enum_temelash_records_status NOT NULL DEFAULT 'out',
+
+  issued_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  returned_at        TIMESTAMP WITH TIME ZONE NULL,
+  returned_by_id     INTEGER NULL,
+  return_remark      TEXT NULL,
+
+  created_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT fk_temelash_request
+    FOREIGN KEY (request_id) REFERENCES item_requests (id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT fk_temelash_asking_store
+    FOREIGN KEY (asking_store_id) REFERENCES stores (id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_supplying_store
+    FOREIGN KEY (supplying_store_id) REFERENCES stores (id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT fk_temelash_requested_by
+    FOREIGN KEY (requested_by_id) REFERENCES users (user_id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+
+  CONSTRAINT fk_temelash_returned_by
+    FOREIGN KEY (returned_by_id) REFERENCES users (user_id)
+    ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+-- ================================================================
+-- 5. Indexes
+-- ================================================================
+CREATE INDEX IF NOT EXISTS temelash_records_request_id_idx
+  ON temelash_records (request_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_status_idx
+  ON temelash_records (status);
+
+CREATE INDEX IF NOT EXISTS temelash_records_asking_store_idx
+  ON temelash_records (asking_store_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_supplying_store_idx
+  ON temelash_records (supplying_store_id);
+
+CREATE INDEX IF NOT EXISTS temelash_records_issued_at_idx
+  ON temelash_records (issued_at DESC);
+
+-- ================================================================
+-- 6. Auto-update trigger
+-- ================================================================
+CREATE OR REPLACE FUNCTION set_temelash_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_temelash_updated_at ON temelash_records;
+CREATE TRIGGER trg_temelash_updated_at
+  BEFORE UPDATE ON temelash_records
+  FOR EACH ROW
+  EXECUTE FUNCTION set_temelash_updated_at();
+
+-- ================================================================
+-- 7. Backfill safety
+-- ================================================================
+UPDATE item_requests SET is_temelash = false WHERE is_temelash IS NULL;
+UPDATE item_requests SET excluded_department_ids = '[]'::jsonb WHERE excluded_department_ids IS NULL;
+
+
+
+-- ================================================================
+-- TEMELASH LOAN WINDOW — DATABASE UPDATE
+-- Adds "From" and "To" dates to item_requests, plus the same
+-- window (and a "returned late" flag) on temelash_records.
+-- Safe to re-run: uses IF NOT EXISTS everywhere.
+-- ================================================================
+
+-- ----------------------------------------------------------------
+-- 1. item_requests: add the two loan-window date columns
+-- ----------------------------------------------------------------
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS temelash_from_date DATE NULL;
+
+ALTER TABLE item_requests
+  ADD COLUMN IF NOT EXISTS temelash_to_date DATE NULL;
+
+-- ----------------------------------------------------------------
+-- 2. temelash_records: add window dates + late-return flag
+-- ----------------------------------------------------------------
+ALTER TABLE temelash_records
+  ADD COLUMN IF NOT EXISTS from_date DATE NULL;
+
+ALTER TABLE temelash_records
+  ADD COLUMN IF NOT EXISTS to_date DATE NULL;
+
+ALTER TABLE temelash_records
+  ADD COLUMN IF NOT EXISTS returned_late BOOLEAN NOT NULL DEFAULT false;
+
+-- ----------------------------------------------------------------
+-- 3. Indexes to support overdue / window queries
+-- ----------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS temelash_records_to_date_idx
+  ON temelash_records (to_date);
+
+CREATE INDEX IF NOT EXISTS temelash_records_status_to_date_idx
+  ON temelash_records (status, to_date);
+
+-- ----------------------------------------------------------------
+-- 4. Backfill: existing rows already have NULLs (fine), but
+--    make sure returned_late is false for any pre-existing rows
+-- ----------------------------------------------------------------
+UPDATE temelash_records
+  SET returned_late = false
+  WHERE returned_late IS NULL;
+
+-- ================================================================
+-- DONE
+-- ================================================================
+
+
+
+ALTER TABLE purchase_requests
+  ALTER COLUMN approved_doc_back DROP NOT NULL,
+  ALTER COLUMN approved_doc_back_name DROP NOT NULL;
+
+
+
+
+
+  BEGIN;
+
+-- ================================================================
+-- 1. UPDATES TO EXISTING TABLES (if any are needed)
+-- ================================================================
+-- purchasing_groups: nothing to change — code/name/description/status are fine.
+-- purchasing_group_members: nothing to change — (group_id, user_id) unique already enforced.
+--
+-- Nothing to alter. Skipping straight to creating the new tables.
+
+-- ================================================================
+-- 2. CREATE: purchasing_subgroups
+-- ================================================================
+CREATE TABLE purchasing_subgroups (
+  id            SERIAL       PRIMARY KEY,
+  code          VARCHAR(40)  NOT NULL UNIQUE,
+  group_id      INTEGER      NOT NULL
+                  REFERENCES purchasing_groups(id) ON DELETE CASCADE,
+  name          VARCHAR(120) NOT NULL,
+  description   TEXT,
+  status        VARCHAR(20)  NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('active','inactive')),
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_purchasing_subgroups_group_id
+  ON purchasing_subgroups(group_id);
+
+CREATE INDEX idx_purchasing_subgroups_status
+  ON purchasing_subgroups(status);
+
+CREATE INDEX idx_purchasing_subgroups_code
+  ON purchasing_subgroups(code);
+
+-- ================================================================
+-- 3. CREATE: purchasing_subgroup_members
+-- ================================================================
+CREATE TABLE purchasing_subgroup_members (
+  id            SERIAL       PRIMARY KEY,
+  subgroup_id   INTEGER      NOT NULL
+                  REFERENCES purchasing_subgroups(id) ON DELETE CASCADE,
+  group_id      INTEGER      NOT NULL
+                  REFERENCES purchasing_groups(id)   ON DELETE CASCADE,
+  user_id       INTEGER      NOT NULL
+                  REFERENCES users(user_id)          ON DELETE CASCADE,
+  role          VARCHAR(60),
+  joined_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+  -- 👈 one subgroup per group per user
+  CONSTRAINT uniq_group_user_subgroup_membership
+    UNIQUE (group_id, user_id)
+);
+
+CREATE INDEX idx_subgroup_members_subgroup_id
+  ON purchasing_subgroup_members(subgroup_id);
+
+CREATE INDEX idx_subgroup_members_group_id
+  ON purchasing_subgroup_members(group_id);
+
+CREATE INDEX idx_subgroup_members_user_id
+  ON purchasing_subgroup_members(user_id);
+
+-- ================================================================
+-- 4. OPTIONAL: auto-update updated_at on row changes
+-- ================================================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_purchasing_subgroups_updated_at
+  ON purchasing_subgroups;
+CREATE TRIGGER trg_purchasing_subgroups_updated_at
+  BEFORE UPDATE ON purchasing_subgroups
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS trg_purchasing_subgroup_members_updated_at
+  ON purchasing_subgroup_members;
+CREATE TRIGGER trg_purchasing_subgroup_members_updated_at
+  BEFORE UPDATE ON purchasing_subgroup_members
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+COMMIT;
+
+
+
+
+-- ============================================================
+-- 1. ALTER purchase_requests
+-- ============================================================
+ALTER TABLE purchase_requests
+  ADD COLUMN current_stage_index INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN current_stage_id    INTEGER NULL,
+  ADD COLUMN submitted_at        TIMESTAMPTZ NULL,
+  ADD COLUMN completed_at        TIMESTAMPTZ NULL,
+  ADD COLUMN rejected_at         TIMESTAMPTZ NULL,
+  ADD COLUMN rejected_by_stage_index INTEGER NULL,
+  ADD COLUMN rejected_by_subgroup_id INTEGER NULL;
+
+ALTER TABLE purchase_requests
+  ADD CONSTRAINT fk_pr_current_stage
+    FOREIGN KEY (current_stage_id)
+    REFERENCES workflow_stages(id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  ADD CONSTRAINT fk_pr_rejected_by_subgroup
+    FOREIGN KEY (rejected_by_subgroup_id)
+    REFERENCES purchasing_subgroups(id)
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- Widen the status enum. First inspect which form your column is in:
+--   \d+ purchase_requests
+-- If it is an ENUM type named enum_purchase_requests_status:
+ALTER TYPE enum_purchase_requests_status ADD VALUE IF NOT EXISTS 'pending';
+ALTER TYPE enum_purchase_requests_status ADD VALUE IF NOT EXISTS 'rejected';
+-- If instead it is VARCHAR with a CHECK constraint, use:
+-- ALTER TABLE purchase_requests DROP CONSTRAINT IF EXISTS purchase_requests_status_check;
+-- ALTER TABLE purchase_requests
+--   ADD CONSTRAINT purchase_requests_status_check
+--   CHECK (status IN ('draft','pending','approved','rejected'));
+
+CREATE INDEX idx_pr_current_stage_id    ON purchase_requests(current_stage_id);
+CREATE INDEX idx_pr_current_stage_index ON purchase_requests(current_stage_index);
+
+-- ============================================================
+-- 2. purchase_request_approvals
+-- ============================================================
+DO $$ BEGIN
+  CREATE TYPE enum_pra_decision AS ENUM ('approve','reject');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE purchase_request_approvals (
+  id                 SERIAL PRIMARY KEY,
+  request_id         INTEGER NOT NULL REFERENCES purchase_requests(id)    ON UPDATE CASCADE ON DELETE CASCADE,
+  stage_id           INTEGER NOT NULL REFERENCES workflow_stages(id)      ON UPDATE CASCADE ON DELETE CASCADE,
+  stage_index        INTEGER NOT NULL,
+  group_id           INTEGER NOT NULL REFERENCES purchasing_groups(id)    ON UPDATE CASCADE ON DELETE CASCADE,
+  subgroup_id        INTEGER NOT NULL REFERENCES purchasing_subgroups(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  decided_by_user_id INTEGER NOT NULL REFERENCES users(user_id)           ON UPDATE CASCADE ON DELETE CASCADE,
+  decision           enum_pra_decision NOT NULL,
+  comment            TEXT NULL,
+  acted_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT pra_unique_decision UNIQUE (request_id, stage_id, subgroup_id)
+);
+
+CREATE INDEX idx_pra_request    ON purchase_request_approvals(request_id);
+CREATE INDEX idx_pra_stage      ON purchase_request_approvals(stage_id);
+CREATE INDEX idx_pra_subgroup   ON purchase_request_approvals(subgroup_id);
+CREATE INDEX idx_pra_decided_by ON purchase_request_approvals(decided_by_user_id);
+
+-- ============================================================
+-- 3. purchase_notifications
+-- ============================================================
+DO $$ BEGIN
+  CREATE TYPE enum_pn_type AS ENUM ('stage_ready','approved','rejected','advanced','submitted');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE purchase_notifications (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(user_id)        ON UPDATE CASCADE ON DELETE CASCADE,
+  request_id INTEGER NULL     REFERENCES purchase_requests(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  type       enum_pn_type NOT NULL,
+  title      VARCHAR(200) NOT NULL,
+  body       TEXT NULL,
+  read_at    TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_pn_user_read    ON purchase_notifications(user_id, read_at);
+CREATE INDEX idx_pn_user_created ON purchase_notifications(user_id, created_at);
+CREATE INDEX idx_pn_request      ON purchase_notifications(request_id);
+
+-- ============================================================
+-- 4. updated_at triggers (reuses your existing function)
+-- ============================================================
+DROP TRIGGER IF EXISTS trg_purchase_request_approvals_updated_at
+  ON purchase_request_approvals;
+CREATE TRIGGER trg_purchase_request_approvals_updated_at
+  BEFORE UPDATE ON purchase_request_approvals
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS trg_purchase_notifications_updated_at
+  ON purchase_notifications;
+CREATE TRIGGER trg_purchase_notifications_updated_at
+  BEFORE UPDATE ON purchase_notifications
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- 5. Backfill old approved rows
+-- ============================================================
+UPDATE purchase_requests
+SET
+  status = 'approved',
+  current_stage_index = 0,
+  current_stage_id = NULL,
+  completed_at = COALESCE(approved_at, updated_at, created_at)
+WHERE status = 'approved';

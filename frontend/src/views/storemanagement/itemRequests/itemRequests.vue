@@ -165,6 +165,8 @@
                   <span class="notification-text">{{ getAcceptanceSummary(req) }}</span>
                 </div>
                 <div v-if="isAssetRequest(req)" class="asset-badge">🔧 Asset</div>
+                <!-- ✅ Temelash marker -->
+<div v-if="isTemelashRequest(req)" class="temelash-badge">🔄 Temelash</div>
               </td>
               <td>
                 <div class="action-buttons">
@@ -250,9 +252,14 @@
                             formatDateTime(req.updatedAt)
                           }}</span>
                         </div>
-                       <div v-if="isAssetRequest(req)">
-  <span>🔧 Asset Request</span>
-  <span class="value">Yes</span>
+   <div v-if="isTemelashRequest(req)">
+  <span>🔄 Temelash</span>
+  <span class="value">
+    Yes
+    <template v-if="req.temelashFromDate || req.temelashToDate">
+      — {{ formatTemelashWindow(req) }}
+    </template>
+  </span>
 </div>
                       </div>
 
@@ -797,6 +804,32 @@ const isAssetRequest = (req: ItemRequest): boolean => {
 
     return deptId === ASSET_DEPARTMENT_ID;
   });
+};
+
+
+// ================================================================
+// TEMELASH DETECTION
+// ================================================================
+const isTemelashRequest = (req: ItemRequest): boolean => {
+  return (req as any).isTemelash === true;
+};
+
+// Format the loan window as "Oct 15, 2026 → Oct 20, 2026"
+const formatTemelashWindow = (req: ItemRequest): string => {
+  const fmt = (d: string | null | undefined): string => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '—';
+    return dt.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+  const from = (req as any).temelashFromDate;
+  const to = (req as any).temelashToDate;
+  if (!from && !to) return '—';
+  return `${fmt(from)} → ${fmt(to)}`;
 };
 
 // ================================================================
@@ -1394,6 +1427,14 @@ const confirmStatusChange = async (): Promise<void> => {
 /**
  * Navigate to the correct print page based on request type.
  */
+/**
+ * Navigate to the correct print page based on request type.
+ *
+ * Priority:
+ *   1. Temelash request → temelash-print  (always wins, even if also asset)
+ *   2. Asset request    → print-asset-requests
+ *   3. Everything else  → print-requests
+ */
 const printRequest = (req: ItemRequest): void => {
   if (!canManageThisRequest(req)) {
     showToastMessage("Only the request creator can print this request", "error");
@@ -1402,25 +1443,46 @@ const printRequest = (req: ItemRequest): void => {
 
   const requestId = req.requestId || req.id;
   if (!requestId) {
-    showToastMessage('Cannot print: missing request ID', 'error');
+    showToastMessage("Cannot print: missing request ID", "error");
     return;
   }
 
-  const asset = isAssetRequest(req);
-  const routeName = asset ? 'print-asset-requests' : 'print-requests';
+  // 🔥 Priority 1: Temelash ALWAYS wins
+  if (isTemelashRequest(req)) {
+    console.log("🖨️ Temelash request → temelash-print", {
+      requestId,
+      requestCode: req.requestCode,
+      isTemelash: true,
+      isAsset: isAssetRequest(req), // logged for debugging
+    });
+    router.push({
+      name: "temelash-print",
+      query: { id: String(requestId) },
+    });
+    return;
+  }
 
-  console.log('🖨️ Print:', {
+  // 🔥 Priority 2: Asset request
+  if (isAssetRequest(req)) {
+    console.log("🖨️ Asset request → print-asset-requests", {
+      requestId,
+      requestCode: req.requestCode,
+      isAsset: true,
+    });
+    router.push({
+      name: "print-asset-requests",
+      query: { id: String(requestId) },
+    });
+    return;
+  }
+
+  // 🔥 Priority 3: Regular request
+  console.log("🖨️ Regular request → print-requests", {
     requestId,
     requestCode: req.requestCode,
-    notificationFlags: (req as any).notifications?.map(
-      (n: any) => n.is_department_approval
-    ),
-    isAsset: asset,
-    routeName,
   });
-
   router.push({
-    name: routeName,
+    name: "print-requests",
     query: { id: String(requestId) },
   });
 };
@@ -1555,6 +1617,21 @@ onMounted(async () => {
 
 
 <style scoped>
+
+/* Temelash marker */
+.temelash-badge {
+  display: inline-block;
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
 /* UOM Display */
 .uom-display {
   display: inline-flex;

@@ -1,1201 +1,1705 @@
+<!-- views/storemanagement/temelash/temelash.vue -->
 <template>
-  <div class="page-shell">
-    <!-- ============================================================
-         TOP BAR
-         ============================================================ -->
-    <div class="top-bar">
-      <div class="top-bar-left">
-        <button class="btn-back" @click="goBack">← Back</button>
-        <div>
-          <h1 class="page-title">Item Returns</h1>
-          <p class="page-subtitle">Demo — returns are stored in memory only</p>
+  <div class="section-card">
+    <!-- ==================== HEADER ==================== -->
+    <div class="card-header">
+      <div class="header-title">
+        <h2>🔄 Temelash Records</h2>
+        <span class="total-badge">{{ totalRecords }} Records</span>
+      </div>
+      <div class="header-actions">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input
+            type="text"
+            v-model="searchQuery"
+            placeholder="Search by request code..."
+            @input="onSearchChange"
+          />
         </div>
       </div>
+    </div>
 
-      <div class="top-bar-right">
-        <input
-          v-model="searchQuery"
-          class="input search-input"
-          type="text"
-          placeholder="🔍 Search returns…"
-        />
-        <button class="btn-primary btn-lg" @click="openModal">
-          ＋ Return Item
-        </button>
+    <!-- ==================== SUMMARY CARDS ==================== -->
+    <div class="summary-cards">
+      <div class="summary-card total">
+        <span class="summary-icon">📦</span>
+        <div class="summary-body">
+          <span class="summary-label">Total</span>
+          <span class="summary-value">{{ summary.total }}</span>
+        </div>
+      </div>
+      <div class="summary-card out">
+        <span class="summary-icon">🔄</span>
+        <div class="summary-body">
+          <span class="summary-label">Out</span>
+          <span class="summary-value">{{ summary.out }}</span>
+        </div>
+      </div>
+      <div class="summary-card overdue">
+        <span class="summary-icon">🔴</span>
+        <div class="summary-body">
+          <span class="summary-label">Overdue</span>
+          <span class="summary-value">{{ summary.overdue }}</span>
+        </div>
+      </div>
+      <div class="summary-card returned">
+        <span class="summary-icon">✅</span>
+        <div class="summary-body">
+          <span class="summary-label">Returned</span>
+          <span class="summary-value">{{ summary.returned }}</span>
+        </div>
       </div>
     </div>
 
-    <!-- ============================================================
-         SUMMARY STRIP
-         ============================================================ -->
-    <div class="summary-strip">
-      <div class="summary-item">
-        <span class="summary-label">Total Returns</span>
-        <span class="summary-value">{{ returns.length }}</span>
-      </div>
-      <div class="summary-item">
-        <span class="summary-label">Pending</span>
-        <span class="summary-value pending">{{ countByStatus('pending') }}</span>
-      </div>
-      <div class="summary-item">
-        <span class="summary-label">Accepted</span>
-        <span class="summary-value accepted">{{ countByStatus('accepted') }}</span>
-      </div>
-      <div class="summary-item">
-        <span class="summary-label">Rejected</span>
-        <span class="summary-value rejected">{{ countByStatus('rejected') }}</span>
-      </div>
+    <!-- ==================== FILTERS ==================== -->
+    <div class="filter-bar">
+      <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
+        <option value="all">All Status</option>
+        <option value="out">Out</option>
+        <option value="returned">Returned</option>
+      </select>
+
+      <select
+        v-if="userIsAdmin"
+        v-model="filterStore"
+        class="filter-select"
+        @change="onFilterChange"
+      >
+        <option value="all">All Stores</option>
+        <option
+          v-for="store in activeStores"
+          :key="store.storeId || store.id"
+          :value="String(store.storeId || store.id)"
+        >
+          {{ store.name }}
+        </option>
+      </select>
+
+      <button
+        v-if="hasActiveFilters"
+        class="btn-clear-filters"
+        @click="clearFilters"
+      >
+        ✕ Clear Filters
+      </button>
     </div>
 
-    <!-- ============================================================
-         RETURNS LIST
-         ============================================================ -->
-    <div class="list-card">
-      <table class="returns-table">
+    <!-- ==================== LOADING ==================== -->
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading temelash records...</p>
+    </div>
+
+    <!-- ==================== TABLE ==================== -->
+    <div v-else class="table-wrapper">
+      <table class="temelash-table">
         <thead>
           <tr>
-            <th style="width: 9%;">Return #</th>
-            <th style="width: 18%;">Item</th>
-            <th style="width: 5%;">Qty</th>
-            <th style="width: 14%;">From</th>
-            <th style="width: 13%;">To Store</th>
-            <th style="width: 14%;">Reason</th>
-            <th style="width: 13%;">Remark</th>
-            <th style="width: 9%;">Status</th>
-            <th style="width: 8%;">Date</th>
+            <th class="col-expand"></th>
+            <th class="col-code">Request Code</th>
+            <th class="col-items">Items</th>
+            <th class="col-store">Asking Store</th>
+            <th class="col-arrow"></th>
+            <th class="col-store">Supplying Store</th>
+            <th class="col-window">Temelash Window</th>
+            <th class="col-status">Status</th>
+            <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="filteredReturns.length === 0">
-            <td colspan="9" class="no-items">
-              <div class="empty-state">
-                <div class="empty-icon">📦</div>
-                <p>No returns match your search.</p>
-                <button class="btn-secondary" @click="openModal">
-                  ＋ Return your first item
-                </button>
+          <tr v-if="records.length === 0">
+            <td colspan="9" class="empty-state">
+              <div class="empty-content">
+                <span class="empty-icon">🔄</span>
+                <p>No temelash records found</p>
               </div>
             </td>
           </tr>
 
-          <tr v-for="r in filteredReturns" :key="r.id">
-            <td class="font-bold">{{ r.returnCode }}</td>
-            <td class="text-left">
-              <div class="item-name">{{ r.itemName }}</div>
-              <div class="item-meta">{{ r.itemCode }} · {{ r.brand }} {{ r.model }}</div>
-            </td>
-            <td class="font-bold">{{ r.qty }} <span class="uom">{{ r.uom }}</span></td>
-            <td>
-              <div>{{ r.returnedByName }}</div>
-              <div v-if="r.department" class="item-meta">{{ r.department }}</div>
-            </td>
-            <td>{{ r.storeName }}</td>
-            <td class="reason-cell">{{ r.reason }}</td>
-            <td class="text-left remark-cell">
-              <span v-if="r.remark">{{ r.remark }}</span>
-              <span v-else class="muted">—</span>
-            </td>
-            <td>
-              <span class="status-badge" :class="'status-' + r.status">
-                {{ statusLabel(r.status) }}
-              </span>
-            </td>
-            <td>{{ formatDate(r.submittedAt) }}</td>
-          </tr>
+          <template v-for="rec in records" :key="rec.id">
+            <tr :class="{ 'expanded-row': expandedRow === rec.id }">
+              <td class="text-center">
+                <button class="expand-btn" @click="toggleExpand(rec.id)">
+                  {{ expandedRow === rec.id ? "▼" : "▶" }}
+                </button>
+              </td>
+
+              <td class="code-cell">{{ rec.requestCode }}</td>
+
+              <td>
+                <div class="items-summary">
+                  <span class="item-count">{{ rec.items?.length || 0 }} item(s)</span>
+                  <span class="item-names">{{ getItemNames(rec.items) }}</span>
+                </div>
+              </td>
+
+              <td class="store-name">
+                {{ rec.askingStore?.name || getStoreName(rec.askingStoreId) }}
+              </td>
+
+              <td class="arrow-cell">➡️</td>
+
+              <td class="store-name">
+                {{ rec.supplyingStore?.name || getStoreName(rec.supplyingStoreId) }}
+              </td>
+
+              <td class="window-cell">
+                <div class="window-display">
+                  <span class="window-dates">
+                    {{ temelashService.formatLoanWindow(rec) }}
+                  </span>
+                  <span
+                    v-if="rec.status === 'out'"
+                    :class="['days-badge', dueBadgeClass(rec)]"
+                  >
+                    {{ dueBadgeText(rec) }}
+                  </span>
+                </div>
+              </td>
+
+              <td>
+                <span :class="['status-badge', statusClass(rec)]">
+                  {{ temelashService.getStatusIcon(rec) }}
+                  {{ temelashService.getStatusLabel(rec) }}
+                </span>
+                <div v-if="rec.status === 'returned' && rec.returnedByUser" class="returned-by">
+                  by {{ rec.returnedByUser.fullName || rec.returnedByUser.username }}
+                </div>
+              </td>
+
+              <td>
+                <div class="action-buttons">
+                  <button
+                    v-if="rec.status === 'out'"
+                    class="icon-btn return-btn"
+                    @click="openReturnModal(rec)"
+                    title="Mark as returned"
+                  >
+                    ↩️
+                  </button>
+                  <button
+                    v-if="rec.status === 'out'"
+                    class="icon-btn"
+                    @click="openEditModal(rec)"
+                    title="Edit temelash window"
+                  >
+                    ✏️
+                  </button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ==================== EXPANDED ROW ==================== -->
+            <tr v-if="expandedRow === rec.id" class="detail-expand-row">
+              <td colspan="9">
+                <div class="expand-details">
+                  <div class="detail-container">
+                    <!-- Info + Store cards -->
+                    <div class="detail-row-two-cols">
+                      <div class="detail-card">
+                        <h4>📋 Temelash Information</h4>
+                        <div>
+                          <span>Request Code</span>
+                          <span class="value">{{ rec.requestCode }}</span>
+                        </div>
+                        <div>
+                          <span>Status</span>
+                          <span class="value">
+                            <span :class="['status-badge', statusClass(rec)]">
+                              {{ temelashService.getStatusLabel(rec) }}
+                            </span>
+                          </span>
+                        </div>
+                        <div>
+                          <span>Requested By</span>
+                          <span class="value">{{ getRequesterName(rec) }}</span>
+                        </div>
+                        <div>
+                          <span>Issued At</span>
+                          <span class="value">{{ formatDateTime(rec.issuedAt) }}</span>
+                        </div>
+                        <div v-if="rec.status === 'returned'">
+                          <span>Returned At</span>
+                          <span class="value">{{ formatDateTime(rec.returnedAt) }}</span>
+                        </div>
+                        <div v-if="rec.status === 'returned' && rec.returnedByUser">
+                          <span>Returned By</span>
+                          <span class="value">
+                            {{ rec.returnedByUser.fullName || rec.returnedByUser.username }}
+                          </span>
+                        </div>
+                        <div v-if="rec.returnedLate">
+                          <span>Late Return</span>
+                          <span class="value late-yes">⚠️ Yes</span>
+                        </div>
+                      </div>
+
+                      <div class="detail-card">
+                        <h4>🏪 Store Details</h4>
+                        <div>
+                          <span>Asking Store</span>
+                          <span class="value">{{ rec.askingStore?.name || "—" }}</span>
+                        </div>
+                        <div>
+                          <span>Asking Store Code</span>
+                          <span class="value">{{ rec.askingStore?.code || "—" }}</span>
+                        </div>
+                        <div>
+                          <span>Supplying Store</span>
+                          <span class="value">{{ rec.supplyingStore?.name || "—" }}</span>
+                        </div>
+                        <div>
+                          <span>Supplying Store Code</span>
+                          <span class="value">{{ rec.supplyingStore?.code || "—" }}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Temelash Window Highlight -->
+                    <div class="detail-card full-width window-highlight">
+                      <h4>📅 Temelash Window</h4>
+                      <div class="window-display-large">
+                        <div class="window-side">
+                          <span class="window-label">From</span>
+                          <span class="window-value">{{ formatDate(rec.fromDate) }}</span>
+                        </div>
+                        <div class="window-arrow">→</div>
+                        <div class="window-side">
+                          <span class="window-label">To</span>
+                          <span class="window-value">{{ formatDate(rec.toDate) }}</span>
+                        </div>
+                        <div v-if="rec.status === 'out'" class="window-remaining">
+                          <span :class="['days-badge-large', dueBadgeClass(rec)]">
+                            {{ dueBadgeText(rec) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Items -->
+                    <div class="detail-card full-width">
+                      <h4>📦 Items</h4>
+                      <table class="items-detail-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Item Name</th>
+                            <th>Item Code</th>
+                            <th>UOM</th>
+                            <th>Quantity</th>
+                            <th>Brand</th>
+                            <th>Model</th>
+                            <th>Specification</th>
+                            <th>Remark</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(item, index) in rec.items" :key="index">
+                            <td class="text-center">{{ index + 1 }}</td>
+                            <td>{{ item.name || "—" }}</td>
+                            <td>{{ item.code || "—" }}</td>
+                            <td>{{ item.uom || "—" }}</td>
+                            <td class="text-center">{{ Number(item.quantity).toFixed(2) }}</td>
+                            <td>{{ item.brand || "—" }}</td>
+                            <td>{{ item.model || "—" }}</td>
+                            <td class="spec-cell">{{ item.specification || "—" }}</td>
+                            <td>{{ item.remark || "—" }}</td>
+                          </tr>
+                          <tr class="total-row">
+                            <td colspan="4" class="text-right"><strong>Total Items:</strong></td>
+                            <td class="text-center"><strong>{{ rec.items?.length || 0 }}</strong></td>
+                            <td colspan="4"></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <!-- General Remark -->
+                    <div class="detail-card full-width">
+                      <h4>📝 General Remark</h4>
+                      <div v-if="rec.remark" class="remark-content">{{ rec.remark }}</div>
+                      <div v-else class="no-remark">No remarks provided</div>
+                    </div>
+
+                    <!-- Return Remark -->
+                    <div v-if="rec.status === 'returned' && rec.returnRemark" class="detail-card full-width return-remark-card">
+                      <h4>↩️ Return Remark</h4>
+                      <div class="remark-content">{{ rec.returnRemark }}</div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="detail-actions">
+                      <button
+                        v-if="rec.status === 'out'"
+                        class="btn-return-detail"
+                        @click="openReturnModal(rec)"
+                      >
+                        ↩️ Mark as Returned
+                      </button>
+                      <button
+                        v-if="rec.status === 'out'"
+                        class="btn-edit-detail"
+                        @click="openEditModal(rec)"
+                      >
+                        ✏️ Edit Temelash Window
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
 
-    <!-- ============================================================
-         RETURN ITEM MODAL
-         ============================================================ -->
-    <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
-      <div class="modal">
+    <!-- ==================== PAGINATION ==================== -->
+    <div class="pagination" v-if="totalRecords > 0">
+      <button
+        class="page-btn"
+        :disabled="currentPage === 1"
+        @click="changePage(currentPage - 1)"
+      >
+        ← Previous
+      </button>
+      <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+      <button
+        class="page-btn"
+        :disabled="currentPage === totalPages"
+        @click="changePage(currentPage + 1)"
+      >
+        Next →
+      </button>
+      <select v-model="pageSize" @change="changePageSize" class="limit-select">
+        <option :value="5">5 per page</option>
+        <option :value="10">10 per page</option>
+        <option :value="20">20 per page</option>
+        <option :value="50">50 per page</option>
+      </select>
+    </div>
+
+    <!-- ==================== RETURN MODAL ==================== -->
+    <div v-if="showReturnModal" class="modal-overlay" @click.self="closeReturnModal">
+      <div class="modal-container status-modal">
         <div class="modal-header">
-          <h2>Return Item</h2>
-          <button class="modal-close" @click="closeModal">✖</button>
+          <h3>↩️ Mark as Returned</h3>
+          <button class="modal-close" @click="closeReturnModal">✕</button>
         </div>
-
         <div class="modal-body">
-          <!-- Who + Where -->
-          <div class="modal-section">
-            <div class="modal-section-label">1. Returning From / To</div>
-
-            <div class="field-grid">
-              <div class="field">
-                <label>Department <span class="req">*</span></label>
-                <select v-model="form.department" class="input">
-                  <option value="" disabled>Select department…</option>
-                  <option v-for="d in demoDepartments" :key="d" :value="d">{{ d }}</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label>Name <span class="req">*</span></label>
-                <input
-                  v-model="form.returnedByName"
-                  class="input"
-                  type="text"
-                  placeholder="e.g. Biruk Mulualem"
-                />
-              </div>
-
-              <div class="field">
-                <label>Return To Store <span class="req">*</span></label>
-                <select v-model="form.storeId" class="input">
-                  <option value="" disabled>Select…</option>
-                  <option v-for="s in demoStores" :key="s.id" :value="s.id">
-                    {{ s.name }}
-                  </option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- Item picker -->
-          <div class="modal-section">
-            <div class="modal-section-label">2. Select Item <span class="req">*</span></div>
-
-            <input
-              v-model="itemSearch"
-              class="input"
-              type="text"
-              placeholder="🔍 Search item by name, code, brand…"
-            />
-
-            <div class="item-picker">
-              <div
-                v-for="item in filteredItems"
-                :key="item.id"
-                class="item-option"
-                :class="{ selected: form.itemId === item.id }"
-                @click="selectItem(item)"
-              >
-                <div class="item-option-info">
-                  <div class="item-option-name">{{ item.name }}</div>
-                  <div class="item-option-meta">
-                    {{ item.code }} · {{ item.brand }} {{ item.model }} · {{ item.uom }}
-                  </div>
-                </div>
-                <div class="item-option-right">
-                  <div class="item-option-qty">
-                    Issued: <strong>{{ item.qtyIssued }}</strong>
-                  </div>
-                  <div v-if="form.itemId === item.id" class="item-option-check">✓</div>
-                </div>
-              </div>
-
-              <div v-if="filteredItems.length === 0" class="no-items">
-                No matching items
-              </div>
-            </div>
-
-            <div v-if="selectedItem" class="qty-block">
-              <div class="field">
-                <label>
-                  Return Qty <span class="req">*</span>
-                  <span class="qty-hint">(max {{ selectedItem.qtyIssued }})</span>
-                </label>
-                <input
-                  v-model.number="form.qty"
-                  class="input qty-input"
-                  type="number"
-                  min="1"
-                  :max="selectedItem.qtyIssued"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Reason + remark -->
-          <div class="modal-section">
-            <div class="modal-section-label">3. Reason &amp; Remark</div>
-
-            <div class="field">
-              <label>Reason <span class="req">*</span></label>
-              <select v-model="form.reason" class="input">
-                <option value="" disabled>Select reason…</option>
-                <option v-for="r in demoReasons" :key="r" :value="r">{{ r }}</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label>Remark (optional)</label>
-              <textarea
-                v-model="form.remark"
-                class="input textarea"
-                rows="3"
-                placeholder="e.g. Item in good condition, original box included…"
-              ></textarea>
-            </div>
-          </div>
-
-          <p v-if="attemptSubmit && !canSubmit" class="validation-hint">
-            Please fill all required fields (*) before submitting.
+          <div class="confirmation-icon">↩️</div>
+          <p class="confirmation-title">
+            Are you sure you want to mark this record as returned?
           </p>
-        </div>
+          <div class="confirmation-details">
+            <div class="detail-row">
+              <span class="detail-label">Request:</span>
+              <span class="detail-value">{{ returnTarget?.requestCode }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Items:</span>
+              <span class="detail-value">{{ returnTarget?.items?.length || 0 }} item(s)</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Temelash Window:</span>
+              <span class="detail-value">{{ temelashService.formatLoanWindow(returnTarget) }}</span>
+            </div>
+            <div v-if="returnTarget && temelashService.isOverdue(returnTarget)" class="detail-row">
+              <span class="detail-label">Status:</span>
+              <span class="detail-value late-warning">⚠️ Currently Overdue</span>
+            </div>
+          </div>
 
+          <div class="form-group">
+            <label>Return Remark (optional)</label>
+            <textarea
+              v-model="returnRemark"
+              rows="3"
+              placeholder="e.g. Items returned in good condition"
+            ></textarea>
+          </div>
+        </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="closeModal">Cancel</button>
-          <button
-            class="btn-primary"
-            :disabled="!canSubmit"
-            @click="submitReturn"
-          >📩 Send Return Request</button>
+          <button class="btn-secondary" @click="closeReturnModal">Cancel</button>
+          <button class="btn-primary" @click="confirmReturn" :disabled="submitting">
+            {{ submitting ? "Processing..." : "Confirm Return" }}
+          </button>
         </div>
       </div>
+    </div>
+
+    <!-- ==================== EDIT MODAL ==================== -->
+    <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
+      <div class="modal-container edit-modal">
+        <div class="modal-header">
+          <h3>✏️ Edit Temelash Window</h3>
+          <button class="modal-close" @click="closeEditModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="edit-subtitle">
+            Update the temelash window for
+            <strong>{{ editTarget?.requestCode }}</strong>
+          </p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>From Date</label>
+              <input type="date" v-model="editFromDate" />
+            </div>
+            <div class="form-group">
+              <label>To Date</label>
+              <input type="date" v-model="editToDate" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Remark (optional)</label>
+            <textarea
+              v-model="editRemark"
+              rows="2"
+              placeholder="Optional note about this temelash"
+            ></textarea>
+          </div>
+
+          <p v-if="editError" class="edit-error">⚠️ {{ editError }}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeEditModal">Cancel</button>
+          <button class="btn-primary" @click="confirmEdit" :disabled="submitting">
+            {{ submitting ? "Saving..." : "Save Changes" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TOAST ==================== -->
+    <div v-if="showToast" class="toast" :class="toastType">
+      <span>{{ toastMessage }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from "vue";
+import { useAuthStore } from "@/stores/auth";
+import temelashService from "@/stores/temelashService";
+import type { TemelashRecord, TemelashSummary } from "@/stores/temelashService";
+import itemRequestService from "@/stores/itemRequestService";
+import type { Store } from "@/stores/itemRequestService";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 
-const router = useRouter()
-
-// ================================================================
-// TYPES
-// ================================================================
-
-interface ReturnRecord {
-  id: number
-  returnCode: string
-  itemId: number
-  itemCode: string
-  itemName: string
-  brand: string
-  model: string
-  uom: string
-  qty: number
-  returnedByName: string
-  department: string
-  storeId: number
-  storeName: string
-  reason: string
-  remark: string
-  status: 'pending' | 'accepted' | 'rejected'
-  submittedAt: string
-}
-
-interface DemoItem {
-  id: number
-  code: string
-  name: string
-  brand: string
-  model: string
-  uom: string
-  qtyIssued: number
-}
+dayjs.extend(utc);
 
 // ================================================================
-// DEMO DATA
+// STATE
 // ================================================================
 
-const demoDepartments = [
-  'IT Department',
-  'Finance',
-  'Operations',
-  'HR',
-  'Administration',
-  'Sales',
-  'Marketing',
-  'Procurement',
-  'Maintenance',
-]
+const authStore = useAuthStore();
 
-const demoStores = [
-  { id: 1, name: 'MainStore 1 (Yeshi)' },
-  { id: 2, name: 'MainStore 2 (Warehouse)' },
-  { id: 3, name: 'Foreign Purchase' },
-  { id: 4, name: 'IT Store' },
-]
+const records = ref<TemelashRecord[]>([]);
+const summary = ref<TemelashSummary>({
+  total: 0,
+  out: 0,
+  returned: 0,
+  overdue: 0,
+});
+const stores = ref<Store[]>([]);
+const loading = ref(false);
 
-const demoReasons = [
-  'Employee Terminated',
-  'Employee Resigned',
-  'Employee Transferred',
-  'End of Contract',
-  'Unused — Project Cancelled',
-  'Replaced by Newer Model',
-  'Damaged in Use',
-  'Wrong Item Issued',
-  'Excess Quantity',
-  'Retirement / End of Life',
-  'Other',
-]
+const userIsAdmin = ref(false);
+const currentUserId = ref<number | null>(null);
 
-const demoItems = ref<DemoItem[]>([
-  { id: 1, code: 'ITM-001', name: 'Dell Latitude 5520 Laptop',  brand: 'Dell',      model: 'L5520',    uom: 'Pcs', qtyIssued: 2 },
-  { id: 2, code: 'ITM-002', name: 'Logitech MX Master 3 Mouse', brand: 'Logitech',  model: 'MX3',      uom: 'Pcs', qtyIssued: 5 },
-  { id: 3, code: 'ITM-003', name: 'HP 24" Monitor',             brand: 'HP',        model: 'E24i',     uom: 'Pcs', qtyIssued: 3 },
-  { id: 4, code: 'ITM-004', name: 'Canon LBP Laser Printer',    brand: 'Canon',     model: 'LBP2900',  uom: 'Pcs', qtyIssued: 1 },
-  { id: 5, code: 'ITM-005', name: 'Epson Projector',            brand: 'Epson',     model: 'EB-X51',   uom: 'Pcs', qtyIssued: 1 },
-  { id: 6, code: 'ITM-006', name: 'Cisco Network Switch',       brand: 'Cisco',     model: 'SG350',    uom: 'Pcs', qtyIssued: 2 },
-  { id: 7, code: 'ITM-007', name: 'APC UPS 1500VA',             brand: 'APC',       model: 'BXR1500',  uom: 'Pcs', qtyIssued: 4 },
-  { id: 8, code: 'ITM-008', name: 'Samsung 1TB SSD',            brand: 'Samsung',   model: '870 EVO',  uom: 'Pcs', qtyIssued: 10 },
-  { id: 9, code: 'ITM-009', name: 'Logitech C920 Webcam',       brand: 'Logitech',  model: 'C920',     uom: 'Pcs', qtyIssued: 3 },
-  { id: 10, code: 'ITM-010', name: 'Steelcase Office Chair',    brand: 'Steelcase', model: 'Series 1', uom: 'Pcs', qtyIssued: 6 },
-])
+const searchQuery = ref("");
+const filterStatus = ref<"all" | "out" | "returned">("all");
+const filterStore = ref("all");
+const currentPage = ref(1);
+const pageSize = ref(10);
+const totalRecords = ref(0);
 
-const returns = ref<ReturnRecord[]>([
-  {
-    id: 1,
-    returnCode: 'RET-2026-001',
-    itemId: 3,
-    itemCode: 'ITM-003',
-    itemName: 'HP 24" Monitor',
-    brand: 'HP', model: 'E24i', uom: 'Pcs',
-    qty: 1,
-    returnedByName: 'Biruk Mulualem',
-    department: 'IT Department',
-    storeId: 1, storeName: 'MainStore 1 (Yeshi)',
-    reason: 'Replaced by Newer Model',
-    remark: 'Original box and cables included',
-    status: 'accepted',
-    submittedAt: '2026-09-20T09:15:00.000Z',
-  },
-  {
-    id: 2,
-    returnCode: 'RET-2026-002',
-    itemId: 8,
-    itemCode: 'ITM-008',
-    itemName: 'Samsung 1TB SSD',
-    brand: 'Samsung', model: '870 EVO', uom: 'Pcs',
-    qty: 2,
-    returnedByName: 'Abebe Kebede',
-    department: 'Finance',
-    storeId: 4, storeName: 'IT Store',
-    reason: 'Employee Terminated',
-    remark: 'Returned after employee exit clearance',
-    status: 'pending',
-    submittedAt: '2026-09-24T13:40:00.000Z',
-  },
-  {
-    id: 3,
-    returnCode: 'RET-2026-003',
-    itemId: 7,
-    itemCode: 'ITM-007',
-    itemName: 'APC UPS 1500VA',
-    brand: 'APC', model: 'BXR1500', uom: 'Pcs',
-    qty: 1,
-    returnedByName: 'Sara Haile',
-    department: 'Operations',
-    storeId: 2, storeName: 'MainStore 2 (Warehouse)',
-    reason: 'Damaged in Use',
-    remark: 'Battery not holding charge — needs inspection',
-    status: 'rejected',
-    submittedAt: '2026-09-25T10:05:00.000Z',
-  },
-  {
-    id: 4,
-    returnCode: 'RET-2026-004',
-    itemId: 2,
-    itemCode: 'ITM-002',
-    itemName: 'Logitech MX Master 3 Mouse',
-    brand: 'Logitech', model: 'MX3', uom: 'Pcs',
-    qty: 1,
-    returnedByName: 'Biruk Mulualem',
-    department: 'IT Department',
-    storeId: 4, storeName: 'IT Store',
-    reason: 'Employee Resigned',
-    remark: 'Never opened',
-    status: 'pending',
-    submittedAt: '2026-09-27T08:20:00.000Z',
-  },
-])
+const expandedRow = ref<number | null>(null);
+
+const showReturnModal = ref(false);
+const returnTarget = ref<TemelashRecord | null>(null);
+const returnRemark = ref("");
+
+const showEditModal = ref(false);
+const editTarget = ref<TemelashRecord | null>(null);
+const editFromDate = ref("");
+const editToDate = ref("");
+const editRemark = ref("");
+const editError = ref("");
+
+const submitting = ref(false);
+
+const showToast = ref(false);
+const toastMessage = ref("");
+const toastType = ref<"success" | "error" | "info" | "warning">("success");
 
 // ================================================================
-// LIST STATE
+// COMPUTED
 // ================================================================
 
-const searchQuery = ref('')
+const activeStores = computed(() =>
+  stores.value.filter((s) => s.status === "Active"),
+);
 
-const filteredReturns = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return returns.value
-  return returns.value.filter(r =>
-    r.returnCode.toLowerCase().includes(q) ||
-    r.itemName.toLowerCase().includes(q) ||
-    r.itemCode.toLowerCase().includes(q) ||
-    r.returnedByName.toLowerCase().includes(q) ||
-    r.department.toLowerCase().includes(q) ||
-    r.storeName.toLowerCase().includes(q) ||
-    r.reason.toLowerCase().includes(q) ||
-    r.remark.toLowerCase().includes(q)
-  )
-})
+const hasActiveFilters = computed(
+  () =>
+    filterStatus.value !== "all" ||
+    filterStore.value !== "all" ||
+    searchQuery.value.trim() !== "",
+);
 
-const countByStatus = (s: ReturnRecord['status']) =>
-  returns.value.filter(r => r.status === s).length
-
-const statusLabel = (s: ReturnRecord['status']) =>
-  s === 'pending' ? '🟡 Pending'
-  : s === 'accepted' ? '🟢 Accepted'
-  : '🔴 Rejected'
+const totalPages = computed(
+  () => Math.ceil(totalRecords.value / pageSize.value) || 1,
+);
 
 // ================================================================
-// MODAL STATE
+// LOAD
 // ================================================================
 
-const showModal = ref(false)
-const itemSearch = ref('')
-const attemptSubmit = ref(false)
+const loadUser = () => {
+  const user = authStore.user as any;
+  if (!user) return;
+  userIsAdmin.value =
+    user.isAdmin === true || user.role === "admin" || user.role === "Admin";
+  currentUserId.value = user.userId || user.id || null;
+};
 
-const form = ref({
-  department: '',
-  returnedByName: '',
-  storeId: '' as number | '',
-  itemId: 0,
-  qty: 1,
-  reason: '',
-  remark: '',
-})
+const loadStores = async () => {
+  const res = await itemRequestService.getActiveStores();
+  if (res.success) stores.value = res.data;
+};
 
-const filteredItems = computed(() => {
-  const q = itemSearch.value.trim().toLowerCase()
-  if (!q) return demoItems.value
-  return demoItems.value.filter(it =>
-    it.name.toLowerCase().includes(q) ||
-    it.code.toLowerCase().includes(q) ||
-    it.brand.toLowerCase().includes(q) ||
-    it.model.toLowerCase().includes(q)
-  )
-})
+const loadRecords = async () => {
+  loading.value = true;
+  try {
+    const params: any = {
+      page: currentPage.value,
+      limit: pageSize.value,
+      status: filterStatus.value,
+    };
+    if (searchQuery.value.trim()) params.search = searchQuery.value.trim();
+    if (filterStore.value !== "all") params.storeId = Number(filterStore.value);
 
-const selectedItem = computed<DemoItem | null>(() => {
-  if (!form.value.itemId) return null
-  return demoItems.value.find(i => i.id === form.value.itemId) ?? null
-})
-
-const canSubmit = computed(() => {
-  return (
-    !!form.value.department &&
-    form.value.returnedByName.trim().length > 0 &&
-    !!form.value.storeId &&
-    !!form.value.itemId &&
-    !!form.value.reason &&
-    form.value.qty > 0 &&
-    (!selectedItem.value || form.value.qty <= selectedItem.value.qtyIssued)
-  )
-})
-
-// ================================================================
-// MODAL ACTIONS
-// ================================================================
-
-const openModal = () => {
-  resetForm()
-  showModal.value = true
-}
-
-const closeModal = () => {
-  showModal.value = false
-  attemptSubmit.value = false
-}
-
-const resetForm = () => {
-  form.value = {
-    department: '',
-    returnedByName: '',
-    storeId: '',
-    itemId: 0,
-    qty: 1,
-    reason: '',
-    remark: '',
+    const res = await temelashService.getTemelashRecords(params);
+    if (res.success && res.data) {
+      records.value = res.data.records;
+      summary.value = res.data.summary;
+      totalRecords.value = res.data.pagination.total;
+    } else {
+      showToastMessage(res.error || "Failed to load records", "error");
+    }
+  } catch (err: any) {
+    showToastMessage(err.message || "Failed to load records", "error");
+  } finally {
+    loading.value = false;
   }
-  itemSearch.value = ''
-  attemptSubmit.value = false
-}
-
-const selectItem = (item: DemoItem) => {
-  form.value.itemId = item.id
-  form.value.qty = Math.min(form.value.qty || 1, item.qtyIssued)
-}
-
-// ================================================================
-// SUBMIT
-// ================================================================
-
-const submitReturn = () => {
-  attemptSubmit.value = true
-  if (!canSubmit.value) return
-
-  const store = demoStores.find(s => s.id === form.value.storeId)!
-  const item = demoItems.value.find(i => i.id === form.value.itemId)!
-
-  const nextId = returns.value.length
-    ? Math.max(...returns.value.map(r => r.id)) + 1
-    : 1
-
-  const year = new Date().getFullYear()
-  const returnCode = `RET-${year}-${String(nextId).padStart(3, '0')}`
-
-  const newReturn: ReturnRecord = {
-    id: nextId,
-    returnCode,
-    itemId: item.id,
-    itemCode: item.code,
-    itemName: item.name,
-    brand: item.brand,
-    model: item.model,
-    uom: item.uom,
-    qty: form.value.qty,
-    returnedByName: form.value.returnedByName.trim(),
-    department: form.value.department,
-    storeId: store.id,
-    storeName: store.name,
-    reason: form.value.reason,
-    remark: form.value.remark.trim(),
-    status: 'pending',
-    submittedAt: new Date().toISOString(),
-  }
-
-  returns.value = [newReturn, ...returns.value]
-  closeModal()
-}
+};
 
 // ================================================================
 // HELPERS
 // ================================================================
 
-const formatDate = (iso: string): string => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const day = String(d.getDate()).padStart(2, '0')
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const year = d.getFullYear()
-  return `${day}/${month}/${year}`
-}
+const getItemNames = (items: any[] | undefined): string => {
+  if (!items || items.length === 0) return "";
+  return items.map((i) => i.name || "Unknown").join(", ");
+};
 
-const goBack = () => {
-  router.back()
-}
+const getStoreName = (storeId: number): string => {
+  const s = stores.value.find((st) => (st.storeId || st.id) === storeId);
+  return s ? s.name : `Store #${storeId}`;
+};
+
+const getRequesterName = (rec: TemelashRecord): string => {
+  if (rec.requestedByUser) {
+    return (
+      rec.requestedByUser.fullName ||
+      rec.requestedByUser.full_name ||
+      rec.requestedByUser.username ||
+      "N/A"
+    );
+  }
+  return rec.requestedBy || "N/A";
+};
+
+const formatDate = (d?: string | null): string => {
+  if (!d) return "—";
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatDateTime = (d?: string | null): string => {
+  if (!d) return "—";
+  const dt = dayjs.utc(d);
+  if (!dt.isValid()) return "—";
+  return dt.format("MMM D, YYYY h:mm A");
+};
+
+const statusClass = (rec: TemelashRecord): string => {
+  if (rec.status === "returned") {
+    return rec.returnedLate ? "returned-late" : "returned";
+  }
+  return temelashService.isOverdue(rec) ? "overdue" : "out";
+};
+
+const dueBadgeText = (rec: TemelashRecord): string => {
+  const days = temelashService.daysUntilDue(rec);
+  if (days === null) return "—";
+  if (days < 0) return `${Math.abs(days)} day(s) overdue`;
+  if (days === 0) return "Due today";
+  return `${days} day(s) left`;
+};
+
+const dueBadgeClass = (rec: TemelashRecord): string => {
+  const days = temelashService.daysUntilDue(rec);
+  if (days === null) return "neutral";
+  if (days < 0) return "danger";
+  if (days <= 2) return "warning";
+  return "success";
+};
+
+// ================================================================
+// EXPAND
+// ================================================================
+
+const toggleExpand = (id: number) => {
+  expandedRow.value = expandedRow.value === id ? null : id;
+};
+
+// ================================================================
+// RETURN
+// ================================================================
+
+const openReturnModal = (rec: TemelashRecord) => {
+  returnTarget.value = rec;
+  returnRemark.value = "";
+  showReturnModal.value = true;
+};
+
+const closeReturnModal = () => {
+  showReturnModal.value = false;
+  returnTarget.value = null;
+  returnRemark.value = "";
+};
+
+const confirmReturn = async () => {
+  if (!returnTarget.value) return;
+  submitting.value = true;
+  try {
+    const res = await temelashService.returnTemelash(
+      returnTarget.value.id,
+      returnRemark.value.trim() || undefined,
+    );
+    if (res.success) {
+      showToastMessage(res.message || "Marked as returned", "success");
+      closeReturnModal();
+      await loadRecords();
+    } else {
+      showToastMessage(res.error || "Failed to return", "error");
+    }
+  } finally {
+    submitting.value = false;
+  }
+};
+
+// ================================================================
+// EDIT
+// ================================================================
+
+const openEditModal = (rec: TemelashRecord) => {
+  editTarget.value = rec;
+  editFromDate.value = rec.fromDate ? rec.fromDate.substring(0, 10) : "";
+  editToDate.value = rec.toDate ? rec.toDate.substring(0, 10) : "";
+  editRemark.value = rec.remark || "";
+  editError.value = "";
+  showEditModal.value = true;
+};
+
+const closeEditModal = () => {
+  showEditModal.value = false;
+  editTarget.value = null;
+  editError.value = "";
+};
+
+const confirmEdit = async () => {
+  if (!editTarget.value) return;
+
+  if (editFromDate.value && editToDate.value && editToDate.value < editFromDate.value) {
+    editError.value = "'To' date must be on or after 'From' date";
+    return;
+  }
+
+  submitting.value = true;
+  editError.value = "";
+  try {
+    const res = await temelashService.updateTemelash(editTarget.value.id, {
+      fromDate: editFromDate.value || null,
+      toDate: editToDate.value || null,
+      remark: editRemark.value.trim() || null,
+    });
+    if (res.success) {
+      showToastMessage("Temelash window updated", "success");
+      closeEditModal();
+      await loadRecords();
+    } else {
+      editError.value = res.error || "Failed to update";
+    }
+  } finally {
+    submitting.value = false;
+  }
+};
+
+// ================================================================
+// FILTERS & PAGINATION
+// ================================================================
+
+const onSearchChange = () => {
+  currentPage.value = 1;
+  loadRecords();
+};
+
+const onFilterChange = () => {
+  currentPage.value = 1;
+  loadRecords();
+};
+
+const clearFilters = () => {
+  filterStatus.value = "all";
+  filterStore.value = "all";
+  searchQuery.value = "";
+  currentPage.value = 1;
+  loadRecords();
+};
+
+const changePage = (p: number) => {
+  if (p < 1 || p > totalPages.value) return;
+  currentPage.value = p;
+};
+
+const changePageSize = () => {
+  currentPage.value = 1;
+  loadRecords();
+};
+
+// ================================================================
+// TOAST
+// ================================================================
+
+const showToastMessage = (
+  msg: string,
+  type: "success" | "error" | "info" | "warning" = "success",
+) => {
+  toastMessage.value = msg;
+  toastType.value = type;
+  showToast.value = true;
+  setTimeout(() => {
+    showToast.value = false;
+  }, 3000);
+};
+
+// ================================================================
+// WATCHERS
+// ================================================================
+
+watch(currentPage, (n, o) => {
+  if (n !== o) loadRecords();
+});
+
+// ================================================================
+// LIFECYCLE
+// ================================================================
+
+onMounted(async () => {
+  loadUser();
+  await Promise.all([loadStores(), loadRecords()]);
+});
 </script>
 
 <style scoped>
 /* ================================================================
-   PAGE SHELL
+   SECTION CARD
    ================================================================ */
-.page-shell {
-  font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
-  max-width: 1500px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 40px;
-  background: #f1f5f9;
-  min-height: 100vh;
-  color: #0f172a;
-  box-sizing: border-box;
+.section-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 }
 
-/* ================================================================
-   TOP BAR
-   ================================================================ */
-.top-bar {
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 24px;
-  margin-bottom: 22px;
-  padding: 20px 26px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  gap: 12px;
 }
 
-.top-bar-left {
+.header-title {
   display: flex;
   align-items: center;
-  gap: 18px;
-}
-
-.top-bar-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
-  justify-content: flex-end;
-}
-
-.btn-back {
-  background: #f1f5f9;
-  color: #1e293b;
-  border: 1px solid #e2e8f0;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13.5px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.btn-back:hover {
-  background: #e2e8f0;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-}
-
-.page-subtitle {
-  margin: 4px 0 0 0;
-  font-size: 12.5px;
-  color: #64748b;
-  font-style: italic;
-}
-
-.search-input {
-  min-width: 340px;
-  max-width: 420px;
-  font-size: 13.5px;
-}
-
-/* ================================================================
-   SUMMARY STRIP
-   ================================================================ */
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 22px;
+  flex-wrap: wrap;
 }
 
-.summary-item {
-  background: #ffffff;
+.header-title h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.total-badge {
+  background: #e2e8f0;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-box {
+  position: relative;
+}
+
+.search-box input {
+  padding: 8px 12px 8px 32px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 18px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.summary-label {
-  font-size: 11.5px;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  font-weight: 600;
-}
-
-.summary-value {
-  font-size: 28px;
-  font-weight: 800;
-  color: #0f172a;
-  line-height: 1;
-}
-
-.summary-value.pending { color: #d97706; }
-.summary-value.accepted { color: #16a34a; }
-.summary-value.rejected { color: #dc2626; }
-
-/* ================================================================
-   LIST CARD
-   ================================================================ */
-.list-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.returns-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-  table-layout: fixed;
-}
-
-.returns-table th,
-.returns-table td {
-  padding: 16px 14px;
-  text-align: center;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-  word-wrap: break-word;
-}
-
-.returns-table th {
-  background: #c8c8c8;
-  font-weight: 700;
-  font-size: 12.5px;
-  letter-spacing: 0.4px;
-  color: #000;
-  border-bottom: 1px solid #94a3b8;
-  text-transform: uppercase;
-}
-
-.returns-table tbody tr {
-  transition: background 0.12s ease;
-}
-
-.returns-table tbody tr:hover {
+  font-size: 13px;
+  width: 240px;
   background: #f8fafc;
 }
 
-.returns-table td.text-left {
-  text-align: left;
+.search-box input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: white;
 }
 
-.font-bold {
-  font-weight: 700;
-}
-
-.item-name {
-  font-weight: 600;
-  color: #0f172a;
-  font-size: 13.5px;
-}
-
-.item-meta {
-  font-size: 11.5px;
-  color: #64748b;
-  margin-top: 3px;
-}
-
-.uom {
-  font-size: 11.5px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.reason-cell {
-  font-size: 13px;
-  font-weight: 500;
-  color: #334155;
-}
-
-.remark-cell {
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.muted {
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
   color: #94a3b8;
 }
 
-/* Status badges */
-.status-badge {
-  display: inline-block;
-  padding: 5px 12px;
-  border-radius: 14px;
-  font-size: 11.5px;
+/* ================================================================
+   SUMMARY CARDS
+   ================================================================ */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  transition: all 0.2s;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.summary-card.total { background: #eff6ff; border-color: #bfdbfe; }
+.summary-card.out { background: #fef3c7; border-color: #fde68a; }
+.summary-card.overdue { background: #fee2e2; border-color: #fecaca; }
+.summary-card.returned { background: #dcfce7; border-color: #bbf7d0; }
+
+.summary-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.summary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.summary-value {
+  font-size: 20px;
   font-weight: 700;
-  white-space: nowrap;
+  color: #0f172a;
 }
 
-.status-pending {
-  background: #fef3c7;
-  color: #92400e;
+/* ================================================================
+   FILTER BAR
+   ================================================================ */
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.status-accepted {
-  background: #dcfce7;
-  color: #166534;
+.filter-select {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.status-rejected {
-  background: #fee2e2;
-  color: #991b1b;
+.btn-clear-filters {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #64748b;
 }
 
-/* Empty state */
-.no-items {
-  padding: 60px 20px !important;
+.btn-clear-filters:hover { background: #e2e8f0; }
+
+/* ================================================================
+   LOADING
+   ================================================================ */
+.loading-state {
   text-align: center;
+  padding: 60px 20px;
 }
 
-.empty-state {
+.spinner {
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ================================================================
+   TABLE
+   ================================================================ */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.temelash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 1000px;
+}
+
+.temelash-table th,
+.temelash-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.temelash-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.col-expand { width: 30px; }
+.col-code { min-width: 110px; }
+.col-items { min-width: 150px; }
+.col-store { min-width: 120px; }
+.col-arrow { width: 30px; text-align: center; }
+.col-window { min-width: 180px; }
+.col-status { min-width: 120px; }
+.col-actions { min-width: 100px; }
+
+.text-center { text-align: center; }
+
+.code-cell {
+  font-weight: 600;
+  color: #0f172a;
+  font-family: "Courier New", monospace;
+  font-size: 11px;
+  background: #f8fafc;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.items-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-count { font-weight: 500; color: #1e293b; }
+.item-names {
+  font-size: 10px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.store-name { font-weight: 500; color: #1e293b; }
+.arrow-cell { text-align: center; color: #94a3b8; font-size: 14px; }
+
+.window-cell { min-width: 180px; }
+.window-display { display: flex; flex-direction: column; gap: 4px; }
+.window-dates { font-size: 11px; color: #334155; font-weight: 500; }
+
+.days-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.days-badge.success { background: #dcfce7; color: #166534; }
+.days-badge.warning { background: #fef3c7; color: #92400e; }
+.days-badge.danger { background: #fee2e2; color: #991b1b; }
+.days-badge.neutral { background: #f1f5f9; color: #475569; }
+
+/* ================================================================
+   STATUS BADGES
+   ================================================================ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
+}
+
+.status-badge.out { background: #fef3c7; color: #92400e; }
+.status-badge.overdue { background: #fee2e2; color: #991b1b; }
+.status-badge.returned { background: #dcfce7; color: #166534; }
+.status-badge.returned-late { background: #fed7aa; color: #9a3412; }
+
+.returned-by {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* ================================================================
+   ACTIONS
+   ================================================================ */
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  color: #64748b;
+}
+
+.icon-btn:hover { background: #f1f5f9; color: #0f172a; }
+.icon-btn:active { transform: scale(0.95); }
+.return-btn { color: #10b981; }
+.return-btn:hover { background: #dcfce7; color: #065f46; }
+
+/* ================================================================
+   EXPAND
+   ================================================================ */
+.expanded-row { background: #f8fafc; }
+
+.expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: #3b82f6;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.expand-btn:hover { background: #e0e7ff; }
+
+.detail-expand-row td { padding: 0 !important; }
+
+.expand-details {
+  padding: 16px 20px;
+  background: white;
+  border-radius: 12px;
+  margin: 8px 0;
+  border: 1px solid #e2e8f0;
+}
+
+.detail-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-row-two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.detail-card {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.detail-card.full-width { grid-column: 1 / -1; }
+
+.detail-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  border-left: 3px solid #3b82f6;
+  padding-left: 10px;
+  color: #1e293b;
+}
+
+.detail-card > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+
+.detail-card > div:last-child { border-bottom: none; }
+
+.detail-card .value { font-weight: 500; color: #1e293b; }
+
+.late-yes { color: #dc2626; font-weight: 600; }
+
+/* ================================================================
+   WINDOW HIGHLIGHT
+   ================================================================ */
+.window-highlight {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+}
+
+.window-display-large {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.window-side {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
 }
 
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  margin: 0 0 10px 0;
+.window-label {
+  font-size: 11px;
+  font-weight: 600;
   color: #64748b;
+  text-transform: uppercase;
+}
+
+.window-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.window-arrow {
+  font-size: 24px;
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.window-remaining { margin-left: auto; }
+
+.days-badge-large {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+
+.days-badge-large.success { background: #dcfce7; color: #166534; }
+.days-badge-large.warning { background: #fef3c7; color: #92400e; }
+.days-badge-large.danger { background: #fee2e2; color: #991b1b; }
+.days-badge-large.neutral { background: #f1f5f9; color: #475569; }
+
+/* ================================================================
+   ITEMS TABLE
+   ================================================================ */
+.items-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.items-detail-table th {
+  background: #e2e8f0;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+}
+
+.items-detail-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.items-detail-table .total-row {
+  background: #f8fafc;
+  font-weight: 500;
+}
+
+.spec-cell {
+  max-width: 200px;
+  white-space: normal;
+  word-wrap: break-word;
+  font-size: 11px;
+  color: #475569;
+}
+
+/* ================================================================
+   REMARK
+   ================================================================ */
+.remark-content {
+  padding: 8px 12px;
+  background: white;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #1e293b;
+  min-height: 40px;
+}
+
+.no-remark {
+  color: #94a3b8;
   font-style: italic;
-  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.return-remark-card {
+  border-left: 4px solid #10b981;
+  background: #f0fdf4;
+}
+
+/* ================================================================
+   DETAIL ACTIONS
+   ================================================================ */
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-return-detail {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.btn-return-detail:hover { background: #059669; }
+
+.btn-edit-detail {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.btn-edit-detail:hover { background: #2563eb; }
+
+/* ================================================================
+   EMPTY
+   ================================================================ */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-icon { font-size: 48px; opacity: 0.5; }
+.empty-state p { color: #94a3b8; font-size: 16px; margin: 0; }
+
+/* ================================================================
+   PAGINATION
+   ================================================================ */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 6px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.page-btn:hover:not(:disabled) { background: #e2e8f0; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.page-info { font-size: 13px; color: #475569; }
+
+.limit-select {
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 /* ================================================================
    MODAL
    ================================================================ */
-.modal-backdrop {
+.modal-overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 1000;
-  animation: fadeIn 0.15s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.modal {
-  background: #ffffff;
-  border-radius: 14px;
+  top: 0;
+  left: 0;
   width: 100%;
-  max-width: 900px;
-  max-height: 92vh;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
   display: flex;
-  flex-direction: column;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.2s ease-out;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal-container {
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 95%;
+  max-height: 90vh;
+  overflow: hidden;
+  animation: slideUp 0.3s ease;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
 @keyframes slideUp {
-  from { transform: translateY(14px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 28px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbfc;
 }
 
-.modal-header h2 {
-  margin: 0;
+.modal-header h3 {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
+  margin: 0;
+  color: #0f172a;
 }
 
 .modal-close {
   background: transparent;
   border: none;
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
-  color: #64748b;
-  padding: 6px 10px;
+  color: #94a3b8;
+  padding: 4px 8px;
   border-radius: 6px;
 }
 
-.modal-close:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
+.modal-close:hover { background: #f1f5f9; color: #0f172a; }
 
 .modal-body {
-  flex: 1;
+  padding: 24px;
   overflow-y: auto;
-  padding: 24px 28px;
+  max-height: calc(90vh - 130px);
 }
 
 .modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 18px 28px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
-  border-radius: 0 0 14px 14px;
+  gap: 10px;
+  background: #fafbfc;
 }
 
-/* Modal sections */
-.modal-section {
-  margin-bottom: 26px;
-}
-
-.modal-section:last-child {
-  margin-bottom: 0;
-}
-
-.modal-section-label {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #1e293b;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 14px;
-  padding-bottom: 7px;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-/* Field grid */
-.field-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-
-.field {
-  margin-bottom: 14px;
-}
-
-.field label {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #475569;
-  margin-bottom: 6px;
-}
-
-.req {
-  color: #dc2626;
-  font-weight: 700;
-}
-
-.qty-hint {
-  font-weight: 400;
-  color: #64748b;
-  font-size: 11.5px;
-  margin-left: 5px;
-}
-
-.input {
-  width: 100%;
-  padding: 10px 14px;
-  font-size: 13.5px;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  background: #ffffff;
-  color: #0f172a;
-  font-family: inherit;
-  box-sizing: border-box;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-}
-
-.textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.qty-block {
-  margin-top: 14px;
-  max-width: 260px;
-}
-
-.qty-input {
+.confirmation-icon {
+  font-size: 48px;
   text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirmation-title {
+  font-size: 15px;
   font-weight: 600;
-  font-size: 14px;
+  color: #1e293b;
+  text-align: center;
+  margin-bottom: 16px;
 }
 
-/* ================================================================
-   ITEM PICKER
-   ================================================================ */
-.item-picker {
-  margin-top: 12px;
-  max-height: 320px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 9px;
+.confirmation-details {
   background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
 }
 
-.item-option {
+.detail-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
+  padding: 6px 0;
   border-bottom: 1px solid #e2e8f0;
-  cursor: pointer;
-  transition: background 0.12s ease;
+  font-size: 13px;
 }
 
-.item-option:last-child {
-  border-bottom: none;
-}
+.detail-row:last-child { border-bottom: none; }
 
-.item-option:hover {
-  background: #eff6ff;
-}
+.detail-label { color: #64748b; font-weight: 500; }
+.detail-value { color: #1e293b; font-weight: 500; }
+.late-warning { color: #dc2626; font-weight: 600; }
 
-.item-option.selected {
-  background: #dbeafe;
-  border-left: 4px solid #2563eb;
-  padding-left: 14px;
-}
-
-.item-option-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.item-option-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.item-option-meta {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 3px;
-}
-
-.item-option-right {
+.form-group {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
 }
 
-.item-option-qty {
-  font-size: 12.5px;
+.form-group label {
+  font-size: 12px;
+  font-weight: 600;
   color: #475569;
 }
 
-.item-option-check {
-  width: 26px;
-  height: 26px;
-  background: #2563eb;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  font-weight: 700;
+.form-group textarea,
+.form-group input {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
 }
 
-/* ================================================================
-   BUTTONS
-   ================================================================ */
-.btn-primary,
-.btn-secondary {
-  padding: 10px 22px;
-  font-size: 13.5px;
-  font-weight: 600;
-  border-radius: 7px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: filter 0.15s ease, background-color 0.15s ease;
-  white-space: nowrap;
+.form-group textarea:focus,
+.form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.btn-lg {
-  padding: 11px 26px;
-  font-size: 14px;
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.edit-subtitle {
+  font-size: 13px;
+  color: #475569;
+  margin: 0 0 12px 0;
+}
+
+.edit-error {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .btn-primary {
-  background: #2563eb;
-  color: #ffffff;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.05);
-}
-
-.btn-primary:disabled {
-  background: #cbd5e1;
-  color: #64748b;
-  cursor: not-allowed;
-}
+.btn-primary:hover:not(:disabled) { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-secondary {
   background: #f1f5f9;
   color: #1e293b;
-  border-color: #cbd5e1;
+  border: 1px solid #e2e8f0;
+  padding: 8px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
-.btn-secondary:hover {
-  background: #e2e8f0;
-}
+.btn-secondary:hover { background: #e2e8f0; }
 
 /* ================================================================
-   VALIDATION
+   TOAST
    ================================================================ */
-.validation-hint {
-  margin: 8px 0 0 0;
-  font-size: 12.5px;
-  color: #b91c1c;
-  text-align: center;
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  max-width: 400px;
+  animation: slideInRight 0.3s ease;
 }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.toast.success { background: #22c55e; }
+.toast.error { background: #ef4444; }
+.toast.info { background: #3b82f6; }
+.toast.warning { background: #f59e0b; }
 
 /* ================================================================
    RESPONSIVE
    ================================================================ */
-@media (max-width: 1280px) {
-  .page-shell {
-    padding: 24px;
-  }
-
-  .search-input {
-    min-width: 240px;
-  }
+@media (max-width: 1024px) {
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
 }
 
-@media (max-width: 900px) {
-  .summary-strip {
-    grid-template-columns: repeat(2, 1fr);
-  }
+@media (max-width: 768px) {
+  .section-card { padding: 12px; }
 
-  .top-bar {
+  .card-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .top-bar-right {
-    justify-content: stretch;
-  }
+  .header-actions { flex-direction: column; }
+  .search-box input { width: 100%; }
 
-  .search-input {
-    min-width: 0;
+  .summary-cards { grid-template-columns: 1fr 1fr; }
+
+  .filter-bar { flex-direction: column; align-items: stretch; }
+
+  .detail-row-two-cols { grid-template-columns: 1fr; }
+
+  .window-display-large { gap: 12px; }
+
+  .form-row { grid-template-columns: 1fr; }
+
+  .toast {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
     max-width: none;
+    font-size: 13px;
   }
 
-  .returns-table {
-    font-size: 12px;
-  }
-
-  .returns-table th,
-  .returns-table td {
-    padding: 10px 6px;
-  }
+  .detail-actions { flex-direction: column; }
+  .detail-actions button { width: 100%; justify-content: center; }
 }
 
-@media (max-width: 600px) {
-  .page-shell {
-    padding: 14px;
-  }
-
-  .field-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .modal {
-    max-height: 96vh;
-  }
-
-  .modal-body {
-    padding: 18px 20px;
-  }
-
-  .modal-header,
-  .modal-footer {
-    padding: 16px 20px;
-  }
+@media (max-width: 480px) {
+  .summary-cards { grid-template-columns: 1fr; }
+  .summary-value { font-size: 18px; }
+  .modal-header h3 { font-size: 16px; }
 }
 </style>

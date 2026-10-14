@@ -13,6 +13,7 @@ const {
   StoreGroupRelation,
   Department,
   Group,
+  TemelashRecord,        // ✅ NEW
   sequelize,
 } = db;
 const { Op } = require("sequelize");
@@ -128,9 +129,223 @@ async function resolveRequestingUserGroupId(req, requestingUserId, transaction =
 }
 
 // ================================================================
-// HELPER: Validate stock availability with dual UOM support
+// ✅ HELPER: Snapshot request items into temelash_records
+// ✅ UPDATED: also copies the loan window (fromDate / toDate)
 // ================================================================
-const validateStockAvailability = async (supplyingStoreId, items) => {
+async function snapshotTemelashRecord(requestId, transaction = null) {
+  try {
+    // Guard: don't create duplicates for the same request while it's still OUT
+    const existing = await TemelashRecord.findOne({
+      where: { requestId, status: 'out' },
+      transaction,
+    });
+
+    if (existing) {
+      console.log(
+        `ℹ️ [TEMELASH] Record already exists for request ${requestId} (id ${existing.id}) — skipping snapshot`
+      );
+      return existing;
+    }
+
+    const requestWithItems = await ItemRequest.findByPk(requestId, {
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: 'items',
+          include: [
+            {
+              model: Item,
+              as: 'item',
+              include: [{ model: UOM, as: 'uom' }],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    if (!requestWithItems) {
+      console.warn(`⚠️ [TEMELASH] Request ${requestId} not found — skipping snapshot`);
+      return null;
+    }
+
+    const snapshotItems = (requestWithItems.items || []).map((d) => ({
+      itemId: d.itemId,
+      code: d.item?.code || 'N/A',
+      name: d.item?.name || 'Unknown',
+      quantity: Number(d.quantity) || 0,
+      uom: d.uom_code || d.item?.uom?.code || 'Units',
+      remark: d.remark || '',
+      specification: d.specification || '',
+      brand: d.brand || '',
+      model: d.model || '',
+    }));
+
+    const record = await TemelashRecord.create(
+      {
+        requestId: requestWithItems.requestId,
+        requestCode: requestWithItems.requestCode,
+        askingStoreId: requestWithItems.askingStoreId,
+        supplyingStoreId: requestWithItems.supplyingStoreId,
+        requestedById: requestWithItems.requestedById || null,
+        requestedBy: requestWithItems.requestedBy || null,
+        items: snapshotItems,
+        remark: requestWithItems.remark || null,
+        status: 'out',
+        issuedAt: new Date(),
+        // ✅ NEW: copy the loan window onto the temelash record
+        fromDate: requestWithItems.temelashFromDate || null,
+        toDate: requestWithItems.temelashToDate || null,
+        returnedLate: false,
+      },
+      { transaction }
+    );
+
+    console.log(
+      `📝 [TEMELASH] Recorded request ${requestWithItems.requestCode} as OUT ` +
+      `(record id ${record.id}, window ${record.fromDate || '—'} → ${record.toDate || '—'})`
+    );
+
+    return record;
+  } catch (error) {
+    console.error('❌ [TEMELASH] snapshotTemelashRecord error:', error);
+    throw error;
+  }
+}
+
+
+
+
+
+// ================================================================
+// HELPER: Sum of claimed quantity for (itemId, uomCode)
+//         from Temelash-out records + active requests at a store.
+//         Matches strictly on (itemId, uomCode) — no UOM conversion.
+// ================================================================
+const ACTIVE_REQUEST_STATUSES = ['pending', 'approved'];
+
+async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
+  const excludeRequestId = options.excludeRequestId ?? null;
+
+  if (!itemId || !uomCode) {
+    return {
+      temelashClaimed: 0,
+      activeRequestClaimed: 0,
+      totalClaimed: 0,
+      temelashHits: [],
+      activeRequestHits: [],
+    };
+  }
+
+  const wantedUom = String(uomCode).trim().toUpperCase();
+
+  // ---------- 1. Temelash-out claims ----------
+  let temelashClaimed = 0;
+  const temelashHits = [];
+
+  if (db.TemelashRecord) {
+    const outRecords = await db.TemelashRecord.findAll({
+      where: { status: 'out' },
+      attributes: ['id', 'requestId', 'requestCode', 'fromDate', 'toDate', 'items'],
+    });
+
+    for (const rec of outRecords) {
+      const arr = Array.isArray(rec.items) ? rec.items : [];
+
+      for (const row of arr) {
+        if (Number(row.itemId) !== Number(itemId)) continue;
+
+        const rowUom = String(row.uom || '').trim().toUpperCase();
+        if (rowUom !== wantedUom) continue;
+
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) continue;
+
+        temelashClaimed += qty;
+        temelashHits.push({
+          temelashRecordId: rec.id,
+          requestId: rec.requestId,
+          requestCode: rec.requestCode,
+          quantity: qty,
+          uom: row.uom,
+          fromDate: rec.fromDate,
+          toDate: rec.toDate,
+        });
+      }
+    }
+  }
+
+  // ---------- 2. Active request claims (same supplying store, same UOM) ----------
+  const activeWhere = {
+    itemId,
+    uom_code: uomCode,
+    '$request.supplying_store_id$': supplyingStoreId,
+    '$request.status$': { [Op.in]: ACTIVE_REQUEST_STATUSES },
+  };
+  if (excludeRequestId) {
+    activeWhere['$request.id$'] = { [Op.ne]: excludeRequestId };
+  }
+
+  const activeDetails = await ItemRequestDetail.findAll({
+    where: activeWhere,
+    attributes: ['id', 'quantity', 'requestId', 'uom_code', 'is_base_uom'],
+    include: [
+      {
+        model: ItemRequest,
+        as: 'request',
+        attributes: ['id', 'requestCode', 'status'],
+        required: true,
+      },
+    ],
+  });
+
+  let activeRequestClaimed = 0;
+  const activeRequestHits = [];
+
+  for (const d of activeDetails) {
+    const qty = Number(d.quantity) || 0;
+    if (qty <= 0) continue;
+
+    activeRequestClaimed += qty;
+    activeRequestHits.push({
+      requestId: d.request?.id ?? d.requestId,
+      requestCode: d.request?.requestCode ?? null,
+      status: d.request?.status ?? null,
+      quantity: qty,
+      uom: d.uom_code,
+    });
+  }
+
+  return {
+    temelashClaimed,
+    activeRequestClaimed,
+    totalClaimed: temelashClaimed + activeRequestClaimed,
+    temelashHits,
+    activeRequestHits,
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ================================================================
+// HELPER: Validate stock availability with dual UOM support
+//          + Temelash-out subtraction
+//          + Active-request subtraction
+//          Matches strictly on (itemId, uomCode) — no UOM conversion.
+// ================================================================
+const validateStockAvailability = async (supplyingStoreId, items, options = {}) => {
+  const excludeRequestId = options.excludeRequestId ?? null;
+
   const errors = [];
   const stockInfo = [];
 
@@ -143,53 +358,19 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
-  if (shouldSkipStockValidation(store.code)) {
-    console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
+  const skipBalance = shouldSkipStockValidation(store.code);
 
-    for (const item of items) {
-      const itemRecord = await Item.findByPk(item.itemId, {
-        include: [
-          { model: UOM, as: "uom" },
-          { model: UOM, as: "conversionUom" }
-        ],
-      });
-
-      if (!itemRecord) {
-        errors.push({
-          itemId: item.itemId,
-          requestedQuantity: item.quantity,
-          message: `Item with ID ${item.itemId} not found`,
-        });
-        continue;
-      }
-
-      stockInfo.push({
-        itemId: item.itemId,
-        itemName: itemRecord.name,
-        itemCode: itemRecord.code,
-        uomCode: itemRecord.uom?.code || "Units",
-        availableQuantity: Number.MAX_SAFE_INTEGER,
-        requestedQuantity: item.quantity,
-        balance: null,
-        stockValidationSkipped: true,
-        skipReason: `Store ${store.code} is exempt from stock validation`,
-      });
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      stockInfo,
-      validationSkipped: true,
-      skipReason: `Store ${store.code} is exempt from stock validation`,
-    };
+  if (skipBalance) {
+    console.log(
+      `⚠️ Skipping RAW balance check for store: ${store.code} (${store.name}) — Temelash claims still apply`
+    );
   }
 
   for (const item of items) {
     const itemRecord = await Item.findByPk(item.itemId, {
       include: [
         { model: UOM, as: "uom" },
-        { model: UOM, as: "conversionUom" }
+        { model: UOM, as: "conversionUom" },
       ],
     });
 
@@ -203,264 +384,183 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     }
 
     const isBaseUom = item.isBaseUom !== false;
-    const userUomCode = item.uomCode || itemRecord.uom?.code || "Units";
-    const userQuantity = parseFloat(item.quantity);
+    const userUomCode =
+      item.uomCode ||
+      (isBaseUom ? itemRecord.uom?.code : itemRecord.conversionUom?.code) ||
+      itemRecord.uom?.code ||
+      "Units";
+    const userQuantity = parseFloat(item.quantity) || 0;
 
     const baseUomCode = itemRecord.uom?.code || "Units";
     const conversionUomCode = itemRecord.conversionUom?.code || null;
-    const conversionValue = itemRecord.conversionValue ? parseFloat(itemRecord.conversionValue) : null;
+    const conversionValue = itemRecord.conversionValue
+      ? parseFloat(itemRecord.conversionValue)
+      : null;
 
     console.log(`📦 Checking item: ${itemRecord.code}`);
     console.log(`   User wants: ${userQuantity} ${userUomCode}`);
     console.log(`   Base UOM: ${baseUomCode}, Conversion UOM: ${conversionUomCode}`);
 
-    const [storeBalance, convertedBalance] = await Promise.all([
-      StoreBalance.findOne({
-        where: {
-          storeId: supplyingStoreId,
-          itemId: item.itemId,
-          status: "Active",
-        },
-      }),
-      db.ConvertedBalance ? db.ConvertedBalance.findOne({
-        where: {
-          storeId: supplyingStoreId,
-          itemId: item.itemId,
-        },
-      }) : null,
-    ]);
+    // ---------- Fetch the raw balance for this (itemId, uomCode) ----------
+    let rawBalance = 0;
+    let balanceRow = null;
+    let balanceType = 'none';
 
-    const hasBaseBalance = storeBalance !== null;
-    const hasConversionBalance = convertedBalance !== null;
-    
-    let baseBalance = hasBaseBalance ? parseFloat(storeBalance.balance) : 0;
-    let conversionBalance = hasConversionBalance ? parseFloat(convertedBalance.convertedBalance) : 0;
-
-    console.log(`   StoreBalance (${baseUomCode}): ${baseBalance}`);
-    console.log(`   ConvertedBalance (${conversionUomCode}): ${conversionBalance}`);
-
-    if (isBaseUom) {
-      if (hasBaseBalance) {
-        const availableQuantity = baseBalance;
-        
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: availableQuantity,
-          requestedQuantity: userQuantity,
-          balance: storeBalance,
-          balanceType: 'base',
-          isBaseUom: true,
-          hasBaseBalance: true,
-          hasConversionBalance: hasConversionBalance,
-          conversionBalance: conversionBalance,
-          conversionUomCode: conversionUomCode,
-          conversionValue: conversionValue,
-        });
-
-        if (userQuantity > availableQuantity) {
-          errors.push({
+    if (!skipBalance) {
+      if (isBaseUom) {
+        balanceRow = await StoreBalance.findOne({
+          where: {
+            storeId: supplyingStoreId,
             itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
-            requestedQuantity: userQuantity,
-            availableQuantity: availableQuantity,
-            shortage: userQuantity - availableQuantity,
-            uomCode: baseUomCode,
-            balanceType: 'base',
-            message: `Insufficient stock in ${baseUomCode}. Requested: ${userQuantity} ${baseUomCode}`,
-          });
-        }
-        
-      } else if (hasConversionBalance) {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: true,
-          hasBaseBalance: false,
-          hasConversionBalance: true,
-          conversionBalance: conversionBalance,
-          conversionUomCode: conversionUomCode,
-          conversionValue: conversionValue,
-          availableInOtherUom: conversionBalance,
-          otherUomCode: conversionUomCode,
+            status: "Active",
+          },
         });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          requestedUom: baseUomCode,
-          availableQuantity: 0,
-          uomCode: baseUomCode,
-          balanceType: 'none',
-          message: `This item is available in ${conversionUomCode} only. Please request in ${conversionUomCode} instead.`,
-          suggestion: `Request in ${conversionUomCode}`,
-          availableInOtherUom: conversionBalance,
-          otherUomCode: conversionUomCode,
-        });
-        
+        rawBalance = balanceRow ? parseFloat(balanceRow.balance) : 0;
+        balanceType = balanceRow ? 'base' : 'none';
       } else {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: true,
-          hasBaseBalance: false,
-          hasConversionBalance: false,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          balanceType: 'none',
-          message: `Item not available in this store`,
-        });
-      }
-      
-    } else {
-      if (hasConversionBalance) {
-        const availableQuantity = conversionBalance;
-        
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode,
-          availableQuantity: availableQuantity,
-          requestedQuantity: userQuantity,
-          balance: convertedBalance,
-          balanceType: 'conversion',
-          isBaseUom: false,
-          hasBaseBalance: hasBaseBalance,
-          hasConversionBalance: true,
-          baseBalance: baseBalance,
-          baseUomCode: baseUomCode,
-          conversionValue: conversionValue,
-        });
-
-        if (userQuantity > availableQuantity) {
-          errors.push({
-            itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
-            requestedQuantity: userQuantity,
-            availableQuantity: availableQuantity,
-            shortage: userQuantity - availableQuantity,
-            uomCode: conversionUomCode,
-            balanceType: 'conversion',
-            message: `Insufficient stock in ${conversionUomCode}. Requested: ${userQuantity} ${conversionUomCode}`,
-          });
-        }
-        
-      } else if (hasBaseBalance) {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: false,
-          hasBaseBalance: true,
-          hasConversionBalance: false,
-          baseBalance: baseBalance,
-          baseUomCode: baseUomCode,
-          conversionValue: conversionValue,
-          availableInOtherUom: baseBalance,
-          otherUomCode: baseUomCode,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          requestedUom: conversionUomCode,
-          availableQuantity: 0,
-          uomCode: conversionUomCode,
-          balanceType: 'none',
-          message: `This item is available in ${baseUomCode} only. Please request in ${baseUomCode} instead.`,
-          suggestion: `Request in ${baseUomCode}`,
-          availableInOtherUom: baseBalance,
-          otherUomCode: baseUomCode,
-        });
-        
-      } else {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode || baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: false,
-          hasBaseBalance: false,
-          hasConversionBalance: false,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          uomCode: conversionUomCode || baseUomCode,
-          availableQuantity: 0,
-          balanceType: 'none',
-          message: `Item not available in this store`,
-        });
+        balanceRow = db.ConvertedBalance
+          ? await db.ConvertedBalance.findOne({
+              where: {
+                storeId: supplyingStoreId,
+                itemId: item.itemId,
+              },
+            })
+          : null;
+        rawBalance = balanceRow ? parseFloat(balanceRow.convertedBalance) : 0;
+        balanceType = balanceRow ? 'conversion' : 'none';
       }
     }
+
+    // ---------- Fetch claims for THIS (itemId, uomCode) ----------
+    const claims = await getItemClaims(
+      supplyingStoreId,
+      item.itemId,
+      userUomCode,
+      { excludeRequestId }
+    );
+
+    // ---------- Effective available ----------
+    const effectiveAvailable = skipBalance
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(0, rawBalance - claims.totalClaimed);
+
+    console.log(`   Raw balance: ${rawBalance} ${userUomCode}`);
+    console.log(`   Temelash claimed: ${claims.temelashClaimed} ${userUomCode}`);
+    console.log(`   Active request claimed: ${claims.activeRequestClaimed} ${userUomCode}`);
+    console.log(`   Effective available: ${effectiveAvailable} ${userUomCode}`);
+
+    // ---------- Push stock info (success case shape) ----------
+    stockInfo.push({
+      itemId: item.itemId,
+      itemName: itemRecord.name,
+      itemCode: itemRecord.code,
+      uomCode: userUomCode,
+      isBaseUom,
+      rawBalance,
+      temelashClaimed: claims.temelashClaimed,
+      activeRequestClaimed: claims.activeRequestClaimed,
+      totalClaimed: claims.totalClaimed,
+      availableQuantity: effectiveAvailable,
+      requestedQuantity: userQuantity,
+      balance: balanceRow,
+      balanceType,
+      hasBaseBalance: !!balanceRow && isBaseUom,
+      hasConversionBalance: !!balanceRow && !isBaseUom,
+      conversionUomCode,
+      conversionValue,
+      temelashHits: claims.temelashHits,
+      activeRequestHits: claims.activeRequestHits,
+      stockValidationSkipped: skipBalance,
+    });
+
+    // ---------- Exempt-store path ----------
+    if (skipBalance) {
+      if (claims.temelashClaimed > 0) {
+        errors.push({
+          itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          uomCode: userUomCode,
+          balanceType: 'temelash',
+          message:
+            `Item "${itemRecord.name}" is currently out on Temelash loan ` +
+            `(${claims.temelashHits.length} record(s) for ${userUomCode}). ` +
+            `Return it before requesting again.`,
+          temelashHits: claims.temelashHits,
+        });
+      }
+      continue;
+    }
+
+    // ---------- Normal balance check ----------
+    if (!balanceRow) {
+      errors.push({
+        itemId: item.itemId,
+        itemName: itemRecord.name,
+        itemCode: itemRecord.code,
+        requestedQuantity: userQuantity,
+        uomCode: userUomCode,
+        availableQuantity: 0,
+        balanceType: 'none',
+        message: `Item not available in ${userUomCode} at this store`,
+      });
+      continue;
+    }
+
+   if (userQuantity > effectiveAvailable) {
+  // Build a simple, non-disclosing message.
+  // Only mention Temelash/active-request if either actually applies.
+  const hasTemelash = claims.temelashClaimed > 0;
+  const hasActiveRequest = claims.activeRequestClaimed > 0;
+
+  let reasonSuffix = '';
+  if (hasTemelash && hasActiveRequest) {
+    reasonSuffix = ' ,after subtracting active Temelash and request';
+  } else if (hasTemelash) {
+    reasonSuffix = ' after subtracting active Temelash';
+  } else if (hasActiveRequest) {
+    reasonSuffix = ' after subtracting active request';
+  }
+
+  errors.push({
+    itemId: item.itemId,
+    itemName: itemRecord.name,
+    itemCode: itemRecord.code,
+    requestedQuantity: userQuantity,
+    uomCode: userUomCode,
+    balanceType,
+    message:
+      `Insufficient stock in ${userUomCode}. ` +
+      `Requested: ${userQuantity} ${userUomCode}${reasonSuffix}.`,
+    // Internal details kept for logging only — frontend ignores these.
+    _debug: {
+      rawBalance,
+      temelashClaimed: claims.temelashClaimed,
+      activeRequestClaimed: claims.activeRequestClaimed,
+      effectiveAvailable,
+      shortage: userQuantity - effectiveAvailable,
+    },
+    temelashHits: claims.temelashHits,
+    activeRequestHits: claims.activeRequestHits,
+  });
+}
   }
 
   return {
     isValid: errors.length === 0,
     errors,
     stockInfo,
-    validationSkipped: false,
+    validationSkipped: skipBalance,
+    ...(skipBalance && {
+      skipReason: `Store ${store.code} is exempt from raw balance checks; Temelash claims still apply`,
+    }),
   };
 };
 
 // ================================================================
 // HELPER: Create notifications - STAGE 1 (Asking Store Groups ONLY)
 // ================================================================
-/**
- * Creates notification records for the asking store groups (Stage 1).
- *
- * 🔥 If 'approval.ask_store_enabled' is DISABLED, this function skips
- *    Stage 1 entirely and goes straight to Stage 2 (supplying store).
- *
- * @param {number} requestId          - The item request ID
- * @param {number} supplyingStoreId   - Supplying store ID
- * @param {number} askingStoreId      - Asking store ID
- * @param {boolean} isAsset           - Whether the request is an asset request
- * @param {Transaction} transaction   - Sequelize transaction
- * @param {number|null} requestingUserGroupId - The requesting user's group (excluded from Stage 1)
- * @param {number|null} requestingUserId      - The requesting user ID (for logging)
- * @param {number[]} excludedDepartmentIds    - Departments the requester chose NOT to notify
- */
 async function createRequestNotifications(
   requestId,
   supplyingStoreId,
@@ -479,11 +579,6 @@ async function createRequestNotifications(
     console.log(`   🔥 Excluding requesting user's group ID: ${requestingUserGroupId}`);
     console.log(`   🔥 Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
 
-    // ================================================================
-    // 🔥 STAGE 1 TOGGLE CHECK
-    // If the "approval.ask_store_enabled" setting is DISABLED, skip
-    // Stage 1 and create supplying store notifications immediately.
-    // ================================================================
     let askStoreApprovalEnabled = true;
     try {
       askStoreApprovalEnabled = await db.SystemSetting.getAskStoreApprovalEnabled();
@@ -507,14 +602,11 @@ async function createRequestNotifications(
         excludedDepartmentIds
       );
 
-      return 0; // No asking store notifications created
+      return 0;
     }
 
     console.log(`✅ Stage 1 is ENABLED — proceeding with asking store groups`);
 
-    // ================================================================
-    // FETCH ALL GROUPS FOR THE ASKING STORE
-    // ================================================================
     let allAskingGroups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
        FROM groups g
@@ -529,9 +621,6 @@ async function createRequestNotifications(
 
     console.log(`📋 Found ${allAskingGroups.length} total asking store groups`);
 
-    // ================================================================
-    // 🔥 FILTER BY STORE-GROUP APPROVAL CONFIG (if configured)
-    // ================================================================
     try {
       const storeGroupConfig = await getStoreGroupApprovalConfig();
       const allowedGroupIds = getAllowedApproverGroupIds(storeGroupConfig, askingStoreId);
@@ -552,9 +641,6 @@ async function createRequestNotifications(
       console.warn('⚠️ Could not apply store-group approval filter — using all groups:', err.message);
     }
 
-    // ================================================================
-    // EXCLUDE THE REQUESTING USER'S OWN GROUP
-    // ================================================================
     let askingGroups = allAskingGroups;
     let excludedGroup = null;
 
@@ -584,9 +670,6 @@ async function createRequestNotifications(
 
     console.log(`📋 Will create notifications for ${askingGroups.length} asking store groups`);
 
-    // ================================================================
-    // 🔥 SAFETY: If NO asking store groups remain, advance directly
-    // ================================================================
     if (askingGroups.length === 0) {
       console.log(
         `⚠️ No asking store groups to notify (after exclusion) — ` +
@@ -604,9 +687,6 @@ async function createRequestNotifications(
       return 0;
     }
 
-    // ================================================================
-    // CREATE NOTIFICATIONS FOR THE REMAINING ASKING STORE GROUPS
-    // ================================================================
     const askingNotifications = askingGroups
       .filter((g) => g.id && !isNaN(parseInt(g.id)))
       .map((group) => ({
@@ -722,12 +802,10 @@ async function createSupplyingStageNotifications(
       if (!config || !config.departments || config.departments.length === 0) {
         console.log(`⚠️ No approval departments configured — skipping`);
       } else {
-        // ✅ NEW: Build the exclusion set
         const excludedSet = new Set(
           (excludedDepartmentIds || []).map((id) => Number(id))
         );
 
-        // ✅ UPDATED: Filter by store AND exclude requester-removed departments
         const applicableDepartments = config.departments.filter((d) => {
           const matchesStore =
             Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code);
@@ -845,7 +923,6 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
 
     console.log(`✅ All asking store groups accepted — ADVANCING to supplying stage`);
 
-    // ✅ NEW: read persisted exclusions from the request row
     const excludedDepartmentIds = request.excludedDepartmentIds || [];
 
     const result = await createSupplyingStageNotifications(
@@ -1410,6 +1487,7 @@ exports.getRequestById = async (req, res) => {
 
 // ================================================================
 // 4. CREATE REQUEST
+// ✅ UPDATED: accepts temelashFromDate / temelashToDate
 // ================================================================
 
 exports.createRequest = async (req, res) => {
@@ -1426,7 +1504,10 @@ exports.createRequest = async (req, res) => {
       status = "pending",
       remark,
       isAsset = false,
-      excludedDepartmentIds = [],   // ✅ NEW
+      isTemelash = false,
+      temelashFromDate = null,     // ✅ NEW
+      temelashToDate = null,       // ✅ NEW
+      excludedDepartmentIds = [],
     } = req.body;
 
     console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
@@ -1434,6 +1515,9 @@ exports.createRequest = async (req, res) => {
     console.log('👤 requestedById:', requestedById);
     console.log('👤 requestedBy  :', requestedBy);
     console.log('🚫 excludedDepartmentIds:', excludedDepartmentIds);
+    console.log('🔄 isTemelash:', isTemelash);
+    console.log('📅 temelashFromDate:', temelashFromDate);
+    console.log('📅 temelashToDate:', temelashToDate);
 
     if (!askingStoreId || !supplyingStoreId) {
       await t.rollback();
@@ -1449,6 +1533,24 @@ exports.createRequest = async (req, res) => {
         success: false,
         error: "Asking store and supplying store cannot be the same",
       });
+    }
+
+    // ✅ NEW: Temelash requires both dates
+    if (isTemelash === true) {
+      if (!temelashFromDate || !temelashToDate) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Temelash requires both 'From' and 'To' dates",
+        });
+      }
+      if (temelashToDate < temelashFromDate) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Temelash 'To' date must be on or after the 'From' date",
+        });
+      }
     }
 
     const askingStore = await Store.findByPk(askingStoreId);
@@ -1627,9 +1729,13 @@ exports.createRequest = async (req, res) => {
         status: status || "pending",
         remark: remark || null,
         isAsset: isAsset || false,
+        isTemelash: isTemelash === true,
+        // ✅ NEW: persist loan window only when Temelash
+        temelashFromDate: isTemelash === true ? (temelashFromDate || null) : null,
+        temelashToDate: isTemelash === true ? (temelashToDate || null) : null,
         excludedDepartmentIds: Array.isArray(excludedDepartmentIds)
           ? excludedDepartmentIds
-          : [],   // ✅ NEW: persist exclusions
+          : [],
       },
       { transaction: t },
     );
@@ -1676,7 +1782,7 @@ exports.createRequest = async (req, res) => {
           t,
           requestingUserGroupId,
           requestedById,
-          excludedDepartmentIds   // ✅ NEW: pass through
+          excludedDepartmentIds
         );
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
@@ -1760,13 +1866,14 @@ exports.createRequest = async (req, res) => {
       data: {
         request: completeRequest,
         isAsset: isAsset,
+        isTemelash: isTemelash === true,
         skipNotifications: skipNotifications,
         skipReason: skipNotifications
           ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)`
           : null,
         notificationCount: notificationCount,
         currentStage: 'asking_store',
-        excludedDepartmentIds: excludedDepartmentIds,   // ✅ NEW
+        excludedDepartmentIds: excludedDepartmentIds,
         stockValidation: {
           allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
           validationSkipped: stockValidation.validationSkipped,
@@ -1803,6 +1910,7 @@ exports.createRequest = async (req, res) => {
 
 // ================================================================
 // 5. UPDATE REQUEST
+// ✅ UPDATED: accepts temelashFromDate / temelashToDate
 // ================================================================
 
 exports.updateRequest = async (req, res) => {
@@ -1819,7 +1927,10 @@ exports.updateRequest = async (req, res) => {
       requestedDate,
       remark,
       isAsset,
-      excludedDepartmentIds = [],   // ✅ NEW
+      isTemelash,
+      temelashFromDate,          // ✅ NEW
+      temelashToDate,            // ✅ NEW
+      excludedDepartmentIds = [],
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, {
@@ -1830,12 +1941,12 @@ exports.updateRequest = async (req, res) => {
       requestedBy,
       requestedDate,
       isAsset,
+      isTemelash,
+      temelashFromDate,
+      temelashToDate,
       excludedDepartmentIds,
     });
 
-    // ================================================================
-    // 1. LOAD + PERMISSION CHECKS
-    // ================================================================
     const request = await ItemRequest.findByPk(id, { transaction: t });
     if (!request) {
       await t.rollback();
@@ -1861,9 +1972,6 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 2. RESOLVE NEXT STORE IDS (fall back to current values)
-    // ================================================================
     const nextAskingStoreId =
       askingStoreId !== undefined && askingStoreId !== null && askingStoreId !== ""
         ? parseInt(askingStoreId)
@@ -1882,9 +1990,31 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 3. STORE VALIDATION (exists + active)
-    // ================================================================
+    // ✅ NEW: validate Temelash dates if enabled
+    const nextIsTemelash =
+      isTemelash !== undefined ? isTemelash === true : request.isTemelash;
+    const nextTemelashFromDate =
+      temelashFromDate !== undefined ? temelashFromDate : request.temelashFromDate;
+    const nextTemelashToDate =
+      temelashToDate !== undefined ? temelashToDate : request.temelashToDate;
+
+    if (nextIsTemelash === true) {
+      if (!nextTemelashFromDate || !nextTemelashToDate) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Temelash requires both 'From' and 'To' dates",
+        });
+      }
+      if (nextTemelashToDate < nextTemelashFromDate) {
+        await t.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Temelash 'To' date must be on or after the 'From' date",
+        });
+      }
+    }
+
     const askingStore = await Store.findByPk(nextAskingStoreId, { transaction: t });
     const supplyingStore = await Store.findByPk(nextSupplyingStoreId, { transaction: t });
 
@@ -1912,10 +2042,6 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // 4. ITEM VALIDATION + STOCK VALIDATION
-    //    (identical to createRequest)
-    // ================================================================
     let validatedItems = [];
     let stockValidation = null;
 
@@ -1983,7 +2109,6 @@ exports.updateRequest = async (req, res) => {
 
         const isBaseUom = item.isBaseUom !== false;
 
-        // Preserve client value if present, otherwise inherit from item record
         const specification =
           item.specification && String(item.specification).trim() !== ""
             ? item.specification
@@ -2023,15 +2148,15 @@ exports.updateRequest = async (req, res) => {
         });
       }
 
-      // 🔥 THE CRITICAL STEP — stock availability
       console.log(
         `📦 Running stock validation for store ${nextSupplyingStoreId} on ${validatedItems.length} item(s)`
       );
 
-      stockValidation = await validateStockAvailability(
-        nextSupplyingStoreId,
-        validatedItems
-      );
+     stockValidation = await validateStockAvailability(
+  nextSupplyingStoreId,
+  validatedItems,
+  { excludeRequestId: request.requestId }
+);
 
       if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
         console.log(
@@ -2067,9 +2192,6 @@ exports.updateRequest = async (req, res) => {
       console.log(`ℹ️ No items in payload — skipping item/stock validation`);
     }
 
-    // ================================================================
-    // 5. UPDATE REQUEST ROW
-    // ================================================================
     await request.update(
       {
         askingStoreId: nextAskingStoreId,
@@ -2082,7 +2204,10 @@ exports.updateRequest = async (req, res) => {
         status: "pending",
         remark: remark !== undefined ? remark : request.remark,
         isAsset: isAsset !== undefined ? isAsset : request.isAsset,
-        // ✅ NEW: persist exclusions
+        isTemelash: nextIsTemelash,
+        // ✅ NEW: persist loan window (cleared when not Temelash)
+        temelashFromDate: nextIsTemelash === true ? (nextTemelashFromDate || null) : null,
+        temelashToDate: nextIsTemelash === true ? (nextTemelashToDate || null) : null,
         excludedDepartmentIds: Array.isArray(excludedDepartmentIds)
           ? excludedDepartmentIds
           : [],
@@ -2090,9 +2215,6 @@ exports.updateRequest = async (req, res) => {
       { transaction: t }
     );
 
-    // ================================================================
-    // 6. REPLACE ITEM DETAILS
-    // ================================================================
     if (validatedItems.length > 0) {
       await ItemRequestDetail.destroy({
         where: { requestId: id },
@@ -2120,9 +2242,6 @@ exports.updateRequest = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // 7. RECREATE NOTIFICATIONS (respecting SKIP stores)
-    // ================================================================
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
     const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
     const updatedRequestedById =
@@ -2158,7 +2277,7 @@ exports.updateRequest = async (req, res) => {
           t,
           requestingUserGroupId,
           updatedRequestedById,
-          excludedDepartmentIds   // ✅ NEW: pass through
+          excludedDepartmentIds
         );
       } catch (notifError) {
         console.error("❌ Notification recreation failed — rolling back:", {
@@ -2178,18 +2297,12 @@ exports.updateRequest = async (req, res) => {
       }
     }
 
-    // ================================================================
-    // 8. COMMIT
-    // ================================================================
     await t.commit();
 
     console.log(
       `✅ Request ${id} updated successfully — status reset to pending`
     );
 
-    // ================================================================
-    // 9. RELOAD WITH FULL ASSOCIATIONS + RESPOND
-    // ================================================================
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
@@ -2255,9 +2368,6 @@ exports.updateRequest = async (req, res) => {
       data: updatedRequest,
     });
   } catch (error) {
-    // ================================================================
-    // ROLLBACK + DETAILED ERROR LOGGING
-    // ================================================================
     try {
       await t.rollback();
     } catch (rollbackError) {
@@ -2290,6 +2400,7 @@ exports.updateRequest = async (req, res) => {
 
 // ================================================================
 // 6. UPDATE REQUEST STATUS
+// ✅ NEW: If a Temelash request is APPROVED, snapshot into temelash_records
 // ================================================================
 exports.updateStatus = async (req, res) => {
   try {
@@ -2333,9 +2444,31 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    const previousStatus = request.status;
+
     await request.update({
       status: status,
     });
+
+    // ✅ NEW: When a Temelash request becomes approved, snapshot it into
+    // temelash_records so the loan is recorded as OUT.
+    let temelashRecord = null;
+    if (
+      status === "approved" &&
+      previousStatus !== "approved" &&
+      request.isTemelash === true
+    ) {
+      try {
+        temelashRecord = await snapshotTemelashRecord(request.requestId);
+      } catch (snapErr) {
+        console.error(
+          "⚠️ Failed to snapshot Temelash record for request",
+          request.requestId,
+          snapErr
+        );
+        // Non-blocking — the request is still approved.
+      }
+    }
 
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
@@ -2364,6 +2497,7 @@ exports.updateStatus = async (req, res) => {
       success: true,
       message: `Request ${status} successfully`,
       data: updatedRequest,
+      temelashRecord: temelashRecord,
     });
   } catch (error) {
     console.error("Update status error:", error);
@@ -3246,7 +3380,7 @@ exports.getActiveItems = async (req, res) => {
         "conversionUomId",
         "conversionValue",
         "specText",
-        "categoryId",           // ✅ ADDED
+        "categoryId",
       ],
       include: [
         {
@@ -3260,7 +3394,7 @@ exports.getActiveItems = async (req, res) => {
           attributes: ["uomId", "code", "name"],
         },
         {
-          model: db.Category,   // ✅ ADDED
+          model: db.Category,
           as: "category",
           attributes: ["categoryId", "name"],
           required: false,
@@ -3472,7 +3606,6 @@ exports.getDepartmentNotifications = async (req, res) => {
           include: [
             { model: Store, as: "askingStore" },
             { model: Store, as: "supplyingStore" },
-
             {
               model: User,
               as: "requestedByUser",
@@ -3492,7 +3625,6 @@ exports.getDepartmentNotifications = async (req, res) => {
                 },
               ],
             },
-
             {
               model: ItemRequestDetail,
               as: "items",
@@ -3842,12 +3974,6 @@ exports.getPendingNotifications = async (req, res) => {
 // ================================================================
 // 25. GET APPROVAL DEPARTMENTS FOR A STORE
 // ================================================================
-/**
- * GET /api/item-requests/approval-departments/:storeCode
- *
- * Returns the list of departments that need to approve requests
- * for the given asking store code.
- */
 exports.getApprovalDepartmentsForStore = async (req, res) => {
   try {
     const { storeCode } = req.params;
@@ -3861,7 +3987,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
 
     console.log(`📤 Fetching approval departments for store: ${storeCode}`);
 
-    // Verify the store exists
     const store = await Store.findOne({ where: { code: storeCode } });
     if (!store) {
       return res.status(404).json({
@@ -3870,7 +3995,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       });
     }
 
-    // Get the approval department config
     const config = await getApprovalDepartmentConfig();
 
     if (!config || !config.departments || config.departments.length === 0) {
@@ -3886,7 +4010,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       });
     }
 
-    // Filter departments whose appliesTo includes the store code
     const applicableDepartments = config.departments.filter(
       (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(storeCode)
     );
@@ -3896,7 +4019,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       `department(s) apply to store ${storeCode}`
     );
 
-    // Fetch department details for each applicable one
     const enriched = await Promise.all(
       applicableDepartments.map(async (entry) => {
         const department = await db.Department.findByPk(entry.departmentId);
@@ -3933,6 +4055,165 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to fetch approval departments",
+    });
+  }
+};
+
+// ================================================================
+// 26. GET TEMELASH RECORDS (Loan History)
+// ✅ UPDATED: summary now includes "overdue" count
+// ================================================================
+exports.getTemelashRecords = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status = "all",
+      storeId = "all",
+      search = "",
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    if (status !== "all") {
+      where.status = status;
+    }
+
+    if (storeId !== "all") {
+      where[Op.or] = [
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) },
+      ];
+    }
+
+    if (search) {
+      where.requestCode = { [Op.iLike]: `%${search}%` };
+    }
+
+    const { count, rows } = await TemelashRecord.findAndCountAll({
+      where,
+      include: [
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
+        {
+          model: User,
+          as: "requestedByUser",
+          attributes: ["userId", "username", "fullName", "email"],
+        },
+        {
+          model: User,
+          as: "returnedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+      order: [["issued_at", "DESC"]],
+      limit: parseInt(limit),
+      offset,
+    });
+
+    // ✅ NEW: also count overdue OUT records (past to_date)
+    const today = new Date().toISOString().split("T")[0];
+
+    const summary = {
+      total: count,
+      out: await TemelashRecord.count({ where: { ...where, status: "out" } }),
+      returned: await TemelashRecord.count({
+        where: { ...where, status: "returned" },
+      }),
+      overdue: await TemelashRecord.count({
+        where: {
+          ...where,
+          status: "out",
+          toDate: { [Op.lt]: today },
+        },
+      }),
+    };
+
+    res.json({
+      success: true,
+      data: {
+        records: rows,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: count,
+          pages: Math.ceil(count / parseInt(limit)),
+        },
+        summary,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching temelash records:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch temelash records",
+    });
+  }
+};
+
+// ================================================================
+// 27. RETURN A TEMELASH RECORD
+// ✅ UPDATED: computes returnedLate by comparing now vs. record.toDate
+// ================================================================
+exports.returnTemelash = async (req, res) => {
+  try {
+    const { recordId } = req.params;
+    const { remark } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    const record = await TemelashRecord.findByPk(recordId);
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: "Temelash record not found",
+      });
+    }
+
+    if (record.status !== "out") {
+      return res.status(400).json({
+        success: false,
+        error: `Temelash record is already ${record.status}`,
+      });
+    }
+
+    // ✅ NEW: determine if it's being returned after the to_date
+    const now = new Date();
+    const isLate = record.toDate ? now > new Date(record.toDate) : false;
+
+    await record.update({
+      status: "returned",
+      returnedAt: now,
+      returnedById: userId,
+      returnRemark: remark || null,
+      returnedLate: isLate,
+    });
+
+    console.log(
+      `✅ [TEMELASH] Record ${recordId} (${record.requestCode}) returned` +
+      (isLate ? " [LATE]" : "")
+    );
+
+    res.json({
+      success: true,
+      message: isLate
+        ? "Temelash returned successfully (marked as LATE)"
+        : "Temelash returned successfully",
+      data: record,
+    });
+  } catch (error) {
+    console.error("❌ Error returning temelash:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to return temelash",
     });
   }
 };

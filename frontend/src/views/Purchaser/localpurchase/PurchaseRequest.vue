@@ -32,7 +32,9 @@
       >
         <option value="all">All Status</option>
         <option value="draft">Draft</option>
+        <option value="pending">Pending Approval</option>
         <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
       </select>
 
       <select
@@ -88,20 +90,10 @@
               </div>
             </td>
           </tr>
-          <template
-            v-for="req in paginatedRequests"
-            :key="req.id"
-          >
-            <tr
-              :class="{
-                'expanded-row': expandedRow === req.id,
-              }"
-            >
+          <template v-for="req in paginatedRequests" :key="req.id">
+            <tr :class="{ 'expanded-row': expandedRow === req.id }">
               <td class="text-center">
-                <button
-                  class="expand-btn"
-                  @click="toggleExpand(req.id)"
-                >
+                <button class="expand-btn" @click="toggleExpand(req)">
                   {{ expandedRow === req.id ? "▼" : "▶" }}
                 </button>
               </td>
@@ -121,50 +113,103 @@
                   {{ req.priority }}
                 </span>
               </td>
+
+              <!-- ==================== STATUS + SUBGROUP DOTS ==================== -->
               <td>
                 <span :class="['status-badge', req.status]">
-                  {{ req.status }}
+                  {{ statusLabel(req.status) }}
                 </span>
+
+                <!-- ✅ Subgroup dots — one per subgroup of the current stage -->
+                <div
+                  v-if="req.status !== 'draft'"
+                  class="subgroup-strip"
+                >
+                  <!-- Loading -->
+                  <template
+                    v-if="
+                      loadingStatus[req.id] &&
+                      !approvalStatusByRequest[req.id]
+                    "
+                  >
+                    <span class="dot loading" title="Loading…"></span>
+                    <span class="dot loading"></span>
+                    <span class="dot loading"></span>
+                  </template>
+
+                  <!-- Ready -->
+                  <template v-else-if="approvalStatusByRequest[req.id]">
+                    <span
+                      v-for="row in approvalStatusByRequest[req.id]?.subgroups ?? []"
+                      :key="row.subgroupId"
+                      class="dot-wrapper"
+                      :title="getSubgroupTooltip(row)"
+                    >
+                      <span
+                        :class="[
+                          'dot',
+                          row.decision === 'approve'
+                            ? 'green'
+                            : row.decision === 'reject'
+                            ? 'red'
+                            : 'yellow',
+                          row.subgroupId ===
+                          approvalStatusByRequest[req.id]?.mySubgroupId
+                            ? 'mine'
+                            : '',
+                        ]"
+                      ></span>
+                    </span>
+
+                    <span class="strip-text">
+                      {{ getAcceptanceSummary(req) }}
+                    </span>
+                  </template>
+
+                  <!-- Fallback -->
+                  <template v-else>
+                    <span class="dot grey" title="No subgroup data"></span>
+                  </template>
+                </div>
               </td>
+
+              <!-- ==================== ACTIONS ==================== -->
               <td>
                 <div class="action-buttons">
-                  <!-- ✅ Print: Available for Draft and Approved -->
                   <button
                     class="icon-btn print-btn"
                     @click="printRequest(req)"
-                    :title="req.status === 'draft' ? '🖨️ Print Draft (for signing)' : '🖨️ Print Approved'"
+                    :title="
+                      req.status === 'draft'
+                        ? '🖨️ Print Draft (for signing)'
+                        : '🖨️ Print Approved'
+                    "
                   >
                     🖨️
                   </button>
 
-                  <!-- ✅ Edit: Only visible for Draft -->
-                  <button
-                    v-if="req.status === 'draft'"
-                    class="icon-btn"
-                    @click="editRequest(req)"
-                    title="Edit"
-                  >
-                    ✏️
-                  </button>
+               <button
+  class="icon-btn"
+  @click="editRequest(req)"
+  title="Edit"
+>
+  ✏️
+</button>
 
-                  <!-- ✅ Approve: Only for Draft -->
                   <button
                     v-if="req.status === 'draft'"
                     class="icon-btn"
                     @click="openStatusConfirmation(req)"
-                    title="✅ Approve & Dispatch to Purchasing Groups"
+                    title="🚀 Submit for approval"
                   >
-                    ✅
+                    🚀
                   </button>
                 </div>
               </td>
             </tr>
 
             <!-- ==================== EXPANDED DETAIL ROW ==================== -->
-            <tr
-              v-if="expandedRow === req.id"
-              class="detail-expand-row"
-            >
+            <tr v-if="expandedRow === req.id" class="detail-expand-row">
               <td colspan="8">
                 <div class="expand-details">
                   <div class="detail-container">
@@ -179,7 +224,7 @@
                           <span>Status</span>
                           <span class="value">
                             <span :class="['status-badge', req.status]">{{
-                              req.status
+                              statusLabel(req.status)
                             }}</span>
                           </span>
                         </div>
@@ -223,13 +268,158 @@
                           <span>Total Items</span
                           ><span class="value">{{ req.items?.length || 0 }}</span>
                         </div>
-                        
                         <div>
                           <span>Last Updated</span
                           ><span class="value">{{
                             req.updatedAt ? formatDateTime(req.updatedAt) : 'N/A'
                           }}</span>
                         </div>
+                      </div>
+                    </div>
+
+                    <!-- ==================== APPROVAL PROGRESS ==================== -->
+                    <div
+                      v-if="
+                        req.status === 'pending' ||
+                        req.status === 'rejected' ||
+                        req.status === 'approved'
+                      "
+                      class="detail-card full-width approval-progress-card"
+                    >
+                      <div class="approval-progress-header">
+                        <h4>🧭 Approval Progress</h4>
+                        <span
+                          v-if="loadingStatus[req.id]"
+                          class="stage-loading-pill"
+                        >
+                          ⏳ Loading…
+                        </span>
+                        <span
+                          v-else-if="approvalStatusByRequest[req.id]"
+                          class="progress-summary-pill"
+                        >
+                          ✅ {{ approvalStatusByRequest[req.id]?.approvedCount ?? 0 }}
+                          / {{ approvalStatusByRequest[req.id]?.totalSubgroups ?? 0 }}
+                          subgroups approved
+                        </span>
+                      </div>
+
+                      <!-- Loading -->
+                      <div v-if="loadingStatus[req.id]" class="stage-loading">
+                        <div class="spinner small"></div>
+                        <span>Fetching subgroup decisions…</span>
+                      </div>
+
+                      <!-- Data loaded -->
+                      <template v-else-if="approvalStatusByRequest[req.id]">
+                        <div class="stage-header-row">
+                          <span class="stage-pill">
+                            Stage {{ approvalStatusByRequest[req.id]?.stageIndex ?? 0 }}
+                            <template
+                              v-if="approvalStatusByRequest[req.id]?.stageLabel"
+                            >
+                              · {{ approvalStatusByRequest[req.id]?.stageLabel }}
+                            </template>
+                          </span>
+                          <span class="stage-count-text">
+                            {{ approvalStatusByRequest[req.id]?.decidedCount ?? 0 }}
+                            of {{ approvalStatusByRequest[req.id]?.totalSubgroups ?? 0 }}
+                            subgroups have decided
+                          </span>
+                        </div>
+
+                        <div class="subgroup-list">
+                          <div
+                            v-for="row in approvalStatusByRequest[req.id]?.subgroups || []"
+                            :key="row.subgroupId"
+                            class="subgroup-row"
+                            :class="{
+                              'row-approved': row.decision === 'approve',
+                              'row-rejected': row.decision === 'reject',
+                              'row-pending': !row.decision,
+                              'row-mine':
+                                row.subgroupId ===
+                                approvalStatusByRequest[req.id]?.mySubgroupId,
+                            }"
+                          >
+                            <span class="sg-icon">
+                              <template v-if="row.decision === 'approve'">✅</template>
+                              <template v-else-if="row.decision === 'reject'">❌</template>
+                              <template v-else>⏳</template>
+                            </span>
+
+                            <div class="sg-main">
+                              <div class="sg-name">
+                                {{ row.subgroupName }}
+                                <span
+                                  v-if="
+                                    row.subgroupId ===
+                                    approvalStatusByRequest[req.id]?.mySubgroupId
+                                  "
+                                  class="mine-tag"
+                                  >you</span
+                                >
+                              </div>
+                              <div v-if="row.groupName" class="sg-group">
+                                Group: {{ row.groupName }}
+                              </div>
+                            </div>
+
+                            <div class="sg-meta">
+                              <template v-if="row.decision">
+                                <span class="sg-who">{{
+                                  row.decidedByName || '—'
+                                }}</span>
+                                <span class="sg-when">{{
+                                  formatDateTime(row.actedAt)
+                                }}</span>
+                              </template>
+                              <template v-else>
+                                <span class="sg-wait">waiting</span>
+                              </template>
+                            </div>
+
+                            <div v-if="row.comment" class="sg-comment">
+                              “{{ row.comment }}”
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          v-if="(approvalStatusByRequest[req.id]?.futureStages?.length ?? 0)"
+                          class="future-stages"
+                        >
+                          <div class="future-stages-title">
+                            🔒 Future stages (locked)
+                          </div>
+                          <div
+                            v-for="fs in approvalStatusByRequest[req.id]?.futureStages || []"
+                            :key="fs.id"
+                            class="future-stage-row"
+                          >
+                            Stage {{ fs.orderIndex }} · {{ fs.label || '—' }}
+                          </div>
+                        </div>
+
+                        <div v-if="req.status === 'rejected'" class="rejected-banner">
+                          🛑 This request was <strong>rejected</strong>
+                          <template v-if="req.rejectedByStageIndex">
+                            at Stage {{ req.rejectedByStageIndex }}
+                          </template>.
+                          The submitter can edit and resubmit.
+                        </div>
+
+                        <div v-if="req.status === 'approved'" class="approved-banner">
+                          ✅ Fully approved — all stages complete.
+                        </div>
+                      </template>
+
+                      <div v-else class="stage-empty">
+                        <template v-if="String(req.status) === 'draft'">
+                          This request is still a draft — submit for approval to
+                          start Stage 1.
+                        </template>
+                        <template v-else> No approval data available. </template>
                       </div>
                     </div>
 
@@ -281,27 +471,35 @@
                       </table>
                     </div>
 
-                    <!-- ==================== APPROVED DOCUMENTS (with thumbnails + viewer) ==================== -->
+                    <!-- ==================== APPROVED DOCUMENTS ==================== -->
                     <div
-                      v-if="req.status === 'approved' && (req.approvedDocFront || req.approvedDocBack)"
+                      v-if="req.approvedDocFront || req.approvedDocBack"
                       class="detail-card full-width"
                     >
                       <div class="detail-card-header">
                         <h4>📎 Approved Documents</h4>
                         <span class="member-count-badge">
-                          {{ (req.approvedDocFront ? 1 : 0) + (req.approvedDocBack ? 1 : 0) }}
+                          {{
+                            (req.approvedDocFront ? 1 : 0) +
+                            (req.approvedDocBack ? 1 : 0)
+                          }}
                         </span>
                       </div>
 
                       <div class="docs-grid">
-                        <!-- Front Side -->
                         <div v-if="req.approvedDocFront" class="doc-card">
                           <div class="doc-card-header">
                             <span class="doc-side-label">📄 Front Side</span>
                           </div>
                           <div
                             class="doc-image-wrapper"
-                            @click="openImageViewer(req.approvedDocFront, `${req.prNumber} - Front Side`, req.approvedDocFrontName)"
+                            @click="
+                              openImageViewer(
+                                req.approvedDocFront,
+                                `${req.prNumber} - Front Side`,
+                                req.approvedDocFrontName
+                              )
+                            "
                           >
                             <div class="doc-skeleton">⏳ Loading...</div>
                             <img
@@ -313,30 +511,49 @@
                             />
                             <div class="doc-overlay">
                               <span class="zoom-icon">🔍</span>
-                              <span class="zoom-text">Click to view full page</span>
+                              <span class="zoom-text"
+                                >Click to view full page</span
+                              >
                             </div>
                           </div>
                           <div class="doc-card-footer">
-                            <span class="doc-filename" :title="req.approvedDocFrontName">
-                              {{ req.approvedDocFrontName || getFileName(req.approvedDocFront) }}
+                            <span
+                              class="doc-filename"
+                              :title="req.approvedDocFrontName"
+                            >
+                              {{
+                                req.approvedDocFrontName ||
+                                getFileName(req.approvedDocFront)
+                              }}
                             </span>
                             <button
                               class="doc-view-btn"
-                              @click="openImageViewer(req.approvedDocFront, `${req.prNumber} - Front Side`, req.approvedDocFrontName)"
+                              @click="
+                                openImageViewer(
+                                  req.approvedDocFront,
+                                  `${req.prNumber} - Front Side`,
+                                  req.approvedDocFrontName
+                                )
+                              "
                             >
                               View Full
                             </button>
                           </div>
                         </div>
 
-                        <!-- Back Side -->
                         <div v-if="req.approvedDocBack" class="doc-card">
                           <div class="doc-card-header">
                             <span class="doc-side-label">📄 Back Side</span>
                           </div>
                           <div
                             class="doc-image-wrapper"
-                            @click="openImageViewer(req.approvedDocBack, `${req.prNumber} - Back Side`, req.approvedDocBackName)"
+                            @click="
+                              openImageViewer(
+                                req.approvedDocBack,
+                                `${req.prNumber} - Back Side`,
+                                req.approvedDocBackName
+                              )
+                            "
                           >
                             <div class="doc-skeleton">⏳ Loading...</div>
                             <img
@@ -348,16 +565,30 @@
                             />
                             <div class="doc-overlay">
                               <span class="zoom-icon">🔍</span>
-                              <span class="zoom-text">Click to view full page</span>
+                              <span class="zoom-text"
+                                >Click to view full page</span
+                              >
                             </div>
                           </div>
                           <div class="doc-card-footer">
-                            <span class="doc-filename" :title="req.approvedDocBackName">
-                              {{ req.approvedDocBackName || getFileName(req.approvedDocBack) }}
+                            <span
+                              class="doc-filename"
+                              :title="req.approvedDocBackName"
+                            >
+                              {{
+                                req.approvedDocBackName ||
+                                getFileName(req.approvedDocBack)
+                              }}
                             </span>
                             <button
                               class="doc-view-btn"
-                              @click="openImageViewer(req.approvedDocBack, `${req.prNumber} - Back Side`, req.approvedDocBackName)"
+                              @click="
+                                openImageViewer(
+                                  req.approvedDocBack,
+                                  `${req.prNumber} - Back Side`,
+                                  req.approvedDocBackName
+                                )
+                              "
                             >
                               View Full
                             </button>
@@ -367,30 +598,24 @@
                     </div>
 
                     <div class="detail-actions">
-                      <!-- ✅ Print: Available for Draft and Approved -->
-                      <button
-                        class="btn-print-detail"
-                        @click="printRequest(req)"
-                      >
+                      <button class="btn-print-detail" @click="printRequest(req)">
                         🖨️ Print
                       </button>
 
-                      <!-- ✅ Edit: Only visible for Draft -->
                       <button
-                        v-if="req.status === 'draft'"
+                        v-if="req.status === 'draft' || req.status === 'rejected'"
                         class="btn-edit-detail"
                         @click="editRequest(req)"
                       >
                         ✏️ Edit
                       </button>
 
-                      <!-- ✅ Approve: Only for Draft -->
                       <button
                         v-if="req.status === 'draft'"
                         class="btn-approve-detail"
                         @click="openStatusConfirmation(req)"
                       >
-                        ✅ Approve & Dispatch
+                        🚀 Submit for Approval
                       </button>
                     </div>
                   </div>
@@ -427,7 +652,7 @@
       </select>
     </div>
 
-    <!-- ==================== STATUS CONFIRMATION MODAL ==================== -->
+    <!-- ==================== SUBMIT FOR APPROVAL MODAL ==================== -->
     <div
       v-if="showStatusModal"
       class="modal-overlay"
@@ -435,12 +660,14 @@
     >
       <div class="modal-container status-modal">
         <div class="modal-header">
-          <h3>✅ Confirm Approval</h3>
+          <h3>🚀 Submit for Approval</h3>
           <button class="modal-close" @click="closeStatusModal">✕</button>
         </div>
         <div class="modal-body">
-          <div class="confirmation-icon">✅</div>
-          <p class="confirmation-title">Are you sure you want to approve this request?</p>
+          <div class="confirmation-icon">🚀</div>
+          <p class="confirmation-title">
+            Submit this request to Stage 1 for review?
+          </p>
           <div class="confirmation-details">
             <div class="detail-row">
               <span class="detail-label">PR Number:</span>
@@ -455,23 +682,21 @@
             <div class="detail-row">
               <span class="detail-label">Current Status:</span>
               <span :class="['status-badge', statusTarget?.status]">
-                {{ statusTarget?.status }}
+                {{ statusLabel(statusTarget?.status || '') }}
               </span>
             </div>
             <div class="detail-row">
               <span class="detail-label">New Status:</span>
-              <span class="status-badge approved">
-                approved
-              </span>
+              <span class="status-badge pending"> pending </span>
             </div>
           </div>
 
-          <!-- ==================== DOCUMENT UPLOAD ==================== -->
           <div class="upload-section">
-            <p class="upload-title">📎 Attach Approved Document (Required)</p>
+            <p class="upload-title">
+              📎 Attach Signed Document (Front Required)
+            </p>
 
             <div class="upload-grid">
-              <!-- FRONT -->
               <div class="upload-box" :class="{ 'has-file': approvedDocFront }">
                 <label class="upload-label">
                   <input
@@ -487,7 +712,9 @@
                   </div>
                   <div v-else class="upload-preview">
                     <span class="upload-icon">✅</span>
-                    <span class="upload-filename">{{ approvedDocFront.name }}</span>
+                    <span class="upload-filename">{{
+                      approvedDocFront.name
+                    }}</span>
                     <span class="upload-hint">Click to replace</span>
                   </div>
                 </label>
@@ -495,13 +722,11 @@
                   v-if="approvedDocFront"
                   class="remove-file-btn"
                   @click.stop.prevent="approvedDocFront = null"
-                  title="Remove file"
                 >
                   ✕
                 </button>
               </div>
 
-              <!-- BACK -->
               <div class="upload-box" :class="{ 'has-file': approvedDocBack }">
                 <label class="upload-label">
                   <input
@@ -513,7 +738,7 @@
                   <div v-if="!approvedDocBack" class="upload-placeholder">
                     <span class="upload-icon">📄</span>
                     <span class="upload-text">Back Side</span>
-                    <span class="upload-hint">Click to upload</span>
+                    <span class="upload-hint">Optional — Click to upload</span>
                   </div>
                   <div v-else class="upload-preview">
                     <span class="upload-icon">✅</span>
@@ -525,7 +750,6 @@
                   v-if="approvedDocBack"
                   class="remove-file-btn"
                   @click.stop.prevent="approvedDocBack = null"
-                  title="Remove file"
                 >
                   ✕
                 </button>
@@ -536,18 +760,18 @@
           </div>
 
           <p class="warning-text approve-text">
-            ✅ This will approve the request and dispatch it to the purchasing groups.
+            ✅ Stage 1 subgroup members will be notified to review this request.
           </p>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeStatusModal">Cancel</button>
           <button
             class="btn-primary"
-            :disabled="!approvedDocFront || !approvedDocBack || isSubmitting"
+            :disabled="!approvedDocFront || isSubmitting"
             @click="confirmStatusChange"
           >
             <span v-if="isSubmitting">⏳ Submitting...</span>
-            <span v-else>Confirm Approval</span>
+            <span v-else>Submit</span>
           </button>
         </div>
       </div>
@@ -577,23 +801,13 @@
               :href="viewerImageUrl"
               :download="viewerFileName || 'document'"
               class="viewer-btn"
-              title="Download"
             >
               ⬇️ Download
             </a>
-            <a
-              :href="viewerImageUrl"
-              target="_blank"
-              class="viewer-btn"
-              title="Open in new tab"
-            >
+            <a :href="viewerImageUrl" target="_blank" class="viewer-btn">
               🔗 Open
             </a>
-            <button
-              class="viewer-btn viewer-close-btn"
-              @click="closeImageViewer"
-              title="Close (Esc)"
-            >
+            <button class="viewer-btn viewer-close-btn" @click="closeImageViewer">
               ✕ Close
             </button>
           </div>
@@ -609,10 +823,10 @@
         </div>
 
         <div class="image-viewer-zoom">
-          <button class="zoom-btn" @click="zoomOut" title="Zoom out">−</button>
+          <button class="zoom-btn" @click="zoomOut">−</button>
           <span class="zoom-level">{{ Math.round(zoomLevel * 100) }}%</span>
-          <button class="zoom-btn" @click="zoomIn" title="Zoom in">+</button>
-          <button class="zoom-btn" @click="resetZoom" title="Reset">⟲</button>
+          <button class="zoom-btn" @click="zoomIn">+</button>
+          <button class="zoom-btn" @click="resetZoom">⟲</button>
         </div>
       </div>
     </Teleport>
@@ -636,6 +850,8 @@ import purchaseRequestService, {
 // TYPES
 // ================================================================
 
+type RequestStatus = "draft" | "pending" | "approved" | "rejected";
+
 interface PurchaseItem {
   id: number;
   name: string;
@@ -657,8 +873,8 @@ interface PurchaseRequest {
   expertName?: string;
   preparedBy?: string;
   requestedDate: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'draft' | 'approved';
+  priority: "low" | "medium" | "high" | "urgent";
+  status: RequestStatus;
   items: PurchaseItem[];
   createdAt: string;
   updatedAt?: string;
@@ -666,6 +882,37 @@ interface PurchaseRequest {
   approvedDocFrontName?: string;
   approvedDocBack?: string;
   approvedDocBackName?: string;
+
+  currentStageIndex?: number;
+  currentStageId?: number | null;
+  currentStage?: { id: number; label: string; orderIndex: number } | null;
+  rejectedByStageIndex?: number | null;
+  rejectedBySubgroupId?: number | null;
+}
+
+interface SubgroupStatusRow {
+  subgroupId: number;
+  subgroupName: string;
+  subgroupCode: string;
+  groupId: number;
+  groupName: string | null;
+  decision: "approve" | "reject" | null;
+  decidedByName: string | null;
+  comment: string | null;
+  actedAt: string | null;
+}
+
+interface ApprovalStatus {
+  stageId: number | null;
+  stageIndex: number;
+  stageLabel: string;
+  totalSubgroups: number;
+  approvedCount: number;
+  decidedCount: number;
+  subgroups: SubgroupStatusRow[];
+  mySubgroupId: number | null;
+  myDecision: "approve" | "reject" | null;
+  futureStages: { id: number; label: string; orderIndex: number }[];
 }
 
 // ================================================================
@@ -675,7 +922,7 @@ interface PurchaseRequest {
 const router = useRouter();
 const loading = ref(false);
 const searchQuery = ref("");
-const filterStatus = ref("all");
+const filterStatus = ref<"all" | RequestStatus>("all");
 const filterPriority = ref("all");
 const currentPage = ref(1);
 const pageSize = ref(10);
@@ -689,21 +936,25 @@ const showToast = ref(false);
 const toastMessage = ref("");
 const toastType = ref<"success" | "error" | "info" | "warning">("success");
 
-// ✅ Document upload state
+// Document upload state
 const approvedDocFront = ref<File | null>(null);
 const approvedDocBack = ref<File | null>(null);
 const uploadError = ref("");
 const isSubmitting = ref(false);
 
-// ✅ Image viewer state
+// Image viewer
 const showImageViewer = ref(false);
 const viewerImageUrl = ref("");
 const viewerTitle = ref("");
 const viewerFileName = ref("");
 const zoomLevel = ref(1);
 
-// ✅ Server-fetched requests
+// Server-fetched requests
 const requests = ref<PurchaseRequest[]>([]);
+
+// Approval-status cache (dot strip data)
+const approvalStatusByRequest = ref<Record<number, ApprovalStatus>>({});
+const loadingStatus = ref<Record<number, boolean>>({});
 
 // ================================================================
 // COMPUTED
@@ -711,20 +962,19 @@ const requests = ref<PurchaseRequest[]>([]);
 
 const paginatedRequests = computed(() => requests.value);
 
-const totalPages = computed(() => {
-  return Math.ceil(totalItems.value / pageSize.value) || 1;
-});
+const totalPages = computed(
+  () => Math.ceil(totalItems.value / pageSize.value) || 1
+);
 
-const hasActiveFilters = computed(() => {
-  return (
+const hasActiveFilters = computed(
+  () =>
     filterStatus.value !== "all" ||
     filterPriority.value !== "all" ||
     !!searchQuery.value
-  );
-});
+);
 
 // ================================================================
-// DATA FETCHING
+// FETCHING
 // ================================================================
 
 const fetchPurchaseRequests = async (): Promise<void> => {
@@ -734,20 +984,14 @@ const fetchPurchaseRequests = async (): Promise<void> => {
       page: currentPage.value,
       limit: pageSize.value,
       search: searchQuery.value || undefined,
-      status: filterStatus.value as "all" | "draft" | "approved",
-      priority: filterPriority.value as
-        | "all"
-        | "low"
-        | "medium"
-        | "high"
-        | "urgent",
+      status: filterStatus.value as any,
+      priority: filterPriority.value as any,
     });
 
     if (!response.success) {
       throw new Error(response.error || "Failed to load purchase requests");
     }
 
-    // ✅ Resolve relative /uploads/... paths into absolute URLs
     requests.value = response.data.items.map((r) => ({
       ...r,
       items: r.items.map((item, index) => ({
@@ -763,6 +1007,11 @@ const fetchPurchaseRequests = async (): Promise<void> => {
         : undefined,
     }));
     totalItems.value = response.data.total;
+
+    // ✅ Prefetch status for every non-draft row so dots render
+    requests.value.forEach((r) => {
+      if (r.status !== "draft") fetchApprovalStatus(r.id);
+    });
   } catch (error: any) {
     console.error("Failed to load purchase requests:", error);
     showToastMessage(
@@ -774,30 +1023,119 @@ const fetchPurchaseRequests = async (): Promise<void> => {
   }
 };
 
+const fetchApprovalStatus = async (requestId: number): Promise<void> => {
+  if (approvalStatusByRequest.value[requestId]) return;
+  if (loadingStatus.value[requestId]) return;
+
+  loadingStatus.value = { ...loadingStatus.value, [requestId]: true };
+  try {
+    const res = await purchaseRequestService.getApprovalStatus(requestId);
+    if (res.success && res.data) {
+      approvalStatusByRequest.value = {
+        ...approvalStatusByRequest.value,
+        [requestId]: res.data,
+      };
+    }
+  } catch (err: any) {
+    console.error("Failed to fetch approval status:", err);
+  } finally {
+    loadingStatus.value = { ...loadingStatus.value, [requestId]: false };
+  }
+};
+
+const refreshRowStatus = async (requestId: number) => {
+  const copy = { ...approvalStatusByRequest.value };
+  delete copy[requestId];
+  approvalStatusByRequest.value = copy;
+  await fetchApprovalStatus(requestId);
+};
+
 // ================================================================
-// METHODS
+// HELPERS
 // ================================================================
+
+const statusLabel = (status: string): string => {
+  const map: Record<string, string> = {
+    draft: "Draft",
+    pending: "Pending",
+    approved: "Approved",
+    rejected: "Rejected",
+  };
+  return map[status] || status;
+};
 
 const getItemNames = (items: PurchaseItem[]): string => {
   if (!items || items.length === 0) return "";
   return items.map((i) => i.name).join(", ");
 };
 
-const getTotalQuantity = (items: PurchaseItem[]): number => {
-  if (!items || items.length === 0) return 0;
-  return items.reduce((sum, i) => sum + (i.quantity || 0), 0);
+const formatDate = (dateString?: string): string =>
+  purchaseRequestService.formatDate(dateString);
+
+const formatDateTime = (dateString?: string | null): string =>
+  purchaseRequestService.formatDateTime(dateString || undefined);
+
+const getFileName = (url?: string): string =>
+  purchaseRequestService.getFileName(url);
+
+/**
+ * Tooltip for a single subgroup dot.
+ */
+const getSubgroupTooltip = (row: {
+  subgroupName: string;
+  groupName: string | null;
+  decision: "approve" | "reject" | null;
+  decidedByName: string | null;
+  comment: string | null;
+  actedAt: string | null;
+}): string => {
+  let tip = `👥 ${row.subgroupName}`;
+  if (row.groupName) tip += `\n🏷️ Group: ${row.groupName}`;
+
+  if (row.decision === "approve") {
+    tip += "\n✅ Approved";
+    if (row.decidedByName) tip += `\n👤 ${row.decidedByName}`;
+    if (row.actedAt) tip += `\n🕒 ${formatDateTime(row.actedAt)}`;
+  } else if (row.decision === "reject") {
+    tip += "\n❌ Rejected";
+    if (row.decidedByName) tip += `\n👤 ${row.decidedByName}`;
+    if (row.actedAt) tip += `\n🕒 ${formatDateTime(row.actedAt)}`;
+    if (row.comment) tip += `\n📝 "${row.comment}"`;
+  } else {
+    tip += "\n⏳ Waiting for decision";
+  }
+  return tip;
 };
 
-const formatDate = (dateString?: string): string => {
-  return purchaseRequestService.formatDate(dateString);
+/**
+ * Short summary shown next to the dots.
+ */
+const getAcceptanceSummary = (req: PurchaseRequest): string => {
+  const status = approvalStatusByRequest.value[req.id];
+  if (!status) return "";
+
+  const total = status.totalSubgroups;
+  const approved = status.approvedCount;
+  const rejected = status.subgroups.filter(
+    (s) => s.decision === "reject"
+  ).length;
+
+  if (rejected > 0) return `❌ ${rejected} rejected`;
+  if (approved === total && total > 0) return `✅ All ${total} approved`;
+  return `⏳ ${approved}/${total} accepted`;
 };
 
-const formatDateTime = (dateString?: string): string => {
-  return purchaseRequestService.formatDateTime(dateString);
-};
+// ================================================================
+// INTERACTIONS
+// ================================================================
 
-const toggleExpand = (id: number): void => {
-  expandedRow.value = expandedRow.value === id ? null : id;
+const toggleExpand = (req: PurchaseRequest): void => {
+  const next = expandedRow.value === req.id ? null : req.id;
+  expandedRow.value = next;
+
+  if (next && req.status !== "draft" && !approvalStatusByRequest.value[req.id]) {
+    fetchApprovalStatus(req.id);
+  }
 };
 
 const onSearchChange = (): void => {
@@ -836,22 +1174,22 @@ const openCreateModal = (): void => {
 };
 
 const editRequest = (req: PurchaseRequest): void => {
-  if (req.status !== "draft") {
-    showToastMessage("Only draft requests can be edited", "error");
-    return;
-  }
   editingRequestData.value = req;
   showCreateModal.value = true;
 };
 
 const handleModalSaved = (): void => {
-  showToastMessage("Purchase request saved successfully!", "success");
+  const wasApproved = editingRequestData.value?.status === "approved";
+  showToastMessage(
+    wasApproved
+      ? "✏️ Approved request reverted to draft after edit"
+      : "Purchase request saved successfully!",
+    "success"
+  );
+  editingRequestData.value = null;
   fetchPurchaseRequests();
 };
 
-/**
- * ✅ Print: Available for both Draft and Approved
- */
 const printRequest = (req: PurchaseRequest): void => {
   router.push({
     name: "print-purchase-request",
@@ -859,26 +1197,17 @@ const printRequest = (req: PurchaseRequest): void => {
   });
 };
 
-/**
- * Extract file name from any URL (data:, blob:, relative, absolute)
- */
-const getFileName = (url?: string): string => {
-  return purchaseRequestService.getFileName(url);
-};
-
 // ================================================================
-// DOCUMENT UPLOAD HANDLERS
+// DOCUMENT UPLOAD
 // ================================================================
 
-const validateFile = (file: File): string | null => {
-  return purchaseRequestService.validateFile(file);
-};
+const validateFile = (file: File): string | null =>
+  purchaseRequestService.validateFile(file);
 
 const onFrontFileChange = (event: Event): void => {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
-
   const error = validateFile(file);
   if (error) {
     uploadError.value = `Front side: ${error}`;
@@ -893,7 +1222,6 @@ const onBackFileChange = (event: Event): void => {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
-
   const error = validateFile(file);
   if (error) {
     uploadError.value = `Back side: ${error}`;
@@ -905,7 +1233,7 @@ const onBackFileChange = (event: Event): void => {
 };
 
 // ================================================================
-// APPROVAL
+// SUBMIT FOR APPROVAL
 // ================================================================
 
 const openStatusConfirmation = (req: PurchaseRequest): void => {
@@ -928,10 +1256,9 @@ const closeStatusModal = (): void => {
 
 const confirmStatusChange = async (): Promise<void> => {
   if (!statusTarget.value) return;
-
-  if (!approvedDocFront.value || !approvedDocBack.value) {
+  if (!approvedDocFront.value) {
     uploadError.value =
-      "Please upload both front and back sides of the approved document.";
+      "Please upload the front side of the approved document.";
     return;
   }
 
@@ -939,21 +1266,23 @@ const confirmStatusChange = async (): Promise<void> => {
   const req = statusTarget.value;
 
   try {
-    // ✅ Correct service method: approveRequest({ prId, prNumber, front, back })
-    const response = await purchaseRequestService.approveRequest({
-      prId: req.id,
-      prNumber: req.prNumber,
-      front: approvedDocFront.value,
-      back: approvedDocBack.value,
-    });
+    const response = await purchaseRequestService.submitForApproval(
+      req.id,
+      approvedDocFront.value,
+      approvedDocBack.value ?? undefined
+    );
 
     if (!response.success) {
-      throw new Error(response.error || "Failed to approve purchase request");
+      throw new Error(response.error || "Failed to submit purchase request");
     }
 
-    // ✅ Resolve the returned relative URLs and replace the row locally
     const updated: PurchaseRequest = {
       ...response.data,
+      items: (response.data.items ?? []).map((item, index) => ({
+        ...item,
+        id: item.id ?? index,
+        baseUom: item.baseUom ?? item.uom,
+      })),
       approvedDocFront: response.data.approvedDocFront
         ? resolveDocUrl(response.data.approvedDocFront)
         : undefined,
@@ -963,12 +1292,13 @@ const confirmStatusChange = async (): Promise<void> => {
     };
 
     const index = requests.value.findIndex((r) => r.id === updated.id);
-    if (index !== -1) {
-      requests.value[index] = updated;
-    }
+    if (index !== -1) requests.value[index] = updated;
+
+    // refresh dot strip for this row
+    await refreshRowStatus(updated.id);
 
     showToastMessage(
-      `✅ ${updated.prNumber} approved with documents and dispatched!`,
+      `🚀 ${updated.prNumber} submitted — Stage 1 notified`,
       "success"
     );
 
@@ -983,7 +1313,7 @@ const confirmStatusChange = async (): Promise<void> => {
 };
 
 // ================================================================
-// IMAGE LOAD HANDLERS
+// IMAGE HANDLERS
 // ================================================================
 
 const onImageLoad = (e: Event): void => {
@@ -999,10 +1329,6 @@ const onImageError = (e: Event): void => {
   const skeleton = img.parentElement?.querySelector(".doc-skeleton");
   if (skeleton) (skeleton as HTMLElement).textContent = "⚠️ Failed to load";
 };
-
-// ================================================================
-// IMAGE VIEWER
-// ================================================================
 
 const openImageViewer = (
   url: string,
@@ -1029,19 +1355,15 @@ const closeImageViewer = (): void => {
 const zoomIn = (): void => {
   zoomLevel.value = Math.min(zoomLevel.value + 0.25, 3);
 };
-
 const zoomOut = (): void => {
   zoomLevel.value = Math.max(zoomLevel.value - 0.25, 0.25);
 };
-
 const resetZoom = (): void => {
   zoomLevel.value = 1;
 };
 
 const handleKeydown = (e: KeyboardEvent): void => {
-  if (e.key === "Escape" && showImageViewer.value) {
-    closeImageViewer();
-  }
+  if (e.key === "Escape" && showImageViewer.value) closeImageViewer();
   if (showImageViewer.value) {
     if (e.key === "+" || e.key === "=") zoomIn();
     if (e.key === "-") zoomOut();
@@ -1079,6 +1401,7 @@ onUnmounted(() => {
   document.body.style.overflow = "";
 });
 </script>
+
 <style scoped>
 /* ================================================================ */
 /* SECTION CARD */
@@ -1175,10 +1498,7 @@ onUnmounted(() => {
   transition: all 0.2s;
   white-space: nowrap;
 }
-
-.btn-add:hover {
-  background: #2563eb;
-}
+.btn-add:hover { background: #2563eb; }
 
 /* ================================================================ */
 /* FILTER BAR */
@@ -1210,10 +1530,7 @@ onUnmounted(() => {
   color: #64748b;
   transition: all 0.2s;
 }
-
-.btn-clear-filters:hover {
-  background: #e2e8f0;
-}
+.btn-clear-filters:hover { background: #e2e8f0; }
 
 /* ================================================================ */
 /* TABLE */
@@ -1258,12 +1575,10 @@ onUnmounted(() => {
 .col-dept { min-width: 110px; }
 .col-expert { min-width: 130px; }
 .col-priority { min-width: 70px; }
-.col-status { min-width: 90px; }
+.col-status { min-width: 140px; }
 .col-actions { min-width: 160px; }
 
-.text-center {
-  text-align: center;
-}
+.text-center { text-align: center; }
 
 .code-cell {
   font-weight: 600;
@@ -1276,17 +1591,8 @@ onUnmounted(() => {
   display: inline-block;
 }
 
-.items-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.item-count {
-  font-weight: 500;
-  color: #1e293b;
-}
-
+.items-summary { display: flex; flex-direction: column; gap: 2px; }
+.item-count { font-weight: 500; color: #1e293b; }
 .item-names {
   font-size: 10px;
   color: #94a3b8;
@@ -1296,11 +1602,7 @@ onUnmounted(() => {
   max-width: 150px;
 }
 
-.dept-name,
-.expert-name {
-  font-weight: 500;
-  color: #1e293b;
-}
+.dept-name, .expert-name { font-weight: 500; color: #1e293b; }
 
 /* ================================================================ */
 /* PRIORITY BADGE */
@@ -1313,32 +1615,15 @@ onUnmounted(() => {
   font-weight: 600;
   text-transform: capitalize;
 }
-
-.priority-badge.low {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.priority-badge.medium {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.priority-badge.high {
-  background: #fde68a;
-  color: #92400e;
-}
-
+.priority-badge.low { background: #dbeafe; color: #1e40af; }
+.priority-badge.medium { background: #fef3c7; color: #92400e; }
+.priority-badge.high { background: #fde68a; color: #92400e; }
 .priority-badge.urgent {
   background: #fee2e2;
   color: #991b1b;
   animation: pulse 1.5s ease-in-out infinite;
 }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
 /* ================================================================ */
 /* STATUS BADGE */
@@ -1352,15 +1637,63 @@ onUnmounted(() => {
   text-transform: capitalize;
   letter-spacing: 0.3px;
 }
+.status-badge.draft    { background: #e2e8f0; color: #475569; }
+.status-badge.pending  { background: #fef3c7; color: #92400e; }
+.status-badge.approved { background: #dcfce7; color: #166534; }
+.status-badge.rejected { background: #fee2e2; color: #991b1b; }
 
-.status-badge.draft {
-  background: #e2e8f0;
-  color: #475569;
+/* ================================================================ */
+/* SUBGROUP DECISION DOTS (yellow → green / red)                    */
+/* ================================================================ */
+.subgroup-strip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 5px;
+  flex-wrap: wrap;
 }
 
-.status-badge.approved {
-  background: #dcfce7;
-  color: #166534;
+.dot-wrapper {
+  display: inline-flex;
+  cursor: help;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.15s ease,
+    background-color 0.25s ease,
+    box-shadow 0.15s ease;
+}
+
+.dot-wrapper:hover .dot { transform: scale(1.3); }
+
+.dot.yellow  { background: #facc15; }   /* pending  */
+.dot.green   { background: #22c55e; }   /* approve  */
+.dot.red     { background: #ef4444; }   /* reject   */
+.dot.grey    { background: #cbd5e1; }   /* unknown  */
+.dot.loading {
+  background: #e2e8f0;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.dot.mine { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.55); }
+
+.strip-text {
+  font-size: 10px;
+  color: #64748b;
+  margin-left: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
 }
 
 /* ================================================================ */
@@ -1386,25 +1719,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
 }
+.icon-btn:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
+.icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-.icon-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.icon-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.print-btn {
-  color: #8b5cf6;
-}
-
-.print-btn:hover:not(:disabled) {
-  background: #ede9fe;
-  color: #7c3aed;
-}
+.print-btn { color: #8b5cf6; }
+.print-btn:hover:not(:disabled) { background: #ede9fe; color: #7c3aed; }
 
 /* ================================================================ */
 /* EXPAND ROW */
@@ -1419,21 +1738,14 @@ onUnmounted(() => {
   border-radius: 6px;
   transition: all 0.2s;
 }
+.expand-btn:hover { background: #e0e7ff; }
 
-.expand-btn:hover {
-  background: #e0e7ff;
-}
-
-.expanded-row {
-  background: #f8fafc;
-}
+.expanded-row { background: #f8fafc; }
 
 /* ================================================================ */
 /* EXPAND DETAILS */
 /* ================================================================ */
-.detail-expand-row td {
-  padding: 0 !important;
-}
+.detail-expand-row td { padding: 0 !important; }
 
 .expand-details {
   padding: 16px 20px;
@@ -1461,10 +1773,7 @@ onUnmounted(() => {
   padding: 14px 16px;
   border: 1px solid #e2e8f0;
 }
-
-.detail-card.full-width {
-  grid-column: 1 / -1;
-}
+.detail-card.full-width { grid-column: 1 / -1; }
 
 .detail-card h4 {
   margin: 0 0 10px 0;
@@ -1482,17 +1791,9 @@ onUnmounted(() => {
   border-bottom: 1px solid #f1f5f9;
   font-size: 12px;
 }
+.detail-card > div:last-child { border-bottom: none; }
+.detail-card .value { font-weight: 500; color: #1e293b; }
 
-.detail-card > div:last-child {
-  border-bottom: none;
-}
-
-.detail-card .value {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-/* ✅ Detail card header (used by Approved Documents + Items) */
 .detail-card-header {
   display: flex;
   justify-content: space-between;
@@ -1501,12 +1802,7 @@ onUnmounted(() => {
   padding-bottom: 8px;
   border-bottom: 1px solid #f1f5f9;
 }
-
-.detail-card-header h4 {
-  margin: 0;
-  padding: 0;
-  border: none;
-}
+.detail-card-header h4 { margin: 0; padding: 0; border: none; }
 
 .member-count-badge {
   background: #dbeafe;
@@ -1518,14 +1814,13 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* ITEMS DETAIL TABLE */
+/* ITEMS TABLE */
 /* ================================================================ */
 .items-detail-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
-
 .items-detail-table th {
   background: #e2e8f0;
   padding: 6px 10px;
@@ -1533,21 +1828,12 @@ onUnmounted(() => {
   font-weight: 600;
   color: #475569;
 }
-
 .items-detail-table td {
   padding: 6px 10px;
   border-bottom: 1px solid #f1f5f9;
 }
-
-.items-detail-table .total-row {
-  background: #f8fafc;
-  font-weight: 500;
-}
-
-.items-detail-table .no-items {
-  padding: 20px;
-  color: #94a3b8;
-}
+.items-detail-table .total-row { background: #f8fafc; font-weight: 500; }
+.items-detail-table .no-items { padding: 20px; color: #94a3b8; }
 
 .uom-badge {
   display: inline-block;
@@ -1570,7 +1856,202 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* APPROVED DOCUMENTS — with thumbnails */
+/* APPROVAL PROGRESS */
+/* ================================================================ */
+.approval-progress-card {
+  background: #f0f9ff;
+  border-left: 4px solid #3b82f6;
+}
+
+.approval-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dbeafe;
+}
+.approval-progress-header h4 { margin: 0; padding: 0; border: none; }
+
+.stage-loading-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.progress-summary-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.stage-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+.stage-loading .spinner.small {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  margin: 0;
+}
+
+.stage-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.stage-pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 3px 12px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.stage-count-text {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.subgroup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subgroup-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 12.5px;
+}
+.subgroup-row.row-approved { background: #f0fdf4; border-color: #bbf7d0; }
+.subgroup-row.row-rejected { background: #fef2f2; border-color: #fecaca; }
+.subgroup-row.row-pending  { background: #fafbfc; }
+.subgroup-row.row-mine     { box-shadow: inset 3px 0 0 #3b82f6; }
+
+.sg-icon { font-size: 14px; text-align: center; }
+.sg-main { min-width: 0; }
+
+.sg-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mine-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+}
+
+.sg-group { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+.sg-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-size: 11px;
+  color: #64748b;
+}
+.sg-who { font-weight: 600; color: #1e293b; }
+.sg-when { font-size: 10px; color: #94a3b8; }
+.sg-wait { color: #94a3b8; font-style: italic; }
+
+.sg-comment {
+  grid-column: 2 / 4;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #475569;
+  font-style: italic;
+  background: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border-left: 2px solid #cbd5e1;
+}
+
+.future-stages {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+.future-stages-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+
+.future-stage-row { font-size: 12px; color: #94a3b8; padding: 3px 0; }
+
+.rejected-banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border-left: 4px solid #ef4444;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #991b1b;
+}
+
+.approved-banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border-left: 4px solid #22c55e;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #166534;
+}
+
+.stage-empty {
+  padding: 12px 4px;
+  font-size: 12.5px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* ================================================================ */
+/* DOCUMENTS */
 /* ================================================================ */
 .docs-grid {
   display: grid;
@@ -1587,7 +2068,6 @@ onUnmounted(() => {
   flex-direction: column;
   transition: all 0.2s;
 }
-
 .doc-card:hover {
   border-color: #3b82f6;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
@@ -1640,18 +2120,9 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
-
-.doc-thumbnail.loaded {
-  opacity: 1;
-}
-
-.doc-thumbnail.error {
-  opacity: 0.35;
-}
-
-.doc-image-wrapper:hover .doc-thumbnail {
-  transform: scale(1.05);
-}
+.doc-thumbnail.loaded { opacity: 1; }
+.doc-thumbnail.error { opacity: 0.35; }
+.doc-image-wrapper:hover .doc-thumbnail { transform: scale(1.05); }
 
 .doc-overlay {
   position: absolute;
@@ -1668,19 +2139,9 @@ onUnmounted(() => {
   pointer-events: none;
   z-index: 2;
 }
-
-.doc-image-wrapper:hover .doc-overlay {
-  opacity: 1;
-}
-
-.zoom-icon {
-  font-size: 28px;
-}
-
-.zoom-text {
-  font-size: 12px;
-  font-weight: 500;
-}
+.doc-image-wrapper:hover .doc-overlay { opacity: 1; }
+.zoom-icon { font-size: 28px; }
+.zoom-text { font-size: 12px; font-weight: 500; }
 
 .doc-card-footer {
   display: flex;
@@ -1714,10 +2175,7 @@ onUnmounted(() => {
   transition: background 0.2s;
   white-space: nowrap;
 }
-
-.doc-view-btn:hover {
-  background: #2563eb;
-}
+.doc-view-btn:hover { background: #2563eb; }
 
 /* ================================================================ */
 /* DETAIL ACTIONS */
@@ -1729,7 +2187,6 @@ onUnmounted(() => {
   padding-top: 12px;
   border-top: 1px solid #e2e8f0;
 }
-
 .detail-actions button {
   padding: 6px 14px;
   border: none;
@@ -1741,64 +2198,29 @@ onUnmounted(() => {
   gap: 4px;
   transition: all 0.2s;
 }
+.detail-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.detail-actions button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.btn-print-detail { background: #8b5cf6; color: white; }
+.btn-print-detail:hover:not(:disabled) { background: #7c3aed; }
 
-.btn-print-detail {
-  background: #8b5cf6;
-  color: white;
-}
+.btn-edit-detail { background: #3b82f6; color: white; }
+.btn-edit-detail:hover:not(:disabled) { background: #2563eb; }
 
-.btn-print-detail:hover:not(:disabled) {
-  background: #7c3aed;
-}
-
-.btn-edit-detail {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-edit-detail:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-approve-detail {
-  background: #22c55e;
-  color: white;
-}
-
-.btn-approve-detail:hover:not(:disabled) {
-  background: #16a34a;
-}
+.btn-approve-detail { background: #22c55e; color: white; }
+.btn-approve-detail:hover:not(:disabled) { background: #16a34a; }
 
 /* ================================================================ */
-/* EMPTY STATE */
+/* EMPTY & LOADING */
 /* ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-
+.empty-state { text-align: center; padding: 60px 20px; }
 .empty-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
 }
-
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  color: #94a3b8;
-  font-size: 16px;
-  margin: 0;
-}
+.empty-icon { font-size: 48px; opacity: 0.5; }
+.empty-state p { color: #94a3b8; font-size: 16px; margin: 0; }
 
 .btn-secondary {
   background: #f1f5f9;
@@ -1810,19 +2232,9 @@ onUnmounted(() => {
   font-size: 13px;
   transition: all 0.2s;
 }
+.btn-secondary:hover { background: #e2e8f0; }
 
-.btn-secondary:hover {
-  background: #e2e8f0;
-}
-
-/* ================================================================ */
-/* LOADING STATE */
-/* ================================================================ */
-.loading-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-
+.loading-state { text-align: center; padding: 60px 20px; }
 .spinner {
   border: 4px solid #f1f5f9;
   border-top: 4px solid #3b82f6;
@@ -1832,12 +2244,7 @@ onUnmounted(() => {
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
 }
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ================================================================ */
 /* PAGINATION */
@@ -1852,7 +2259,6 @@ onUnmounted(() => {
   border-top: 1px solid #f1f5f9;
   flex-wrap: wrap;
 }
-
 .page-btn {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -1863,20 +2269,10 @@ onUnmounted(() => {
   color: #1e293b;
   transition: all 0.2s;
 }
+.page-btn:hover:not(:disabled) { background: #e2e8f0; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.page-btn:hover:not(:disabled) {
-  background: #e2e8f0;
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 13px;
-  color: #475569;
-}
+.page-info { font-size: 13px; color: #475569; }
 
 .limit-select {
   padding: 6px 10px;
@@ -1888,66 +2284,11 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* TOAST */
-/* ================================================================ */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  padding: 12px 24px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  color: white;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  z-index: 9999;
-  animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
-  max-width: 400px;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes fadeOut {
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-}
-
-.toast.success {
-  background: #22c55e;
-}
-
-.toast.error {
-  background: #ef4444;
-}
-
-.toast.info {
-  background: #3b82f6;
-}
-
-.toast.warning {
-  background: #f59e0b;
-}
-
-/* ================================================================ */
 /* MODAL */
 /* ================================================================ */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
@@ -1956,11 +2297,7 @@ onUnmounted(() => {
   z-index: 1000;
   animation: fadeIn 0.2s ease;
 }
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .modal-container {
   background: white;
@@ -1972,16 +2309,9 @@ onUnmounted(() => {
   animation: slideUp 0.3s ease;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
-
 @keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 
 .modal-header {
@@ -1992,13 +2322,7 @@ onUnmounted(() => {
   border-bottom: 1px solid #f1f5f9;
   background: #fafbfc;
 }
-
-.modal-header h3 {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0;
-  color: #0f172a;
-}
+.modal-header h3 { font-size: 18px; font-weight: 600; margin: 0; color: #0f172a; }
 
 .modal-close {
   background: transparent;
@@ -2011,11 +2335,7 @@ onUnmounted(() => {
   transition: all 0.2s;
   line-height: 1;
 }
-
-.modal-close:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
+.modal-close:hover { background: #f1f5f9; color: #0f172a; }
 
 .modal-body {
   padding: 24px;
@@ -2044,23 +2364,14 @@ onUnmounted(() => {
   transition: all 0.2s;
   min-width: 140px;
 }
-
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #94a3b8;
-}
+.btn-primary:hover:not(:disabled) { background: #2563eb; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; background: #94a3b8; }
 
 .confirmation-icon {
   font-size: 48px;
   text-align: center;
   margin-bottom: 12px;
 }
-
 .confirmation-title {
   font-size: 16px;
   font-weight: 600;
@@ -2068,36 +2379,21 @@ onUnmounted(() => {
   text-align: center;
   margin-bottom: 16px;
 }
-
 .confirmation-details {
   background: #f8fafc;
   border-radius: 8px;
   padding: 12px 16px;
   margin-bottom: 16px;
 }
-
 .detail-row {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid #e2e8f0;
 }
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-label {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.detail-value {
-  color: #1e293b;
-  font-weight: 500;
-  font-size: 13px;
-}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { font-weight: 500; color: #64748b; font-size: 13px; }
+.detail-value { color: #1e293b; font-weight: 500; font-size: 13px; }
 
 .warning-text {
   color: #f59e0b;
@@ -2110,7 +2406,6 @@ onUnmounted(() => {
   border: 1px solid #fef3c7;
   font-size: 13px;
 }
-
 .warning-text.approve-text {
   color: #166534;
   background: #f0fdf4;
@@ -2120,9 +2415,7 @@ onUnmounted(() => {
 /* ================================================================ */
 /* DOCUMENT UPLOAD */
 /* ================================================================ */
-.upload-section {
-  margin-bottom: 16px;
-}
+.upload-section { margin-bottom: 16px; }
 
 .upload-title {
   font-size: 13px;
@@ -2145,12 +2438,7 @@ onUnmounted(() => {
   transition: all 0.2s;
   cursor: pointer;
 }
-
-.upload-box:hover {
-  border-color: #3b82f6;
-  background: #eff6ff;
-}
-
+.upload-box:hover { border-color: #3b82f6; background: #eff6ff; }
 .upload-box.has-file {
   border-style: solid;
   border-color: #22c55e;
@@ -2176,17 +2464,8 @@ onUnmounted(() => {
   gap: 4px;
   pointer-events: none;
 }
-
-.upload-icon {
-  font-size: 24px;
-}
-
-.upload-text {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
+.upload-icon { font-size: 24px; }
+.upload-text { font-size: 12px; font-weight: 600; color: #475569; }
 .upload-filename {
   font-size: 11px;
   font-weight: 500;
@@ -2196,11 +2475,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.upload-hint {
-  font-size: 10px;
-  color: #94a3b8;
-}
+.upload-hint { font-size: 10px; color: #94a3b8; }
 
 .remove-file-btn {
   position: absolute;
@@ -2220,10 +2495,7 @@ onUnmounted(() => {
   line-height: 1;
   z-index: 2;
 }
-
-.remove-file-btn:hover {
-  background: #dc2626;
-}
+.remove-file-btn:hover { background: #dc2626; }
 
 .upload-error {
   color: #dc2626;
@@ -2247,11 +2519,7 @@ onUnmounted(() => {
   flex-direction: column;
   animation: viewerFadeIn 0.2s ease;
 }
-
-@keyframes viewerFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+@keyframes viewerFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .image-viewer-toolbar {
   display: flex;
@@ -2265,19 +2533,8 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.viewer-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-}
-
-.viewer-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
+.viewer-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.viewer-icon { font-size: 20px; flex-shrink: 0; }
 .viewer-title-text {
   font-size: 15px;
   font-weight: 600;
@@ -2286,11 +2543,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.viewer-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+.viewer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .viewer-btn {
   background: rgba(255, 255, 255, 0.1);
@@ -2307,19 +2560,9 @@ onUnmounted(() => {
   gap: 4px;
   transition: background 0.2s;
 }
-
-.viewer-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.viewer-close-btn {
-  background: #ef4444;
-  border-color: #ef4444;
-}
-
-.viewer-close-btn:hover {
-  background: #dc2626;
-}
+.viewer-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.viewer-close-btn { background: #ef4444; border-color: #ef4444; }
+.viewer-close-btn:hover { background: #dc2626; }
 
 .image-viewer-content {
   flex: 1;
@@ -2329,7 +2572,6 @@ onUnmounted(() => {
   overflow: auto;
   padding: 24px;
 }
-
 .viewer-image {
   max-width: 100%;
   max-height: 100%;
@@ -2354,7 +2596,6 @@ onUnmounted(() => {
   padding: 6px 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
-
 .zoom-btn {
   background: transparent;
   color: white;
@@ -2370,11 +2611,7 @@ onUnmounted(() => {
   justify-content: center;
   transition: background 0.2s;
 }
-
-.zoom-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
+.zoom-btn:hover { background: rgba(255, 255, 255, 0.15); }
 .zoom-level {
   color: white;
   font-size: 12px;
@@ -2384,134 +2621,67 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
+/* TOAST */
+/* ================================================================ */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+  max-width: 400px;
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+.toast.success { background: #22c55e; }
+.toast.error   { background: #ef4444; }
+.toast.info    { background: #3b82f6; }
+.toast.warning { background: #f59e0b; }
+
+/* ================================================================ */
 /* RESPONSIVE */
 /* ================================================================ */
 @media (max-width: 768px) {
-  .card-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-title {
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  .header-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .search-box {
-    width: 100%;
-  }
-
-  .search-box input {
-    width: 100%;
-  }
-
-  .btn-add {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .detail-row-two-cols {
-    grid-template-columns: 1fr;
-  }
-
-  .docs-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .requests-table {
-    font-size: 11px;
-    min-width: 700px;
-  }
-
-  .requests-table th,
-  .requests-table td {
-    padding: 6px 8px;
-  }
-
-  .pagination {
-    gap: 8px;
-  }
-
-  .page-btn {
-    padding: 4px 12px;
-    font-size: 12px;
-  }
-
+  .card-header { flex-direction: column; align-items: stretch; }
+  .header-title { justify-content: space-between; width: 100%; }
+  .header-actions { flex-direction: column; width: 100%; }
+  .search-box { width: 100%; }
+  .search-box input { width: 100%; }
+  .btn-add { width: 100%; justify-content: center; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .detail-row-two-cols { grid-template-columns: 1fr; }
+  .docs-grid { grid-template-columns: 1fr; }
+  .requests-table { font-size: 11px; min-width: 700px; }
+  .requests-table th, .requests-table td { padding: 6px 8px; }
+  .pagination { gap: 8px; }
+  .page-btn { padding: 4px 12px; font-size: 12px; }
   .toast {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
-    max-width: none;
-    font-size: 13px;
-    padding: 10px 16px;
+    bottom: 16px; right: 16px; left: 16px;
+    max-width: none; font-size: 13px; padding: 10px 16px;
   }
-
-  .image-viewer-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .viewer-actions {
-    justify-content: stretch;
-  }
-
-  .viewer-btn {
-    flex: 1;
-    justify-content: center;
-  }
+  .image-viewer-toolbar { flex-direction: column; align-items: stretch; }
+  .viewer-actions { justify-content: stretch; }
+  .viewer-btn { flex: 1; justify-content: center; }
 }
 
 @media (max-width: 480px) {
-  .requests-table {
-    min-width: 600px;
-  }
-
-  .requests-table th,
-  .requests-table td {
-    padding: 4px 6px;
-    font-size: 10px;
-  }
-
-  .status-badge,
-  .priority-badge {
-    padding: 2px 8px;
-    font-size: 9px;
-  }
-
-  .icon-btn {
-    padding: 3px 4px;
-    font-size: 11px;
-  }
-
-  .modal-header h3 {
-    font-size: 16px;
-  }
-
-  .detail-actions {
-    flex-direction: column;
-  }
-
-  .detail-actions button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .upload-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .doc-image-wrapper {
-    height: 200px;
-  }
+  .requests-table { min-width: 600px; }
+  .requests-table th, .requests-table td { padding: 4px 6px; font-size: 10px; }
+  .status-badge, .priority-badge { padding: 2px 8px; font-size: 9px; }
+  .icon-btn { padding: 3px 4px; font-size: 11px; }
+  .modal-header h3 { font-size: 16px; }
+  .detail-actions { flex-direction: column; }
+  .detail-actions button { width: 100%; justify-content: center; }
+  .upload-grid { grid-template-columns: 1fr; }
+  .doc-image-wrapper { height: 200px; }
 }
 </style>

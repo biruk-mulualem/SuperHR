@@ -638,7 +638,7 @@ const router = createRouter({
           component: () => import("@/views/Purchaser/localpurchase/PrintPurchaseRequest.vue"),
           meta: {
             title: "print purchase request ",
-            roles: ["admin", "storekeeper", "store_it", "checker"],
+            roles: ["admin", "storekeeper", "store_it", "checker","employee", "nebret", "cost","formulation_manager","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
           },
         },
 
@@ -739,7 +739,17 @@ const router = createRouter({
           },
         },
         
-
+{
+  path: "temelash-print",
+  name: "temelash-print",
+  component: () =>
+    import("@/views/storemanagement/itemRequests/TemelashPrint.vue"),
+  meta: {
+    title: "Temelash Print",
+    roles: ["admin", "storekeeper", "store_it", "checker",],
+    hideLayout: true,          // 🔥 ADD THIS
+  },
+},
         {
           path: "store-transaction/print",
           name: "print-transactions",

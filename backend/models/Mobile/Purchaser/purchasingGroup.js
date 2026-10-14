@@ -10,12 +10,23 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
         hooks: true,
       });
+
+      PurchasingGroup.hasMany(models.PurchasingSubgroup, {
+        foreignKey: 'groupId',
+        as: 'subgroups',
+        onDelete: 'CASCADE',
+        hooks: true,
+      });
+
+      // 👈 NEW — links this group to the stage it belongs to
+      PurchasingGroup.hasMany(models.WorkflowStageGroup, {
+        foreignKey: 'groupId',
+        as: 'stageLinks',
+        onDelete: 'CASCADE',
+        hooks: true,
+      });
     }
 
-    /**
-     * Generates the next unique "GRP-XXX" code.
-     * Optional `transaction` keeps it safe against races.
-     */
     static async generateCode(transaction = null) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const last = await PurchasingGroup.findOne({

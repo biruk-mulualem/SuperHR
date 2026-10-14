@@ -1,551 +1,699 @@
 <!-- views/storemanagement/purchasinggroups/PurchasingGroups.vue -->
 <template>
-  <div class="section-card">
-    <!-- ==================== HEADER ==================== -->
-    <div class="card-header">
-      <div class="header-title">
-        <h2>👥 Purchasing Groups</h2>
-        <span class="total-badge">{{ totalGroups }} Groups</span>
+  <div class="pg-page">
+    <!-- ==================== TOP BAR ==================== -->
+    <header class="pg-topbar">
+      <div class="pg-topbar-left">
+        <div class="pg-logo">👥</div>
+        <div>
+          <h1 class="pg-title">Purchasing Groups</h1>
+          <p class="pg-subtitle">
+            {{ totalGroups }} groups · {{ totalSubgroups }} subgroups ·
+            {{ totalMembers }} members
+          </p>
+        </div>
       </div>
-      <div class="header-actions">
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
+
+      <div class="pg-topbar-right">
+        <div class="pg-search">
+          <span class="pg-search-icon">🔍</span>
           <input
-            type="text"
             v-model="searchQuery"
-            placeholder="Search by group name, code, or member..."
-            @input="onSearchChange"
+            type="text"
+            placeholder="Search groups, subgroups, members..."
           />
         </div>
-        <button class="btn-add" @click="openCreateModal">
+        <button
+          class="pg-btn-primary"
+          title="Configure approval sequence"
+          @click="openSequenceModal"
+        >
+          🔀 Sequence
+          <span v-if="totalStages > 0" class="pg-seq-badge">
+            {{ totalStages }}
+          </span>
+        </button>
+        <button class="pg-btn-primary" @click="openCreateGroupModal">
           ➕ New Group
         </button>
       </div>
-    </div>
+    </header>
 
-    <!-- ==================== FILTERS ==================== -->
-    <div class="filter-bar">
-      <select
-        v-model="filterStatus"
-        class="filter-select"
-        @change="onFilterChange"
-      >
-        <option value="all">All Status</option>
-        <option value="active">Active</option>
-        <option value="inactive">Inactive</option>
-      </select>
-
-      <button
-        class="btn-clear-filters"
-        @click="clearFilters"
-        v-if="hasActiveFilters"
-      >
-        ✕ Clear Filters
-      </button>
-    </div>
-
-    <!-- ==================== GROUPS TABLE ==================== -->
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading groups...</p>
-    </div>
-
-    <div v-else class="table-wrapper">
-      <table class="groups-table">
-        <thead>
-          <tr>
-            <th class="col-expand"></th>
-            <th class="col-code">Group Code</th>
-            <th class="col-name">Group Name</th>
-            <th class="col-members">Members</th>
-            <th class="col-status">Status</th>
-            <th class="col-actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="paginatedGroups.length === 0">
-            <td colspan="6" class="empty-state">
-              <div class="empty-content">
-                <span class="empty-icon">👥</span>
-                <p>No purchasing groups found</p>
-                <button class="btn-secondary" @click="openCreateModal">
-                  Create First Group
-                </button>
-              </div>
-            </td>
-          </tr>
-          <template
-            v-for="group in paginatedGroups"
-            :key="group.id"
-          >
-            <tr :class="{ 'expanded-row': expandedRow === group.id }">
-              <td class="text-center">
-                <button
-                  class="expand-btn"
-                  @click="toggleExpand(group.id)"
-                >
-                  {{ expandedRow === group.id ? "▼" : "▶" }}
-                </button>
-              </td>
-              <td class="code-cell">{{ group.code }}</td>
-              <td class="name-cell">{{ group.name }}</td>
-              <td>
-                <div class="members-summary">
-                  <span class="member-count">
-                    {{ group.members?.length || 0 }} member(s)
-                  </span>
-                  <span class="member-names">
-                    {{ getMemberNames(group.members) }}
-                  </span>
-                </div>
-              </td>
-              <td>
-                <span :class="['status-badge', group.status]">
-                  {{ group.status }}
-                </span>
-              </td>
-              <td>
-                <div class="action-buttons">
-                  <button
-                    class="icon-btn"
-                    @click="editGroup(group)"
-                    title="Edit Group"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    class="icon-btn"
-                    @click="openMembersModal(group)"
-                    title="Manage Members"
-                  >
-                    👤➕
-                  </button>
-                  <button
-                    class="icon-btn delete-btn"
-                    @click="openDeleteConfirm(group)"
-                    title="Delete Group"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </td>
-            </tr>
-
-            <!-- ==================== EXPANDED DETAIL ROW ==================== -->
-            <tr
-              v-if="expandedRow === group.id"
-              class="detail-expand-row"
-            >
-              <td colspan="6">
-                <div class="expand-details">
-                  <div class="detail-container">
-                    <!-- Group Info Card -->
-                    <div class="detail-card">
-                      <div class="detail-card-header">
-                        <h4>📋 Group Information</h4>
-                        <span :class="['status-badge', group.status]">
-                          {{ group.status }}
-                        </span>
-                      </div>
-
-                      <div class="info-rows">
-                        <div class="info-row">
-                          <span class="info-label">Group Code</span>
-                          <span class="info-value code-value">{{ group.code }}</span>
-                        </div>
-                        <div class="info-row">
-                          <span class="info-label">Group Name</span>
-                          <span class="info-value">{{ group.name }}</span>
-                        </div>
-                        <div class="info-row">
-                          <span class="info-label">Description</span>
-                          <span class="info-value">{{ group.description || '—' }}</span>
-                        </div>
-                        <div class="info-row">
-                          <span class="info-label">Created</span>
-                          <span class="info-value">{{ formatDateTime(group.createdAt) }}</span>
-                        </div>
-                        <div class="info-row">
-                          <span class="info-label">Last Updated</span>
-                          <span class="info-value">
-                            {{ group.updatedAt ? formatDateTime(group.updatedAt) : '—' }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Members Card -->
-                    <div class="detail-card">
-                      <div class="detail-card-header">
-                        <h4>👥 Members</h4>
-                        <span class="member-count-badge">
-                          {{ group.members?.length || 0 }}
-                        </span>
-                      </div>
-
-                      <div v-if="group.members && group.members.length > 0" class="members-list-expanded">
-                        <div
-                          v-for="member in group.members"
-                          :key="member.id"
-                          class="member-item"
-                        >
-                          <div class="member-avatar">
-                            {{ getInitials(member.fullName || member.username) }}
-                          </div>
-                          <div class="member-info">
-                            <div class="member-name">
-                              {{ member.fullName || member.username }}
-                            </div>
-                            <div class="member-meta">
-                              <span v-if="member.department" class="member-dept">
-                                🏢 {{ member.department }}
-                              </span>
-                              <span class="member-role-inline">
-                                {{ member.role || 'Member' }}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div v-else class="no-members">
-                        <span class="no-members-icon">👤</span>
-                        <span>No members yet</span>
-                        <button
-                          class="btn-secondary small"
-                          @click="openMembersModal(group)"
-                        >
-                          ➕ Add Members
-                        </button>
-                      </div>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="detail-actions">
-                      <button
-                        class="btn-edit-detail"
-                        @click="editGroup(group)"
-                      >
-                        ✏️ Edit Group
-                      </button>
-                      <button
-                        class="btn-members-detail"
-                        @click="openMembersModal(group)"
-                      >
-                        👤➕ Manage Members
-                      </button>
-                      <button
-                        class="btn-delete-detail"
-                        @click="openDeleteConfirm(group)"
-                      >
-                        🗑️ Delete Group
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- ==================== PAGINATION ==================== -->
-    <div class="pagination" v-if="totalGroups > 0">
-      <button
-        class="page-btn"
-        :disabled="currentPage === 1"
-        @click="changePage(currentPage - 1)"
-      >
-        ← Previous
-      </button>
-      <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-      <button
-        class="page-btn"
-        :disabled="currentPage === totalPages"
-        @click="changePage(currentPage + 1)"
-      >
-        Next →
-      </button>
-      <select v-model="pageSize" @change="changePageSize" class="limit-select">
-        <option :value="5">5 per page</option>
-        <option :value="10">10 per page</option>
-        <option :value="20">20 per page</option>
-        <option :value="50">50 per page</option>
-      </select>
-    </div>
-
-    <!-- ==================== CREATE/EDIT MODAL ==================== -->
-    <div
-      v-if="showGroupModal"
-      class="modal-overlay"
-      @click.self="closeGroupModal"
-    >
-      <div class="modal-container">
-        <div class="modal-header">
-          <h3>
-            {{ editingGroup ? "✏️ Edit Group" : "➕ New Group" }}
-          </h3>
-          <button class="modal-close" @click="closeGroupModal">✕</button>
+    <!-- ==================== MAIN LAYOUT ==================== -->
+    <div class="pg-layout">
+      <!-- LEFT: GROUPS LIST -->
+      <aside class="pg-sidebar">
+        <div class="pg-sidebar-header">
+          <span class="pg-sidebar-title">Groups</span>
+          <select v-model="filterStatus" class="pg-mini-select">
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
         </div>
-        <div class="modal-body">
-          <form @submit.prevent="saveGroup">
-            <!-- ✅ Group Code REMOVED (backend generates it) -->
 
-            <div class="form-group">
-              <label>Group Name *</label>
-              <input
-                v-model="groupForm.name"
-                type="text"
-                required
-                class="form-input"
-                placeholder="e.g., Purchasing Team A"
-              />
-            </div>
-
-            <div class="form-group">
-              <label>Description</label>
-              <textarea
-                v-model="groupForm.description"
-                rows="3"
-                class="textarea-field"
-                placeholder="Brief description of this group..."
-              ></textarea>
-            </div>
-
-            <div class="form-group">
-              <label>Status</label>
-              <select v-model="groupForm.status" class="form-select">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-
-            <div v-if="groupErrors.length > 0" class="form-errors">
-              <div v-for="error in groupErrors" :key="error" class="form-error">
-                ⚠️ {{ error }}
-              </div>
-            </div>
-          </form>
+        <div v-if="loading" class="pg-sidebar-loading">
+          <div class="pg-spinner"></div>
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeGroupModal">Cancel</button>
-          <button
-            class="btn-primary"
-            @click="saveGroup"
-            :disabled="saving"
-          >
-            {{ saving ? "Saving..." : editingGroup ? "Update" : "Create" }}
+
+        <div v-else-if="filteredGroups.length === 0" class="pg-sidebar-empty">
+          <p>No groups found</p>
+          <button class="pg-btn-ghost" @click="openCreateGroupModal">
+            Create First Group
           </button>
         </div>
+
+        <ul v-else class="pg-group-list">
+          <li
+            v-for="group in filteredGroups"
+            :key="group.id"
+            class="pg-group-item"
+            :class="{
+              'is-active': selectedGroupId === group.id,
+              'is-inactive': group.status === 'inactive',
+            }"
+            @click="selectGroup(group.id)"
+          >
+            <div class="pg-group-dot" />
+            <div class="pg-group-item-body">
+              <div class="pg-group-item-name">{{ group.name }}</div>
+              <div class="pg-group-item-meta">
+                {{ group.subgroups.length }} subgroups ·
+                {{ countGroupMembers(group) }} members
+              </div>
+            </div>
+            <span :class="['pg-dot-status', group.status]" :title="group.status" />
+          </li>
+        </ul>
+      </aside>
+
+      <!-- RIGHT: DETAIL PANEL -->
+      <main class="pg-main">
+        <div v-if="!selectedGroup" class="pg-empty-main">
+          <div class="pg-empty-icon">👈</div>
+          <h3>Select a group</h3>
+          <p>Choose a group from the left to view its subgroups and members.</p>
+        </div>
+
+        <template v-else>
+          <!-- GROUP HEADER -->
+          <section class="pg-group-hero">
+            <div class="pg-hero-left">
+              <div class="pg-hero-avatar">
+                {{ getInitials(selectedGroup.name) }}
+              </div>
+              <div>
+                <div class="pg-hero-title-row">
+                  <h2 class="pg-hero-title">{{ selectedGroup.name }}</h2>
+                  <span class="pg-chip pg-chip-code">{{ selectedGroup.code }}</span>
+                  <span :class="['pg-chip', `pg-chip-${selectedGroup.status}`]">
+                    {{ selectedGroup.status }}
+                  </span>
+                </div>
+                <p class="pg-hero-desc">
+                  {{ selectedGroup.description || "No description" }}
+                </p>
+              </div>
+            </div>
+
+            <div class="pg-hero-actions">
+              <button
+                class="pg-btn-ghost"
+                title="Edit group"
+                @click="openEditGroupModal(selectedGroup)"
+              >
+                ✏️ Edit
+              </button>
+              <button
+                class="pg-btn-ghost pg-btn-danger"
+                title="Delete group"
+                @click="openDeleteGroupModal(selectedGroup)"
+              >
+                🗑️
+              </button>
+            </div>
+          </section>
+
+          <!-- STATS STRIP -->
+          <section class="pg-stats-strip">
+            <div class="pg-stat">
+              <span class="pg-stat-value">{{ selectedGroup.subgroups.length }}</span>
+              <span class="pg-stat-label">Subgroups</span>
+            </div>
+            <div class="pg-stat-divider" />
+            <div class="pg-stat">
+              <span class="pg-stat-value">{{ countGroupMembers(selectedGroup) }}</span>
+              <span class="pg-stat-label">Members</span>
+            </div>
+            <div class="pg-stat-divider" />
+            <div class="pg-stat">
+              <span class="pg-stat-value">
+                {{ selectedGroup.updatedAt ? formatDate(selectedGroup.updatedAt) : "—" }}
+              </span>
+              <span class="pg-stat-label">Last Updated</span>
+            </div>
+          </section>
+
+          <!-- SUBGROUPS SECTION -->
+          <section class="pg-section">
+            <div class="pg-section-header">
+              <h3 class="pg-section-title">
+                Subgroups
+                <span class="pg-count-pill">{{ selectedGroup.subgroups.length }}</span>
+              </h3>
+              <button
+                class="pg-btn-primary pg-btn-sm"
+                @click="openCreateSubgroupModal(selectedGroup)"
+              >
+                ➕ Add Subgroup
+              </button>
+            </div>
+
+            <div v-if="selectedGroup.subgroups.length === 0" class="pg-card-empty">
+              <span class="pg-card-empty-icon">📂</span>
+              <p>No subgroups yet</p>
+              <button class="pg-btn-ghost" @click="openCreateSubgroupModal(selectedGroup)">
+                Create First Subgroup
+              </button>
+            </div>
+
+            <div v-else class="pg-subgroup-grid">
+              <article
+                v-for="subgroup in selectedGroup.subgroups"
+                :key="subgroup.id"
+                class="pg-subgroup-card"
+                :class="{
+                  'is-selected': selectedSubgroupId === subgroup.id,
+                  'is-inactive': subgroup.status === 'inactive',
+                }"
+                @click="selectSubgroup(subgroup.id)"
+              >
+                <header class="pg-subgroup-head">
+                  <div class="pg-subgroup-avatar">{{ getInitials(subgroup.name) }}</div>
+                  <div class="pg-subgroup-head-body">
+                    <h4 class="pg-subgroup-name">{{ subgroup.name }}</h4>
+                    <div class="pg-subgroup-badges">
+                      <span class="pg-chip pg-chip-code pg-chip-xs">{{ subgroup.code }}</span>
+                      <span :class="['pg-chip', `pg-chip-${subgroup.status}`, 'pg-chip-xs']">
+                        {{ subgroup.status }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="pg-subgroup-menu" @click.stop>
+                    <button class="pg-icon-btn" title="Edit subgroup" @click="openEditSubgroupModal(selectedGroup, subgroup)">✏️</button>
+                    <button class="pg-icon-btn pg-icon-btn-danger" title="Delete subgroup" @click="openDeleteSubgroupModal(selectedGroup, subgroup)">🗑️</button>
+                  </div>
+                </header>
+
+                <p class="pg-subgroup-desc">{{ subgroup.description || "No description" }}</p>
+
+                <footer class="pg-subgroup-foot">
+                  <span class="pg-member-badge">👤 {{ subgroup.members.length }}</span>
+                  <span v-if="subgroup.members.length > 0" class="pg-avatars-mini">
+                    <span
+                      v-for="m in subgroup.members.slice(0, 3)"
+                      :key="m.id"
+                      class="pg-mini-avatar"
+                      :title="m.fullName || m.username"
+                    >
+                      {{ getInitials(m.fullName || m.username) }}
+                    </span>
+                    <span v-if="subgroup.members.length > 3" class="pg-mini-avatar pg-mini-avatar-more">
+                      +{{ subgroup.members.length - 3 }}
+                    </span>
+                  </span>
+                </footer>
+              </article>
+            </div>
+          </section>
+
+          <!-- MEMBERS SECTION -->
+          <section class="pg-section" v-if="selectedSubgroup">
+            <div class="pg-section-header">
+              <h3 class="pg-section-title">
+                Members of
+                <span class="pg-section-subtitle">{{ selectedSubgroup.name }}</span>
+                <span class="pg-count-pill">{{ selectedSubgroup.members.length }}</span>
+              </h3>
+              <button
+                class="pg-btn-primary pg-btn-sm"
+                :disabled="membersLoading"
+                @click="openAddMemberModal(selectedGroup, selectedSubgroup)"
+              >
+                👤➕ Add Members
+              </button>
+            </div>
+
+            <div v-if="membersLoading" class="pg-card-empty">
+              <div class="pg-spinner" />
+            </div>
+
+            <div v-else-if="selectedSubgroup.members.length === 0" class="pg-card-empty">
+              <span class="pg-card-empty-icon">👤</span>
+              <p>No members in this subgroup</p>
+              <button class="pg-btn-ghost" @click="openAddMemberModal(selectedGroup, selectedSubgroup)">
+                Add Members
+              </button>
+            </div>
+
+            <div v-else class="pg-members-list">
+              <div
+                v-for="member in selectedSubgroup.members"
+                :key="member.id"
+                class="pg-member-row"
+              >
+                <div class="pg-member-avatar">{{ getInitials(member.fullName || member.username) }}</div>
+                <div class="pg-member-body">
+                  <div class="pg-member-name">{{ member.fullName || member.username }}</div>
+                  <div class="pg-member-meta">
+                    <span v-if="member.email" class="pg-member-email">✉️ {{ member.email }}</span>
+                    <span v-if="member.department" class="pg-member-dept">🏢 {{ member.department }}</span>
+                  </div>
+                </div>
+                <span class="pg-member-role">{{ member.role || "Member" }}</span>
+                <button
+                  class="pg-icon-btn pg-icon-btn-danger"
+                  title="Remove"
+                  :disabled="removingMemberId === member.userId"
+                  @click="removeMember(selectedGroup, selectedSubgroup, member)"
+                >
+                  {{ removingMemberId === member.userId ? "…" : "✕" }}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section v-else-if="selectedGroup.subgroups.length > 0" class="pg-pick-prompt">
+            <span class="pg-pick-icon">👆</span>
+            <p>Select a subgroup above to view its members</p>
+          </section>
+        </template>
+      </main>
+    </div>
+
+    <!-- ==================== GROUP MODAL ==================== -->
+    <div v-if="showGroupModal" class="pg-modal-overlay" @click.self="closeGroupModal">
+      <div class="pg-modal">
+        <header class="pg-modal-head">
+          <h3>{{ editingGroup ? "✏️ Edit Group" : "➕ New Group" }}</h3>
+          <button class="pg-modal-close" @click="closeGroupModal">✕</button>
+        </header>
+        <div class="pg-modal-body">
+          <div class="pg-field">
+            <label>Group Name *</label>
+            <input v-model="groupForm.name" type="text" class="pg-input" placeholder="e.g., Local Purchasing Team" />
+          </div>
+          <div class="pg-field">
+            <label>Description</label>
+            <textarea v-model="groupForm.description" rows="3" class="pg-textarea" placeholder="Brief description..." />
+          </div>
+          <div class="pg-field">
+            <label>Status</label>
+            <select v-model="groupForm.status" class="pg-select">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div v-if="formErrors.length" class="pg-errors">
+            <div v-for="err in formErrors" :key="err" class="pg-error">⚠️ {{ err }}</div>
+          </div>
+        </div>
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeGroupModal">Cancel</button>
+          <button class="pg-btn-primary" @click="saveGroup" :disabled="saving">
+            {{ saving ? "Saving..." : editingGroup ? "Update" : "Create" }}
+          </button>
+        </footer>
       </div>
     </div>
 
-    <!-- ==================== MEMBERS MODAL ==================== -->
-    <div
-      v-if="showMembersModal"
-      class="modal-overlay"
-      @click.self="closeMembersModal"
-    >
-      <div class="modal-container members-modal">
-        <div class="modal-header">
-          <h3>👥 Manage Members — {{ selectedGroup?.name }}</h3>
-          <button class="modal-close" @click="closeMembersModal">✕</button>
+    <!-- ==================== SUBGROUP MODAL ==================== -->
+    <div v-if="showSubgroupModal" class="pg-modal-overlay" @click.self="closeSubgroupModal">
+      <div class="pg-modal">
+        <header class="pg-modal-head">
+          <h3>
+            {{ editingSubgroup ? "✏️ Edit Subgroup" : "➕ New Subgroup" }}
+            <span class="pg-modal-subtitle">in {{ parentGroup?.name }}</span>
+          </h3>
+          <button class="pg-modal-close" @click="closeSubgroupModal">✕</button>
+        </header>
+        <div class="pg-modal-body">
+          <div class="pg-field">
+            <label>Subgroup Name *</label>
+            <input v-model="subgroupForm.name" type="text" class="pg-input" placeholder="e.g., Chemicals Procurement" />
+          </div>
+          <div class="pg-field">
+            <label>Description</label>
+            <textarea v-model="subgroupForm.description" rows="3" class="pg-textarea" placeholder="What is this subgroup for?" />
+          </div>
+          <div class="pg-field">
+            <label>Status</label>
+            <select v-model="subgroupForm.status" class="pg-select">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div v-if="formErrors.length" class="pg-errors">
+            <div v-for="err in formErrors" :key="err" class="pg-error">⚠️ {{ err }}</div>
+          </div>
         </div>
-        <div class="modal-body">
-          <!-- ============================================================ -->
-          <!-- ADD MEMBERS (TOP) -->
-          <!-- ============================================================ -->
-          <div class="section-block">
-            <div class="section-header">
-              <h4>➕ Add Members</h4>
-              <span class="section-hint">Click a user to add them to the group</span>
-            </div>
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeSubgroupModal">Cancel</button>
+          <button class="pg-btn-primary" @click="saveSubgroup" :disabled="saving">
+            {{ saving ? "Saving..." : editingSubgroup ? "Update" : "Create" }}
+          </button>
+        </footer>
+      </div>
+    </div>
 
-            <div class="search-wrapper">
-              <span class="search-icon-small">🔍</span>
-              <input
-                type="text"
-                v-model="userSearchQuery"
-                placeholder="Search users by name or email..."
-                class="search-input"
-              />
-            </div>
+    <!-- ==================== ADD MEMBER MODAL ==================== -->
+    <div v-if="showAddMemberModal" class="pg-modal-overlay" @click.self="closeAddMemberModal">
+      <div class="pg-modal pg-modal-lg">
+        <header class="pg-modal-head">
+          <h3>
+            👤➕ Add Members
+            <span class="pg-modal-subtitle">to {{ activeSubgroup?.name }}</span>
+          </h3>
+          <button class="pg-modal-close" @click="closeAddMemberModal">✕</button>
+        </header>
+        <div class="pg-modal-body">
+          <div class="pg-search pg-search-full">
+            <span class="pg-search-icon">🔍</span>
+            <input v-model="memberSearchQuery" type="text" placeholder="Search users by name or email..." />
+          </div>
 
-            <div class="available-users-list">
-              <div v-if="filteredAvailableUsers.length === 0" class="no-users">
-                <span v-if="userSearchQuery">No users found</span>
-                <span v-else>All users already added</span>
+          <div v-if="usersLoading" class="pg-card-empty pg-card-empty-sm">
+            <div class="pg-spinner" />
+          </div>
+
+          <div v-else class="pg-users-list">
+            <div v-if="filteredAvailableUsers.length === 0" class="pg-card-empty pg-card-empty-sm">
+              <span v-if="memberSearchQuery">No users found</span>
+              <span v-else>All users are already assigned to a subgroup in this group</span>
+            </div>
+            <div v-for="user in filteredAvailableUsers" :key="user.userId" class="pg-user-row">
+              <div class="pg-member-avatar pg-member-avatar-sm">
+                {{ getInitials(user.fullName || user.username) }}
               </div>
-              <div
-                v-for="user in filteredAvailableUsers"
-                :key="user.userId"
-                class="user-row"
+              <div class="pg-member-body">
+                <div class="pg-member-name">{{ user.fullName || user.username }}</div>
+                <div class="pg-member-meta">
+                  <span v-if="user.department" class="pg-member-dept">🏢 {{ user.department }}</span>
+                  <span class="pg-member-role">{{ user.role || "Member" }}</span>
+                </div>
+              </div>
+              <button
+                class="pg-btn-primary pg-btn-xs"
+                :disabled="addingMemberId === user.userId"
+                @click="addMemberToSubgroup(user)"
               >
-                <div class="user-info">
-                  <div class="member-avatar small">
-                    {{ getInitials(user.fullName || user.username) }}
-                  </div>
-                  <div>
-                    <div class="member-name">{{ user.fullName || user.username }}</div>
-                    <div class="member-meta">
-                      <span v-if="user.department" class="member-dept">
-                        🏢 {{ user.department }}
-                      </span>
-                      <span class="member-role-inline">
-                        {{ user.role || 'Member' }}
-                      </span>
+                {{ addingMemberId === user.userId ? "…" : "➕ Add" }}
+              </button>
+            </div>
+          </div>
+
+          <p class="pg-hint">
+            💡 A member can only belong to <b>one subgroup</b> inside this group.
+            Users already assigned to another subgroup are hidden from this list.
+          </p>
+        </div>
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeAddMemberModal">Close</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ==================== SEQUENCE MODAL (TOP-LEVEL) ==================== -->
+    <div
+      v-if="showSequenceModal"
+      class="pg-modal-overlay"
+      @click.self="closeSequenceModal"
+    >
+      <div class="pg-modal pg-modal-xl">
+        <header class="pg-modal-head">
+          <h3>
+            🔀 Approval Sequence
+            <span class="pg-modal-subtitle">Purchase Requests</span>
+          </h3>
+          <button class="pg-modal-close" @click="closeSequenceModal">✕</button>
+        </header>
+
+        <div class="pg-modal-body pg-seq-body">
+          <p class="pg-seq-intro">
+            Add whole <b>groups</b> to each stage. A group can belong to
+            <b>only one stage</b>. Every subgroup in every group of a stage
+            sees the request at once. The next stage unlocks only after all
+            groups in the current stage approve.
+          </p>
+
+          <div v-if="sequenceLoading" class="pg-card-empty">
+            <div class="pg-spinner" />
+          </div>
+
+          <div v-else-if="sequenceStages.length === 0" class="pg-card-empty">
+            <span class="pg-card-empty-icon">🔀</span>
+            <p>No stages yet</p>
+            <button class="pg-btn-ghost" @click="addStageToSequence">
+              Create First Stage
+            </button>
+          </div>
+
+          <div v-else class="pg-seq-stages">
+            <div
+              v-for="(stage, idx) in sequenceStages"
+              :key="stage.id"
+              class="pg-seq-stage-block"
+            >
+              <div v-if="idx > 0" class="pg-seq-connector">
+                <div class="pg-seq-connector-line" />
+                <div class="pg-seq-connector-text">
+                  ▼ starts only after ALL groups in the previous stage approve
+                </div>
+              </div>
+
+              <div class="pg-seq-stage-card">
+                <header class="pg-seq-stage-head">
+                  <div class="pg-seq-stage-head-left">
+                    <div class="pg-seq-stage-number">Stage {{ idx + 1 }}</div>
+                    <div class="pg-seq-stage-info">
+                      <input
+                        v-model="stage.label"
+                        type="text"
+                        class="pg-seq-stage-label-input"
+                        placeholder="Stage name (e.g., Checkers)"
+                      />
+                      <div class="pg-seq-stage-hint">
+                        {{ stage.groups.length }} group(s) ·
+                        {{ countSequenceStageSubgroups(stage) }} subgroup(s)
+                      </div>
                     </div>
                   </div>
+                  <div class="pg-seq-stage-actions">
+                    <button class="pg-icon-btn" title="Add group" @click="openAddGroupPicker(stage)">➕</button>
+                    <button
+                      class="pg-icon-btn pg-icon-btn-danger"
+                      title="Remove stage"
+                      @click="removeStageFromSequence(stage)"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </header>
+
+                <div v-if="stage.groups.length === 0" class="pg-seq-stage-empty">
+                  <span>No groups in this stage</span>
+                  <button class="pg-btn-ghost pg-btn-xs" @click="openAddGroupPicker(stage)">
+                    ➕ Add group
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  class="btn-add-member"
-                  @click="addMember(user)"
-                >
-                  ➕ Add
-                </button>
+
+                <div v-else class="pg-seq-stage-groups">
+                  <div v-for="g in stage.groups" :key="g.id" class="pg-seq-stage-group">
+                    <div class="pg-subgroup-avatar">{{ getInitials(g.name) }}</div>
+                    <div class="pg-seq-stage-group-body">
+                      <div class="pg-seq-stage-group-name">{{ g.name }}</div>
+                      <div class="pg-seq-stage-group-meta">
+                        {{ g.subgroupCount }} subgroup(s) · {{ g.memberCount }} member(s)
+                      </div>
+                      <div v-if="g.subgroupNames.length" class="pg-seq-mini-subs">
+                        <span
+                          v-for="(sn, i) in g.subgroupNames.slice(0, 4)"
+                          :key="i"
+                          class="pg-seq-mini-chip"
+                        >
+                          {{ sn }}
+                        </span>
+                        <span v-if="g.subgroupNames.length > 4" class="pg-seq-mini-chip pg-seq-mini-more">
+                          +{{ g.subgroupNames.length - 4 }}
+                        </span>
+                      </div>
+                    </div>
+                    <button class="pg-seq-group-remove" title="Remove" @click="removeGroupFromSequence(stage, g)">✕</button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- ============================================================ -->
-          <!-- CURRENT MEMBERS (BOTTOM) -->
-          <!-- ============================================================ -->
-          <div class="section-block">
-            <div class="section-header">
-              <h4>👥 Current Members ({{ selectedGroupMembers.length }})</h4>
-              <span class="section-hint">These users are already in the group</span>
-            </div>
-
-            <div v-if="selectedGroupMembers.length > 0" class="members-list">
-              <div
-                v-for="member in selectedGroupMembers"
-                :key="member.id"
-                class="member-row"
-              >
-                <div class="member-avatar">
-                  {{ getInitials(member.fullName || member.username) }}
-                </div>
-                <div class="member-info">
-                  <div class="member-name">
-                    {{ member.fullName || member.username }}
-                  </div>
-                  <div class="member-meta">
-                    <span v-if="member.department" class="member-dept">
-                      🏢 {{ member.department }}
-                    </span>
-                    <span class="member-role-inline">
-                      {{ member.role || 'Member' }}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  class="btn-remove-member"
-                  @click="removeMember(member)"
-                  title="Remove member"
-                >
-                  ✕ Remove
-                </button>
-              </div>
-            </div>
-            <div v-else class="no-members">
-              <span class="no-members-icon">👤</span>
-              <span>No members yet. Add some above.</span>
-            </div>
+            <button class="pg-seq-add-stage" @click="addStageToSequence">
+              ➕ Add Stage
+            </button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeMembersModal">Close</button>
-          <button class="btn-primary" @click="saveMembers">
-            💾 Save Changes
+
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeSequenceModal">Cancel</button>
+          <button class="pg-btn-primary" @click="saveSequence" :disabled="saving">
+            {{ saving ? "Saving..." : "💾 Save Sequence" }}
           </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ==================== ADD GROUP PICKER (nested) ==================== -->
+    <div
+      v-if="showAddGroupPicker"
+      class="pg-modal-overlay pg-modal-overlay-high"
+      @click.self="closeAddGroupPicker"
+    >
+      <div class="pg-modal pg-modal-lg">
+        <header class="pg-modal-head">
+          <h3>
+            👥 Add Groups to Stage {{ activeSequenceStageIndex + 1 }}
+            <span v-if="activeSequenceStage?.label" class="pg-modal-subtitle">
+              · {{ activeSequenceStage.label }}
+            </span>
+          </h3>
+          <button class="pg-modal-close" @click="closeAddGroupPicker">✕</button>
+        </header>
+        <div class="pg-modal-body">
+          <div class="pg-search pg-search-full">
+            <span class="pg-search-icon">🔍</span>
+            <input v-model="groupPickerSearch" type="text" placeholder="Search groups..." />
+          </div>
+
+          <div v-if="filteredPickerGroups.length === 0" class="pg-card-empty pg-card-empty-sm">
+            <span v-if="groupPickerSearch">No groups found</span>
+            <span v-else>
+              Every eligible group is already assigned to a stage
+            </span>
+          </div>
+
+          <div v-else class="pg-users-list">
+            <div v-for="g in filteredPickerGroups" :key="g.id" class="pg-user-row">
+              <div class="pg-subgroup-avatar">{{ getInitials(g.name) }}</div>
+              <div class="pg-member-body">
+                <div class="pg-member-name">{{ g.name }}</div>
+                <div class="pg-member-meta">
+                  <span class="pg-member-dept">{{ g.subgroupCount }} subgroup(s)</span>
+                  <span class="pg-member-role">{{ g.memberCount }} member(s)</span>
+                </div>
+              </div>
+              <button class="pg-btn-primary pg-btn-xs" @click="addGroupToSequenceStage(g)">➕ Add</button>
+            </div>
+          </div>
+
+          <p class="pg-hint">
+            💡 A group can appear in <b>only one stage</b>. Groups already
+            assigned to another stage are hidden from this list.
+          </p>
         </div>
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeAddGroupPicker">Close</button>
+        </footer>
       </div>
     </div>
 
     <!-- ==================== DELETE CONFIRM MODAL ==================== -->
-    <div
-      v-if="showDeleteModal"
-      class="modal-overlay"
-      @click.self="closeDeleteModal"
-    >
-      <div class="modal-container">
-        <div class="modal-header">
+    <div v-if="showDeleteModal" class="pg-modal-overlay" @click.self="closeDeleteModal">
+      <div class="pg-modal pg-modal-sm">
+        <header class="pg-modal-head">
           <h3>⚠️ Confirm Delete</h3>
-          <button class="modal-close" @click="closeDeleteModal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="confirmation-icon">🗑️</div>
-          <p class="confirmation-title">
-            Are you sure you want to delete this group?
+          <button class="pg-modal-close" @click="closeDeleteModal">✕</button>
+        </header>
+        <div class="pg-modal-body pg-confirm-body">
+          <div class="pg-confirm-icon">🗑️</div>
+          <p class="pg-confirm-title">
+            Delete {{ deleteTarget?.kind }} "<b>{{ deleteTarget?.name }}</b>"?
           </p>
-          <div class="confirmation-details">
-            <div class="detail-row">
-              <span class="detail-label">Group Code:</span>
-              <span class="detail-value">{{ deleteTarget?.code }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Group Name:</span>
-              <span class="detail-value">{{ deleteTarget?.name }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Members:</span>
-              <span class="detail-value">{{ deleteTarget?.members?.length || 0 }}</span>
-            </div>
-          </div>
-          <p class="warning-text">
-            ⚠️ This action cannot be undone.
-          </p>
+          <p v-if="deleteTarget?.extra" class="pg-confirm-detail">{{ deleteTarget.extra }}</p>
+          <p class="pg-confirm-warn">⚠️ This action cannot be undone.</p>
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeDeleteModal">Cancel</button>
-          <button class="btn-danger" @click="confirmDelete">
-            Delete Group
+        <footer class="pg-modal-foot">
+          <button class="pg-btn-ghost" @click="closeDeleteModal">Cancel</button>
+          <button class="pg-btn-danger" :disabled="saving" @click="confirmDelete">
+            {{ saving ? "Deleting..." : "Delete" }}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
 
     <!-- ==================== TOAST ==================== -->
-    <div v-if="showToast" class="toast" :class="toastType">
-      <span>{{ toastMessage }}</span>
-    </div>
+    <transition name="pg-toast">
+      <div v-if="showToast" class="pg-toast" :class="`pg-toast-${toastType}`">
+        {{ toastMessage }}
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import purchasingGroupService, {
-  PurchasingGroup,
-  PurchasingGroupMember,
-  AvailableUser,
+  type PurchasingGroup,
+  type PurchasingSubgroup,
+  type PurchasingSubgroupMember,
+  type AvailableUser,
+  type SequenceGroup,
+  type SequenceStage,
 } from "@/stores/purchasingGroupService";
 
 // ================================================================
-// TYPES  (kept for compatibility with the template)
+// TYPES
 // ================================================================
-type GroupMember = PurchasingGroupMember;
-type User = AvailableUser;
+
+type Group = PurchasingGroup;
+type Subgroup = PurchasingSubgroup;
+type Member = PurchasingSubgroupMember;
 
 // ================================================================
 // STATE
 // ================================================================
 
 const loading = ref(false);
+const membersLoading = ref(false);
+const usersLoading = ref(false);
+const saving = ref(false);
+const sequenceLoading = ref(false);
+
+const groups = ref<Group[]>([]);
+const allUsers = ref<AvailableUser[]>([]);
+
 const searchQuery = ref("");
 const filterStatus = ref<"all" | "active" | "inactive">("all");
-const currentPage = ref(1);
-const pageSize = ref(10);
-const totalGroups = ref(0);
-const expandedRow = ref<number | null>(null);
 
-// Group Modal
+const selectedGroupId = ref<number | null>(null);
+const selectedSubgroupId = ref<number | null>(null);
+
+// Modals
 const showGroupModal = ref(false);
-const editingGroup = ref<PurchasingGroup | null>(null);
-const saving = ref(false);
-const groupErrors = ref<string[]>([]);
+const showSubgroupModal = ref(false);
+const showAddMemberModal = ref(false);
+const showDeleteModal = ref(false);
+const showSequenceModal = ref(false);
+const showAddGroupPicker = ref(false);
+
+const editingGroup = ref<Group | null>(null);
+const editingSubgroup = ref<Subgroup | null>(null);
+const parentGroup = ref<Group | null>(null);
+const activeSubgroup = ref<Subgroup | null>(null);
+
+// Sequence modal state
+const sequenceStages = ref<SequenceStage[]>([]);
+const activeSequenceStage = ref<SequenceStage | null>(null);
+const activeSequenceStageIndex = ref(0);
+const groupPickerSearch = ref("");
+
+const formErrors = ref<string[]>([]);
 
 const groupForm = ref({
   name: "",
@@ -553,90 +701,188 @@ const groupForm = ref({
   status: "active" as "active" | "inactive",
 });
 
-// Members Modal
-const showMembersModal = ref(false);
-const selectedGroup = ref<PurchasingGroup | null>(null);
-const selectedGroupMembers = ref<GroupMember[]>([]);
-const userSearchQuery = ref("");
-const allUsers = ref<User[]>([]);
+const subgroupForm = ref({
+  name: "",
+  description: "",
+  status: "active" as "active" | "inactive",
+});
 
-// Delete Modal
-const showDeleteModal = ref(false);
-const deleteTarget = ref<PurchasingGroup | null>(null);
+const memberSearchQuery = ref("");
 
-// Toast
+const addingMemberId = ref<number | null>(null);
+const removingMemberId = ref<number | null>(null);
+
+const deleteTarget = ref<{
+  kind: "group" | "subgroup";
+  id: number;
+  name: string;
+  parentId?: number;
+  extra?: string;
+} | null>(null);
+
 const showToast = ref(false);
 const toastMessage = ref("");
 const toastType = ref<"success" | "error" | "info" | "warning">("success");
 
 // ================================================================
-// SERVER STATE
-// ================================================================
-
-/** Groups for the CURRENT page (server-paginated). */
-const groups = ref<PurchasingGroup[]>([]);
-
-/** Server total + pages (used for pagination controls). */
-const serverTotal = ref(0);
-const serverTotalPages = ref(1);
-
-// ================================================================
 // COMPUTED
 // ================================================================
 
-/**
- * Because the server already applies search + status filters,
- * filteredGroups is a passthrough. Kept for template compatibility.
- */
-const filteredGroups = computed(() => groups.value);
+const totalGroups = computed(() => groups.value.length);
 
-/** Groups for the current page — the server already returns exactly the slice we need. */
-const paginatedGroups = computed(() => groups.value);
+const totalSubgroups = computed(() =>
+  groups.value.reduce((sum, g) => sum + (g.subgroups?.length || 0), 0)
+);
 
-/** Server-provided total pages (or fallback to 1). */
-const totalPages = computed(() => serverTotalPages.value);
+const totalMembers = computed(() =>
+  groups.value.reduce(
+    (sum, g) =>
+      sum +
+      (g.subgroups || []).reduce(
+        (s, sg) => s + (sg.members?.length || 0),
+        0
+      ),
+    0
+  )
+);
 
-const hasActiveFilters = computed(() => {
-  return filterStatus.value !== "all" || !!searchQuery.value;
+const totalStages = computed(() => sequenceStages.value.length);
+
+const filteredGroups = computed(() => {
+  let list = groups.value;
+
+  if (filterStatus.value !== "all") {
+    list = list.filter((g) => g.status === filterStatus.value);
+  }
+
+  const q = searchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter((g) => {
+      if (
+        g.name.toLowerCase().includes(q) ||
+        g.code.toLowerCase().includes(q)
+      )
+        return true;
+      return (g.subgroups || []).some((s) => {
+        if (
+          s.name.toLowerCase().includes(q) ||
+          s.code.toLowerCase().includes(q)
+        )
+          return true;
+        return (s.members || []).some(
+          (m) =>
+            (m.fullName || "").toLowerCase().includes(q) ||
+            (m.username || "").toLowerCase().includes(q) ||
+            (m.email || "").toLowerCase().includes(q)
+        );
+      });
+    });
+  }
+
+  return list;
+});
+
+const selectedGroup = computed(
+  () => groups.value.find((g) => g.id === selectedGroupId.value) || null
+);
+
+const selectedSubgroup = computed(() => {
+  if (!selectedGroup.value || !selectedSubgroupId.value) return null;
+  return (
+    (selectedGroup.value.subgroups || []).find(
+      (s) => s.id === selectedSubgroupId.value
+    ) || null
+  );
+});
+
+const filteredAvailableUsers = computed(() => {
+  const q = memberSearchQuery.value.trim().toLowerCase();
+  if (!q) return allUsers.value;
+
+  return allUsers.value.filter((u) => {
+    const name = (u.fullName || u.full_name || u.username || "").toLowerCase();
+    const email = (u.email || "").toLowerCase();
+    return name.includes(q) || email.includes(q);
+  });
 });
 
 /**
- * Users eligible for "Add Members" — excludes those already in
- * the group and matches the local search box.
+ * Every group id already used in ANY stage (not just the active one).
+ * A group can only belong to one stage — this set enforces that.
  */
-const filteredAvailableUsers = computed(() => {
-  const currentIds = new Set(selectedGroupMembers.value.map((m) => m.userId));
-  let available = allUsers.value.filter((u) => !currentIds.has(u.userId));
+const groupsUsedInAnyStage = computed(() => {
+  const used = new Set<number>();
+  for (const stage of sequenceStages.value) {
+    for (const g of stage.groups) {
+      used.add(g.id);
+    }
+  }
+  return used;
+});
 
-  if (userSearchQuery.value) {
-    const q = userSearchQuery.value.toLowerCase();
-    available = available.filter((u) =>
-      (u.fullName || u.full_name || u.username).toLowerCase().includes(q)
+/**
+ * Groups available to add to the current sequence stage:
+ *  - not already in ANY stage anywhere
+ */
+const filteredPickerGroups = computed(() => {
+  if (!activeSequenceStage.value) return [];
+
+  let list: SequenceGroup[] = groups.value
+    .filter((g) => !groupsUsedInAnyStage.value.has(g.id))
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      code: g.code,
+      subgroupCount: g.subgroups?.length ?? 0,
+      memberCount: countGroupMembers(g),
+      subgroupNames: (g.subgroups || []).map((s) => s.name),
+    }));
+
+  const q = groupPickerSearch.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter(
+      (g) =>
+        g.name.toLowerCase().includes(q) ||
+        g.code.toLowerCase().includes(q)
     );
   }
 
-  return available;
+  return list;
 });
 
 // ================================================================
 // HELPERS
 // ================================================================
 
-const getMemberNames = (members: GroupMember[]): string =>
-  purchasingGroupService.getMemberNames({ members } as PurchasingGroup);
-
-const getInitials = (name?: string | null): string =>
-  purchasingGroupService.getMemberInitials(
-    name ? ({ fullName: name } as GroupMember) : null
-  );
-
-const formatDateTime = (dateString?: string | null): string => {
-  if (!dateString) return "—";
-  return purchasingGroupService.formatDateTime(dateString);
+const getInitials = (name?: string): string => {
+  if (!name) return "??";
+  const trimmed = name.trim();
+  if (!trimmed) return "??";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "??";
+  const firstName = parts[0] ?? "";
+  if (parts.length === 1) return firstName.slice(0, 2).toUpperCase();
+  const first = firstName[0] ?? "";
+  const last = parts[parts.length - 1]?.[0] ?? "";
+  if (!first || !last) return firstName.slice(0, 2).toUpperCase();
+  return (first + last).toUpperCase();
 };
 
-const toggleExpand = (groupId: number): void => {
-  expandedRow.value = expandedRow.value === groupId ? null : groupId;
+const countGroupMembers = (group: Group): number =>
+  (group.subgroups || []).reduce(
+    (sum, sg) => sum + (sg.members?.length || 0),
+    0
+  );
+
+const formatDate = (iso?: string): string => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 };
 
 const showToastMessage = (
@@ -651,6 +897,177 @@ const showToastMessage = (
   }, 3000);
 };
 
+const countSequenceStageSubgroups = (stage: SequenceStage): number =>
+  stage.groups.reduce((sum, g) => sum + g.subgroupCount, 0);
+
+// ================================================================
+// SELECTION
+// ================================================================
+
+const selectGroup = (id: number): void => {
+  selectedGroupId.value = id;
+  const grp = groups.value.find((g) => g.id === id);
+  const firstSubgroup = grp?.subgroups?.[0];
+  selectedSubgroupId.value = firstSubgroup?.id ?? null;
+};
+
+const selectSubgroup = (id: number): void => {
+  selectedSubgroupId.value = id;
+};
+
+// ================================================================
+// SEQUENCE
+// ================================================================
+
+/** Load the sequence from the server */
+const loadSequence = async (): Promise<void> => {
+  sequenceLoading.value = true;
+  try {
+    const res = await purchasingGroupService.getSequence();
+    if (res.success) {
+      sequenceStages.value = res.data.items;
+    } else {
+      // Silent — sequence is optional; don't spam the user on first load
+      sequenceStages.value = [];
+    }
+  } finally {
+    sequenceLoading.value = false;
+  }
+};
+
+/** Open the sequence modal — always fresh from the server */
+const openSequenceModal = async (): Promise<void> => {
+  showSequenceModal.value = true;
+
+  await loadSequence();
+
+  // Seed a single empty stage if the server returned nothing
+  if (sequenceStages.value.length === 0) {
+    sequenceStages.value.push({
+      id: Date.now(),
+      label: "",
+      orderIndex: 1,
+      groups: [],
+    });
+  }
+};
+
+const closeSequenceModal = (): void => {
+  showSequenceModal.value = false;
+  activeSequenceStage.value = null;
+  showAddGroupPicker.value = false;
+};
+
+let stageCounter = 1000;
+
+const addStageToSequence = (): void => {
+  stageCounter += 1;
+  sequenceStages.value.push({
+    id: Date.now() + stageCounter,
+    label: "",
+    orderIndex: sequenceStages.value.length + 1,
+    groups: [],
+  });
+};
+
+const removeStageFromSequence = (stage: SequenceStage): void => {
+  if (sequenceStages.value.length <= 1) {
+    showToastMessage("At least one stage is required", "warning");
+    return;
+  }
+  sequenceStages.value = sequenceStages.value.filter((s) => s.id !== stage.id);
+
+  // Re-index orderIndex after removal
+  sequenceStages.value.forEach((s, i) => {
+    s.orderIndex = i + 1;
+  });
+};
+
+const openAddGroupPicker = (stage: SequenceStage): void => {
+  activeSequenceStage.value = stage;
+  activeSequenceStageIndex.value = sequenceStages.value.findIndex(
+    (s) => s.id === stage.id
+  );
+  groupPickerSearch.value = "";
+  showAddGroupPicker.value = true;
+};
+
+const closeAddGroupPicker = (): void => {
+  showAddGroupPicker.value = false;
+  activeSequenceStage.value = null;
+  groupPickerSearch.value = "";
+};
+
+const addGroupToSequenceStage = (g: SequenceGroup): void => {
+  if (!activeSequenceStage.value) return;
+
+  // Defensive double-check: refuse if the group is already in ANY stage
+  if (groupsUsedInAnyStage.value.has(g.id)) {
+    showToastMessage(
+      `"${g.name}" is already assigned to another stage`,
+      "warning"
+    );
+    return;
+  }
+
+  activeSequenceStage.value.groups.push({
+    id: g.id,
+    name: g.name,
+    code: g.code,
+    subgroupCount: g.subgroupCount,
+    memberCount: g.memberCount,
+    subgroupNames: [...g.subgroupNames],
+  });
+
+  showToastMessage(`"${g.name}" added to stage`, "success");
+};
+
+const removeGroupFromSequence = (
+  stage: SequenceStage,
+  g: SequenceGroup
+): void => {
+  stage.groups = stage.groups.filter((x) => x.id !== g.id);
+  showToastMessage(`"${g.name}" removed`, "info");
+};
+
+const saveSequence = async (): Promise<void> => {
+  // Final validation: no group may appear in more than one stage
+  const seen = new Map<number, number>(); // groupId → stageIndex
+  for (let i = 0; i < sequenceStages.value.length; i++) {
+    const stage = sequenceStages.value[i];
+    if (!stage) continue;
+
+    for (const g of stage.groups) {
+      if (seen.has(g.id)) {
+        showToastMessage(
+          `"${g.name}" is in both Stage ${seen.get(g.id)! + 1} and Stage ${i + 1}. A group can only be in one stage.`,
+          "error"
+        );
+        return;
+      }
+      seen.set(g.id, i);
+    }
+  }
+
+  saving.value = true;
+  try {
+    const res = await purchasingGroupService.saveSequence(sequenceStages.value);
+
+    if (!res.success) {
+      showToastMessage(res.error || "Failed to save sequence", "error");
+      return;
+    }
+
+    // Replace with canonical server response
+    sequenceStages.value = res.data.items;
+
+    showToastMessage("Sequence saved", "success");
+    closeSequenceModal();
+  } finally {
+    saving.value = false;
+  }
+};
+
 // ================================================================
 // DATA LOADING
 // ================================================================
@@ -659,127 +1076,120 @@ const loadGroups = async (): Promise<void> => {
   loading.value = true;
   try {
     const res = await purchasingGroupService.getGroups({
-      page: currentPage.value,
-      limit: pageSize.value,
-      search: searchQuery.value || undefined,
+      page: 1,
+      limit: 200,
       status: filterStatus.value,
-      sortBy: "id",
-      sortOrder: "ASC",
+      search: searchQuery.value || undefined,
     });
 
-    if (res.success) {
-      groups.value = res.data.items;
-      serverTotal.value = res.data.total;
-      totalGroups.value = res.data.total;
-      serverTotalPages.value = res.data.totalPages;
-    } else {
+    if (!res.success) {
       showToastMessage(res.error || "Failed to load groups", "error");
       groups.value = [];
-      serverTotal.value = 0;
-      totalGroups.value = 0;
-      serverTotalPages.value = 1;
+      return;
+    }
+
+    groups.value = res.data.items;
+
+    if (
+      selectedGroupId.value &&
+      groups.value.some((g) => g.id === selectedGroupId.value)
+    ) {
+      const grp = groups.value.find((g) => g.id === selectedGroupId.value);
+      if (
+        grp &&
+        (!selectedSubgroupId.value ||
+          !grp.subgroups?.some((s) => s.id === selectedSubgroupId.value))
+      ) {
+        selectedSubgroupId.value = grp.subgroups?.[0]?.id ?? null;
+      }
+    } else if (groups.value.length > 0) {
+      const firstGroup = groups.value[0];
+      if (firstGroup) {
+        selectGroup(firstGroup.id);
+      } else {
+        selectedGroupId.value = null;
+        selectedSubgroupId.value = null;
+      }
+    } else {
+      selectedGroupId.value = null;
+      selectedSubgroupId.value = null;
     }
   } finally {
     loading.value = false;
   }
 };
 
-/**
- * Load users that could be added to the currently selected group.
- */
-const loadAvailableUsers = async (
-  groupId: number,
-  search = ""
-): Promise<void> => {
-  const res = await purchasingGroupService.getAvailableUsers(groupId, search);
-  if (res.success) {
-    allUsers.value = res.data.items;
-  } else {
-    allUsers.value = [];
-    showToastMessage(res.error || "Failed to load users", "error");
+const loadAvailableUsers = async (): Promise<void> => {
+  if (!activeSubgroup.value || !parentGroup.value) return;
+
+  usersLoading.value = true;
+  try {
+    const res = await purchasingGroupService.getAvailableSubgroupUsers(
+      parentGroup.value.id,
+      activeSubgroup.value.id
+    );
+
+    if (res.success) {
+      allUsers.value = res.data.items;
+    } else {
+      allUsers.value = [];
+      showToastMessage(res.error || "Failed to load users", "error");
+    }
+  } finally {
+    usersLoading.value = false;
   }
 };
 
 // ================================================================
-// PAGINATION & FILTERS
+// WATCHERS
 // ================================================================
 
-const onSearchChange = (): void => {
-  currentPage.value = 1;
-  loadGroups();
-};
-
-const onFilterChange = (): void => {
-  currentPage.value = 1;
-  loadGroups();
-};
-
-const clearFilters = (): void => {
-  filterStatus.value = "all";
-  searchQuery.value = "";
-  currentPage.value = 1;
-  showToastMessage("Filters cleared", "info");
-  loadGroups();
-};
-
-const changePage = (page: number): void => {
-  if (page < 1 || page > totalPages.value) return;
-  currentPage.value = page;
-  loadGroups();
-};
-
-const changePageSize = (): void => {
-  currentPage.value = 1;
-  loadGroups();
-};
-
-// Debounce search input so we don't hammer the server
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
 watch(searchQuery, () => {
   if (searchTimer) clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    onSearchChange();
+    loadGroups();
   }, 350);
+});
+
+watch(filterStatus, () => {
+  loadGroups();
 });
 
 // ================================================================
 // GROUP MODAL
 // ================================================================
 
-const openCreateModal = (): void => {
+const openCreateGroupModal = (): void => {
   editingGroup.value = null;
-  groupForm.value = {
-    name: "",
-    description: "",
-    status: "active",
-  };
-  groupErrors.value = [];
+  groupForm.value = { name: "", description: "", status: "active" };
+  formErrors.value = [];
   showGroupModal.value = true;
 };
 
-const editGroup = (group: PurchasingGroup): void => {
+const openEditGroupModal = (group: Group): void => {
   editingGroup.value = group;
   groupForm.value = {
     name: group.name,
     description: group.description || "",
     status: group.status,
   };
-  groupErrors.value = [];
+  formErrors.value = [];
   showGroupModal.value = true;
 };
 
 const closeGroupModal = (): void => {
   showGroupModal.value = false;
   editingGroup.value = null;
-  groupErrors.value = [];
+  formErrors.value = [];
 };
 
 const saveGroup = async (): Promise<void> => {
-  groupErrors.value = purchasingGroupService.validateGroupForm(groupForm.value);
-  if (groupErrors.value.length > 0) return;
+  formErrors.value = purchasingGroupService.validateGroupForm(groupForm.value);
+  if (formErrors.value.length > 0) return;
 
   saving.value = true;
-
   try {
     const payload = {
       name: groupForm.value.name.trim(),
@@ -792,110 +1202,213 @@ const saveGroup = async (): Promise<void> => {
       : await purchasingGroupService.createGroup(payload);
 
     if (!res.success) {
-      groupErrors.value = [res.error || "Failed to save group"];
+      formErrors.value = [res.error || "Failed to save group"];
       return;
     }
 
     showToastMessage(
-      editingGroup.value ? "Group updated successfully!" : "Group created successfully!",
+      editingGroup.value
+        ? "Group updated successfully!"
+        : "Group created successfully!",
       "success"
     );
 
     closeGroupModal();
     await loadGroups();
-  } catch (error: any) {
-    console.error("Save error:", error);
-    groupErrors.value = [error?.message || "Failed to save group"];
+
+    if (!editingGroup.value && res.data?.id) {
+      selectGroup(res.data.id);
+    }
   } finally {
     saving.value = false;
   }
 };
 
 // ================================================================
-// MEMBERS MODAL
+// SUBGROUP MODAL
 // ================================================================
 
-const openMembersModal = async (group: PurchasingGroup): Promise<void> => {
-  selectedGroup.value = group;
-  selectedGroupMembers.value = [...(group.members || [])];
-  userSearchQuery.value = "";
-  allUsers.value = [];
-  showMembersModal.value = true;
-
-  await loadAvailableUsers(group.id);
+const openCreateSubgroupModal = (group: Group): void => {
+  parentGroup.value = group;
+  editingSubgroup.value = null;
+  subgroupForm.value = { name: "", description: "", status: "active" };
+  formErrors.value = [];
+  showSubgroupModal.value = true;
 };
 
-const closeMembersModal = (): void => {
-  showMembersModal.value = false;
-  selectedGroup.value = null;
-  selectedGroupMembers.value = [];
-  userSearchQuery.value = "";
-  allUsers.value = [];
+const openEditSubgroupModal = (group: Group, subgroup: Subgroup): void => {
+  parentGroup.value = group;
+  editingSubgroup.value = subgroup;
+  subgroupForm.value = {
+    name: subgroup.name,
+    description: subgroup.description || "",
+    status: subgroup.status,
+  };
+  formErrors.value = [];
+  showSubgroupModal.value = true;
 };
 
-const addMember = (user: User): void => {
-  const alreadyIn = selectedGroupMembers.value.some(
-    (m) => m.userId === user.userId
+const closeSubgroupModal = (): void => {
+  showSubgroupModal.value = false;
+  editingSubgroup.value = null;
+  parentGroup.value = null;
+  formErrors.value = [];
+};
+
+const saveSubgroup = async (): Promise<void> => {
+  if (!parentGroup.value) return;
+
+  formErrors.value = purchasingGroupService.validateSubgroupForm(
+    subgroupForm.value
   );
-  if (alreadyIn) return;
+  if (formErrors.value.length > 0) return;
 
-  selectedGroupMembers.value.push({
-    id: Date.now(), // temp id for v-for key
-    userId: user.userId,
-    username: user.username,
-    fullName: user.fullName || user.full_name,
-    department: user.department || undefined,
-    role: user.role || "Member",
-  });
-};
-
-const removeMember = (member: GroupMember): void => {
-  selectedGroupMembers.value = selectedGroupMembers.value.filter(
-    (m) => m.userId !== member.userId
-  );
-};
-
-const saveMembers = async (): Promise<void> => {
-  if (!selectedGroup.value) return;
-
+  saving.value = true;
   try {
-    const userIds = selectedGroupMembers.value.map((m) => m.userId);
+    const payload = {
+      name: subgroupForm.value.name.trim(),
+      description: subgroupForm.value.description.trim(),
+      status: subgroupForm.value.status,
+    };
 
-    const res = await purchasingGroupService.setMembers(
-      selectedGroup.value.id,
-      userIds
-    );
+    const res = editingSubgroup.value
+      ? await purchasingGroupService.updateSubgroup(
+          parentGroup.value.id,
+          editingSubgroup.value.id,
+          payload
+        )
+      : await purchasingGroupService.createSubgroup(
+          parentGroup.value.id,
+          payload
+        );
 
     if (!res.success) {
-      showToastMessage(res.error || "Failed to save members", "error");
+      formErrors.value = [res.error || "Failed to save subgroup"];
       return;
     }
 
-    showToastMessage("Members saved successfully!", "success");
-    closeMembersModal();
+    showToastMessage(
+      editingSubgroup.value
+        ? "Subgroup updated successfully!"
+        : "Subgroup created successfully!",
+      "success"
+    );
+
+    const groupId = parentGroup.value.id;
+    closeSubgroupModal();
     await loadGroups();
-  } catch (error: any) {
-    console.error("Save members error:", error);
-    showToastMessage("Failed to save members", "error");
+
+    selectGroup(groupId);
+    if (!editingSubgroup.value && res.data?.id) {
+      selectedSubgroupId.value = res.data.id;
+    }
+  } finally {
+    saving.value = false;
   }
 };
 
-// Re-fetch available users while the user types (debounced)
-let userSearchTimer: ReturnType<typeof setTimeout> | null = null;
-watch(userSearchQuery, (q) => {
-  if (!selectedGroup.value) return;
-  if (userSearchTimer) clearTimeout(userSearchTimer);
-  userSearchTimer = setTimeout(() => {
-    loadAvailableUsers(selectedGroup.value!.id, q);
-  }, 300);
-});
+// ================================================================
+// MEMBERS
+// ================================================================
+
+const openAddMemberModal = async (
+  group: Group,
+  subgroup: Subgroup
+): Promise<void> => {
+  parentGroup.value = group;
+  activeSubgroup.value = subgroup;
+  memberSearchQuery.value = "";
+  allUsers.value = [];
+  showAddMemberModal.value = true;
+
+  await loadAvailableUsers();
+};
+
+const closeAddMemberModal = (): void => {
+  showAddMemberModal.value = false;
+  parentGroup.value = null;
+  activeSubgroup.value = null;
+  memberSearchQuery.value = "";
+  allUsers.value = [];
+};
+
+const addMemberToSubgroup = async (user: AvailableUser): Promise<void> => {
+  if (!activeSubgroup.value || !parentGroup.value) return;
+
+  addingMemberId.value = user.userId;
+  try {
+    const res = await purchasingGroupService.addSubgroupMembers(
+      parentGroup.value.id,
+      activeSubgroup.value.id,
+      [user.userId]
+    );
+
+    if (!res.success) {
+      showToastMessage(res.error || "Failed to add member", "error");
+      return;
+    }
+
+    showToastMessage(
+      `${user.fullName || user.username} added to ${activeSubgroup.value.name}`,
+      "success"
+    );
+
+    allUsers.value = allUsers.value.filter((u) => u.userId !== user.userId);
+
+    await loadGroups();
+  } finally {
+    addingMemberId.value = null;
+  }
+};
+
+const removeMember = async (
+  group: Group,
+  subgroup: Subgroup,
+  member: Member
+): Promise<void> => {
+  removingMemberId.value = member.userId;
+  try {
+    const res = await purchasingGroupService.removeSubgroupMember(
+      group.id,
+      subgroup.id,
+      member.userId
+    );
+
+    if (!res.success) {
+      showToastMessage(res.error || "Failed to remove member", "error");
+      return;
+    }
+
+    showToastMessage(`${member.fullName || member.username} removed`, "info");
+
+    await loadGroups();
+  } finally {
+    removingMemberId.value = null;
+  }
+};
 
 // ================================================================
 // DELETE
 // ================================================================
 
-const openDeleteConfirm = (group: PurchasingGroup): void => {
-  deleteTarget.value = group;
+const openDeleteGroupModal = (group: Group): void => {
+  deleteTarget.value = {
+    kind: "group",
+    id: group.id,
+    name: group.name,
+    extra: `Contains ${group.subgroups?.length || 0} subgroup(s) and ${countGroupMembers(group)} member(s).`,
+  };
+  showDeleteModal.value = true;
+};
+
+const openDeleteSubgroupModal = (group: Group, subgroup: Subgroup): void => {
+  deleteTarget.value = {
+    kind: "subgroup",
+    id: subgroup.id,
+    name: subgroup.name,
+    parentId: group.id,
+    extra: `Contains ${subgroup.members?.length || 0} member(s).`,
+  };
   showDeleteModal.value = true;
 };
 
@@ -906,23 +1419,50 @@ const closeDeleteModal = (): void => {
 
 const confirmDelete = async (): Promise<void> => {
   if (!deleteTarget.value) return;
-
   const target = deleteTarget.value;
 
-  const res = await purchasingGroupService.deleteGroup(target.id);
-
-  if (res.success) {
-    showToastMessage(`Group "${target.code}" deleted`, "success");
-    closeDeleteModal();
-
-    // If we just emptied the current page, step back one page
-    if (groups.value.length === 1 && currentPage.value > 1) {
-      currentPage.value -= 1;
+  saving.value = true;
+  try {
+    if (target.kind === "group") {
+      const res = await purchasingGroupService.deleteGroup(target.id);
+      if (!res.success) {
+        showToastMessage(res.error || "Failed to delete group", "error");
+        return;
+      }
+      showToastMessage(`Group "${target.name}" deleted`, "success");
+    } else if (target.kind === "subgroup" && target.parentId) {
+      const res = await purchasingGroupService.deleteSubgroup(
+        target.parentId,
+        target.id
+      );
+      if (!res.success) {
+        showToastMessage(res.error || "Failed to delete subgroup", "error");
+        return;
+      }
+      showToastMessage(`Subgroup "${target.name}" deleted`, "success");
     }
 
+    closeDeleteModal();
     await loadGroups();
-  } else {
-    showToastMessage(res.error || "Failed to delete group", "error");
+
+    if (!groups.value.some((g) => g.id === selectedGroupId.value)) {
+      const firstGroup = groups.value[0];
+      if (firstGroup) {
+        selectGroup(firstGroup.id);
+      } else {
+        selectedGroupId.value = null;
+        selectedSubgroupId.value = null;
+      }
+    } else if (
+      !groups.value
+        .find((g) => g.id === selectedGroupId.value)
+        ?.subgroups?.some((s) => s.id === selectedSubgroupId.value)
+    ) {
+      const grp = groups.value.find((g) => g.id === selectedGroupId.value);
+      selectedSubgroupId.value = grp?.subgroups?.[0]?.id ?? null;
+    }
+  } finally {
+    saving.value = false;
   }
 };
 
@@ -930,748 +1470,668 @@ const confirmDelete = async (): Promise<void> => {
 // LIFECYCLE
 // ================================================================
 
-onMounted(() => {
-  loadGroups();
+onMounted(async () => {
+  await loadGroups();
+  await loadSequence();
 });
 </script>
 
 <style scoped>
 /* ================================================================ */
-/* SECTION CARD */
+/* PAGE SHELL */
 /* ================================================================ */
-.section-card {
-  background: white;
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+.pg-page {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
-.card-header {
+/* ================================================================ */
+/* TOP BAR */
+/* ================================================================ */
+.pg-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 20px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
-  gap: 12px;
 }
-
-.header-title {
+.pg-topbar-left { display: flex; align-items: center; gap: 14px; }
+.pg-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
   display: flex;
   align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
 }
-
-.header-title h2 {
-  font-size: 18px;
-  font-weight: 600;
+.pg-title {
+  font-size: 20px;
+  font-weight: 700;
   margin: 0;
-  color: #1e293b;
-  white-space: nowrap;
+  color: #0f172a;
+  letter-spacing: -0.01em;
 }
+.pg-subtitle { font-size: 12px; color: #94a3b8; margin: 2px 0 0 0; }
+.pg-topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-.total-badge {
-  background: #e2e8f0;
-  padding: 2px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  color: #475569;
-  white-space: nowrap;
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-box input {
-  padding: 8px 12px 8px 32px;
+.pg-search { position: relative; }
+.pg-search input {
+  padding: 9px 14px 9px 36px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   font-size: 13px;
-  width: 260px;
-  background: #f8fafc;
-  transition: all 0.2s;
+  width: 280px;
+  background: #fff;
+  transition: all 0.15s;
 }
-
-.search-box input:focus {
+.pg-search input:focus {
   outline: none;
-  border-color: #3b82f6;
-  background: white;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
-
-.search-icon {
+.pg-search-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
   color: #94a3b8;
+  pointer-events: none;
 }
+.pg-search-full { width: 100%; margin-bottom: 14px; }
+.pg-search-full input { width: 100%; box-sizing: border-box; }
 
-.btn-add {
-  background: #3b82f6;
+/* ================================================================ */
+/* BUTTONS */
+/* ================================================================ */
+.pg-btn-primary {
+  background: #6366f1;
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 9px 18px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
+}
+.pg-btn-primary:hover:not(:disabled) {
+  background: #4f46e5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+.pg-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pg-seq-badge {
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-weight: 700;
 }
 
-.btn-add:hover {
-  background: #2563eb;
-}
+.pg-btn-sm { padding: 7px 14px; font-size: 12px; }
+.pg-btn-xs { padding: 5px 12px; font-size: 11px; }
 
-/* ================================================================ */
-/* FILTER BAR */
-/* ================================================================ */
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.filter-select {
-  padding: 6px 12px;
+.pg-btn-ghost {
+  background: #fff;
+  color: #334155;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 10px;
   cursor: pointer;
-}
-
-.btn-clear-filters {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  color: #64748b;
-  transition: all 0.2s;
-}
-
-.btn-clear-filters:hover {
-  background: #e2e8f0;
-}
-
-/* ================================================================ */
-/* TABLE */
-/* ================================================================ */
-.table-wrapper {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  margin: 0 -4px;
-  padding: 0 4px;
-}
-
-.groups-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  min-width: 850px;
-}
-
-.groups-table th,
-.groups-table td {
-  padding: 10px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: middle;
-}
-
-.groups-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  color: #475569;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.col-expand { width: 30px; }
-.col-code { min-width: 100px; }
-.col-name { min-width: 180px; }
-.col-members { min-width: 200px; }
-.col-status { min-width: 80px; }
-.col-actions { min-width: 160px; }
-
-.text-center { text-align: center; }
-
-.code-cell {
-  font-weight: 600;
-  color: #2563eb;
-  font-family: monospace;
-  font-size: 12px;
-  background: #eff6ff;
-  padding: 3px 10px;
-  border-radius: 4px;
-  display: inline-block;
-}
-
-.name-cell {
-  font-weight: 600;
-  color: #0f172a;
   font-size: 13px;
-}
-
-.members-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.member-count {
   font-weight: 500;
-  color: #1e293b;
+  transition: all 0.15s;
 }
+.pg-btn-ghost:hover { background: #f8fafc; border-color: #cbd5e1; }
 
-.member-names {
-  font-size: 10px;
-  color: #94a3b8;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
-}
-
-/* ================================================================ */
-/* STATUS BADGE */
-/* ================================================================ */
-.status-badge {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 20px;
-  font-size: 10px;
+.pg-btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: capitalize;
-  letter-spacing: 0.3px;
 }
+.pg-btn-danger:hover:not(:disabled) { background: #dc2626; }
+.pg-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.status-badge.active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-badge.inactive {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-/* ================================================================ */
-/* ACTION BUTTONS */
-/* ================================================================ */
-.action-buttons {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.icon-btn {
+.pg-icon-btn {
   background: transparent;
   border: none;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: all 0.15s;
   color: #64748b;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
-
-.icon-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.delete-btn:hover {
-  background: #fef2f2;
-  color: #ef4444;
-}
+.pg-icon-btn:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
+.pg-icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pg-icon-btn-danger:hover:not(:disabled) { background: #fef2f2; color: #ef4444; }
 
 /* ================================================================ */
-/* EXPAND ROW */
+/* LAYOUT */
 /* ================================================================ */
-.expand-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 11px;
-  color: #3b82f6;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.expand-btn:hover {
-  background: #e0e7ff;
-}
-
-.expanded-row {
-  background: #f8fafc;
-}
-
-/* ================================================================ */
-/* EXPAND DETAILS - 2-COLUMN GRID */
-/* ================================================================ */
-.detail-expand-row td {
-  padding: 0 !important;
-}
-
-.expand-details {
-  padding: 20px;
-  background: #f8fafc;
-  border-radius: 12px;
-  margin: 8px 0;
-  border: 1px solid #e2e8f0;
-}
-
-.detail-container {
+.pg-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;   /* ✅ SIDE BY SIDE */
-  gap: 14px;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  align-items: start;
 }
 
-/* Detail Card */
-.detail-card {
-  background: white;
-  border-radius: 10px;
-  padding: 16px 18px;
+/* ================================================================ */
+/* SIDEBAR */
+/* ================================================================ */
+.pg-sidebar {
+  background: #fff;
   border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
 }
-
-.detail-card-header {
+.pg-sidebar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  padding: 14px 16px;
   border-bottom: 1px solid #f1f5f9;
-  flex-shrink: 0;
+  background: #fafbfc;
 }
-
-.detail-card-header h4 {
-  margin: 0;
+.pg-sidebar-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+}
+.pg-mini-select {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 11px;
+  background: white;
+  cursor: pointer;
+}
+.pg-sidebar-loading,
+.pg-sidebar-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #94a3b8;
   font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
+}
+.pg-group-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+.pg-group-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
 }
+.pg-group-item:hover { background: #f8fafc; }
+.pg-group-item.is-active {
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  box-shadow: inset 0 0 0 1px #c7d2fe;
+}
+.pg-group-item.is-inactive { opacity: 0.55; }
+.pg-group-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+.pg-group-item.is-active .pg-group-dot { background: #6366f1; }
+.pg-group-item-body { flex: 1; min-width: 0; }
+.pg-group-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-group-item-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.pg-dot-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pg-dot-status.active {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+.pg-dot-status.inactive { background: #cbd5e1; }
 
-.member-count-badge {
-  background: #dbeafe;
-  color: #1e40af;
+/* ================================================================ */
+/* MAIN */
+/* ================================================================ */
+.pg-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.pg-empty-main {
+  background: #fff;
+  border: 2px dashed #e2e8f0;
+  border-radius: 16px;
+  padding: 80px 40px;
+  text-align: center;
+}
+.pg-empty-icon { font-size: 56px; opacity: 0.5; display: block; margin-bottom: 12px; }
+.pg-empty-main h3 { font-size: 18px; font-weight: 600; margin: 0 0 6px 0; color: #334155; }
+.pg-empty-main p { color: #94a3b8; font-size: 13px; margin: 0; }
+
+/* ================================================================ */
+/* HERO */
+/* ================================================================ */
+.pg-group-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 24px;
+  flex-wrap: wrap;
+}
+.pg-hero-left { display: flex; align-items: flex-start; gap: 16px; flex: 1; min-width: 0; }
+.pg-hero-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+}
+.pg-hero-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.pg-hero-title { font-size: 18px; font-weight: 700; margin: 0; color: #0f172a; letter-spacing: -0.01em; }
+.pg-hero-desc { font-size: 13px; color: #64748b; margin: 0; }
+.pg-hero-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+
+/* Chips */
+.pg-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.pg-chip-xs { padding: 2px 8px; font-size: 10px; }
+.pg-chip-code {
+  font-family: "SF Mono", Menlo, monospace;
+  background: #eef2ff;
+  color: #4f46e5;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pg-chip-active { background: #dcfce7; color: #166534; }
+.pg-chip-inactive { background: #f1f5f9; color: #64748b; }
+
+/* ================================================================ */
+/* STATS STRIP */
+/* ================================================================ */
+.pg-stats-strip {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 24px;
+  flex-wrap: wrap;
+}
+.pg-stat { display: flex; flex-direction: column; gap: 2px; }
+.pg-stat-value { font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.1; }
+.pg-stat-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+.pg-stat-divider { width: 1px; height: 32px; background: #f1f5f9; }
+
+/* ================================================================ */
+/* SECTIONS */
+/* ================================================================ */
+.pg-section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+.pg-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pg-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.01em;
+}
+.pg-section-subtitle { font-weight: 500; color: #6366f1; }
+.pg-count-pill {
+  background: #eef2ff;
+  color: #4f46e5;
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 10px;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+/* ================================================================ */
+/* SUBGROUP GRID */
+/* ================================================================ */
+.pg-subgroup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.pg-subgroup-card {
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pg-subgroup-card:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.1);
+  transform: translateY(-1px);
+}
+.pg-subgroup-card.is-selected {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+.pg-subgroup-card.is-inactive { opacity: 0.65; }
+.pg-subgroup-head { display: flex; align-items: flex-start; gap: 10px; }
+.pg-subgroup-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.pg-subgroup-head-body { flex: 1; min-width: 0; }
+.pg-subgroup-name {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 4px 0;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-subgroup-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.pg-subgroup-menu { display: flex; gap: 2px; flex-shrink: 0; }
+.pg-subgroup-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pg-subgroup-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  margin-top: auto;
+}
+.pg-member-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 3px 10px;
   border-radius: 12px;
 }
-
-/* Info Rows */
-.info-rows {
+.pg-avatars-mini { display: flex; align-items: center; }
+.pg-mini-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 9px;
+  border: 2px solid #fff;
+  margin-left: -6px;
 }
+.pg-mini-avatar:first-child { margin-left: 0; }
+.pg-mini-avatar-more { background: #e2e8f0; color: #475569; }
 
-.info-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px dashed #f1f5f9;
-}
-
-.info-row:last-child {
-  border-bottom: none;
-}
-
-.info-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  min-width: 90px;
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
-.info-value {
-  font-size: 13px;
-  color: #1e293b;
-  font-weight: 500;
-  flex: 1;
-  word-break: break-word;
-}
-
-.info-value.code-value {
-  font-family: monospace;
-  color: #2563eb;
-  background: #eff6ff;
-  padding: 2px 10px;
-  border-radius: 4px;
-  display: inline-block;
-  width: fit-content;
-}
-
-/* Members List in Expanded View */
-.members-list-expanded {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow-y: auto;
-  max-height: 300px;
-}
-
-.member-item {
+/* ================================================================ */
+/* MEMBERS LIST */
+/* ================================================================ */
+.pg-members-list { display: flex; flex-direction: column; gap: 6px; }
+.pg-member-row,
+.pg-user-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s;
+  background: #fff;
+  border: 1px solid #f1f5f9;
+  border-radius: 10px;
+  transition: all 0.15s;
 }
-
-.member-item:hover {
-  border-color: #3b82f6;
-  background: #f0f9ff;
-}
-
-.member-avatar {
-  width: 36px;
-  height: 36px;
+.pg-member-row:hover,
+.pg-user-row:hover { border-color: #e2e8f0; background: #fafbfc; }
+.pg-member-avatar {
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 12px;
   flex-shrink: 0;
 }
-
-.member-avatar.small {
-  width: 32px;
-  height: 32px;
-  font-size: 11px;
-}
-
-.member-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.member-name {
+.pg-member-avatar-sm { width: 32px; height: 32px; font-size: 11px; }
+.pg-member-body { flex: 1; min-width: 0; }
+.pg-member-name {
   font-size: 13px;
   font-weight: 600;
-  color: #1e293b;
-  white-space: nowrap;
+  color: #0f172a;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.member-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 3px;
-}
-
-.member-dept {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
   white-space: nowrap;
 }
-
-.member-role-inline {
+.pg-member-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.pg-member-email,
+.pg-member-dept { font-size: 11px; color: #94a3b8; }
+.pg-member-role {
   font-size: 10px;
-  font-weight: 600;
-  color: #3b82f6;
-  background: #dbeafe;
-  padding: 2px 10px;
+  font-weight: 700;
+  color: #7c3aed;
+  background: #ede9fe;
+  padding: 3px 10px;
   border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
   white-space: nowrap;
 }
 
-.no-members {
+/* ================================================================ */
+/* EMPTY / PICK */
+/* ================================================================ */
+.pg-card-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  border: 2px dashed #e2e8f0;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.pg-card-empty-sm { padding: 24px 16px; font-size: 13px; color: #94a3b8; }
+.pg-card-empty-icon { font-size: 32px; opacity: 0.6; }
+.pg-card-empty p { margin: 0; color: #94a3b8; font-size: 13px; }
+
+.pg-pick-prompt {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 24px;
+  padding: 32px;
   color: #94a3b8;
   font-size: 13px;
+  text-align: center;
+  background: #fff;
+  border: 1px dashed #e2e8f0;
+  border-radius: 16px;
 }
+.pg-pick-icon { font-size: 28px; opacity: 0.6; }
+.pg-pick-prompt p { margin: 0; }
 
-.no-members-icon {
-  font-size: 32px;
-  opacity: 0.5;
-}
-
-.btn-secondary.small {
-  padding: 6px 14px;
-  font-size: 12px;
-}
-
-/* ================================================================ */
-/* DETAIL ACTIONS - SPANS BOTH COLUMNS */
-/* ================================================================ */
-.detail-actions {
-  grid-column: 1 / -1;   /* ✅ Span both columns */
+.pg-users-list {
+  max-height: 380px;
+  overflow-y: auto;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-top: 6px;
-  margin-top: 4px;
-}
-
-.detail-actions button {
-  padding: 9px 18px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  transition: all 0.2s;
-  font-weight: 500;
 }
-
-.btn-edit-detail {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-edit-detail:hover {
-  background: #2563eb;
-}
-
-.btn-members-detail {
-  background: #8b5cf6;
-  color: white;
-}
-
-.btn-members-detail:hover {
-  background: #7c3aed;
-}
-
-.btn-delete-detail {
-  background: #ef4444;
-  color: white;
-}
-
-.btn-delete-detail:hover {
-  background: #dc2626;
-}
-
-/* ================================================================ */
-/* EMPTY STATE */
-/* ================================================================ */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-.empty-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
-}
-
-.empty-state p {
+.pg-hint {
+  font-size: 11px;
   color: #94a3b8;
-  font-size: 16px;
-  margin: 0;
-}
-
-.btn-secondary {
-  background: #f1f5f9;
-  color: #1e293b;
-  border: 1px solid #e2e8f0;
-  padding: 8px 20px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  background: #e2e8f0;
-}
-
-/* ================================================================ */
-/* LOADING */
-/* ================================================================ */
-.loading-state {
+  font-style: italic;
+  margin-top: 14px;
   text-align: center;
-  padding: 60px 20px;
+  line-height: 1.5;
 }
 
-.spinner {
-  border: 4px solid #f1f5f9;
-  border-top: 4px solid #3b82f6;
+/* ================================================================ */
+/* SPINNER */
+/* ================================================================ */
+.pg-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f1f5f9;
+  border-top-color: #6366f1;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 16px;
+  animation: pg-spin 0.8s linear infinite;
+  margin: 0 auto;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ================================================================ */
-/* PAGINATION */
-/* ================================================================ */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-  flex-wrap: wrap;
-}
-
-.page-btn {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  padding: 6px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #1e293b;
-  transition: all 0.2s;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: #e2e8f0;
-}
-
-.page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 13px;
-  color: #475569;
-}
-
-.limit-select {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  font-size: 13px;
-  cursor: pointer;
-}
+@keyframes pg-spin { to { transform: rotate(360deg); } }
 
 /* ================================================================ */
 /* MODALS */
 /* ================================================================ */
-.modal-overlay {
+.pg-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
+  animation: pg-fadeIn 0.15s ease;
 }
+.pg-modal-overlay-high { z-index: 1100; }
+@keyframes pg-fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal-container {
-  background: white;
+.pg-modal {
+  background: #fff;
   border-radius: 16px;
-  max-width: 480px;
+  max-width: 500px;
   width: 95%;
   max-height: 90vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.3s ease;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  animation: pg-slideUp 0.2s ease;
 }
-
-.modal-container.members-modal {
-  max-width: 620px;
+.pg-modal-lg { max-width: 600px; }
+.pg-modal-xl { max-width: 860px; }
+.pg-modal-sm { max-width: 420px; }
+@keyframes pg-slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.modal-header {
+.pg-modal-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid #f1f5f9;
-  background: #fafbfc;
-  flex-shrink: 0;
 }
-
-.modal-header h3 {
-  font-size: 17px;
-  font-weight: 600;
-  margin: 0;
-  color: #0f172a;
-}
-
-.modal-close {
+.pg-modal-head h3 { font-size: 16px; font-weight: 700; margin: 0; color: #0f172a; }
+.pg-modal-subtitle { font-size: 13px; font-weight: 400; color: #64748b; margin-left: 6px; }
+.pg-modal-close {
   background: transparent;
   border: none;
   font-size: 20px;
@@ -1679,497 +2139,280 @@ onMounted(() => {
   color: #94a3b8;
   padding: 4px 8px;
   border-radius: 6px;
-  transition: all 0.2s;
   line-height: 1;
 }
-
-.modal-close:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.modal-body {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-footer {
+.pg-modal-close:hover { background: #f1f5f9; color: #0f172a; }
+.pg-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.pg-modal-foot {
   padding: 14px 24px;
   border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  background: #fafbfc;
+}
+
+/* ================================================================ */
+/* SEQUENCE MODAL BODY */
+/* ================================================================ */
+.pg-seq-body { padding: 20px 24px; }
+.pg-seq-intro {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 20px 0;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.pg-seq-intro b { color: #4f46e5; }
+.pg-seq-stages { display: flex; flex-direction: column; gap: 4px; }
+.pg-seq-stage-block { display: flex; flex-direction: column; }
+.pg-seq-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+}
+.pg-seq-connector-line { width: 2px; height: 12px; background: #e2e8f0; margin-bottom: 6px; }
+.pg-seq-connector-text {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #94a3b8;
+  background: #fafbff;
+  padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+}
+.pg-seq-stage-card {
+  background: #fafbff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.pg-seq-stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.pg-seq-stage-head-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.pg-seq-stage-number {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
   flex-shrink: 0;
+}
+.pg-seq-stage-info { flex: 1; min-width: 0; }
+.pg-seq-stage-label-input {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  padding: 2px 4px;
+  border-radius: 6px;
+  outline: none;
+  width: 100%;
+  max-width: 260px;
+}
+.pg-seq-stage-label-input:focus {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.pg-seq-stage-label-input::placeholder { color: #94a3b8; font-weight: 500; }
+.pg-seq-stage-hint { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.pg-seq-stage-actions { display: flex; gap: 2px; flex-shrink: 0; }
+
+.pg-seq-stage-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 2px dashed #e2e8f0;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  background: #fff;
+}
+.pg-seq-stage-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.pg-seq-stage-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 0.15s;
+}
+.pg-seq-stage-group:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
+}
+.pg-seq-stage-group-body { flex: 1; min-width: 0; }
+.pg-seq-stage-group-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-seq-stage-group-meta { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+.pg-seq-mini-subs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.pg-seq-mini-chip {
+  font-size: 9px;
+  background: #eef2ff;
+  color: #4f46e5;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.pg-seq-mini-more { background: #e2e8f0; color: #475569; }
+.pg-seq-group-remove {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.pg-seq-group-remove:hover { background: #fef2f2; color: #ef4444; }
+
+.pg-seq-add-stage {
+  margin-top: 16px;
+  padding: 12px;
+  background: transparent;
+  border: 2px dashed #cbd5e1;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.15s;
+}
+.pg-seq-add-stage:hover {
+  border-color: #6366f1;
+  color: #4f46e5;
+  background: #f5f3ff;
 }
 
 /* ================================================================ */
 /* FORMS */
 /* ================================================================ */
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 14px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.form-input,
-.form-select,
-.textarea-field {
-  padding: 8px 12px;
+.pg-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.pg-field label { font-size: 12px; font-weight: 600; color: #334155; }
+.pg-input,
+.pg-select,
+.pg-textarea {
+  padding: 9px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
-  transition: all 0.2s;
-  background: white;
   font-family: inherit;
+  background: #fff;
   width: 100%;
   box-sizing: border-box;
+  transition: all 0.15s;
 }
-
-.form-input:focus,
-.form-select:focus,
-.textarea-field:focus {
+.pg-input:focus,
+.pg-select:focus,
+.pg-textarea:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
-
-.textarea-field {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.hint {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.form-errors {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-}
-
-.form-error {
+.pg-textarea { resize: vertical; min-height: 70px; }
+.pg-errors { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.pg-error {
   background: #fee2e2;
   color: #991b1b;
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
   font-size: 12px;
-  border: 1px solid #fecaca;
 }
 
 /* ================================================================ */
-/* BUTTONS */
+/* CONFIRM BODY */
 /* ================================================================ */
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 24px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
+.pg-confirm-body { text-align: center; }
+.pg-confirm-icon { font-size: 44px; margin-bottom: 10px; }
+.pg-confirm-title { font-size: 15px; font-weight: 500; margin: 0 0 10px 0; color: #0f172a; line-height: 1.5; }
+.pg-confirm-detail { font-size: 12px; color: #64748b; margin: 0 0 12px 0; }
+.pg-confirm-warn {
+  color: #dc2626;
+  font-size: 12px;
   font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 8px 24px;
+  background: #fef2f2;
+  padding: 8px 12px;
   border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn-danger:hover {
-  background: #dc2626;
-}
-
-/* ================================================================ */
-/* MEMBERS MODAL CONTENT */
-/* ================================================================ */
-.section-block {
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.section-block:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.section-header h4 {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
   margin: 0;
-}
-
-.section-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-.members-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.member-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.btn-remove-member {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 500;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-remove-member:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-}
-
-.search-wrapper {
-  position: relative;
-  margin-bottom: 10px;
-}
-
-.search-icon-small {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 12px 8px 32px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s;
-  box-sizing: border-box;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.available-users-list {
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.available-users-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.available-users-list::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 3px;
-}
-
-.available-users-list::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.user-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 12px;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.2s;
-}
-
-.user-row:hover {
-  border-color: #3b82f6;
-  background: #f0f9ff;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-
-.btn-add-member {
-  background: #22c55e;
-  color: white;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-add-member:hover {
-  background: #16a34a;
-}
-
-.no-users {
-  text-align: center;
-  padding: 20px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-/* ================================================================ */
-/* CONFIRMATION */
-/* ================================================================ */
-.confirmation-icon {
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.confirmation-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-.confirmation-details {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-label {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.detail-value {
-  color: #1e293b;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.warning-text {
-  color: #dc2626;
-  font-weight: 500;
-  text-align: center;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #fef2f2;
-  border-radius: 6px;
-  border: 1px solid #fecaca;
-  font-size: 13px;
 }
 
 /* ================================================================ */
 /* TOAST */
 /* ================================================================ */
-.toast {
+.pg-toast {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  padding: 12px 24px;
+  padding: 12px 20px;
   border-radius: 12px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: white;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   z-index: 9999;
-  animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
   max-width: 400px;
 }
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes fadeOut {
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-}
-
-.toast.success { background: #22c55e; }
-.toast.error { background: #ef4444; }
-.toast.info { background: #3b82f6; }
-.toast.warning { background: #f59e0b; }
+.pg-toast-success { background: #22c55e; }
+.pg-toast-error   { background: #ef4444; }
+.pg-toast-info    { background: #6366f1; }
+.pg-toast-warning { background: #f59e0b; }
+.pg-toast-enter-active,
+.pg-toast-leave-active { transition: all 0.3s ease; }
+.pg-toast-enter-from { transform: translateX(100%); opacity: 0; }
+.pg-toast-leave-to { transform: translateY(-10px); opacity: 0; }
 
 /* ================================================================ */
 /* RESPONSIVE */
 /* ================================================================ */
-@media (max-width: 768px) {
-  .card-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-title {
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  .header-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .search-box { width: 100%; }
-  .search-box input { width: 100%; }
-
-  .btn-add {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .detail-container {
-    grid-template-columns: 1fr;   /* ✅ Stack on mobile */
-  }
-
-  .info-row {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .info-label {
-    min-width: auto;
-  }
-
-  .groups-table {
-    font-size: 11px;
-    min-width: 700px;
-  }
-
-  .toast {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
-    max-width: none;
-    font-size: 13px;
-    padding: 10px 16px;
-  }
+@media (max-width: 900px) {
+  .pg-layout { grid-template-columns: 1fr; }
+  .pg-sidebar { position: static; max-height: none; }
+  .pg-topbar-right { width: 100%; flex-direction: column; align-items: stretch; }
+  .pg-search, .pg-search input { width: 100%; }
+  .pg-subgroup-grid { grid-template-columns: 1fr; }
+  .pg-hero-left { flex-direction: column; }
+  .pg-hero-actions { width: 100%; }
+  .pg-hero-actions button { flex: 1; }
+  .pg-seq-stage-groups { grid-template-columns: 1fr; }
 }
-
 @media (max-width: 480px) {
-  .groups-table {
-    min-width: 600px;
-  }
-
-  .groups-table th,
-  .groups-table td {
-    padding: 6px;
-    font-size: 10px;
-  }
-
-  .detail-actions {
-    flex-direction: column;
-  }
-
-  .detail-actions button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .member-row {
-    flex-wrap: wrap;
-  }
-
-  .user-row {
-    flex-wrap: wrap;
-  }
-
-  .member-item {
-    flex-wrap: wrap;
-  }
+  .pg-member-row, .pg-user-row { flex-wrap: wrap; }
+  .pg-member-role { font-size: 9px; }
+  .pg-stats-strip { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .pg-stat-divider { width: 100%; height: 1px; }
+  .pg-modal-foot { flex-direction: column; }
+  .pg-modal-foot button { width: 100%; }
+  .pg-seq-stage-head { flex-direction: column; align-items: stretch; }
+  .pg-seq-stage-actions { justify-content: flex-end; }
 }
 </style>
