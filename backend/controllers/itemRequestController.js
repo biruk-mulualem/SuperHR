@@ -222,24 +222,33 @@ async function snapshotTemelashRecord(requestId, transaction = null) {
 //         from Temelash-out records + active requests at a store.
 //         Matches strictly on (itemId, uomCode) — no UOM conversion.
 // ================================================================
-const ACTIVE_REQUEST_STATUSES = ['pending', 'approved'];
 
+// ================================================================
+// HELPER: Sum of Temelash-out claimed quantity for (itemId, uomCode)
+//         Active requests are NOT subtracted anymore — balance check
+//         considers only the raw balance minus Temelash loans.
+//         Matches strictly on (itemId, uomCode) — no UOM conversion.
+// ================================================================
 async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
-  const excludeRequestId = options.excludeRequestId ?? null;
+  // NOTE: `supplyingStoreId` and `excludeRequestId` are kept in the
+  // signature for backward compatibility, but they are no longer used
+  // since we only tally Temelash-out claims now.
+  void supplyingStoreId;
+  void options;
 
   if (!itemId || !uomCode) {
     return {
       temelashClaimed: 0,
-      activeRequestClaimed: 0,
+      activeRequestClaimed: 0,   // kept for response-shape compatibility (always 0)
       totalClaimed: 0,
       temelashHits: [],
-      activeRequestHits: [],
+      activeRequestHits: [],     // always empty now
     };
   }
 
   const wantedUom = String(uomCode).trim().toUpperCase();
 
-  // ---------- 1. Temelash-out claims ----------
+  // ---------- Temelash-out claims ----------
   let temelashClaimed = 0;
   const temelashHits = [];
 
@@ -275,53 +284,12 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
     }
   }
 
-  // ---------- 2. Active request claims (same supplying store, same UOM) ----------
-  const activeWhere = {
-    itemId,
-    uom_code: uomCode,
-    '$request.supplying_store_id$': supplyingStoreId,
-    '$request.status$': { [Op.in]: ACTIVE_REQUEST_STATUSES },
-  };
-  if (excludeRequestId) {
-    activeWhere['$request.id$'] = { [Op.ne]: excludeRequestId };
-  }
-
-  const activeDetails = await ItemRequestDetail.findAll({
-    where: activeWhere,
-    attributes: ['id', 'quantity', 'requestId', 'uom_code', 'is_base_uom'],
-    include: [
-      {
-        model: ItemRequest,
-        as: 'request',
-        attributes: ['id', 'requestCode', 'status'],
-        required: true,
-      },
-    ],
-  });
-
-  let activeRequestClaimed = 0;
-  const activeRequestHits = [];
-
-  for (const d of activeDetails) {
-    const qty = Number(d.quantity) || 0;
-    if (qty <= 0) continue;
-
-    activeRequestClaimed += qty;
-    activeRequestHits.push({
-      requestId: d.request?.id ?? d.requestId,
-      requestCode: d.request?.requestCode ?? null,
-      status: d.request?.status ?? null,
-      quantity: qty,
-      uom: d.uom_code,
-    });
-  }
-
   return {
     temelashClaimed,
-    activeRequestClaimed,
-    totalClaimed: temelashClaimed + activeRequestClaimed,
+    activeRequestClaimed: 0,
+    totalClaimed: temelashClaimed,
     temelashHits,
-    activeRequestHits,
+    activeRequestHits: [],
   };
 }
 
