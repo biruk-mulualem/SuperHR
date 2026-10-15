@@ -55,6 +55,18 @@
           class="btn-cancel-header"
           @click="closeColumnManager"
         >✖ Close Columns</button>
+
+        <button
+          v-if="!isEditingHeader && !isManagingSections"
+          class="btn-merge-toggle"
+          @click="openSectionManager"
+          title="Show / hide footer sections"
+        >📄 Sections ({{ visibleSectionCount }}/3)</button>
+        <button
+          v-if="!isEditingHeader && isManagingSections"
+          class="btn-cancel-header"
+          @click="closeSectionManager"
+        >✖ Close Sections</button>
       </div>
 
       <!-- Column manager panel -->
@@ -155,6 +167,53 @@
             :disabled="!canAddColumn"
             @click="addColumnFromDropdown"
           >＋ Add</button>
+        </div>
+      </div>
+
+      <!-- Section manager panel -->
+      <div v-if="isManagingSections && !isEditingHeader" class="column-manager no-print">
+        <div class="column-manager-title">Show / hide footer sections</div>
+        <div class="column-manager-list">
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.reason }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.reason"
+              @change="toggleSection('reason')"
+            />
+            <span class="column-manager-label">Reason</span>
+          </label>
+
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.comment }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.comment"
+              @change="toggleSection('comment')"
+            />
+            <span class="column-manager-label">Comment</span>
+          </label>
+
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.checkedBy }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.checkedBy"
+              @change="toggleSection('checkedBy')"
+            />
+            <span class="column-manager-label">Checked By</span>
+          </label>
+        </div>
+
+        <div class="column-manager-actions">
+          <button class="btn-merge-apply" @click="showAllSections">↺ Show all</button>
+          <button class="btn-merge-clear" @click="hideAllSections">✕ Hide all</button>
         </div>
       </div>
 
@@ -325,21 +384,17 @@
 
         <!-- ✅ Grand total row — only when a Total Price column exists -->
         <tr v-if="hasTotalPriceColumn" class="grand-total-row">
-          <!-- Leading columns (optional checkbox + No) -->
           <td
             :colspan="isMergingRemarks ? 2 : 1"
             class="grand-total-spacer-cell"
           ></td>
 
-          <!-- Walk every visible data column -->
           <template v-for="col in dataColumns" :key="`tot-${col.key}`">
-            <!-- Under Unit Price → the word TOTAL -->
             <td
               v-if="col.key === 'unitPrice'"
               class="grand-total-label-cell"
             >TOTAL</td>
 
-            <!-- Under Total Price → the sum -->
             <td
               v-else-if="col.key === 'totalPrice'"
               class="grand-total-value-cell"
@@ -347,11 +402,9 @@
               <span class="grand-total-value">{{ grandTotalFormatted }}</span>
             </td>
 
-            <!-- Every other column → grey spacer -->
             <td v-else class="grand-total-spacer-cell"></td>
           </template>
 
-          <!-- Remark column spacer -->
           <td class="grand-total-spacer-cell"></td>
         </tr>
       </tbody>
@@ -427,7 +480,8 @@
     </div>
 
     <div class="footer-sections">
-      <div class="input-row">
+      <!-- ==================== REASON ==================== -->
+      <div v-if="sectionVisibility.reason" class="input-row">
         <div class="gray-label">Reason</div>
         <div class="lines-container">
           <div class="reason-content-text">
@@ -436,7 +490,8 @@
         </div>
       </div>
 
-      <div class="input-row short-width">
+      <!-- ==================== COMMENT ==================== -->
+      <div v-if="sectionVisibility.comment" class="input-row short-width">
         <div class="gray-label">Comment</div>
         <div class="lines-container">
           <div class="write-line"></div>
@@ -444,7 +499,8 @@
         </div>
       </div>
 
-      <div class="checked-by-section">
+      <!-- ==================== CHECKED BY ==================== -->
+      <div v-if="sectionVisibility.checkedBy" class="checked-by-section">
         <div class="gray-label inline-label">Checked By</div>
         <div class="checked-by-body">
           <p><strong>Name</strong> _____________________________.</p>
@@ -513,9 +569,53 @@ const approvedByName = ref('')
 // EDITABLE DATE STATE
 // ================================================================
 const isEditingDate = ref(false)
-const dateDraft = ref('')                      // "YYYY-MM-DD" for <input type="date">
+const dateDraft = ref('')
 const dateInputRef = ref<HTMLInputElement | null>(null)
-const dateOverride = ref<string | null>(null)  // stored as "YYYY-MM-DD" or null
+const dateOverride = ref<string | null>(null)
+
+// ================================================================
+// FOOTER SECTION VISIBILITY (Reason / Comment / Checked By)
+// ================================================================
+
+interface SectionVisibility {
+  reason: boolean
+  comment: boolean
+  checkedBy: boolean
+}
+
+const isManagingSections = ref(false)
+
+const sectionVisibility = ref<SectionVisibility>({
+  reason: true,
+  comment: true,
+  checkedBy: true,
+})
+
+const visibleSectionCount = computed(() => {
+  const v = sectionVisibility.value
+  return (v.reason ? 1 : 0) + (v.comment ? 1 : 0) + (v.checkedBy ? 1 : 0)
+})
+
+const openSectionManager = () => { isManagingSections.value = true }
+const closeSectionManager = () => { isManagingSections.value = false }
+
+const toggleSection = (key: keyof SectionVisibility) => {
+  sectionVisibility.value = {
+    ...sectionVisibility.value,
+    [key]: !sectionVisibility.value[key],
+  }
+  persistExtras()
+}
+
+const showAllSections = () => {
+  sectionVisibility.value = { reason: true, comment: true, checkedBy: true }
+  persistExtras()
+}
+
+const hideAllSections = () => {
+  sectionVisibility.value = { reason: false, comment: false, checkedBy: false }
+  persistExtras()
+}
 
 // ================================================================
 // REMARK MERGE STATE
@@ -567,7 +667,6 @@ const COLUMN_OPTIONS = [
   { value: '__other__',        label: 'Other… (type a name)' },
 ]
 
-// ✅ Default column set — Unit Price and Total Price are NOT included
 const buildDefaultColumns = (): ColumnDef[] => [
   {
     key: 'item',
@@ -630,7 +729,6 @@ const hasAnyHiddenColumn = computed(() => columns.value.some((c) => !c.visible))
 const isEditableColumn = (col: ColumnDef) => !!col.editable && !col.computed
 const isComputedColumn = (col: ColumnDef) => !!col.computed
 
-// ✅ Grand total helpers
 const hasTotalPriceColumn = computed(
   () => dataColumns.value.some((c) => c.key === 'totalPrice')
 )
@@ -712,7 +810,6 @@ const showAllColumns = () => {
   persistColumnState()
 }
 
-// ✅ Reset to the default column set and clear custom cells for the current request
 const resetColumnState = () => {
   try {
     localStorage.removeItem(LS_COLUMNS_KEY)
@@ -885,7 +982,7 @@ const getComputedCellValue = (item: any, rowIndex: number, col: ColumnDef): stri
 }
 
 // ================================================================
-// DEPARTMENT — display + edit
+// DEPARTMENT
 // ================================================================
 
 const apiDepartment = computed<string>(() => getRequestingDepartment())
@@ -924,7 +1021,7 @@ const resetDepartment = () => {
 }
 
 // ================================================================
-// APPROVED BY NAME — editable
+// APPROVED BY NAME
 // ================================================================
 
 const onApprovedNameBlur = (e: FocusEvent) => {
@@ -939,7 +1036,6 @@ const onApprovedNameBlur = (e: FocusEvent) => {
 // DATE — display + edit
 // ================================================================
 
-// Convert the API's date into "YYYY-MM-DD" for the <input type="date">.
 const toInputDate = (value?: string | null): string => {
   if (!value) return ''
   const d = new Date(value)
@@ -950,8 +1046,6 @@ const toInputDate = (value?: string | null): string => {
   return `${yyyy}-${mm}-${dd}`
 }
 
-// Convert our "YYYY-MM-DD" override to the same "DD/MM/YYYY"
-// format used by the rest of this print form.
 const fromInputDate = (value: string): string => {
   if (!value) return ''
   const [y, m, d] = value.split('-')
@@ -959,14 +1053,12 @@ const fromInputDate = (value: string): string => {
   return `${d}/${m}/${y}`
 }
 
-// What the user sees: override takes priority, otherwise the API value.
 const displayDate = computed<string>(() => {
   if (dateOverride.value) return fromInputDate(dateOverride.value)
   return formatDate(requestData.value?.requestedDate)
 })
 
 const startEditingDate = async () => {
-  // Pre-fill the input with the current displayed value.
   dateDraft.value = dateOverride.value
     ? dateOverride.value
     : toInputDate(requestData.value?.requestedDate)
@@ -980,7 +1072,6 @@ const startEditingDate = async () => {
 const saveDate = () => {
   if (!isEditingDate.value) return
   const cleaned = (dateDraft.value || '').trim()
-  // Empty → clear the override (falls back to the API date).
   dateOverride.value = cleaned === '' ? null : cleaned
   isEditingDate.value = false
   persistExtras()
@@ -1020,6 +1111,8 @@ watch(currentRequestKey, () => {
   isManagingColumns.value = false
   newColumnChoice.value = ''
   newColumnCustomLabel.value = ''
+
+  isManagingSections.value = false
 
   applyExtrasForCurrentRequest()
 })
@@ -1146,8 +1239,6 @@ const unmergeGroup = (startIndex: number) => {
 // PERSISTENCE
 // ================================================================
 
-// ✅ v2 keys — old saved state is ignored, so we start fresh with the
-//    default column set (no Unit Price / Total Price).
 const LS_COLUMNS_KEY = 'itemRequest:columns:v2'
 const LS_CUSTOM_CELLS_KEY = 'itemRequest:customCells:v2'
 const LS_EXTRAS_KEY = 'itemRequest:extras:v2'
@@ -1155,7 +1246,8 @@ const LS_EXTRAS_KEY = 'itemRequest:extras:v2'
 interface ExtrasShape {
   department?: string
   approvedBy?: string
-  date?: string   // stored as "YYYY-MM-DD"
+  date?: string
+  sections?: SectionVisibility
 }
 const extrasByRequest = ref<Record<string, ExtrasShape>>({})
 
@@ -1174,6 +1266,16 @@ const persistExtras = () => {
     else delete next.approvedBy
     if (dateOverride.value) next.date = dateOverride.value
     else delete next.date
+
+    // Persist section visibility only when it's not the default (all true)
+    const v = sectionVisibility.value
+    const isDefault = v.reason && v.comment && v.checkedBy
+    if (isDefault) {
+      delete next.sections
+    } else {
+      next.sections = { ...v }
+    }
+
     extrasByRequest.value = { ...extrasByRequest.value, [reqKey]: next }
     localStorage.setItem(LS_EXTRAS_KEY, JSON.stringify(extrasByRequest.value))
   } catch { /* ignore */ }
@@ -1198,6 +1300,10 @@ const applyExtrasForCurrentRequest = () => {
   departmentDraft.value = ''
   isEditingDate.value = false
   dateDraft.value = ''
+
+  sectionVisibility.value = extras?.sections
+    ? { ...extras.sections }
+    : { reason: true, comment: true, checkedBy: true }
 }
 
 const persistColumnState = () => {
@@ -1532,6 +1638,7 @@ const printPage = (): void => {
   if (isEditingHeader.value) cancelEditingHeader()
   if (isMergingRemarks.value) isMergingRemarks.value = false
   if (isManagingColumns.value) isManagingColumns.value = false
+  if (isManagingSections.value) isManagingSections.value = false
   if (isEditingDepartment.value) saveDepartment()
   if (isEditingDate.value) saveDate()
   setTimeout(() => window.print(), 50)
@@ -1972,7 +2079,7 @@ watch(
 }
 
 /* ================================================================
-   TABLE CONFIGURATION (bigger fonts)
+   TABLE CONFIGURATION
    ================================================================ */
 .items-table {
   width: 100%;
@@ -2028,7 +2135,6 @@ watch(
   background: #e5e7eb !important;
 }
 
-/* "TOTAL" label sits under the Unit Price column */
 .grand-total-label-cell {
   background: #e5e7eb !important;
   text-align: center !important;
@@ -2166,7 +2272,6 @@ watch(
 
 .block-body { padding-top: 10px; font-size: 13px; min-height: 80px; }
 
-/* Department editable */
 .dept-body {
   padding: 10px 12px;
   display: flex;
@@ -2231,7 +2336,6 @@ watch(
   justify-content: center;
 }
 
-/* Approved By editable name */
 .workflow-body p { margin: 6px 0; }
 
 .approved-name-row {
@@ -2507,7 +2611,6 @@ watch(
     color: #000 !important;
   }
 
-  /* Date: hide editor & pencil on print */
   .date-edit-pencil { display: none !important; }
   .date-display {
     background: transparent !important;

@@ -1,467 +1,610 @@
 <!-- views/storemanagement/notifications/NotificationManagement.vue -->
 <template>
-  <div class="notification-management">
+  <div class="page">
     <!-- ==================== HEADER ==================== -->
     <header class="page-header">
-      <div class="header-left">
-        <h1>🔔 Pending Notifications</h1>
-        <span class="badge pending-badge">{{ pendingCount }} Pending</span>
+      <div class="header-main">
+        <h1>Approval Workspace</h1>
+        <p class="header-sub">
+          Track which groups have accepted — and which haven't
+        </p>
       </div>
-      <div class="header-right">
-        <button class="btn-refresh" @click="loadNotifications" :disabled="loading">
-          <span v-if="!loading">🔄 Refresh</span>
-          <span v-else>Loading...</span>
-        </button>
-      </div>
+      <button class="btn-refresh" @click="refresh" :disabled="loading">
+        <span v-if="!loading">↻ Refresh</span>
+        <span v-else>Loading…</span>
+      </button>
     </header>
 
-    <!-- ==================== FILTER BAR ==================== -->
-    <div class="filter-bar">
-      <div class="filter-group">
-        <label>Store</label>
-        <select v-model="filterStore" class="filter-select">
-          <option value="all">All Stores</option>
-          <option v-for="store in storeOptions" :key="store.id" :value="store.id">
-            {{ store.name }}
-          </option>
-        </select>
+    <!-- ==================== SUMMARY STRIP ==================== -->
+    <div class="summary-strip">
+      <div class="summary-item">
+        <span class="summary-value">{{ totalCount }}</span>
+        <span class="summary-label">Total waiting</span>
       </div>
-
-      <div class="filter-group">
-        <label>Approver</label>
-        <select v-model="filterApprover" class="filter-select">
-          <option value="all">All Approvers</option>
-          <option v-for="approver in approverOptions" :key="approver" :value="approver">
-            {{ approver }}
-          </option>
-        </select>
+      <div class="summary-divider"></div>
+      <div class="summary-item">
+        <span class="summary-value accent-purple">{{ sentNotAccepted.length }}</span>
+        <span class="summary-label">Awaiting supplying store</span>
       </div>
-
-      <div class="filter-group">
-        <label>From Date</label>
-        <input type="date" v-model="filterDateFrom" class="filter-input" />
+      <div class="summary-divider"></div>
+      <div class="summary-item">
+        <span class="summary-value accent-blue">{{ acceptedAwaitingMyApproval.length }}</span>
+        <span class="summary-label">Awaiting my approval</span>
       </div>
-
-      <div class="filter-group">
-        <label>To Date</label>
-        <input type="date" v-model="filterDateTo" class="filter-input" />
+      <div class="summary-divider"></div>
+      <div class="summary-item">
+        <span class="summary-value accent-amber">{{ oldRequests }}</span>
+        <span class="summary-label">Older than 7 days</span>
       </div>
+    </div>
 
-      <button 
-        v-if="hasActiveFilters" 
-        class="clear-filters-btn" 
-        @click="clearFilters"
+    <!-- ==================== TABS ==================== -->
+    <nav class="tabs">
+      <button
+        :class="['tab', { active: activeTab === 'sent' }]"
+        @click="activeTab = 'sent'"
       >
-        ✕ Clear
+        <span>Awaiting supplying store acceptance</span>
+        <span class="tab-count">{{ sentNotAccepted.length }}</span>
       </button>
+      <button
+        :class="['tab', { active: activeTab === 'accepted' }]"
+        @click="activeTab = 'accepted'"
+      >
+        <span>Awaiting my approval</span>
+        <span class="tab-count">{{ acceptedAwaitingMyApproval.length }}</span>
+      </button>
+    </nav>
+
+    <!-- ==================== TOOLBAR ==================== -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="field">
+          <label>Store</label>
+          <select v-model="filterStore">
+            <option value="all">All stores</option>
+            <option v-for="s in storeOptions" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Requester</label>
+          <select v-model="filterRequester">
+            <option value="all">All requesters</option>
+            <option v-for="r in requesterOptions" :key="r" :value="r">
+              {{ r }}
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label>From</label>
+          <input type="date" v-model="filterDateFrom" />
+        </div>
+        <div class="field">
+          <label>To</label>
+          <input type="date" v-model="filterDateTo" />
+        </div>
+        <button v-if="hasActiveFilters" class="btn-clear" @click="clearFilters">
+          Clear
+        </button>
+      </div>
     </div>
 
     <!-- ==================== LOADING ==================== -->
-    <div v-if="loading" class="loading-state">
+    <div v-if="loading" class="loading">
       <div class="spinner"></div>
-      <p>Loading notifications...</p>
+      <p>Loading requests…</p>
     </div>
 
-    <template v-else>
-      <!-- ==================== STATS CARDS ==================== -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon">📬</div>
-          <div>
-            <div class="stat-value">{{ totalNotifications }}</div>
-            <div class="stat-label">Total</div>
-          </div>
+    <!-- ==================== TAB 1 ==================== -->
+    <section v-show="!loading && activeTab === 'sent'" class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Awaiting Supplying Store Acceptance</h2>
+          <p>Sent to the supplying store — below you can see exactly which groups have accepted and which haven't.</p>
         </div>
-        <div class="stat-card pending">
-          <div class="stat-icon">⏳</div>
-          <div>
-            <div class="stat-value">{{ pendingCount }}</div>
-            <div class="stat-label">Pending</div>
-          </div>
-        </div>
-        <div class="stat-card info">
-          <div class="stat-icon">👥</div>
-          <div>
-            <div class="stat-value">{{ groupCount }}</div>
-            <div class="stat-label">Group Approvals</div>
-          </div>
-        </div>
-        <div class="stat-card warning">
-          <div class="stat-icon">🏛️</div>
-          <div>
-            <div class="stat-value">{{ deptCount }}</div>
-            <div class="stat-label">Department Approvals</div>
-          </div>
-        </div>
+        <span class="panel-count">{{ filteredSent.length }}</span>
+      </header>
+
+      <div v-if="filteredSent.length === 0" class="empty">
+        <div class="empty-icon">✓</div>
+        <div class="empty-text">Nothing waiting for the supplying store</div>
       </div>
 
-      <!-- ==================== NOTIFICATIONS TABLE ==================== -->
-      <div class="table-card">
-        <div class="table-header">
-          <h3>📋 Pending Approvals</h3>
-          <span class="table-count">{{ filteredNotifications.length }} pending</span>
-        </div>
+      <div class="cards">
+        <article v-for="r in paginatedSent" :key="r.id" class="card">
+          <!-- Card header -->
+          <header class="card-head">
+            <div class="card-head-left">
+              <span class="code">{{ r.code }}</span>
+              <span class="flow">
+                <span>{{ r.askingStore }}</span>
+                <span class="arrow">→</span>
+                <span>{{ r.supplyingStore }}</span>
+              </span>
+            </div>
+            <div class="card-head-right">
+              <span class="meta">Sent {{ formatDate(r.sentAt) }}</span>
+              <span class="meta">By {{ r.requestedBy }}</span>
+            </div>
+          </header>
 
-        <div class="table-wrapper">
-          <table class="notifications-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Request Code</th>
-                <th>Approver</th>
-                <th>Store</th>
-                <th>Requested By</th>
-                
-                <th>Requested Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="filteredNotifications.length === 0">
-                <td colspan="7" class="empty-state-td">
-                  <span class="empty-icon">✅</span>
-                  <p>All caught up! No pending notifications match your filters.</p>
-                </td>
-              </tr>
-              <tr 
-                v-for="(notif, index) in paginatedNotifications" 
-                :key="notif.id"
-                class="row-pending"
+          <!-- Group-by-group status -->
+          <div class="groups">
+            <div class="groups-label">Supplying store groups</div>
+            <div class="pills">
+              <span
+                v-for="g in r.groups"
+                :key="g.id"
+                :class="['pill', g.status]"
+                :title="`${g.name} — ${labelFor(g.status)}`"
               >
-                <td>{{ (currentPage - 1) * pageSize + index + 1 }}</td>
-                <td class="code-cell">{{ getRequestCode(notif) }}</td>
-                <td>
-                  <div class="approver-info">
-                    <span class="approver-name">{{ getApproverName(notif) }}</span>
-                   
-                  </div>
-                </td>
-                <td>
-                  <span class="store-name">{{ getStoreName(notif) }}</span>
-                </td>
-                <td>{{ getRequesterName(notif) }}</td>
-                
-                <td>
-                  <span class="date-text">{{ formatDate(notif.created_at) }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                <span class="pill-dot"></span>
+                <span class="pill-name">{{ g.name }}</span>
+                <span class="pill-status">{{ labelFor(g.status) }}</span>
+              </span>
+            </div>
+          </div>
 
-        <!-- ==================== PAGINATION ==================== -->
-        <div class="pagination" v-if="filteredNotifications.length > 0">
-          <button 
-            class="page-btn" 
-            :disabled="currentPage === 1" 
-            @click="currentPage--"
-          >
-            ← Previous
-          </button>
-          <span class="page-info">
-            Page {{ currentPage }} of {{ totalPages }}
-            ({{ filteredNotifications.length }} items)
-          </span>
-          <button 
-            class="page-btn" 
-            :disabled="currentPage === totalPages" 
-            @click="currentPage++"
-          >
-            Next →
-          </button>
-          <select v-model="pageSize" @change="currentPage = 1" class="limit-select">
-            <option :value="5">5 per page</option>
-            <option :value="10">10 per page</option>
-            <option :value="20">20 per page</option>
-            <option :value="50">50 per page</option>
-          </select>
-        </div>
+          <!-- Summary bar -->
+          <footer class="card-foot">
+            <div class="progress">
+              <div
+                class="progress-fill"
+                :style="{ width: progressPercent(r) + '%' }"
+              ></div>
+            </div>
+            <span class="progress-text">
+              {{ acceptedCount(r) }} of {{ r.groups.length }} accepted
+            </span>
+          </footer>
+        </article>
       </div>
-    </template>
+
+      <footer v-if="filteredSent.length > pageSize" class="panel-footer">
+        <span class="footer-info">
+          Page {{ sentPage }} of {{ sentTotalPages }}
+        </span>
+        <div class="footer-actions">
+          <button :disabled="sentPage === 1" @click="sentPage--">Previous</button>
+          <button :disabled="sentPage === sentTotalPages" @click="sentPage++">Next</button>
+        </div>
+      </footer>
+    </section>
+
+    <!-- ==================== TAB 2 ==================== -->
+    <section v-show="!loading && activeTab === 'accepted'" class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Awaiting My Approval</h2>
+          <p>Supplying store has accepted — here's who accepted, and the request now needs your final approval.</p>
+        </div>
+        <span class="panel-count">{{ filteredAccepted.length }}</span>
+      </header>
+
+      <div v-if="filteredAccepted.length === 0" class="empty">
+        <div class="empty-icon">✓</div>
+        <div class="empty-text">Nothing waiting for your approval</div>
+      </div>
+
+      <div class="cards">
+        <article v-for="r in paginatedAccepted" :key="r.id" class="card">
+          <header class="card-head">
+            <div class="card-head-left">
+              <span class="code">{{ r.code }}</span>
+              <span class="flow">
+                <span>{{ r.askingStore }}</span>
+                <span class="arrow">→</span>
+                <span>{{ r.supplyingStore }}</span>
+              </span>
+            </div>
+            <div class="card-head-right">
+              <span class="meta">Accepted {{ formatDate(r.acceptedAt) }}</span>
+              <span class="meta">By {{ r.requestedBy }}</span>
+            </div>
+          </header>
+
+          <!-- Who accepted -->
+          <div class="groups">
+            <div class="groups-label">Accepted by</div>
+            <div class="pills">
+              <span
+                v-for="g in r.acceptedBy"
+                :key="g.id"
+                class="pill accepted"
+                :title="`${g.name} — accepted at ${formatDate(g.at)}`"
+              >
+                <span class="pill-dot"></span>
+                <span class="pill-name">{{ g.name }}</span>
+                <span class="pill-status">Accepted</span>
+              </span>
+            </div>
+          </div>
+
+          <footer class="card-foot card-foot-actions">
+            <div class="items-summary">
+              {{ r.items }} item(s) to approve
+            </div>
+            <button class="btn-approve" @click="approveRequest(r)">
+              Approve Request
+            </button>
+          </footer>
+        </article>
+      </div>
+
+      <footer v-if="filteredAccepted.length > pageSize" class="panel-footer">
+        <span class="footer-info">
+          Page {{ acceptedPage }} of {{ acceptedTotalPages }}
+        </span>
+        <div class="footer-actions">
+          <button :disabled="acceptedPage === 1" @click="acceptedPage--">Previous</button>
+          <button :disabled="acceptedPage === acceptedTotalPages" @click="acceptedPage++">Next</button>
+        </div>
+      </footer>
+    </section>
 
     <!-- ==================== TOAST ==================== -->
-    <div v-if="showToast" class="toast" :class="toastType">
-      <span>{{ toastMessage }}</span>
-    </div>
+    <transition name="toast">
+      <div v-if="showToast" class="toast" :class="toastType">
+        {{ toastMessage }}
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import itemRequestService from '@/stores/itemRequestService'
 import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 // ================================================================
 // STATE
 // ================================================================
 
-const authStore = useAuthStore()
-const notifications = ref([])
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(10)
+const activeTab = ref('sent')
+const pageSize = 5
 
-// Filters
 const filterStore = ref('all')
-const filterApprover = ref('all')
+const filterRequester = ref('all')
 const filterDateFrom = ref('')
 const filterDateTo = ref('')
 
-// Toast
+const sentPage = ref(1)
+const acceptedPage = ref(1)
+
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
-// Store and Approver options (populated from data)
-const storeOptions = ref([])
-const approverOptions = ref([])
-
 // ================================================================
-// COMPUTED
+// DEMO DATA — Tab 1: awaiting supplying store acceptance
+// Each `groups` array = one entry per supplying-store group
 // ================================================================
 
-const totalNotifications = computed(() => {
-  return notifications.value.length
+const sentNotAccepted = ref([
+  {
+    id: 2001,
+    code: 'REQ-20260515-0014',
+    askingStore: 'MainStore 1 (Yeshi)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Abebe Kebede',
+    sentAt: '2026-05-15T11:40:00Z',
+    groups: [
+      { id: 1, name: 'Finance', status: 'accepted' },
+      { id: 2, name: 'Logistics', status: 'pending' },
+      { id: 3, name: 'Inventory', status: 'accepted' },
+      { id: 4, name: 'HR', status: 'pending' },
+    ],
+  },
+  {
+    id: 2002,
+    code: 'REQ-20260515-0015',
+    askingStore: 'MainStore 1 (Ground)',
+    supplyingStore: 'Other',
+    requestedBy: 'Sara Bekele',
+    sentAt: '2026-05-15T12:10:00Z',
+    groups: [
+      { id: 5, name: 'Inventory', status: 'pending' },
+      { id: 6, name: 'Finance', status: 'accepted' },
+      { id: 7, name: 'Logistics', status: 'accepted' },
+    ],
+  },
+  {
+    id: 2003,
+    code: 'REQ-20260515-0016',
+    askingStore: 'MainStore 1 (Dulenty)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Yohannes T.',
+    sentAt: '2026-05-15T13:02:00Z',
+    groups: [
+      { id: 8, name: 'Finance', status: 'pending' },
+      { id: 9, name: 'Logistics', status: 'pending' },
+      { id: 10, name: 'Inventory', status: 'pending' },
+      { id: 11, name: 'HR', status: 'pending' },
+    ],
+  },
+  {
+    id: 2004,
+    code: 'REQ-20260514-0090',
+    askingStore: 'MainStore 1 (Mekanisa)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Meron A.',
+    sentAt: '2026-05-14T18:30:00Z',
+    groups: [
+      { id: 12, name: 'Finance', status: 'pending' },
+      { id: 13, name: 'Logistics', status: 'accepted' },
+      { id: 14, name: 'HR', status: 'accepted' },
+    ],
+  },
+  {
+    id: 2005,
+    code: 'REQ-20260513-0042',
+    askingStore: 'MainStore 1 (Ground)',
+    supplyingStore: 'Other',
+    requestedBy: 'Kalkidan G.',
+    sentAt: '2026-05-13T14:47:00Z',
+    groups: [
+      { id: 15, name: 'Logistics', status: 'pending' },
+      { id: 16, name: 'HR', status: 'pending' },
+    ],
+  },
+  {
+    id: 2006,
+    code: 'REQ-20260512-0034',
+    askingStore: 'MainStore 1 (Yeshi)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Henok M.',
+    sentAt: '2026-05-12T10:20:00Z',
+    groups: [
+      { id: 17, name: 'Finance', status: 'accepted' },
+      { id: 18, name: 'Logistics', status: 'accepted' },
+      { id: 19, name: 'Inventory', status: 'pending' },
+    ],
+  },
+  {
+    id: 2007,
+    code: 'REQ-20260509-0007',
+    askingStore: 'MainStore 1 (Dulenty)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Tigist H.',
+    sentAt: '2026-05-09T09:15:00Z',
+    groups: [
+      { id: 20, name: 'Finance', status: 'rejected' },
+      { id: 21, name: 'Logistics', status: 'pending' },
+      { id: 22, name: 'HR', status: 'pending' },
+    ],
+  },
+])
+
+// ================================================================
+// DEMO DATA — Tab 2: supplying store accepted, awaiting my approval
+// `acceptedBy` = the groups that gave their approval
+// ================================================================
+
+const acceptedAwaitingMyApproval = ref([
+  {
+    id: 1001,
+    code: 'REQ-20260515-0012',
+    askingStore: 'MainStore 1 (Ground)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Abebe Kebede',
+    acceptedAt: '2026-05-15T09:12:00Z',
+    items: 5,
+    acceptedBy: [
+      { id: 1, name: 'Finance',   at: '2026-05-15T08:55:00Z' },
+      { id: 2, name: 'Logistics', at: '2026-05-15T09:05:00Z' },
+      { id: 3, name: 'Inventory', at: '2026-05-15T09:10:00Z' },
+    ],
+  },
+  {
+    id: 1002,
+    code: 'REQ-20260515-0013',
+    askingStore: 'MainStore 1 (Yeshi)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Sara Bekele',
+    acceptedAt: '2026-05-15T10:04:00Z',
+    items: 3,
+    acceptedBy: [
+      { id: 4, name: 'Finance',   at: '2026-05-15T09:40:00Z' },
+      { id: 5, name: 'Inventory', at: '2026-05-15T09:58:00Z' },
+    ],
+  },
+  {
+    id: 1003,
+    code: 'REQ-20260514-0087',
+    askingStore: 'MainStore 1 (Dulenty)',
+    supplyingStore: 'Other',
+    requestedBy: 'Yohannes T.',
+    acceptedAt: '2026-05-14T16:40:00Z',
+    items: 12,
+    acceptedBy: [
+      { id: 6, name: 'Finance',   at: '2026-05-14T16:00:00Z' },
+      { id: 7, name: 'Logistics', at: '2026-05-14T16:20:00Z' },
+      { id: 8, name: 'HR',        at: '2026-05-14T16:35:00Z' },
+    ],
+  },
+  {
+    id: 1004,
+    code: 'REQ-20260514-0088',
+    askingStore: 'MainStore 1 (Mekanisa)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Meron A.',
+    acceptedAt: '2026-05-14T17:25:00Z',
+    items: 2,
+    acceptedBy: [
+      { id: 9,  name: 'Logistics', at: '2026-05-14T17:10:00Z' },
+      { id: 10, name: 'HR',        at: '2026-05-14T17:20:00Z' },
+    ],
+  },
+  {
+    id: 1005,
+    code: 'REQ-20260513-0041',
+    askingStore: 'MainStore 1 (Ground)',
+    supplyingStore: 'MainStore 3',
+    requestedBy: 'Kalkidan G.',
+    acceptedAt: '2026-05-13T11:15:00Z',
+    items: 7,
+    acceptedBy: [
+      { id: 11, name: 'Finance',   at: '2026-05-13T10:50:00Z' },
+      { id: 12, name: 'Logistics', at: '2026-05-13T11:02:00Z' },
+      { id: 13, name: 'Inventory', at: '2026-05-13T11:10:00Z' },
+    ],
+  },
+])
+
+// ================================================================
+// FILTER OPTIONS
+// ================================================================
+
+const storeOptions = computed(() => {
+  const set = new Set()
+  ;[...sentNotAccepted.value, ...acceptedAwaitingMyApproval.value].forEach((r) => {
+    if (r.askingStore) set.add(r.askingStore)
+    if (r.supplyingStore) set.add(r.supplyingStore)
+  })
+  return Array.from(set).sort().map((n) => ({ id: n, name: n }))
 })
 
-const pendingCount = computed(() => {
-  return notifications.value.filter(n => n.status === 'pending').length
+const requesterOptions = computed(() => {
+  const set = new Set()
+  ;[...sentNotAccepted.value, ...acceptedAwaitingMyApproval.value].forEach((r) => {
+    if (r.requestedBy) set.add(r.requestedBy)
+  })
+  return Array.from(set).sort()
 })
 
-const groupCount = computed(() => {
-  return notifications.value.filter(n => n.approval_type === 'group' && n.status === 'pending').length
-})
+// ================================================================
+// FILTERING
+// ================================================================
 
-const deptCount = computed(() => {
-  return notifications.value.filter(n => n.approval_type === 'department' && n.status === 'pending').length
-})
+const hasActiveFilters = computed(
+  () =>
+    filterStore.value !== 'all' ||
+    filterRequester.value !== 'all' ||
+    filterDateFrom.value !== '' ||
+    filterDateTo.value !== ''
+)
 
-const hasActiveFilters = computed(() => {
-  return filterStore.value !== 'all' ||
-         filterApprover.value !== 'all' ||
-         filterDateFrom.value !== '' ||
-         filterDateTo.value !== ''
-})
+const applyFilters = (list, dateField) => {
+  let result = [...list]
 
-const filteredNotifications = computed(() => {
-  let result = [...notifications.value]
-
-  // ✅ Only show pending
-  result = result.filter(n => n.status === 'pending')
-
-  // Filter by store
   if (filterStore.value !== 'all') {
-    const storeId = parseInt(filterStore.value)
-    result = result.filter(n => n.store_id === storeId)
+    result = result.filter(
+      (r) =>
+        r.askingStore === filterStore.value ||
+        r.supplyingStore === filterStore.value
+    )
   }
-
-  // Filter by approver
-  if (filterApprover.value !== 'all') {
-    result = result.filter(n => {
-      const approverName = getApproverName(n)
-      return approverName === filterApprover.value
-    })
+  if (filterRequester.value !== 'all') {
+    result = result.filter((r) => r.requestedBy === filterRequester.value)
   }
-
-  // Filter by date range
   if (filterDateFrom.value) {
-    const fromDate = new Date(filterDateFrom.value)
-    fromDate.setHours(0, 0, 0, 0)
-    result = result.filter(n => {
-      const notifDate = new Date(n.created_at)
-      return notifDate >= fromDate
-    })
+    const from = new Date(filterDateFrom.value)
+    from.setHours(0, 0, 0, 0)
+    result = result.filter((r) => new Date(r[dateField]) >= from)
   }
-
   if (filterDateTo.value) {
-    const toDate = new Date(filterDateTo.value)
-    toDate.setHours(23, 59, 59, 999)
-    result = result.filter(n => {
-      const notifDate = new Date(n.created_at)
-      return notifDate <= toDate
-    })
+    const to = new Date(filterDateTo.value)
+    to.setHours(23, 59, 59, 999)
+    result = result.filter((r) => new Date(r[dateField]) <= to)
   }
-
   return result
+}
+
+const filteredSent = computed(() => applyFilters(sentNotAccepted.value, 'sentAt'))
+const filteredAccepted = computed(() => applyFilters(acceptedAwaitingMyApproval.value, 'acceptedAt'))
+
+// ================================================================
+// PAGINATION
+// ================================================================
+
+const sentTotalPages = computed(() => Math.ceil(filteredSent.value.length / pageSize) || 1)
+const acceptedTotalPages = computed(() => Math.ceil(filteredAccepted.value.length / pageSize) || 1)
+
+const paginatedSent = computed(() => {
+  const start = (sentPage.value - 1) * pageSize
+  return filteredSent.value.slice(start, start + pageSize)
 })
 
-const totalPages = computed(() => {
-  return Math.ceil(filteredNotifications.value.length / pageSize.value) || 1
-})
-
-const paginatedNotifications = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredNotifications.value.slice(start, end)
+const paginatedAccepted = computed(() => {
+  const start = (acceptedPage.value - 1) * pageSize
+  return filteredAccepted.value.slice(start, start + pageSize)
 })
 
 // ================================================================
-// HELPER METHODS
+// HELPERS — group status
 // ================================================================
 
-const getRequestCode = (notif) => {
-  return notif?.request?.requestCode || 'N/A'
+const labelFor = (status) => {
+  if (status === 'accepted') return 'Accepted'
+  if (status === 'rejected') return 'Rejected'
+  return 'Pending'
 }
 
-const getApproverName = (notif) => {
-  if (!notif) return 'N/A'
-  
-  // ✅ Department approval
-  if (notif.approval_type === 'department') {
-    // Check if department exists on the notification
-    if (notif.department) {
-      return notif.department.name || notif.department.code || 'Unknown Dept'
-    }
-    // Fallback: hardcoded department names
-    const deptMap = {
-      7: 'IT Department',
-      15: 'Nebert Astedader',
-      1: 'HR Department',
-      2: 'Finance Department'
-    }
-    if (notif.department_id && deptMap[notif.department_id]) {
-      return deptMap[notif.department_id]
-    }
-    return notif.department_id ? `Department #${notif.department_id}` : 'Unknown Dept'
-  }
-  
-  // ✅ Group approval
-  if (notif.approval_type === 'group' || !notif.approval_type) {
-    if (notif.group) {
-      return notif.group.name || notif.group.code || 'Unknown Group'
-    }
-    if (notif.group_id) {
-      return `Group #${notif.group_id}`
-    }
-    return 'Unknown Group'
-  }
-  
-  return 'Unknown Approver'
+const acceptedCount = (r) => (r.groups || []).filter((g) => g.status === 'accepted').length
+const progressPercent = (r) => {
+  const total = (r.groups || []).length
+  if (!total) return 0
+  return Math.round((acceptedCount(r) / total) * 100)
 }
 
-const getApproverType = (notif) => {
-  if (!notif) return ''
-  if (notif.approval_type === 'department') {
-    if (notif.department) {
-      return `🏛️ ${notif.department.code || 'Dept'}`
-    }
-    return '🏛️ Department'
-  }
-  if (notif.group) {
-    return `👥 ${notif.group.code || 'Group'}`
-  }
-  return '👥 Group'
-}
+// ================================================================
+// STATS
+// ================================================================
 
-const getStoreName = (notif) => {
-  if (!notif) return 'N/A'
-  
-  // Try store object first
-  if (notif.store) {
-    return notif.store.name || `Store #${notif.store_id}`
-  }
-  
-  // Fallback store map (for demo data)
-  const storeMap = {
-    28: 'MainStore 1 (Yeshi)',
-    29: 'MainStore 3',
-    32: 'Other',
-    33: 'MainStore 1 (Ground)',
-    34: 'MainStore 1 (Dulenty)',
-    35: 'MainStore 1 (Mekanisa)'
-  }
-  return storeMap[notif.store_id] || `Store #${notif.store_id}`
-}
+const totalCount = computed(
+  () => sentNotAccepted.value.length + acceptedAwaitingMyApproval.value.length
+)
 
-const getRequesterName = (notif) => {
-  return notif?.request?.requestedByUser?.fullName || 
-         notif?.request?.requestedByUser?.username || 
-         'Unknown'
-}
+const oldRequests = computed(() => {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const s = sentNotAccepted.value.filter((r) => new Date(r.sentAt).getTime() < sevenDaysAgo).length
+  const a = acceptedAwaitingMyApproval.value.filter((r) => new Date(r.acceptedAt).getTime() < sevenDaysAgo).length
+  return s + a
+})
+
+// ================================================================
+// DATE FORMAT
+// ================================================================
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return date.toLocaleString('en-US', {
+  const d = new Date(dateStr)
+  return d.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
 }
 
 // ================================================================
-// EXTRACT FILTER OPTIONS FROM DATA
+// ACTIONS
 // ================================================================
 
-const extractFilterOptions = (data) => {
-  if (!data || data.length === 0) return
-
-  // Extract unique stores
-  const stores = new Map()
-  data.forEach(n => {
-    const storeName = getStoreName(n)
-    if (n.store_id && !stores.has(n.store_id) && storeName !== 'N/A' && storeName !== 'Unknown') {
-      stores.set(n.store_id, {
-        id: n.store_id,
-        name: storeName
-      })
-    }
-  })
-  storeOptions.value = Array.from(stores.values()).sort((a, b) => a.name.localeCompare(b.name))
-
-  // Extract unique approvers
-  const approvers = new Set()
-  data.forEach(n => {
-    const name = getApproverName(n)
-    if (name && !name.includes('N/A') && !name.includes('Unknown') && !name.includes('#')) {
-      approvers.add(name)
-    }
-  })
-  approverOptions.value = Array.from(approvers).sort()
-}
-
-// ================================================================
-// METHODS
-// ================================================================
-
-const loadNotifications = async () => {
+const refresh = async () => {
   loading.value = true
-  try {
-    const response = await itemRequestService.getPendingNotifications({
-      page: currentPage.value,
-      limit: pageSize.value
-    })
-
-    if (response.success && response.data) {
-      notifications.value = response.data.notifications || []
-      
-      // Extract filter options from data
-      extractFilterOptions(notifications.value)
-      
-      console.log('✅ Loaded pending notifications:', {
-        total: response.data.summary?.total || 0,
-        group: response.data.summary?.group || 0,
-        department: response.data.summary?.department || 0,
-        notifications: notifications.value.length
-      })
-    } else {
-      showToastMessage(response.error || 'Failed to load notifications', 'error')
-    }
-  } catch (error) {
-    console.error('❌ Error loading notifications:', error)
-    showToastMessage('Failed to load notifications', 'error')
-  } finally {
+  setTimeout(() => {
     loading.value = false
-  }
+    showToastMessage('Refreshed', 'info')
+  }, 500)
+}
+
+const approveRequest = (req) => {
+  showToastMessage(`Approved ${req.code}`, 'success')
+  acceptedAwaitingMyApproval.value = acceptedAwaitingMyApproval.value.filter((r) => r.id !== req.id)
 }
 
 const clearFilters = () => {
   filterStore.value = 'all'
-  filterApprover.value = 'all'
+  filterRequester.value = 'all'
   filterDateFrom.value = ''
   filterDateTo.value = ''
-  currentPage.value = 1
+  sentPage.value = 1
+  acceptedPage.value = 1
   showToastMessage('Filters cleared', 'info')
 }
 
@@ -469,416 +612,422 @@ const showToastMessage = (msg, type = 'success') => {
   toastMessage.value = msg
   toastType.value = type
   showToast.value = true
-  setTimeout(() => {
-    showToast.value = false
-  }, 3000)
+  setTimeout(() => (showToast.value = false), 3000)
 }
 
-// ================================================================
-// WATCHERS - Auto-apply filters on change
-// ================================================================
-
-watch([filterStore, filterApprover, filterDateFrom, filterDateTo], () => {
-  currentPage.value = 1
+watch([filterStore, filterRequester, filterDateFrom, filterDateTo], () => {
+  sentPage.value = 1
+  acceptedPage.value = 1
 })
 
-// Watch for auth changes (reload when user changes)
-watch(() => authStore.user, () => {
-  if (authStore.isAuthenticated) {
-    loadNotifications()
-  }
-}, { deep: true })
-
-// ================================================================
-// LIFECYCLE
-// ================================================================
-
 onMounted(() => {
-  if (authStore.isAuthenticated) {
-    loadNotifications()
-  }
+  // Load from API here when ready.
 })
 </script>
 
 <style scoped>
-.notification-management {
-  padding: 24px;
+/* ================================================================
+   BASE
+   ================================================================ */
+.page {
+  padding: 32px;
   min-height: 100vh;
-  background: #f5f7fb;
+  background: #f7f8fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #0f172a;
 }
 
 /* ================================================================
-   PAGE HEADER
+   HEADER
    ================================================================ */
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  background: white;
-  padding: 16px 24px;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: 24px;
   gap: 16px;
+  flex-wrap: wrap;
 }
-
-.header-left h1 {
-  font-size: 22px;
+.header-main h1 {
+  font-size: 26px;
   font-weight: 700;
-  color: #1e293b;
+  letter-spacing: -0.5px;
+  margin: 0 0 4px 0;
+  color: #0f172a;
+}
+.header-sub {
+  font-size: 14px;
+  color: #64748b;
   margin: 0;
-}
-
-.badge {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.pending-badge {
-  background: #fef3c7;
-  color: #92400e;
 }
 
 .btn-refresh {
-  padding: 8px 16px;
-  background: #3b82f6;
+  padding: 9px 18px;
+  background: #0f172a;
   color: white;
   border: none;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.2s;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-
-.btn-refresh:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-1px);
-}
-
-.btn-refresh:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.btn-refresh:hover:not(:disabled) { background: #1e293b; }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ================================================================
-   FILTER BAR
+   SUMMARY
    ================================================================ */
-.filter-bar {
+.summary-strip {
   display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  align-items: center;
   background: white;
-  padding: 16px 20px;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
+  padding: 20px 28px;
   margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  gap: 24px;
+  flex-wrap: wrap;
 }
+.summary-item { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 120px; }
+.summary-value { font-size: 24px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+.summary-value.accent-blue { color: #2563eb; }
+.summary-value.accent-purple { color: #7c3aed; }
+.summary-value.accent-amber { color: #d97706; }
+.summary-label { font-size: 12px; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+.summary-divider { width: 1px; height: 36px; background: #e5e7eb; }
 
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* ================================================================
+   TABS
+   ================================================================ */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; margin-bottom: 20px; }
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  transition: all 0.15s;
 }
+.tab:hover { color: #0f172a; }
+.tab.active { color: #0f172a; border-bottom-color: #0f172a; font-weight: 600; }
+.tab-count {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 8px;
+  background: #f1f5f9;
+  color: #475569;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+.tab.active .tab-count { background: #0f172a; color: white; }
 
-.filter-group label {
+/* ================================================================
+   TOOLBAR
+   ================================================================ */
+.toolbar {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+}
+.toolbar-left { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label {
   font-size: 11px;
   font-weight: 600;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
-
-.filter-select,
-.filter-input {
+.field select,
+.field input {
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   font-size: 13px;
   background: white;
-  min-width: 140px;
-}
-
-.filter-select:focus,
-.filter-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.filter-input {
+  color: #0f172a;
   min-width: 150px;
+  outline: none;
+  transition: border 0.15s, box-shadow 0.15s;
 }
-
-.clear-filters-btn {
-  padding: 8px 16px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+.field select:focus,
+.field input:focus {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+.btn-clear {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 13px;
   color: #64748b;
-  transition: all 0.2s;
-  height: 38px;
-  align-self: flex-end;
+  cursor: pointer;
+  height: 37px;
 }
+.btn-clear:hover { background: #f8fafc; color: #0f172a; }
 
-.clear-filters-btn:hover {
-  background: #e2e8f0;
+/* ================================================================
+   LOADING
+   ================================================================ */
+.loading { text-align: center; padding: 60px 20px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; }
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #0f172a;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading p { color: #64748b; font-size: 14px; margin: 0; }
+
+/* ================================================================
+   PANEL
+   ================================================================ */
+.panel { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 16px;
+}
+.panel-header h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px 0; color: #0f172a; letter-spacing: -0.2px; }
+.panel-header p { font-size: 13px; color: #64748b; margin: 0; line-height: 1.4; }
+.panel-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 /* ================================================================
-   STATS GRID
+   CARDS
    ================================================================ */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: white;
-  border-radius: 12px;
+.cards {
   padding: 16px 20px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 14px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  background: #fafbfc;
 }
 
-.stat-icon {
-  font-size: 28px;
-}
-
-.stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.stat-card.pending .stat-value { color: #f59e0b; }
-.stat-card.info .stat-value { color: #3b82f6; }
-.stat-card.warning .stat-value { color: #f59e0b; }
-
-/* ================================================================
-   TABLE CARD
-   ================================================================ */
-.table-card {
+.card {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   overflow: hidden;
 }
 
-.table-header {
+.card-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 14px 18px;
+  gap: 16px;
+  flex-wrap: wrap;
   border-bottom: 1px solid #f1f5f9;
 }
+.card-head-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.card-head-right { display: flex; align-items: center; gap: 16px; }
 
-.table-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0;
-  color: #1e293b;
-}
-
-.table-count {
-  font-size: 13px;
-  color: #64748b;
-}
-
-/* ================================================================
-   TABLE
-   ================================================================ */
-.table-wrapper {
-  overflow-x: auto;
-}
-
-.notifications-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  min-width: 650px;
-}
-
-.notifications-table th,
-.notifications-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.notifications-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  color: #475569;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.row-pending {
-  border-left: 3px solid #f59e0b;
-}
-
-/* ================================================================
-   CELL STYLES
-   ================================================================ */
-.code-cell {
-  font-weight: 600;
-  color: #2563eb;
-  font-family: 'Courier New', monospace;
+.code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
   font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
+.flow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; font-weight: 500; }
+.arrow { color: #cbd5e1; font-size: 14px; }
+.meta { font-size: 12px; color: #64748b; }
 
-.approver-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.approver-name {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.approver-type {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.store-name {
-  font-weight: 500;
-  color: #1e293b;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 20px;
+/* ================================================================
+   GROUPS (who accepted / who didn't)
+   ================================================================ */
+.groups { padding: 14px 18px; }
+.groups-label {
   font-size: 11px;
   font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 10px;
+}
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: transform 0.1s;
+  cursor: default;
+}
+.pill:hover { transform: translateY(-1px); }
+
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-.status-badge.pending {
-  background: #fef3c7;
+.pill-name { font-weight: 600; }
+.pill-status { opacity: 0.7; font-size: 11px; }
+
+/* accepted → green */
+.pill.accepted {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.pill.accepted .pill-dot { background: #16a34a; }
+
+/* pending → amber */
+.pill.pending {
+  background: #fffbeb;
+  border-color: #fde68a;
   color: #92400e;
 }
+.pill.pending .pill-dot { background: #f59e0b; }
 
-.date-text {
-  font-size: 12px;
-  color: #64748b;
+/* rejected → red */
+.pill.rejected {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
 }
+.pill.rejected .pill-dot { background: #dc2626; }
 
 /* ================================================================
-   LOADING STATE
+   CARD FOOTER
    ================================================================ */
-.loading-state {
-  text-align: center;
-  padding: 60px;
-  background: white;
-  border-radius: 12px;
-}
-
-.spinner {
-  width: 48px;
-  height: 48px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 16px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ================================================================
-   EMPTY STATE
-   ================================================================ */
-.empty-state-td {
-  text-align: center;
-  padding: 40px 20px !important;
-}
-
-.empty-icon {
-  font-size: 48px;
-  display: block;
-  margin-bottom: 12px;
-}
-
-.empty-state-td p {
-  color: #94a3b8;
-  font-size: 16px;
-  margin: 0;
-}
-
-/* ================================================================
-   PAGINATION
-   ================================================================ */
-.pagination {
+.card-foot {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: 16px;
+  padding: 12px 18px;
   border-top: 1px solid #f1f5f9;
-  flex-wrap: wrap;
+  background: #fafbfc;
 }
 
-.page-btn {
+.card-foot-actions {
+  justify-content: space-between;
+}
+
+.progress {
+  flex: 1;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.progress-text {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.items-summary {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.btn-approve {
+  padding: 8px 18px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-approve:hover { background: #15803d; }
+.btn-approve:active { transform: scale(0.98); }
+
+/* ================================================================
+   EMPTY
+   ================================================================ */
+.empty { padding: 56px 20px; text-align: center; }
+.empty-icon {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+.empty-text { color: #94a3b8; font-size: 14px; }
+
+/* ================================================================
+   PANEL FOOTER
+   ================================================================ */
+.panel-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+  border-top: 1px solid #f1f5f9;
+  gap: 12px;
+}
+.footer-info { font-size: 13px; color: #64748b; }
+.footer-actions { display: flex; gap: 8px; }
+.footer-actions button {
   padding: 6px 14px;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 13px;
-  transition: all 0.2s;
-}
-
-.page-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #3b82f6;
-}
-
-.page-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 13px;
-  color: #64748b;
-}
-
-.limit-select {
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  background: white;
+  color: #334155;
   cursor: pointer;
 }
+.footer-actions button:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; }
+.footer-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ================================================================
    TOAST
@@ -888,45 +1037,38 @@ onMounted(() => {
   bottom: 24px;
   right: 24px;
   padding: 12px 20px;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  z-index: 1100;
-  animation: slideIn 0.3s ease;
-  border-left: 4px solid #10b981;
+  background: #0f172a;
+  color: white;
+  border-radius: 10px;
   font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
 }
-
-.toast.error { border-left-color: #ef4444; }
-.toast.warning { border-left-color: #f59e0b; }
-.toast.info { border-left-color: #3b82f6; }
-
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0%); opacity: 1; }
-}
+.toast.info { background: #0f172a; }
+.toast.success { background: #16a34a; }
+.toast.error { background: #dc2626; }
+.toast.warning { background: #d97706; }
+.toast-enter-active, .toast-leave-active { transition: all 0.25s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(12px); }
 
 /* ================================================================
    RESPONSIVE
    ================================================================ */
-@media (max-width: 768px) {
-  .notification-management { padding: 16px; }
-  .page-header { flex-direction: column; align-items: stretch; }
-  .header-left { justify-content: space-between; }
-  .header-right { width: 100%; }
-  .btn-refresh { width: 100%; justify-content: center; }
-  .filter-bar { flex-direction: column; align-items: stretch; }
-  .filter-group { width: 100%; }
-  .filter-select, .filter-input { width: 100%; min-width: unset; }
-  .clear-filters-btn { width: 100%; justify-content: center; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 900px) {
+  .summary-strip { padding: 16px 20px; gap: 16px; }
+  .summary-divider { display: none; }
+  .summary-item { min-width: 100px; }
+  .card-head { flex-direction: column; align-items: flex-start; }
 }
-
-@media (max-width: 480px) {
-  .stats-grid { grid-template-columns: 1fr; }
-  .notifications-table { font-size: 11px; min-width: 550px; }
-  .notifications-table th,
-  .notifications-table td { padding: 6px 8px; }
-  .stat-value { font-size: 18px; }
+@media (max-width: 640px) {
+  .page { padding: 20px 16px; }
+  .header-main h1 { font-size: 22px; }
+  .toolbar-left { flex-direction: column; align-items: stretch; }
+  .field select, .field input { width: 100%; }
+  .btn-clear { width: 100%; }
+  .tabs { overflow-x: auto; }
+  .tab { white-space: nowrap; }
+  .panel-header { flex-direction: column; }
 }
 </style>
