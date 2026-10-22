@@ -20,10 +20,35 @@
           {{ requestData.requestCode || requestData.id }}
         </span>
 
-        <span class="date-field">
-          <strong>DATE:-</strong>
-          <span class="date-display">{{ displayDate }}</span>
-        </span>
+      <span class="date-field">
+  <strong>DATE:-</strong>
+
+  <span
+    v-if="!isEditingDate"
+    class="date-display"
+    @click="startEditingDate"
+    title="Click to edit date"
+  >
+    {{ displayDate }}
+    <span class="date-edit-pencil no-print" aria-hidden="true">✏️</span>
+  </span>
+
+  <span v-else class="date-edit-wrap">
+    <input
+      ref="dateInputRef"
+      v-model="dateDraft"
+      type="date"
+      class="date-input no-print"
+      @keydown.enter.prevent="saveDate"
+      @keydown.esc.prevent="cancelEditingDate"
+      @blur="saveDate"
+    />
+    <span class="date-edit-actions no-print">
+      <button class="btn-save-date" @click="saveDate">💾</button>
+      <button class="btn-cancel-date" @click="cancelEditingDate">✖</button>
+    </span>
+  </span>
+</span>
       </div>
     </header>
 
@@ -184,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import itemRequestService from '@/stores/itemRequestService'
 import employeesService from '@/stores/employee'
@@ -198,6 +223,49 @@ import type {
 // ================================================================
 // STATE
 // ================================================================
+
+
+// ================================================================
+// EDITABLE DATE (local-only)
+// ================================================================
+
+const isEditingDate = ref(false)
+const dateDraft = ref('')
+const dateInputRef = ref<HTMLInputElement | null>(null)
+
+// Convert an ISO / Date-parseable string to the yyyy-mm-dd that <input type="date"> expects
+const toInputDate = (value?: string | null): string => {
+  if (!value) return ''
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return ''
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const startEditingDate = async () => {
+  dateDraft.value = toInputDate(dateOverride.value || requestData.value?.requestedDate)
+  isEditingDate.value = true
+  await nextTick()
+  dateInputRef.value?.focus()
+  dateInputRef.value?.select?.()
+}
+
+const saveDate = () => {
+  if (!isEditingDate.value) return
+  const cleaned = (dateDraft.value || '').trim()
+  if (cleaned) {
+    dateOverride.value = cleaned
+  }
+  isEditingDate.value = false
+}
+
+const cancelEditingDate = () => {
+  isEditingDate.value = false
+  dateDraft.value = ''
+}
+
 
 const router = useRouter()
 const route = useRoute()
@@ -509,7 +577,7 @@ const loadStores = async () => {
 const loadItems = async () => {
   try {
     const response = await itemRequestService.getActiveItems()
-    if (response.success) items.value = response.data
+    if (response.success) items.value = response.data as unknown as Item[]
   } catch (error) {
     console.error('Load items error:', error)
   }
