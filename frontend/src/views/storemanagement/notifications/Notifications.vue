@@ -1051,15 +1051,26 @@ const getSnapshotMergedRemark = (rid, start) => {
 const getDepartmentForPaper = (reqEntry) => {
   if (!reqEntry) return 'N/A'
 
-  const realName =
-    reqEntry.request?.requestedByUser?.Department?.name ||
-    reqEntry.request?.department?.name
-
-  if (realName && String(realName).trim()) return realName
-
   const rid = reqEntry.requestId
+
+  // 1️⃣ PRIORITY: The edited snapshot department (what the user typed/saved)
   const snapDept = snapshots[rid]?.department
-  if (snapDept && String(snapDept).trim()) return snapDept
+  if (snapDept && String(snapDept).trim()) return String(snapDept).trim()
+
+  // 2️⃣ Fallback: the raw pageSnapshot on the request's printOverride
+  //    (in case snapshot hasn't been hydrated yet)
+  const printOverride = reqEntry.request?.printOverride
+  const rawSnapDept =
+    printOverride?.pageSnapshot?.department ||
+    printOverride?.department
+  if (rawSnapDept && String(rawSnapDept).trim()) return String(rawSnapDept).trim()
+
+  // 3️⃣ Fallback: the request-linked department record
+  const realName =
+    reqEntry.request?.department?.name ||
+    reqEntry.request?.requestedByUser?.Department?.name
+
+  if (realName && String(realName).trim()) return String(realName).trim()
 
   return 'N/A'
 }
