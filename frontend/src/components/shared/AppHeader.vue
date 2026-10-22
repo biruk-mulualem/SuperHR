@@ -39,7 +39,7 @@
     </div>
 
     <div class="header-right">
-      <!-- 🔔 Existing Item Request Notifications - UNTOUCHED -->
+      <!-- 🔔 Item Request Notifications -->
       <div class="notification-dropdown" @click.stop>
         <button
           class="notification-btn"
@@ -61,7 +61,6 @@
           }}</span>
         </button>
 
-        <!-- Existing Notifications Panel - UNTOUCHED -->
         <transition name="dropdown">
           <div v-if="showNotifications" class="notifications-panel">
             <div class="notifications-header">
@@ -93,7 +92,7 @@
                 <span class="empty-icon">✅</span>
                 <p>All caught up! No pending notifications</p>
               </div>
-              
+
               <div
                 v-for="notif in pendingNotifications"
                 :key="notif.id"
@@ -112,21 +111,21 @@
                     requested items from
                     <strong>{{ notif.request?.askingStore?.name || "Unknown" }}</strong>
                   </p>
-<div class="notification-items">
-  <span
-    v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
-    :key="idx"
-    class="item-tag"
-  >
-    {{ item.item?.name || "Unknown" }} ({{ Number(item.quantity).toFixed(2) }} {{ getUomDisplay(item) }})
-  </span>
-  <span
-    v-if="(notif.request?.items || []).length > 2"
-    class="item-more"
-  >
-    +{{ (notif.request?.items || []).length - 2 }} more
-  </span>
-</div>
+                  <div class="notification-items">
+                    <span
+                      v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
+                      :key="idx"
+                      class="item-tag"
+                    >
+                      {{ item.item?.name || "Unknown" }} ({{ Number(item.quantity).toFixed(2) }} {{ getUomDisplay(item) }})
+                    </span>
+                    <span
+                      v-if="(notif.request?.items || []).length > 2"
+                      class="item-more"
+                    >
+                      +{{ (notif.request?.items || []).length - 2 }} more
+                    </span>
+                  </div>
                   <div class="notification-actions">
                     <button
                       class="btn-accept-small"
@@ -144,12 +143,10 @@
                 </div>
               </div>
 
-              <!-- Loading indicator at bottom -->
               <div v-if="loadingMore" class="loading-more">
                 <div class="spinner-small"></div>
               </div>
 
-              <!-- No more notifications -->
               <div
                 v-if="
                   !hasMorePages &&
@@ -176,7 +173,7 @@
         </transition>
       </div>
 
-      <!-- 📋 NEW: Order Notifications - Separate Icon -->
+      <!-- 📋 Order Notifications -->
       <div class="notification-dropdown" @click.stop>
         <button
           class="notification-btn order-btn"
@@ -199,7 +196,6 @@
           }}</span>
         </button>
 
-        <!-- Order Notifications Panel -->
         <transition name="dropdown">
           <div v-if="showOrderNotifications" class="notifications-panel order-panel">
             <div class="notifications-header">
@@ -231,50 +227,48 @@
                 <span class="empty-icon">📋</span>
                 <p>No pending orders</p>
               </div>
-              
-            <!-- In the order notification item template -->
-<div
-  v-for="order in pendingOrders"
-  :key="order.id"
-  class="notification-item pending order-item"
->
-  <div class="notification-icon pending order-icon-bg">
-    <span>📋</span>
-  </div>
-  <div class="notification-content">
-    <div class="notification-header">
-      <span class="request-code">{{ order.orderNumber }}</span>
-      <span class="notification-time">{{ formatDate(order.sentAt) }}</span>
-    </div>
-    <p class="notification-message">
-      Order for <strong>{{ order.productName }}</strong>
-      from <strong>{{ order.sentBy || 'Unknown' }}</strong>
-    
-    </p>
-<div class="notification-items">
-  <span class="item-tag">
-    {{ Number(order.quantity).toFixed(2) }}  {{ order.packaging || order.uom || 'units' }}
-  </span>
-  <span v-if="order.items && order.items.length > 0" class="item-tag">
-    {{ order.items.length }} item(s)
-  </span>
-</div>
-    <div class="notification-actions">
-      <button
-        class="btn-accept-small"
-        @click.stop="openOrderAcceptModal(order)"
-      >
-        ✅ Accept
-      </button>
-      <button
-        class="btn-reject-small"
-        @click.stop="openOrderRejectModal(order)"
-      >
-        ❌ Reject
-      </button>
-    </div>
-  </div>
-</div>
+
+              <div
+                v-for="order in pendingOrders"
+                :key="order.id"
+                class="notification-item pending order-item"
+              >
+                <div class="notification-icon pending order-icon-bg">
+                  <span>📋</span>
+                </div>
+                <div class="notification-content">
+                  <div class="notification-header">
+                    <span class="request-code">{{ order.orderNumber }}</span>
+                    <span class="notification-time">{{ formatDate(order.sentAt) }}</span>
+                  </div>
+                  <p class="notification-message">
+                    Order for <strong>{{ order.productName }}</strong>
+                    from <strong>{{ order.sentBy || 'Unknown' }}</strong>
+                  </p>
+                  <div class="notification-items">
+                    <span class="item-tag">
+                      {{ Number(order.quantity).toFixed(2) }}  {{ order.packaging || order.uom || 'units' }}
+                    </span>
+                    <span v-if="order.items && order.items.length > 0" class="item-tag">
+                      {{ order.items.length }} item(s)
+                    </span>
+                  </div>
+                  <div class="notification-actions">
+                    <button
+                      class="btn-accept-small"
+                      @click.stop="openOrderAcceptModal(order)"
+                    >
+                      ✅ Accept
+                    </button>
+                    <button
+                      class="btn-reject-small"
+                      @click.stop="openOrderRejectModal(order)"
+                    >
+                      ❌ Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <div v-if="orderLoadingMore" class="loading-more">
                 <div class="spinner-small"></div>
@@ -345,7 +339,7 @@
               >
                 {{ getRoleTitle() }}
               </span>
-              
+
               <div class="dropdown-store-info">
                 <span v-if="storeName" class="store-info-item">
                   <span class="info-icon">🏪</span>
@@ -410,16 +404,11 @@
       </transition>
     </div>
 
-    <!-- Backdrop -->
     <div
       v-if="isDropdownOpen || showNotifications || showOrderNotifications"
       class="dropdown-backdrop"
       @click="closeAll"
     ></div>
-
-    <!-- ================================================================ -->
-    <!-- EXISTING MODALS - UNTOUCHED -->
-    <!-- ================================================================ -->
 
     <!-- Accept Confirmation Modal -->
     <div
@@ -535,10 +524,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ================================================================ -->
-    <!-- NEW: ORDER MODALS -->
-    <!-- ================================================================ -->
 
     <!-- Order Accept Modal -->
     <div
@@ -660,6 +645,9 @@ import { useAuthStore } from "@/stores/auth";
 import itemRequestService from "@/stores/itemRequestService";
 import orderService from "@/stores/orderService";
 
+// ✅ Beep helper
+import { playBeep } from "@/utils/beep";
+
 // Import demo image
 import demoProfileImage from "@/assets/profile.png";
 
@@ -669,7 +657,7 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 // ================================================================
-// EXISTING STATE - UNTOUCHED
+// STATE
 // ================================================================
 const isDropdownOpen = ref(false);
 const showNotifications = ref(false);
@@ -686,11 +674,14 @@ const showRejectModal = ref(false);
 const showToast = ref(false);
 const toastMessage = ref("");
 const toastType = ref("success");
+
 const refreshInterval = ref(null);
+const beepReminderInterval = ref(null);
+
 const notificationsListRef = ref(null);
 
 // ================================================================
-// NEW: ORDER NOTIFICATION STATE
+// ORDER NOTIFICATION STATE
 // ================================================================
 const showOrderNotifications = ref(false);
 const orderLoading = ref(false);
@@ -706,7 +697,7 @@ const orderSubmitting = ref(false);
 const orderListRef = ref(null);
 
 // ================================================================
-// EXISTING COMPUTED - UNTOUCHED
+// COMPUTED
 // ================================================================
 const pendingNotifications = computed(() => {
   return notifications.value.filter((n) => n.status === "pending");
@@ -721,9 +712,6 @@ const hasMorePages = computed(() => {
   return pagination.value.page < pagination.value.pages;
 });
 
-// ================================================================
-// NEW: ORDER COMPUTED
-// ================================================================
 const pendingOrders = computed(() => {
   return orderNotifications.value.filter((n) => n.status === "pending");
 });
@@ -737,9 +725,6 @@ const hasMoreOrderPages = computed(() => {
   return orderPagination.value.page < orderPagination.value.pages;
 });
 
-// ================================================================
-// EXISTING USER COMPUTED - UNTOUCHED
-// ================================================================
 const userDisplayName = computed(() => {
   const user = authStore.user;
   if (!user) return "User";
@@ -749,43 +734,43 @@ const userDisplayName = computed(() => {
 const userProfilePicture = computed(() => {
   const user = authStore.user;
   if (!user) return demoProfileImage;
-  
+
   if (user.profilePicture || user.profilePictureUrl) {
     return user.profilePicture || user.profilePictureUrl;
   }
-  
+
   return demoProfileImage;
 });
 
 const storeName = computed(() => {
   const user = authStore.user;
-  return user?.assignedStore?.name || 
-         user?.storeName || 
-         user?.store?.name || 
+  return user?.assignedStore?.name ||
+         user?.storeName ||
+         user?.store?.name ||
          null;
 });
 
 const storeId = computed(() => {
   const user = authStore.user;
-  return user?.assignedStore?.id || 
-         user?.storeId || 
-         user?.store?.id || 
+  return user?.assignedStore?.id ||
+         user?.storeId ||
+         user?.store?.id ||
          null;
 });
 
 const groupName = computed(() => {
   const user = authStore.user;
-  return user?.assignedGroup?.name || 
-         user?.groupName || 
-         user?.group?.name || 
+  return user?.assignedGroup?.name ||
+         user?.groupName ||
+         user?.group?.name ||
          null;
 });
 
 const groupId = computed(() => {
   const user = authStore.user;
-  return user?.assignedGroup?.id || 
-         user?.group?.id || 
-         user?.groupId || 
+  return user?.assignedGroup?.id ||
+         user?.group?.id ||
+         user?.groupId ||
          null;
 });
 
@@ -798,37 +783,79 @@ const hasGroupAccess = computed(() => {
 });
 
 // ================================================================
-// EXISTING METHODS - UNTOUCHED
+// HELPERS
 // ================================================================
-// Add this function in the <script setup> section
-
-/**
- * Get the correct UOM display for an item
- * Uses the stored uom_code from the request detail if available
- * Falls back to base UOM if not
- */
 const getUomDisplay = (item) => {
-  // ✅ Check if we have a stored uom_code (this is the UOM the user requested in)
   if (item.uom_code) {
     return item.uom_code;
   }
-  
-  // Fallback: try to get from item's base UOM
   if (item.item?.uom?.code) {
     return item.item.uom.code;
   }
-  
-  // Last resort
   return 'units';
 };
 
+const getRoleTitle = () => {
+  const titles = {
+    admin: "Administrator",
+    hr: "HR Manager",
+    finance: "Finance Officer",
+    employee: "Employee",
+    attendance: "Attendance Manager",
+    storekeeper: "Storekeeper",
+    store_it: "IT Store",
+    checker: "Checker",
+    cost: "Cost Analyst",
+    nebret: "Asset Manager"
+  };
+  return titles[authStore.user?.role] || authStore.user?.role || "User";
+};
 
+const handleImageError = (e) => {
+  e.target.src = demoProfileImage;
+};
 
+const formatDate = (date) => {
+  if (!date) return "";
+  const d = new Date(date);
+  const now = new Date();
+  const diff = now - d;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString();
+};
+
+const goToProfile = () => {
+  closeAll();
+  router.push("/profile");
+};
+
+const handleLogout = async () => {
+  closeAll();
+  await authStore.logout();
+  window.location.replace("/login");
+};
+
+const toggleSidebar = () => {
+  emit("toggle-sidebar");
+};
+
+// ================================================================
+// LOAD NOTIFICATIONS
+// ================================================================
 const loadNotifications = async (reset = true) => {
   try {
     if (reset) {
       loading.value = true;
-      notifications.value = [];
+      // ✅ CHANGED: don't wipe the array — keep old items visible
+      // until the fetch resolves, so pendingCount never dips to 0
+      // mid-refresh and the beep tick always sees real data.
       pagination.value = null;
     } else {
       loadingMore.value = true;
@@ -980,9 +1007,8 @@ const showToastMessage = (message, type = "success") => {
 };
 
 // ================================================================
-// EXISTING ACCEPT/REJECT - UNTOUCHED
+// ACCEPT / REJECT
 // ================================================================
-
 const openAcceptModal = (notification) => {
   currentNotification.value = notification;
   showAcceptModal.value = true;
@@ -1055,21 +1081,20 @@ const confirmReject = async () => {
 };
 
 // ================================================================
-// NEW: ORDER NOTIFICATION METHODS
+// ORDER NOTIFICATIONS
 // ================================================================
-
 const loadOrderNotifications = async (reset = true) => {
   try {
     if (reset) {
       orderLoading.value = true;
-      orderNotifications.value = [];
+      // ✅ CHANGED: don't wipe the array — keep old items visible
       orderPagination.value = null;
     } else {
       orderLoadingMore.value = true;
     }
 
     const storeId = authStore.userStoreId;
-    
+
     if (!storeId) {
       orderNotifications.value = [];
       orderPagination.value = null;
@@ -1134,9 +1159,8 @@ const handleOrderScroll = (event) => {
 };
 
 // ================================================================
-// NEW: ORDER ACCEPT/REJECT
+// ORDER ACCEPT / REJECT
 // ================================================================
-
 const openOrderAcceptModal = (order) => {
   currentOrder.value = order;
   showOrderAcceptModal.value = true;
@@ -1209,9 +1233,8 @@ const confirmOrderReject = async () => {
 };
 
 // ================================================================
-// UI TOGGLE METHODS
+// UI TOGGLES
 // ================================================================
-
 const toggleDropdown = () => {
   isDropdownOpen.value = !isDropdownOpen.value;
   showNotifications.value = false;
@@ -1253,64 +1276,8 @@ const goToOrderNotifications = () => {
 };
 
 // ================================================================
-// EXISTING HELPERS - UNTOUCHED
+// CLICK OUTSIDE
 // ================================================================
-
-const getRoleTitle = () => {
-  const titles = {
-    admin: "Administrator",
-    hr: "HR Manager",
-    finance: "Finance Officer",
-    employee: "Employee",
-    attendance: "Attendance Manager",
-    storekeeper: "Storekeeper",
-    store_it: "IT Store",
-    checker: "Checker",
-    cost: "Cost Analyst",
-    nebret: "Asset Manager"
-  };
-  return titles[authStore.user?.role] || authStore.user?.role || "User";
-};
-
-const handleImageError = (e) => {
-  e.target.src = demoProfileImage;
-};
-
-const formatDate = (date) => {
-  if (!date) return "";
-  const d = new Date(date);
-  const now = new Date();
-  const diff = now - d;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString();
-};
-
-const goToProfile = () => {
-  closeAll();
-  router.push("/profile");
-};
-
-const handleLogout = async () => {
-  closeAll();
-  await authStore.logout();
-  window.location.replace("/login");
-};
-
-const toggleSidebar = () => {
-  emit("toggle-sidebar");
-};
-
-// ================================================================
-// CLICK OUTSIDE HANDLER
-// ================================================================
-
 const handleClickOutside = (event) => {
   if (showAcceptModal.value || showRejectModal.value || showOrderAcceptModal.value || showOrderRejectModal.value) {
     const modalOverlay = document.querySelector(".modal-overlay");
@@ -1344,7 +1311,6 @@ const handleEscapeKey = (event) => {
 // ================================================================
 // LIFECYCLE
 // ================================================================
-
 onMounted(() => {
   document.addEventListener("click", handleClickOutside);
   document.addEventListener("keydown", handleEscapeKey);
@@ -1356,6 +1322,7 @@ onMounted(() => {
     }, 500);
   }
 
+  // Poll every 15 s to keep badges in sync
   refreshInterval.value = setInterval(() => {
     if (
       authStore.isAuthenticated &&
@@ -1367,7 +1334,59 @@ onMounted(() => {
       loadNotifications(true);
       loadOrderNotifications(true);
     }
-  }, 50000);
+  }, 15000);
+
+  // ✅ Beep every 31 s while there are pending notifications
+  // Changed from 30000 → 31000 so this tick does NOT land in the same
+  // event-loop tick as the 15s refresh. With both at multiples of 15s,
+  // the refresh would clear the ref and the beep would read 0 before
+  // the fetch resolved. 31s guarantees ~1s of separation after refresh.
+  beepReminderInterval.value = setInterval(() => {
+    console.log("[reminder] TICK", {                              // ✅ ADDED
+      auth: authStore.isAuthenticated,
+      pending: pendingCount.value,
+      orderPending: orderPendingCount.value,
+      panelOpen:
+        showNotifications.value ||
+        showOrderNotifications.value ||
+        showAcceptModal.value ||
+        showRejectModal.value ||
+        showOrderAcceptModal.value ||
+        showOrderRejectModal.value,
+    });
+
+    if (!authStore.isAuthenticated) {
+      console.log("[reminder] skip — not authenticated");        // ✅ ADDED
+      return;
+    }
+
+    // Don't beep while a modal or the notification panel is open
+    if (
+      showAcceptModal.value ||
+      showRejectModal.value ||
+      showOrderAcceptModal.value ||
+      showOrderRejectModal.value ||
+      showNotifications.value ||
+      showOrderNotifications.value
+    ) {
+      console.log("[reminder] skip — panel/modal open");          // ✅ ADDED
+      return;
+    }
+
+    const hasItemPending = pendingCount.value > 0;
+    const hasOrderPending = orderPendingCount.value > 0;
+
+    if (hasItemPending || hasOrderPending) {
+      console.log("[reminder] firing playBeep()");                // ✅ ADDED
+      playBeep({
+        freq1: hasItemPending ? 880 : 1000,
+        freq2: hasItemPending ? 660 : 750,
+        dedupeMs: 25000,
+      });
+    } else {
+      console.log("[reminder] skip — nothing pending");           // ✅ ADDED
+    }
+  }, 31000);   // ✅ CHANGED: 31000 (was 30000)
 });
 
 onUnmounted(() => {
@@ -1378,12 +1397,16 @@ onUnmounted(() => {
     clearInterval(refreshInterval.value);
     refreshInterval.value = null;
   }
+
+  if (beepReminderInterval.value) {
+    clearInterval(beepReminderInterval.value);
+    beepReminderInterval.value = null;
+  }
 });
 </script>
 
 <style scoped>
 
-/* Add to the <style> section */
 .sent-by-tag {
   display: inline-block;
   font-size: 10px;
@@ -1395,7 +1418,7 @@ onUnmounted(() => {
   font-weight: 500;
 }
 /* ================================================================ */
-/* EXISTING STYLES - UNTOUCHED */
+/* EXISTING STYLES */
 /* ================================================================ */
 .header {
   background: white;
@@ -1562,7 +1585,7 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* EXISTING NOTIFICATION STYLES - UNTOUCHED */
+/* NOTIFICATION STYLES */
 /* ================================================================ */
 .notification-dropdown { position: relative; }
 
@@ -1617,7 +1640,7 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* NEW: ORDER NOTIFICATION STYLES */
+/* ORDER NOTIFICATION STYLES */
 /* ================================================================ */
 .notification-btn.order-btn {
   background: #f0fdf4;
@@ -1649,7 +1672,7 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* EXISTING NOTIFICATIONS LIST - UNTOUCHED */
+/* NOTIFICATIONS LIST */
 /* ================================================================ */
 .notifications-header {
   display: flex;
@@ -1858,7 +1881,7 @@ onUnmounted(() => {
 .view-all:hover { text-decoration: underline; }
 
 /* ================================================================ */
-/* EXISTING DROPDOWN MENU - UNTOUCHED */
+/* DROPDOWN MENU */
 /* ================================================================ */
 .user-avatar-btn {
   display: flex;
@@ -2026,7 +2049,7 @@ onUnmounted(() => {
 }
 
 /* ================================================================ */
-/* MODALS - EXISTING + NEW */
+/* MODALS */
 /* ================================================================ */
 .modal-overlay {
   position: fixed;
