@@ -219,7 +219,7 @@
               <p>
                 <strong>Name:-</strong>
                 <span class="paper-inline">
-                  {{ detailTarget.request.requestedByUser?.fullName || detailTarget.request.requestedByUser?.username || '—' }}
+                  {{ getRequestedByName(detailTarget) }}
                 </span>
               </p>
               <p><strong>Signature</strong> _______________________</p>
@@ -486,7 +486,7 @@
                 </span>
 
                 <span v-if="req.request.isTemelash" class="nt-badge nt-badge-temelash">🔄 Temelash</span>
-                <span v-if="req.request.isAsset" class="nt-badge nt-badge-asset">🏛️ Asset</span>
+                <!-- <span v-if="req.request.isAsset" class="nt-badge nt-badge-asset">🏛️ Asset</span> -->
               </span>
 
               <span class="nt-cell nt-cell-time">
@@ -802,7 +802,6 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
-// ✅ Filter tab options — REQUIRED for the segmented control
 const statusOptions = [
   { value: 'all',      label: 'All' },
   { value: 'pending',  label: 'Pending' },
@@ -944,9 +943,10 @@ const makeFallbackSnapshot = (req) => {
   return out
 }
 
+// ✅ FIX: no permanent cache — always re-fetch on open
 const loadSnapshot = async (reqEntry) => {
   const rid = reqEntry.requestId
-  if (!rid || snapshots[rid] || snapshotLoading[rid]) return
+  if (!rid || snapshotLoading[rid]) return
 
   snapshotLoading[rid] = true
   try {
@@ -969,7 +969,8 @@ const loadSnapshot = async (reqEntry) => {
 // ---------------- snapshot accessors ----------------
 const snapshotHeader = (rid) => snapshots[rid]?.header || DEFAULT_VIEW_HEADER
 const snapshotApprovedByName = (rid) => snapshots[rid]?.approvedByName || ''
-const snapshotColumns = (rid) => snapshots[rid]?.columns || buildDefaultViewColumns()
+const snapshotColumns = (rid) =>
+  (snapshots[rid]?.columns || buildDefaultViewColumns()).filter(c => c.visible !== false)
 const snapshotItems = (rid) => snapshots[rid]?.items || []
 const snapshotMergeGroups = (rid) => snapshots[rid]?.mergeGroups || []
 const snapshotSectionVisibility = (rid) =>
@@ -1050,19 +1051,35 @@ const getSnapshotMergedRemark = (rid, start) => {
 const getDepartmentForPaper = (reqEntry) => {
   if (!reqEntry) return 'N/A'
 
-  // Prefer the real department name from the user's department record
   const realName =
     reqEntry.request?.requestedByUser?.Department?.name ||
     reqEntry.request?.department?.name
 
   if (realName && String(realName).trim()) return realName
 
-  // Fall back to the persisted print-override snapshot
   const rid = reqEntry.requestId
   const snapDept = snapshots[rid]?.department
   if (snapDept && String(snapDept).trim()) return snapDept
 
   return 'N/A'
+}
+
+// ✅ NEW: "Requested By" — free-text field first, then linked user
+const getRequestedByName = (reqEntry) => {
+  if (!reqEntry) return '—'
+  const req = reqEntry.request
+  if (!req) return '—'
+
+  const explicit = req.requestedBy
+  if (explicit && String(explicit).trim()) return String(explicit).trim()
+
+  const full = req.requestedByUser?.fullName
+  if (full && String(full).trim()) return String(full).trim()
+
+  const uname = req.requestedByUser?.username
+  if (uname && String(uname).trim()) return String(uname).trim()
+
+  return '—'
 }
 
 // ---------------- grouping ----------------
@@ -1102,7 +1119,6 @@ const requestsById = computed(() => {
   })
 })
 
-// ✅ Client-side filter applied after grouping
 const filteredRequests = computed(() => {
   const all = requestsById.value
   if (filterStatus.value === 'all') return all
@@ -1134,14 +1150,12 @@ const totalPages = computed(() => {
   return Math.max(1, Math.ceil(total / Math.max(1, limit)))
 })
 
-// ✅ Pending count — from loaded data as fallback
 const totalPendingRequests = computed(() => {
   const serverPending = summary.value.pending
   if (typeof serverPending === 'number' && serverPending > 0) return serverPending
   return requestsById.value.filter(r => r.summaryStatus === 'pending').length
 })
 
-// ✅ Tab counts from loaded data
 const tabCounts = computed(() => {
   const all = requestsById.value
   return {
@@ -1217,7 +1231,7 @@ const formatPaperDate = (date) => {
   const dd = String(d.getDate()).padStart(2, '0')
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const yyyy = d.getFullYear()
-  return `${dd}/${mm}/${yyyy}`   // → 19/10/2026
+  return `${dd}/${mm}/${yyyy}`
 }
 
 const formatDateGroup = (date) => {
@@ -1270,11 +1284,22 @@ const decidedApprovals = (reqEntry) =>
   (reqEntry?.approvals || []).filter(a => a.status === 'accepted' || a.status === 'rejected')
 
 // ---------------- detail view navigation ----------------
+// ✅ FIX: re-fetch the request on open so edits made elsewhere show up
 const openDetail = async (reqEntry) => {
-  detailTarget.value = reqEntry
-  detailSummaryStatus.value = reqEntry.summaryStatus
+  let freshEntry = reqEntry
+  try {
+    const res = await itemRequestService.getRequestById(reqEntry.requestId)
+    if (res?.success && res.data) {
+      freshEntry = { ...reqEntry, request: res.data }
+    }
+  } catch (err) {
+    console.warn('Could not refresh request', reqEntry.requestId, err)
+  }
+
+  detailTarget.value = freshEntry
+  detailSummaryStatus.value = freshEntry.summaryStatus
   window.scrollTo({ top: 0, behavior: 'auto' })
-  await loadSnapshot(reqEntry)
+  await loadSnapshot(freshEntry)
 }
 
 const closeDetail = () => {
@@ -1929,7 +1954,6 @@ watch([filterStatus], () => {
 }
 .nt-cell:last-child { border-right: none; }
 
-/* ✅ Code cell grows to fit the full code */
 .nt-cell-code {
   flex: 0 0 auto;
   min-width: 130px;
@@ -2893,7 +2917,6 @@ watch([filterStatus], () => {
     font-size: 11px;
     border-right: none;
   }
-  /* ✅ code cell stays auto-width on mobile too */
   .nt-cell-code {
     flex: 0 0 auto;
     min-width: 100px;
