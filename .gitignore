@@ -37,3 +37,18 @@ Thumbs.db
 **/GoogleService-Info.plist
 .env
 .env.*
+
+# ================================================================
+# Uploads — user-generated files, MUST NOT be in Git
+# ================================================================
+backend/uploads/
+frontend/uploads/
+super-app/uploads/
+
+# Backup files
+*.bak
+*.backup
+*.broken
+
+# Git config backup (created during recovery)
+.git/config.broken

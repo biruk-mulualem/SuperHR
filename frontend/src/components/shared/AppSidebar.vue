@@ -202,14 +202,13 @@ const roleMenus = {
     { name: "purchase-followup", path: "/purchase-followup", icon: "CogIcon", badge: null },     
     { name: "foreign-purchase", path: "/foreign-purchase", icon: "CogIcon", badge: null },
            
-          { name: "item-return", path: "/item-return", icon: "CogIcon", badge: null },
-           
-    // {
-    //   name: "Asset Management",
-    //   path: "/Asset-Management",
-    //   icon: "CogIcon",
-    //   badge: null,
-    // }, // ← Primary menu for Asset Manager
+          { name: "Temelash Records", path: "/Temelash", icon: "CogIcon", badge: null },     
+    {
+      name: "Asset Management",
+      path: "/Asset-Management",
+      icon: "CogIcon",
+      badge: null,
+    }, 
     // {
     //   name: "fleet Management",
     //   path: "/fleet-Management",
@@ -262,6 +261,8 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
+
+     { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
   ],
   attendance: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
@@ -285,7 +286,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-    { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+    // { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
    
     {
       name: "item-requests ",
@@ -299,8 +300,8 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-      
-       
+        { name: "Temelash Records", path: "/Temelash", icon: "CogIcon", badge: null },
+        // { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],
@@ -315,7 +316,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-     { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
+    //  { name: "converted balance", path: "/converted-balance", icon: "CogIcon", badge: null },
 
     {
       name: "item-requests ",
@@ -330,7 +331,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
-       
+        { name: "Temelash Records", path: "/Temelash", icon: "CogIcon", badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],

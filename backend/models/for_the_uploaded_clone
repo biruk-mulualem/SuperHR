@@ -1,83 +1,227 @@
 -- ================================================================
--- REQUEST ITEM PROCESSING TABLE
--- Tracks per-item, per-group progress for partial request processing
+-- PRINT OVERRIDES — Full Setup
+-- Stores per-request print form customizations
 -- ================================================================
 
-CREATE TABLE IF NOT EXISTS request_item_processing (
-  id                    SERIAL PRIMARY KEY,
-  request_id            INTEGER NOT NULL,
-  request_detail_id     INTEGER NOT NULL,
-  group_id              INTEGER NOT NULL,
-  store_id              INTEGER NOT NULL,
-  item_id               INTEGER NOT NULL,
-  requested_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  processed_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  remaining_quantity    NUMERIC(15, 4) NOT NULL DEFAULT 0,
-  status                VARCHAR(20) NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'partial', 'completed')),
-  uom_code              VARCHAR(20),
-  is_base_uom           BOOLEAN NOT NULL DEFAULT TRUE,
-  processed_at          TIMESTAMP WITH TIME ZONE,
-  processed_by          INTEGER,
-  remark                TEXT,
-  created_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  updated_at            TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+-- ----------------------------------------------------------------
+-- 1. TABLE
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS print_overrides (
+  id                  SERIAL PRIMARY KEY,
+
+  -- ----- Relationships -----
+  request_id          INTEGER NOT NULL
+                        REFERENCES item_requests(id)
+                        ON UPDATE CASCADE
+                        ON DELETE CASCADE,
+
+  user_id             INTEGER NULL
+                        REFERENCES users(user_id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL,
+
+  updated_by          INTEGER NULL
+                        REFERENCES users(user_id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL,
+
+  -- ----- Editable fields -----
+  department          VARCHAR(255)  NULL,
+  approved_by_name    VARCHAR(255)  NULL,
+  override_date       DATE          NULL,
+  custom_header       TEXT          NULL,
+
+  -- ----- JSON blobs -----
+  section_visibility  JSONB         NULL,
+  columns_config      JSONB         NULL,
+  custom_cells        JSONB         NULL,
+
+  -- ----- Meta -----
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ================================================================
--- INDEXES
--- ================================================================
+-- ----------------------------------------------------------------
+-- 2. INDEXES
+-- ----------------------------------------------------------------
 
--- One row per (request, item, group) — prevents duplicates
-CREATE UNIQUE INDEX IF NOT EXISTS unique_request_item_group
-  ON request_item_processing (request_id, request_detail_id, group_id);
+-- Per-user override — unique when user_id is set
+CREATE UNIQUE INDEX IF NOT EXISTS print_overrides_request_user_unique
+  ON print_overrides (request_id, user_id)
+  WHERE user_id IS NOT NULL;
 
--- Fast lookups by request + group (most common query pattern)
-CREATE INDEX IF NOT EXISTS idx_request_group
-  ON request_item_processing (request_id, group_id);
+-- Shared override — unique when user_id IS NULL
+CREATE UNIQUE INDEX IF NOT EXISTS print_overrides_request_shared_unique
+  ON print_overrides (request_id)
+  WHERE user_id IS NULL;
 
--- Fast lookups by status (for finding pending/partial rows)
-CREATE INDEX IF NOT EXISTS idx_status
-  ON request_item_processing (status);
+-- Fast lookup by request
+CREATE INDEX IF NOT EXISTS print_overrides_request_id_idx
+  ON print_overrides (request_id);
 
--- Fast lookups by item (for cross-request item reports)
-CREATE INDEX IF NOT EXISTS idx_item
-  ON request_item_processing (item_id);
+-- Fast lookup by user
+CREATE INDEX IF NOT EXISTS print_overrides_user_id_idx
+  ON print_overrides (user_id);
 
--- ================================================================
--- VERIFY
--- ================================================================
+-- ----------------------------------------------------------------
+-- 3. AUTO-UPDATE updated_at TRIGGER
+-- ----------------------------------------------------------------
 
--- Should return 0 rows
-SELECT * FROM request_item_processing LIMIT 1;
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- Should list all 4 indexes plus the primary key
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'request_item_processing'
-ORDER BY indexname;
+DROP TRIGGER IF EXISTS trg_print_overrides_updated_at ON print_overrides;
+CREATE TRIGGER trg_print_overrides_updated_at
+  BEFORE UPDATE ON print_overrides
+  FOR EACH ROW
+  EXECUTE FUNCTION set_updated_at();
+
+-- ----------------------------------------------------------------
+-- 4. OPTIONAL JSONB SHAPE GUARDS
+-- ----------------------------------------------------------------
+
+ALTER TABLE print_overrides
+  DROP CONSTRAINT IF EXISTS chk_section_visibility_json;
+ALTER TABLE print_overrides
+  ADD CONSTRAINT chk_section_visibility_json
+  CHECK (
+    section_visibility IS NULL
+    OR jsonb_typeof(section_visibility) = 'object'
+  );
+
+ALTER TABLE print_overrides
+  DROP CONSTRAINT IF EXISTS chk_columns_config_array;
+ALTER TABLE print_overrides
+  ADD CONSTRAINT chk_columns_config_array
+  CHECK (
+    columns_config IS NULL
+    OR jsonb_typeof(columns_config) = 'array'
+  );
+
+ALTER TABLE print_overrides
+  DROP CONSTRAINT IF EXISTS chk_custom_cells_object;
+ALTER TABLE print_overrides
+  ADD CONSTRAINT chk_custom_cells_object
+  CHECK (
+    custom_cells IS NULL
+    OR jsonb_typeof(custom_cells) = 'object'
+  );
+
+-- ----------------------------------------------------------------
+-- 5. VERIFY
+-- ----------------------------------------------------------------
+
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_name = 'print_overrides'
+ORDER BY ordinal_position;
+
+
+ALTER TABLE print_overrides
+  ADD COLUMN IF NOT EXISTS page_snapshot JSONB DEFAULT NULL;
 
 
 
 
 
-UPDATE users SET created_by = 19;
-
-DELETE FROM users WHERE is_active = false;
 
 
 
--- Add stage column to track which stage each notification belongs to
-ALTER TABLE request_notifications 
-ADD COLUMN stage VARCHAR(30) DEFAULT 'supplying_store';
 
--- Existing notifications belong to the supplying stage (preserves current behavior)
-UPDATE request_notifications SET stage = 'supplying_store' WHERE stage IS NULL;
 
--- Index for fast lookups by stage
-CREATE INDEX idx_notifications_request_stage 
-ON request_notifications(request_id, stage);
 
--- Index for filtering by status + stage
-CREATE INDEX idx_notifications_stage_status 
-ON request_notifications(stage, status);
+
+
+
+-- ============================================================
+-- item_relationships
+-- Pairs two items that refer to the same physical thing in
+-- different units (e.g. SDT0001 DRUM <-> SDT0002 KG).
+-- ============================================================
+
+CREATE TABLE item_relationships (
+  id                  BIGSERIAL PRIMARY KEY,
+
+  relationship_code   VARCHAR(20) NOT NULL,
+
+  item_a_id           INTEGER NOT NULL
+                        REFERENCES items(id)
+                        ON UPDATE CASCADE
+                        ON DELETE RESTRICT,
+
+  item_b_id           INTEGER NOT NULL
+                        REFERENCES items(id)
+                        ON UPDATE CASCADE
+                        ON DELETE RESTRICT,
+
+  remark              VARCHAR(255),
+
+  status              VARCHAR(10) NOT NULL DEFAULT 'Active'
+                        CONSTRAINT chk_item_relationships_status
+                        CHECK (status IN ('Active', 'Inactive')),
+
+  -- FK -> users.user_id  (User model: userId -> field 'user_id')
+  created_by          INTEGER
+                        REFERENCES users(user_id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL,
+
+  updated_by          INTEGER
+                        REFERENCES users(user_id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL,
+
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_item_relationships_distinct
+    CHECK (item_a_id <> item_b_id)
+);
+
+-- Unique relationship codes
+CREATE UNIQUE INDEX uq_item_relationships_code
+  ON item_relationships (relationship_code);
+
+-- Symmetric uniqueness: (A=1,B=2) and (A=2,B=1) are the same pair.
+CREATE UNIQUE INDEX uq_item_relationships_pair
+  ON item_relationships (
+    LEAST(item_a_id, item_b_id),
+    GREATEST(item_a_id, item_b_id)
+  );
+
+-- Lookup indexes
+CREATE INDEX idx_item_relationships_a
+  ON item_relationships (item_a_id);
+CREATE INDEX idx_item_relationships_b
+  ON item_relationships (item_b_id);
+CREATE INDEX idx_item_relationships_status
+  ON item_relationships (status);
+
+-- Keep updated_at fresh on UPDATE
+CREATE OR REPLACE FUNCTION set_updated_at_item_relationships()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_item_relationships_updated_at
+  BEFORE UPDATE ON item_relationships
+  FOR EACH ROW
+  EXECUTE FUNCTION set_updated_at_item_relationships();
+
+
+  ALTER TABLE store_balance_histories
+  ADD COLUMN transfer_pair_id UUID NULL;
+CREATE INDEX idx_sbh_transfer_pair
+  ON store_balance_histories (transfer_pair_id)
+  WHERE transfer_pair_id IS NOT NULL;
+
+  ALTER TABLE item_requests
+  ADD COLUMN is_asset BOOLEAN NOT NULL DEFAULT false;

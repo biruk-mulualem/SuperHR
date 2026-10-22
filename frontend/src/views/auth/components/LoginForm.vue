@@ -223,8 +223,8 @@
     <!-- Login Button -->
     <button
       class="login-button"
-      :class="{ 'login-button-disabled': loading }"
-      :disabled="loading || !username || !password || (showStoreField && !selectedStore)"
+      :class="{ 'login-button-disabled': isLoginDisabled }"
+      :disabled="isLoginDisabled"
       @click="handleLogin"
     >
       <div v-if="loading" class="loading-spinner">
@@ -271,6 +271,10 @@ const showStoreDropdown = ref(false)
 const hasStores = ref(false)
 const isStoreUser = ref(false)
 
+// 🔥 Tracks which username we've already fetched stores for.
+//    Used to block login until we know whether the user needs a store.
+const storesFetchedFor = ref('')
+
 // ================================================================
 // CACHE
 // ================================================================
@@ -281,6 +285,19 @@ const storeCache = new Map()
 // ================================================================
 const showStoreField = computed(() => {
   return hasStores.value && stores.value.length > 0
+})
+
+// 🔥 Login button disabled when:
+//    - A request is in flight
+//    - Username or password is empty
+//    - Stores are still loading for the current username
+//    - The user has stores but hasn't picked one yet
+const isLoginDisabled = computed(() => {
+  if (loading.value) return true
+  if (!username.value || !password.value) return true
+  if (storesLoading.value) return true
+  if (hasStores.value && !selectedStore.value) return true
+  return false
 })
 
 // ================================================================
@@ -302,28 +319,30 @@ const errorShake = ref(0)
 // ================================================================
 
 const fetchStores = async () => {
-  if (!username.value.trim()) {
+  const usernameTrimmed = username.value.trim()
+
+  if (!usernameTrimmed) {
     stores.value = []
     selectedStore.value = null
     hasStores.value = false
     isStoreUser.value = false
+    storesFetchedFor.value = ''
     return
   }
 
-  const cacheKey = username.value.trim()
-
-  // ✅ Check cache first for instant response
-  if (storeCache.has(cacheKey)) {
-    console.log('📦 Using cached stores for:', cacheKey)
-    const cachedData = storeCache.get(cacheKey)
+  // ✅ Cache hit → instant response, no loading spinner
+  if (storeCache.has(usernameTrimmed)) {
+    console.log('📦 Using cached stores for:', usernameTrimmed)
+    const cachedData = storeCache.get(usernameTrimmed)
     stores.value = cachedData.stores
     hasStores.value = cachedData.hasStores
     isStoreUser.value = cachedData.isStoreUser
-    
+
     if (stores.value.length > 0) {
       selectedStore.value = stores.value[0]
       errors.store = ''
     }
+    storesFetchedFor.value = usernameTrimmed
     return
   }
 
@@ -331,7 +350,7 @@ const fetchStores = async () => {
   generalError.value = ''
 
   try {
-    const response = await authStore.fetchStoresByUsername(username.value.trim())
+    const response = await authStore.fetchStoresByUsername(usernameTrimmed)
     console.log('📥 Stores response:', response)
 
     if (response.success && response.data) {
@@ -344,18 +363,17 @@ const fetchStores = async () => {
           status: store.status || 'Active',
           group: store.groups && store.groups.length > 0 ? store.groups[0] : null
         }))
-        
+
         stores.value = mappedStores
         hasStores.value = true
         isStoreUser.value = true
-        
-        // ✅ Store in cache
-        storeCache.set(cacheKey, {
+
+        storeCache.set(usernameTrimmed, {
           stores: mappedStores,
           hasStores: true,
           isStoreUser: true
         })
-        
+
         if (stores.value.length > 0) {
           selectedStore.value = stores.value[0]
           errors.store = ''
@@ -369,9 +387,8 @@ const fetchStores = async () => {
         selectedStore.value = null
         hasStores.value = false
         isStoreUser.value = false
-        
-        // ✅ Cache empty result too
-        storeCache.set(cacheKey, {
+
+        storeCache.set(usernameTrimmed, {
           stores: [],
           hasStores: false,
           isStoreUser: false
@@ -393,6 +410,8 @@ const fetchStores = async () => {
     isStoreUser.value = false
   } finally {
     storesLoading.value = false
+    // 🔥 Mark that we've finished fetching for this username
+    storesFetchedFor.value = usernameTrimmed
   }
 }
 
@@ -404,32 +423,34 @@ const onUsernameChange = () => {
   generalError.value = ''
   hasStores.value = false
   isStoreUser.value = false
-  
+  storesFetchedFor.value = ''
+
   if (debounceTimeout) {
     clearTimeout(debounceTimeout)
   }
-  
+
   const usernameTrimmed = username.value.trim()
   if (!usernameTrimmed) return
-  
-  // ✅ Check cache immediately before debounce
+
+  // ✅ Cache hit → skip debounce entirely
   if (storeCache.has(usernameTrimmed)) {
     const cachedData = storeCache.get(usernameTrimmed)
     stores.value = cachedData.stores
     hasStores.value = cachedData.hasStores
     isStoreUser.value = cachedData.isStoreUser
+    storesFetchedFor.value = usernameTrimmed
     if (stores.value.length > 0) {
       selectedStore.value = stores.value[0]
       errors.store = ''
     }
     return
   }
-  
+
   debounceTimeout = setTimeout(() => {
     if (username.value.trim()) {
       fetchStores()
     }
-  }, 200) // ✅ Reduced from 500ms to 200ms
+  }, 200)
 }
 
 const toggleStoreDropdown = () => {
@@ -465,7 +486,7 @@ const checkPasswordStrength = (pwd) => {
   if (pwd.match(/[0-9]/)) strength += 1
   if (pwd.match(/[^a-zA-Z0-9]/)) strength += 1
   passwordStrength.value = strength
-  
+
   if (errors.password) {
     errors.password = ''
   }
@@ -517,7 +538,8 @@ const validateForm = () => {
     isValid = false
   }
 
-  if (isStoreUser.value && !selectedStore.value) {
+  // 🔥 Store required check — only when we know the user has stores
+  if (hasStores.value && !selectedStore.value) {
     newErrors.store = 'Please select a store'
     isValid = false
   }
@@ -542,7 +564,28 @@ const handleClickOutside = (event) => {
 
 const handleLogin = async () => {
   generalError.value = ''
-  
+
+  const currentUsername = username.value.trim()
+
+  // 🔥 GATE 1: If we haven't fetched stores for this username yet, do it now
+  //    and wait. This closes the "typed and hit Enter in <200ms" race.
+  if (currentUsername && storesFetchedFor.value !== currentUsername) {
+    await fetchStores()
+  }
+
+  // 🔥 GATE 2: While stores are loading, refuse to submit.
+  if (storesLoading.value) {
+    generalError.value = 'Loading stores, please wait…'
+    return
+  }
+
+  // 🔥 GATE 3: If the user has stores but hasn't selected one, refuse.
+  if (hasStores.value && !selectedStore.value) {
+    generalError.value = 'Please select a store before logging in.'
+    shakeError()
+    return
+  }
+
   if (!validateForm()) {
     return
   }
@@ -564,7 +607,7 @@ const handleLogin = async () => {
     if (isStoreUser.value && selectedStore.value) {
       const storeId = selectedStore.value.storeId
       const groupId = selectedStore.value.group?.groupId || selectedStore.value.group?.id
-      
+
       if (!storeId) {
         generalError.value = 'Invalid store selection. Please try again.'
         loading.value = false
@@ -586,9 +629,9 @@ const handleLogin = async () => {
         storeId: storeId,
         groupId: groupId
       }
-      
+
       console.log('🔐 Store login:', { storeId, groupId })
-      
+
       response = await authStore.loginWithStore(loginPayload)
     } else {
       console.log('🔐 Legacy login')
@@ -1043,13 +1086,16 @@ onUnmounted(() => {
   transform: translateY(0);
 }
 
-.login-button-disabled {
+.login-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+  box-shadow: 0 4px 15px rgba(212, 176, 18, 0.15);
 }
 
-.login-button-disabled:hover {
+.login-button-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
   transform: none;
 }
 

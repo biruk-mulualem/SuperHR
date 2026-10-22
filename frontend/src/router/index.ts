@@ -221,11 +221,11 @@ const router = createRouter({
         },
 
   {
-          path: "item-return",
-          name: "item-return",
-          component: () => import("@/views/storemanagement/ItremReturn/ReturnItemView.vue"),
+          path: "Temelash",
+          name: "Temelash",
+          component: () => import("@/views/storemanagement/Temelash/Temelash.vue"),
           meta: {
-            title: "item return",
+            title: "Temelash",
             roles: ["admin", "hr", "finance", "employee", "attendance","checker","storekeeper","store_it"],
           },
         },
@@ -638,7 +638,7 @@ const router = createRouter({
           component: () => import("@/views/Purchaser/localpurchase/PrintPurchaseRequest.vue"),
           meta: {
             title: "print purchase request ",
-            roles: ["admin", "storekeeper", "store_it", "checker"],
+            roles: ["admin", "storekeeper", "store_it", "checker","employee", "nebret", "cost","formulation_manager","chemist","purchase_organizer","purchasing_checkers","purchasing_auditor","purchaser"],
           },
         },
 
@@ -739,7 +739,17 @@ const router = createRouter({
           },
         },
         
-
+{
+  path: "temelash-print",
+  name: "temelash-print",
+  component: () =>
+    import("@/views/storemanagement/itemRequests/TemelashPrint.vue"),
+  meta: {
+    title: "Temelash Print",
+    roles: ["admin", "storekeeper", "store_it", "checker",],
+    hideLayout: true,          // 🔥 ADD THIS
+  },
+},
         {
           path: "store-transaction/print",
           name: "print-transactions",
@@ -793,7 +803,113 @@ const router = createRouter({
 
 
 
-        
+        // ============================================================
+// ITEM REQUEST — CREATE (full page)
+// ============================================================
+{
+  path: "item-requests/new",
+  name: "item-request-create",
+  component: () =>
+    import("@/views/storemanagement/itemRequests/CreateRequestPage.vue"),
+  meta: {
+    title: "New Item Request",
+    roles: [
+      "admin",
+      "storekeeper",
+      "store_it",
+      "checker",
+      "employee",
+      "nebret",
+      "cost",
+      "formulation_manager",
+      "production_order",
+      "chemist",
+      "purchase_organizer",
+      "purchasing_checkers",
+      "purchasing_auditor",
+      "purchaser",
+      "financial_controller",
+    ],
+  },
+},
+
+// ============================================================
+// ITEM REQUEST — EDIT (full page)
+// ============================================================
+{
+  path: "item-requests/:id/edit",
+  name: "item-request-edit",
+  component: () =>
+    import("@/views/storemanagement/itemRequests/CreateRequestPage.vue"),
+  props: true, // passes :id into the component as a prop
+  meta: {
+    title: "Edit Item Request",
+    roles: [
+      "admin",
+      "storekeeper",
+      "store_it",
+      "checker",
+      "employee",
+      "nebret",
+      "cost",
+      "formulation_manager",
+      "production_order",
+      "chemist",
+      "purchase_organizer",
+      "purchasing_checkers",
+      "purchasing_auditor",
+      "purchaser",
+      "financial_controller",
+    ],
+  },
+},
+
+{
+  path: "item-requests/:id/print",        // 👈 :id must be here
+  name: "item-request-print",
+  component: () =>
+    import("@/views/storemanagement/itemRequests/printrequests.vue"),
+  props: true,
+  meta: { title: "Print Item Request", 
+       hideLayout: true,   // 👈 ADD THIS
+       roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret","cost","formulation_manager","production_order","chemist"],
+         
+
+   },
+},
+
+{
+  path: "store-balance/initialize",
+  name: "initialize-balance",
+  component: () =>
+    import("@/views/storemanagement/storebalance/InitializeBalancePage.vue"),
+  meta: {
+    title: "Initialize Balance",
+    roles: ["admin", "storekeeper", "store_it", "checker"],
+  },
+},
+    
+
+{
+  path: "store-balance/return-items",
+  name: "return-items",
+  component: () =>
+    import("@/views/storemanagement/storebalance/ReturnAndwestLeWest.vue"),
+  meta: {
+    title: "Return Items",
+    roles: ["admin", "storekeeper", "store_it", "checker"],
+  },
+},
+
+{
+  path: '/store-balance/wust-lewust/history',
+  name: 'wust-lewust-history',
+  component: () => import('@/views/storemanagement/storebalance/WustLeWustHistory.vue'),
+   meta: {
+    title: "wust-lewust-history",
+    roles: ["admin", "storekeeper", "store_it", "checker"],
+  },
+},
 
             {
           path: "orders",
@@ -817,26 +933,26 @@ const router = createRouter({
           },
         },
 
-        {
-          path: "print-requests",
-          name: "print-requests",
-          component: () =>
-            import("@/views/storemanagement/itemRequests/printrequests.vue"),
-          meta: {
-            title: "print requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
-          },
-        },
-         {
-          path: "print-asset-requests",
-          name: "print-asset-requests",
-          component: () =>
-            import("@/views/storemanagement/itemRequests/assetrequest.vue"),
-          meta: {
-            title: "print asset requests ",
-            roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
-          },
-        },
+        // {
+        //   path: "print-requests",
+        //   name: "print-requests",
+        //   component: () =>
+        //     import("@/views/storemanagement/itemRequests/printrequests.vue"),
+        //   meta: {
+        //     title: "print requests ",
+        //     roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
+        //   },
+        // },
+        //  {
+        //   path: "print-asset-requests",
+        //   name: "print-asset-requests",
+        //   component: () =>
+        //     import("@/views/storemanagement/itemRequests/assetrequest.vue"),
+        //   meta: {
+        //     title: "print asset requests ",
+        //     roles: ["admin", "storekeeper", "store_it", "checker", "employee"],
+        //   },
+        // },
 
         {
           path: "",

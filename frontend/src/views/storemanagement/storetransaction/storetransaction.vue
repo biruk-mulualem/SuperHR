@@ -241,9 +241,9 @@
     <span class="value">{{ transaction.referenceType || '-' }}</span>
   </div>
 
-  <!-- GRN — only when present -->
+  <!-- Transfer — only when present -->
   <div v-if="transaction.grnNumber">
-    <span>GRN Number</span>
+    <span>Transfer Number</span>
     <span class="value mono">{{ transaction.grnNumber }}</span>
   </div>
 

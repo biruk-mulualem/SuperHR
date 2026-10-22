@@ -175,8 +175,8 @@
                     :disabled="isItemAlreadySelected(item)"
                   >
                     {{ item.code }} - {{ item.standardName || item.name }}
-                    [Base: {{ getBaseUOM(item) }} | Conv:
-                    {{ getConversionUOM(item) }}]
+                    [Category: {{ (item as any).category?.name || "Uncategorized" }}]
+                    [Base: {{ getBaseUOM(item) }} | Conv: {{ getConversionUOM(item) }}]
                     {{ isItemAlreadySelected(item) ? "(added)" : "" }}
                   </option>
                 </select>
@@ -249,7 +249,6 @@
                     </div>
 
                     <div class="compact-right">
-                      <!-- 🔥 Compact inline remark input -->
                       <div class="compact-remark-group">
                         <input
                           type="text"
@@ -450,21 +449,65 @@
               </div>
             </div>
 
-            <!-- Department Approval -->
+            <!-- Request Flags: Department approval + Temelash side-by-side -->
             <div class="form-group full-width">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="form.isAsset" />
-                <span class="checkbox-text"
-                  >🏛️ This request requires department approval</span
-                >
-              </label>
+              <div class="checkbox-row">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="form.isAsset" />
+                  <span class="checkbox-text"
+                    >🏛️ This request requires department approval</span
+                  >
+                </label>
 
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="form.isTemelash" />
+                  <span class="checkbox-text"
+                    >🔄 Temelash</span
+                  >
+                </label>
+              </div>
+
+              <!-- Temelash loan period -->
+              <div v-if="form.isTemelash" class="temelash-period-box">
+                <div class="temelash-period-header">
+                  <span class="temelash-period-icon">🔄</span>
+                  <span class="temelash-period-title">
+                    Temelash items are given temporarily and must be returned between the selected dates.
+                  </span>
+                </div>
+
+                <div class="temelash-period-row">
+                  <div class="form-group">
+                    <label>Temelash From *</label>
+                    <input
+                      v-model="form.temelashFromDate"
+                      type="date"
+                      class="form-input"
+                      :min="form.requestedDate"
+                    />
+                    <span class="hint">When the items are given out</span>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Temelash To *</label>
+                    <input
+                      v-model="form.temelashToDate"
+                      type="date"
+                      class="form-input"
+                      :min="form.temelashFromDate || form.requestedDate"
+                    />
+                    <span class="hint">Must be returned by this date</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Department Approval sub-block -->
               <div v-if="form.isAsset" class="departments-info-box">
                 <div class="departments-info-header">
                   <span class="departments-info-icon">📋</span>
                   <span class="departments-info-title">
                     The following departments will need to approve this
-                    request:
+                    request. Click ✕ to remove any you don't want notified.
                   </span>
                 </div>
 
@@ -481,10 +524,34 @@
                     v-for="dept in applicableDepartments"
                     :key="dept.departmentId"
                     class="department-chip"
+                    :class="{
+                      'department-chip-removed': removedDepartmentIds.has(
+                        dept.departmentId,
+                      ),
+                    }"
                   >
                     <span class="department-chip-icon">🏛️</span>
                     <span class="department-chip-name">{{ dept.name }}</span>
                     <span class="department-chip-code">{{ dept.code }}</span>
+
+                    <button
+                      v-if="!removedDepartmentIds.has(dept.departmentId)"
+                      type="button"
+                      class="department-chip-remove"
+                      title="Don't notify this department"
+                      @click.stop="removeDepartment(dept.departmentId)"
+                    >
+                      ✕
+                    </button>
+                    <button
+                      v-else
+                      type="button"
+                      class="department-chip-restore"
+                      title="Restore this department"
+                      @click.stop="restoreDepartment(dept.departmentId)"
+                    >
+                      ↺
+                    </button>
                   </div>
                 </div>
 
@@ -500,9 +567,16 @@
                 <div class="departments-info-footer">
                   <span class="departments-source-hint">
                     📌 Departments are matched by the
-                    <strong>asking store</strong>'s code ({{
-                      getAskingStoreCode()
-                    }})
+                    <strong>asking store</strong>'s code ({{ getAskingStoreCode() }}).
+                    <br />
+                    <strong>
+                      {{ selectedDepartments.length }} of
+                      {{ applicableDepartments.length }}
+                    </strong>
+                    department(s) will be notified.
+                    <span v-if="removedDepartmentIds.size > 0">
+                      ({{ removedDepartmentIds.size }} removed)
+                    </span>
                   </span>
                 </div>
               </div>
@@ -526,7 +600,7 @@
               >
             </div>
 
-            <div class="form-group full-width">
+            <div v-if="form.isAsset" class="form-group full-width">
               <label>General Remark</label>
               <textarea
                 v-model="form.remark"
@@ -615,6 +689,16 @@ const applicableDepartments = ref<
   Array<{ departmentId: number; name: string; code: string }>
 >([]);
 
+// ✅ Departments the user has manually removed (won't be notified)
+const removedDepartmentIds = ref<Set<number>>(new Set());
+
+// ✅ Departments that WILL be notified (applicable minus removed)
+const selectedDepartments = computed(() =>
+  applicableDepartments.value.filter(
+    (d) => !removedDepartmentIds.value.has(d.departmentId),
+  ),
+);
+
 // ✅ Track which items are expanded
 const expandedItems = ref<Set<number>>(new Set());
 
@@ -627,6 +711,9 @@ const form = ref({
   status: "pending" as "pending" | "approved" | "rejected",
   remark: "",
   isAsset: false,
+  isTemelash: false,
+  temelashFromDate: "",   // ✅ NEW
+  temelashToDate: "",     // ✅ NEW
 });
 
 const formErrors = ref<string[]>([]);
@@ -658,7 +745,6 @@ const selectedItems = ref<
 // ================================================================
 const setSelectedItem = (itemId: number, item: any): void => {
   selectedItems.value.set(itemId, item);
-  // Reassign the Map so Vue's reactivity system sees a new reference
   selectedItems.value = new Map(selectedItems.value);
 };
 
@@ -666,7 +752,7 @@ const setSelectedItem = (itemId: number, item: any): void => {
 // COMPUTED
 // ================================================================
 const activeStores = computed(() =>
-  stores.value.filter((s) => s.status === "Active")
+  stores.value.filter((s) => s.status === "Active"),
 );
 
 const filteredSupplyingStores = computed(() => {
@@ -674,7 +760,7 @@ const filteredSupplyingStores = computed(() => {
   if (form.value.askingStoreId) {
     result = result.filter(
       (store) =>
-        (store.storeId || store.id) !== Number(form.value.askingStoreId)
+        (store.storeId || store.id) !== Number(form.value.askingStoreId),
     );
   }
   return result;
@@ -765,12 +851,19 @@ const isFormValid = computed(() => {
   if (selectedItemsList.value.length === 0) return false;
   const allValid = selectedItemsList.value.every((item) => item.quantity > 0);
   if (!allValid) return false;
-  return !!(
+  const baseValid = !!(
     form.value.askingStoreId &&
     form.value.supplyingStoreId &&
     form.value.requestedBy &&
     form.value.requestedDate
   );
+  if (!baseValid) return false;
+  // ✅ Temelash requires both dates
+  if (form.value.isTemelash) {
+    if (!form.value.temelashFromDate || !form.value.temelashToDate) return false;
+    if (form.value.temelashToDate < form.value.temelashFromDate) return false;
+  }
+  return true;
 });
 
 // ================================================================
@@ -842,7 +935,7 @@ const getSelectedUomLabel = (item: any): string => {
 const getAskingStoreCode = (): string => {
   if (!form.value.askingStoreId) return "N/A";
   const store = stores.value.find(
-    (s) => String(s.storeId || s.id) === String(form.value.askingStoreId)
+    (s) => String(s.storeId || s.id) === String(form.value.askingStoreId),
   );
   return store?.code || "N/A";
 };
@@ -881,6 +974,21 @@ const loadApplicableDepartments = async (): Promise<void> => {
   }
 };
 
+// ✅ Remove / Restore department handlers
+const removeDepartment = (departmentId: number): void => {
+  removedDepartmentIds.value.add(departmentId);
+  removedDepartmentIds.value = new Set(removedDepartmentIds.value);
+};
+
+const restoreDepartment = (departmentId: number): void => {
+  removedDepartmentIds.value.delete(departmentId);
+  removedDepartmentIds.value = new Set(removedDepartmentIds.value);
+};
+
+const clearRemovedDepartments = (): void => {
+  removedDepartmentIds.value = new Set();
+};
+
 // ================================================================
 // COLLAPSE / EXPAND
 // ================================================================
@@ -899,7 +1007,7 @@ const toggleItemExpand = (itemId: number): void => {
 const loadItems = async (
   searchQuery = "",
   page = 1,
-  append = false
+  append = false,
 ): Promise<void> => {
   try {
     const trimmed = searchQuery.trim();
@@ -938,10 +1046,10 @@ const loadItems = async (
 
       if (append) {
         const existingIds = new Set(
-          items.value.map((i) => Number(i.itemId ?? i.id))
+          items.value.map((i) => Number(i.itemId ?? i.id)),
         );
         const newItems = responseItems.filter(
-          (i) => !existingIds.has(Number(i.itemId ?? i.id))
+          (i) => !existingIds.has(Number(i.itemId ?? i.id)),
         );
         items.value = [...items.value, ...newItems];
       } else {
@@ -1014,15 +1122,28 @@ watch(itemSearch, (newQuery) => {
 watch(
   () => form.value.askingStoreId,
   () => {
+    clearRemovedDepartments();
     if (form.value.isAsset) loadApplicableDepartments();
-  }
+  },
 );
 
 watch(
   () => form.value.isAsset,
   (newVal) => {
+    clearRemovedDepartments();
     if (newVal) loadApplicableDepartments();
-  }
+  },
+);
+
+// ✅ Clear Temelash dates when unchecking
+watch(
+  () => form.value.isTemelash,
+  (newVal) => {
+    if (!newVal) {
+      form.value.temelashFromDate = "";
+      form.value.temelashToDate = "";
+    }
+  },
 );
 
 // ================================================================
@@ -1050,7 +1171,7 @@ const onItemSelect = (): void => {};
 const updateItemField = (
   itemId: number,
   field: string,
-  value: string
+  value: string,
 ): void => {
   const item = selectedItems.value.get(itemId);
   if (!item) return;
@@ -1230,7 +1351,6 @@ const loadUserData = (): void => {
       userData.assignedStore?.name ||
       userData.currentStore?.name ||
       "Assigned Store";
-    // Only set askingStoreId on NEW request — initializeForm handles editing
     if (!props.editingRequest) {
       form.value.askingStoreId = String(storeId);
     }
@@ -1256,6 +1376,7 @@ const initializeForm = (): void => {
   const newExpanded = new Set<number>();
 
   applicableDepartments.value = [];
+  removedDepartmentIds.value = new Set();
 
   if (props.editingRequest) {
     const req = props.editingRequest;
@@ -1282,11 +1403,7 @@ const initializeForm = (): void => {
       newMap.set(itemId, {
         itemId,
         code: item.item?.code || item.itemCode || item.code || "N/A",
-        name:
-          item.item?.name ||
-          item.itemName ||
-          item.name ||
-          "Unknown",
+        name: item.item?.name || item.itemName || item.name || "Unknown",
         quantity: Number(item.quantity) || 1,
         remark,
         conversionValue: item.conversionValue || 1,
@@ -1298,7 +1415,6 @@ const initializeForm = (): void => {
         model,
       });
 
-      // Auto-expand rows that already have content
       if (remark || specification || brand || model) {
         newExpanded.add(itemId);
       }
@@ -1306,7 +1422,7 @@ const initializeForm = (): void => {
 
     form.value = {
       askingStoreId: String(
-        req.askingStoreId || userAssignedStoreId.value || ""
+        req.askingStoreId || userAssignedStoreId.value || "",
       ),
       supplyingStoreId: String(req.supplyingStoreId || ""),
       items: (req.items || []).map((item: any) => ({
@@ -1329,6 +1445,9 @@ const initializeForm = (): void => {
       status: "pending",
       remark: req.remark || "",
       isAsset: (req as any).isAsset || false,
+      isTemelash: (req as any).isTemelash || false,
+      temelashFromDate: (req as any).temelashFromDate || "",   // ✅ NEW
+      temelashToDate: (req as any).temelashToDate || "",       // ✅ NEW
     };
 
     if (form.value.isAsset) {
@@ -1344,10 +1463,12 @@ const initializeForm = (): void => {
       status: "pending",
       remark: "",
       isAsset: false,
+      isTemelash: false,
+      temelashFromDate: "",   // ✅ NEW
+      temelashToDate: "",     // ✅ NEW
     };
   }
 
-  // 🔥 Atomic assignment — triggers reactivity exactly once
   selectedItems.value = newMap;
   expandedItems.value = newExpanded;
 
@@ -1381,7 +1502,7 @@ const saveRequest = async (): Promise<void> => {
   }
   if (form.value.askingStoreId === form.value.supplyingStoreId) {
     formErrors.value.push(
-      "Asking store and supplying store cannot be the same"
+      "Asking store and supplying store cannot be the same",
     );
   }
   if (form.value.items.length === 0) {
@@ -1392,12 +1513,12 @@ const saveRequest = async (): Promise<void> => {
     .map((item: any) => item.itemId)
     .filter((id: any) => id && id !== 0);
   const duplicateIds = itemIds.filter(
-    (id: number, index: number) => itemIds.indexOf(id) !== index
+    (id: number, index: number) => itemIds.indexOf(id) !== index,
   );
 
   if (duplicateIds.length > 0) {
     const dupItems = form.value.items.filter((item: any) =>
-      duplicateIds.includes(item.itemId)
+      duplicateIds.includes(item.itemId),
     );
 
     validationErrors.value = dupItems.map((item: any) => {
@@ -1423,7 +1544,7 @@ const saveRequest = async (): Promise<void> => {
     }
     if (!item.quantity || item.quantity <= 0) {
       formErrors.value.push(
-        `Item #${index + 1}: Please enter a valid quantity`
+        `Item #${index + 1}: Please enter a valid quantity`,
       );
     }
   });
@@ -1433,6 +1554,25 @@ const saveRequest = async (): Promise<void> => {
   }
   if (!form.value.requestedBy) {
     formErrors.value.push("Please enter the requester name");
+  }
+
+  // ✅ Temelash date validation
+  if (form.value.isTemelash) {
+    if (!form.value.temelashFromDate) {
+      formErrors.value.push("Temelash: Please select the 'From' date");
+    }
+    if (!form.value.temelashToDate) {
+      formErrors.value.push("Temelash: Please select the 'To' date");
+    }
+    if (
+      form.value.temelashFromDate &&
+      form.value.temelashToDate &&
+      form.value.temelashToDate < form.value.temelashFromDate
+    ) {
+      formErrors.value.push(
+        "Temelash: 'To' date must be on or after the 'From' date",
+      );
+    }
   }
 
   if (formErrors.value.length > 0) return;
@@ -1462,6 +1602,15 @@ const saveRequest = async (): Promise<void> => {
       status: form.value.status as "pending" | "approved" | "rejected",
       remark: form.value.remark,
       isAsset: form.value.isAsset,
+      isTemelash: form.value.isTemelash,
+      // ✅ Send the Temelash window (null when not Temelash)
+      temelashFromDate: form.value.isTemelash
+        ? form.value.temelashFromDate || null
+        : null,
+      temelashToDate: form.value.isTemelash
+        ? form.value.temelashToDate || null
+        : null,
+      excludedDepartmentIds: Array.from(removedDepartmentIds.value),
     };
 
     let response;
@@ -1470,7 +1619,7 @@ const saveRequest = async (): Promise<void> => {
         props.editingRequest.requestId || props.editingRequest.id;
       response = await itemRequestService.updateRequest(
         requestId!,
-        requestData
+        requestData,
       );
     } else {
       response = await itemRequestService.createRequest(requestData);
@@ -1487,9 +1636,8 @@ const saveRequest = async (): Promise<void> => {
           "Validation failed. Please fix the issues below.";
         showValidationErrors.value = true;
       } else {
-        // 🔥 Show the error instead of closing silently
         formErrors.value.push(
-          response.error || response.message || "Failed to save request"
+          response.error || response.message || "Failed to save request",
         );
         console.error("❌ Save failed:", response);
       }
@@ -1506,7 +1654,7 @@ const saveRequest = async (): Promise<void> => {
       showValidationErrors.value = true;
     } else {
       formErrors.value.push(
-        errorData?.error || error.message || "Failed to save request"
+        errorData?.error || error.message || "Failed to save request",
       );
     }
   } finally {
@@ -1543,7 +1691,7 @@ watch(
       initializeForm();
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ================================================================
@@ -1628,7 +1776,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* 🔥 Compact remark input */
 .compact-remark-group {
   flex-shrink: 0;
 }
@@ -2098,6 +2245,18 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* ✅ Checkbox row — side by side */
+.checkbox-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.checkbox-row .checkbox-label {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -2137,6 +2296,44 @@ onMounted(() => {
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;
+}
+
+/* ================================================================ */
+/* TEMELASH PERIOD BOX */
+/* ================================================================ */
+
+.temelash-period-box {
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  animation: slideDown 0.2s ease;
+}
+
+.temelash-period-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.temelash-period-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.temelash-period-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.temelash-period-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
 /* ================================================================ */
@@ -2193,10 +2390,11 @@ onMounted(() => {
 }
 
 .department-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 6px 34px 6px 14px;
   background: white;
   border: 1.5px solid #fcd34d;
   border-radius: 20px;
@@ -2210,6 +2408,17 @@ onMounted(() => {
 .department-chip:hover {
   border-color: #f59e0b;
   box-shadow: 0 2px 6px rgba(245, 158, 11, 0.25);
+}
+
+.department-chip-removed {
+  opacity: 0.55;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.department-chip-removed .department-chip-name {
+  text-decoration: line-through;
 }
 
 .department-chip-icon {
@@ -2228,6 +2437,38 @@ onMounted(() => {
   padding: 1px 8px;
   border-radius: 10px;
   margin-left: 4px;
+}
+
+.department-chip-removed .department-chip-code {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.department-chip-remove,
+.department-chip-restore {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 50%;
+  color: #94a3b8;
+  transition: all 0.15s;
+}
+
+.department-chip-remove:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.department-chip-restore:hover {
+  color: #16a34a;
+  background: #f0fdf4;
 }
 
 .departments-empty {
@@ -2687,6 +2928,18 @@ onMounted(() => {
   .department-chip {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .checkbox-row {
+    flex-direction: column;
+  }
+
+  .checkbox-row .checkbox-label {
+    min-width: 0;
+  }
+
+  .temelash-period-row {
+    grid-template-columns: 1fr;
   }
 }
 

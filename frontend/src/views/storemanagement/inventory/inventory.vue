@@ -7,7 +7,6 @@
         <h2>📦 Item Master Data</h2>
         <span class="total-badge">{{ totalItems }} Items</span>
       </div>
-
       <div class="header-filters">
         <div class="search-box">
           <span class="search-icon">🔍</span>
@@ -279,7 +278,16 @@
       <div v-if="activeTab === 'uom'" class="uom-tab">
         <UOM @uom-updated="onUOMUpdated" />
       </div>
-
+      <!-- ============================================================ -->
+      <!-- TAB 4: RELATIONSHIPS                                          -->
+      <!-- ============================================================ -->
+      <div v-if="activeTab === 'relationships'" class="relationships-tab">
+        <ItemRelationships
+          :items="items"
+          :uoms="uomList"
+          @changed="onRelationshipsChanged"
+        />
+      </div>
     </div>
   </div>
 
@@ -871,7 +879,7 @@ import itemService from '@/stores/itemService';
 
 import Categories from './categories.vue';
 import UOM from './uom.vue';
-
+import ItemRelationships from './ItemRelationships.vue';
 const QuillEditor = defineAsyncComponent(() =>
   import('@vueup/vue-quill').then(m => m.QuillEditor)
 );
@@ -899,7 +907,8 @@ const activeTab = ref('items');
 const tabs = [
   { key: 'items', label: '📦 Items' },
   { key: 'categories', label: '📁 Categories' },
-  { key: 'uom', label: '📏 UOM' }
+  { key: 'uom', label: '📏 UOM' },
+  { key: 'relationships', label: '🔗 Relationships' }   
 ];
 
 const expandedRow = ref(null);
@@ -1016,6 +1025,10 @@ const onCategoryUpdated = async () => {
 
 const onUOMUpdated = async () => {
   await loadUOMs();
+  await loadItems();
+};
+
+const onRelationshipsChanged = async () => {
   await loadItems();
 };
 

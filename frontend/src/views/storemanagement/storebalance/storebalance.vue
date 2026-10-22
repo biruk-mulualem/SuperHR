@@ -18,11 +18,15 @@
             @input="onSearchChange"
           />
         </div>
+      
+       <button class="btn-return" @click="openReturnPage">
+  ↩️ Return & ውስጥ ለውስጥ
+</button>
         <button class="btn-add" @click="openAddBalanceModal">
-          📦 Initialize Balance
+           📦 Initialize Balance
         </button>
         <button class="btn-process-requests" @click="processApprovedRequests">
-          📋 Process Approved Requests
+          📋 Process
           <span v-if="pendingRequestsCount > 0" class="badge-count">
             {{ pendingRequestsCount }}
           </span>
@@ -143,11 +147,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-if="isLoading">
-            <td colspan="8" class="text-center">
-              <div class="loading-spinner">Loading...</div>
-            </td>
-          </tr>
+ <tr v-if="isLoading">
+  <td colspan="8" class="loading-cell">
+    <div class="loading-spinner">
+      <div class="spinner-ring"></div>
+      <span class="loading-text">Loading balances…</span>
+    </div>
+  </td>
+</tr>
           <tr v-else-if="paginatedBalances.length === 0">
             <td colspan="8" class="empty-state">
               <div class="empty-content">
@@ -419,20 +426,6 @@
       </div>
     </div>
 
-    <!-- ==================== INITIALIZE BALANCE MODAL ==================== -->
-    <InitializeBalanceModal
-      v-if="showBalanceModal"
-      :is-admin="isAdmin"
-      :user-data="userData"
-      :stores="availableStores"
-      :groups="availableGroups"
-      :categories="availableCategories"
-      :inventory-items="inventoryItems"
-      :editing-balance="editingBalance"
-      @close="closeBalanceModal"
-      @success="onBalanceSuccess"
-    />
-
     <!-- ==================== TOAST ==================== -->
     <div v-if="showToast" class="toast" :class="toastType">
       <span>{{ toastMessage }}</span>
@@ -442,11 +435,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import balanceService from "@/stores/balanceService";
-import InitializeBalanceModal from "./components/InitializeBalanceModal.vue";
 
 const router = useRouter();
+const route = useRoute();
 
 // ================================================================
 // USER DATA
@@ -473,7 +466,7 @@ const allGroups = ref([]);
 const categories = ref([]);
 const inventoryItems = ref([]);
 const balances = ref([]);
-const itemRequests = ref([]); // ✅ Storage for approved requests
+const itemRequests = ref([]);
 
 // ================================================================
 // LOADING STATES
@@ -490,8 +483,6 @@ const filterCategory = ref("");
 const filterStatus = ref("");
 const currentPage = ref(1);
 const pageSize = ref(5);
-const showBalanceModal = ref(false);
-const editingBalance = ref(null);
 const showToggleModal = ref(false);
 const toggleItem = ref(null);
 const toggleNewStatus = ref("");
@@ -537,6 +528,9 @@ const availableGroups = computed(() => {
 const availableCategories = computed(() => {
   return categories.value.filter((c) => c.status === "Active");
 });
+const openReturnPage = () => {
+  router.push({ name: "return-items" });
+};
 
 // ================================================================
 // COMPUTED - FILTERED BALANCES
@@ -664,7 +658,6 @@ const lowStockItems = computed(() => {
   ).length;
 });
 
-// ✅ Count of approved requests for the button badge
 const pendingRequestsCount = computed(() => {
   return itemRequests.value.filter((req) => {
     if (req.status !== "approved") return false;
@@ -862,7 +855,6 @@ const fetchBalances = async () => {
   }
 };
 
-// ✅ Fetch approved requests (for the count badge)
 const fetchApprovedRequests = async () => {
   try {
     let response;
@@ -924,22 +916,11 @@ const changePageSize = () => {
 };
 
 // ================================================================
-// BALANCE MODAL
+// INITIALIZE BALANCE — now a routed page
 // ================================================================
 
 const openAddBalanceModal = () => {
-  editingBalance.value = null;
-  showBalanceModal.value = true;
-};
-
-const closeBalanceModal = () => {
-  showBalanceModal.value = false;
-  editingBalance.value = null;
-};
-
-const onBalanceSuccess = () => {
-  showToastMessage("Balance updated successfully!", "success");
-  fetchBalances();
+  router.push({ name: "initialize-balance" });
 };
 
 // ================================================================
@@ -1109,7 +1090,7 @@ onMounted(async () => {
     await fetchBalances();
   }
 
-  // ✅ Fetch pending requests for the count badge
+  // Fetch pending requests for the count badge
   await fetchApprovedRequests();
 });
 
@@ -1119,13 +1100,118 @@ watch(
     if (newVal) {
       userData.value = getUserData();
       fetchBalances();
-      fetchApprovedRequests(); // ✅ Reload count on user change
+      fetchApprovedRequests();
     }
   },
+);
+
+// Refresh list when returning from the initialize/edit page
+watch(
+  () => route.query.refreshed,
+  (val) => {
+    if (val) {
+      fetchBalances();
+      fetchApprovedRequests();
+      router.replace({ query: {} });
+    }
+  },
+  { immediate: true },
 );
 </script>
 
 <style scoped>
+
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+
+
+/* ================================================================
+   LOADING STATE
+   ================================================================ */
+.loading-cell {
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+
+.loading-cell {
+  display: table-cell;            /* keep it a real table cell */
+  height: 260px;                  /* give the row real vertical space */
+  text-align: center;             /* horizontal centering */
+  vertical-align: middle;         /* vertical centering */
+}
+
+.loading-spinner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.spinner-ring {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.2px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.refresh-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.btn-return {
+  background: #16a34a;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-return:hover {
+  background: #15803d;
+}
 /* ================================================================
    SECTION CARD
    ================================================================ */
@@ -1245,7 +1331,6 @@ watch(
   background: #7c3aed;
 }
 
-/* ✅ Badge count for approved requests */
 .badge-count {
   display: inline-block;
   background: #ef4444;

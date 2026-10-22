@@ -14,6 +14,19 @@ module.exports = (sequelize, DataTypes) => {
       User.belongsTo(models.Department, { 
         foreignKey: "departmentId" 
       });
+
+
+      // Print overrides owned by this user
+User.hasMany(models.PrintOverride, {
+  foreignKey: 'userId',
+  as: 'printOverrides',
+});
+
+// Print overrides updated by this user
+User.hasMany(models.PrintOverride, {
+  foreignKey: 'updatedBy',
+  as: 'printOverridesUpdated',
+});
       
       // Employee association (one-to-one)
       User.hasOne(models.Employee, { 

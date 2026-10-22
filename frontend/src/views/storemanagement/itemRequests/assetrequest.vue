@@ -55,6 +55,18 @@
           class="btn-cancel-header"
           @click="closeColumnManager"
         >✖ Close Columns</button>
+
+        <button
+          v-if="!isEditingHeader && !isManagingSections"
+          class="btn-merge-toggle"
+          @click="openSectionManager"
+          title="Show / hide sections"
+        >📄 Sections ({{ visibleSectionCount }}/4)</button>
+        <button
+          v-if="!isEditingHeader && isManagingSections"
+          class="btn-cancel-header"
+          @click="closeSectionManager"
+        >✖ Close Sections</button>
       </div>
 
       <!-- Column manager panel -->
@@ -158,9 +170,105 @@
         </div>
       </div>
 
+      <!-- Section manager panel -->
+      <div v-if="isManagingSections && !isEditingHeader" class="column-manager no-print">
+        <div class="column-manager-title">Show / hide sections</div>
+        <div class="column-manager-list">
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.department }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.department"
+              @change="toggleSection('department')"
+            />
+            <span class="column-manager-label">Department</span>
+          </label>
+
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.reason }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.reason"
+              @change="toggleSection('reason')"
+            />
+            <span class="column-manager-label">Reason</span>
+          </label>
+
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.comment }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.comment"
+              @change="toggleSection('comment')"
+            />
+            <span class="column-manager-label">Comment</span>
+          </label>
+
+          <label
+            class="column-manager-item"
+            :class="{ 'is-hidden': !sectionVisibility.checkedBy }"
+          >
+            <input
+              type="checkbox"
+              :checked="sectionVisibility.checkedBy"
+              @change="toggleSection('checkedBy')"
+            />
+            <span class="column-manager-label">Checked By</span>
+          </label>
+        </div>
+
+        <div class="column-manager-actions">
+          <button class="btn-merge-apply" @click="showAllSections">↺ Show all</button>
+          <button class="btn-merge-clear" @click="hideAllSections">✕ Hide all</button>
+        </div>
+      </div>
+
       <div class="date-row">
         <span><strong>REQ. NO:-</strong> {{ requestData.requestCode || requestData.id }}</span>
-        <span><strong>DATE:-</strong> {{ formatDate(requestData.requestedDate) }}</span>
+
+        <span class="date-field">
+          <strong>DATE:-</strong>
+
+          <!-- Display mode -->
+          <span
+            v-if="!isEditingDate"
+            class="date-display"
+            @click="startEditingDate"
+            title="Click to edit date"
+          >
+            {{ displayDate }}
+            <span class="date-edit-pencil no-print" aria-hidden="true">✏️</span>
+          </span>
+
+          <!-- Edit mode -->
+          <span v-else class="date-edit-wrap">
+            <input
+              ref="dateInputRef"
+              v-model="dateDraft"
+              type="date"
+              class="date-input no-print"
+              @keydown.enter.prevent="saveDate"
+              @keydown.esc.prevent="cancelEditingDate"
+              @blur="saveDate"
+            />
+            <span class="date-edit-actions no-print">
+              <button class="btn-save-header" @click="saveDate">💾</button>
+              <button class="btn-cancel-header" @click="cancelEditingDate">✖</button>
+              <button
+                v-if="dateOverride !== null"
+                class="btn-cancel-header"
+                @click="resetDate"
+                title="Reset to API value"
+              >↺</button>
+            </span>
+          </span>
+        </span>
       </div>
     </header>
 
@@ -288,21 +396,17 @@
 
         <!-- ✅ Grand total row — only when a Total Price column exists -->
         <tr v-if="hasTotalPriceColumn" class="grand-total-row">
-          <!-- Leading columns (optional checkbox + No) -->
           <td
             :colspan="isMergingRemarks ? 2 : 1"
             class="grand-total-spacer-cell"
           ></td>
 
-          <!-- Walk every visible data column -->
           <template v-for="col in dataColumns" :key="`tot-${col.key}`">
-            <!-- Under Unit Price → the word TOTAL -->
             <td
               v-if="col.key === 'unitPrice'"
               class="grand-total-label-cell"
             >TOTAL</td>
 
-            <!-- Under Total Price → the sum -->
             <td
               v-else-if="col.key === 'totalPrice'"
               class="grand-total-value-cell"
@@ -310,19 +414,17 @@
               <span class="grand-total-value">{{ grandTotalFormatted }}</span>
             </td>
 
-            <!-- Every other column → grey spacer -->
             <td v-else class="grand-total-spacer-cell"></td>
           </template>
 
-          <!-- Remark column spacer -->
           <td class="grand-total-spacer-cell"></td>
         </tr>
       </tbody>
     </table>
 
     <div class="meta-grid">
-      <!-- Department — editable -->
-      <div class="meta-col">
+      <!-- Department — editable (toggleable) -->
+      <div v-if="sectionVisibility.department" class="meta-col">
         <div class="block-header text-center">Department</div>
         <div class="block-body dept-body">
           <div
@@ -390,7 +492,8 @@
     </div>
 
     <div class="footer-sections">
-      <div class="input-row">
+      <!-- ==================== REASON ==================== -->
+      <div v-if="sectionVisibility.reason" class="input-row">
         <div class="gray-label">Reason</div>
         <div class="lines-container">
           <div class="reason-content-text">
@@ -399,7 +502,8 @@
         </div>
       </div>
 
-      <div class="input-row short-width">
+      <!-- ==================== COMMENT ==================== -->
+      <div v-if="sectionVisibility.comment" class="input-row short-width">
         <div class="gray-label">Comment</div>
         <div class="lines-container">
           <div class="write-line"></div>
@@ -407,7 +511,8 @@
         </div>
       </div>
 
-      <div class="checked-by-section">
+      <!-- ==================== CHECKED BY ==================== -->
+      <div v-if="sectionVisibility.checkedBy" class="checked-by-section">
         <div class="gray-label inline-label">Checked By</div>
         <div class="checked-by-body">
           <p><strong>Name</strong> _____________________________.</p>
@@ -434,6 +539,7 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import itemRequestService from '@/stores/itemRequestService'
+import printOverrideService from '@/stores/printOverrideService'
 import employeesService from '@/stores/employee'
 import type { ItemRequest, Store, Item } from '@/stores/itemRequestService'
 
@@ -471,6 +577,75 @@ const departmentDraft = ref('')
 const departmentInputRef = ref<HTMLInputElement | null>(null)
 const departmentOverride = ref<string | null>(null)
 const approvedByName = ref('')
+
+// ================================================================
+// EDITABLE DATE STATE
+// ================================================================
+const isEditingDate = ref(false)
+const dateDraft = ref('')
+const dateInputRef = ref<HTMLInputElement | null>(null)
+const dateOverride = ref<string | null>(null)
+
+// ================================================================
+// FOOTER SECTION VISIBILITY (Department / Reason / Comment / Checked By)
+// ================================================================
+
+interface SectionVisibility {
+  department: boolean
+  reason: boolean
+  comment: boolean
+  checkedBy: boolean
+}
+
+const isManagingSections = ref(false)
+
+const sectionVisibility = ref<SectionVisibility>({
+  department: true,
+  reason: true,
+  comment: true,
+  checkedBy: true,
+})
+
+const visibleSectionCount = computed(() => {
+  const v = sectionVisibility.value
+  return (
+    (v.department ? 1 : 0) +
+    (v.reason ? 1 : 0) +
+    (v.comment ? 1 : 0) +
+    (v.checkedBy ? 1 : 0)
+  )
+})
+
+const openSectionManager = () => { isManagingSections.value = true }
+const closeSectionManager = () => { isManagingSections.value = false }
+
+const toggleSection = (key: keyof SectionVisibility) => {
+  sectionVisibility.value = {
+    ...sectionVisibility.value,
+    [key]: !sectionVisibility.value[key],
+  }
+  saveOverride({ sectionVisibility: { ...sectionVisibility.value } })
+}
+
+const showAllSections = () => {
+  sectionVisibility.value = {
+    department: true,
+    reason: true,
+    comment: true,
+    checkedBy: true,
+  }
+  saveOverride({ sectionVisibility: { ...sectionVisibility.value } })
+}
+
+const hideAllSections = () => {
+  sectionVisibility.value = {
+    department: false,
+    reason: false,
+    comment: false,
+    checkedBy: false,
+  }
+  saveOverride({ sectionVisibility: { ...sectionVisibility.value } })
+}
 
 // ================================================================
 // REMARK MERGE STATE
@@ -522,7 +697,6 @@ const COLUMN_OPTIONS = [
   { value: '__other__',        label: 'Other… (type a name)' },
 ]
 
-// ✅ Default column set — Unit Price and Total Price are NOT included
 const buildDefaultColumns = (): ColumnDef[] => [
   {
     key: 'item',
@@ -585,7 +759,6 @@ const hasAnyHiddenColumn = computed(() => columns.value.some((c) => !c.visible))
 const isEditableColumn = (col: ColumnDef) => !!col.editable && !col.computed
 const isComputedColumn = (col: ColumnDef) => !!col.computed
 
-// ✅ Grand total helpers
 const hasTotalPriceColumn = computed(
   () => dataColumns.value.some((c) => c.key === 'totalPrice')
 )
@@ -651,6 +824,7 @@ const toggleColumn = (key: string) => {
   if (!col) return
   if (isColumnLocked(col)) return
   col.visible = !col.visible
+  persistColumnState()
 }
 
 const hideEmptyColumns = () => {
@@ -667,17 +841,14 @@ const showAllColumns = () => {
   persistColumnState()
 }
 
-// ✅ Reset to the default column set and clear custom cells for the current request
 const resetColumnState = () => {
-  try {
-    localStorage.removeItem(LS_COLUMNS_KEY)
-    const reqKey = currentRequestKey.value
-    if (reqKey) {
-      delete customCellData.value[reqKey]
-      persistCustomCells()
-    }
-  } catch { /* ignore */ }
+  const reqKey = currentRequestKey.value
+  if (reqKey) {
+    delete customCellData.value[reqKey]
+    persistCustomCells()
+  }
   columns.value = buildDefaultColumns()
+  persistColumnState()
 }
 
 const openColumnManager = () => { isManagingColumns.value = true }
@@ -780,6 +951,7 @@ const removeCustomColumn = (key: string) => {
     })
   }
   persistColumnState()
+  persistCustomCells()
 }
 
 const getColumnValue = (item: any, col: ColumnDef, _index: number): string => {
@@ -840,7 +1012,7 @@ const getComputedCellValue = (item: any, rowIndex: number, col: ColumnDef): stri
 }
 
 // ================================================================
-// DEPARTMENT — display + edit
+// DEPARTMENT
 // ================================================================
 
 const apiDepartment = computed<string>(() => getRequestingDepartment())
@@ -863,7 +1035,7 @@ const saveDepartment = () => {
   const cleaned = departmentDraft.value.trim()
   departmentOverride.value = cleaned === '' ? null : cleaned
   isEditingDepartment.value = false
-  persistExtras()
+  saveOverride({ department: departmentOverride.value })
 }
 
 const cancelEditingDepartment = () => {
@@ -875,11 +1047,11 @@ const resetDepartment = () => {
   departmentOverride.value = null
   isEditingDepartment.value = false
   departmentDraft.value = ''
-  persistExtras()
+  saveOverride({ department: null })
 }
 
 // ================================================================
-// APPROVED BY NAME — editable
+// APPROVED BY NAME
 // ================================================================
 
 const onApprovedNameBlur = (e: FocusEvent) => {
@@ -887,7 +1059,64 @@ const onApprovedNameBlur = (e: FocusEvent) => {
   const text = (el.innerText || '').replace(/\u00a0/g, ' ').trim()
   approvedByName.value = text
   el.innerText = text
-  persistExtras()
+  saveOverride({ approvedByName: text || null })
+}
+
+// ================================================================
+// DATE — display + edit
+// ================================================================
+
+const toInputDate = (value?: string | null): string => {
+  if (!value) return ''
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return ''
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const fromInputDate = (value: string): string => {
+  if (!value) return ''
+  const [y, m, d] = value.split('-')
+  if (!y || !m || !d) return ''
+  return `${d}/${m}/${y}`
+}
+
+const displayDate = computed<string>(() => {
+  if (dateOverride.value) return fromInputDate(dateOverride.value)
+  return formatDate(requestData.value?.requestedDate)
+})
+
+const startEditingDate = async () => {
+  dateDraft.value = dateOverride.value
+    ? dateOverride.value
+    : toInputDate(requestData.value?.requestedDate)
+
+  isEditingDate.value = true
+  await nextTick()
+  dateInputRef.value?.focus()
+  dateInputRef.value?.select?.()
+}
+
+const saveDate = () => {
+  if (!isEditingDate.value) return
+  const cleaned = (dateDraft.value || '').trim()
+  dateOverride.value = cleaned === '' ? null : cleaned
+  isEditingDate.value = false
+  saveOverride({ overrideDate: dateOverride.value })
+}
+
+const cancelEditingDate = () => {
+  isEditingDate.value = false
+  dateDraft.value = ''
+}
+
+const resetDate = () => {
+  dateOverride.value = null
+  isEditingDate.value = false
+  dateDraft.value = ''
+  saveOverride({ overrideDate: null })
 }
 
 // ================================================================
@@ -898,6 +1127,12 @@ const currentRequestKey = computed<string>(() => {
   if (!requestData.value) return ''
   const r = requestData.value as any
   return String(r.requestCode || r.id || '')
+})
+
+const currentRequestId = computed<number | string | null>(() => {
+  if (!requestData.value) return null
+  const r = requestData.value as any
+  return r.requestId ?? r.id ?? null
 })
 
 watch(currentRequestKey, () => {
@@ -913,7 +1148,25 @@ watch(currentRequestKey, () => {
   newColumnChoice.value = ''
   newColumnCustomLabel.value = ''
 
-  applyExtrasForCurrentRequest()
+  isManagingSections.value = false
+
+  // Reset local state
+  departmentOverride.value = null
+  approvedByName.value = ''
+  dateOverride.value = null
+  isEditingDepartment.value = false
+  isEditingDate.value = false
+  sectionVisibility.value = {
+    department: true,
+    reason: true,
+    comment: true,
+    checkedBy: true,
+  }
+  customCellData.value = {}
+  columns.value = buildDefaultColumns()
+
+  // Reload from server
+  loadOverride()
 })
 
 // ================================================================
@@ -948,6 +1201,7 @@ const saveHeader = () => {
   const cleaned = rawText.replace(/\s+/g, ' ').trim()
   customHeader.value = (!cleaned || cleaned === DEFAULT_HEADER) ? null : cleaned
   isEditingHeader.value = false
+  saveOverride({ customHeader: customHeader.value })
 }
 
 const onPastePlain = (e: ClipboardEvent) => {
@@ -1035,103 +1289,99 @@ const unmergeGroup = (startIndex: number) => {
 }
 
 // ================================================================
-// PERSISTENCE
+// PRINT OVERRIDE (server-backed)
 // ================================================================
 
-// ✅ v2 keys — old saved state is ignored, so we start fresh with the
-//    default column set (no Unit Price / Total Price).
-const LS_COLUMNS_KEY = 'itemRequest:columns:v2'
-const LS_CUSTOM_CELLS_KEY = 'itemRequest:customCells:v2'
-const LS_EXTRAS_KEY = 'itemRequest:extras:v2'
+const applyOverride = (data: any) => {
+  if (!data) return
 
-interface ExtrasShape {
-  department?: string
-  approvedBy?: string
+  departmentOverride.value = data.department ?? null
+  approvedByName.value = data.approvedByName ?? ''
+  dateOverride.value = data.overrideDate ?? null
+  customHeader.value = data.customHeader ?? null
+
+  // Merge with defaults so old rows without `department` still show it
+  sectionVisibility.value = {
+    department: true,
+    reason: true,
+    comment: true,
+    checkedBy: true,
+    ...(data.sectionVisibility || {}),
+  }
+
+  if (Array.isArray(data.columnsConfig) && data.columnsConfig.length > 0) {
+    restoreColumnsFromOverrides(data.columnsConfig)
+  }
+
+  if (data.customCells && typeof data.customCells === 'object') {
+    customCellData.value = data.customCells
+  }
 }
-const extrasByRequest = ref<Record<string, ExtrasShape>>({})
 
-const persistExtras = () => {
+const loadOverride = async () => {
+  const requestId = currentRequestId.value
+  if (!requestId) return
+
   try {
-    const reqKey = currentRequestKey.value
-    if (!reqKey) return
-    const current = extrasByRequest.value[reqKey] || {}
-    const next: ExtrasShape = { ...current }
-    if (departmentOverride.value !== null && departmentOverride.value !== '') {
-      next.department = departmentOverride.value
-    } else {
-      delete next.department
+    const res = await printOverrideService.getByRequest(requestId)
+    if (res.success && res.data) {
+      applyOverride(res.data)
     }
-    if (approvedByName.value) next.approvedBy = approvedByName.value
-    else delete next.approvedBy
-    extrasByRequest.value = { ...extrasByRequest.value, [reqKey]: next }
-    localStorage.setItem(LS_EXTRAS_KEY, JSON.stringify(extrasByRequest.value))
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error('Load override error:', err)
+  }
 }
 
-const restoreExtras = () => {
+const saveOverride = async (patch: Record<string, any>) => {
+  const requestId = currentRequestId.value
+  if (!requestId) return
+
   try {
-    const raw = localStorage.getItem(LS_EXTRAS_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') extrasByRequest.value = parsed
-  } catch { /* ignore */ }
-}
-
-const applyExtrasForCurrentRequest = () => {
-  const reqKey = currentRequestKey.value
-  const extras = reqKey ? extrasByRequest.value[reqKey] : undefined
-  departmentOverride.value = extras?.department ?? null
-  approvedByName.value = extras?.approvedBy ?? ''
-  isEditingDepartment.value = false
-  departmentDraft.value = ''
+    await printOverrideService.save(requestId, patch)
+  } catch (err) {
+    console.error('Save override error:', err)
+  }
 }
 
 const persistColumnState = () => {
-  try {
-    const snapshot = columns.value.map((c) => ({
-      key: c.key, label: c.label, width: c.width, visible: c.visible,
-      custom: !!c.custom, locked: !!c.locked, editable: !!c.editable,
-      kind: c.kind, computed: c.computed, pairedKey: c.pairedKey,
-      align: c.align, bold: !!c.bold,
-    }))
-    localStorage.setItem(LS_COLUMNS_KEY, JSON.stringify(snapshot))
-  } catch { /* ignore */ }
+  const snapshot = columns.value.map((c) => ({
+    key: c.key, label: c.label, width: c.width, visible: c.visible,
+    custom: !!c.custom, locked: !!c.locked, editable: !!c.editable,
+    kind: c.kind, computed: c.computed, pairedKey: c.pairedKey,
+    align: c.align, bold: !!c.bold,
+  }))
+  saveOverride({ columnsConfig: snapshot })
 }
 
-const restoreColumnState = () => {
-  try {
-    const raw = localStorage.getItem(LS_COLUMNS_KEY)
-    if (!raw) return
-    const snap = JSON.parse(raw) as Array<Partial<ColumnDef> & { key: string }>
-    if (!Array.isArray(snap) || snap.length === 0) return
+const restoreColumnsFromOverrides = (snap: any[]) => {
+  if (!Array.isArray(snap) || snap.length === 0) return
 
-    const builtinMap = new Map<string, ColumnDef>(
-      buildDefaultColumns().map((c) => [c.key, c])
-    )
+  const builtinMap = new Map<string, ColumnDef>(
+    buildDefaultColumns().map((c) => [c.key, c])
+  )
 
-    const restored: ColumnDef[] = []
-    snap.forEach((s) => {
-      const b = builtinMap.get(s.key)
-      if (b) {
-        restored.push({ ...b, visible: s.visible !== false })
-      } else if (s.custom) {
-        restored.push({
-          key: s.key, label: s.label || 'Custom', width: s.width || '12%',
-          visible: s.visible !== false, custom: true,
-          editable: s.editable ?? true, kind: (s.kind as any) || 'text',
-          computed: s.computed as any, pairedKey: s.pairedKey,
-          getValue: () => '',
-        })
-      }
-    })
+  const restored: ColumnDef[] = []
+  snap.forEach((s) => {
+    const b = builtinMap.get(s.key)
+    if (b) {
+      restored.push({ ...b, visible: s.visible !== false })
+    } else if (s.custom) {
+      restored.push({
+        key: s.key, label: s.label || 'Custom', width: s.width || '12%',
+        visible: s.visible !== false, custom: true,
+        editable: s.editable ?? true, kind: (s.kind as any) || 'text',
+        computed: s.computed as any, pairedKey: s.pairedKey,
+        getValue: () => '',
+      })
+    }
+  })
 
-    builtinMap.forEach((b, k) => {
-      if (!restored.find((c) => c.key === k)) restored.push({ ...b, visible: true })
-    })
+  builtinMap.forEach((b, k) => {
+    if (!restored.find((c) => c.key === k)) restored.push({ ...b, visible: true })
+  })
 
-    ensurePricePairing(restored)
-    columns.value = restored
-  } catch { /* ignore */ }
+  ensurePricePairing(restored)
+  columns.value = restored
 }
 
 const ensurePricePairing = (list: ColumnDef[]) => {
@@ -1153,18 +1403,7 @@ const ensurePricePairing = (list: ColumnDef[]) => {
 }
 
 const persistCustomCells = () => {
-  try {
-    localStorage.setItem(LS_CUSTOM_CELLS_KEY, JSON.stringify(customCellData.value))
-  } catch { /* ignore */ }
-}
-
-const restoreCustomCells = () => {
-  try {
-    const raw = localStorage.getItem(LS_CUSTOM_CELLS_KEY)
-    if (!raw) return
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') customCellData.value = parsed
-  } catch { /* ignore */ }
+  saveOverride({ customCells: customCellData.value })
 }
 
 // ================================================================
@@ -1418,7 +1657,9 @@ const printPage = (): void => {
   if (isEditingHeader.value) cancelEditingHeader()
   if (isMergingRemarks.value) isMergingRemarks.value = false
   if (isManagingColumns.value) isManagingColumns.value = false
+  if (isManagingSections.value) isManagingSections.value = false
   if (isEditingDepartment.value) saveDepartment()
+  if (isEditingDate.value) saveDate()
   setTimeout(() => window.print(), 50)
 }
 
@@ -1435,16 +1676,13 @@ const initialize = async () => {
       loadDepartments()
     ])
     await loadRequest(requestId)
-    applyExtrasForCurrentRequest()
+    await loadOverride()
   } else {
     loading.value = false
   }
 }
 
 onMounted(() => {
-  restoreColumnState()
-  restoreCustomCells()
-  restoreExtras()
   initialize()
 })
 
@@ -1457,7 +1695,10 @@ watch(
 
 watch(
   () => columns.value.map((c) => `${c.key}:${c.visible}`).join(','),
-  () => persistColumnState()
+  () => {
+    // Only persist when not loading. Once loaded, changes come from user actions.
+    if (requestData.value) persistColumnState()
+  }
 )
 </script>
 
@@ -1601,6 +1842,64 @@ watch(
   align-items: center;
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+/* ================================================================
+   EDITABLE DATE
+   ================================================================ */
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.date-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, outline 0.15s ease;
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+}
+
+.date-display:hover {
+  background: #f1f5f9;
+  outline-color: #cbd5e1;
+}
+
+.date-edit-pencil { font-size: 12px; opacity: 0.5; }
+.date-display:hover .date-edit-pencil { opacity: 1; }
+
+.date-edit-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.date-input {
+  padding: 4px 8px;
+  border: 2px solid #2563eb;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  background: #eff6ff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.date-input:focus {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.date-edit-actions {
+  display: inline-flex;
+  gap: 4px;
 }
 
 /* ================================================================
@@ -1799,7 +2098,7 @@ watch(
 }
 
 /* ================================================================
-   TABLE CONFIGURATION (bigger fonts)
+   TABLE CONFIGURATION
    ================================================================ */
 .items-table {
   width: 100%;
@@ -1855,7 +2154,6 @@ watch(
   background: #e5e7eb !important;
 }
 
-/* "TOTAL" label sits under the Unit Price column */
 .grand-total-label-cell {
   background: #e5e7eb !important;
   text-align: center !important;
@@ -1993,7 +2291,6 @@ watch(
 
 .block-body { padding-top: 10px; font-size: 13px; min-height: 80px; }
 
-/* Department editable */
 .dept-body {
   padding: 10px 12px;
   display: flex;
@@ -2058,7 +2355,6 @@ watch(
   justify-content: center;
 }
 
-/* Approved By editable name */
 .workflow-body p { margin: 6px 0; }
 
 .approved-name-row {
@@ -2333,6 +2629,16 @@ watch(
     font-weight: 500 !important;
     color: #000 !important;
   }
+
+  .date-edit-pencil { display: none !important; }
+  .date-display {
+    background: transparent !important;
+    outline: none !important;
+    padding: 0 !important;
+    cursor: default !important;
+  }
+  .date-input,
+  .date-edit-actions { display: none !important; }
 }
 
 /* ================================================================

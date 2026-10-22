@@ -1,5 +1,5 @@
 // stores/itemRequestService.ts
-import api from './interceptor';
+import api from "./interceptor";
 
 // ================================================================
 // TYPES
@@ -10,13 +10,33 @@ export interface RequestItem {
   quantity: number;
   remark?: string;
   // ✅ UOM Fields
-  selected_uom?: 'base' | 'conversion';
+  selected_uom?: "base" | "conversion";
   uom_code?: string;
   is_base_uom?: boolean;
-  // ✅ NEW: Spec Fields
+  // ✅ Spec Fields
   specification?: string;
   brand?: string;
   model?: string;
+}
+
+// ✅ NEW — Family search types
+export interface FamilySearchResultUom {
+  itemId: number;
+  code: string;
+  name: string;
+  uomCode: string;
+  uomName: string;
+  stock: number | null;
+}
+
+export interface FamilySearchResult {
+  familyId: string;
+  displayName: string;
+  code: string;
+  category: string | null;
+  brand: string | null;
+  model: string | null;
+  uoms: FamilySearchResultUom[];
 }
 
 export interface User {
@@ -28,8 +48,27 @@ export interface User {
   email: string;
   roleId?: number;
   role?: string;
+
   departmentId?: number;
-  department?: string;
+
+  Department?: {
+    department_id: number;
+    name: string;
+    code: string;
+    description?: string | null;
+  };
+
+  department?:
+    | {
+        department_id?: number;
+        id?: number;
+        name?: string;
+        code?: string;
+        description?: string | null;
+      }
+    | string;
+
+  departmentName?: string;
 }
 
 export interface Store {
@@ -81,7 +120,6 @@ export interface Department {
   status?: string;
 }
 
-// 🔥 NEW: Approval department type
 export interface ApprovalDepartment {
   departmentId: number;
   name: string;
@@ -91,10 +129,95 @@ export interface ApprovalDepartment {
 }
 
 // ================================================================
+// PAGE SNAPSHOT TYPES (persisted in print_overrides)
+// ================================================================
+
+export interface SnapshotColumn {
+  key: string;
+  label: string;
+  width: string;
+  visible: boolean;
+  custom?: boolean;
+  locked?: boolean;
+  editable?: boolean;
+  kind?: "text" | "number";
+  computed?: string;
+  pairedKey?: string;
+  align?: "left" | "center";
+  bold?: boolean;
+}
+
+export interface SnapshotItem {
+  itemId: number;
+  code: string;
+  name: string;
+  quantity: number;
+  selectedUom: "base" | "conversion";
+  uomCode: string;
+  isBaseUom: boolean;
+  specification: string;
+  brand: string;
+  model: string;
+  remark: string;
+  extras: Record<string, string>;
+}
+
+export interface PageSnapshot {
+  requestCode: string;
+  askingStoreId: number | null;
+  supplyingStoreId: number | null;
+
+  header: string;
+  department: string;
+  requestedBy: string;
+  approvedByName: string;
+  requestedDate: string;
+  overrideDate: string | null;
+
+  sectionVisibility: {
+    department: boolean;
+    reason: boolean;
+    comment: boolean;
+    checkedBy: boolean;
+  };
+
+  columnsConfig: SnapshotColumn[];
+  items: SnapshotItem[];
+  customCells: Record<string, Record<string, string>>;
+  mergeGroups: Array<{ start: number; size: number; text: string }>;
+
+  isAsset: boolean;
+  isTemelash: boolean;
+  temelashFromDate: string | null;
+  temelashToDate: string | null;
+  remark: string;
+
+  savedAt: string;
+  savedByUserId: number | null;
+}
+
+export interface PrintOverride {
+  id: number;
+  requestId: number;
+  userId?: number | null;
+  updatedBy?: number | null;
+  department?: string | null;
+  approvedByName?: string | null;
+  overrideDate?: string | null;
+  customHeader?: string | null;
+  sectionVisibility?: PageSnapshot["sectionVisibility"] | null;
+  columnsConfig?: SnapshotColumn[] | null;
+  customCells?: Record<string, Record<string, string>> | null;
+  pageSnapshot?: PageSnapshot | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ================================================================
 // NOTIFICATION TYPES
 // ================================================================
 
-export type NotificationStage = 'asking_store' | 'supplying_store';
+export type NotificationStage = "asking_store" | "supplying_store";
 
 export interface RequestNotification {
   id: number;
@@ -102,10 +225,10 @@ export interface RequestNotification {
   group_id: number | null;
   department_id: number | null;
   store_id: number;
-  approval_type?: 'group' | 'department';
+  approval_type?: "group" | "department";
   is_department_approval?: boolean;
   stage?: NotificationStage;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: "pending" | "accepted" | "rejected";
   rejected_reason: string | null;
   responded_by: number | null;
   responded_at: string | null;
@@ -171,7 +294,7 @@ export interface ItemRequest {
   requestedByUser?: User;
   requestedBy?: string;
   requestedDate: string;
-  status: 'pending' | 'approved' | 'rejected' | 'finalized';
+  status: "pending" | "approved" | "rejected" | "finalized";
   items: RequestItem[];
   remark?: string;
   approvedAt?: string;
@@ -196,6 +319,13 @@ export interface ItemRequest {
     name: string;
     code: string;
   };
+  excludedDepartmentIds?: number[];
+  isTemelash?: boolean;
+  temelashFromDate?: string | null;
+  temelashToDate?: string | null;
+
+  // ✅ NEW: attached when the backend includes the PrintOverride
+  printOverride?: PrintOverride | null;
 }
 
 export interface ItemRequestStats {
@@ -264,6 +394,8 @@ export interface SingleRequestResponse {
   message?: string;
   error?: string;
   errors?: ValidationError[];
+  /** ✅ NEW — returned by createRequest/updateRequest when a snapshot is saved */
+  printOverride?: PrintOverride | null;
 }
 
 export interface StatsResponse {
@@ -273,7 +405,10 @@ export interface StatsResponse {
   error?: string;
 }
 
-// ✅ UPDATED: CreateRequestData with spec fields
+// ================================================================
+// PAYLOAD TYPES — now include the page snapshot fields
+// ================================================================
+
 export interface CreateRequestData {
   askingStoreId: number;
   supplyingStoreId: number;
@@ -281,7 +416,7 @@ export interface CreateRequestData {
     itemId: number;
     quantity: number;
     remark?: string;
-    selectedUom?: 'base' | 'conversion';
+    selectedUom?: "base" | "conversion";
     uomCode?: string;
     isBaseUom?: boolean;
     specification?: string;
@@ -291,12 +426,25 @@ export interface CreateRequestData {
   requestedById?: number;
   requestedBy?: string;
   requestedDate: string;
-  status?: 'pending' | 'approved' | 'rejected';
+  status?: "pending" | "approved" | "rejected";
   remark?: string;
   isAsset?: boolean;
+  excludedDepartmentIds?: number[];
+  isTemelash?: boolean;
+  temelashFromDate?: string | null;
+  temelashToDate?: string | null;
+
+  // ✅ NEW — page snapshot fields (all optional)
+  customHeader?: string | null;
+  department?: string | null;
+  approvedByName?: string | null;
+  overrideDate?: string | null;
+  sectionVisibility?: PageSnapshot["sectionVisibility"] | null;
+  columnsConfig?: SnapshotColumn[] | null;
+  customCells?: Record<string, Record<string, string>> | null;
+  pageSnapshot?: PageSnapshot | null;
 }
 
-// ✅ UPDATED: UpdateRequestData with spec fields
 export interface UpdateRequestData {
   askingStoreId?: number;
   supplyingStoreId?: number;
@@ -304,7 +452,7 @@ export interface UpdateRequestData {
     itemId: number;
     quantity: number;
     remark?: string;
-    selectedUom?: 'base' | 'conversion';
+    selectedUom?: "base" | "conversion";
     uomCode?: string;
     isBaseUom?: boolean;
     specification?: string;
@@ -316,19 +464,75 @@ export interface UpdateRequestData {
   requestedDate?: string;
   remark?: string;
   isAsset?: boolean;
+  excludedDepartmentIds?: number[];
+  isTemelash?: boolean;
+  temelashFromDate?: string | null;
+  temelashToDate?: string | null;
+
+  // ✅ NEW — page snapshot fields (all optional)
+  customHeader?: string | null;
+  department?: string | null;
+  approvedByName?: string | null;
+  overrideDate?: string | null;
+  sectionVisibility?: PageSnapshot["sectionVisibility"] | null;
+  columnsConfig?: SnapshotColumn[] | null;
+  customCells?: Record<string, Record<string, string>> | null;
+  pageSnapshot?: PageSnapshot | null;
 }
 
 export interface ExportItemData {
-  'Request Code': string;
-  'Asking Store': string;
-  'Supplying Store': string;
-  'Requested By': string;
-  'Requested By Email': string;
-  'Requested Date': string;
-  'Status': string;
-  'Is Asset': string;
-  'Items': string;
-  'Remark': string;
+  "Request Code": string;
+  "Asking Store": string;
+  "Supplying Store": string;
+  "Requested By": string;
+  "Requested By Email": string;
+  "Requested Date": string;
+  Status: string;
+  "Is Asset": string;
+  Items: string;
+  Remark: string;
+}
+
+// ================================================================
+// ✅ TEMELASH TYPES
+// ================================================================
+
+export interface TemelashSnapshotItem {
+  itemId: number;
+  code: string;
+  name: string;
+  quantity: number;
+  uom: string;
+  remark?: string;
+  specification?: string;
+  brand?: string;
+  model?: string;
+}
+
+export interface TemelashRecord {
+  id: number;
+  request_id: number;
+  request_code: string;
+  askingStoreId: number;
+  supplyingStoreId: number;
+  askingStore?: Store;
+  supplyingStore?: Store;
+  requestedById?: number | null;
+  requestedBy?: string | null;
+  requestedByUser?: User;
+  items: TemelashSnapshotItem[];
+  remark?: string | null;
+  status: "out" | "returned";
+  issued_at: string;
+  returned_at: string | null;
+  returnedById?: number | null;
+  returnedByUser?: User;
+  returnRemark?: string | null;
+  fromDate?: string | null;
+  toDate?: string | null;
+  returnedLate?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // ================================================================
@@ -345,7 +549,7 @@ export interface GroupNotificationsResponse {
       department_id: number | null;
       store_id: number;
       stage?: NotificationStage;
-      status: 'pending' | 'accepted' | 'rejected';
+      status: "pending" | "accepted" | "rejected";
       rejected_reason: string | null;
       responded_by: number | null;
       responded_at: string | null;
@@ -390,39 +594,34 @@ class ItemRequestService {
   // STORE METHODS (for dropdowns)
   // ================================================================
 
-  /**
-   * Get active stores for dropdown
-   * GET /api/item-requests/active-stores
-   */
   async getActiveStores(): Promise<{
     success: boolean;
     data: Store[];
     error?: string;
   }> {
     try {
-      const response = await api.get('/item-requests/active-stores');
+      const response = await api.get("/item-requests/active-stores");
       return response.data;
     } catch (error: any) {
-      console.error('Get active stores error:', error);
+      console.error("Get active stores error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch active stores'
+        error: error.response?.data?.error || "Failed to fetch active stores",
       };
     }
   }
 
-  /**
-   * Get active items for dropdown (with search support)
-   * GET /api/item-requests/active-items
-   */
+  // ✅ UPDATED — returns FAMILIES (one row per product, multiple UOMs per row)
   async getActiveItems(params?: {
     search?: string;
     page?: number;
     limit?: number;
+    storeId?: number;
+    groupId?: number;
   }): Promise<{
     success: boolean;
-    data: Item[];
+    data: FamilySearchResult[];
     pagination?: {
       total: number;
       page: number;
@@ -433,23 +632,25 @@ class ItemRequestService {
   }> {
     try {
       const queryParams = new URLSearchParams();
-      
-      if (params?.search) queryParams.append('search', params.search);
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-      const url = queryParams.toString() 
+      if (params?.search) queryParams.append("search", params.search);
+      if (params?.page) queryParams.append("page", params.page.toString());
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.storeId) queryParams.append("storeId", params.storeId.toString());
+      if (params?.groupId) queryParams.append("groupId", params.groupId.toString());
+
+      const url = queryParams.toString()
         ? `/item-requests/active-items?${queryParams.toString()}`
-        : '/item-requests/active-items';
+        : "/item-requests/active-items";
 
       const response = await api.get(url);
       return response.data;
     } catch (error: any) {
-      console.error('Get active items error:', error);
+      console.error("Get active items error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch active items'
+        error: error.response?.data?.error || "Failed to fetch active items",
       };
     }
   }
@@ -458,10 +659,6 @@ class ItemRequestService {
   // STORE GROUPS METHOD
   // ================================================================
 
-  /**
-   * Get all active groups for a specific store
-   * GET /api/item-requests/stores/:storeId/groups
-   */
   async getStoreGroups(storeId: number): Promise<{
     success: boolean;
     data: Group[];
@@ -471,28 +668,19 @@ class ItemRequestService {
       const response = await api.get(`/item-requests/stores/${storeId}/groups`);
       return response.data;
     } catch (error: any) {
-      console.error('Get store groups error:', error);
+      console.error("Get store groups error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch store groups'
+        error: error.response?.data?.error || "Failed to fetch store groups",
       };
     }
   }
 
   // ================================================================
-  // 🔥 NEW: APPROVAL DEPARTMENTS
+  // 🔥 APPROVAL DEPARTMENTS
   // ================================================================
 
-  /**
-   * Get the departments that need to approve requests for a given store.
-   * GET /api/item-requests/approval-departments/:storeCode
-   *
-   * Example: getApprovalDepartmentsForStore('STORE-001')
-   *
-   * Returns the departments whose `appliesTo` array includes the given
-   * store code, based on the `approval.department` SystemSetting.
-   */
   async getApprovalDepartmentsForStore(storeCode: string): Promise<{
     success: boolean;
     data?: {
@@ -504,22 +692,23 @@ class ItemRequestService {
     error?: string;
   }> {
     try {
-      if (!storeCode || storeCode === 'N/A') {
+      if (!storeCode || storeCode === "N/A") {
         return {
           success: false,
-          error: 'Invalid store code',
+          error: "Invalid store code",
         };
       }
 
       const response = await api.get(
-        `/item-requests/approval-departments/${encodeURIComponent(storeCode)}`
+        `/item-requests/approval-departments/${encodeURIComponent(storeCode)}`,
       );
       return response.data;
     } catch (error: any) {
-      console.error('Get approval departments error:', error);
+      console.error("Get approval departments error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to fetch approval departments',
+        error:
+          error.response?.data?.error || "Failed to fetch approval departments",
       };
     }
   }
@@ -528,40 +717,39 @@ class ItemRequestService {
   // REQUEST METHODS
   // ================================================================
 
-  /**
-   * Get all item requests with pagination and filters
-   * GET /api/item-requests
-   */
-  async getRequests(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    status?: 'pending' | 'approved' | 'rejected' | 'finalized' | 'all';
-    storeId?: number;
-    userId?: number;
-    sortBy?: string;
-    sortOrder?: 'ASC' | 'DESC';
-  } = {}): Promise<PaginatedResponse<ItemRequest>> {
+  async getRequests(
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: "pending" | "approved" | "rejected" | "finalized" | "all";
+      storeId?: number;
+      userId?: number;
+      sortBy?: string;
+      sortOrder?: "ASC" | "DESC";
+    } = {},
+  ): Promise<PaginatedResponse<ItemRequest>> {
     try {
       const queryParams = new URLSearchParams();
-      
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.search) queryParams.append('search', params.search);
-      if (params.status) queryParams.append('status', params.status);
-      if (params.storeId) queryParams.append('storeId', params.storeId.toString());
-      if (params.userId) queryParams.append('userId', params.userId.toString());
-      if (params.sortBy) queryParams.append('sortBy', params.sortBy);
-      if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
-      const url = queryParams.toString() 
+      if (params.page) queryParams.append("page", params.page.toString());
+      if (params.limit) queryParams.append("limit", params.limit.toString());
+      if (params.search) queryParams.append("search", params.search);
+      if (params.status) queryParams.append("status", params.status);
+      if (params.storeId)
+        queryParams.append("storeId", params.storeId.toString());
+      if (params.userId) queryParams.append("userId", params.userId.toString());
+      if (params.sortBy) queryParams.append("sortBy", params.sortBy);
+      if (params.sortOrder) queryParams.append("sortOrder", params.sortOrder);
+
+      const url = queryParams.toString()
         ? `/item-requests?${queryParams.toString()}`
-        : '/item-requests';
+        : "/item-requests";
 
       const response = await api.get(url);
       return response.data;
     } catch (error: any) {
-      console.error('Get requests error:', error);
+      console.error("Get requests error:", error);
       return {
         success: false,
         data: {
@@ -570,56 +758,50 @@ class ItemRequestService {
             page: 1,
             limit: 10,
             total: 0,
-            pages: 0
-          }
+            pages: 0,
+          },
         },
-        error: error.response?.data?.error || 'Failed to fetch requests'
+        error: error.response?.data?.error || "Failed to fetch requests",
       };
     }
   }
 
-  /**
-   * Get single item request by ID
-   * GET /api/item-requests/:id
-   */
   async getRequestById(id: number | string): Promise<SingleRequestResponse> {
     try {
       const response = await api.get(`/item-requests/${id}`);
       return response.data;
     } catch (error: any) {
-      console.error('Get request by ID error:', error);
+      console.error("Get request by ID error:", error);
       return {
         success: false,
         data: {} as ItemRequest,
-        error: error.response?.data?.error || 'Failed to fetch request'
+        error: error.response?.data?.error || "Failed to fetch request",
       };
     }
   }
 
-  /**
-   * Get current user's requests
-   * GET /api/item-requests/my-requests
-   */
-  async getMyRequests(params: {
-    page?: number;
-    limit?: number;
-    status?: 'pending' | 'approved' | 'rejected' | 'finalized' | 'all';
-  } = {}): Promise<PaginatedResponse<ItemRequest>> {
+  async getMyRequests(
+    params: {
+      page?: number;
+      limit?: number;
+      status?: "pending" | "approved" | "rejected" | "finalized" | "all";
+    } = {},
+  ): Promise<PaginatedResponse<ItemRequest>> {
     try {
       const queryParams = new URLSearchParams();
-      
-      if (params.page) queryParams.append('page', params.page.toString());
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.status) queryParams.append('status', params.status);
 
-      const url = queryParams.toString() 
+      if (params.page) queryParams.append("page", params.page.toString());
+      if (params.limit) queryParams.append("limit", params.limit.toString());
+      if (params.status) queryParams.append("status", params.status);
+
+      const url = queryParams.toString()
         ? `/item-requests/my-requests?${queryParams.toString()}`
-        : '/item-requests/my-requests';
+        : "/item-requests/my-requests";
 
       const response = await api.get(url);
       return response.data;
     } catch (error: any) {
-      console.error('Get my requests error:', error);
+      console.error("Get my requests error:", error);
       return {
         success: false,
         data: {
@@ -628,18 +810,14 @@ class ItemRequestService {
             page: 1,
             limit: 10,
             total: 0,
-            pages: 0
-          }
+            pages: 0,
+          },
         },
-        error: error.response?.data?.error || 'Failed to fetch your requests'
+        error: error.response?.data?.error || "Failed to fetch your requests",
       };
     }
   }
 
-  /**
-   * Get requests by user ID
-   * GET /api/item-requests/user/:userId
-   */
   async getRequestsByUser(userId: number | string): Promise<{
     success: boolean;
     data: ItemRequest[];
@@ -649,20 +827,19 @@ class ItemRequestService {
       const response = await api.get(`/item-requests/user/${userId}`);
       return response.data;
     } catch (error: any) {
-      console.error('Get requests by user error:', error);
+      console.error("Get requests by user error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch requests for user'
+        error:
+          error.response?.data?.error || "Failed to fetch requests for user",
       };
     }
   }
 
-  /**
-   * Get requests by status
-   * GET /api/item-requests/status/:status
-   */
-  async getRequestsByStatus(status: 'pending' | 'approved' | 'rejected' | 'finalized'): Promise<{
+  async getRequestsByStatus(
+    status: "pending" | "approved" | "rejected" | "finalized",
+  ): Promise<{
     success: boolean;
     data: ItemRequest[];
     error?: string;
@@ -671,47 +848,47 @@ class ItemRequestService {
       const response = await api.get(`/item-requests/status/${status}`);
       return response.data;
     } catch (error: any) {
-      console.error('Get requests by status error:', error);
+      console.error("Get requests by status error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch requests by status'
+        error:
+          error.response?.data?.error || "Failed to fetch requests by status",
       };
     }
   }
 
-  /**
-   * Get requests by date range
-   * GET /api/item-requests/date-range
-   */
-  async getRequestsByDateRange(startDate: string, endDate: string): Promise<{
+  async getRequestsByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<{
     success: boolean;
     data: ItemRequest[];
     error?: string;
   }> {
     try {
-      const response = await api.get(`/item-requests/date-range?startDate=${startDate}&endDate=${endDate}`);
+      const response = await api.get(
+        `/item-requests/date-range?startDate=${startDate}&endDate=${endDate}`,
+      );
       return response.data;
     } catch (error: any) {
-      console.error('Get requests by date range error:', error);
+      console.error("Get requests by date range error:", error);
       return {
         success: false,
         data: [],
-        error: error.response?.data?.error || 'Failed to fetch requests by date range'
+        error:
+          error.response?.data?.error ||
+          "Failed to fetch requests by date range",
       };
     }
   }
 
-  /**
-   * Get request statistics
-   * GET /api/item-requests/stats
-   */
   async getStats(): Promise<StatsResponse> {
     try {
-      const response = await api.get('/item-requests/stats');
+      const response = await api.get("/item-requests/stats");
       return response.data;
     } catch (error: any) {
-      console.error('Get stats error:', error);
+      console.error("Get stats error:", error);
       return {
         success: false,
         data: {
@@ -720,129 +897,109 @@ class ItemRequestService {
           approved: 0,
           rejected: 0,
           finalized: 0,
-          byStatus: []
+          byStatus: [],
         },
-        error: error.response?.data?.error || 'Failed to fetch statistics'
+        error: error.response?.data?.error || "Failed to fetch statistics",
       };
     }
   }
 
   /**
-   * Create a new item request
-   * POST /api/item-requests
+   * Create a new item request.
+   * The payload now also carries the page snapshot fields; the backend
+   * persists them into `print_overrides` inside the same transaction.
    */
   async createRequest(data: CreateRequestData): Promise<SingleRequestResponse> {
     try {
-      const response = await api.post('/item-requests', data);
+      const response = await api.post("/item-requests", data);
       return response.data;
     } catch (error: any) {
-      console.error('Create request error:', error);
-      
+      console.error("Create request error:", error);
+
       const errorData = error.response?.data;
-      
+
       if (errorData && errorData.errors && errorData.errors.length > 0) {
         return errorData as SingleRequestResponse;
       }
-      
+
       return {
         success: false,
         data: {} as ItemRequest,
-        error: error.response?.data?.error || error.response?.data?.message || 'Failed to create request'
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          "Failed to create request",
       };
     }
   }
 
   /**
-   * Update an existing item request
-   * PUT /api/item-requests/:id
+   * Update an existing item request.
+   * Same as create — the payload can carry the snapshot fields.
    */
-  async updateRequest(id: number | string, data: UpdateRequestData): Promise<SingleRequestResponse> {
+  async updateRequest(
+    id: number | string,
+    data: UpdateRequestData,
+  ): Promise<SingleRequestResponse> {
     try {
       const response = await api.put(`/item-requests/${id}`, data);
       return response.data;
     } catch (error: any) {
-      console.error('Update request error:', error);
-      
+      console.error("Update request error:", error);
+
       const errorData = error.response?.data;
-      
+
       if (errorData && errorData.errors && errorData.errors.length > 0) {
         return errorData as SingleRequestResponse;
       }
-      
+
       return {
         success: false,
         data: {} as ItemRequest,
-        error: error.response?.data?.error || error.response?.data?.message || 'Failed to update request'
+        error:
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          "Failed to update request",
       };
     }
   }
 
-  /**
-   * Update request status
-   * PATCH /api/item-requests/:id/status
-   */
-  async updateStatus(id: number | string, status: 'pending' | 'approved' | 'rejected' | 'finalized'): Promise<{
+  async updateStatus(
+    id: number | string,
+    status: "pending" | "approved" | "rejected" | "finalized",
+  ): Promise<{
     success: boolean;
     message: string;
     data?: ItemRequest;
     error?: string;
   }> {
     try {
-      const response = await api.patch(`/item-requests/${id}/status`, { status });
+      const response = await api.patch(`/item-requests/${id}/status`, {
+        status,
+      });
       return response.data;
     } catch (error: any) {
-      console.error('Update status error:', error);
+      console.error("Update status error:", error);
       return {
         success: false,
-        message: '',
-        error: error.response?.data?.error || 'Failed to update status'
+        message: "",
+        error: error.response?.data?.error || "Failed to update status",
       };
     }
   }
 
-  /**
-   * Approve a request
-   * PATCH /api/item-requests/:id/status
-   */
-  async approveRequest(id: number | string): Promise<{
-    success: boolean;
-    message: string;
-    data?: ItemRequest;
-    error?: string;
-  }> {
-    return this.updateStatus(id, 'approved');
+  async approveRequest(id: number | string) {
+    return this.updateStatus(id, "approved");
   }
 
-  /**
-   * Reject a request
-   * PATCH /api/item-requests/:id/status
-   */
-  async rejectRequest(id: number | string): Promise<{
-    success: boolean;
-    message: string;
-    data?: ItemRequest;
-    error?: string;
-  }> {
-    return this.updateStatus(id, 'rejected');
+  async rejectRequest(id: number | string) {
+    return this.updateStatus(id, "rejected");
   }
 
-  /**
-   * Finalize a request
-   * PATCH /api/item-requests/:id/status
-   */
-  async finalizeRequest(id: number | string): Promise<{
-    success: boolean;
-    message: string;
-    data?: ItemRequest;
-    error?: string;
-  }> {
-    return this.updateStatus(id, 'finalized');
+  async finalizeRequest(id: number | string) {
+    return this.updateStatus(id, "finalized");
   }
 
-  /**
-   * Delete a request (only pending or rejected)
-   * DELETE /api/item-requests/:id
-   */
   async deleteRequest(id: number | string): Promise<{
     success: boolean;
     message: string;
@@ -852,21 +1009,17 @@ class ItemRequestService {
       const response = await api.delete(`/item-requests/${id}`);
       return response.data;
     } catch (error: any) {
-      console.error('Delete request error:', error);
+      console.error("Delete request error:", error);
       return {
         success: false,
-        message: '',
-        error: error.response?.data?.error || 'Failed to delete request'
+        message: "",
+        error: error.response?.data?.error || "Failed to delete request",
       };
     }
   }
 
-  /**
-   * Export requests to CSV data
-   * GET /api/item-requests/export
-   */
   async exportRequests(params?: {
-    status?: 'pending' | 'approved' | 'rejected' | 'finalized' | 'all';
+    status?: "pending" | "approved" | "rejected" | "finalized" | "all";
     storeId?: number;
     userId?: number;
   }): Promise<{
@@ -877,23 +1030,164 @@ class ItemRequestService {
   }> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.status) queryParams.append('status', params.status);
-      if (params?.storeId) queryParams.append('storeId', params.storeId.toString());
-      if (params?.userId) queryParams.append('userId', params.userId.toString());
+      if (params?.status) queryParams.append("status", params.status);
+      if (params?.storeId)
+        queryParams.append("storeId", params.storeId.toString());
+      if (params?.userId)
+        queryParams.append("userId", params.userId.toString());
 
-      const url = queryParams.toString() 
+      const url = queryParams.toString()
         ? `/item-requests/export?${queryParams.toString()}`
-        : '/item-requests/export';
+        : "/item-requests/export";
 
       const response = await api.get(url);
       return response.data;
     } catch (error: any) {
-      console.error('Export requests error:', error);
+      console.error("Export requests error:", error);
       return {
         success: false,
         data: [],
         total: 0,
-        error: error.response?.data?.error || 'Failed to export requests'
+        error: error.response?.data?.error || "Failed to export requests",
+      };
+    }
+  }
+
+  // ================================================================
+  // ✅ TEMELASH METHODS
+  // ================================================================
+
+  async getTemelashRecords(params?: {
+    page?: number;
+    limit?: number;
+    status?: "out" | "returned" | "all";
+    storeId?: number;
+    search?: string;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      records: TemelashRecord[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        pages: number;
+      };
+      summary: {
+        out: number;
+        returned: number;
+        total: number;
+        overdue?: number;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append("page", params.page.toString());
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.status && params.status !== "all") {
+        queryParams.append("status", params.status);
+      }
+      if (params?.storeId)
+        queryParams.append("storeId", params.storeId.toString());
+      if (params?.search) queryParams.append("search", params.search);
+
+      const url = queryParams.toString()
+        ? `/item-requests/temelash?${queryParams.toString()}`
+        : "/item-requests/temelash";
+
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error("Get temelash records error:", error);
+      return {
+        success: false,
+        error:
+          error.response?.data?.error || "Failed to fetch temelash records",
+      };
+    }
+  }
+
+  async returnTemelash(
+    recordId: number,
+    remark?: string,
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    data?: TemelashRecord;
+    error?: string;
+  }> {
+    try {
+      const response = await api.post(
+        `/item-requests/temelash/${recordId}/return`,
+        { remark: remark || "" },
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Return temelash error:", error);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Failed to return temelash",
+      };
+    }
+  }
+
+  // ================================================================
+  // ✅ PAGE SNAPSHOT METHODS (print_overrides)
+  // ================================================================
+
+  /**
+   * Get the persisted page snapshot for a request.
+   * GET /api/item-requests/:id/print-override
+   */
+  async getPageSnapshot(requestId: number | string): Promise<{
+    success: boolean;
+    data?: PrintOverride | null;
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(
+        `/item-requests/${requestId}/print-override`,
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Get page snapshot error:", error);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Failed to fetch page snapshot",
+      };
+    }
+  }
+
+  /**
+   * Save (or update) only the page snapshot for a request.
+   * POST /api/item-requests/:id/print-override
+   */
+  async savePageSnapshot(
+    requestId: number | string,
+    patch: Partial<{
+      customHeader: string | null;
+      department: string | null;
+      approvedByName: string | null;
+      overrideDate: string | null;
+      sectionVisibility: PageSnapshot["sectionVisibility"] | null;
+      columnsConfig: SnapshotColumn[] | null;
+      customCells: Record<string, Record<string, string>> | null;
+      pageSnapshot: PageSnapshot | null;
+    }>,
+  ): Promise<{ success: boolean; data?: PrintOverride; error?: string }> {
+    try {
+      const response = await api.post(
+        `/item-requests/${requestId}/print-override`,
+        patch,
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Save page snapshot error:", error);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Failed to save page snapshot",
       };
     }
   }
@@ -902,36 +1196,33 @@ class ItemRequestService {
   // GROUP NOTIFICATION METHODS
   // ================================================================
 
-  /**
-   * Get notifications for a specific group in a specific store
-   * GET /api/item-requests/notifications/:storeId/:groupId
-   */
   async getGroupNotifications(
-    storeId: number, 
+    storeId: number,
     groupId: number,
     params?: {
       page?: number;
       limit?: number;
-      status?: 'pending' | 'accepted' | 'rejected' | 'all';
-    }
+      status?: "pending" | "accepted" | "rejected" | "all";
+    },
   ): Promise<GroupNotificationsResponse> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.status) queryParams.append('status', params.status);
-      
-      const url = queryParams.toString() 
+      if (params?.page) queryParams.append("page", params.page.toString());
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.status) queryParams.append("status", params.status);
+
+      const url = queryParams.toString()
         ? `/item-requests/notifications/${storeId}/${groupId}?${queryParams.toString()}`
         : `/item-requests/notifications/${storeId}/${groupId}`;
-      
+
       const response = await api.get(url);
       return response.data;
     } catch (error: any) {
-      console.error('Get group notifications error:', error);
+      console.error("Get group notifications error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to get group notifications'
+        error:
+          error.response?.data?.error || "Failed to get group notifications",
       };
     }
   }
@@ -940,17 +1231,13 @@ class ItemRequestService {
   // DEPARTMENT NOTIFICATIONS (for ASSET requests)
   // ================================================================
 
-  /**
-   * Get notifications for a specific department (ASSET requests only)
-   * GET /api/item-requests/notifications/department/:departmentId
-   */
   async getDepartmentNotifications(
     departmentId: number,
     params?: {
       page?: number;
       limit?: number;
-      status?: 'pending' | 'accepted' | 'rejected' | 'all';
-    }
+      status?: "pending" | "accepted" | "rejected" | "all";
+    },
   ): Promise<{
     success: boolean;
     data?: {
@@ -960,7 +1247,7 @@ class ItemRequestService {
         department_id: number;
         store_id: number;
         stage?: NotificationStage;
-        status: 'pending' | 'accepted' | 'rejected';
+        status: "pending" | "accepted" | "rejected";
         rejected_reason: string | null;
         responded_by: number | null;
         responded_at: string | null;
@@ -999,41 +1286,36 @@ class ItemRequestService {
       if (!departmentId || isNaN(departmentId) || departmentId <= 0) {
         return {
           success: false,
-          error: 'Invalid department ID'
+          error: "Invalid department ID",
         };
       }
 
       const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.status) queryParams.append('status', params.status);
-      
-      const url = queryParams.toString() 
+      if (params?.page) queryParams.append("page", params.page.toString());
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.status) queryParams.append("status", params.status);
+
+      const url = queryParams.toString()
         ? `/item-requests/notifications/department/${departmentId}?${queryParams.toString()}`
         : `/item-requests/notifications/department/${departmentId}`;
-      
-      console.log('📤 Fetching department notifications:', url);
-      
+
       const response = await api.get(url);
-      console.log('📥 Department notifications response:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('❌ Get department notifications error:', error);
+      console.error("❌ Get department notifications error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to get department notifications'
+        error:
+          error.response?.data?.error ||
+          "Failed to get department notifications",
       };
     }
   }
 
   // ================================================================
-  // PENDING NOTIFICATIONS (Combined - Group + Department)
+  // PENDING NOTIFICATIONS (Combined)
   // ================================================================
 
-  /**
-   * Get all pending notifications for the current user (Group + Department)
-   * GET /api/item-requests/notifications/pending
-   */
   async getPendingNotifications(params?: {
     page?: number;
     limit?: number;
@@ -1046,10 +1328,10 @@ class ItemRequestService {
         group_id: number | null;
         department_id: number | null;
         store_id: number;
-        approval_type: 'group' | 'department';
+        approval_type: "group" | "department";
         is_department_approval: boolean;
         stage?: NotificationStage;
-        status: 'pending' | 'accepted' | 'rejected';
+        status: "pending" | "accepted" | "rejected";
         rejected_reason: string | null;
         responded_by: number | null;
         responded_at: string | null;
@@ -1057,19 +1339,11 @@ class ItemRequestService {
         created_at: string;
         updated_at: string;
         request: ItemRequest;
-        group?: {
-          id: number;
-          name: string;
-          code: string;
-        };
-        department?: {
-          department_id: number;
-          name: string;
-          code: string;
-        };
+        group?: { id: number; name: string; code: string };
+        department?: { department_id: number; name: string; code: string };
         store?: Store;
         respondedByUser?: User;
-        _type?: 'group' | 'department';
+        _type?: "group" | "department";
         _typeLabel?: string;
       }>;
       summary: {
@@ -1092,23 +1366,21 @@ class ItemRequestService {
   }> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      
-      const url = queryParams.toString() 
+      if (params?.page) queryParams.append("page", params.page.toString());
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+
+      const url = queryParams.toString()
         ? `/item-requests/notifications/pending?${queryParams.toString()}`
-        : '/item-requests/notifications/pending';
-      
-      console.log('📤 Fetching pending notifications:', url);
-      
+        : "/item-requests/notifications/pending";
+
       const response = await api.get(url);
-      console.log('📥 Pending notifications response:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('❌ Get pending notifications error:', error);
+      console.error("❌ Get pending notifications error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to get pending notifications'
+        error:
+          error.response?.data?.error || "Failed to get pending notifications",
       };
     }
   }
@@ -1117,10 +1389,6 @@ class ItemRequestService {
   // OTHER NOTIFICATION METHODS
   // ================================================================
 
-  /**
-   * Get request with notification status and group responses
-   * GET /api/item-requests/:id/notifications
-   */
   async getRequestWithNotifications(id: number | string): Promise<{
     success: boolean;
     data?: {
@@ -1133,18 +1401,16 @@ class ItemRequestService {
       const response = await api.get(`/item-requests/${id}/notifications`);
       return response.data;
     } catch (error: any) {
-      console.error('Get request with notifications error:', error);
+      console.error("Get request with notifications error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to fetch request notifications'
+        error:
+          error.response?.data?.error ||
+          "Failed to fetch request notifications",
       };
     }
   }
 
-  /**
-   * Check if all groups have accepted/rejected the request
-   * GET /api/item-requests/:id/notifications/status
-   */
   async checkRequestNotificationStatus(requestId: number): Promise<{
     success: boolean;
     data?: {
@@ -1172,21 +1438,20 @@ class ItemRequestService {
     error?: string;
   }> {
     try {
-      const response = await api.get(`/item-requests/${requestId}/notifications/status`);
+      const response = await api.get(
+        `/item-requests/${requestId}/notifications/status`,
+      );
       return response.data;
     } catch (error: any) {
-      console.error('Check notification status error:', error);
+      console.error("Check notification status error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to check notification status'
+        error:
+          error.response?.data?.error || "Failed to check notification status",
       };
     }
   }
 
-  /**
-   * Get all rejection reasons for a request
-   * GET /api/item-requests/notifications/requests/:requestId/rejections
-   */
   async getRejectionReasons(requestId: number): Promise<{
     success: boolean;
     data?: Array<{
@@ -1200,21 +1465,19 @@ class ItemRequestService {
     error?: string;
   }> {
     try {
-      const response = await api.get(`/item-requests/notifications/requests/${requestId}/rejections`);
+      const response = await api.get(
+        `/item-requests/notifications/requests/${requestId}/rejections`,
+      );
       return response.data;
     } catch (error: any) {
-      console.error('Get rejection reasons error:', error);
+      console.error("Get rejection reasons error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to get rejection reasons'
+        error: error.response?.data?.error || "Failed to get rejection reasons",
       };
     }
   }
 
-  /**
-   * Accept a notification (group or department accepts the request)
-   * POST /api/item-requests/notifications/:notificationId/accept
-   */
   async acceptNotification(notificationId: number): Promise<{
     success: boolean;
     message?: string;
@@ -1224,35 +1487,67 @@ class ItemRequestService {
     error?: string;
   }> {
     try {
-      const response = await api.post(`/item-requests/notifications/${notificationId}/accept`);
+      const response = await api.post(
+        `/item-requests/notifications/${notificationId}/accept`,
+      );
       return response.data;
     } catch (error: any) {
-      console.error('Accept notification error:', error);
+      console.error("Accept notification error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to accept notification'
+        error: error.response?.data?.error || "Failed to accept notification",
       };
     }
   }
 
-  /**
-   * Reject a notification with reason
-   * POST /api/item-requests/notifications/:notificationId/reject
-   */
-  async rejectNotification(notificationId: number, reason: string): Promise<{
+  async rejectNotification(
+    notificationId: number,
+    reason: string,
+  ): Promise<{
     success: boolean;
     message?: string;
     data?: RequestNotification;
     error?: string;
   }> {
     try {
-      const response = await api.post(`/item-requests/notifications/${notificationId}/reject`, { reason });
+      const response = await api.post(
+        `/item-requests/notifications/${notificationId}/reject`,
+        { reason },
+      );
       return response.data;
     } catch (error: any) {
-      console.error('Reject notification error:', error);
+      console.error("Reject notification error:", error);
       return {
         success: false,
-        error: error.response?.data?.error || 'Failed to reject notification'
+        error: error.response?.data?.error || "Failed to reject notification",
+      };
+    }
+  }
+
+  async changeNotificationDecision(
+    notificationId: number,
+    status: "accepted" | "rejected",
+    reason?: string,
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    data?: RequestNotification;
+    error?: string;
+  }> {
+    try {
+      const response = await api.post(
+        `/item-requests/notifications/${notificationId}/change`,
+        {
+          status,
+          reason: status === "rejected" ? reason : undefined,
+        },
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Change notification decision error:", error);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Failed to change decision",
       };
     }
   }
@@ -1261,43 +1556,42 @@ class ItemRequestService {
   // NOTIFICATION HELPER METHODS (Stage-aware)
   // ================================================================
 
-  /**
-   * Check if a request can be approved (both stages fully accepted)
-   */
   canApproveRequest(request: ItemRequest): boolean {
-    if (!request || request.status !== 'pending') return false;
-    
+    if (!request || request.status !== "pending") return false;
+
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return false;
-    
-    const allAccepted = notifications.every((n: any) => n.status === 'accepted');
-    const hasRejection = notifications.some((n: any) => n.status === 'rejected');
-    
+
+    const allAccepted = notifications.every(
+      (n: any) => n.status === "accepted",
+    );
+    const hasRejection = notifications.some(
+      (n: any) => n.status === "rejected",
+    );
+
     return allAccepted && !hasRejection;
   }
 
-  /**
-   * Check if a request can be printed
-   */
   canPrintRequest(request: ItemRequest): boolean {
     return this.canApproveRequest(request);
   }
 
-  /**
-   * Get acceptance summary for display — STAGE-AWARE
-   */
   getAcceptanceSummary(request: ItemRequest): string {
     const notifications = (request as any).notifications || [];
-    if (notifications.length === 0) return 'No approvals';
+    if (notifications.length === 0) return "No approvals";
 
-    const askingNotifs = notifications.filter((n: any) => n.stage === 'asking_store');
-    const supplyingNotifs = notifications.filter((n: any) => n.stage === 'supplying_store');
+    const askingNotifs = notifications.filter(
+      (n: any) => n.stage === "asking_store",
+    );
+    const supplyingNotifs = notifications.filter(
+      (n: any) => n.stage === "supplying_store",
+    );
 
     const summarize = (notifs: any[]) => {
       const total = notifs.length;
-      const accepted = notifs.filter((n: any) => n.status === 'accepted').length;
-      const rejected = notifs.filter((n: any) => n.status === 'rejected').length;
-      const pending = notifs.filter((n: any) => n.status === 'pending').length;
+      const accepted = notifs.filter((n: any) => n.status === "accepted").length;
+      const rejected = notifs.filter((n: any) => n.status === "rejected").length;
+      const pending = notifs.filter((n: any) => n.status === "pending").length;
       return { total, accepted, rejected, pending };
     };
 
@@ -1333,25 +1627,25 @@ class ItemRequestService {
     return `✅ All ${notifications.length} accepted`;
   }
 
-  /**
-   * Get tooltip for approve button
-   */
   getApproveTooltip(request: ItemRequest): string {
-    if (!request || request.status !== 'pending') return 'Request is not pending';
-    
+    if (!request || request.status !== "pending")
+      return "Request is not pending";
+
     const notifications = (request as any).notifications || [];
-    const hasRejection = notifications.some((n: any) => n.status === 'rejected');
-    if (hasRejection) return 'Some have rejected this request. Edit and resubmit.';
-    
-    const allAccepted = notifications.every((n: any) => n.status === 'accepted');
-    if (!allAccepted) return 'Waiting for all approvals';
-    
-    return 'All approved - Click to proceed';
+    const hasRejection = notifications.some(
+      (n: any) => n.status === "rejected",
+    );
+    if (hasRejection)
+      return "Some have rejected this request. Edit and resubmit.";
+
+    const allAccepted = notifications.every(
+      (n: any) => n.status === "accepted",
+    );
+    if (!allAccepted) return "Waiting for all approvals";
+
+    return "All approved - Click to proceed";
   }
 
-  /**
-   * Get group acceptance status for display — STAGE-AWARE
-   */
   getGroupStatusDisplay(request: ItemRequest): {
     total: number;
     accepted: number;
@@ -1377,21 +1671,31 @@ class ItemRequestService {
   } {
     const notifications = (request as any).notifications || [];
     const total = notifications.length;
-    const accepted = notifications.filter((n: any) => n.status === 'accepted').length;
-    const rejected = notifications.filter((n: any) => n.status === 'rejected').length;
-    const pending = notifications.filter((n: any) => n.status === 'pending').length;
+    const accepted = notifications.filter(
+      (n: any) => n.status === "accepted",
+    ).length;
+    const rejected = notifications.filter(
+      (n: any) => n.status === "rejected",
+    ).length;
+    const pending = notifications.filter(
+      (n: any) => n.status === "pending",
+    ).length;
     const allAccepted = total > 0 && accepted === total;
     const hasRejection = rejected > 0;
     const progress = total > 0 ? (accepted / total) * 100 : 0;
 
-    const askingNotifs = notifications.filter((n: any) => n.stage === 'asking_store');
-    const supplyingNotifs = notifications.filter((n: any) => n.stage === 'supplying_store');
+    const askingNotifs = notifications.filter(
+      (n: any) => n.stage === "asking_store",
+    );
+    const supplyingNotifs = notifications.filter(
+      (n: any) => n.stage === "supplying_store",
+    );
 
     const summarize = (notifs: any[]) => {
       const t = notifs.length;
-      const a = notifs.filter((n: any) => n.status === 'accepted').length;
-      const r = notifs.filter((n: any) => n.status === 'rejected').length;
-      const p = notifs.filter((n: any) => n.status === 'pending').length;
+      const a = notifs.filter((n: any) => n.status === "accepted").length;
+      const r = notifs.filter((n: any) => n.status === "rejected").length;
+      const p = notifs.filter((n: any) => n.status === "pending").length;
       return {
         total: t,
         accepted: a,
@@ -1420,94 +1724,102 @@ class ItemRequestService {
 
   getRequesterName(request: ItemRequest): string {
     if (request?.requestedByUser) {
-      return request.requestedByUser.fullName || 
-             request.requestedByUser.full_name || 
-             request.requestedByUser.username || 
-             'Unknown User';
+      return (
+        request.requestedByUser.fullName ||
+        request.requestedByUser.full_name ||
+        request.requestedByUser.username ||
+        "Unknown User"
+      );
     }
-    return request?.requestedBy || 'Unknown User';
+    return request?.requestedBy || "Unknown User";
   }
 
   getRequesterEmail(request: ItemRequest): string {
-    return request?.requestedByUser?.email || 'N/A';
+    return request?.requestedByUser?.email || "N/A";
   }
 
-  canPerformAction(request: ItemRequest, action: 'edit' | 'approve' | 'reject' | 'finalize'): boolean {
+  canPerformAction(
+    request: ItemRequest,
+    action: "edit" | "approve" | "reject" | "finalize",
+  ): boolean {
     if (!request) return false;
-    
+
     const actions = {
-      edit: request.status !== 'finalized',
-      approve: request.status === 'pending',
-      reject: request.status === 'pending',
-      finalize: request.status === 'approved',
+      edit: request.status !== "finalized",
+      approve: request.status === "pending",
+      reject: request.status === "pending",
+      finalize: request.status === "approved",
     };
-    
+
     return actions[action] || false;
   }
 
-  getAvailableStatuses(request: ItemRequest): Array<'pending' | 'approved' | 'rejected' | 'finalized'> {
+  getAvailableStatuses(
+    request: ItemRequest,
+  ): Array<"pending" | "approved" | "rejected" | "finalized"> {
     if (!request) return [];
-    
-    const statuses: Array<'pending' | 'approved' | 'rejected' | 'finalized'> = [];
-    if (request.status === 'pending') {
-      statuses.push('approved', 'rejected');
-    } else if (request.status === 'approved') {
-      statuses.push('finalized');
+
+    const statuses: Array<"pending" | "approved" | "rejected" | "finalized"> =
+      [];
+    if (request.status === "pending") {
+      statuses.push("approved", "rejected");
+    } else if (request.status === "approved") {
+      statuses.push("finalized");
     }
     return statuses;
   }
 
   getStatusBadge(status: string): string {
     const badgeMap: Record<string, string> = {
-      pending: 'warning',
-      approved: 'success',
-      rejected: 'danger',
-      finalized: 'info',
+      pending: "warning",
+      approved: "success",
+      rejected: "danger",
+      finalized: "info",
     };
-    return badgeMap[status] || 'secondary';
+    return badgeMap[status] || "secondary";
   }
 
   getStatusDisplay(status: string): string {
     const displayMap: Record<string, string> = {
-      pending: 'Pending',
-      approved: 'Approved',
-      rejected: 'Rejected',
-      finalized: 'Finalized',
+      pending: "Pending",
+      approved: "Approved",
+      rejected: "Rejected",
+      finalized: "Finalized",
     };
     return displayMap[status] || status;
   }
 
   getStatusIcon(status: string): string {
     const iconMap: Record<string, string> = {
-      pending: '⏳',
-      approved: '✅',
-      rejected: '❌',
-      finalized: '📋',
+      pending: "⏳",
+      approved: "✅",
+      rejected: "❌",
+      finalized: "📋",
     };
-    return iconMap[status] || '📦';
+    return iconMap[status] || "📦";
   }
 
   formatDate(date: string | Date | null): string {
-    if (!date) return 'N/A';
+    if (!date) return "N/A";
     const d = new Date(date);
-    if (isNaN(d.getTime())) return 'N/A';
-    return d.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    if (isNaN(d.getTime())) return "N/A";
+    return d.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   }
 
   formatDateTime(date: string | Date | null): string {
-    if (!date) return 'N/A';
+    if (!date) return "N/A";
     const d = new Date(date);
-    if (isNaN(d.getTime())) return 'N/A';
-    return d.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    if (isNaN(d.getTime())) return "N/A";
+    return d.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
@@ -1521,39 +1833,39 @@ class ItemRequestService {
   }
 
   isEditable(request: ItemRequest): boolean {
-    return request?.status !== 'finalized';
+    return request?.status !== "finalized";
   }
 
   isPending(request: ItemRequest): boolean {
-    return request?.status === 'pending';
+    return request?.status === "pending";
   }
 
   isApproved(request: ItemRequest): boolean {
-    return request?.status === 'approved';
+    return request?.status === "approved";
   }
 
   isRejected(request: ItemRequest): boolean {
-    return request?.status === 'rejected';
+    return request?.status === "rejected";
   }
 
   isFinalized(request: ItemRequest): boolean {
-    return request?.status === 'finalized';
+    return request?.status === "finalized";
   }
 
   hasAllGroupsAccepted(request: ItemRequest): boolean {
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return false;
-    return notifications.every((n: any) => n.status === 'accepted');
+    return notifications.every((n: any) => n.status === "accepted");
   }
 
   hasAnyRejection(request: ItemRequest): boolean {
     const notifications = (request as any).notifications || [];
-    return notifications.some((n: any) => n.status === 'rejected');
+    return notifications.some((n: any) => n.status === "rejected");
   }
 
   getPendingGroupsCount(request: ItemRequest): number {
     const notifications = (request as any).notifications || [];
-    return notifications.filter((n: any) => n.status === 'pending').length;
+    return notifications.filter((n: any) => n.status === "pending").length;
   }
 
   isAssetRequest(request: ItemRequest): boolean {
@@ -1563,9 +1875,43 @@ class ItemRequestService {
   getAssetDepartment(request: ItemRequest): string {
     const dept = (request as any).department;
     if (dept) {
-      return dept.name || dept.code || 'N/A';
+      return dept.name || dept.code || "N/A";
     }
-    return 'N/A';
+    return "N/A";
+  }
+
+  isTemelashRequest(request: ItemRequest): boolean {
+    return (request as any).isTemelash === true;
+  }
+
+  hasTemelashWindow(request: ItemRequest): boolean {
+    return !!(
+      (request as any).temelashFromDate || (request as any).temelashToDate
+    );
+  }
+
+  formatTemelashWindow(request: ItemRequest): string {
+    const from = (request as any).temelashFromDate;
+    const to = (request as any).temelashToDate;
+    if (!from && !to) return "N/A";
+
+    const fmt = (d: string | null | undefined): string => {
+      if (!d) return "—";
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return "—";
+      return dt.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    };
+
+    return `${fmt(from)} → ${fmt(to)}`;
+  }
+
+  isTemelashOverdue(record: TemelashRecord): boolean {
+    if (!record?.toDate || record.status !== "out") return false;
+    return new Date() > new Date(record.toDate);
   }
 }
 

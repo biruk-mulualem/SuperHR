@@ -46,6 +46,42 @@ router.get(
 );
 
 // ================================================================
+// 🔥 TEMELASH ROUTES (NEW)
+// MUST come before /:id wildcards
+// ================================================================
+
+/**
+ * GET /api/item-requests/temelash
+ * List temelash records (loan history) with pagination and filters.
+ *
+ * Query params:
+ * - page: 1 (default)
+ * - limit: 10 (default)
+ * - status: out|returned|all (default: all)
+ * - storeId: filter by asking or supplying store
+ * - search: search by request code
+ *
+ * Example: /api/item-requests/temelash?status=out&storeId=2
+ */
+router.get(
+  '/temelash',
+  itemRequestController.getTemelashRecords
+);
+
+/**
+ * POST /api/item-requests/temelash/:recordId/return
+ * Mark a temelash record as returned.
+ *
+ * Body: { "remark": "optional note" }
+ *
+ * Example: POST /api/item-requests/temelash/42/return
+ */
+router.post(
+  '/temelash/:recordId/return',
+  itemRequestController.returnTemelash
+);
+
+// ================================================================
 // STORE GROUPS ROUTE (Get groups for a specific store)
 // ================================================================
 
@@ -166,6 +202,21 @@ router.post('/notifications/:notificationId/accept', itemRequestController.accep
  */
 router.post('/notifications/:notificationId/reject', itemRequestController.rejectNotification);
 
+/**
+ * Change a notification's decision (accepted ↔ rejected)
+ * POST /api/item-requests/notifications/:notificationId/change
+ *
+ * Body: { "status": "accepted" | "rejected", "reason": "required if rejecting" }
+ *
+ * Only allowed while the parent request is still `pending`.
+ *
+ * Example: POST /api/item-requests/notifications/456/change
+ * Body:    { "status": "accepted" }
+ */
+router.post(
+  '/notifications/:notificationId/change',
+  itemRequestController.changeNotificationDecision
+);
 // ================================================================
 // 🔥 IMPORTANT: Wildcard routes MUST come AFTER specific routes
 // ================================================================

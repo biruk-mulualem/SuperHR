@@ -1,372 +1,522 @@
-<!-- views/notifications/Notifications.vue -->
+<!-- views/storemanagement/notifications/Notifications.vue -->
 <template>
   <div class="nt-page">
-    <!-- ==================== TOP BAR ==================== -->
-    <header class="nt-topbar">
-      <div class="nt-topbar-left">
-        <h1 class="nt-title">
-          <span class="nt-title-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 01-3.46 0" />
-            </svg>
-          </span>
-          Notifications
-        </h1>
-        <p class="nt-subtitle">
-          <span class="nt-subtitle-dot"></span>
-          <strong>{{ totalPendingRequests }}</strong>
-          pending request{{ totalPendingRequests === 1 ? '' : 's' }} need your attention
-        </p>
-      </div>
 
-      <div class="nt-topbar-actions">
-        <div class="nt-segment">
-          <button
-            v-for="opt in statusOptions"
-            :key="opt.value"
-            class="nt-seg-btn"
-            :class="[`seg-${opt.value}`, { active: filterStatus === opt.value }]"
-            @click="filterStatus = opt.value; onFilterChange()"
-          >
-            {{ opt.label }}
-            <span class="nt-seg-count">{{ summary[opt.value] || 0 }}</span>
-          </button>
-        </div>
-
-        <button class="nt-icon-btn" @click="loadNotifications(true)" :disabled="loading" title="Refresh">
-          <svg :class="{ spinning: loading }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+    <!-- ==================== DETAIL VIEW (full page) ==================== -->
+    <div v-if="detailTarget" class="nt-detail-page">
+      <!-- Top action bar -->
+      <div class="nt-detail-topbar">
+        <button class="nt-back-btn" @click="closeDetail">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6" />
           </svg>
+          Back to Notifications
         </button>
-      </div>
-    </header>
 
-    <!-- ==================== SEARCH ==================== -->
-    <div class="nt-searchbar">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
-        <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-      </svg>
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="Search request code, item, user, or store…"
-        @input="onSearchChange"
-      />
-      <button v-if="searchQuery" class="nt-search-clear" @click="searchQuery = ''; onFilterChange()">✕</button>
-    </div>
+        <div class="nt-detail-actions">
+          <span :class="['nt-status-badge', detailSummaryStatus]">
+            {{ capitalize(detailSummaryStatus) }}
+          </span>
 
-    <!-- ==================== LOADING ==================== -->
-    <div v-if="loading && notifications.length === 0" class="nt-list">
-      <div v-for="i in 5" :key="i" class="nt-skeleton-card">
-        <div class="nt-skeleton-stripe"></div>
-        <div class="nt-skeleton-body">
-          <div class="nt-skel-line" style="width: 30%"></div>
-          <div class="nt-skel-line" style="width: 60%"></div>
-          <div class="nt-skel-line" style="width: 45%"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== EMPTY ==================== -->
-    <div v-else-if="groupedRequests.length === 0" class="nt-empty">
-      <div class="nt-empty-icon">
-        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.73 21a2 2 0 01-3.46 0" />
-        </svg>
-      </div>
-      <h3>All caught up</h3>
-      <p>
-        {{ filterStatus === 'all'
-            ? 'No notifications to review right now.'
-            : `No ${filterStatus} notifications.` }}
-      </p>
-    </div>
-
-    <!-- ==================== MAIN LIST (collapsible) ==================== -->
-    <div v-else class="nt-list">
-      <template v-for="(group, gi) in groupedNotifications" :key="gi">
-        <div class="nt-date-divider">
-          <span class="nt-date-label">{{ group.date }}</span>
-          <span class="nt-divider-line"></span>
-          <span class="nt-divider-count">{{ group.requests.length }}</span>
-        </div>
-
-        <!-- ===== Collapsible request card ===== -->
-        <div
-          v-for="req in group.requests"
-          :key="req.requestId"
-          class="nt-request"
-          :class="[req.summaryStatus, { open: isExpanded(req.requestId) }]"
-        >
-          <!-- ---- Collapsible header ---- -->
-          <button
-            class="nt-request-header"
-            @click="toggleExpand(req.requestId)"
-            :aria-expanded="isExpanded(req.requestId)"
-          >
-            <span class="nt-stripe" :class="req.summaryStatus"></span>
-
-            <span class="nt-header-status" :class="req.summaryStatus">
-              <svg v-if="req.summaryStatus === 'pending'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
-                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+          <template v-if="detailSummaryStatus === 'pending'">
+            <button class="nt-action-btn reject" @click="openRejectFor(detailTarget)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M18 6L6 18M6 6l12 12" />
               </svg>
-              <svg v-else-if="req.summaryStatus === 'accepted'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3">
+              Reject
+            </button>
+            <button class="nt-action-btn accept" @click="acceptAllPendingFor(detailTarget)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+              Accept all
+            </button>
+          </template>
+
+          <button
+            v-else-if="decidedApprovals(detailTarget).length > 0"
+            class="nt-action-btn change"
+            @click="openChangeFor(detailTarget)"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M3 12a9 9 0 0115-6.7L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+              <path d="M3 21v-5h5" />
+            </svg>
+            Change decision
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="snapshotLoading[detailTarget.requestId]" class="nt-paper-loading">
+        <div class="nt-paper-spinner"></div>
+        <p>Loading paper view…</p>
+      </div>
+
+      <!-- Paper view -->
+      <div v-else class="view-paper">
+        <header class="paper-header">
+          <h1 class="paper-motto">WE TRUST IN GOD!!!</h1>
+          <h1 class="paper-motto">እግዚአብሔር ይባርክ!!!</h1>
+          <h2 class="paper-company">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
+          <h3 class="paper-subtitle">{{ snapshotHeader(detailTarget.requestId) }}</h3>
+
+          <div class="paper-date-row">
+            <span>
+              <strong>REQ. NO:-</strong>
+              {{ detailTarget.request.requestCode || detailTarget.requestId }}
+            </span>
+            <span class="paper-date-field">
+              <strong>DATE:-</strong>
+              <span class="paper-date-display">
+                {{ formatPaperDate(getRequestedDate(detailTarget.request)) }}
+              </span>
+            </span>
+          </div>
+        </header>
+
+        <table class="paper-items-table">
+          <thead>
+            <tr>
+              <th
+                v-if="snapshotMergeGroups(detailTarget.requestId).length > 0"
+                class="no-print"
+                style="width: 3%"
+              >
+                ☑
+              </th>
+              <th style="width: 6%">No</th>
+              <th
+                v-for="col in snapshotColumns(detailTarget.requestId)"
+                :key="col.key"
+                :style="{ width: col.width }"
+              >
+                {{ col.label }}
+              </th>
+              <th style="width: 10%">Remark</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(item, index) in snapshotItems(detailTarget.requestId)"
+              :key="`v-${index}-${item.itemId}`"
+              :class="{ 'row-merged-absorbed': isSnapshotAbsorbed(detailTarget.requestId, index) }"
+            >
+              <td
+                v-if="snapshotMergeGroups(detailTarget.requestId).length > 0"
+                class="no-print cell-checkbox"
+              ></td>
+
+              <td class="paper-row-number">{{ index + 1 }}</td>
+
+              <td
+                v-for="col in snapshotColumns(detailTarget.requestId)"
+                :key="col.key"
+                :class="{
+                  'text-left': col.align === 'left',
+                  'font-bold': col.bold,
+                  'spec-cell': col.key === 'specification',
+                }"
+              >
+                <template v-if="col.computed === 'totalPrice'">
+                  {{ getSnapshotComputedValue(detailTarget.requestId, item, index, col) }}
+                </template>
+                <template v-else-if="col.editable">
+                  {{ getSnapshotCustomCell(detailTarget.requestId, index, col.key) || '—' }}
+                </template>
+                <template v-else-if="col.key === 'uom'">
+                  {{ getSnapshotUom(item) }}
+                </template>
+                <template v-else-if="col.key === 'quantity'">
+                  {{ formatSnapshotQuantity(item.quantity) }}
+                </template>
+                <template v-else-if="col.key === 'brand'">
+                  {{ item.brand || '' }}
+                </template>
+                <template v-else-if="col.key === 'model'">
+                  {{ item.model || '' }}
+                </template>
+                <template v-else-if="col.key === 'specification'">
+                  {{ item.specification || '' }}
+                </template>
+                <template v-else>
+                  {{ getSnapshotColumnValue(item, col) }}
+                </template>
+              </td>
+
+              <td
+                v-if="isSnapshotMergeStart(detailTarget.requestId, index)"
+                class="paper-remark-cell merged"
+                :rowspan="getSnapshotMergeSize(detailTarget.requestId, index)"
+              >
+                <div class="merged-remark-content">
+                  <span class="merged-remark-text">
+                    {{ getSnapshotMergedRemark(detailTarget.requestId, index) || '—' }}
+                  </span>
+                </div>
+              </td>
+              <td
+                v-else-if="!isSnapshotAbsorbed(detailTarget.requestId, index)"
+                class="paper-remark-cell"
+              >
+                {{ item.remark || '' }}
+              </td>
+            </tr>
+
+            <tr v-if="snapshotItems(detailTarget.requestId).length === 0">
+              <td
+                :colspan="
+                  (snapshotMergeGroups(detailTarget.requestId).length > 0 ? 3 : 2) +
+                  snapshotColumns(detailTarget.requestId).length +
+                  1
+                "
+                class="no-items"
+              >
+                No items in this request
+              </td>
+            </tr>
+
+            <tr v-if="snapshotHasTotalPrice(detailTarget.requestId)" class="paper-grand-total-row">
+              <td
+                :colspan="snapshotMergeGroups(detailTarget.requestId).length > 0 ? 2 : 1"
+                class="paper-grand-total-spacer"
+              ></td>
+              <template
+                v-for="col in snapshotColumns(detailTarget.requestId)"
+                :key="`tot-${col.key}`"
+              >
+                <td v-if="col.key === 'unitPrice'" class="paper-grand-total-label">TOTAL</td>
+                <td v-else-if="col.key === 'totalPrice'" class="paper-grand-total-value">
+                  <span class="paper-grand-total-amount">
+                    {{ getSnapshotGrandTotal(detailTarget.requestId) }}
+                  </span>
+                </td>
+                <td v-else class="paper-grand-total-spacer"></td>
+              </template>
+              <td class="paper-grand-total-spacer"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="paper-meta-grid">
+          <div
+            v-if="snapshotSectionVisibility(detailTarget.requestId).department"
+            class="paper-meta-col"
+          >
+            <div class="paper-block-header">Department</div>
+            <div class="paper-block-body paper-dept-body">
+              <strong class="paper-dept-value">
+                {{ getDepartmentForPaper(detailTarget) }}
+              </strong>
+            </div>
+          </div>
+
+          <div class="paper-meta-col">
+            <div class="paper-block-header">Requested By</div>
+            <div class="paper-block-body paper-workflow-body">
+              <p>
+                <strong>Name:-</strong>
+                <span class="paper-inline">
+                  {{ detailTarget.request.requestedByUser?.fullName || detailTarget.request.requestedByUser?.username || '—' }}
+                </span>
+              </p>
+              <p><strong>Signature</strong> _______________________</p>
+            </div>
+          </div>
+
+          <div class="paper-meta-col">
+            <div class="paper-block-header">Approved By</div>
+            <div class="paper-block-body paper-workflow-body">
+              <p>
+                <strong>Name :-</strong>
+                <span class="paper-inline">
+                  {{ snapshotApprovedByName(detailTarget.requestId) || ' ' }}
+                </span>
+              </p>
+              <p><strong>Signature</strong> _______________________</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="paper-footer-sections">
+          <div
+            v-if="snapshotSectionVisibility(detailTarget.requestId).reason"
+            class="paper-input-row"
+          >
+            <div class="paper-gray-label">Reason</div>
+            <div class="paper-lines-container">
+              <div class="paper-reason-readonly">
+                {{ detailTarget.request.remark || '—' }}
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="snapshotSectionVisibility(detailTarget.requestId).comment"
+            class="paper-input-row paper-short-width"
+          >
+            <div class="paper-gray-label">Comment</div>
+            <div class="paper-lines-container">
+              <div class="paper-write-line"></div>
+              <div class="paper-write-line"></div>
+            </div>
+          </div>
+
+          <div
+            v-if="snapshotSectionVisibility(detailTarget.requestId).checkedBy"
+            class="paper-checked-by"
+          >
+            <div class="paper-gray-label paper-inline-label">Checked By</div>
+            <div class="paper-checked-body">
+              <p><strong>Name</strong> _____________________________.</p>
+              <p><strong>Signature</strong> _____________________.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Approvals section -->
+      <div class="nt-detail-section">
+        <div class="nt-block-header">
+          <span class="nt-block-title">Approvals</span>
+          <span class="nt-block-badge">{{ detailTarget.acceptedCount }}/{{ detailTarget.approvals.length }}</span>
+        </div>
+        <div class="nt-approvals-list">
+          <div
+            v-for="a in detailTarget.approvals"
+            :key="a.id"
+            class="nt-approval-item"
+            :class="a.status"
+          >
+            <div class="nt-approval-item-icon">
+              <svg v-if="a.approval_type === 'group'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
+              </svg>
+            </div>
+            <div class="nt-approval-item-body">
+              <span class="nt-approval-item-name">
+                {{ a.group?.name || a.department?.name || '—' }}
+              </span>
+              <span class="nt-approval-item-type">
+                {{ a.approval_type === 'group' ? 'Group approval' : 'Department approval' }}
+                <template v-if="a.respondedByUser">
+                  · {{ a.respondedByUser.fullName || a.respondedByUser.username }}
+                </template>
+              </span>
+              <span v-if="a.rejected_reason" class="nt-approval-item-reason">
+                "{{ a.rejected_reason }}"
+              </span>
+            </div>
+            <span class="nt-approval-item-status" :class="a.status">
+              <svg v-if="a.status === 'pending'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+              <svg v-else-if="a.status === 'accepted'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
                 <circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" />
               </svg>
             </span>
-
-            <span class="nt-header-main">
-              <span class="nt-header-row-1">
-                <span class="nt-code">{{ req.request.requestCode }}</span>
-                <span class="nt-dot">·</span>
-                <span class="nt-time">{{ formatDate(getRequestedDate(req.request)) }}</span>
-                <span class="nt-status-pill" :class="req.summaryStatus">
-                  {{ capitalize(req.summaryStatus) }}
-                </span>
-              </span>
-
-              <span class="nt-header-row-2">
-                <span class="nt-route-origin" :class="{ other: isOther(req.request) }">
-                  {{ getOriginName(req.request) }}
-                </span>
-                <svg class="nt-route-arrow" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
-                <span class="nt-route-dest">{{ req.request.supplyingStore?.name || '—' }}</span>
-              </span>
-
-              <span class="nt-header-row-3">
-                <span class="nt-meta">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-                  </svg>
-                  {{ req.request.items?.length || 0 }} item{{ req.request.items?.length === 1 ? '' : 's' }}
-                </span>
-                <span class="nt-meta-sep">·</span>
-                <span class="nt-meta">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
-                  {{ req.request.requestedByUser?.fullName || 'Unknown' }}
-                </span>
-              </span>
-            </span>
-
-            <span class="nt-header-chevron" :class="{ rotated: isExpanded(req.requestId) }">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </span>
-          </button>
-
-          <!-- ---- Expanded body ---- -->
-          <transition name="expand">
-            <div v-show="isExpanded(req.requestId)" class="nt-request-body">
-              <!-- Route summary -->
-              <div class="nt-route-card">
-                <div class="nt-route-side">
-                  <span class="nt-route-label">From</span>
-                  <span class="nt-route-value" :class="{ other: isOther(req.request) }">
-                    {{ getOriginName(req.request) }}
-                  </span>
-                  <span class="nt-route-code">{{ getOriginCode(req.request) }}</span>
-                </div>
-                <div class="nt-route-arrow-icon">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                </div>
-                <div class="nt-route-side right">
-                  <span class="nt-route-label">To</span>
-                  <span class="nt-route-value">{{ req.request.supplyingStore?.name || '—' }}</span>
-                  <span class="nt-route-code">{{ req.request.supplyingStore?.code || '—' }}</span>
-                </div>
-              </div>
-
-              <!-- Requested by -->
-              <div class="nt-inline-user">
-                <div class="nt-user-avatar">{{ getInitials(req.request.requestedByUser?.fullName) }}</div>
-                <div class="nt-user-info">
-                  <span class="nt-user-name">{{ req.request.requestedByUser?.fullName || 'Unknown' }}</span>
-                  <span class="nt-user-sub">
-                    Request date: {{ formatDateFull(getRequestedDate(req.request)) }}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Approvals -->
-              <div class="nt-block">
-                <div class="nt-block-header">
-                  <span class="nt-block-title">Approvals</span>
-                  <span class="nt-block-badge">{{ req.acceptedCount }}/{{ req.approvals.length }}</span>
-                </div>
-                <div class="nt-approvals-list">
-                  <div
-                    v-for="a in req.approvals"
-                    :key="a.id"
-                    class="nt-approval-item"
-                    :class="a.status"
-                  >
-                    <div class="nt-approval-item-icon">
-                      <svg v-if="a.approval_type === 'group'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                        <circle cx="9" cy="7" r="4" />
-                        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                      </svg>
-                      <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" />
-                      </svg>
-                    </div>
-                    <div class="nt-approval-item-body">
-                      <span class="nt-approval-item-name">
-                        {{ a.group?.name || a.department?.name || '—' }}
-                      </span>
-                      <span class="nt-approval-item-type">
-                        {{ a.approval_type === 'group' ? 'Group approval' : 'Department approval' }}
-                        <template v-if="a.respondedByUser">
-                          · {{ a.respondedByUser.fullName || a.respondedByUser.username }}
-                        </template>
-                      </span>
-                      <span v-if="a.rejected_reason" class="nt-approval-item-reason">
-                        "{{ a.rejected_reason }}"
-                      </span>
-                    </div>
-                    <span class="nt-approval-item-status" :class="a.status">
-                      <svg v-if="a.status === 'pending'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                      </svg>
-                      <svg v-else-if="a.status === 'accepted'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" />
-                      </svg>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- ============ ITEMS TABLE ============ -->
-              <div class="nt-block">
-                <div class="nt-block-header">
-                  <span class="nt-block-title">Items</span>
-                  <span class="nt-block-badge">{{ req.request.items?.length || 0 }}</span>
-                </div>
-
-                <div v-if="(req.request.items || []).length === 0" class="nt-items-empty">
-                  No items in this request.
-                </div>
-
-                <div v-else class="nt-table-wrap">
-                  <table class="nt-table">
-                    <thead>
-                      <tr>
-                        <th class="nt-th-num">#</th>
-                        <th>Code</th>
-                        <th>Item</th>
-                        <th>UOM</th>
-                        <th class="nt-th-qty">Qty</th>
-                        <th>Brand</th>
-                        <th>Model</th>
-                        <th>Specification</th>
-                        <th>Remark</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(item, i) in req.request.items" :key="i">
-                        <td class="nt-td-num" data-label="#">{{ i + 1 }}</td>
-                        <td class="nt-td-code" data-label="Code">
-                          <span v-if="item.item?.code">{{ item.item.code }}</span>
-                          <span v-else class="nt-muted">—</span>
-                        </td>
-                        <td class="nt-td-item" data-label="Item">{{ item.item?.name || 'Unknown Item' }}</td>
-                        <td class="nt-td-uom" data-label="UOM">{{ getUomDisplay(item) }}</td>
-                        <td class="nt-td-qty" data-label="Qty">{{ formatQty(item.quantity) }}</td>
-                        <td class="nt-td-brand" data-label="Brand">
-                          <span v-if="item.brand">{{ item.brand }}</span>
-                          <span v-else class="nt-muted">—</span>
-                        </td>
-                        <td class="nt-td-model" data-label="Model">
-                          <span v-if="item.model">{{ item.model }}</span>
-                          <span v-else class="nt-muted">—</span>
-                        </td>
-                        <td class="nt-td-spec" data-label="Specification">
-                          <span v-if="item.specification">{{ item.specification }}</span>
-                          <span v-else class="nt-muted">—</span>
-                        </td>
-                        <td class="nt-td-remark" data-label="Remark">
-                          <span v-if="item.remark">{{ item.remark }}</span>
-                          <span v-else class="nt-muted">—</span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Request remark -->
-              <div v-if="req.request.remark" class="nt-block">
-                <span class="nt-block-title">Remark</span>
-                <p class="nt-remark">{{ req.request.remark }}</p>
-              </div>
-
-              <!-- Rejections -->
-              <div v-if="req.rejections.length > 0" class="nt-block">
-                <span class="nt-block-title rejected">Rejection reasons</span>
-                <div class="nt-rejection-list">
-                  <p v-for="(r, i) in req.rejections" :key="i" class="nt-rejection-text">
-                    <strong>{{ r.group?.name || r.department?.name }}</strong>
-                    <span>{{ r.rejected_reason }}</span>
-                  </p>
-                </div>
-              </div>
-
-              <!-- Actions -->
-              <div v-if="req.summaryStatus === 'pending'" class="nt-request-actions">
-                <button class="nt-action-btn reject" @click="openRejectFor(req)">
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                  Reject
-                </button>
-                <button class="nt-action-btn accept" @click="acceptAllPendingFor(req)">
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Accept all
-                </button>
-              </div>
-            </div>
-          </transition>
+          </div>
         </div>
-      </template>
-
-      <!-- Pagination -->
-      <div v-if="pagination && pagination.total > 0 && !searchQuery" class="nt-pagination">
-        <button class="nt-page-btn" :disabled="currentPage <= 1 || loading" @click="goToPage(currentPage - 1)">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg>
-        </button>
-        <div class="nt-page-numbers">
-          <button
-            v-for="(p, i) in visiblePages"
-            :key="i"
-            class="nt-page-num"
-            :class="{ active: p === currentPage, dots: p === '...' }"
-            :disabled="p === '...'"
-            @click="p !== '...' && goToPage(p)"
-          >{{ p }}</button>
-        </div>
-        <button class="nt-page-btn" :disabled="currentPage >= totalPages || loading" @click="goToPage(currentPage + 1)">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
-        </button>
       </div>
     </div>
+
+    <!-- ==================== LIST VIEW ==================== -->
+    <template v-else>
+      <!-- TOP BAR -->
+      <header class="nt-topbar">
+        <div class="nt-topbar-left">
+          <h1 class="nt-title">
+            <span class="nt-title-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 01-3.46 0" />
+              </svg>
+            </span>
+            Notifications
+          </h1>
+          <p class="nt-subtitle">
+            <span class="nt-subtitle-dot"></span>
+            <strong>{{ totalPendingRequests }}</strong>
+            pending request{{ totalPendingRequests === 1 ? '' : 's' }} need your attention
+          </p>
+        </div>
+
+        <div class="nt-topbar-actions">
+          <div class="nt-segment">
+            <button
+              v-for="opt in statusOptions"
+              :key="opt.value"
+              class="nt-seg-btn"
+              :class="[`seg-${opt.value}`, { active: filterStatus === opt.value }]"
+              @click="filterStatus = opt.value; onFilterChange()"
+            >
+              {{ opt.label }}
+              <span class="nt-seg-count">{{ tabCounts[opt.value] ?? (summary[opt.value] || 0) }}</span>
+            </button>
+          </div>
+
+          <button class="nt-icon-btn" @click="loadNotifications(true)" :disabled="loading" title="Refresh">
+            <svg :class="{ spinning: loading }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- SEARCH -->
+      <div class="nt-searchbar">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+        </svg>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search request code, item, user, or store…"
+          @input="onSearchChange"
+        />
+        <button v-if="searchQuery" class="nt-search-clear" @click="searchQuery = ''; onFilterChange()">✕</button>
+      </div>
+
+      <!-- LOADING -->
+      <div v-if="loading && notifications.length === 0" class="nt-list">
+        <div v-for="i in 5" :key="i" class="nt-skeleton-card">
+          <div class="nt-skeleton-stripe"></div>
+          <div class="nt-skeleton-body">
+            <div class="nt-skel-line" style="width: 30%"></div>
+            <div class="nt-skel-line" style="width: 60%"></div>
+            <div class="nt-skel-line" style="width: 45%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EMPTY -->
+      <div v-else-if="groupedRequests.length === 0" class="nt-empty">
+        <div class="nt-empty-icon">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 01-3.46 0" />
+          </svg>
+        </div>
+        <h3>All caught up</h3>
+        <p>
+          {{ filterStatus === 'all'
+              ? 'No notifications to review right now.'
+              : `No ${filterStatus} notifications.` }}
+        </p>
+      </div>
+
+      <!-- LIST -->
+      <div v-else class="nt-list">
+        <template v-for="(group, gi) in groupedNotifications" :key="gi">
+          <div class="nt-date-divider">
+            <span class="nt-date-label">{{ group.date }}</span>
+            <span class="nt-divider-line"></span>
+            <span class="nt-divider-count">{{ group.requests.length }}</span>
+          </div>
+
+          <div
+            v-for="req in group.requests"
+            :key="req.requestId"
+            class="nt-request"
+            :class="req.summaryStatus"
+          >
+            <button
+              class="nt-request-header"
+              @click="openDetail(req)"
+            >
+              <span class="nt-stripe" :class="req.summaryStatus"></span>
+
+              <span class="nt-expand-arrow">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                  <polygon points="8,5 8,19 19,12" />
+                </svg>
+              </span>
+
+              <span class="nt-cell nt-cell-code">
+                <span class="nt-code-chip">{{ req.request.requestCode }}</span>
+              </span>
+
+              <span class="nt-cell nt-cell-items">
+                <span class="nt-item-count">
+                  {{ req.request.items?.length || 0 }} item(s)
+                </span>
+                <span class="nt-item-names">{{ getItemNames(req.request.items) }}</span>
+              </span>
+
+              <span class="nt-cell nt-cell-asking">
+                <span class="nt-store-name" :class="{ other: isOther(req.request) }">
+                  {{ getOriginName(req.request) }}
+                </span>
+              </span>
+
+              <span class="nt-cell nt-cell-arrow">➡️</span>
+
+              <span class="nt-cell nt-cell-supplying">
+                <span class="nt-store-name">
+                  {{ req.request.supplyingStore?.name || '—' }}
+                </span>
+              </span>
+
+              <span class="nt-cell nt-cell-status">
+                <span :class="['nt-status-badge', req.summaryStatus]">
+                  {{ capitalize(req.summaryStatus) }}
+                </span>
+
+                <span class="nt-dots-row">
+                  <span
+                    v-for="a in req.approvals"
+                    :key="a.id"
+                    :class="[
+                      'nt-notif-dot',
+                      a.status,
+                      a.approval_type === 'department' ? 'dept-dot' : 'group-dot',
+                    ]"
+                    :title="a.group?.name || a.department?.name || ''"
+                  ></span>
+                </span>
+
+                <span v-if="req.request.isTemelash" class="nt-badge nt-badge-temelash">🔄 Temelash</span>
+                <span v-if="req.request.isAsset" class="nt-badge nt-badge-asset">🏛️ Asset</span>
+              </span>
+
+              <span class="nt-cell nt-cell-time">
+                {{ formatDate(getRequestedDate(req.request)) }}
+              </span>
+            </button>
+          </div>
+        </template>
+
+        <!-- Pagination -->
+        <div v-if="pagination && pagination.total > 0 && !searchQuery" class="nt-pagination">
+          <button class="nt-page-btn" :disabled="currentPage <= 1 || loading" @click="goToPage(currentPage - 1)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg>
+          </button>
+          <div class="nt-page-numbers">
+            <button
+              v-for="(p, i) in visiblePages"
+              :key="i"
+              class="nt-page-num"
+              :class="{ active: p === currentPage, dots: p === '...' }"
+              :disabled="p === '...'"
+              @click="p !== '...' && goToPage(p)"
+            >{{ p }}</button>
+          </div>
+          <button class="nt-page-btn" :disabled="currentPage >= totalPages || loading" @click="goToPage(currentPage + 1)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        </div>
+      </div>
+    </template>
 
     <!-- ==================== ACCEPT MODAL ==================== -->
     <transition name="modal">
@@ -410,9 +560,25 @@
               <span class="nt-modal-label">Approvals pending</span>
               <span class="nt-modal-value">{{ currentRequestForAction?.pendingCount || 0 }}</span>
             </div>
+
+            <template v-if="currentRequestForAction?.request?.isTemelash">
+              <div class="nt-modal-row">
+                <span class="nt-modal-label">Temelash from</span>
+                <span class="nt-modal-value">{{ formatTemelashDate(currentRequestForAction.request.temelashFromDate) }}</span>
+              </div>
+              <div class="nt-modal-row">
+                <span class="nt-modal-label">Return by</span>
+                <span class="nt-modal-value">{{ formatTemelashDate(currentRequestForAction.request.temelashToDate) }}</span>
+              </div>
+            </template>
+
             <div v-if="currentRequestForAction?.request?.remark" class="nt-modal-row column">
               <span class="nt-modal-label">Remark</span>
               <span class="nt-modal-value small">{{ currentRequestForAction.request.remark }}</span>
+            </div>
+
+            <div v-if="currentRequestForAction?.request?.isTemelash" class="nt-temelash-banner" style="margin-top: 8px;">
+              🔄 This is a <strong>Temelash</strong> request — items will be recorded as a temporary loan and must be returned by the date above.
             </div>
           </div>
 
@@ -487,6 +653,107 @@
       </div>
     </transition>
 
+    <!-- ==================== CHANGE DECISION MODAL ==================== -->
+    <transition name="modal">
+      <div v-if="showChangeModal" class="nt-modal-backdrop" @click.self="closeChangeModal">
+        <div class="nt-modal" @click.stop>
+          <div class="nt-modal-header change">
+            <div class="nt-modal-icon change">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffffff" stroke-width="2.2">
+                <path d="M3 12a9 9 0 0115-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+                <path d="M3 21v-5h5" />
+              </svg>
+            </div>
+            <div>
+              <h3>Change decision</h3>
+              <p>Flip this approval between accepted and rejected</p>
+            </div>
+            <button class="nt-modal-close" @click="closeChangeModal">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="nt-modal-body">
+            <div class="nt-modal-row">
+              <span class="nt-modal-label">Request</span>
+              <span class="nt-modal-value code">{{ changeTarget?.request?.requestCode }}</span>
+            </div>
+            <div class="nt-modal-row">
+              <span class="nt-modal-label">Request date</span>
+              <span class="nt-modal-value">{{ formatDateFull(getRequestedDate(changeTarget?.request)) }}</span>
+            </div>
+            <div class="nt-modal-row">
+              <span class="nt-modal-label">From</span>
+              <span class="nt-modal-value">{{ getOriginName(changeTarget?.request) }}</span>
+            </div>
+            <div class="nt-modal-row">
+              <span class="nt-modal-label">To</span>
+              <span class="nt-modal-value">{{ changeTarget?.request?.supplyingStore?.name }}</span>
+            </div>
+
+            <div class="nt-field">
+              <label>New decision <span class="req">*</span></label>
+              <div class="nt-segment nt-segment-block">
+                <button
+                  type="button"
+                  class="nt-seg-btn seg-accepted"
+                  :class="{ active: changeStatus === 'accepted' }"
+                  @click="changeStatus = 'accepted'; changeReasonError = ''"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  class="nt-seg-btn seg-rejected"
+                  :class="{ active: changeStatus === 'rejected' }"
+                  @click="changeStatus = 'rejected'"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" />
+                  </svg>
+                  Reject
+                </button>
+              </div>
+            </div>
+
+            <div v-if="changeStatus === 'rejected'" class="nt-field">
+              <label>Reason <span class="req">*</span></label>
+              <textarea
+                v-model="changeReason"
+                rows="4"
+                placeholder="Explain why the decision is changing to rejected…"
+                :class="{ error: changeReasonError }"
+              ></textarea>
+              <span v-if="changeReasonError" class="nt-error">{{ changeReasonError }}</span>
+            </div>
+
+            <div class="nt-temelash-banner" style="margin-top: 10px;">
+              ⚠️ This action flips the current decision. Once changed, the parent request stays
+              <strong>pending</strong> and there is no way to revert back to “pending”.
+            </div>
+          </div>
+
+          <div class="nt-modal-footer">
+            <button class="nt-btn ghost" @click="closeChangeModal">Cancel</button>
+            <button
+              class="nt-btn primary amber"
+              @click="confirmChangeDecision"
+              :disabled="changing || (changeStatus === 'rejected' && !changeReason.trim())"
+            >
+              {{ changing ? 'Updating…' : 'Confirm change' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- ==================== TOAST ==================== -->
     <transition name="toast">
       <div v-if="showToast" class="nt-toast" :class="toastType">
@@ -509,7 +776,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import itemRequestService from '@/stores/itemRequestService'
 
@@ -535,15 +802,268 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('success')
 
-// Track expanded cards by requestId
-const expandedIds = ref(new Set())
-
+// ✅ Filter tab options — REQUIRED for the segmented control
 const statusOptions = [
   { value: 'all',      label: 'All' },
   { value: 'pending',  label: 'Pending' },
   { value: 'accepted', label: 'Accepted' },
   { value: 'rejected', label: 'Rejected' },
 ]
+
+// Detail view state
+const detailTarget = ref(null)
+const detailSummaryStatus = ref('pending')
+
+// Change-decision state
+const showChangeModal = ref(false)
+const changeTarget = ref(null)
+const changeStatus = ref('rejected')
+const changeReason = ref('')
+const changeReasonError = ref('')
+const changing = ref(false)
+
+// ==================== SNAPSHOT STATE ====================
+const DEFAULT_VIEW_HEADER = 'ITEM REQUISITION FORM'
+
+const snapshots = reactive({})
+const snapshotLoading = reactive({})
+
+const buildDefaultViewColumns = () => [
+  { key: 'item',          label: 'Item',          width: '20%', visible: true, align: 'left' },
+  { key: 'uom',           label: 'U.O.M',         width: '7%',  visible: true },
+  { key: 'quantity',      label: 'Qty',           width: '7%',  visible: true, bold: true },
+  { key: 'brand',         label: 'Brand',         width: '11%', visible: true },
+  { key: 'model',         label: 'Model',         width: '11%', visible: true },
+  { key: 'specification', label: 'Specification', width: '20%', visible: true },
+]
+
+const makeEmptySnapshot = () => ({
+  header: DEFAULT_VIEW_HEADER,
+  department: '',
+  approvedByName: '',
+  columns: buildDefaultViewColumns(),
+  customCells: {},
+  mergeGroups: [],
+  items: [],
+  sectionVisibility: { department: true, reason: true, comment: true, checkedBy: true },
+})
+
+const restoreSnapshotFromPayload = (snap) => {
+  const out = makeEmptySnapshot()
+  if (!snap) return out
+
+  if (typeof snap.header === 'string') out.header = snap.header
+  if (typeof snap.department === 'string') out.department = snap.department
+  if (typeof snap.approvedByName === 'string') out.approvedByName = snap.approvedByName
+
+  if (snap.sectionVisibility) {
+    out.sectionVisibility = {
+      department: true, reason: true, comment: true, checkedBy: true,
+      ...snap.sectionVisibility,
+    }
+  }
+
+  if (Array.isArray(snap.columnsConfig) && snap.columnsConfig.length > 0) {
+    const builtin = new Map(buildDefaultViewColumns().map(c => [c.key, c]))
+    const restored = []
+    snap.columnsConfig.forEach(s => {
+      const b = builtin.get(s.key)
+      if (b) restored.push({ ...b, visible: s.visible !== false })
+      else if (s.custom) {
+        restored.push({
+          key: s.key,
+          label: s.label || 'Custom',
+          width: s.width || '12%',
+          visible: s.visible !== false,
+          custom: true,
+          editable: s.editable ?? true,
+          kind: s.kind || 'text',
+          computed: s.computed,
+          pairedKey: s.pairedKey,
+          align: s.align,
+          bold: s.bold,
+        })
+      }
+    })
+    builtin.forEach((b, k) => {
+      if (!restored.find(c => c.key === k)) restored.push({ ...b, visible: true })
+    })
+    out.columns = restored
+  }
+
+  if (snap.customCells && typeof snap.customCells === 'object') {
+    out.customCells = { ...snap.customCells }
+  }
+
+  if (Array.isArray(snap.mergeGroups)) {
+    out.mergeGroups = snap.mergeGroups.map(g => ({
+      start: Number(g.start) || 0,
+      size: Number(g.size) || 1,
+      text: String(g.text ?? '—'),
+    }))
+  }
+
+  if (Array.isArray(snap.items) && snap.items.length > 0) {
+    out.items = snap.items.map(it => ({
+      itemId: Number(it.itemId),
+      code: it.code || '',
+      name: it.name || '',
+      quantity: Number(it.quantity) || 1,
+      remark: it.remark || '',
+      selectedUom: it.selectedUom || 'base',
+      _baseUom: it.isBaseUom ? it.uomCode : it.uomCode || 'N/A',
+      _convUom: it.isBaseUom ? 'N/A' : it.uomCode,
+      specification: it.specification || '',
+      brand: it.brand || '',
+      model: it.model || '',
+    }))
+  }
+
+  return out
+}
+
+const makeFallbackSnapshot = (req) => {
+  const out = makeEmptySnapshot()
+  out.items = (req.items || []).map(it => ({
+    itemId: Number(it.itemId || it.id || 0),
+    code: it.item?.code || it.itemCode || it.code || 'N/A',
+    name: it.item?.name || it.itemName || it.name || 'Unknown',
+    quantity: Number(it.quantity) || 1,
+    remark: it.remark || '',
+    selectedUom: it.selected_uom || 'base',
+    _baseUom: it.uom_code || it.item?.uom?.code || 'N/A',
+    _convUom: it.conversion_uom_code || it.item?.conversionUom?.code || 'N/A',
+    specification: it.specification || it.item?.specText || '',
+    brand: it.brand || it.item?.brand || '',
+    model: it.model || it.item?.model || '',
+  }))
+  out.department =
+    req.requestedByUser?.Department?.name ||
+    req.department?.name ||
+    ''
+  return out
+}
+
+const loadSnapshot = async (reqEntry) => {
+  const rid = reqEntry.requestId
+  if (!rid || snapshots[rid] || snapshotLoading[rid]) return
+
+  snapshotLoading[rid] = true
+  try {
+    const res = await itemRequestService.getRequestById(rid)
+    let snapshot = null
+    if (res?.success && res.data) {
+      const snap = res.data.printOverride?.pageSnapshot ?? null
+      if (snap) snapshot = restoreSnapshotFromPayload(snap)
+    }
+    if (!snapshot) snapshot = makeFallbackSnapshot(reqEntry.request)
+    snapshots[rid] = snapshot
+  } catch (err) {
+    console.warn('Could not load print snapshot for', rid, err)
+    snapshots[rid] = makeFallbackSnapshot(reqEntry.request)
+  } finally {
+    snapshotLoading[rid] = false
+  }
+}
+
+// ---------------- snapshot accessors ----------------
+const snapshotHeader = (rid) => snapshots[rid]?.header || DEFAULT_VIEW_HEADER
+const snapshotApprovedByName = (rid) => snapshots[rid]?.approvedByName || ''
+const snapshotColumns = (rid) => snapshots[rid]?.columns || buildDefaultViewColumns()
+const snapshotItems = (rid) => snapshots[rid]?.items || []
+const snapshotMergeGroups = (rid) => snapshots[rid]?.mergeGroups || []
+const snapshotSectionVisibility = (rid) =>
+  snapshots[rid]?.sectionVisibility || { department: true, reason: true, comment: true, checkedBy: true }
+
+const getSnapshotCustomCell = (rid, rowIndex, colKey) =>
+  snapshots[rid]?.customCells?.[String(rowIndex)]?.[colKey] || ''
+
+const getSnapshotUom = (item) => {
+  if (!item) return '—'
+  if (item.selectedUom === 'conversion') return item._convUom || item._baseUom || '—'
+  return item._baseUom || item.uom_code || item.uomCode || '—'
+}
+
+const formatSnapshotQuantity = (v) => {
+  const n = typeof v === 'string' ? parseFloat(v) : v
+  if (isNaN(n)) return '0.00'
+  return n.toFixed(2)
+}
+
+const getSnapshotColumnValue = (item, col) => {
+  if (col.key === 'item') {
+    return item.name || item.standardName || item.item?.name || 'Unknown Item'
+  }
+  return ''
+}
+
+const getSnapshotComputedValue = (rid, item, rowIndex, col) => {
+  if (col.computed === 'totalPrice') {
+    const unit = parseFloat(getSnapshotCustomCell(rid, rowIndex, 'unitPrice')) || 0
+    const qty = parseFloat(String(item?.quantity ?? 0)) || 0
+    if (!unit || !qty) return ''
+    return (unit * qty).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+  return ''
+}
+
+const snapshotHasTotalPrice = (rid) =>
+  snapshotColumns(rid).some(c => c.key === 'totalPrice')
+
+const getSnapshotGrandTotal = (rid) => {
+  const cols = snapshotColumns(rid)
+  const items = snapshotItems(rid)
+  const totalCol = cols.find(c => c.key === 'totalPrice')
+  if (!totalCol) return ''
+  let sum = 0
+  items.forEach((it, idx) => {
+    const raw = getSnapshotComputedValue(rid, it, idx, totalCol)
+    const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, '')) || 0
+    sum += num
+  })
+  return sum.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+const isSnapshotAbsorbed = (rid, i) =>
+  snapshotMergeGroups(rid).some(g => i > g.start && i < g.start + g.size)
+
+const isSnapshotMergeStart = (rid, i) =>
+  snapshotMergeGroups(rid).some(g => g.start === i)
+
+const getSnapshotMergeSize = (rid, start) => {
+  const g = snapshotMergeGroups(rid).find(grp => grp.start === start)
+  return g ? g.size : 1
+}
+
+const getSnapshotMergedRemark = (rid, start) => {
+  const g = snapshotMergeGroups(rid).find(grp => grp.start === start)
+  return g ? g.text : ''
+}
+
+// ---------------- department (paper view: name, not role) ----------------
+const getDepartmentForPaper = (reqEntry) => {
+  if (!reqEntry) return 'N/A'
+
+  // Prefer the real department name from the user's department record
+  const realName =
+    reqEntry.request?.requestedByUser?.Department?.name ||
+    reqEntry.request?.department?.name
+
+  if (realName && String(realName).trim()) return realName
+
+  // Fall back to the persisted print-override snapshot
+  const rid = reqEntry.requestId
+  const snapDept = snapshots[rid]?.department
+  if (snapDept && String(snapDept).trim()) return snapDept
+
+  return 'N/A'
+}
 
 // ---------------- grouping ----------------
 const requestsById = computed(() => {
@@ -582,11 +1102,18 @@ const requestsById = computed(() => {
   })
 })
 
-const groupedRequests = computed(() => requestsById.value)
+// ✅ Client-side filter applied after grouping
+const filteredRequests = computed(() => {
+  const all = requestsById.value
+  if (filterStatus.value === 'all') return all
+  return all.filter(req => req.summaryStatus === filterStatus.value)
+})
+
+const groupedRequests = computed(() => filteredRequests.value)
 
 const groupedNotifications = computed(() => {
   const groups = {}
-  const sorted = [...requestsById.value].sort((a, b) => b.latestCreatedAt - a.latestCreatedAt)
+  const sorted = [...filteredRequests.value].sort((a, b) => b.latestCreatedAt - a.latestCreatedAt)
   for (const req of sorted) {
     const d = new Date(req.latestCreatedAt)
     const key = d.toDateString()
@@ -597,8 +1124,33 @@ const groupedNotifications = computed(() => {
 })
 
 // ---------------- computed ----------------
-const totalPages = computed(() => pagination.value?.pages || 1)
-const totalPendingRequests = computed(() => summary.value.pending || 0)
+const totalPages = computed(() => {
+  const p = pagination.value
+  if (!p) return 1
+  const directPages = p.pages ?? p.totalPages ?? p.pageCount ?? p.lastPage
+  if (directPages != null && Number(directPages) > 0) return Number(directPages)
+  const total = Number(p.total ?? p.totalItems ?? 0)
+  const limit = Number(p.limit ?? p.pageSize ?? pageSize.value ?? 10)
+  return Math.max(1, Math.ceil(total / Math.max(1, limit)))
+})
+
+// ✅ Pending count — from loaded data as fallback
+const totalPendingRequests = computed(() => {
+  const serverPending = summary.value.pending
+  if (typeof serverPending === 'number' && serverPending > 0) return serverPending
+  return requestsById.value.filter(r => r.summaryStatus === 'pending').length
+})
+
+// ✅ Tab counts from loaded data
+const tabCounts = computed(() => {
+  const all = requestsById.value
+  return {
+    all: all.length,
+    pending: all.filter(r => r.summaryStatus === 'pending').length,
+    accepted: all.filter(r => r.summaryStatus === 'accepted').length,
+    rejected: all.filter(r => r.summaryStatus === 'rejected').length,
+  }
+})
 
 const visiblePages = computed(() => {
   const total = totalPages.value
@@ -658,6 +1210,16 @@ const formatDateFull = (date) => {
   })
 }
 
+const formatPaperDate = (date) => {
+  if (!date) return '—'
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '—'
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`   // → 19/10/2026
+}
+
 const formatDateGroup = (date) => {
   const d = date instanceof Date ? date : utcToLocal(date)
   const today = new Date()
@@ -666,19 +1228,6 @@ const formatDateGroup = (date) => {
   if (key(d) === key(today)) return 'Today'
   if (key(d) === key(yest)) return 'Yesterday'
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-}
-
-const formatQty = (q) => {
-  const n = Number(q)
-  if (Number.isNaN(n)) return '0'
-  return Number.isInteger(n) ? String(n) : n.toFixed(2)
-}
-
-const getUomDisplay = (item) => item?.uom_code || item?.item?.uom?.code || 'units'
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
@@ -697,30 +1246,49 @@ const getOriginName = (request) => {
   return request.askingStore?.name || '—'
 }
 
-const getOriginCode = (request) => {
-  if (!request) return ''
-  if (isOther(request)) return request.requestedByUser?.Department?.code || ''
-  return request.askingStore?.code || ''
+const getItemNames = (items) => {
+  if (!items || items.length === 0) return ''
+  const names = items.map(i => i.item?.name || i.itemName || i.name || 'Unknown')
+  if (names.length <= 2) return names.join(', ')
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`
 }
 
-// ---------------- expand / collapse ----------------
-const isExpanded = (rid) => expandedIds.value.has(rid)
-
-const toggleExpand = (rid) => {
-  const next = new Set(expandedIds.value)
-  if (next.has(rid)) next.delete(rid)
-  else next.add(rid)
-  expandedIds.value = next
+// ---------------- Temelash ----------------
+const formatTemelashDate = (date) => {
+  if (!date) return '—'
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
-// ---------------- actions ----------------
+// ---------------- change helpers ----------------
+const decidedApprovals = (reqEntry) =>
+  (reqEntry?.approvals || []).filter(a => a.status === 'accepted' || a.status === 'rejected')
+
+// ---------------- detail view navigation ----------------
+const openDetail = async (reqEntry) => {
+  detailTarget.value = reqEntry
+  detailSummaryStatus.value = reqEntry.summaryStatus
+  window.scrollTo({ top: 0, behavior: 'auto' })
+  await loadSnapshot(reqEntry)
+}
+
+const closeDetail = () => {
+  detailTarget.value = null
+  window.scrollTo({ top: 0, behavior: 'auto' })
+}
+
+// ---------------- load ----------------
 const loadNotifications = async (resetPage = true) => {
   try {
     loading.value = true
 
     if (resetPage) {
       currentPage.value = 1
-      expandedIds.value = new Set()
     }
 
     const storeId = authStore.userStoreId
@@ -753,8 +1321,18 @@ const loadNotifications = async (resetPage = true) => {
       const merged = [...gNotifs, ...dNotifs]
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
+      const gPag = g.data?.pagination || {}
+      const dPag = d.data?.pagination || {}
+      const totalBoth = (gPag.total || 0) + (dPag.total || 0)
+      const pagesBoth = Math.max(
+        gPag.pages || 1,
+        dPag.pages || 1,
+        Math.ceil(totalBoth / (parseInt(pageSize.value) || 10))
+      )
+
       const gs = g.data?.summary || {}
       const ds = d.data?.summary || {}
+
       response = {
         success: true,
         data: {
@@ -762,8 +1340,8 @@ const loadNotifications = async (resetPage = true) => {
           pagination: {
             page: currentPage.value,
             limit: pageSize.value,
-            total: merged.length,
-            pages: Math.ceil(merged.length / pageSize.value),
+            total: totalBoth,
+            pages: pagesBoth,
           },
           summary: {
             total:    (gs.total    || 0) + (ds.total    || 0),
@@ -816,6 +1394,7 @@ const showToastMessage = (msg, type = 'success') => {
   setTimeout(() => (showToast.value = false), 3000)
 }
 
+// ---------------- accept / reject ----------------
 const acceptAllPendingFor = async (reqEntry) => {
   const pending = reqEntry.approvals.filter(a => a.status === 'pending')
   if (pending.length === 0) {
@@ -842,7 +1421,18 @@ const confirmAccept = async () => {
     const ok = results.filter(r => r.success).length
     if (ok > 0) {
       showToastMessage(`${ok} approval${ok === 1 ? '' : 's'} accepted`, 'success')
+      delete snapshots[entry.requestId]
       await loadNotifications(true)
+      if (detailTarget.value && detailTarget.value.requestId === entry.requestId) {
+        const refreshed = requestsById.value.find(r => r.requestId === entry.requestId)
+        if (refreshed) {
+          detailTarget.value = refreshed
+          detailSummaryStatus.value = refreshed.summaryStatus
+          await loadSnapshot(refreshed)
+        } else {
+          closeDetail()
+        }
+      }
       closeAcceptModal()
     } else {
       showToastMessage('Failed to accept', 'error')
@@ -890,7 +1480,18 @@ const confirmReject = async () => {
     const ok = results.filter(r => r.success).length
     if (ok > 0) {
       showToastMessage(`Request rejected`, 'warning')
+      delete snapshots[entry.requestId]
       await loadNotifications(true)
+      if (detailTarget.value && detailTarget.value.requestId === entry.requestId) {
+        const refreshed = requestsById.value.find(r => r.requestId === entry.requestId)
+        if (refreshed) {
+          detailTarget.value = refreshed
+          detailSummaryStatus.value = refreshed.summaryStatus
+          await loadSnapshot(refreshed)
+        } else {
+          closeDetail()
+        }
+      }
       closeRejectModal()
     } else {
       showToastMessage('Failed to reject', 'error')
@@ -899,6 +1500,83 @@ const confirmReject = async () => {
     showToastMessage('Failed to reject', 'error')
   } finally {
     submitting.value = false
+  }
+}
+
+// ---------------- change decision ----------------
+const openChangeFor = (reqEntry) => {
+  const decided = decidedApprovals(reqEntry)
+  if (decided.length === 0) {
+    showToastMessage('Nothing decided to change', 'warning')
+    return
+  }
+  changeTarget.value = reqEntry
+  changeStatus.value = decided[0].status === 'accepted' ? 'rejected' : 'accepted'
+  changeReason.value = ''
+  changeReasonError.value = ''
+  showChangeModal.value = true
+}
+
+const closeChangeModal = () => {
+  showChangeModal.value = false
+  changeTarget.value = null
+  changeStatus.value = 'rejected'
+  changeReason.value = ''
+  changeReasonError.value = ''
+  changing.value = false
+}
+
+const confirmChangeDecision = async () => {
+  if (changeStatus.value === 'rejected' && !changeReason.value.trim()) {
+    changeReasonError.value = 'Please provide a rejection reason'
+    return
+  }
+
+  const entry = changeTarget.value
+  if (!entry) return
+
+  const targets = decidedApprovals(entry)
+  if (targets.length === 0) {
+    showToastMessage('Nothing decided to change', 'warning')
+    closeChangeModal()
+    return
+  }
+
+  changing.value = true
+  try {
+    const reason = changeStatus.value === 'rejected' ? changeReason.value.trim() : undefined
+    const results = await Promise.all(
+      targets.map(a =>
+        itemRequestService.changeNotificationDecision(a.id, changeStatus.value, reason)
+      )
+    )
+    const ok = results.filter(r => r.success).length
+    if (ok > 0) {
+      showToastMessage(
+        `Decision changed to ${changeStatus.value}`,
+        changeStatus.value === 'accepted' ? 'success' : 'warning'
+      )
+      delete snapshots[entry.requestId]
+      await loadNotifications(true)
+      if (detailTarget.value && detailTarget.value.requestId === entry.requestId) {
+        const refreshed = requestsById.value.find(r => r.requestId === entry.requestId)
+        if (refreshed) {
+          detailTarget.value = refreshed
+          detailSummaryStatus.value = refreshed.summaryStatus
+          await loadSnapshot(refreshed)
+        } else {
+          closeDetail()
+        }
+      }
+      closeChangeModal()
+    } else {
+      const err = results.find(r => !r.success)?.error || 'Failed to change decision'
+      showToastMessage(err, 'error')
+    }
+  } catch {
+    showToastMessage('Failed to change decision', 'error')
+  } finally {
+    changing.value = false
   }
 }
 
@@ -924,6 +1602,70 @@ watch([filterStatus], () => {
 
 @media (max-width: 768px) {
   .nt-page { padding: 20px 16px 48px; }
+}
+
+/* ================= DETAIL PAGE ================= */
+.nt-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.nt-detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.nt-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nt-back-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.nt-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nt-detail-actions .nt-action-btn {
+  padding: 8px 14px;
+  font-size: 12.5px;
+  flex: 0 0 auto;
+}
+
+.nt-detail-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
 }
 
 /* ================= TOPBAR ================= */
@@ -1138,14 +1880,9 @@ watch([filterStatus], () => {
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
-.nt-request.open {
-  border-color: #cbd5e1;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
-}
-
 .nt-request-header {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   width: 100%;
   background: transparent;
   border: none;
@@ -1155,6 +1892,7 @@ watch([filterStatus], () => {
   font: inherit;
   color: inherit;
   gap: 0;
+  min-height: 56px;
 }
 
 .nt-stripe {
@@ -1166,204 +1904,448 @@ watch([filterStatus], () => {
 .nt-stripe.accepted { background: #10b981; }
 .nt-stripe.rejected { background: #ef4444; }
 
-.nt-header-status {
-  display: flex;
+.nt-expand-arrow {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
+  width: 30px;
+  height: 100%;
   flex-shrink: 0;
+  color: #3b82f6;
 }
 
-.nt-request.pending  .nt-header-status { background: #fffbeb; color: #d97706; }
-.nt-request.accepted .nt-header-status { background: #f0fdf4; color: #059669; }
-.nt-request.rejected .nt-header-status { background: #fef2f2; color: #dc2626; }
+.nt-expand-arrow svg { display: block; }
 
-.nt-header-main {
-  flex: 1;
-  min-width: 0;
-  padding: 13px 16px;
+.nt-cell {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 10px;
+  gap: 2px;
+  font-size: 12px;
+  color: #1e293b;
+  border-right: 1px solid #f1f5f9;
+}
+.nt-cell:last-child { border-right: none; }
+
+/* ✅ Code cell grows to fit the full code */
+.nt-cell-code {
+  flex: 0 0 auto;
+  min-width: 130px;
+  max-width: none;
+  width: auto;
 }
 
-.nt-header-row-1 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.nt-code {
-  font-family: ui-monospace, 'SF Mono', 'Courier New', monospace;
-  font-size: 12.5px;
+.nt-code-chip {
+  display: inline-block;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.2px;
+  background: #f8fafc;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  letter-spacing: 0.3px;
+  align-self: flex-start;
+  white-space: nowrap;
 }
 
-.nt-dot { color: #cbd5e1; font-weight: 700; }
+.nt-cell-items { flex: 1 1 180px; min-width: 120px; gap: 1px; }
 
-.nt-time {
-  font-size: 11.5px;
+.nt-item-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.nt-item-names {
+  font-size: 10.5px;
   color: #94a3b8;
-  font-weight: 600;
-}
-
-.nt-status-pill {
-  font-size: 9.5px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 7px;
-  border-radius: 5px;
-  margin-left: 2px;
-}
-
-.nt-status-pill.pending  { background: #fef3c7; color: #92400e; }
-.nt-status-pill.accepted { background: #d1fae5; color: #065f46; }
-.nt-status-pill.rejected { background: #fee2e2; color: #991b1b; }
-
-.nt-header-row-2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  min-width: 0;
-}
-
-.nt-route-origin, .nt-route-dest {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 240px;
+  max-width: 100%;
 }
 
-.nt-route-origin.other {
-  color: #7c3aed;
-  padding: 2px 8px;
-  background: #f5f3ff;
-  border-radius: 6px;
-}
+.nt-cell-asking { flex: 0 1 130px; min-width: 90px; }
 
-.nt-route-arrow { color: #cbd5e1; flex-shrink: 0; }
-
-.nt-header-row-3 {
-  display: flex;
+.nt-cell-arrow {
+  flex: 0 0 34px;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 11.5px;
-  color: #64748b;
-  font-weight: 500;
+  justify-content: center;
+  font-size: 13px;
+  padding: 8px 4px;
+  color: #94a3b8;
 }
 
-.nt-meta {
-  display: inline-flex;
-  align-items: center;
+.nt-cell-supplying { flex: 0 1 130px; min-width: 90px; }
+
+.nt-store-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nt-store-name.other { color: #7c3aed; }
+
+.nt-cell-status {
+  flex: 0 0 130px;
+  align-items: flex-start;
   gap: 4px;
 }
 
-.nt-meta svg { color: #94a3b8; }
-.nt-meta-sep { color: #cbd5e1; }
-
-.nt-header-chevron {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  flex-shrink: 0;
-  color: #94a3b8;
-  transition: transform 0.25s;
-}
-
-.nt-request.open .nt-header-chevron { color: #6d28d9; }
-.nt-header-chevron.rotated { transform: rotate(180deg); }
-
-/* ================= EXPANDED BODY ================= */
-.nt-request-body {
-  padding: 4px 20px 20px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  border-top: 1px solid #f1f5f9;
-  background: #fdfdfe;
-}
-
-/* Route */
-.nt-route-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-top: 14px;
-}
-
-.nt-route-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.nt-route-side.right { text-align: right; }
-
-.nt-route-label {
-  font-size: 9.5px;
-  font-weight: 900;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: #94a3b8;
-}
-
-.nt-route-value {
-  font-size: 13.5px;
-  font-weight: 800;
-  color: #0f172a;
-  letter-spacing: -0.2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.nt-status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
   white-space: nowrap;
 }
+.nt-status-badge.pending  { background: #fef3c7; color: #92400e; }
+.nt-status-badge.accepted { background: #d1fae5; color: #065f46; }
+.nt-status-badge.rejected { background: #fee2e2; color: #991b1b; }
 
-.nt-route-value.other { color: #7c3aed; }
+.nt-dots-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
 
-.nt-route-code {
-  font-size: 10.5px;
-  font-family: ui-monospace, 'SF Mono', 'Courier New', monospace;
+.nt-notif-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+.nt-notif-dot.pending  { background: #f59e0b; }
+.nt-notif-dot.accepted { background: #10b981; }
+.nt-notif-dot.rejected { background: #ef4444; }
+.nt-notif-dot.dept-dot {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  width: 7px;
+  height: 7px;
+  margin: 1px;
+}
+
+.nt-cell-time {
+  flex: 0 0 80px;
+  align-items: flex-end;
+  font-size: 11px;
   color: #94a3b8;
   font-weight: 600;
+  text-align: right;
 }
 
-.nt-route-arrow-icon { flex-shrink: 0; color: #cbd5e1; }
-
-/* Inline user */
-.nt-inline-user { display: flex; align-items: center; gap: 12px; }
-
-.nt-user-avatar {
-  width: 38px; height: 38px;
-  border-radius: 11px;
-  background: #ede9fe;
-  color: #6d28d9;
-  display: inline-flex;
+/* ================= LOADING ================= */
+.nt-paper-loading {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 12.5px;
-  flex-shrink: 0;
-  letter-spacing: 0.3px;
+  padding: 60px 20px;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
 }
 
-.nt-user-info { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
-.nt-user-name { font-size: 13.5px; font-weight: 800; color: #0f172a; letter-spacing: -0.2px; }
-.nt-user-sub { font-size: 11px; color: #64748b; font-weight: 500; }
+.nt-paper-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f1f5f9;
+  border-top: 3px solid #6d28d9;
+  border-radius: 50%;
+  animation: nt-paper-spin 0.8s linear infinite;
+}
 
-/* Blocks */
-.nt-block { display: flex; flex-direction: column; gap: 10px; }
+@keyframes nt-paper-spin {
+  to { transform: rotate(360deg); }
+}
 
+.nt-paper-loading p {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ================= PAPER VIEW ================= */
+.view-paper {
+  font-family: "Arial", sans-serif;
+  color: #000;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 32px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+}
+
+.paper-header { margin-bottom: 5px; }
+.paper-motto {
+  text-align: center;
+  font-family: Georgia, serif;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  margin: 0 0 4px 0;
+}
+.paper-company {
+  text-align: center;
+  font-size: 21px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+}
+.paper-subtitle {
+  text-align: center;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 0 0 15px 0;
+  color: #1a1a1a;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.paper-date-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+  padding: 8px 0;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+}
+.paper-date-field { display: inline-flex; align-items: center; gap: 6px; }
+.paper-date-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.paper-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 25px;
+  font-family: "Segoe UI", Tahoma, Verdana, sans-serif;
+  font-size: 15px;
+  table-layout: fixed;
+}
+.paper-items-table th,
+.paper-items-table td {
+  border: 1px solid #7f7f7f;
+  padding: 10px 6px;
+  text-align: center;
+  height: 36px;
+  word-wrap: break-word;
+  vertical-align: middle;
+}
+.paper-items-table th {
+  background-color: #c8c8c8;
+  font-weight: 800;
+  font-size: 16.5px;
+  letter-spacing: 0.4px;
+  padding: 12px 6px;
+}
+.paper-items-table td.text-left { text-align: left; padding-left: 8px; }
+.paper-items-table .font-bold { font-weight: 700; }
+.paper-items-table .no-items {
+  padding: 20px !important;
+  color: #7f7f7f;
+  font-style: italic;
+}
+.paper-items-table .spec-cell { font-size: 14.5px; line-height: 1.4; }
+
+.paper-row-number {
+  padding: 4px !important;
+  width: 44px;
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.paper-remark-cell {
+  padding: 8px !important;
+  font-size: 14.5px;
+  line-height: 1.4;
+  vertical-align: middle;
+  word-break: break-word;
+}
+.paper-remark-cell.merged {
+  background: #fff;
+  vertical-align: middle !important;
+  border-top: none !important;
+  border-bottom: none !important;
+}
+.merged-remark-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px;
+  min-height: 100%;
+  text-align: center;
+}
+.merged-remark-text {
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: #000;
+  text-align: center;
+}
+.row-merged-absorbed td { background: #fafafa; }
+
+.paper-grand-total-row td {
+  background: #e5e7eb !important;
+  font-weight: 800;
+  border-color: #7f7f7f !important;
+  height: 40px;
+}
+.paper-grand-total-label,
+.paper-grand-total-value,
+.paper-grand-total-spacer { background: #e5e7eb !important; }
+.paper-grand-total-label {
+  text-align: center !important;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  color: #111827;
+  font-size: 15px;
+}
+.paper-grand-total-amount {
+  font-weight: 900;
+  font-size: 16px;
+  color: #111827;
+}
+
+.paper-meta-grid {
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 25px;
+}
+.paper-meta-col { flex: 1; }
+.paper-block-header {
+  background-color: #d9d9d9;
+  border: none;
+  padding: 5px;
+  font-weight: bold;
+  font-size: 14px;
+  text-align: center;
+}
+.paper-block-body {
+  padding: 12px 4px;
+  font-size: 13px;
+  min-height: 80px;
+  border: none;
+}
+.paper-dept-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+}
+.paper-dept-value { font-size: 20px; font-weight: 600; text-align: center; }
+.paper-workflow-body p {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 6px 0;
+  flex-wrap: nowrap;
+}
+.paper-inline {
+  display: inline-block;
+  flex: 1;
+  min-width: 100px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.paper-footer-sections { display: flex; flex-direction: column; gap: 15px; }
+.paper-input-row {
+  display: flex;
+  width: 100%;
+  border: 1px solid #7f7f7f;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.paper-input-row.paper-short-width { width: 65%; }
+.paper-gray-label {
+  background-color: #d9d9d9;
+  color: #000;
+  font-weight: bold;
+  width: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  min-height: 46px;
+  padding: 10px 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.paper-lines-container {
+  flex-grow: 1;
+  background-color: #fff;
+  min-height: 46px;
+}
+.paper-reason-readonly {
+  font-size: 13px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  min-height: 46px;
+  box-sizing: border-box;
+  color: #1e293b;
+}
+.paper-write-line {
+  height: 22px;
+  border-bottom: 1px solid #7f7f7f;
+  background: #fff;
+}
+.paper-write-line:last-child { border-bottom: none; background: #f9f9f9; }
+
+.paper-checked-by {
+  display: flex;
+  border: 1px solid #7f7f7f;
+  border-radius: 6px;
+  overflow: hidden;
+  width: 65%;
+}
+.paper-gray-label.paper-inline-label { width: 220px; }
+.paper-checked-body {
+  flex: 1;
+  padding: 12px 16px;
+  background: #fff;
+}
+.paper-checked-body p {
+  margin: 8px 0;
+  font-size: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* ================= APPROVALS ================= */
 .nt-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 10px;
 }
 
 .nt-block-title {
@@ -1374,8 +2356,6 @@ watch([filterStatus], () => {
   color: #64748b;
 }
 
-.nt-block-title.rejected { color: #991b1b; }
-
 .nt-block-badge {
   font-size: 10.5px;
   background: #f1f5f9;
@@ -1385,89 +2365,6 @@ watch([filterStatus], () => {
   font-weight: 700;
 }
 
-/* ================= ITEMS TABLE ================= */
-.nt-table-wrap {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.nt-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.5px;
-  table-layout: fixed;
-}
-
-.nt-table thead {
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.nt-table th {
-  text-align: left;
-  padding: 10px 10px;
-  font-size: 10px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #64748b;
-  white-space: nowrap;
-}
-
-.nt-table td {
-  padding: 11px 10px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
-  font-weight: 500;
-  vertical-align: top;
-  word-break: break-word;
-}
-
-.nt-table tbody tr:last-child td { border-bottom: none; }
-.nt-table tbody tr:hover { background: #fafbfc; }
-
-.nt-table .nt-th-num,
-.nt-table .nt-td-num {
-  width: 36px;
-  text-align: center;
-  color: #94a3b8;
-  font-weight: 700;
-  font-size: 11px;
-}
-
-.nt-table .nt-td-code  { width: 11%; font-family: ui-monospace, 'SF Mono', 'Courier New', monospace; font-size: 11px; color: #64748b; }
-.nt-table .nt-td-item  { width: 16%; font-weight: 700; color: #0f172a; }
-.nt-table .nt-td-uom   { width: 70px; font-size: 11px; color: #64748b; white-space: nowrap; }
-
-.nt-table .nt-th-qty,
-.nt-table .nt-td-qty {
-  width: 60px;
-  text-align: right;
-  font-weight: 800;
-  color: #7c3aed;
-  white-space: nowrap;
-}
-
-.nt-table .nt-td-brand { width: 10%; font-size: 12px; color: #334155; }
-.nt-table .nt-td-model { width: 10%; font-size: 12px; color: #334155; }
-.nt-table .nt-td-spec  { width: 20%; font-size: 12px; color: #475569; line-height: 1.45; }
-.nt-table .nt-td-remark { width: 14%; font-size: 11.5px; color: #64748b; line-height: 1.4; }
-
-.nt-muted { color: #cbd5e1; }
-
-.nt-items-empty {
-  padding: 20px;
-  text-align: center;
-  font-size: 12.5px;
-  color: #94a3b8;
-  background: #fafbfc;
-  border: 1px dashed #e2e8f0;
-  border-radius: 10px;
-}
-
-/* ================= APPROVALS ================= */
 .nt-approvals-list {
   display: flex;
   flex-direction: column;
@@ -1548,51 +2445,7 @@ watch([filterStatus], () => {
 .nt-approval-item-status.accepted { color: #059669; }
 .nt-approval-item-status.rejected { color: #dc2626; }
 
-/* ================= REMARK / REJECTION ================= */
-.nt-remark {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.55;
-  padding: 11px 13px;
-  border-radius: 9px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  color: #334155;
-  font-weight: 500;
-}
-
-.nt-rejection-list { display: flex; flex-direction: column; gap: 6px; }
-
-.nt-rejection-text {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 10px 13px;
-  border-radius: 9px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #7f1d1d;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nt-rejection-text strong {
-  font-weight: 800;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #991b1b;
-}
-
 /* ================= ACTIONS ================= */
-.nt-request-actions {
-  display: flex;
-  gap: 10px;
-  padding-top: 4px;
-  border-top: 1px solid #f1f5f9;
-}
-
 .nt-action-btn {
   flex: 1;
   padding: 11px 18px;
@@ -1623,6 +2476,17 @@ watch([filterStatus], () => {
 }
 
 .nt-action-btn.reject:hover { background: #fef2f2; border-color: #fca5a5; }
+
+.nt-action-btn.change {
+  background: #ffffff;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+}
+
+.nt-action-btn.change:hover {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
 
 /* ================= PAGINATION ================= */
 .nt-pagination {
@@ -1666,9 +2530,7 @@ watch([filterStatus], () => {
 }
 
 .nt-page-num:hover:not(.dots):not(.active) { background: #f1f5f9; color: #0f172a; }
-
 .nt-page-num.active { background: #0f172a; color: #ffffff; }
-
 .nt-page-num.dots { cursor: default; color: #cbd5e1; }
 
 /* ================= SKELETON ================= */
@@ -1774,6 +2636,7 @@ watch([filterStatus], () => {
 
 .nt-modal-header.accept { background: #f0fdf4; }
 .nt-modal-header.reject { background: #fef2f2; }
+.nt-modal-header.change { background: #fff7ed; }
 
 .nt-modal-icon {
   width: 42px; height: 42px;
@@ -1786,6 +2649,7 @@ watch([filterStatus], () => {
 
 .nt-modal-icon.accept { background: #10b981; }
 .nt-modal-icon.reject { background: #ef4444; }
+.nt-modal-icon.change { background: #f59e0b; }
 
 .nt-modal-header h3 {
   font-size: 16px;
@@ -1880,6 +2744,18 @@ watch([filterStatus], () => {
 .nt-field textarea.error { border-color: #ef4444; }
 .nt-error { font-size: 11.5px; color: #ef4444; font-weight: 600; }
 
+.nt-segment-block {
+  display: flex;
+  width: 100%;
+}
+
+.nt-segment-block .nt-seg-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
 .nt-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -1913,6 +2789,8 @@ watch([filterStatus], () => {
 .nt-btn.primary.green:hover:not(:disabled) { background: #059669; }
 .nt-btn.primary.red { background: #ef4444; }
 .nt-btn.primary.red:hover:not(:disabled) { background: #dc2626; }
+.nt-btn.primary.amber { background: #f59e0b; }
+.nt-btn.primary.amber:hover:not(:disabled) { background: #d97706; }
 .nt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ================= TOAST ================= */
@@ -1938,16 +2816,50 @@ watch([filterStatus], () => {
 .nt-toast.warning { background: #f59e0b; }
 .nt-toast-icon { display: inline-flex; align-items: center; }
 
-/* ================= TRANSITIONS ================= */
-.expand-enter-active, .expand-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  overflow: hidden;
-}
-.expand-enter-from, .expand-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
+/* ================= BADGES ================= */
+.nt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
 }
 
+.nt-badge-temelash {
+  background: #ffedd5;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+}
+
+.nt-badge-asset {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+/* ================= TEMELASH BANNER ================= */
+.nt-temelash-banner {
+  font-size: 12px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.nt-temelash-banner strong {
+  font-weight: 900;
+}
+
+/* ================= TRANSITIONS ================= */
 .modal-enter-active, .modal-leave-active { transition: opacity 0.18s; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-active .nt-modal { animation: nt-modal-in 0.22s cubic-bezier(.4,0,.2,1); }
@@ -1971,49 +2883,51 @@ watch([filterStatus], () => {
   .nt-segment { flex: 1; overflow-x: auto; }
   .nt-seg-btn { padding: 6px 10px; font-size: 11.5px; }
 
-  .nt-header-status { width: 38px; }
-  .nt-header-main { padding: 12px 12px; }
-  .nt-route-origin, .nt-route-dest { max-width: 110px; }
-
-  /* Table → cards on mobile */
-  .nt-table-wrap { border: none; background: transparent; }
-  .nt-table { table-layout: auto; }
-  .nt-table thead { display: none; }
-  .nt-table, .nt-table tbody, .nt-table tr, .nt-table td {
-    display: block;
-    width: 100%;
+  .nt-request-header {
+    flex-wrap: wrap;
+    min-height: 0;
   }
-  .nt-table tr {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    margin-bottom: 10px;
-    background: #ffffff;
-    padding: 6px 0;
+  .nt-expand-arrow { width: 26px; }
+  .nt-cell {
+    padding: 6px 8px;
+    font-size: 11px;
+    border-right: none;
   }
-  .nt-table td {
-    border-bottom: none;
-    padding: 5px 12px;
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    text-align: right;
+  /* ✅ code cell stays auto-width on mobile too */
+  .nt-cell-code {
+    flex: 0 0 auto;
+    min-width: 100px;
   }
-  .nt-table td::before {
-    content: attr(data-label);
-    font-weight: 800;
+  .nt-code-chip {
     font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #94a3b8;
-    text-align: left;
-    flex-shrink: 0;
+    padding: 2px 6px;
+    white-space: nowrap;
   }
-  .nt-td-num, .nt-td-code, .nt-td-item, .nt-td-uom, .nt-td-qty,
-  .nt-td-brand, .nt-td-model, .nt-td-spec, .nt-td-remark {
-    width: auto !important;
-    max-width: none;
-    text-align: right;
+  .nt-cell-items { flex: 1 1 100%; min-width: 0; }
+  .nt-cell-asking,
+  .nt-cell-supplying { flex: 1 1 40%; }
+  .nt-cell-arrow { flex: 0 0 24px; font-size: 11px; padding: 4px; }
+  .nt-cell-status { flex: 0 0 100%; align-items: flex-start; }
+  .nt-cell-time { flex: 0 0 100%; align-items: flex-start; text-align: left; }
+  .nt-status-badge { font-size: 9px; padding: 2px 8px; }
+
+  .nt-detail-topbar {
+    position: static;
+    flex-direction: column;
+    align-items: stretch;
   }
-  .nt-request-body { padding: 4px 14px 16px 14px; }
+  .nt-detail-actions { justify-content: space-between; }
+
+  .view-paper { padding: 12px; }
+  .paper-company { font-size: 16px; }
+  .paper-motto { font-size: 14px; }
+  .paper-subtitle { font-size: 13px; }
+  .paper-items-table { font-size: 11px; }
+  .paper-items-table th,
+  .paper-items-table td { padding: 6px 4px; height: 30px; }
+  .paper-meta-grid { flex-direction: column; gap: 12px; }
+  .paper-short-width { width: 100% !important; }
+  .paper-checked-by { width: 100% !important; }
+  .paper-gray-label { width: 120px; font-size: 12px; }
 }
 </style>

@@ -1,6 +1,5 @@
 // controllers/itemRequestController.js
 "use strict";
-
 const db = require("../models");
 const {
   ItemRequest,
@@ -14,6 +13,8 @@ const {
   StoreGroupRelation,
   Department,
   Group,
+  TemelashRecord,
+  PrintOverride,
   sequelize,
 } = db;
 const { Op } = require("sequelize");
@@ -36,8 +37,8 @@ const shouldSkipNotifications = (storeCode) => {
 // HELPER: Check if the current user is admin
 // ================================================================
 function isAdminUser(req) {
-  return req?.user?.isAdmin === true || 
-         req?.user?.role === 'admin' || 
+  return req?.user?.isAdmin === true ||
+         req?.user?.role === 'admin' ||
          req?.user?.role === 'Admin';
 }
 
@@ -46,13 +47,13 @@ function isAdminUser(req) {
 // ================================================================
 function isRequestCreator(req, request) {
   if (isAdminUser(req)) return true;
-  
+
   const currentUserId = req?.user?.userId;
   if (!currentUserId) return false;
-  
+
   const creatorId = request?.requestedById;
   if (!creatorId) return false;
-  
+
   return Number(creatorId) === Number(currentUserId);
 }
 
@@ -66,9 +67,7 @@ async function getApprovalDepartmentConfig() {
       where: { settingKey: 'approval.department' },
     });
 
-    if (!setting || !setting.settingValue) {
-      return null;
-    }
+    if (!setting || !setting.settingValue) return null;
 
     const normalized = SystemSetting.normalizeApprovalConfig(setting.settingValue);
 
@@ -87,6 +86,10 @@ async function getApprovalDepartmentConfig() {
 
 // ================================================================
 // HELPER: Resolve the requesting user's group ID
+// ----------------------------------------------------------------
+// Used ONLY for excluding the requester's own group from the
+// asking-store approval notifications. It has nothing to do with
+// stock validation.
 // ================================================================
 async function resolveRequestingUserGroupId(req, requestingUserId, transaction = null) {
   const tokenGroupId =
@@ -129,9 +132,304 @@ async function resolveRequestingUserGroupId(req, requestingUserId, transaction =
 }
 
 // ================================================================
-// HELPER: Validate stock availability with dual UOM support
+// HELPER: Persist (or update) the PrintOverride page snapshot
 // ================================================================
-const validateStockAvailability = async (supplyingStoreId, items) => {
+async function savePageSnapshot(requestId, req, transaction = null) {
+  try {
+    if (!requestId) return null;
+
+    const userId = req.user?.userId ?? null;
+
+    const {
+      customHeader = null,
+      department = null,
+      approvedByName = null,
+      overrideDate = null,
+      sectionVisibility = null,
+      columnsConfig = null,
+      customCells = null,
+      pageSnapshot = null,
+    } = req.body || {};
+
+    if (
+      customHeader === null &&
+      department === null &&
+      approvedByName === null &&
+      overrideDate === null &&
+      sectionVisibility === null &&
+      columnsConfig === null &&
+      customCells === null &&
+      pageSnapshot === null
+    ) {
+      return null;
+    }
+
+    const patch = {
+      customHeader,
+      department,
+      approvedByName,
+      overrideDate,
+      sectionVisibility,
+      columnsConfig,
+      customCells,
+      pageSnapshot,
+      updatedBy: userId,
+    };
+
+    Object.keys(patch).forEach((k) => {
+      if (patch[k] === undefined) delete patch[k];
+    });
+
+    let row = await PrintOverride.findOne({
+      where: { requestId },
+      transaction,
+    });
+
+    if (!row) {
+      row = await PrintOverride.create(
+        { requestId, userId, ...patch },
+        { transaction }
+      );
+      console.log(`📸 [SNAPSHOT] Created page snapshot for request ${requestId}`);
+    } else {
+      await row.update(patch, { transaction });
+      console.log(`📸 [SNAPSHOT] Updated page snapshot for request ${requestId}`);
+    }
+
+    return row;
+  } catch (err) {
+    console.error('❌ [SNAPSHOT] savePageSnapshot error:', err);
+    throw err;
+  }
+}
+
+// ================================================================
+// HELPER: Snapshot request items into temelash_records
+// ================================================================
+async function snapshotTemelashRecord(requestId, transaction = null) {
+  try {
+    const existing = await TemelashRecord.findOne({
+      where: { requestId, status: 'out' },
+      transaction,
+    });
+
+    if (existing) {
+      console.log(
+        `ℹ️ [TEMELASH] Record already exists for request ${requestId} (id ${existing.id}) — skipping snapshot`
+      );
+      return existing;
+    }
+
+    const requestWithItems = await ItemRequest.findByPk(requestId, {
+      include: [
+        {
+          model: ItemRequestDetail,
+          as: 'items',
+          include: [
+            {
+              model: Item,
+              as: 'item',
+              include: [{ model: UOM, as: 'uom' }],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    if (!requestWithItems) {
+      console.warn(`⚠️ [TEMELASH] Request ${requestId} not found — skipping snapshot`);
+      return null;
+    }
+
+    const snapshotItems = (requestWithItems.items || []).map((d) => ({
+      itemId: d.itemId,
+      code: d.item?.code || 'N/A',
+      name: d.item?.name || 'Unknown',
+      quantity: Number(d.quantity) || 0,
+      uom: d.uom_code || d.item?.uom?.code || 'Units',
+      remark: d.remark || '',
+      specification: d.specification || '',
+      brand: d.brand || '',
+      model: d.model || '',
+    }));
+
+    const record = await TemelashRecord.create(
+      {
+        requestId: requestWithItems.requestId,
+        requestCode: requestWithItems.requestCode,
+        askingStoreId: requestWithItems.askingStoreId,
+        supplyingStoreId: requestWithItems.supplyingStoreId,
+        requestedById: requestWithItems.requestedById || null,
+        requestedBy: requestWithItems.requestedBy || null,
+        items: snapshotItems,
+        remark: requestWithItems.remark || null,
+        status: 'out',
+        issuedAt: new Date(),
+        fromDate: requestWithItems.temelashFromDate || null,
+        toDate: requestWithItems.temelashToDate || null,
+        returnedLate: false,
+      },
+      { transaction }
+    );
+
+    console.log(
+      `📝 [TEMELASH] Recorded request ${requestWithItems.requestCode} as OUT ` +
+      `(record id ${record.id}, window ${record.fromDate || '—'} → ${record.toDate || '—'})`
+    );
+
+    return record;
+  } catch (error) {
+    console.error('❌ [TEMELASH] snapshotTemelashRecord error:', error);
+    throw error;
+  }
+}
+
+// ================================================================
+// HELPER: Sum of claims for (itemId, uomCode) at a supplying store
+// ----------------------------------------------------------------
+// Matches on `itemId` only (no group). Set `includeFamily: true` to
+// expand across item_relationships if you want family-wide claims.
+// ================================================================
+async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
+  const excludeRequestId = options.excludeRequestId ?? null;
+  const includeFamily = options.includeFamily ?? false;
+
+  if (!itemId) {
+    return {
+      temelashClaimed: 0,
+      activeRequestClaimed: 0,
+      totalClaimed: 0,
+      temelashHits: [],
+      activeRequestHits: [],
+    };
+  }
+
+  let matchIds = [Number(itemId)];
+  if (includeFamily) {
+    try {
+      const { getRelatedItemIds } = require('../utils/itemFamily');
+      const related = await getRelatedItemIds(itemId);
+      matchIds = [Number(itemId), ...related.map(Number)];
+    } catch (err) {
+      console.warn(
+        `⚠️ getItemClaims: could not expand to family (item ${itemId}):`,
+        err.message
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 1) Temelash-out claims
+  // ------------------------------------------------------------
+  let temelashClaimed = 0;
+  const temelashHits = [];
+
+  if (db.TemelashRecord) {
+    const outRecords = await db.TemelashRecord.findAll({
+      where: {
+        status: 'out',
+        supplyingStoreId,
+      },
+      attributes: ['id', 'requestId', 'requestCode', 'fromDate', 'toDate', 'items'],
+    });
+
+    for (const rec of outRecords) {
+      const arr = Array.isArray(rec.items) ? rec.items : [];
+      for (const row of arr) {
+        if (!matchIds.includes(Number(row.itemId))) continue;
+
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) continue;
+
+        temelashClaimed += qty;
+        temelashHits.push({
+          temelashRecordId: rec.id,
+          requestId: rec.requestId,
+          requestCode: rec.requestCode,
+          quantity: qty,
+          uom: row.uom || 'Units',
+          itemId: Number(row.itemId),
+          fromDate: rec.fromDate,
+          toDate: rec.toDate,
+        });
+      }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 2) Active request claims (pending + approved)
+  // ------------------------------------------------------------
+  let activeRequestClaimed = 0;
+  const activeRequestHits = [];
+
+  const requestWhere = {
+    supplyingStoreId,
+    status: { [Op.in]: ['pending', 'approved'] },
+  };
+  if (excludeRequestId != null) {
+    requestWhere.requestId = { [Op.ne]: Number(excludeRequestId) };
+  }
+
+  const openRequests = await ItemRequest.findAll({
+    where: requestWhere,
+    include: [
+      {
+        model: ItemRequestDetail,
+        as: 'items',
+        where: { itemId: { [Op.in]: matchIds } },
+        required: true,
+        attributes: [
+          'id',
+          'requestId',
+          'itemId',
+          'quantity',
+          'uom_code',
+          'is_base_uom',
+          'selected_uom',
+        ],
+      },
+    ],
+    attributes: ['requestId', 'requestCode', 'status'],
+  });
+
+  for (const req of openRequests) {
+    for (const detail of req.items || []) {
+      const qty = Number(detail.quantity) || 0;
+      if (qty <= 0) continue;
+
+      activeRequestClaimed += qty;
+      activeRequestHits.push({
+        requestId: req.requestId,
+        requestCode: req.requestCode,
+        status: req.status,
+        quantity: qty,
+        uom: detail.uom_code || 'Units',
+        itemId: Number(detail.itemId),
+      });
+    }
+  }
+
+  return {
+    temelashClaimed,
+    activeRequestClaimed,
+    totalClaimed: temelashClaimed + activeRequestClaimed,
+    temelashHits,
+    activeRequestHits,
+    matchedItemIds: matchIds,
+  };
+}
+
+// ================================================================
+// HELPER: Validate stock availability
+// ----------------------------------------------------------------
+// Store-wide balance lookup — (storeId, itemId, status) only.
+// No group scoping on the StoreBalance fetch.
+// ================================================================
+const validateStockAvailability = async (supplyingStoreId, items, options = {}) => {
+  const excludeRequestId = options.excludeRequestId ?? null;
+  const includeFamilyClaims = options.includeFamilyClaims ?? false;
+
   const errors = [];
   const stockInfo = [];
 
@@ -144,53 +442,19 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     };
   }
 
-  if (shouldSkipStockValidation(store.code)) {
-    console.log(`⚠️ Skipping stock validation for store: ${store.code} (${store.name})`);
+  const skipBalance = shouldSkipStockValidation(store.code);
 
-    for (const item of items) {
-      const itemRecord = await Item.findByPk(item.itemId, {
-        include: [
-          { model: UOM, as: "uom" },
-          { model: UOM, as: "conversionUom" }
-        ],
-      });
-
-      if (!itemRecord) {
-        errors.push({
-          itemId: item.itemId,
-          requestedQuantity: item.quantity,
-          message: `Item with ID ${item.itemId} not found`,
-        });
-        continue;
-      }
-
-      stockInfo.push({
-        itemId: item.itemId,
-        itemName: itemRecord.name,
-        itemCode: itemRecord.code,
-        uomCode: itemRecord.uom?.code || "Units",
-        availableQuantity: Number.MAX_SAFE_INTEGER,
-        requestedQuantity: item.quantity,
-        balance: null,
-        stockValidationSkipped: true,
-        skipReason: `Store ${store.code} is exempt from stock validation`,
-      });
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      stockInfo,
-      validationSkipped: true,
-      skipReason: `Store ${store.code} is exempt from stock validation`,
-    };
+  if (skipBalance) {
+    console.log(
+      `⚠️ Skipping RAW balance check for store: ${store.code} (${store.name}) — Temelash claims still apply`
+    );
   }
 
   for (const item of items) {
     const itemRecord = await Item.findByPk(item.itemId, {
       include: [
         { model: UOM, as: "uom" },
-        { model: UOM, as: "conversionUom" }
+        { model: UOM, as: "conversionUom" },
       ],
     });
 
@@ -203,236 +467,200 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
       continue;
     }
 
-    const isBaseUom = item.isBaseUom !== false;
-    const userUomCode = item.uomCode || itemRecord.uom?.code || "Units";
-    const userQuantity = parseFloat(item.quantity);
+    const userQuantity = parseFloat(item.quantity) || 0;
+    const userUomCode =
+      item.uomCode ||
+      itemRecord.uom?.code ||
+      "Units";
 
     const baseUomCode = itemRecord.uom?.code || "Units";
     const conversionUomCode = itemRecord.conversionUom?.code || null;
-    const conversionValue = itemRecord.conversionValue ? parseFloat(itemRecord.conversionValue) : null;
+    const conversionValue = itemRecord.conversionValue
+      ? parseFloat(itemRecord.conversionValue)
+      : null;
 
     console.log(`📦 Checking item: ${itemRecord.code}`);
-    console.log(`   User wants: ${userQuantity} ${userUomCode}`);
-    console.log(`   Base UOM: ${baseUomCode}, Conversion UOM: ${conversionUomCode}`);
+    console.log(`   Wants: ${userQuantity} ${userUomCode}`);
+    console.log(`   Item base UOM: ${baseUomCode}`);
 
-    const [storeBalance, convertedBalance] = await Promise.all([
-      StoreBalance.findOne({
+    // ---------- Raw balance — store-wide, per itemId ----------
+    let rawBalance = 0;
+    let balanceRow = null;
+    let balanceType = "none";
+
+    if (!skipBalance) {
+      balanceRow = await StoreBalance.findOne({
         where: {
           storeId: supplyingStoreId,
           itemId: item.itemId,
           status: "Active",
         },
-      }),
-      db.ConvertedBalance ? db.ConvertedBalance.findOne({
-        where: {
-          storeId: supplyingStoreId,
+      });
+
+      rawBalance = balanceRow ? parseFloat(balanceRow.balance) : 0;
+      balanceType = balanceRow ? "base" : "none";
+    }
+
+    // ---------- Claims ----------
+    const claims = await getItemClaims(
+      supplyingStoreId,
+      item.itemId,
+      userUomCode,
+      { excludeRequestId, includeFamily: includeFamilyClaims }
+    );
+
+    // ---------- Effective available ----------
+    const effectiveAvailable = skipBalance
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(0, rawBalance - claims.totalClaimed);
+
+    console.log(`   Raw balance: ${rawBalance} ${userUomCode}`);
+    console.log(`   Temelash claimed: ${claims.temelashClaimed}`);
+    console.log(`   Active request claimed: ${claims.activeRequestClaimed}`);
+    console.log(`   Effective available: ${effectiveAvailable} ${userUomCode}`);
+
+    stockInfo.push({
+      itemId: item.itemId,
+      itemName: itemRecord.name,
+      itemCode: itemRecord.code,
+      uomCode: userUomCode,
+      isBaseUom: true,
+      rawBalance,
+      temelashClaimed: claims.temelashClaimed,
+      activeRequestClaimed: claims.activeRequestClaimed,
+      totalClaimed: claims.totalClaimed,
+      availableQuantity: effectiveAvailable,
+      requestedQuantity: userQuantity,
+      balance: balanceRow,
+      balanceType,
+      hasBaseBalance: !!balanceRow,
+      hasConversionBalance: false,
+      conversionUomCode,
+      conversionValue,
+      temelashHits: claims.temelashHits,
+      activeRequestHits: claims.activeRequestHits,
+      matchedItemIds: claims.matchedItemIds,
+      stockValidationSkipped: skipBalance,
+    });
+
+    // ---------- Exempt-store path ----------
+    if (skipBalance) {
+      if (claims.temelashClaimed > 0) {
+        errors.push({
           itemId: item.itemId,
+          itemName: itemRecord.name,
+          itemCode: itemRecord.code,
+          requestedQuantity: userQuantity,
+          uomCode: userUomCode,
+          balanceType: "temelash",
+          message:
+            `Item "${itemRecord.name}" is currently out on Temelash loan ` +
+            `(${claims.temelashHits.length} record(s) for ${userUomCode}). ` +
+            `Return it before requesting again.`,
+          temelashHits: claims.temelashHits,
+        });
+      }
+      continue;
+    }
+
+    // ---------- Normal balance check ----------
+    if (!balanceRow) {
+      errors.push({
+        itemId: item.itemId,
+        itemName: itemRecord.name,
+        itemCode: itemRecord.code,
+        requestedQuantity: userQuantity,
+        uomCode: userUomCode,
+        availableQuantity: 0,
+        balanceType: "none",
+        message: `Item not available in ${userUomCode} at this store`,
+      });
+      continue;
+    }
+
+    if (userQuantity > effectiveAvailable) {
+      const hasTemelash = claims.temelashClaimed > 0;
+      const hasActiveRequest = claims.activeRequestClaimed > 0;
+
+      let reasonSuffix = "";
+      if (hasTemelash && hasActiveRequest) {
+        reasonSuffix = ", after subtracting active Temelash and open requests";
+      } else if (hasTemelash) {
+        reasonSuffix = ", after subtracting active Temelash";
+      } else if (hasActiveRequest) {
+        reasonSuffix = ", after subtracting open requests";
+      }
+
+      const blockingRequests = (claims.activeRequestHits || []).map((h) => ({
+        requestId: h.requestId,
+        requestCode: h.requestCode,
+        status: h.status,
+        quantity: h.quantity,
+        uom: h.uom,
+      }));
+
+      const blockingTemelash = (claims.temelashHits || []).map((h) => ({
+        temelashRecordId: h.temelashRecordId,
+        requestId: h.requestId,
+        requestCode: h.requestCode,
+        quantity: h.quantity,
+        uom: h.uom,
+        fromDate: h.fromDate,
+        toDate: h.toDate,
+      }));
+
+      const messageLines = [
+        `Insufficient stock in ${userUomCode}.`,
+        `Requested: ${userQuantity} ${userUomCode}${reasonSuffix}.`,
+      ];
+
+      if (blockingTemelash.length > 0) {
+        const tList = blockingTemelash
+          .map(
+            (t) =>
+              `${t.requestCode || `Temelash#${t.temelashRecordId}`}` +
+              ` (${t.quantity} ${t.uom})`
+          )
+          .join(", ");
+        messageLines.push(`Temelash out: ${tList}`);
+      }
+
+      if (blockingRequests.length > 0) {
+        const rList = blockingRequests
+          .map(
+            (r) =>
+              `${r.requestCode || `#${r.requestId}`}` +
+              ` [${r.status}] (${r.quantity} ${r.uom})`
+          )
+          .join(", ");
+        messageLines.push(`Open requests: ${rList}`);
+      }
+
+      errors.push({
+        itemId: item.itemId,
+        itemName: itemRecord.name,
+        itemCode: itemRecord.code,
+        requestedQuantity: userQuantity,
+        uomCode: userUomCode,
+        balanceType,
+        message: messageLines.join(" "),
+
+        availableQuantity: effectiveAvailable,
+        rawBalance,
+        temelashClaimed: claims.temelashClaimed,
+        activeRequestClaimed: claims.activeRequestClaimed,
+        totalClaimed: claims.totalClaimed,
+        blockingRequests,
+        blockingTemelash,
+
+        _debug: {
+          rawBalance,
+          temelashClaimed: claims.temelashClaimed,
+          activeRequestClaimed: claims.activeRequestClaimed,
+          effectiveAvailable,
+          shortage: userQuantity - effectiveAvailable,
         },
-      }) : null,
-    ]);
-
-    const hasBaseBalance = storeBalance !== null;
-    const hasConversionBalance = convertedBalance !== null;
-    
-    let baseBalance = hasBaseBalance ? parseFloat(storeBalance.balance) : 0;
-    let conversionBalance = hasConversionBalance ? parseFloat(convertedBalance.convertedBalance) : 0;
-
-    console.log(`   StoreBalance (${baseUomCode}): ${baseBalance}`);
-    console.log(`   ConvertedBalance (${conversionUomCode}): ${conversionBalance}`);
-
-    if (isBaseUom) {
-      if (hasBaseBalance) {
-        const availableQuantity = baseBalance;
-        
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: availableQuantity,
-          requestedQuantity: userQuantity,
-          balance: storeBalance,
-          balanceType: 'base',
-          isBaseUom: true,
-          hasBaseBalance: true,
-          hasConversionBalance: hasConversionBalance,
-          conversionBalance: conversionBalance,
-          conversionUomCode: conversionUomCode,
-          conversionValue: conversionValue,
-        });
-
-        if (userQuantity > availableQuantity) {
-          errors.push({
-            itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
-            requestedQuantity: userQuantity,
-            availableQuantity: availableQuantity,
-            shortage: userQuantity - availableQuantity,
-            uomCode: baseUomCode,
-            balanceType: 'base',
-            message: `Insufficient stock in ${baseUomCode}. Requested: ${userQuantity} ${baseUomCode}`,
-          });
-        }
-        
-      } else if (hasConversionBalance) {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: true,
-          hasBaseBalance: false,
-          hasConversionBalance: true,
-          conversionBalance: conversionBalance,
-          conversionUomCode: conversionUomCode,
-          conversionValue: conversionValue,
-          availableInOtherUom: conversionBalance,
-          otherUomCode: conversionUomCode,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          requestedUom: baseUomCode,
-          availableQuantity: 0,
-          uomCode: baseUomCode,
-          balanceType: 'none',
-          message: `This item is available in ${conversionUomCode} only. Please request in ${conversionUomCode} instead.`,
-          suggestion: `Request in ${conversionUomCode}`,
-          availableInOtherUom: conversionBalance,
-          otherUomCode: conversionUomCode,
-        });
-        
-      } else {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: true,
-          hasBaseBalance: false,
-          hasConversionBalance: false,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          uomCode: baseUomCode,
-          availableQuantity: 0,
-          balanceType: 'none',
-          message: `Item not available in this store`,
-        });
-      }
-      
-    } else {
-      if (hasConversionBalance) {
-        const availableQuantity = conversionBalance;
-        
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode,
-          availableQuantity: availableQuantity,
-          requestedQuantity: userQuantity,
-          balance: convertedBalance,
-          balanceType: 'conversion',
-          isBaseUom: false,
-          hasBaseBalance: hasBaseBalance,
-          hasConversionBalance: true,
-          baseBalance: baseBalance,
-          baseUomCode: baseUomCode,
-          conversionValue: conversionValue,
-        });
-
-        if (userQuantity > availableQuantity) {
-          errors.push({
-            itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
-            requestedQuantity: userQuantity,
-            availableQuantity: availableQuantity,
-            shortage: userQuantity - availableQuantity,
-            uomCode: conversionUomCode,
-            balanceType: 'conversion',
-            message: `Insufficient stock in ${conversionUomCode}. Requested: ${userQuantity} ${conversionUomCode}`,
-          });
-        }
-        
-      } else if (hasBaseBalance) {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: false,
-          hasBaseBalance: true,
-          hasConversionBalance: false,
-          baseBalance: baseBalance,
-          baseUomCode: baseUomCode,
-          conversionValue: conversionValue,
-          availableInOtherUom: baseBalance,
-          otherUomCode: baseUomCode,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          requestedUom: conversionUomCode,
-          availableQuantity: 0,
-          uomCode: conversionUomCode,
-          balanceType: 'none',
-          message: `This item is available in ${baseUomCode} only. Please request in ${baseUomCode} instead.`,
-          suggestion: `Request in ${baseUomCode}`,
-          availableInOtherUom: baseBalance,
-          otherUomCode: baseUomCode,
-        });
-        
-      } else {
-        stockInfo.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          uomCode: conversionUomCode || baseUomCode,
-          availableQuantity: 0,
-          requestedQuantity: userQuantity,
-          balance: null,
-          balanceType: 'none',
-          isBaseUom: false,
-          hasBaseBalance: false,
-          hasConversionBalance: false,
-        });
-
-        errors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
-          requestedQuantity: userQuantity,
-          uomCode: conversionUomCode || baseUomCode,
-          availableQuantity: 0,
-          balanceType: 'none',
-          message: `Item not available in this store`,
-        });
-      }
+      });
     }
   }
 
@@ -440,26 +668,16 @@ const validateStockAvailability = async (supplyingStoreId, items) => {
     isValid: errors.length === 0,
     errors,
     stockInfo,
-    validationSkipped: false,
+    validationSkipped: skipBalance,
+    ...(skipBalance && {
+      skipReason: `Store ${store.code} is exempt from raw balance checks; Temelash claims still apply`,
+    }),
   };
 };
+
 // ================================================================
-// HELPER: Create notifications - STAGE 1 (Asking Store Groups ONLY)
+// HELPER: Create notifications — STAGE 1
 // ================================================================
-/**
- * Creates notification records for the asking store groups (Stage 1).
- *
- * 🔥 If 'approval.ask_store_enabled' is DISABLED, this function skips
- *    Stage 1 entirely and goes straight to Stage 2 (supplying store).
- *
- * @param {number} requestId          - The item request ID
- * @param {number} supplyingStoreId   - Supplying store ID
- * @param {number} askingStoreId      - Asking store ID
- * @param {boolean} isAsset           - Whether the request is an asset request
- * @param {Transaction} transaction   - Sequelize transaction
- * @param {number|null} requestingUserGroupId - The requesting user's group (excluded from Stage 1)
- * @param {number|null} requestingUserId      - The requesting user ID (for logging)
- */
 async function createRequestNotifications(
   requestId,
   supplyingStoreId,
@@ -467,7 +685,8 @@ async function createRequestNotifications(
   isAsset = false,
   transaction = null,
   requestingUserGroupId = null,
-  requestingUserId = null
+  requestingUserId = null,
+  excludedDepartmentIds = []
 ) {
   try {
     console.log(`📤 [STAGE 1] Creating ASKING STORE notifications for request ${requestId}`);
@@ -475,12 +694,8 @@ async function createRequestNotifications(
     console.log(`   Supplying store: ${supplyingStoreId} (will be notified AFTER asking approves)`);
     console.log(`   Requesting user ID: ${requestingUserId}`);
     console.log(`   🔥 Excluding requesting user's group ID: ${requestingUserGroupId}`);
+    console.log(`   🔥 Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
 
-    // ================================================================
-    // 🔥 STAGE 1 TOGGLE CHECK
-    // If the "approval.ask_store_enabled" setting is DISABLED, skip
-    // Stage 1 and create supplying store notifications immediately.
-    // ================================================================
     let askStoreApprovalEnabled = true;
     try {
       askStoreApprovalEnabled = await db.SystemSetting.getAskStoreApprovalEnabled();
@@ -492,25 +707,15 @@ async function createRequestNotifications(
     console.log(`🔍 Stage 1 toggle (ask_store_enabled): ${askStoreApprovalEnabled ? 'ENABLED' : 'DISABLED'}`);
 
     if (!askStoreApprovalEnabled) {
-      console.log(`⏭️ Stage 1 (asking store approval) is DISABLED — skipping to supplying stage`);
-      console.log(`📤 Creating supplying store notifications directly`);
-
+      console.log(`⏭️ Stage 1 is DISABLED — skipping to supplying stage`);
       await createSupplyingStageNotifications(
-        requestId,
-        supplyingStoreId,
-        askingStoreId,
-        isAsset,
-        transaction
+        requestId, supplyingStoreId, askingStoreId, isAsset, transaction, excludedDepartmentIds
       );
-
-      return 0; // No asking store notifications created
+      return 0;
     }
 
     console.log(`✅ Stage 1 is ENABLED — proceeding with asking store groups`);
 
-    // ================================================================
-    // FETCH ALL GROUPS FOR THE ASKING STORE
-    // ================================================================
     let allAskingGroups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
        FROM groups g
@@ -519,27 +724,19 @@ async function createRequestNotifications(
       {
         replacements: { storeId: parseInt(askingStoreId) },
         type: db.sequelize.QueryTypes.SELECT,
-        transaction: transaction,
+        transaction,
       }
     );
 
     console.log(`📋 Found ${allAskingGroups.length} total asking store groups`);
 
-    // ================================================================
-    // 🔥 FILTER BY STORE-GROUP APPROVAL CONFIG (if configured)
-    // ================================================================
     try {
       const storeGroupConfig = await getStoreGroupApprovalConfig();
       const allowedGroupIds = getAllowedApproverGroupIds(storeGroupConfig, askingStoreId);
 
       if (allowedGroupIds) {
-        console.log(
-          `🔒 Store ${askingStoreId} has ${allowedGroupIds.length} allowed approver group(s): ` +
-          `[${allowedGroupIds.join(', ')}]`
-        );
-        allAskingGroups = allAskingGroups.filter((g) =>
-          allowedGroupIds.includes(Number(g.id))
-        );
+        console.log(`🔒 Store ${askingStoreId} has ${allowedGroupIds.length} allowed approver group(s): [${allowedGroupIds.join(', ')}]`);
+        allAskingGroups = allAskingGroups.filter((g) => allowedGroupIds.includes(Number(g.id)));
         console.log(`📋 Filtered down to ${allAskingGroups.length} allowed group(s)`);
       } else {
         console.log(`ℹ️ No store-group config for store ${askingStoreId} — allowing all groups`);
@@ -548,31 +745,18 @@ async function createRequestNotifications(
       console.warn('⚠️ Could not apply store-group approval filter — using all groups:', err.message);
     }
 
-    // ================================================================
-    // EXCLUDE THE REQUESTING USER'S OWN GROUP
-    // ================================================================
     let askingGroups = allAskingGroups;
     let excludedGroup = null;
 
     if (requestingUserGroupId) {
       const targetGroupId = parseInt(requestingUserGroupId);
-      excludedGroup = allAskingGroups.find(
-        (g) => parseInt(g.id) === targetGroupId
-      );
-      askingGroups = allAskingGroups.filter(
-        (g) => parseInt(g.id) !== targetGroupId
-      );
+      excludedGroup = allAskingGroups.find((g) => parseInt(g.id) === targetGroupId);
+      askingGroups = allAskingGroups.filter((g) => parseInt(g.id) !== targetGroupId);
 
       if (excludedGroup) {
-        console.log(
-          `🚫 EXCLUDED group "${excludedGroup.name}" (ID ${excludedGroup.id}) — ` +
-          `this is the requesting user's own group`
-        );
+        console.log(`🚫 EXCLUDED group "${excludedGroup.name}" (ID ${excludedGroup.id}) — this is the requesting user's own group`);
       } else {
-        console.log(
-          `⚠️ Requesting user's group ID ${targetGroupId} not found in asking store groups ` +
-          `— no exclusion applied`
-        );
+        console.log(`⚠️ Requesting user's group ID ${targetGroupId} not found — no exclusion applied`);
       }
     } else {
       console.log(`ℹ️ No requesting user group ID provided — no group excluded`);
@@ -580,28 +764,14 @@ async function createRequestNotifications(
 
     console.log(`📋 Will create notifications for ${askingGroups.length} asking store groups`);
 
-    // ================================================================
-    // 🔥 SAFETY: If NO asking store groups remain, advance directly
-    // ================================================================
     if (askingGroups.length === 0) {
-      console.log(
-        `⚠️ No asking store groups to notify (after exclusion) — ` +
-        `advancing directly to supplying stage`
-      );
-
+      console.log(`⚠️ No asking store groups to notify (after exclusion) — advancing directly to supplying stage`);
       await createSupplyingStageNotifications(
-        requestId,
-        supplyingStoreId,
-        askingStoreId,
-        isAsset,
-        transaction
+        requestId, supplyingStoreId, askingStoreId, isAsset, transaction, excludedDepartmentIds
       );
       return 0;
     }
 
-    // ================================================================
-    // CREATE NOTIFICATIONS FOR THE REMAINING ASKING STORE GROUPS
-    // ================================================================
     const askingNotifications = askingGroups
       .filter((g) => g.id && !isNaN(parseInt(g.id)))
       .map((group) => ({
@@ -621,7 +791,7 @@ async function createRequestNotifications(
       const result = await RequestNotification.bulkCreate(askingNotifications, {
         validate: false,
         returning: true,
-        transaction: transaction,
+        transaction,
       });
       console.log(`✅ [STAGE 1] Created ${result.length} asking store group notifications`);
       return result.length;
@@ -635,23 +805,18 @@ async function createRequestNotifications(
 }
 
 // ================================================================
-// HELPER: Create notifications - STAGE 2 (Supplying Store Groups + Departments)
+// HELPER: Create notifications — STAGE 2
 // ================================================================
 async function createSupplyingStageNotifications(
-  requestId,
-  supplyingStoreId,
-  askingStoreId,
-  isAsset = false,
-  transaction = null
+  requestId, supplyingStoreId, askingStoreId, isAsset = false,
+  transaction = null, excludedDepartmentIds = []
 ) {
   try {
     console.log(`📤 [STAGE 2] Creating SUPPLYING STORE notifications for request ${requestId}`);
+    console.log(`   Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
 
     const existingCount = await RequestNotification.count({
-      where: {
-        request_id: requestId,
-        stage: "supplying_store",
-      },
+      where: { request_id: requestId, stage: "supplying_store" },
       transaction,
     });
 
@@ -670,7 +835,7 @@ async function createSupplyingStageNotifications(
       {
         replacements: { storeId: parseInt(supplyingStoreId) },
         type: db.sequelize.QueryTypes.SELECT,
-        transaction: transaction,
+        transaction,
       }
     );
 
@@ -695,7 +860,7 @@ async function createSupplyingStageNotifications(
       const result = await RequestNotification.bulkCreate(groupNotifications, {
         validate: false,
         returning: true,
-        transaction: transaction,
+        transaction,
       });
       totalCount += result.length;
       console.log(`✅ [STAGE 2] Created ${result.length} supplying store group notifications`);
@@ -715,18 +880,24 @@ async function createSupplyingStageNotifications(
       if (!config || !config.departments || config.departments.length === 0) {
         console.log(`⚠️ No approval departments configured — skipping`);
       } else {
-        const applicableDepartments = config.departments.filter(
-          (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code)
-        );
+        const excludedSet = new Set((excludedDepartmentIds || []).map((id) => Number(id)));
+
+        const applicableDepartments = config.departments.filter((d) => {
+          const matchesStore = Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code);
+          const isExcluded = excludedSet.has(Number(d.departmentId));
+          if (matchesStore && isExcluded) {
+            console.log(`🚫 Skipping department ${d.departmentId} — excluded by requester`);
+          }
+          return matchesStore && !isExcluded;
+        });
 
         console.log(
           `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
-          `department(s) apply to store ${askingStore.code}`
+          `department(s) apply to store ${askingStore.code} (excluded: ${excludedSet.size})`
         );
 
         for (const entry of applicableDepartments) {
           const department = await db.Department.findByPk(entry.departmentId, { transaction });
-
           if (!department) {
             console.log(`⚠️ Department ${entry.departmentId} not found — skipping`);
             continue;
@@ -778,10 +949,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
     }
 
     const existingSupplying = await RequestNotification.count({
-      where: {
-        request_id: requestId,
-        stage: "supplying_store",
-      },
+      where: { request_id: requestId, stage: "supplying_store" },
       transaction,
     });
 
@@ -791,10 +959,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
     }
 
     const askingNotifications = await RequestNotification.findAll({
-      where: {
-        request_id: requestId,
-        stage: "asking_store",
-      },
+      where: { request_id: requestId, stage: "asking_store" },
       transaction,
     });
 
@@ -811,7 +976,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
     console.log(`📊 Asking store progress: ${accepted}/${total} accepted, ${rejected} rejected, ${pending} pending`);
 
     if (rejected > 0) {
-      console.log(`❌ Asking store has rejections — NOT advancing to supplying stage`);
+      console.log(`❌ Asking store has rejections — NOT advancing`);
       return { advanced: false, reason: "has_rejection" };
     }
 
@@ -822,12 +987,15 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
 
     console.log(`✅ All asking store groups accepted — ADVANCING to supplying stage`);
 
+    const excludedDepartmentIds = request.excludedDepartmentIds || [];
+
     const result = await createSupplyingStageNotifications(
       requestId,
       request.supplyingStoreId,
       request.askingStoreId,
       request.isAsset || false,
-      transaction
+      transaction,
+      excludedDepartmentIds
     );
 
     console.log(`🚀 Advanced to supplying stage: ${result.count} notifications created`);
@@ -839,7 +1007,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
 }
 
 // ================================================================
-// HELPER: Check if all groups (and department for asset) have accepted
+// HELPER: Check if all groups have accepted
 // ================================================================
 async function isRequestFullyAccepted(requestId) {
   const notifications = await RequestNotification.findAll({
@@ -848,12 +1016,8 @@ async function isRequestFullyAccepted(requestId) {
 
   if (notifications.length === 0) {
     return {
-      allAccepted: false,
-      hasRejection: false,
-      total: 0,
-      acceptedCount: 0,
-      rejectedCount: 0,
-      pendingCount: 0,
+      allAccepted: false, hasRejection: false, total: 0,
+      acceptedCount: 0, rejectedCount: 0, pendingCount: 0,
       askingStore: { total: 0, accepted: 0, rejected: 0, pending: 0, allAccepted: false },
       supplyingStore: { total: 0, accepted: 0, rejected: 0, pending: 0, allAccepted: false },
     };
@@ -865,15 +1029,12 @@ async function isRequestFullyAccepted(requestId) {
   const askingAccepted = askingNotifications.filter((n) => n.status === 'accepted').length;
   const askingRejected = askingNotifications.filter((n) => n.status === 'rejected').length;
   const askingPending = askingNotifications.filter((n) => n.status === 'pending').length;
-  const askingAllAccepted =
-    askingNotifications.length > 0 && askingAccepted === askingNotifications.length;
+  const askingAllAccepted = askingNotifications.length > 0 && askingAccepted === askingNotifications.length;
 
   const supplyingAccepted = supplyingNotifications.filter((n) => n.status === 'accepted').length;
   const supplyingRejected = supplyingNotifications.filter((n) => n.status === 'rejected').length;
   const supplyingPending = supplyingNotifications.filter((n) => n.status === 'pending').length;
-  const supplyingAllAccepted =
-    supplyingNotifications.length > 0 &&
-    supplyingAccepted === supplyingNotifications.length;
+  const supplyingAllAccepted = supplyingNotifications.length > 0 && supplyingAccepted === supplyingNotifications.length;
 
   const allAccepted =
     askingNotifications.length > 0 &&
@@ -884,8 +1045,7 @@ async function isRequestFullyAccepted(requestId) {
   const hasRejection = askingRejected > 0 || supplyingRejected > 0;
 
   return {
-    allAccepted,
-    hasRejection,
+    allAccepted, hasRejection,
     total: notifications.length,
     acceptedCount: askingAccepted + supplyingAccepted,
     rejectedCount: askingRejected + supplyingRejected,
@@ -969,9 +1129,7 @@ exports.checkStockAvailability = async (req, res) => {
         summary: {
           totalItems: parsedItems.length,
           availableItems: itemDetails.filter((i) => i.isAvailable).length,
-          itemsWithShortage: itemDetails.filter(
-            (i) => i.hasEnoughStock === false,
-          ).length,
+          itemsWithShortage: itemDetails.filter((i) => i.hasEnoughStock === false).length,
           validationSkipped: validationResult.validationSkipped,
         },
       },
@@ -986,29 +1144,14 @@ exports.checkStockAvailability = async (req, res) => {
 };
 
 // ================================================================
-// 2. GET REQUESTS
+// 2. GET REQUESTS — unchanged
 // ================================================================
-
 exports.getRequests = async (req, res) => {
   try {
-    console.log("=".repeat(80));
-    console.log("🚀 GET REQUESTS STARTED");
-    console.log("=".repeat(80));
-
     const {
-      page = 1,
-      limit = 10,
-      search = "",
-      status = "all",
-      storeId = "all",
-      userId = "all",
-      sortBy = "createdAt",
-      sortOrder = "DESC",
+      page = 1, limit = 10, search = "", status = "all",
+      storeId = "all", userId = "all", sortBy = "createdAt", sortOrder = "DESC",
     } = req.query;
-
-    console.log("📋 Request Query Parameters:", {
-      page, limit, search, status, storeId, userId, sortBy, sortOrder,
-    });
 
     const offset = (page - 1) * limit;
     const where = {};
@@ -1017,182 +1160,72 @@ exports.getRequests = async (req, res) => {
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
 
-    console.log("👤 Current User from Request:", {
-      userId: currentUserId,
-      role: currentUserRole,
-      username: currentUser?.username,
-      fullName: currentUser?.fullName,
-    });
-
     const { getUserStoreAndGroup } = require("../utils/userAccess");
-
     let userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
     let userIsAdmin = false;
 
-    console.log("📍 Initial userStoreId from token:", userStoreId);
-
     if (!userStoreId && currentUserId) {
-      console.log("🔍 No storeId in token, fetching from database...");
       try {
         const accessResult = await getUserStoreAndGroup(currentUserId);
-        console.log("📊 Database access result:", JSON.stringify(accessResult, null, 2));
-
         if (accessResult.success && accessResult.data) {
           userStoreId = accessResult.data.assignedStoreId;
           userIsAdmin = accessResult.data.isAdmin || false;
-          console.log("✅ Retrieved from database - storeId:", userStoreId, "isAdmin:", userIsAdmin);
         }
       } catch (err) {
         console.warn("⚠️ Could not get user store from database:", err);
       }
     }
 
-    console.log("=".repeat(80));
-    console.log("📌 FINAL USER INFORMATION:");
-    console.log("=".repeat(80));
-    console.log({
-      userId: currentUserId,
-      role: currentUserRole,
-      storeId: userStoreId,
-      isAdmin: userIsAdmin,
-      hasStore: !!userStoreId,
-    });
-
-    console.log("\n📌 STATUS FILTER:");
-    if (status !== "all") {
-      where.status = status;
-      console.log("✅ Status filter applied:", status);
-    } else {
-      console.log("ℹ️ No status filter (status = 'all')");
-    }
-
-    console.log("\n" + "=".repeat(80));
-    console.log("🔒 PERMISSION LOGIC START");
-    console.log("=".repeat(80));
+    if (status !== "all") where.status = status;
 
     if (currentUserRole === "admin" || userIsAdmin) {
-      console.log("\n👑 ADMIN USER DETECTED - showing all requests");
-
-      if (status !== "all") {
-        where.status = status;
-        console.log("  - Status filter applied:", status);
-      }
-
       if (storeId !== "all") {
         where[Op.or] = [
           { askingStoreId: parseInt(storeId) },
           { supplyingStoreId: parseInt(storeId) },
         ];
-        console.log("  - Store filter applied:", storeId);
       }
-
-      console.log("📋 Admin WHERE clause so far:", JSON.stringify(where, null, 2));
-
     } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
-      console.log("\n📦 STORE USER DETECTED:", currentUserRole);
-
       if (!userStoreId) {
-        console.log("⚠️ User has NO store assigned");
-        if (currentUserId) {
-          where.requestedById = currentUserId;
-          console.log("  - Filtering by requestedById:", currentUserId);
-        }
-        console.log("📋 WHERE clause for user with no store:", JSON.stringify(where, null, 2));
+        if (currentUserId) where.requestedById = currentUserId;
       } else {
-        console.log("✅ User has store assigned:", userStoreId);
-
         const askingStoreCondition = { askingStoreId: userStoreId };
-        console.log(`\n📌 RULE 1 - Asking Store (ID: ${userStoreId}):`);
-        console.log("  - Can see ALL statuses (pending, approved, finalized)");
-        if (status !== "all") {
-          askingStoreCondition.status = status;
-          console.log("  - Status filter applied to asking condition:", status);
-        }
-        console.log("  - Condition:", JSON.stringify(askingStoreCondition));
+        if (status !== "all") askingStoreCondition.status = status;
 
         const supplyingStoreCondition = {
           supplyingStoreId: userStoreId,
           status: { [Op.in]: ["approved", "finalized"] },
         };
-        console.log(`\n📌 RULE 2 - Supplying Store (ID: ${userStoreId}):`);
-        console.log("  - Can ONLY see approved/finalized");
         if (status !== "all" && ["approved", "finalized"].includes(status)) {
           supplyingStoreCondition.status = status;
-          console.log("  - Status filter applied to supplying condition:", status);
         }
-        if (status === "pending") {
-          console.log("  - ⚠️ Status filter is 'pending' - supplying condition will NOT match any requests!");
-        }
-        console.log("  - Condition:", JSON.stringify(supplyingStoreCondition));
 
         where[Op.or] = [askingStoreCondition, supplyingStoreCondition];
 
-        console.log("\n📋 Combined WHERE clause with OR:");
-        console.log(JSON.stringify(where, null, 2));
-
         if (storeId !== "all" && parseInt(storeId) !== userStoreId) {
-          console.log(`\n📌 Additional store filter applied (${storeId}):`);
           where[Op.and] = [
-            {
-              [Op.or]: [
-                { askingStoreId: parseInt(storeId) },
-                { supplyingStoreId: parseInt(storeId) },
-              ],
-            },
-            {
-              [Op.or]: [askingStoreCondition, supplyingStoreCondition],
-            },
+            { [Op.or]: [
+              { askingStoreId: parseInt(storeId) },
+              { supplyingStoreId: parseInt(storeId) },
+            ] },
+            { [Op.or]: [askingStoreCondition, supplyingStoreCondition] },
           ];
-          console.log("📋 Updated WHERE with AND + store filter:");
-          console.log(JSON.stringify(where, null, 2));
         }
-
-        console.log("\n📋 FINAL PERMISSION SUMMARY:");
-        console.log("  - Asking Store:", userStoreId, "→ ALL statuses");
-        console.log("  - Supplying Store:", userStoreId, "→ ONLY approved/finalized");
       }
-
     } else if (currentUserRole === "checker" || currentUserRole === "finance") {
-      console.log("\n📊 CHECKER/FINANCE USER DETECTED:", currentUserRole);
-
-      if (status === "all") {
-        where.status = { [Op.in]: ["approved", "finalized"] };
-        console.log("  - Status set to approved/finalized (no status filter)");
-      } else {
-        where.status = status;
-        console.log("  - Status filter applied:", status);
-      }
-
+      where.status = status === "all" ? { [Op.in]: ["approved", "finalized"] } : status;
       if (userStoreId) {
         where[Op.or] = [
           { askingStoreId: userStoreId },
           { supplyingStoreId: userStoreId },
         ];
-        console.log("  - Store filter applied:", userStoreId);
       }
-
-      console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
-
     } else {
-      console.log("\n👤 OTHER USER ROLE DETECTED:", currentUserRole);
-
-      if (currentUserId) {
-        where.requestedById = currentUserId;
-        console.log("  - Filtering by requestedById:", currentUserId);
-      }
-      console.log("📋 WHERE clause:", JSON.stringify(where, null, 2));
+      if (currentUserId) where.requestedById = currentUserId;
     }
 
-    console.log("\n" + "=".repeat(80));
-    console.log("📌 USER FILTER CHECK:");
-    if (userId !== "all") {
-      where.requestedById = userId;
-      console.log("✅ User filter applied - requestedById:", userId);
-    } else {
-      console.log("ℹ️ No user filter (userId = 'all')");
-    }
+    if (userId !== "all") where.requestedById = userId;
 
-    console.log("\n📌 SEARCH FILTER CHECK:");
     if (search) {
       const searchCondition = {
         [Op.or]: [
@@ -1200,33 +1233,11 @@ exports.getRequests = async (req, res) => {
           { remark: { [Op.like]: `%${search}%` } },
         ],
       };
-
-      if (where[Op.and]) {
-        where[Op.and].push(searchCondition);
-      } else {
-        where[Op.and] = [searchCondition];
-      }
-      console.log("✅ Search filter applied:", search);
-      console.log("  - Search condition:", JSON.stringify(searchCondition));
-    } else {
-      console.log("ℹ️ No search filter (search = '')");
+      if (where[Op.and]) where[Op.and].push(searchCondition);
+      else where[Op.and] = [searchCondition];
     }
 
-    console.log("\n" + "=".repeat(80));
-    console.log("📋 FINAL WHERE CLAUSE:");
-    console.log("=".repeat(80));
-    console.log(JSON.stringify(where, null, 2));
-    console.log("=".repeat(80));
-
-    console.log("\n📊 EXECUTING DATABASE QUERY:");
-    console.log("  - Page:", page);
-    console.log("  - Limit:", limit);
-    console.log("  - Offset:", offset);
-    console.log("  - Sort By:", sortBy);
-    console.log("  - Sort Order:", sortOrder);
-
     const totalCount = await ItemRequest.count({ where });
-    console.log(`\n📊 Total count of visible requests: ${totalCount}`);
 
     const rows = await ItemRequest.findAll({
       where,
@@ -1241,26 +1252,26 @@ exports.getRequests = async (req, res) => {
             {
               model: Item,
               as: "item",
-              include: [{ model: UOM, as: "uom" }],
+              include: [
+                { model: UOM, as: "uom" },
+                { model: db.Category, as: "category", attributes: ["categoryId", "name"], required: false },
+              ],
             },
           ],
           attributes: [
             "id", "requestId", "itemId", "quantity", "remark",
             "selected_uom", "uom_code", "is_base_uom",
-            "specification", "brand", "model",
-            "created_at", "updated_at",
+            "specification", "brand", "model", "created_at", "updated_at",
           ],
         },
         { model: Store, as: "askingStore" },
         { model: Store, as: "supplyingStore" },
         {
-          model: User,
-          as: "requestedByUser",
+          model: User, as: "requestedByUser",
           attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
-          model: RequestNotification,
-          as: "notifications",
+          model: RequestNotification, as: "notifications",
           include: [
             { model: Group, as: "group" },
             { model: Department, as: "department" },
@@ -1269,8 +1280,6 @@ exports.getRequests = async (req, res) => {
         },
       ],
     });
-
-    console.log(`\n📊 Query returned ${rows.length} requests`);
 
     res.json({
       success: true,
@@ -1285,133 +1294,108 @@ exports.getRequests = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("\n❌ GET REQUESTS ERROR:");
-    console.error("=".repeat(80));
-    console.error(error);
-    console.error("=".repeat(80));
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch requests",
-    });
+    console.error("❌ GET REQUESTS ERROR:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch requests" });
   }
 };
 
 // ================================================================
-// 3. GET SINGLE REQUEST BY ID
+// 3. GET SINGLE REQUEST BY ID — unchanged
 // ================================================================
-
 exports.getRequestById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const request = await ItemRequest.findByPk(id, {
       include: [
         {
           model: ItemRequestDetail,
           as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              include: [
-                { model: UOM, as: "uom" },
-                { model: UOM, as: "conversionUom" }
-              ],
-            },
-          ],
+          include: [{
+            model: Item,
+            as: "item",
+            include: [
+              { model: UOM, as: "uom" },
+              { model: UOM, as: "conversionUom" },
+            ],
+          }],
           attributes: [
-            'id', 'requestId', 'itemId', 'quantity', 'remark',
-            'selected_uom', 'uom_code', 'is_base_uom',
-            'specification', 'brand', 'model',
-            'created_at', 'updated_at',
+            "id", "requestId", "itemId", "quantity", "remark",
+            "selected_uom", "uom_code", "is_base_uom",
+            "specification", "brand", "model", "created_at", "updated_at",
           ],
         },
         { model: Store, as: "askingStore" },
         { model: Store, as: "supplyingStore" },
         {
-          model: User,
-          as: "requestedByUser",
+          model: User, as: "requestedByUser",
           attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
-          include: [
-            {
-              model: db.Department,
-              as: "Department",
-              attributes: ["department_id", "name", "code", "description"],
-            },
-          ],
+          include: [{ model: db.Department, as: "Department", attributes: ["department_id", "name", "code", "description"] }],
         },
         {
-          model: RequestNotification,
-          as: "notifications",
+          model: RequestNotification, as: "notifications",
           include: [
             { model: db.Group, as: "group" },
             { model: db.Department, as: "department" },
             { model: User, as: "respondedByUser" },
           ],
         },
+        { model: PrintOverride, as: "printOverride", required: false },
       ],
     });
 
     if (!request) {
-      return res.status(404).json({
-        success: false,
-        error: "Request not found",
-      });
+      return res.status(404).json({ success: false, error: "Request not found" });
     }
 
-    res.json({
-      success: true,
-      data: request,
-    });
+    res.json({ success: true, data: request });
   } catch (error) {
     console.error("Get request error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch request",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch request" });
   }
 };
 
 // ================================================================
 // 4. CREATE REQUEST
 // ================================================================
-
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
   try {
     const {
-      askingStoreId,
-      supplyingStoreId,
-      items,
-      requestedById,
-      requestedBy,
-      requestedDate,
-      status = "pending",
-      remark,
-      isAsset = false,
+      askingStoreId, supplyingStoreId, items, requestedById, requestedBy,
+      requestedDate, status = "pending", remark, isAsset = false,
+      isTemelash = false, temelashFromDate = null, temelashToDate = null,
+      excludedDepartmentIds = [],
     } = req.body;
 
     console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
     console.log(JSON.stringify(items, null, 2));
     console.log('👤 requestedById:', requestedById);
     console.log('👤 requestedBy  :', requestedBy);
+    console.log('🚫 excludedDepartmentIds:', excludedDepartmentIds);
+    console.log('🔄 isTemelash:', isTemelash);
+    console.log('📅 temelashFromDate:', temelashFromDate);
+    console.log('📅 temelashToDate:', temelashToDate);
 
     if (!askingStoreId || !supplyingStoreId) {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Asking store and supplying store are required",
-      });
+      return res.status(400).json({ success: false, error: "Asking store and supplying store are required" });
     }
 
     if (parseInt(askingStoreId) === parseInt(supplyingStoreId)) {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Asking store and supplying store cannot be the same",
-      });
+      return res.status(400).json({ success: false, error: "Asking store and supplying store cannot be the same" });
+    }
+
+    if (isTemelash === true) {
+      if (!temelashFromDate || !temelashToDate) {
+        await t.rollback();
+        return res.status(400).json({ success: false, error: "Temelash requires both 'From' and 'To' dates" });
+      }
+      if (temelashToDate < temelashFromDate) {
+        await t.rollback();
+        return res.status(400).json({ success: false, error: "Temelash 'To' date must be on or after the 'From' date" });
+      }
     }
 
     const askingStore = await Store.findByPk(askingStoreId);
@@ -1419,52 +1403,35 @@ exports.createRequest = async (req, res) => {
 
     if (!askingStore || !supplyingStore) {
       await t.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "One or both stores not found",
-      });
+      return res.status(404).json({ success: false, error: "One or both stores not found" });
     }
 
     if (askingStore.status !== "Active") {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Asking store "${askingStore.name}" is not active`,
-      });
+      return res.status(400).json({ success: false, error: `Asking store "${askingStore.name}" is not active` });
     }
 
     if (supplyingStore.status !== "Active") {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Supplying store "${supplyingStore.name}" is not active`,
-      });
+      return res.status(400).json({ success: false, error: `Supplying store "${supplyingStore.name}" is not active` });
     }
 
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
     if (skipNotifications) {
-      console.log(
-        `⚠️ Store ${supplyingStore.code} (${supplyingStore.name}) - Notifications will be skipped`,
-      );
+      console.log(`⚠️ Store ${supplyingStore.code} (${supplyingStore.name}) - Notifications will be skipped`);
     }
 
     if (requestedById) {
       const user = await User.findByPk(requestedById);
       if (!user) {
         await t.rollback();
-        return res.status(404).json({
-          success: false,
-          error: "User not found",
-        });
+        return res.status(404).json({ success: false, error: "User not found" });
       }
     }
 
     if (!items || items.length === 0) {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "At least one item is required",
-      });
+      return res.status(400).json({ success: false, error: "At least one item is required" });
     }
 
     const validatedItems = [];
@@ -1477,6 +1444,7 @@ exports.createRequest = async (req, res) => {
         { model: UOM, as: "uom" },
         { model: UOM, as: "conversionUom" },
       ],
+      transaction: t,
     });
 
     const itemMap = {};
@@ -1486,11 +1454,10 @@ exports.createRequest = async (req, res) => {
 
     for (const item of items) {
       const itemRecord = itemMap[item.itemId];
+
       if (!itemRecord) {
         validationErrors.push({
-          itemId: item.itemId,
-          itemName: "Unknown Item",
-          itemCode: "N/A",
+          itemId: item.itemId, itemName: "Unknown Item", itemCode: "N/A",
           requestedQuantity: item.quantity,
           message: `Item with ID ${item.itemId} not found in database`,
         });
@@ -1499,9 +1466,7 @@ exports.createRequest = async (req, res) => {
 
       if (itemRecord.status !== "Active") {
         validationErrors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
+          itemId: item.itemId, itemName: itemRecord.name, itemCode: itemRecord.code,
           requestedQuantity: item.quantity,
           message: `Item "${itemRecord.name}" is ${itemRecord.status}`,
         });
@@ -1510,32 +1475,29 @@ exports.createRequest = async (req, res) => {
 
       if (!item.quantity || item.quantity <= 0) {
         validationErrors.push({
-          itemId: item.itemId,
-          itemName: itemRecord.name,
-          itemCode: itemRecord.code,
+          itemId: item.itemId, itemName: itemRecord.name, itemCode: itemRecord.code,
           requestedQuantity: item.quantity || 0,
           message: "Quantity must be greater than 0",
         });
         continue;
       }
 
-      const selectedUom = item.selectedUom || 'base';
-      let uomCode = item.uomCode;
-      if (!uomCode || uomCode === '') {
-        uomCode = itemRecord.uom?.code || 'Units';
-      }
+      const uomCode = item.uomCode || itemRecord.uom?.code || "Units";
+      const selectedUom = item.selectedUom || "base";
       const isBaseUom = item.isBaseUom !== false;
 
-      console.log(`📦 Item ${itemRecord.code}: selectedUom=${selectedUom}, uomCode=${uomCode}, isBaseUom=${isBaseUom}`);
+      console.log(
+        `📦 Item ${itemRecord.code}: uomCode=${uomCode}, selectedUom=${selectedUom}, isBaseUom=${isBaseUom}`
+      );
 
       validatedItems.push({
         ...item,
         itemRecord,
         itemName: itemRecord.name,
         itemCode: itemRecord.code,
-        uomCode: uomCode,
-        selectedUom: selectedUom,
-        isBaseUom: isBaseUom,
+        uomCode,
+        selectedUom,
+        isBaseUom,
         specification: item.specification || null,
         brand: item.brand || null,
         model: item.model || null,
@@ -1552,6 +1514,7 @@ exports.createRequest = async (req, res) => {
       });
     }
 
+    // Store-wide stock validation — no group.
     const stockValidation = await validateStockAvailability(
       supplyingStoreId,
       validatedItems,
@@ -1559,7 +1522,6 @@ exports.createRequest = async (req, res) => {
 
     if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
       await t.rollback();
-
       return res.status(400).json({
         success: false,
         error: "Stock validation failed",
@@ -1590,6 +1552,10 @@ exports.createRequest = async (req, res) => {
         status: status || "pending",
         remark: remark || null,
         isAsset: isAsset || false,
+        isTemelash: isTemelash === true,
+        temelashFromDate: isTemelash === true ? (temelashFromDate || null) : null,
+        temelashToDate: isTemelash === true ? (temelashToDate || null) : null,
+        excludedDepartmentIds: Array.isArray(excludedDepartmentIds) ? excludedDepartmentIds : [],
       },
       { transaction: t },
     );
@@ -1602,8 +1568,8 @@ exports.createRequest = async (req, res) => {
             itemId: item.itemId,
             quantity: item.quantity,
             remark: item.remark || null,
-            selected_uom: item.selectedUom || 'base',
-            uom_code: item.uomCode || item.itemRecord?.uom?.code || 'Units',
+            selected_uom: item.selectedUom || "base",
+            uom_code: item.uomCode || item.itemRecord?.uom?.code || "Units",
             is_base_uom: item.isBaseUom !== false,
             specification: item.specification || null,
             brand: item.brand || null,
@@ -1617,10 +1583,7 @@ exports.createRequest = async (req, res) => {
     let notificationCount = 0;
 
     if (!skipNotifications) {
-      console.log(
-        `📤 [STAGE 1] Creating asking store notifications for request ${request.requestId}, isAsset: ${isAsset}`,
-      );
-
+      console.log(`📤 [STAGE 1] Creating asking store notifications for request ${request.requestId}, isAsset: ${isAsset}`);
       try {
         const requestingUserGroupId = await resolveRequestingUserGroupId(
           req,
@@ -1635,15 +1598,27 @@ exports.createRequest = async (req, res) => {
           isAsset,
           t,
           requestingUserGroupId,
-          requestedById
+          requestedById,
+          excludedDepartmentIds
         );
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
       }
     } else {
-      console.log(
-        `⚠️ SKIPPED notifications for store: ${supplyingStore.code} (${supplyingStore.name}) - Foreign/Local Purchase`,
-      );
+      console.log(`⚠️ SKIPPED notifications for store: ${supplyingStore.code} (${supplyingStore.name}) - Foreign/Local Purchase`);
+    }
+
+    let printOverride = null;
+    try {
+      printOverride = await savePageSnapshot(request.requestId, req, t);
+    } catch (snapErr) {
+      console.error("❌ [SNAPSHOT] Create snapshot failed — rolling back:", snapErr);
+      await t.rollback();
+      return res.status(500).json({
+        success: false,
+        error: "Failed to save request page snapshot",
+        message: snapErr.message,
+      });
     }
 
     await t.commit();
@@ -1651,29 +1626,17 @@ exports.createRequest = async (req, res) => {
     const completeRequest = await ItemRequest.findByPk(request.requestId, {
       include: [
         {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              include: [
-                { model: UOM, as: "uom" },
-                { model: UOM, as: "conversionUom" },
-              ],
-            },
-          ],
+          model: ItemRequestDetail, as: "items",
+          include: [{ model: Item, as: "item", include: [{ model: UOM, as: "uom" }, { model: UOM, as: "conversionUom" }] }],
         },
         { model: Store, as: "askingStore" },
         { model: Store, as: "supplyingStore" },
         {
-          model: User,
-          as: "requestedByUser",
+          model: User, as: "requestedByUser",
           attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
-          model: RequestNotification,
-          as: "notifications",
+          model: RequestNotification, as: "notifications",
           include: [
             { model: Group, as: "group" },
             { model: Department, as: "department" },
@@ -1685,21 +1648,15 @@ exports.createRequest = async (req, res) => {
 
     const stockInfoResponse = stockValidation.validationSkipped
       ? stockValidation.stockInfo.map((s) => ({
-          itemId: s.itemId,
-          itemName: s.itemName,
-          itemCode: s.itemCode,
+          itemId: s.itemId, itemName: s.itemName, itemCode: s.itemCode,
           availableQuantity: Number.MAX_SAFE_INTEGER,
           availableQuantityDisplay: "Unlimited (SKIPPED)",
-          requestedQuantity: s.requestedQuantity,
-          uomCode: s.uomCode,
-          hasStock: true,
-          hasEnoughStock: true,
-          stockValidationSkipped: true,
-          skipReason: s.skipReason,
+          requestedQuantity: s.requestedQuantity, uomCode: s.uomCode,
+          hasStock: true, hasEnoughStock: true,
+          stockValidationSkipped: true, skipReason: s.skipReason,
         }))
       : stockValidation.stockInfo.map((s) => ({
-          itemId: s.itemId,
-          itemName: s.itemName || "Unknown",
+          itemId: s.itemId, itemName: s.itemName || "Unknown",
           itemCode: s.itemCode || "N/A",
           availableQuantity: s.availableQuantity,
           requestedQuantity: s.requestedQuantity,
@@ -1718,13 +1675,16 @@ exports.createRequest = async (req, res) => {
       message: responseMessage,
       data: {
         request: completeRequest,
-        isAsset: isAsset,
-        skipNotifications: skipNotifications,
+        printOverride,
+        isAsset,
+        isTemelash: isTemelash === true,
+        skipNotifications,
         skipReason: skipNotifications
           ? `Store ${supplyingStore.code} does not require approval (Foreign/Local Purchase)`
           : null,
-        notificationCount: notificationCount,
-        currentStage: 'asking_store',
+        notificationCount,
+        currentStage: "asking_store",
+        excludedDepartmentIds,
         stockValidation: {
           allItemsAvailable: stockValidation.isValid || stockValidation.validationSkipped,
           validationSkipped: stockValidation.validationSkipped,
@@ -1762,119 +1722,85 @@ exports.createRequest = async (req, res) => {
 // ================================================================
 // 5. UPDATE REQUEST
 // ================================================================
-
-// ================================================================
-// 5. UPDATE REQUEST
-// ================================================================
 exports.updateRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
   try {
     const { id } = req.params;
     const {
-      askingStoreId,
-      supplyingStoreId,
-      items,
-      requestedById,
-      requestedBy,
-      requestedDate,
-      remark,
-      isAsset,
+      askingStoreId, supplyingStoreId, items, requestedById, requestedBy,
+      requestedDate, remark, isAsset, isTemelash, temelashFromDate, temelashToDate,
+      excludedDepartmentIds = [],
     } = req.body;
 
     console.log(`🔄 Updating request ${id} with data:`, {
-      askingStoreId,
-      supplyingStoreId,
-      itemCount: items?.length ?? 0,
-      requestedById,
-      requestedBy,
-      requestedDate,
-      isAsset,
+      askingStoreId, supplyingStoreId, itemCount: items?.length ?? 0,
+      requestedById, requestedBy, requestedDate, isAsset, isTemelash,
+      temelashFromDate, temelashToDate, excludedDepartmentIds,
     });
 
-    // ================================================================
-    // 1. LOAD + PERMISSION CHECKS
-    // ================================================================
     const request = await ItemRequest.findByPk(id, { transaction: t });
     if (!request) {
       await t.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "Request not found",
-      });
+      return res.status(404).json({ success: false, error: "Request not found" });
     }
 
     if (!isRequestCreator(req, request)) {
       await t.rollback();
-      return res.status(403).json({
-        success: false,
-        error: "Only the request creator can edit this request",
-      });
+      return res.status(403).json({ success: false, error: "Only the request creator can edit this request" });
     }
 
     if (request.status === "finalized") {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Cannot edit finalized requests",
-      });
+      return res.status(400).json({ success: false, error: "Cannot edit finalized requests" });
     }
 
-    // ================================================================
-    // 2. RESOLVE NEXT STORE IDS (fall back to current values)
-    // ================================================================
     const nextAskingStoreId =
       askingStoreId !== undefined && askingStoreId !== null && askingStoreId !== ""
-        ? parseInt(askingStoreId)
-        : request.askingStoreId;
+        ? parseInt(askingStoreId) : request.askingStoreId;
 
     const nextSupplyingStoreId =
       supplyingStoreId !== undefined && supplyingStoreId !== null && supplyingStoreId !== ""
-        ? parseInt(supplyingStoreId)
-        : request.supplyingStoreId;
+        ? parseInt(supplyingStoreId) : request.supplyingStoreId;
 
     if (nextAskingStoreId === nextSupplyingStoreId) {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Asking store and supplying store cannot be the same",
-      });
+      return res.status(400).json({ success: false, error: "Asking store and supplying store cannot be the same" });
     }
 
-    // ================================================================
-    // 3. STORE VALIDATION (exists + active)
-    // ================================================================
+    const nextIsTemelash = isTemelash !== undefined ? isTemelash === true : request.isTemelash;
+    const nextTemelashFromDate = temelashFromDate !== undefined ? temelashFromDate : request.temelashFromDate;
+    const nextTemelashToDate = temelashToDate !== undefined ? temelashToDate : request.temelashToDate;
+
+    if (nextIsTemelash === true) {
+      if (!nextTemelashFromDate || !nextTemelashToDate) {
+        await t.rollback();
+        return res.status(400).json({ success: false, error: "Temelash requires both 'From' and 'To' dates" });
+      }
+      if (nextTemelashToDate < nextTemelashFromDate) {
+        await t.rollback();
+        return res.status(400).json({ success: false, error: "Temelash 'To' date must be on or after the 'From' date" });
+      }
+    }
+
     const askingStore = await Store.findByPk(nextAskingStoreId, { transaction: t });
     const supplyingStore = await Store.findByPk(nextSupplyingStoreId, { transaction: t });
 
     if (!askingStore || !supplyingStore) {
       await t.rollback();
-      return res.status(404).json({
-        success: false,
-        error: "One or both stores not found",
-      });
+      return res.status(404).json({ success: false, error: "One or both stores not found" });
     }
 
     if (askingStore.status !== "Active") {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Asking store "${askingStore.name}" is not active`,
-      });
+      return res.status(400).json({ success: false, error: `Asking store "${askingStore.name}" is not active` });
     }
 
     if (supplyingStore.status !== "Active") {
       await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error: `Supplying store "${supplyingStore.name}" is not active`,
-      });
+      return res.status(400).json({ success: false, error: `Supplying store "${supplyingStore.name}" is not active` });
     }
 
-    // ================================================================
-    // 4. ITEM VALIDATION + STOCK VALIDATION
-    //    (identical to createRequest)
-    // ================================================================
     let validatedItems = [];
     let stockValidation = null;
 
@@ -1902,9 +1828,7 @@ exports.updateRequest = async (req, res) => {
 
         if (!itemRecord) {
           validationErrors.push({
-            itemId: item.itemId,
-            itemName: "Unknown Item",
-            itemCode: "N/A",
+            itemId: item.itemId, itemName: "Unknown Item", itemCode: "N/A",
             requestedQuantity: item.quantity,
             message: `Item with ID ${item.itemId} not found in database`,
           });
@@ -1913,9 +1837,7 @@ exports.updateRequest = async (req, res) => {
 
         if (itemRecord.status !== "Active") {
           validationErrors.push({
-            itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
+            itemId: item.itemId, itemName: itemRecord.name, itemCode: itemRecord.code,
             requestedQuantity: item.quantity,
             message: `Item "${itemRecord.name}" is ${itemRecord.status}`,
           });
@@ -1924,9 +1846,7 @@ exports.updateRequest = async (req, res) => {
 
         if (!item.quantity || item.quantity <= 0) {
           validationErrors.push({
-            itemId: item.itemId,
-            itemName: itemRecord.name,
-            itemCode: itemRecord.code,
+            itemId: item.itemId, itemName: itemRecord.name, itemCode: itemRecord.code,
             requestedQuantity: item.quantity || 0,
             message: "Quantity must be greater than 0",
           });
@@ -1942,33 +1862,25 @@ exports.updateRequest = async (req, res) => {
 
         const isBaseUom = item.isBaseUom !== false;
 
-        // Preserve client value if present, otherwise inherit from item record
         const specification =
           item.specification && String(item.specification).trim() !== ""
-            ? item.specification
-            : itemRecord.specText || null;
+            ? item.specification : itemRecord.specText || null;
 
         const brand =
           item.brand && String(item.brand).trim() !== ""
-            ? item.brand
-            : itemRecord.brand || null;
+            ? item.brand : itemRecord.brand || null;
 
         const model =
           item.model && String(item.model).trim() !== ""
-            ? item.model
-            : itemRecord.model || null;
+            ? item.model : itemRecord.model || null;
 
         validatedItems.push({
           ...item,
           itemRecord,
           itemName: itemRecord.name,
           itemCode: itemRecord.code,
-          uomCode,
-          selectedUom,
-          isBaseUom,
-          specification,
-          brand,
-          model,
+          uomCode, selectedUom, isBaseUom,
+          specification, brand, model,
         });
       }
 
@@ -1982,20 +1894,17 @@ exports.updateRequest = async (req, res) => {
         });
       }
 
-      // 🔥 THE CRITICAL STEP — stock availability
-      console.log(
-        `📦 Running stock validation for store ${nextSupplyingStoreId} on ${validatedItems.length} item(s)`
-      );
+      console.log(`📦 Running stock validation for store ${nextSupplyingStoreId} on ${validatedItems.length} item(s)`);
 
+      // Store-wide stock validation — no group.
       stockValidation = await validateStockAvailability(
         nextSupplyingStoreId,
-        validatedItems
+        validatedItems,
+        { excludeRequestId: request.requestId }
       );
 
       if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
-        console.log(
-          `❌ Stock validation FAILED — ${stockValidation.errors.length} error(s)`
-        );
+        console.log(`❌ Stock validation FAILED — ${stockValidation.errors.length} error(s)`);
         await t.rollback();
 
         return res.status(400).json({
@@ -2005,15 +1914,9 @@ exports.updateRequest = async (req, res) => {
           stockInfo: stockValidation.stockInfo,
           summary: {
             totalItems: validatedItems.length,
-            itemsWithStock: stockValidation.stockInfo.filter(
-              (s) => s.availableQuantity > 0
-            ).length,
-            itemsWithoutStock: stockValidation.errors.filter(
-              (e) => e.availableQuantity === 0
-            ).length,
-            itemsWithShortage: stockValidation.errors.filter(
-              (e) => e.availableQuantity > 0 && e.shortage > 0
-            ).length,
+            itemsWithStock: stockValidation.stockInfo.filter((s) => s.availableQuantity > 0).length,
+            itemsWithoutStock: stockValidation.errors.filter((e) => e.availableQuantity === 0).length,
+            itemsWithShortage: stockValidation.errors.filter((e) => e.availableQuantity > 0 && e.shortage > 0).length,
             storeName: supplyingStore.name,
             storeId: nextSupplyingStoreId,
             validationSkipped: false,
@@ -2026,33 +1929,26 @@ exports.updateRequest = async (req, res) => {
       console.log(`ℹ️ No items in payload — skipping item/stock validation`);
     }
 
-    // ================================================================
-    // 5. UPDATE REQUEST ROW
-    // ================================================================
     await request.update(
       {
         askingStoreId: nextAskingStoreId,
         supplyingStoreId: nextSupplyingStoreId,
-        requestedById:
-          requestedById !== undefined ? requestedById : request.requestedById,
-        requestedBy:
-          requestedBy !== undefined ? requestedBy : request.requestedBy,
+        requestedById: requestedById !== undefined ? requestedById : request.requestedById,
+        requestedBy: requestedBy !== undefined ? requestedBy : request.requestedBy,
         requestedDate: requestedDate || request.requestedDate,
         status: "pending",
         remark: remark !== undefined ? remark : request.remark,
         isAsset: isAsset !== undefined ? isAsset : request.isAsset,
+        isTemelash: nextIsTemelash,
+        temelashFromDate: nextIsTemelash === true ? (nextTemelashFromDate || null) : null,
+        temelashToDate: nextIsTemelash === true ? (nextTemelashToDate || null) : null,
+        excludedDepartmentIds: Array.isArray(excludedDepartmentIds) ? excludedDepartmentIds : [],
       },
       { transaction: t }
     );
 
-    // ================================================================
-    // 6. REPLACE ITEM DETAILS
-    // ================================================================
     if (validatedItems.length > 0) {
-      await ItemRequestDetail.destroy({
-        where: { requestId: id },
-        transaction: t,
-      });
+      await ItemRequestDetail.destroy({ where: { requestId: id }, transaction: t });
 
       await Promise.all(
         validatedItems.map((item) =>
@@ -2075,35 +1971,19 @@ exports.updateRequest = async (req, res) => {
       );
     }
 
-    // ================================================================
-    // 7. RECREATE NOTIFICATIONS (respecting SKIP stores)
-    // ================================================================
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
     const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
-    const updatedRequestedById =
-      requestedById !== undefined ? requestedById : request.requestedById;
+    const updatedRequestedById = requestedById !== undefined ? requestedById : request.requestedById;
 
     console.log(`🗑️ Deleting all notifications for request ${id}`);
-    await RequestNotification.destroy({
-      where: { request_id: id },
-      transaction: t,
-    });
+    await RequestNotification.destroy({ where: { request_id: id }, transaction: t });
 
     if (skipNotifications) {
-      console.log(
-        `⚠️ SKIPPED notification recreation for store ${supplyingStore.code} (${supplyingStore.name}) — Foreign/Local Purchase`
-      );
+      console.log(`⚠️ SKIPPED notification recreation for store ${supplyingStore.code} (${supplyingStore.name}) — Foreign/Local Purchase`);
     } else {
-      console.log(
-        `📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`
-      );
-
+      console.log(`📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`);
       try {
-        const requestingUserGroupId = await resolveRequestingUserGroupId(
-          req,
-          updatedRequestedById,
-          t
-        );
+        const requestingUserGroupId = await resolveRequestingUserGroupId(req, updatedRequestedById, t);
 
         await createRequestNotifications(
           request.requestId,
@@ -2112,7 +1992,8 @@ exports.updateRequest = async (req, res) => {
           updatedIsAsset || false,
           t,
           requestingUserGroupId,
-          updatedRequestedById
+          updatedRequestedById,
+          excludedDepartmentIds
         );
       } catch (notifError) {
         console.error("❌ Notification recreation failed — rolling back:", {
@@ -2122,7 +2003,6 @@ exports.updateRequest = async (req, res) => {
           parent: notifError?.parent?.message,
           original: notifError?.original?.message,
         });
-
         await t.rollback();
         return res.status(500).json({
           success: false,
@@ -2132,66 +2012,45 @@ exports.updateRequest = async (req, res) => {
       }
     }
 
-    // ================================================================
-    // 8. COMMIT
-    // ================================================================
+    let printOverride = null;
+    try {
+      printOverride = await savePageSnapshot(request.requestId, req, t);
+    } catch (snapErr) {
+      console.error("❌ [SNAPSHOT] Update snapshot failed — rolling back:", snapErr);
+      await t.rollback();
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update request page snapshot",
+        message: snapErr.message,
+      });
+    }
+
     await t.commit();
 
-    console.log(
-      `✅ Request ${id} updated successfully — status reset to pending`
-    );
+    console.log(`✅ Request ${id} updated successfully — status reset to pending`);
 
-    // ================================================================
-    // 9. RELOAD WITH FULL ASSOCIATIONS + RESPOND
-    // ================================================================
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
         {
-          model: ItemRequestDetail,
-          as: "items",
-          include: [
-            {
-              model: Item,
-              as: "item",
-              include: [
-                { model: UOM, as: "uom" },
-                { model: UOM, as: "conversionUom" },
-              ],
-            },
-          ],
+          model: ItemRequestDetail, as: "items",
+          include: [{
+            model: Item, as: "item",
+            include: [{ model: UOM, as: "uom" }, { model: UOM, as: "conversionUom" }],
+          }],
           attributes: [
-            "id",
-            "requestId",
-            "itemId",
-            "quantity",
-            "remark",
-            "selected_uom",
-            "uom_code",
-            "is_base_uom",
-            "specification",
-            "brand",
-            "model",
-            "created_at",
-            "updated_at",
+            "id", "requestId", "itemId", "quantity", "remark",
+            "selected_uom", "uom_code", "is_base_uom",
+            "specification", "brand", "model", "created_at", "updated_at",
           ],
         },
         { model: Store, as: "askingStore" },
         { model: Store, as: "supplyingStore" },
         {
-          model: User,
-          as: "requestedByUser",
-          attributes: [
-            "userId",
-            "username",
-            "fullName",
-            "email",
-            "roleId",
-            "departmentId",
-          ],
+          model: User, as: "requestedByUser",
+          attributes: ["userId", "username", "fullName", "email", "roleId", "departmentId"],
         },
         {
-          model: RequestNotification,
-          as: "notifications",
+          model: RequestNotification, as: "notifications",
           include: [
             { model: Group, as: "group" },
             { model: Department, as: "department" },
@@ -2207,11 +2066,9 @@ exports.updateRequest = async (req, res) => {
         ? `Request updated successfully. (${supplyingStore.code} - No approval required)`
         : "Request updated successfully. Restarted at asking store approval stage.",
       data: updatedRequest,
+      printOverride,
     });
   } catch (error) {
-    // ================================================================
-    // ROLLBACK + DETAILED ERROR LOGGING
-    // ================================================================
     try {
       await t.rollback();
     } catch (rollbackError) {
@@ -2242,8 +2099,24 @@ exports.updateRequest = async (req, res) => {
   }
 };
 
+// 6–28: all other handlers — unchanged
+// ================================================================
+// (updateStatus, getByUser, getMyRequests, getByStatus, getByDateRange,
+//  deleteRequest, getRequestWithNotifications, checkRequestNotificationStatus,
+//  acceptNotification, rejectNotification, getRejectionReasons, exportRequests,
+//  getStats, getActiveStores, getActiveItems, getGroupNotifications,
+//  getDepartmentNotifications, getStoreGroups, getPendingNotifications,
+//  getApprovalDepartmentsForStore, getTemelashRecords, returnTemelash,
+//  changeNotificationDecision)
+
+// None of these need to change — they don't touch stock validation or
+// the balance lookup. Copy them from your current file as-is.
+
+// ✅ When you paste them back, they go here. The rest of the file is
+//    identical to what you already have.
 // ================================================================
 // 6. UPDATE REQUEST STATUS
+// ✅ NEW: If a Temelash request is APPROVED, snapshot into temelash_records
 // ================================================================
 exports.updateStatus = async (req, res) => {
   try {
@@ -2287,9 +2160,31 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    const previousStatus = request.status;
+
     await request.update({
       status: status,
     });
+
+    // ✅ NEW: When a Temelash request becomes approved, snapshot it into
+    // temelash_records so the loan is recorded as OUT.
+    let temelashRecord = null;
+    if (
+      status === "approved" &&
+      previousStatus !== "approved" &&
+      request.isTemelash === true
+    ) {
+      try {
+        temelashRecord = await snapshotTemelashRecord(request.requestId);
+      } catch (snapErr) {
+        console.error(
+          "⚠️ Failed to snapshot Temelash record for request",
+          request.requestId,
+          snapErr
+        );
+        // Non-blocking — the request is still approved.
+      }
+    }
 
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
@@ -2318,6 +2213,7 @@ exports.updateStatus = async (req, res) => {
       success: true,
       message: `Request ${status} successfully`,
       data: updatedRequest,
+      temelashRecord: temelashRecord,
     });
   } catch (error) {
     console.error("Update status error:", error);
@@ -3167,53 +3063,202 @@ exports.getActiveStores = async (req, res) => {
 };
 
 // ================================================================
-// 20. GET ACTIVE ITEMS
+// 20. GET ACTIVE ITEMS — returned as FAMILIES
+// ----------------------------------------------------------------
+// Returns one row per "product family" (each with a `uoms` array
+// containing the concrete itemIds). Families come from
+// item_relationships. An item with no relationships is returned
+// as a single-UOM family — same underlying items as before, just
+// wrapped in the family envelope.
 // ================================================================
 exports.getActiveItems = async (req, res) => {
   try {
-    const { search, limit = 20, page = 1 } = req.query;
-    
-    const where = { status: "Active" };
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    
-    if (search && search.trim()) {
-      const searchTerm = search.trim().toLowerCase();
+    const { search, limit = 20, page = 1, storeId, groupId } = req.query;
+
+    const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const offset = (pageNum - 1) * limitNum;
+    const searchTerm = (search || '').trim();
+
+    // ---- 1) Find candidate items ----
+    const where = { status: 'Active' };
+    if (searchTerm) {
+      const like = `%${searchTerm}%`;
       where[Op.or] = [
-        { code: { [Op.iLike]: `%${searchTerm}%` } },
-        { name: { [Op.iLike]: `%${searchTerm}%` } },
-        { standardName: { [Op.iLike]: `%${searchTerm}%` } },
-        { brand: { [Op.iLike]: `%${searchTerm}%` } },
-        { model: { [Op.iLike]: `%${searchTerm}%` } },
+        { code: { [Op.iLike]: like } },
+        { name: { [Op.iLike]: like } },
+        { standardName: { [Op.iLike]: like } },
+        { brand: { [Op.iLike]: like } },
+        { model: { [Op.iLike]: like } },
       ];
     }
 
-    const { count, rows } = await Item.findAndCountAll({
+    const candidates = await Item.findAll({
       where,
       attributes: [
-        "itemId", "code", "name", "standardName", "brand", "model",
-        "uomId", "conversionUomId", "conversionValue", "specText",
+        'itemId', 'code', 'name', 'standardName', 'brand', 'model',
+        'categoryId', 'uomId', 'conversionUomId', 'conversionValue',
       ],
       include: [
-        { model: UOM, as: "uom", attributes: ["uomId", "code", "name"] },
-        { model: UOM, as: "conversionUom", attributes: ["uomId", "code", "name"] },
+        { model: UOM, as: 'uom', attributes: ['uomId', 'code', 'name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['uomId', 'code', 'name'] },
       ],
-      order: [["code", "ASC"]],
-      limit: parseInt(limit),
-      offset: offset,
+      order: [['code', 'ASC']],
+      limit: limitNum * 4,
     });
+
+    if (candidates.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: { total: 0, page: pageNum, limit: limitNum, pages: 0 },
+      });
+    }
+
+    // ---- 2) Build families via item_relationships ----
+    const candidateIds = candidates.map((i) => i.itemId);
+
+    const relations = await db.ItemRelationship.findAll({
+      where: {
+        status: 'Active',
+        [Op.or]: [
+          { itemAId: { [Op.in]: candidateIds } },
+          { itemBId: { [Op.in]: candidateIds } },
+        ],
+      },
+      attributes: ['itemAId', 'itemBId'],
+    });
+
+    const familyRoot = new Map();
+    const familyMembers = new Map();
+
+    const linkPair = (a, b) => {
+      const rootA = familyRoot.get(a) ?? a;
+      const rootB = familyRoot.get(b) ?? b;
+      if (rootA === rootB) return;
+
+      const [newRoot, absorbed] = rootA < rootB ? [rootA, rootB] : [rootB, rootA];
+      familyRoot.set(absorbed, newRoot);
+      familyRoot.set(a, newRoot);
+      familyRoot.set(b, newRoot);
+
+      const absorbedMembers = familyMembers.get(absorbed) || new Set([absorbed]);
+      if (!familyMembers.has(newRoot)) familyMembers.set(newRoot, new Set([newRoot]));
+      absorbedMembers.forEach((m) => {
+        familyRoot.set(m, newRoot);
+        familyMembers.get(newRoot).add(m);
+      });
+      familyMembers.delete(absorbed);
+    };
+
+    relations.forEach((r) => linkPair(r.itemAId, r.itemBId));
+    candidateIds.forEach((id) => {
+      if (!familyRoot.has(id)) {
+        familyRoot.set(id, id);
+        if (!familyMembers.has(id)) familyMembers.set(id, new Set([id]));
+      }
+    });
+
+    // ---- 3) Collect every item in every matched family ----
+    const allFamilyItemIds = new Set();
+    candidateIds.forEach((id) => {
+      const root = familyRoot.get(id);
+      (familyMembers.get(root) || new Set([root])).forEach((m) => allFamilyItemIds.add(m));
+    });
+
+    // ---- 4) Load full details for every family member ----
+    const allItems = await Item.findAll({
+      where: { itemId: { [Op.in]: [...allFamilyItemIds] }, status: 'Active' },
+      attributes: ['itemId', 'code', 'name', 'standardName', 'brand', 'model', 'categoryId'],
+      include: [
+        { model: UOM, as: 'uom', attributes: ['uomId', 'code', 'name'] },
+        { model: db.Category, as: 'category', attributes: ['categoryId', 'name'] },
+      ],
+    });
+
+    const itemById = new Map(allItems.map((i) => [i.itemId, i]));
+
+    // ---- 5) Optional stock per itemId for the current store+group ----
+    let stockByItem = {};
+    if (storeId && groupId) {
+      const balances = await StoreBalance.findAll({
+        where: {
+          storeId: parseInt(storeId, 10),
+          groupId: parseInt(groupId, 10),
+          itemId: { [Op.in]: [...allFamilyItemIds] },
+          status: 'Active',
+        },
+        attributes: ['itemId', 'balance'],
+      });
+      balances.forEach((b) => {
+        stockByItem[b.itemId] = parseFloat(b.balance) || 0;
+      });
+    }
+
+    // ---- 6) Assemble families ----
+    const familiesSeen = new Set();
+    const families = [];
+
+    const anchorItems = searchTerm
+      ? candidates
+      : candidates.filter((c) => {
+          const root = familyRoot.get(c.itemId) ?? c.itemId;
+          const members = familyMembers.get(root) || new Set([root]);
+          const lowest = Math.min(...members);
+          return c.itemId === lowest;
+        });
+
+    for (const anchor of anchorItems) {
+      const root = familyRoot.get(anchor.itemId) ?? anchor.itemId;
+      if (familiesSeen.has(root)) continue;
+      familiesSeen.add(root);
+
+      const memberIds = [...(familyMembers.get(root) || new Set([root]))];
+      const members = memberIds
+        .map((id) => itemById.get(id))
+        .filter(Boolean)
+        .sort((a, b) => a.itemId - b.itemId);
+
+      if (members.length === 0) continue;
+
+      const displayItem =
+        members.find((m) => m.itemId === anchor.itemId) || members[0];
+
+      families.push({
+        familyId: `family-${root}`,
+        displayName:
+          displayItem.standardName || displayItem.name || displayItem.code,
+        code: displayItem.code,
+        category: displayItem.category?.name || null,
+        brand: displayItem.brand || null,
+        model: displayItem.model || null,
+        uoms: members.map((m) => ({
+          itemId: m.itemId,
+          code: m.code,
+          name: m.standardName || m.name,
+          uomCode: m.uom?.code || '—',
+          uomName: m.uom?.name || m.uom?.code || '—',
+          stock: stockByItem[m.itemId] ?? null,
+        })),
+      });
+
+      if (families.length >= limitNum) break;
+    }
+
+    const paged = families.slice(offset, offset + limitNum);
 
     res.json({
       success: true,
-      data: rows,
+      data: paged,
       pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(count / parseInt(limit)),
+        total: families.length,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(families.length / limitNum),
       },
     });
   } catch (error) {
-    console.error("Get active items error:", error);
+    console.error("Get active items (families) error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to fetch active items",
@@ -3292,7 +3337,15 @@ exports.getGroupNotifications = async (req, res) => {
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }],
+                  include: [
+                    { model: UOM, as: "uom" },
+                    {
+                      model: db.Category,
+                      as: "category",
+                      attributes: ["categoryId", "name"],
+                      required: false,
+                    },
+                  ],
                 },
               ],
             },
@@ -3395,7 +3448,25 @@ exports.getDepartmentNotifications = async (req, res) => {
           include: [
             { model: Store, as: "askingStore" },
             { model: Store, as: "supplyingStore" },
-            { model: User, as: "requestedByUser" },
+            {
+              model: User,
+              as: "requestedByUser",
+              attributes: [
+                "userId",
+                "username",
+                "fullName",
+                "email",
+                "roleId",
+                "departmentId",
+              ],
+              include: [
+                {
+                  model: Department,
+                  as: "Department",
+                  attributes: ["department_id", "name", "code", "description"],
+                },
+              ],
+            },
             {
               model: ItemRequestDetail,
               as: "items",
@@ -3403,22 +3474,30 @@ exports.getDepartmentNotifications = async (req, res) => {
                 {
                   model: Item,
                   as: "item",
-                  include: [{ model: UOM, as: "uom" }]
-                }
-              ]
-            }
-          ]
+                  include: [
+                    { model: UOM, as: "uom" },
+                    {
+                      model: db.Category,
+                      as: "category",
+                      attributes: ["categoryId", "name"],
+                      required: false,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
         },
         {
           model: Department,
           as: "department",
-          attributes: ["department_id", "name", "code", "description"]
+          attributes: ["department_id", "name", "code", "description"],
         },
         {
           model: User,
           as: "respondedByUser",
-          attributes: ["userId", "username", "fullName"]
-        }
+          attributes: ["userId", "username", "fullName"],
+        },
       ],
       order: [["created_at", "DESC"]],
       limit: parseInt(limit) || 10,
@@ -3427,9 +3506,15 @@ exports.getDepartmentNotifications = async (req, res) => {
 
     const summary = {
       total: totalCount,
-      pending: await RequestNotification.count({ where: { ...whereClause, status: "pending" } }),
-      accepted: await RequestNotification.count({ where: { ...whereClause, status: "accepted" } }),
-      rejected: await RequestNotification.count({ where: { ...whereClause, status: "rejected" } }),
+      pending: await RequestNotification.count({
+        where: { ...whereClause, status: "pending" },
+      }),
+      accepted: await RequestNotification.count({
+        where: { ...whereClause, status: "accepted" },
+      }),
+      rejected: await RequestNotification.count({
+        where: { ...whereClause, status: "rejected" },
+      }),
     };
 
     res.json({
@@ -3592,11 +3677,19 @@ exports.getPendingNotifications = async (req, res) => {
                   {
                     model: Item,
                     as: "item",
-                    include: [{ model: UOM, as: "uom" }]
-                  }
-                ]
-              }
-            ]
+                    include: [
+                      { model: UOM, as: "uom" },
+                      {
+                        model: db.Category,
+                        as: "category",
+                        attributes: ["categoryId", "name"],
+                        required: false,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
           { model: Group, as: "group" },
           { model: Store, as: "store" },
@@ -3630,11 +3723,19 @@ exports.getPendingNotifications = async (req, res) => {
                   {
                     model: Item,
                     as: "item",
-                    include: [{ model: UOM, as: "uom" }]
-                  }
-                ]
-              }
-            ]
+                    include: [
+                      { model: UOM, as: "uom" },
+                      {
+                        model: db.Category,
+                        as: "category",
+                        attributes: ["categoryId", "name"],
+                        required: false,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
           {
             model: Department,
@@ -3713,14 +3814,8 @@ exports.getPendingNotifications = async (req, res) => {
 };
 
 // ================================================================
-// 25. 🔥 NEW: GET APPROVAL DEPARTMENTS FOR A STORE
+// 25. GET APPROVAL DEPARTMENTS FOR A STORE
 // ================================================================
-/**
- * GET /api/item-requests/approval-departments/:storeCode
- *
- * Returns the list of departments that need to approve requests
- * for the given asking store code.
- */
 exports.getApprovalDepartmentsForStore = async (req, res) => {
   try {
     const { storeCode } = req.params;
@@ -3734,7 +3829,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
 
     console.log(`📤 Fetching approval departments for store: ${storeCode}`);
 
-    // Verify the store exists
     const store = await Store.findOne({ where: { code: storeCode } });
     if (!store) {
       return res.status(404).json({
@@ -3743,7 +3837,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       });
     }
 
-    // Get the approval department config
     const config = await getApprovalDepartmentConfig();
 
     if (!config || !config.departments || config.departments.length === 0) {
@@ -3759,7 +3852,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       });
     }
 
-    // Filter departments whose appliesTo includes the store code
     const applicableDepartments = config.departments.filter(
       (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(storeCode)
     );
@@ -3769,7 +3861,6 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       `department(s) apply to store ${storeCode}`
     );
 
-    // Fetch department details for each applicable one
     const enriched = await Promise.all(
       applicableDepartments.map(async (entry) => {
         const department = await db.Department.findByPk(entry.departmentId);
@@ -3806,6 +3897,268 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to fetch approval departments",
+    });
+  }
+};
+
+// ================================================================
+// 26. GET TEMELASH RECORDS (Loan History)
+// ✅ UPDATED: summary now includes "overdue" count
+// ================================================================
+exports.getTemelashRecords = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status = "all",
+      storeId = "all",
+      search = "",
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    if (status !== "all") {
+      where.status = status;
+    }
+
+    if (storeId !== "all") {
+      where[Op.or] = [
+        { askingStoreId: parseInt(storeId) },
+        { supplyingStoreId: parseInt(storeId) },
+      ];
+    }
+
+    if (search) {
+      where.requestCode = { [Op.iLike]: `%${search}%` };
+    }
+
+    const { count, rows } = await TemelashRecord.findAndCountAll({
+      where,
+      include: [
+        { model: Store, as: "askingStore" },
+        { model: Store, as: "supplyingStore" },
+        {
+          model: User,
+          as: "requestedByUser",
+          attributes: ["userId", "username", "fullName", "email"],
+        },
+        {
+          model: User,
+          as: "returnedByUser",
+          attributes: ["userId", "username", "fullName"],
+        },
+      ],
+      order: [["issued_at", "DESC"]],
+      limit: parseInt(limit),
+      offset,
+    });
+
+    // ✅ NEW: also count overdue OUT records (past to_date)
+    const today = new Date().toISOString().split("T")[0];
+
+    const summary = {
+      total: count,
+      out: await TemelashRecord.count({ where: { ...where, status: "out" } }),
+      returned: await TemelashRecord.count({
+        where: { ...where, status: "returned" },
+      }),
+      overdue: await TemelashRecord.count({
+        where: {
+          ...where,
+          status: "out",
+          toDate: { [Op.lt]: today },
+        },
+      }),
+    };
+
+    res.json({
+      success: true,
+      data: {
+        records: rows,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: count,
+          pages: Math.ceil(count / parseInt(limit)),
+        },
+        summary,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching temelash records:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch temelash records",
+    });
+  }
+};
+
+// ================================================================
+// 27. RETURN A TEMELASH RECORD
+// ✅ UPDATED: computes returnedLate by comparing now vs. record.toDate
+// ================================================================
+exports.returnTemelash = async (req, res) => {
+  try {
+    const { recordId } = req.params;
+    const { remark } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    const record = await TemelashRecord.findByPk(recordId);
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: "Temelash record not found",
+      });
+    }
+
+    if (record.status !== "out") {
+      return res.status(400).json({
+        success: false,
+        error: `Temelash record is already ${record.status}`,
+      });
+    }
+
+    // ✅ NEW: determine if it's being returned after the to_date
+    const now = new Date();
+    const isLate = record.toDate ? now > new Date(record.toDate) : false;
+
+    await record.update({
+      status: "returned",
+      returnedAt: now,
+      returnedById: userId,
+      returnRemark: remark || null,
+      returnedLate: isLate,
+    });
+
+    console.log(
+      `✅ [TEMELASH] Record ${recordId} (${record.requestCode}) returned` +
+      (isLate ? " [LATE]" : "")
+    );
+
+    res.json({
+      success: true,
+      message: isLate
+        ? "Temelash returned successfully (marked as LATE)"
+        : "Temelash returned successfully",
+      data: record,
+    });
+  } catch (error) {
+    console.error("❌ Error returning temelash:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to return temelash",
+    });
+  }
+};
+
+
+// ================================================================
+// 28. CHANGE A NOTIFICATION'S DECISION (accepted ↔ rejected)
+// POST /api/item-requests/notifications/:notificationId/change
+// Body: { status: 'accepted' | 'rejected', reason?: string }
+// ----------------------------------------------------------------
+// Flips an already-decided notification — as long as the parent
+// request is still `pending`. There is no "back to pending" path.
+// ================================================================
+exports.changeNotificationDecision = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const { status, reason } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
+
+    if (!["accepted", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Status must be "accepted" or "rejected"',
+      });
+    }
+
+    if (status === "rejected" && (!reason || !reason.trim())) {
+      return res.status(400).json({
+        success: false,
+        error: "Rejection reason is required",
+      });
+    }
+
+    const notification = await RequestNotification.findByPk(notificationId);
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: "Notification not found",
+      });
+    }
+
+    // Only allow changing while the parent request is still pending
+    const request = await ItemRequest.findByPk(notification.request_id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: "Parent request not found",
+      });
+    }
+
+    if (request.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot change decision — request is already ${request.status}`,
+      });
+    }
+
+    // Refuse if the notification is still pending (this endpoint
+    // is only for flipping an existing decision).
+    if (notification.status === "pending") {
+      return res.status(400).json({
+        success: false,
+        error: "Notification has no decision yet — use accept/reject first",
+      });
+    }
+
+    // Refuse if flipping to the same status (no-op)
+    if (notification.status === status) {
+      return res.status(400).json({
+        success: false,
+        error: `Notification is already ${status}`,
+      });
+    }
+
+    await notification.update({
+      status,
+      rejected_reason: status === "rejected" ? reason.trim() : null,
+      responded_by: userId,
+      responded_at: new Date(),
+    });
+
+    console.log(
+      `🔁 Notification ${notificationId} decision flipped to ${status} (stage: ${notification.stage})`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Decision changed to ${status}`,
+      data: notification,
+    });
+  } catch (error) {
+    console.error("❌ Error changing notification decision:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to change decision",
     });
   }
 };

@@ -184,6 +184,92 @@ export interface UpdateBalancePayload {
     status?: 'Active' | 'Inactive';
 }
 
+export interface StockInPayload {
+    itemId: number;
+    quantity: number;
+    remark: string;
+    grnNumber: string;   // 👈 ADDED
+}
+
+export interface StockInResult {
+    balanceId: number;
+    storeId: number;
+    storeName: string | null;
+    groupId: number;
+    groupName: string | null;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    uomCode: string;
+    previousBalance: number;
+    newBalance: number;
+    changeAmount: number;
+    historyId: number;
+    referenceType: string;
+    grnNumber: string;   // 👈 ADDED
+    changedBy: {
+        userId: number;
+        fullName: string | null;
+    };
+    createdAt: string;
+    balanceCreated: boolean;
+}
+
+
+
+
+// ============================================================
+// WUST-LE-WUST (ውስጥ ለውስጥ) — Cross-item conversion
+// ============================================================
+
+export interface WustLeWustPayload {
+    sourceItemId: number;
+    targetItemId: number;
+    quantity: number;
+    conversionValue: number;
+    resultQuantity: number;
+    transferNumber: string;
+    remark: string;
+}
+
+export interface WustLeWustSideResult {
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    uomCode: string;
+    previousBalance: number;
+    newBalance: number;
+    balanceId: number;
+    historyId: number;
+}
+
+export interface WustLeWustSourceResult extends WustLeWustSideResult {
+    quantity: number;
+}
+
+export interface WustLeWustTargetResult extends WustLeWustSideResult {
+    resultQuantity: number;
+    balanceCreated: boolean;
+}
+
+export interface WustLeWustResult {
+    transferNumber: string;
+    storeId: number;
+    storeName: string | null;
+    groupId: number;
+    groupName: string | null;
+    source: WustLeWustSourceResult;
+    target: WustLeWustTargetResult;
+    conversionValue: number;
+    remark: string;
+    changedBy: {
+        userId: number;
+        fullName: string | null;
+    };
+    createdAt: string;
+}
+
+
 export interface ItemsToProcess {
     requestId: number;
     requestDetailId: number;
@@ -223,6 +309,36 @@ export interface ImportResult {
     failed: number;
     errors: string[];
 }
+
+export interface WustLeWustHistoryRecord {
+  id: number;
+  transferNumber: string | null;
+  createdAt: string;
+
+  sourceItemId: number | null;
+  sourceItemCode: string;
+  sourceItemName: string;
+  sourceUom: string;
+  quantity: number;
+  sourcePreviousBalance: number;
+  sourceNewBalance: number;
+
+  targetItemId: number | null;
+  targetItemCode: string;
+  targetItemName: string;
+  targetUom: string;
+  resultQuantity: number;
+  targetPreviousBalance: number;
+  targetNewBalance: number;
+
+  conversionValue: number | null;
+  remark: string | null;
+  changedBy: string | null;
+
+  _sourceHistoryId: number;
+  _targetHistoryId: number;
+}
+
 
 export interface ItemRequest {
     id: number;
@@ -359,6 +475,51 @@ export interface Item {
     updatedAt?: string;
 }
 
+// ============================================================
+// WUST-LE-WUST — Item list for the tab
+// ============================================================
+
+export interface WustLeWustItem {
+  // Relationship
+  relationshipId: number;
+  relationshipCode: string;
+  defaultConversion: number | null;
+
+  // Source (A)
+  itemId: number;
+  code: string;
+  name: string;
+  description: string | null;
+  uomId: number;
+  uomCode: string;
+  uomName: string | null;
+  conversionUomId: number | null;
+  conversionUomCode: string | null;
+  conversionUomName: string | null;
+  itemConversionValue: number;
+
+  balance: number;
+  minStockAlert: number;
+  balanceId: number | null;
+  balanceStatus: string;
+
+  // Target (B)
+  targetItemId: number;
+  targetCode: string;
+  targetName: string;
+  targetDescription: string | null;
+  targetUomId: number;
+  targetUomCode: string;
+  targetUomName: string | null;
+  targetConversionUomCode: string | null;
+  targetItemConversionValue: number;
+
+  targetBalance: number;
+  targetMinStockAlert: number;
+  targetBalanceId: number | null;
+  targetBalanceStatus: string;
+}
+
 // ============================================
 // USER TYPES
 // ============================================
@@ -458,6 +619,35 @@ async correctBalance(payload: {
 }
 
 
+// ================================================================
+// STOCK IN — Return / Incoming items
+// ================================================================
+
+/**
+ * Stock in an item — used by the Return Items page.
+ * Store and group come from the authenticated user (server-resolved).
+ */
+async stockIn(payload: StockInPayload): Promise<{
+    success: boolean;
+    message: string;
+    data?: StockInResult;
+    error?: string;
+}> {
+    try {
+        const response = await api.post('/balances/stock-in', payload);
+        return response.data;
+    } catch (error: any) {
+        console.error('Stock-in error:', error);
+        return {
+            success: false,
+            message:
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                'Failed to stock in item',
+            error: error.response?.data?.error || 'Failed to stock in item',
+        };
+    }
+}
 
 
 
@@ -505,6 +695,90 @@ async deleteStoreGroupData(payload: {
 
 
 
+async getWustLeWustHistory(params: {
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  missingTransferNumber?: boolean;
+} = {}): Promise<{
+  success: boolean;
+  data: WustLeWustHistoryRecord[];
+  meta?: {
+    storeId: number;
+    storeName: string | null;
+    groupId: number;
+    groupName: string | null;
+    total: number;
+  };
+  error?: string;
+}> {
+  try {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    if (params.fromDate) q.append('fromDate', params.fromDate);
+    if (params.toDate) q.append('toDate', params.toDate);
+    if (params.missingTransferNumber) q.append('missingTransferNumber', 'true');
+
+    const url = q.toString()
+      ? `/balances/wust-lewust/history?${q.toString()}`
+      : '/balances/wust-lewust/history';
+
+    const response = await api.get(url);
+    return response.data;
+  } catch (error: any) {
+    console.error('Get wust-le-wust history error:', error);
+    return {
+      success: false,
+      data: [],
+      error:
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        'Failed to load history',
+    };
+  }
+}
+
+
+
+
+
+
+
+
+async updateWustLeWustTransferNumber(
+  id: number,
+  transferNumber: string | null,
+): Promise<{
+  success: boolean;
+  message: string;
+  data?: {
+    id: number;
+    transferNumber: string | null;
+    updatedHistoryIds: number[];
+    storeId: number;
+    groupId: number;
+  };
+  error?: string;
+}> {
+  try {
+    const response = await api.put(
+      `/balances/wust-lewust/history/${id}/transfer-number`,
+      { transferNumber },
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error('Update wust-le-wust transfer number error:', error);
+    return {
+      success: false,
+      message:
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Failed to update transfer number',
+      error:
+        error.response?.data?.error || 'Failed to update transfer number',
+    };
+  }
+}
 
 
 
@@ -522,6 +796,39 @@ async deleteStoreGroupData(payload: {
 
 
 
+    // ================================================================
+    // WUST-LE-WUST — Cross-item conversion (ውስጥ ለውስጥ)
+    // ================================================================
+
+    /**
+     * Convert source item into target item.
+     * Subtracts `quantity` from the source's balance and adds
+     * `resultQuantity` to the target's balance, in one transaction.
+     * Both history rows share the same `transferNumber`.
+     */
+    async wustLeWustTransfer(payload: WustLeWustPayload): Promise<{
+        success: boolean;
+        message: string;
+        data?: WustLeWustResult;
+        error?: string;
+    }> {
+        try {
+            const response = await api.post('/balances/wust-lewust', payload);
+            return response.data;
+        } catch (error: any) {
+            console.error('Wust-le-wust transfer error:', error);
+            return {
+                success: false,
+                message:
+                    error.response?.data?.message ||
+                    error.response?.data?.error ||
+                    'Failed to perform transfer',
+                error:
+                    error.response?.data?.error ||
+                    'Failed to perform transfer',
+            };
+        }
+    }
 
 
 
@@ -536,6 +843,43 @@ async deleteStoreGroupData(payload: {
 
 
 
+
+// ================================================================
+// WUST-LE-WUST — Get items available for conversion
+// ================================================================
+/**
+ * Get the items available for cross-item conversion in the
+ * current user's store/group. Returns one row per active
+ * item_relationship with both items' balances.
+ */
+async getWustLeWustItems(): Promise<{
+  success: boolean;
+  data: WustLeWustItem[];
+  meta?: {
+    storeId: number;
+    storeName: string | null;
+    groupId: number;
+    groupName: string | null;
+    totalItems: number;
+    message?: string;
+  };
+  error?: string;
+}> {
+  try {
+    const response = await api.get('/balances/wust-lewust/items');
+    return response.data;
+  } catch (error: any) {
+    console.error('Get wust-le-wust items error:', error);
+    return {
+      success: false,
+      data: [],
+      error:
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        'Failed to load convertible items',
+    };
+  }
+}
 
 
 

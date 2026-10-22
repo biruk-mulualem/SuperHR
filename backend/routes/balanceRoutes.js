@@ -27,11 +27,43 @@ router.get(
     balanceController.getBalances
 );
 
-
 router.get(
   '/requests/:requestId/processable-items',
   authMiddleware(),
   balanceController.getProcessableItems
+);
+
+router.post(
+  '/stock-in',
+  authMiddleware(),                 // whatever your auth middleware is called
+   balanceController.stockIn
+  
+);
+
+router.post(
+  '/wust-lewust',
+  authMiddleware(),
+  balanceController.wustLeWustTransfer
+);
+
+router.get(
+  '/wust-lewust/items',
+  authMiddleware(),
+  balanceController.getWustLeWustItems
+);
+
+// ውስጥ ለውስጥ — history list
+router.get(
+  '/wust-lewust/history',
+  authMiddleware(),
+  balanceController.getWustLeWustHistory,
+);
+
+// ውስጥ ለውስጥ — update transfer number on a history record
+router.put(
+  '/wust-lewust/history/:id/transfer-number',
+  authMiddleware(),
+  balanceController.updateWustLeWustTransferNumber,
 );
 
 // Correct balance - requires authentication

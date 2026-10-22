@@ -34,7 +34,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         field: 'user_id',
-        // ✅ your User model uses user_id as primary key
         references: { model: 'users', key: 'user_id' },
       },
       role: {

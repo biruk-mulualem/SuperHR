@@ -1,7 +1,11 @@
 // stores/interceptor.ts
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL;
+// ✅ Derive API host from the page's own hostname — works on 192.168.0.x AND 192.168.1.x
+//    without any env switching or rebuild. Falls back to VITE_API_URL if set.
+const BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  `${window.location.protocol}//${window.location.hostname}:3001/api`;
 
 const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,

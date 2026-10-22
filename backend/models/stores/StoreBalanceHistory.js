@@ -142,6 +142,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         field: 'transaction_type',
       },
+
+      transferPairId: {
+  type: DataTypes.UUID,
+  allowNull: true,
+  field: 'transfer_pair_id',
+},
       sourceStoreId: {
         type: DataTypes.INTEGER,
         allowNull: true,
