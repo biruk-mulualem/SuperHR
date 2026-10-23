@@ -195,6 +195,16 @@
                   >
                     ✅
                   </button>
+
+                  <!-- ✅ DELETE — only asking store, pending, not accepted -->
+                  <button
+                    v-if="canManageThisRequest(req) && canDeleteRequest(req)"
+                    class="icon-btn delete-btn"
+                    @click="openDeleteRequestModal(req)"
+                    title="Delete Request"
+                  >
+                    🗑️
+                  </button>
                 </div>
               </td>
             </tr>
@@ -540,6 +550,45 @@
       </div>
     </div>
 
+    <!-- ==================== DELETE REQUEST MODAL ==================== -->
+    <div
+      v-if="showDeleteRequestModal"
+      class="modal-overlay"
+      @click.self="closeDeleteRequestModal"
+    >
+      <div class="modal-container status-modal">
+        <div class="modal-header">
+          <h3>🗑️ Delete Request</h3>
+          <button class="modal-close" @click="closeDeleteRequestModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="delete-icon">⚠️</div>
+          <p class="confirmation-title">
+            Are you sure you want to delete this request?
+          </p>
+          <div class="confirmation-details">
+            <div class="detail-row">
+              <span class="detail-label">Request:</span>
+              <span class="detail-value">{{ deleteTarget?.requestCode || deleteTarget?.id }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Items:</span>
+              <span class="detail-value">{{ deleteTarget?.items?.length || 0 }} item(s)</span>
+            </div>
+          </div>
+          <p class="delete-warning">⚠️ This action cannot be undone!</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeDeleteRequestModal">
+            Cancel
+          </button>
+          <button class="btn-danger" @click="confirmDeleteRequest">
+            Delete Request
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== EXPORT MODAL ==================== -->
     <div
       v-if="showExportModal"
@@ -671,6 +720,10 @@ const exportType = ref<"full" | "summary">("full");
 const showStatusModal = ref(false);
 const statusTarget = ref<ItemRequest | null>(null);
 const statusAction = ref<"approved" | "finalized">("approved");
+
+// ✅ NEW: Delete state
+const showDeleteRequestModal = ref(false);
+const deleteTarget = ref<ItemRequest | null>(null);
 
 const showToast = ref(false);
 const toastMessage = ref("");
@@ -888,6 +941,21 @@ const canPrintRequest = (req: ItemRequest): boolean => {
   return allAccepted && !hasRejection;
 };
 
+// ✅ NEW: Delete permission
+// - Only the asking store can delete
+// - Only if status is "pending"
+// - Only if NO notifications have been "accepted" yet
+const canDeleteRequest = (req: ItemRequest): boolean => {
+  if (!isUserAskingStore(req)) return false;
+  if (req.status !== "pending") return false;
+  const notifications = (req as any).notifications || [];
+  const hasAccepted = notifications.some(
+    (n: any) => n.status === "accepted",
+  );
+  if (hasAccepted) return false;
+  return true;
+};
+
 const getApproveTooltip = (req: ItemRequest): string => {
   if (req.status !== "pending") return "Request is not pending";
   if (isSkipStore(req))
@@ -1077,7 +1145,7 @@ const loadItems = async () => {
   loadingItems.value = true;
   try {
     const response = await itemRequestService.getActiveItems();
-    if (response.success) items.value = response.data;
+    if (response.success) items.value = response.data as unknown as Item[];
     else showToastMessage(response.error || "Failed to load items", "error");
   } catch (error) {
     console.error("Load items error:", error);
@@ -1292,7 +1360,7 @@ const closeView = (): void => {
 };
 
 // ================================================================
-// 🔥 PRINT — navigate to the print page (data loaded from backend)
+// 🔥 PRINT — navigate to the print page
 // ================================================================
 const printRequest = (req: ItemRequest): void => {
   if (!canManageThisRequest(req)) {
@@ -1311,7 +1379,7 @@ const printRequest = (req: ItemRequest): void => {
 
   router.push({
     name: "item-request-print",
-    params: { id: String(requestId) },  // 👈 THIS IS THE FIX
+    params: { id: String(requestId) },
     query: { id: String(requestId) },
   });
 };
@@ -1650,6 +1718,44 @@ const confirmStatusChange = async (): Promise<void> => {
     closeStatusModal();
   } catch (error: any) {
     showToastMessage(error.message || `Failed to ${action} request`, "error");
+  }
+};
+
+// ================================================================
+// ✅ NEW: DELETE REQUEST
+// ================================================================
+const openDeleteRequestModal = (req: ItemRequest): void => {
+  if (!canDeleteRequest(req)) {
+    showToastMessage("Cannot delete this request", "error");
+    return;
+  }
+  deleteTarget.value = req;
+  showDeleteRequestModal.value = true;
+};
+
+const closeDeleteRequestModal = (): void => {
+  showDeleteRequestModal.value = false;
+  deleteTarget.value = null;
+};
+
+const confirmDeleteRequest = async (): Promise<void> => {
+  if (!deleteTarget.value) return;
+  const id = deleteTarget.value.requestId || deleteTarget.value.id;
+  if (!id) {
+    showToastMessage("Cannot delete: missing request ID", "error");
+    return;
+  }
+  try {
+    const response = await itemRequestService.deleteRequest(id);
+    if (response.success) {
+      showToastMessage("Request deleted successfully", "success");
+      await loadRequests();
+      closeDeleteRequestModal();
+    } else {
+      showToastMessage(response.error || "Failed to delete request", "error");
+    }
+  } catch (error: any) {
+    showToastMessage(error.message || "Failed to delete request", "error");
   }
 };
 
@@ -2117,6 +2223,8 @@ onMounted(async () => {
 .icon-btn:active { transform: scale(0.95); }
 .print-btn { color: #8b5cf6; }
 .print-btn:hover { background: #ede9fe; color: #7c3aed; }
+.delete-btn { color: #ef4444; }
+.delete-btn:hover { background: #fee2e2; color: #dc2626; }
 
 .detail-expand-row td { padding: 0 !important; }
 
@@ -2300,6 +2408,38 @@ onMounted(async () => {
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+/* ✅ NEW: Delete modal styles */
+.delete-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.delete-warning {
+  color: #dc2626;
+  font-weight: 600;
+  text-align: center;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+}
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn-danger:hover {
+  background: #dc2626;
 }
 
 .toast {

@@ -133,7 +133,14 @@
 
     <!-- ==================== STORE BALANCE TABLE ==================== -->
     <div class="table-container" id="printable-area">
-      <table class="balance-table">
+      <!-- ✅ Loading State (matches storetransaction.vue) -->
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading balances...</p>
+      </div>
+
+      <!-- ✅ Table (rendered only when not loading) -->
+      <table v-else class="balance-table">
         <thead>
           <tr>
             <th>#</th>
@@ -147,15 +154,7 @@
           </tr>
         </thead>
         <tbody>
- <tr v-if="isLoading">
-  <td colspan="8" class="loading-cell">
-    <div class="loading-spinner">
-      <div class="spinner-ring"></div>
-      <span class="loading-text">Loading balances…</span>
-    </div>
-  </td>
-</tr>
-          <tr v-else-if="paginatedBalances.length === 0">
+          <tr v-if="paginatedBalances.length === 0">
             <td colspan="8" class="empty-state">
               <div class="empty-content">
                 <span class="empty-icon">💰</span>
@@ -798,7 +797,12 @@ const fetchItems = async () => {
 };
 
 const fetchBalances = async () => {
-  isLoading.value = true;
+  // Only show the loading UI when there's genuinely nothing to show yet.
+  // Filter changes, page changes, and re-fetches with existing rows must
+  // never blank the table or re-trigger the spinner.
+  if (balances.value.length === 0) {
+    isLoading.value = true;
+  }
   try {
     const filters = {};
 
@@ -813,28 +817,18 @@ const fetchBalances = async () => {
 
     if (filterStore.value && filterStore.value !== "") {
       const storeId = Number(filterStore.value);
-      if (!isNaN(storeId)) {
-        filters.storeId = storeId;
-      }
+      if (!isNaN(storeId)) filters.storeId = storeId;
     }
     if (filterGroup.value && filterGroup.value !== "") {
       const groupId = Number(filterGroup.value);
-      if (!isNaN(groupId)) {
-        filters.groupId = groupId;
-      }
+      if (!isNaN(groupId)) filters.groupId = groupId;
     }
     if (filterCategory.value && filterCategory.value !== "") {
       const categoryId = Number(filterCategory.value);
-      if (!isNaN(categoryId)) {
-        filters.categoryId = categoryId;
-      }
+      if (!isNaN(categoryId)) filters.categoryId = categoryId;
     }
-    if (filterStatus.value) {
-      filters.status = filterStatus.value;
-    }
-    if (searchQuery.value) {
-      filters.search = searchQuery.value;
-    }
+    if (filterStatus.value) filters.status = filterStatus.value;
+    if (searchQuery.value) filters.search = searchQuery.value;
 
     filters.page = currentPage.value;
     filters.limit = 10000;
@@ -851,6 +845,9 @@ const fetchBalances = async () => {
     console.error("Error fetching balances:", error);
     showToastMessage("Failed to load balances", "error");
   } finally {
+    // Always clear — but only the fetch that started this cycle gets
+    // to clear it, and since we only ever set it when balances was
+    // empty, the visual state can't outlive the first successful load.
     isLoading.value = false;
   }
 };
@@ -1072,14 +1069,8 @@ const showToastMessage = (msg, type = "success") => {
 onMounted(async () => {
   userData.value = getUserData();
 
-  await Promise.all([
-    fetchStores(),
-    fetchGroups(),
-    fetchCategories(),
-    fetchItems(),
-    fetchBalances(),
-  ]);
-
+  // Set the filters for non-admins BEFORE the first fetch so we don't
+  // need to fetch twice.
   if (!isAdmin.value && userData.value?.hasAccess) {
     if (userData.value.assignedStore) {
       filterStore.value = String(userData.value.assignedStore.id);
@@ -1087,17 +1078,26 @@ onMounted(async () => {
     if (userData.value.assignedGroup) {
       filterGroup.value = String(userData.value.assignedGroup.id);
     }
-    await fetchBalances();
   }
 
-  // Fetch pending requests for the count badge
+  await Promise.all([
+    fetchStores(),
+    fetchGroups(),
+    fetchCategories(),
+    fetchItems(),
+    fetchBalances(),        // ← single fetch, filters already set
+  ]);
+
   await fetchApprovedRequests();
 });
 
 watch(
-  () => localStorage.getItem("user"),
-  (newVal) => {
-    if (newVal) {
+  () => {
+    const u = getUserData();
+    return u?.userId ?? u?.id ?? null;
+  },
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
       userData.value = getUserData();
       fetchBalances();
       fetchApprovedRequests();
@@ -1122,69 +1122,29 @@ watch(
 <style scoped>
 
 /* ================================================================
-   LOADING STATE
+   LOADING STATE (matches storetransaction.vue)
    ================================================================ */
-
-
-/* ================================================================
-   LOADING STATE
-   ================================================================ */
-.loading-cell {
-  padding: 0 !important;
-  border-bottom: none !important;
-}
-
-.loading-cell {
-  display: table-cell;            /* keep it a real table cell */
-  height: 260px;                  /* give the row real vertical space */
-  text-align: center;             /* horizontal centering */
-  vertical-align: middle;         /* vertical centering */
-}
-
-.loading-spinner {
-  display: inline-flex;
+.loading-state {
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  padding: 40px;
+  color: #64748b;
 }
 
-.spinner-ring {
+.loading-state .spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid #e2e8f0;
+  border: 3px solid #e2e8f0;
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
-.loading-text {
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-  letter-spacing: 0.2px;
-}
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 .refresh-spinner {
   width: 16px;

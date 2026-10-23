@@ -109,7 +109,15 @@
                   <p class="notification-message">
                     <strong>{{ notif.request?.requestedByUser?.fullName || "Someone" }}</strong>
                     requested items from
-                    <strong>{{ notif.request?.askingStore?.name || "Unknown" }}</strong>
+                                       <strong>
+                      {{
+                        notif.request?.askingStore?.name === "Other"
+                          ? (notif.department?.name
+                              || notif.request?.requestedByUser?.Department?.name
+                              || "Unknown Department")
+                          : (notif.request?.askingStore?.name || "Unknown")
+                      }}
+                    </strong>
                   </p>
                   <div class="notification-items">
                     <span

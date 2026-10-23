@@ -10,6 +10,9 @@ import ManagerDashboard   from './roles/ManagerDashboard';
 import PurchaserDashboard from './roles/PurchaserDashboard';
 import SalesDashboard     from './roles/SalesDashboard';
 
+// 🆕 RENAMED IMPORT
+import PendingStoreRequestDashboard from './roles/PendingStoreRequestDashboard'; 
+
 // =========================================================================
 // 📦 ROLE CONSTANTS
 // =========================================================================
@@ -21,6 +24,12 @@ const ROLES = {
   BANKER: 'banker',
   SUPERVISOR: 'supervisor',
   AUDITOR: 'auditor',
+  STOREKEEPER: 'storekeeper',
+
+  // 🆕 Added — all share the PendingStoreRequestDashboard
+  STORE_IT: 'store_it',
+  QUALITY: 'quality',
+  NEBRET: 'nebret',
 };
 
 // =========================================================================
@@ -29,7 +38,7 @@ const ROLES = {
 const WelcomeBanner = ({ greeting, role, darkMode }) => (
   <View style={[styles.welcomeCard, { backgroundColor: darkMode ? '#1E3A8A' : '#EFF6FF' }]}>
     <Text style={[styles.greetingText, { color: darkMode ? '#FFFFFF' : '#1E3A8A' }]}>
-      Welcome Back, {greeting} 👋
+      Welcome Back, {greeting} 
     </Text>
     <Text style={[styles.roleBadgeText, { color: darkMode ? '#93C5FD' : '#2563EB' }]}>
       Role: <Text style={{ fontWeight: '850' }}>{role?.toUpperCase()}</Text>
@@ -80,6 +89,12 @@ const DASHBOARD_COMPONENTS = {
   [ROLES.MANAGER]:   ManagerDashboard,
   [ROLES.PURCHASER]: PurchaserDashboard,
   [ROLES.SALES]:     SalesDashboard,
+  [ROLES.STOREKEEPER]: PendingStoreRequestDashboard,
+
+  // 🆕 Three new roles — all reuse PendingStoreRequestDashboard
+  [ROLES.STORE_IT]:  PendingStoreRequestDashboard,
+  [ROLES.QUALITY]:   PendingStoreRequestDashboard,
+  [ROLES.NEBRET]:    PendingStoreRequestDashboard,
 };
 
 // =========================================================================
@@ -91,7 +106,8 @@ export default function DashboardPage({
   userRole,
   permissions,
   onNavigateToPurchase,
-  onNavigateToManagerDashboard,   // 🆕 ADD THIS
+  onNavigateToManagerDashboard,
+  onNavigateToStorekeeperDashboard,
   navigation,
 }) {
   const theme = {
@@ -113,7 +129,8 @@ export default function DashboardPage({
     navigation,
     permissions,
     onNavigateToPurchase,
-    onNavigateToManagerDashboard,   // 🆕 FORWARD THIS
+    onNavigateToManagerDashboard,
+    onNavigateToStorekeeperDashboard,
   };
 
   return <DashboardComponent {...commonProps} />;

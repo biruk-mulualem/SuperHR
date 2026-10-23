@@ -413,23 +413,30 @@
           Loading items…
         </div>
         <template v-else>
-          <div
-            v-for="family in draftOptions"
-            :key="family.familyId"
-            class="draft-option"
-            @mousedown.prevent="pickFamily(family)"
-          >
-            <span class="draft-option-code">{{ family.code }}</span>
-            <span class="draft-option-name">{{ family.displayName }}</span>
-            <span class="draft-option-uom">
-              <template v-if="family.uoms.length === 1">
-                {{ family.uoms[0]?.uomCode }}
-              </template>
-              <template v-else>
-                {{ family.uoms.length }} UOMs: {{ family.uoms.map(u => u.uomCode).join(' · ') }}
-              </template>
-            </span>
-          </div>
+         <div
+  v-for="family in draftOptions"
+  :key="family.familyId"
+  class="draft-option"
+  @mousedown.prevent="pickFamily(family)"
+>
+  <span class="draft-option-code">{{ family.code }}</span>
+
+  <div class="draft-option-main">
+    <span class="draft-option-name">{{ family.displayName }}</span>
+    <span v-if="family.category" class="draft-option-category">
+      📂 {{ family.category }}
+    </span>
+  </div>
+
+  <span class="draft-option-uom">
+    <template v-if="family.uoms.length === 1">
+      {{ family.uoms[0]?.uomCode }}
+    </template>
+    <template v-else>
+      {{ family.uoms.length }} UOMs: {{ family.uoms.map(u => u.uomCode).join(' · ') }}
+    </template>
+  </span>
+</div>
           <div
             v-if="hasMoreDraftItems"
             class="draft-option draft-option-more"
@@ -2198,6 +2205,41 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+
+/* Grid column wrapping name + category */
+.draft-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.draft-option-category {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #4338ca;
+  background: #e0e7ff;
+  padding: 1px 7px;
+  border-radius: 8px;
+  align-self: flex-start;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+/* Category chip in the "picked" state (after selecting a family) */
+.item-category-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4338ca;
+  background: #e0e7ff;
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+
 /* ================================================================
    PAGE LAYOUT
    ================================================================ */

@@ -1,6 +1,7 @@
 // controllers/itemRequestController.js
 "use strict";
 const db = require("../models");
+
 const {
   ItemRequest,
   ItemRequestDetail,
@@ -1357,6 +1358,9 @@ exports.getRequestById = async (req, res) => {
 // ================================================================
 // 4. CREATE REQUEST
 // ================================================================
+// ================================================================
+// 4. CREATE REQUEST
+// ================================================================
 exports.createRequest = async (req, res) => {
   const t = await db.sequelize.transaction();
 
@@ -1539,26 +1543,47 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    const requestCode = await ItemRequest.generateRequestCode();
+    // ============================================================
+    // SAFE CREATE WITH RETRY — survives deletes and concurrency
+    // ============================================================
+    const requestCreateData = {
+      askingStoreId: parseInt(askingStoreId),
+      supplyingStoreId: parseInt(supplyingStoreId),
+      requestedById: requestedById || null,
+      requestedBy: requestedBy || null,
+      requestedDate: requestedDate || new Date().toISOString().split("T")[0],
+      status: status || "pending",
+      remark: remark || null,
+      isAsset: isAsset || false,
+      isTemelash: isTemelash === true,
+      temelashFromDate: isTemelash === true ? (temelashFromDate || null) : null,
+      temelashToDate: isTemelash === true ? (temelashToDate || null) : null,
+      excludedDepartmentIds: Array.isArray(excludedDepartmentIds) ? excludedDepartmentIds : [],
+    };
 
-    const request = await ItemRequest.create(
-      {
-        requestCode,
-        askingStoreId: parseInt(askingStoreId),
-        supplyingStoreId: parseInt(supplyingStoreId),
-        requestedById: requestedById || null,
-        requestedBy: requestedBy || null,
-        requestedDate: requestedDate || new Date().toISOString().split("T")[0],
-        status: status || "pending",
-        remark: remark || null,
-        isAsset: isAsset || false,
-        isTemelash: isTemelash === true,
-        temelashFromDate: isTemelash === true ? (temelashFromDate || null) : null,
-        temelashToDate: isTemelash === true ? (temelashToDate || null) : null,
-        excludedDepartmentIds: Array.isArray(excludedDepartmentIds) ? excludedDepartmentIds : [],
-      },
-      { transaction: t },
-    );
+    let request;
+    let codeAttempt = 0;
+
+    while (true) {
+      const requestCode = await ItemRequest.generateRequestCode(t, codeAttempt);
+
+      try {
+        request = await ItemRequest.create(
+          { ...requestCreateData, requestCode },
+          { transaction: t },
+        );
+        break; // ✅ success
+      } catch (err) {
+        if (err.name === "SequelizeUniqueConstraintError" && codeAttempt < 4) {
+          console.warn(
+            `⚠️ Request code collision (attempt ${codeAttempt + 1}), retrying...`
+          );
+          codeAttempt++;
+          continue;
+        }
+        throw err; // bubble up to your existing catch
+      }
+    }
 
     await Promise.all(
       validatedItems.map(async (item) => {

@@ -251,7 +251,7 @@ temelashToDate: {
         field: 'updated_at',
       },
     },
-    {
+       {
       sequelize,
       modelName: 'ItemRequest',
       tableName: 'item_requests',
@@ -260,17 +260,14 @@ temelashToDate: {
       updatedAt: 'updated_at',
       hooks: {
         beforeCreate: async (request) => {
-          // Generate request code if not provided
+          // ✅ SAFETY NET ONLY — normally the controller supplies requestCode
+          // via ItemRequest.generateRequestCode(). This fallback only runs
+          // if a caller forgot to pass one.
           if (!request.requestCode) {
-            const date = new Date();
-            const year = date.getFullYear().toString().slice(-2);
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            
-            const count = await ItemRequest.count();
-            const sequence = String(count + 1).padStart(3, '0');
-            
-            request.requestCode = `REQ-${year}${month}${day}-${sequence}`;
+            console.warn(
+              "⚠️ ItemRequest created without requestCode — using safe fallback generator"
+            );
+            request.requestCode = await ItemRequest.generateRequestCode();
           }
         },
         beforeUpdate: async (request) => {
@@ -286,6 +283,7 @@ temelashToDate: {
         },
       },
     }
+  
   );
 
   // ================================================================
@@ -293,17 +291,30 @@ temelashToDate: {
   // ================================================================
 
   // Generate next request code
-  ItemRequest.generateRequestCode = async function() {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    
-    const count = await this.count();
-    const sequence = String(count + 1).padStart(3, '0');
-    
-    return `REQ-${year}${month}${day}-${sequence}`;
-  };
+// ================================================================
+// SAFE REQUEST CODE GENERATOR
+// Uses MAX(sequence) scoped by today's prefix — survives deletions,
+// gaps, and concurrent creates. Never uses count().
+// ================================================================
+ItemRequest.generateRequestCode = async function (transaction = null, attempt = 0) {
+  const dayjs = require("dayjs");
+  const { Op } = require("sequelize");
+
+  const prefix = `REQ-${dayjs().format("YYMMDD")}-`;
+
+  const lastToday = await ItemRequest.findOne({
+    where: { requestCode: { [Op.like]: `${prefix}%` } },
+    order: [["requestCode", "DESC"]],
+    attributes: ["requestCode"],
+    transaction,
+  });
+
+  const lastSeq = lastToday
+    ? parseInt(String(lastToday.requestCode).split("-").pop(), 10) || 0
+    : 0;
+
+  return `${prefix}${String(lastSeq + 1 + attempt).padStart(3, "0")}`;
+};
 
   // Get requests by user
   ItemRequest.getByUser = function(userId) {
