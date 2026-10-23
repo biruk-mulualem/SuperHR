@@ -2124,22 +2124,7 @@ exports.updateRequest = async (req, res) => {
   }
 };
 
-// 6–28: all other handlers — unchanged
-// ================================================================
-// (updateStatus, getByUser, getMyRequests, getByStatus, getByDateRange,
-//  deleteRequest, getRequestWithNotifications, checkRequestNotificationStatus,
-//  acceptNotification, rejectNotification, getRejectionReasons, exportRequests,
-//  getStats, getActiveStores, getActiveItems, getGroupNotifications,
-//  getDepartmentNotifications, getStoreGroups, getPendingNotifications,
-//  getApprovalDepartmentsForStore, getTemelashRecords, returnTemelash,
-//  changeNotificationDecision)
 
-// None of these need to change — they don't touch stock validation or
-// the balance lookup. Copy them from your current file as-is.
-
-// ✅ When you paste them back, they go here. The rest of the file is
-//    identical to what you already have.
-// ================================================================
 // 6. UPDATE REQUEST STATUS
 // ✅ NEW: If a Temelash request is APPROVED, snapshot into temelash_records
 // ================================================================
@@ -2491,9 +2476,18 @@ exports.getByDateRange = async (req, res) => {
 // ================================================================
 // 11. DELETE REQUEST
 // ================================================================
+// ================================================================
+// 11. DELETE REQUEST
+// ----------------------------------------------------------------
+// Admins: can delete ANY request (pending, approved, rejected, finalized).
+// Non-admins: only the request creator can delete their own request,
+//             and only while it's still pending.
+// Always cleans up: notifications, temelash records, print overrides.
+// ================================================================
 exports.deleteRequest = async (req, res) => {
   try {
     const { id } = req.params;
+    const admin = isAdminUser(req);
 
     const request = await ItemRequest.findByPk(id);
     if (!request) {
@@ -2503,36 +2497,60 @@ exports.deleteRequest = async (req, res) => {
       });
     }
 
-    if (!isRequestCreator(req, request)) {
-      return res.status(403).json({
-        success: false,
-        error: "Only the request creator can delete this request",
-      });
+    // ---------- Authorization ----------
+    if (!admin) {
+      if (!isRequestCreator(req, request)) {
+        return res.status(403).json({
+          success: false,
+          error: "Only the request creator can delete this request",
+        });
+      }
+      if (request.status !== "pending") {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot delete ${request.status} requests. Only pending requests can be deleted.`,
+        });
+      }
     }
 
-    if (request.status === "approved") {
-      return res.status(400).json({
-        success: false,
-        error: "Cannot delete approved requests. Edit the request to reset status to pending first",
-      });
-    }
+    // ---------- Capture for response ----------
+    const previousStatus = request.status;
+    const requestCode = request.requestCode;
 
-    if (request.status === "finalized") {
-      return res.status(400).json({
-        success: false,
-        error: "Cannot delete finalized requests",
-      });
-    }
-
+    // ---------- Cleanup dependent rows ----------
     await RequestNotification.destroy({
       where: { request_id: id },
     });
+
+    if (db.TemelashRecord) {
+      await db.TemelashRecord.destroy({
+        where: { request_id: id },
+      });
+    }
+
+    if (db.PrintOverride) {
+      await db.PrintOverride.destroy({
+        where: { requestId: id },
+      });
+    }
+
+    // ---------- Audit log for admin overrides ----------
+    if (admin && previousStatus !== "pending") {
+      console.warn(
+        `[ADMIN DELETE] user=${req.user?.userId} (${req.user?.username}) ` +
+          `deleted request ${requestCode} (previous status: ${previousStatus})`
+      );
+    }
 
     await request.destroy();
 
     res.json({
       success: true,
-      message: "Request deleted successfully",
+      message: admin
+        ? `Request deleted (was ${previousStatus})`
+        : "Request deleted successfully",
+      deletedStatus: previousStatus,
+      requestCode,
     });
   } catch (error) {
     console.error("Delete request error:", error);

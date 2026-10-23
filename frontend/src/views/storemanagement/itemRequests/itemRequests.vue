@@ -196,7 +196,7 @@
                     ✅
                   </button>
 
-                  <!-- ✅ DELETE — only asking store, pending, not accepted -->
+                  <!-- ✅ DELETE — admin: always; non-admin: asking store + pending + no accepted -->
                   <button
                     v-if="canManageThisRequest(req) && canDeleteRequest(req)"
                     class="icon-btn delete-btn"
@@ -575,6 +575,12 @@
               <span class="detail-label">Items:</span>
               <span class="detail-value">{{ deleteTarget?.items?.length || 0 }} item(s)</span>
             </div>
+            <div class="detail-row">
+              <span class="detail-label">Status:</span>
+              <span :class="['status-badge', deleteTarget?.status]">
+                {{ deleteTarget?.status }}
+              </span>
+            </div>
           </div>
           <p class="delete-warning">⚠️ This action cannot be undone!</p>
         </div>
@@ -721,7 +727,7 @@ const showStatusModal = ref(false);
 const statusTarget = ref<ItemRequest | null>(null);
 const statusAction = ref<"approved" | "finalized">("approved");
 
-// ✅ NEW: Delete state
+// ✅ Delete state
 const showDeleteRequestModal = ref(false);
 const deleteTarget = ref<ItemRequest | null>(null);
 
@@ -941,11 +947,16 @@ const canPrintRequest = (req: ItemRequest): boolean => {
   return allAccepted && !hasRejection;
 };
 
-// ✅ NEW: Delete permission
-// - Only the asking store can delete
-// - Only if status is "pending"
-// - Only if NO notifications have been "accepted" yet
+// ✅ DELETE permission
+// - Admins: ALWAYS allowed (any status, any notification state)
+// - Non-admins (asking store only):
+//     * status must be "pending"
+//     * no notifications may be "accepted" yet
 const canDeleteRequest = (req: ItemRequest): boolean => {
+  // Admins bypass every restriction
+  if (userIsAdmin.value) return true;
+
+  // Non-admin rules (unchanged)
   if (!isUserAskingStore(req)) return false;
   if (req.status !== "pending") return false;
   const notifications = (req as any).notifications || [];
@@ -1722,7 +1733,7 @@ const confirmStatusChange = async (): Promise<void> => {
 };
 
 // ================================================================
-// ✅ NEW: DELETE REQUEST
+// ✅ DELETE REQUEST
 // ================================================================
 const openDeleteRequestModal = (req: ItemRequest): void => {
   if (!canDeleteRequest(req)) {
@@ -1745,10 +1756,18 @@ const confirmDeleteRequest = async (): Promise<void> => {
     showToastMessage("Cannot delete: missing request ID", "error");
     return;
   }
+  const wasAdminOverride =
+    userIsAdmin.value && deleteTarget.value.status !== "pending";
+  const overriddenStatus = deleteTarget.value.status;
   try {
     const response = await itemRequestService.deleteRequest(id);
     if (response.success) {
-      showToastMessage("Request deleted successfully", "success");
+      showToastMessage(
+        wasAdminOverride
+          ? `Request deleted (admin override on ${overriddenStatus} request)`
+          : "Request deleted successfully",
+        "success",
+      );
       await loadRequests();
       closeDeleteRequestModal();
     } else {
@@ -2410,7 +2429,7 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-/* ✅ NEW: Delete modal styles */
+/* Delete modal styles */
 .delete-icon {
   font-size: 48px;
   text-align: center;
