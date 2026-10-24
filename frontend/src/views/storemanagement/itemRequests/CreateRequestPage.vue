@@ -895,7 +895,7 @@
                 class="val-error-table-block temelash-block"
               >
                 <div class="val-error-table-title">
-                  🔄 Temelash loans blocking this item ({{ error.blockingTemelash.length }})
+                  🔄 Temelash loans blocking this items ({{ error.blockingTemelash.length }})
                 </div>
                 <div class="val-error-table-wrapper">
                   <table class="val-error-table">
