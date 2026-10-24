@@ -808,6 +808,7 @@
               :key="index"
               class="val-error-item"
             >
+              <!-- Header: item name + code + requested qty -->
               <div class="val-error-head">
                 <span class="val-error-icon">📦</span>
                 <span class="val-error-name">
@@ -817,11 +818,123 @@
                 <span
                   v-if="error.requestedQuantity"
                   class="val-error-qty"
-                >Requested: {{ error.requestedQuantity }}</span>
+                >Requested: {{ error.requestedQuantity }} {{ error.uomCode || '' }}</span>
               </div>
 
-              <div class="val-error-message">{{ error.message }}</div>
+              <!-- Context line: asking → supplying · requested by -->
+              <div
+                v-if="error.askingStoreName || error.supplyingStoreName || error.requestedByName"
+                class="val-error-context"
+              >
+                <span v-if="error.askingStoreName">
+                  <span class="val-error-context-label">Asking:</span>
+                  <strong>{{ error.askingStoreName }}</strong>
+                </span>
+                <span class="val-error-arrow">→</span>
+                <span v-if="error.supplyingStoreName">
+                  <span class="val-error-context-label">Supplying:</span>
+                  <strong>{{ error.supplyingStoreName }}</strong>
+                </span>
+                <span v-if="error.requestedByName" class="val-error-requester">
+                  <span class="val-error-context-label">By:</span>
+                  <strong>{{ error.requestedByName }}</strong>
+                </span>
+              </div>
 
+              <!-- Stock math line -->
+             
+
+              <!-- Open requests — TABLE -->
+              <div
+                v-if="error.blockingRequests && error.blockingRequests.length > 0"
+                class="val-error-table-block"
+              >
+                <div class="val-error-table-title">
+                  🔒 Open requests blocking this item ({{ error.blockingRequests.length }})
+                </div>
+                <div class="val-error-table-wrapper">
+                  <table class="val-error-table">
+                    <thead>
+                      <tr>
+                        <th>Request Code</th>
+                        <th>Status</th>
+                        <th class="text-right">Qty</th>
+                        <th>Asking Store</th>
+                        <th>Supplying Store</th>
+                        <th>Requested By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(br, i) in error.blockingRequests"
+                        :key="i"
+                      >
+                        <td class="val-error-code-cell">
+                          {{ br.requestCode || `#${br.requestId}` }}
+                        </td>
+                        <td>
+                          <span :class="['val-error-status-badge', br.status]">
+                            {{ br.status }}
+                          </span>
+                        </td>
+                        <td class="text-right val-error-qty-cell">
+                          {{ br.quantity }} {{ br.uom }}
+                        </td>
+                        <td>{{ br.askingStoreName || '—' }}</td>
+                        <td>{{ br.supplyingStoreName || '—' }}</td>
+                        <td>{{ br.requestedByName || '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Temelash — TABLE -->
+              <div
+                v-if="error.blockingTemelash && error.blockingTemelash.length > 0"
+                class="val-error-table-block temelash-block"
+              >
+                <div class="val-error-table-title">
+                  🔄 Temelash loans blocking this item ({{ error.blockingTemelash.length }})
+                </div>
+                <div class="val-error-table-wrapper">
+                  <table class="val-error-table">
+                    <thead>
+                      <tr>
+                        <th>Record</th>
+                        <th>Request Code</th>
+                        <th class="text-right">Qty</th>
+                        <th>From</th>
+                        <th>To</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(bt, i) in error.blockingTemelash"
+                        :key="i"
+                      >
+                        <td>#{{ bt.temelashRecordId }}</td>
+                        <td class="val-error-code-cell">
+                          {{ bt.requestCode || `#${bt.requestId}` }}
+                        </td>
+                        <td class="text-right val-error-qty-cell">
+                          {{ bt.quantity }} {{ bt.uom }}
+                        </td>
+                        <td>{{ formatDate(bt.fromDate) }}</td>
+                        <td>{{ formatDate(bt.toDate) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Fallback: legacy error.message when no structured data -->
+              <div
+                v-if="!error.blockingRequests?.length && !error.blockingTemelash?.length"
+                class="val-error-message"
+              >{{ error.message }}</div>
+
+              <!-- Legacy chips (from earlier stock validation shapes) -->
               <div
                 v-if="error.groupsWithoutBalance && error.groupsWithoutBalance.length > 0"
                 class="val-error-groups"
@@ -1600,10 +1713,6 @@ const pickFamily = (family: FamilySearchResult) => {
   draftFieldValues.value = {};
 
   // ✅ Default-select a UOM so the row is ready to add immediately.
-  //    Prefer the family's primary UOM if the backend flags one;
-  //    otherwise fall back to the first UOM in the array
-  //    (families are sorted by itemId ascending, so this is the
-  //    lowest-itemId sibling — deterministic and stable).
   const preferred =
     (family.uoms as any[]).find((u: any) => u.isPrimary === true) ||
     family.uoms[0] ||
@@ -2205,6 +2314,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* ================================================================
+   THE ORIGINAL STYLES — unchanged except for the new
+   .val-error-context / .val-error-math / .val-error-table-* classes
+   appended at the bottom of this file (see below the existing rules)
+   ================================================================ */
 
 /* Grid column wrapping name + category */
 .draft-option-main {
@@ -2227,7 +2341,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.2px;
 }
 
-/* Category chip in the "picked" state (after selecting a family) */
 .item-category-pill {
   display: inline-block;
   font-size: 11px;
@@ -2238,7 +2351,6 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   white-space: nowrap;
 }
-
 
 /* ================================================================
    PAGE LAYOUT
@@ -2328,7 +2440,6 @@ onBeforeUnmount(() => {
   background: #fff7ed; border-color: #fed7aa; color: #9a3412;
 }
 
-/* Selected store block */
 .side-selected-store {
   display: flex; flex-direction: column; gap: 2px;
   padding: 8px 10px;
@@ -2346,9 +2457,7 @@ onBeforeUnmount(() => {
   color: #94a3b8; font-style: italic; font-weight: 500;
 }
 
-/* ================================================================
-   DEPARTMENTS
-   ================================================================ */
+/* Departments */
 .dept-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 6px;
@@ -2403,9 +2512,7 @@ onBeforeUnmount(() => {
 .dept-empty.warning { color: #92400e; font-style: italic; }
 .dept-empty-spinner { margin-right: 4px; }
 
-/* ================================================================
-   TOP ACTIONS
-   ================================================================ */
+/* Top actions */
 .top-actions {
   display: flex; justify-content: space-between; align-items: center;
   max-width: 1500px; margin: 10px auto 20px auto;
@@ -2432,9 +2539,7 @@ onBeforeUnmount(() => {
 .btn-print-top:hover:not(:disabled) { background: #1d4ed8; }
 .btn-print-top:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ================================================================
-   PAPER
-   ================================================================ */
+/* Paper */
 .print-page {
   font-family: 'Arial', sans-serif; color: #000;
   padding: 20px; background-color: #ffffff;
@@ -2499,7 +2604,6 @@ onBeforeUnmount(() => {
   font-size: 13px; font-weight: 600; outline: none; background: #eff6ff;
 }
 
-/* Column manager */
 .column-manager {
   margin: 0 0 12px 0; padding: 12px 14px;
   background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px;
@@ -2537,7 +2641,6 @@ onBeforeUnmount(() => {
   font-size: 12px; background: #fff; outline: none;
 }
 
-/* Merge */
 .merge-bar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; margin: 0 0 12px 0;
@@ -2556,7 +2659,6 @@ onBeforeUnmount(() => {
 .btn-merge-clear { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
 .btn-merge-clear:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Table */
 .items-table {
   width: 100%; border-collapse: collapse; margin-bottom: 25px;
   font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
@@ -2726,7 +2828,6 @@ onBeforeUnmount(() => {
 }
 .cell-select:hover { background: #f8fafc; }
 .cell-print { display: none; }
-/* ✅ NEW: static UOM display for both table and draft cells */
 .cell-print-inline {
   display: inline-block;
   font-size: 12px;
@@ -2793,7 +2894,6 @@ onBeforeUnmount(() => {
   cursor: pointer; font-weight: 600; margin-top: 2px;
 }
 
-/* Meta grid */
 .meta-grid { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 25px; }
 .meta-col { flex: 1; }
 .block-header {
@@ -2824,7 +2924,6 @@ onBeforeUnmount(() => {
   outline: none; background: #eff6ff;
 }
 
-/* Workflow body */
 .workflow-body p {
   display: flex;
   align-items: baseline;
@@ -2939,7 +3038,7 @@ onBeforeUnmount(() => {
 .val-modal {
   background: #ffffff;
   border-radius: 14px;
-  width: 560px;
+  width: 720px;
   max-width: 100%;
   max-height: 88vh;
   display: flex;
@@ -3019,14 +3118,14 @@ onBeforeUnmount(() => {
 .val-error-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .val-error-item {
   background: #fef2f2;
   border: 1px solid #fecaca;
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 
 .val-error-head {
@@ -3034,7 +3133,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .val-error-icon { font-size: 14px; flex-shrink: 0; }
@@ -3054,11 +3153,171 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
+.val-error-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #334155;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+.val-error-context-label {
+  font-weight: 700;
+  color: #94a3b8;
+  margin-right: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 10px;
+}
+.val-error-arrow {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0 2px;
+}
+.val-error-requester {
+  margin-left: auto;
+}
+
+.val-error-math {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #64748b;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+}
+.val-error-math-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.val-error-math-label {
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 10px;
+}
+.val-error-math-item strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+.val-error-math-divider {
+  color: #cbd5e1;
+  font-weight: 700;
+}
+.val-error-math-highlight strong {
+  color: #dc2626;
+}
+
+/* ✅ Open Requests table */
+.val-error-table-block {
+  margin-top: 10px;
+}
+.val-error-table-block + .val-error-table-block {
+  margin-top: 14px;
+}
+.val-error-table-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #991b1b;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.val-error-table-wrapper {
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.val-error-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.val-error-table thead th {
+  background: #fef2f2;
+  color: #7f1d1d;
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid #fecaca;
+}
+.val-error-table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #fef2f2;
+  color: #334155;
+  vertical-align: middle;
+}
+.val-error-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.val-error-table .text-right { text-align: right; }
+.val-error-code-cell {
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  font-size: 11px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.val-error-qty-cell {
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.val-error-status-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
+}
+.val-error-status-badge.pending { background: #fef3c7; color: #92400e; }
+.val-error-status-badge.approved { background: #dbeafe; color: #1e40af; }
+.val-error-status-badge.rejected { background: #fee2e2; color: #991b1b; }
+.val-error-status-badge.finalized { background: #dcfce7; color: #166534; }
+
+/* Temelash table variant */
+.temelash-block .val-error-table thead th {
+  background: #fff7ed;
+  color: #9a3412;
+  border-bottom-color: #fed7aa;
+}
+.temelash-block .val-error-table-wrapper {
+  border-color: #fed7aa;
+}
+.temelash-block .val-error-table tbody td {
+  border-bottom-color: #ffedd5;
+}
+
 .val-error-message {
   font-size: 12.5px;
   color: #7f1d1d;
   line-height: 1.5;
   padding-left: 22px;
+  margin-top: 4px;
 }
 
 .val-error-groups,
@@ -3135,7 +3394,6 @@ onBeforeUnmount(() => {
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Loading */
 .loading-state {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; min-height: 200px;
@@ -3146,61 +3404,6 @@ onBeforeUnmount(() => {
   animation: spin 1s linear infinite; margin-bottom: 12px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ================================================================
-   ✅ NEW: FAMILY PICKER STYLES
-   ================================================================ */
-.draft-family-picked {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.draft-family-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 6px 8px;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-}
-.draft-uom-picker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.draft-uom-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.draft-uom-btn {
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  color: #334155;
-}
-.draft-uom-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
-.draft-uom-btn.selected {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-}
-.draft-uom-stock {
-  font-size: 10.5px;
-  opacity: 0.85;
-  margin-left: 2px;
-  font-weight: 500;
-}
 
 @media print {
   .no-print { display: none !important; }

@@ -372,6 +372,22 @@ export interface ItemRequest {
     actionClass?: string;
 }
 
+// ✅ ADDED: Interface for the new endpoint
+export interface ApprovedPendingRequest {
+    id: number;
+    code: string;
+    askingStore: string;
+    askingStoreId: number;
+    supplyingStore: string;
+    supplyingStoreId: number;
+    department: string | null;
+    requestedBy: string;
+    requestedAt: string;
+    approvedAt: string;
+    items: number;
+    pendingGroups: string[];
+}
+
 export interface RequestGroupProcessing {
     id: number;
     requestId: number;
@@ -652,15 +668,6 @@ async stockIn(payload: StockInPayload): Promise<{
 
 
 
-
-
-
-
-
-
-
-
-
 // ================================================================
 // DELETE STORE-GROUP DATA
 // ================================================================
@@ -690,7 +697,6 @@ async deleteStoreGroupData(payload: {
     };
   }
 }
-
 
 
 
@@ -742,9 +748,6 @@ async getWustLeWustHistory(params: {
 
 
 
-
-
-
 async updateWustLeWustTransferNumber(
   id: number,
   transferNumber: string | null,
@@ -779,12 +782,6 @@ async updateWustLeWustTransferNumber(
     };
   }
 }
-
-
-
-
-
-
 
 
 
@@ -880,8 +877,6 @@ async getWustLeWustItems(): Promise<{
     };
   }
 }
-
-
 
 
 
@@ -1153,6 +1148,40 @@ async exportBalances(
         }
         const response = await api.get(url);
         return response.data;
+    }
+
+    // ✅ ADDED: Method to fetch approved requests pending processing
+    async getApprovedPendingProcessing(params?: { search?: string; page?: number; limit?: number }): Promise<{
+        success: boolean;
+        data: ApprovedPendingRequest[];
+        pagination?: {
+            total: number;
+            page: number;
+            limit: number;
+            pages: number;
+        };
+        error?: string;
+    }> {
+        try {
+            const queryParams = new URLSearchParams();
+            if (params?.search) queryParams.append('search', params.search);
+            if (params?.page) queryParams.append('page', params.page.toString());
+            if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+            const url = queryParams.toString()
+                ? `/balances/approved-pending?${queryParams.toString()}`
+                : '/balances/approved-pending';
+
+            const response = await api.get(url);
+            return response.data;
+        } catch (error: any) {
+            console.error('Get approved pending processing error:', error);
+            return {
+                success: false,
+                data: [],
+                error: error.response?.data?.error || 'Failed to fetch approved pending processing data'
+            };
+        }
     }
 
     /**

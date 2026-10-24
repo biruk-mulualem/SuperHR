@@ -6661,3 +6661,159 @@ exports.updateWustLeWustTransferNumber = async (req, res) => {
     });
   }
 };
+
+
+
+// ============================================================
+// GET APPROVED PENDING PROCESSING (Tracking)
+// Returns all approved requests that are NOT finalized,
+// including a list of groups that have NOT processed them yet.
+// GET /api/balances/approved-pending
+// ============================================================
+exports.getApprovedPendingProcessing = async (req, res) => {
+  try {
+    const { search, page = 1, limit = 100 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // 1. Build the base query for approved requests
+    const whereClause = {
+      status: "approved", // Must be approved but not finalized
+    };
+
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      whereClause[Op.or] = [
+        { requestCode: { [Op.iLike]: q } },
+        { "$askingStore.name$": { [Op.iLike]: q } },
+        { "$supplyingStore.name$": { [Op.iLike]: q } },
+        { "$requestedByUser.fullName$": { [Op.iLike]: q } },
+      ];
+    }
+
+    // 2. Fetch requests with store and user info
+    const { count, rows: requests } = await ItemRequest.findAndCountAll({
+      where: whereClause,
+      include: [
+        { model: Store, as: "askingStore", attributes: ["id", "name", "code"] },
+        { model: Store, as: "supplyingStore", attributes: ["id", "name", "code"] },
+        { model: User, as: "requestedByUser", attributes: ["userId", "fullName", "username"] },
+        { model: ItemRequestDetail, as: "items", attributes: ["id"] }
+      ],
+      distinct: true,
+      limit: parseInt(limit),
+      offset: offset,
+      order: [["updatedAt", "DESC"]], // Newest approvals first
+    });
+
+    if (requests.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pagination: { total: 0, page: parseInt(page), limit: parseInt(limit), pages: 0 }
+      });
+    }
+
+    // 3. Extract all request IDs and gather both asking & supplying store IDs
+    const requestIds = requests.map(r => r.requestId);
+    const allStoreIds = new Set();
+    requests.forEach(r => {
+      allStoreIds.add(r.askingStoreId);
+      allStoreIds.add(r.supplyingStoreId);
+    });
+
+    // 4. Fetch ALL active groups for all involved stores
+    // (Using a raw query to efficiently join store_group_relations)
+    const allStoreGroups = await sequelize.query(
+      `SELECT sgr.store_id, g.id AS group_id, g.name AS group_name
+       FROM groups g
+       INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+       WHERE sgr.store_id IN (:storeIds) AND g.status = 'Active'`,
+      {
+        replacements: { storeIds: Array.from(allStoreIds) },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    // Organize groups by storeId
+    const groupsByStore = {};
+    allStoreGroups.forEach(sg => {
+      if (!groupsByStore[sg.store_id]) groupsByStore[sg.store_id] = [];
+      groupsByStore[sg.store_id].push({
+        id: parseInt(sg.group_id),
+        name: sg.group_name,
+      });
+    });
+
+    // 5. Fetch ALL processing records for these requests
+    const RequestGroupProcessing = sequelize.models.RequestGroupProcessing;
+    const processingRecords = await RequestGroupProcessing.findAll({
+      where: {
+        requestId: { [Op.in]: requestIds },
+        status: { [Op.in]: ["processed", "skipped"] },
+      },
+      attributes: ["requestId", "groupId"],
+    });
+
+    // Organize processed/skipped group IDs by requestId
+    const processedByRequest = {};
+    processingRecords.forEach(pr => {
+      if (!processedByRequest[pr.requestId]) processedByRequest[pr.requestId] = [];
+      processedByRequest[pr.requestId].push(parseInt(pr.groupId));
+    });
+
+    // 6. Build the final response payload
+    const formattedData = requests.map(req => {
+      // Get all required groups for this request (both stores)
+      const askingGroups = groupsByStore[req.askingStoreId] || [];
+      const supplyingGroups = groupsByStore[req.supplyingStoreId] || [];
+      
+      // Combine them. We use a Map to ensure a group isn't counted twice 
+      // if it belongs to both stores (edge case).
+      const allReqGroupsMap = new Map();
+      [...askingGroups, ...supplyingGroups].forEach(g => allReqGroupsMap.set(g.id, g));
+      const allReqGroups = Array.from(allReqGroupsMap.values());
+
+      // Get what has been processed/skipped so far
+      const processedIds = processedByRequest[req.requestId] || [];
+
+      // Find the ones that STILL need to process
+      const pendingGroups = allReqGroups
+        .filter(g => !processedIds.includes(g.id))
+        .map(g => g.name);
+
+      return {
+        id: req.requestId,
+        code: req.requestCode,
+        askingStore: req.askingStore?.name || "Unknown",
+        askingStoreId: req.askingStoreId,
+        supplyingStore: req.supplyingStore?.name || "Unknown",
+        supplyingStoreId: req.supplyingStoreId,
+        department: req.department?.name || null,
+        requestedBy: req.requestedByUser?.fullName || req.requestedByUser?.username || "Unknown",
+        requestedAt: req.createdAt,
+        approvedAt: req.updatedAt, // status changed to approved
+        items: req.items?.length || 0,
+        pendingGroups: pendingGroups, // The groups that haven't clicked Process yet
+      };
+    });
+
+    // 7. Return the formatted list
+    res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(count / parseInt(limit)),
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Get approved pending processing error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch pending processing requests",
+    });
+  }
+};

@@ -1576,6 +1576,69 @@ class ItemRequestService {
     return this.canApproveRequest(request);
   }
 
+
+
+  // ================================================================
+  // AWAITING MY APPROVAL
+  // ----------------------------------------------------------------
+  // Returns requests where every supplying-stage notification
+  // (groups + departments) has accepted, and the request is still
+  // pending your final approval.
+  // ================================================================
+  async getAwaitingMyApproval(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    storeId?: number | "all";
+    departmentId?: number | "all";
+    requesterId?: number | "all";
+  } = {}): Promise<{
+    success: boolean;
+    data: {
+      requests: ItemRequest[];
+      pagination: { total: number; page: number; limit: number; pages: number };
+    };
+    error?: string;
+  }> {
+    try {
+      const queryParams = new URLSearchParams();
+
+      queryParams.append("page", String(params.page ?? 1));
+      queryParams.append("limit", String(params.limit ?? 10));
+
+      if (params.search && params.search.trim() !== "") {
+        queryParams.append("search", params.search.trim());
+      }
+      if (params.storeId !== undefined && params.storeId !== "all") {
+        queryParams.append("storeId", String(params.storeId));
+      }
+      if (params.departmentId !== undefined && params.departmentId !== "all") {
+        queryParams.append("departmentId", String(params.departmentId));
+      }
+      if (params.requesterId !== undefined && params.requesterId !== "all") {
+        queryParams.append("requesterId", String(params.requesterId));
+      }
+
+      const url = `/item-requests/awaiting-my-approval?${queryParams.toString()}`;
+
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: any) {
+      console.error("Get awaiting-my-approval error:", error);
+      return {
+        success: false,
+        data: {
+          requests: [],
+          pagination: { total: 0, page: 1, limit: 10, pages: 0 },
+        },
+        error:
+          error.response?.data?.error ||
+          "Failed to fetch awaiting-my-approval requests",
+      };
+    }
+  }
+
+  
   getAcceptanceSummary(request: ItemRequest): string {
     const notifications = (request as any).notifications || [];
     if (notifications.length === 0) return "No approvals";

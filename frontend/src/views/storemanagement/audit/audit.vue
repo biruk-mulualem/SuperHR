@@ -26,9 +26,9 @@
         <button class="btn-export" @click="openExportModal" :disabled="exporting || filteredAuditData.length === 0">
           📊 {{ exporting ? 'Exporting...' : 'Export' }}
         </button>
-        <router-link to="/converted-audit" class="btn-link-audit">
+        <!-- <router-link to="/converted-audit" class="btn-link-audit">
           📊 Converted Balance Audit
-        </router-link>
+        </router-link> -->
       </div>
     </div>
 

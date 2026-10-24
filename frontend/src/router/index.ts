@@ -430,9 +430,21 @@ const router = createRouter({
   path: "pending-request", 
   name: "pending-request",
   component: () =>
-    import("@/views/storemanagement/notifications/NotificationManagement.vue"),
+    import("@/views/storemanagement/audit/pendingrequests.vue"),
   meta: {
     title: "pending-request",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost"],
+  },
+},
+
+
+{
+  path: "not-processed-request", 
+  name: "not-processed-request",
+  component: () =>
+    import("@/views/storemanagement/audit/ApprovedPendingProcessing.vue"),
+  meta: {
+    title: "not-processed-request",
     roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost"],
   },
 },
@@ -701,7 +713,7 @@ const router = createRouter({
           path: "store-balance-corrections",
           name: "store-balance-corrections",
           component: () =>
-            import("@/views/storemanagement/storebalance/BalanceCorrection.vue"),
+            import("@/views/storemanagement/audit/BalanceCorrection.vue"),
           meta: {
             title: "Print Store Balance",
             roles: ["admin", "storekeeper", "store_it", "checker"],

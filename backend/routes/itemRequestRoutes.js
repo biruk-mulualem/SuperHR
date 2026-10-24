@@ -220,7 +220,10 @@ router.post(
 // ================================================================
 // 🔥 IMPORTANT: Wildcard routes MUST come AFTER specific routes
 // ================================================================
-
+router.get(
+  "/awaiting-my-approval",
+  itemRequestController.getAwaitingMyApproval
+);
 // Get single request by ID
 router.get('/:id', itemRequestController.getRequestById);
 

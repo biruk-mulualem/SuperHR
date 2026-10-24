@@ -59,6 +59,11 @@ router.get(
   balanceController.getWustLeWustHistory,
 );
 
+router.get(
+  '/approved-pending', 
+  balanceController.getApprovedPendingProcessing
+);
+
 // ውስጥ ለውስጥ — update transfer number on a history record
 router.put(
   '/wust-lewust/history/:id/transfer-number',
