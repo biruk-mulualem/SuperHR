@@ -347,28 +347,16 @@ export interface ValidationError {
   requestedQuantity: number;
   error: string;
   message: string;
-  // ... existing properties
-  blockingRequests?: Array<{
-    requestId: number;
-    requestCode: string;
-    status: string;
-    quantity: number;           // ✅ ADD: Remaining Qty (e.g., 3)
-    requestedQuantity: number;  // ✅ ADD: Original Qty (e.g., 5)
-    processedQuantity: number;  // ✅ ADD: Processed Qty (e.g., 2)
-    uom: string;
-    askingStoreName?: string;
-    supplyingStoreName?: string;
-    requestedByName?: string;
+  groupsWithoutBalance?: Array<{
+    groupId: number;
+    groupName: string;
   }>;
-  blockingTemelash?: Array<{
-    temelashRecordId: number;
-    requestId: number;
-    requestCode: string;
-    quantity: number;
-    uom: string;
-    fromDate: string;
-    toDate: string;
+  balanceDetails?: Array<{
+    groupName: string;
+    balance: number;
   }>;
+  shortage?: number;
+  uomCode?: string;
 }
 
 export interface ValidationErrorResponse {

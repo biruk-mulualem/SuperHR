@@ -16,7 +16,6 @@ const {
   Group,
   TemelashRecord,
   PrintOverride,
-  RequestItemProcessing, // ✅ ADDED THIS
   sequelize,
 } = db;
 const { Op } = require("sequelize");
@@ -245,7 +244,6 @@ async function snapshotTemelashRecord(requestId, transaction = null) {
       code: d.item?.code || 'N/A',
       name: d.item?.name || 'Unknown',
       quantity: Number(d.quantity) || 0,
-      returnedQuantity: 0,
       uom: d.uom_code || d.item?.uom?.code || 'Units',
       remark: d.remark || '',
       specification: d.specification || '',
@@ -335,20 +333,15 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
       for (const row of arr) {
         if (!matchIds.includes(Number(row.itemId))) continue;
 
-        const requested = Number(row.quantity) || 0;
-        const returned =
-          Number(row.returnedQuantity ?? row.returned_quantity ?? 0) || 0;
-        const remaining = Math.max(0, requested - returned);
-        if (remaining <= 0) continue;
+        const qty = Number(row.quantity) || 0;
+        if (qty <= 0) continue;
 
-        temelashClaimed += remaining;
+        temelashClaimed += qty;
         temelashHits.push({
           temelashRecordId: rec.id,
           requestId: rec.requestId,
           requestCode: rec.requestCode,
-          quantity: remaining,
-          requestedQuantity: requested,
-          returnedQuantity: returned,
+          quantity: qty,
           uom: row.uom || 'Units',
           itemId: Number(row.itemId),
           fromDate: rec.fromDate,
@@ -359,14 +352,14 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
   }
 
   // ------------------------------------------------------------
-  // 2) Active request claims (pending + approved + finalized)
+  // 2) Active request claims (pending + approved)
   // ------------------------------------------------------------
   let activeRequestClaimed = 0;
   const activeRequestHits = [];
 
   const requestWhere = {
     supplyingStoreId,
-    status: { [Op.in]: ['pending', 'approved', 'finalized'] },
+    status: { [Op.in]: ['pending', 'approved'] },
   };
   if (excludeRequestId != null) {
     requestWhere.requestId = { [Op.ne]: Number(excludeRequestId) };
@@ -402,85 +395,23 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
     ],
   });
 
-  if (openRequests.length === 0) {
-    return {
-      temelashClaimed,
-      activeRequestClaimed: 0,
-      totalClaimed: temelashClaimed,
-      temelashHits,
-      activeRequestHits: [],
-      matchedItemIds: matchIds,
-    };
-  }
-
-  const detailIds = [];
-  for (const req of openRequests) {
-    for (const d of req.items || []) detailIds.push(d.id);
-  }
-
-  const processingRows = detailIds.length
-    ? await RequestItemProcessing.findAll({
-        where: { requestDetailId: { [Op.in]: detailIds } },
-        attributes: [
-          'requestId',
-          'requestDetailId',
-          'groupId',
-          'processedQuantity',
-          'remainingQuantity',
-          'status',
-          'uomCode',
-        ],
-      })
-    : [];
-
-  // Aggregate processed quantity per detail (MAX across groups)
-  const processingByDetail = new Map();
-  for (const row of processingRows) {
-    const key = Number(row.requestDetailId);
-    if (!processingByDetail.has(key)) {
-      processingByDetail.set(key, { processedTotal: 0, groups: [] });
-    }
-    const bucket = processingByDetail.get(key);
-    const pq = Number(row.processedQuantity) || 0;
-    
-    // ✅ Take the MAX processed by any single group, not the sum
-    bucket.processedTotal = Math.max(bucket.processedTotal, pq); 
-    
-    bucket.groups.push({
-      groupId: Number(row.groupId),
-      processedQuantity: pq,
-      remainingQuantity: Number(row.remainingQuantity) || 0,
-      status: row.status,
-      uomCode: row.uomCode || null,
-    });
-  }
-
   for (const req of openRequests) {
     for (const detail of req.items || []) {
-      const requested = Number(detail.quantity) || 0;
-      if (requested <= 0) continue;
+      const qty = Number(detail.quantity) || 0;
+      if (qty <= 0) continue;
 
-      const bucket = processingByDetail.get(Number(detail.id));
-      const processed = bucket ? bucket.processedTotal : 0;
-      const remaining = Math.max(0, requested - processed);
-      if (remaining <= 0) continue;
-
-      activeRequestClaimed += remaining;
+      activeRequestClaimed += qty;
       activeRequestHits.push({
         requestId: req.requestId,
         requestCode: req.requestCode,
         status: req.status,
-        quantity: remaining,
-        requestedQuantity: requested,
-        processedQuantity: processed,
+        quantity: qty,
         uom: detail.uom_code || 'Units',
         itemId: Number(detail.itemId),
-        requestDetailId: Number(detail.id),
         askingStoreId: req.askingStoreId,
         supplyingStoreId: req.supplyingStoreId,
         requestedBy: req.requestedBy || null,
         requestedById: req.requestedById || null,
-        processingGroups: bucket ? bucket.groups : [],
       });
     }
   }
@@ -522,6 +453,9 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
     );
   }
 
+  // ================================================================
+  // Shared store-name resolver (cached across ALL items in this call)
+  // ================================================================
   const storeNameCache = new Map();
   async function resolveStoreName(storeId) {
     if (!storeId) return "Unknown Store";
@@ -533,6 +467,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
     return name;
   }
 
+  // Pre-fetch the current request's context ONCE
   const currentRequestContext = {
     askingStoreName: await resolveStoreName(options.askingStoreId),
     supplyingStoreName: await resolveStoreName(supplyingStoreId),
@@ -568,6 +503,11 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
       ? parseFloat(itemRecord.conversionValue)
       : null;
 
+    console.log(`📦 Checking item: ${itemRecord.code}`);
+    console.log(`   Wants: ${userQuantity} ${userUomCode}`);
+    console.log(`   Item base UOM: ${baseUomCode}`);
+
+    // ---------- Raw balance ----------
     let rawBalance = 0;
     let balanceRow = null;
     let balanceType = "none";
@@ -585,6 +525,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
       balanceType = balanceRow ? "base" : "none";
     }
 
+    // ---------- Claims ----------
     const claims = await getItemClaims(
       supplyingStoreId,
       item.itemId,
@@ -592,9 +533,15 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
       { excludeRequestId, includeFamily: includeFamilyClaims }
     );
 
+    // ---------- Effective available ----------
     const effectiveAvailable = skipBalance
       ? Number.MAX_SAFE_INTEGER
       : Math.max(0, rawBalance - claims.totalClaimed);
+
+    console.log(`   Raw balance: ${rawBalance} ${userUomCode}`);
+    console.log(`   Temelash claimed: ${claims.temelashClaimed}`);
+    console.log(`   Active request claimed: ${claims.activeRequestClaimed}`);
+    console.log(`   Effective available: ${effectiveAvailable} ${userUomCode}`);
 
     stockInfo.push({
       itemId: item.itemId,
@@ -620,6 +567,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
       stockValidationSkipped: skipBalance,
     });
 
+    // ---------- Exempt-store path ----------
     if (skipBalance) {
       if (claims.temelashClaimed > 0) {
         errors.push({
@@ -639,6 +587,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
       continue;
     }
 
+    // ---------- Normal balance check ----------
     if (!balanceRow) {
       errors.push({
         itemId: item.itemId,
@@ -666,19 +615,18 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
         reasonSuffix = ", after subtracting open requests";
       }
 
+      // Enrich each blocking hit with store + requester names
+      // (uses the shared resolveStoreName declared ABOVE the item loop)
       const blockingRequests = await Promise.all(
         (claims.activeRequestHits || []).map(async (h) => ({
           requestId: h.requestId,
           requestCode: h.requestCode,
           status: h.status,
           quantity: h.quantity,
-          requestedQuantity: h.requestedQuantity,
-          processedQuantity: h.processedQuantity,
           uom: h.uom,
           askingStoreName: await resolveStoreName(h.askingStoreId),
           supplyingStoreName: await resolveStoreName(h.supplyingStoreId),
           requestedByName: h.requestedBy || "Unknown",
-          processingGroups: h.processingGroups || [],
         })),
       );
 
@@ -687,8 +635,6 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
         requestId: h.requestId,
         requestCode: h.requestCode,
         quantity: h.quantity,
-        requestedQuantity: h.requestedQuantity,
-        returnedQuantity: h.returnedQuantity,
         uom: h.uom,
         fromDate: h.fromDate,
         toDate: h.toDate,
@@ -706,11 +652,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
           .map(
             (t) =>
               `${t.requestCode || `Temelash#${t.temelashRecordId}`}` +
-              ` (${t.quantity} ${t.uom} still out` +
-              (t.returnedQuantity > 0
-                ? `, returned ${t.returnedQuantity}/${t.requestedQuantity}`
-                : "") +
-              `)`
+              ` (${t.quantity} ${t.uom})`
           )
           .join(", ");
         messageLines.push(`Temelash out: ${tList}`);
@@ -721,8 +663,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
           .map(
             (r) =>
               `${r.requestCode || `#${r.requestId}`}` +
-              ` [${r.status}] (${r.quantity} ${r.uom} still open` +
-              ` — ${r.processedQuantity}/${r.requestedQuantity} processed)` +
+              ` [${r.status}] (${r.quantity} ${r.uom})` +
               ` — from ${r.askingStoreName} to ${r.supplyingStoreName}, by ${r.requestedByName}`,
           )
           .join("; ");
@@ -736,10 +677,14 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
         requestedQuantity: userQuantity,
         uomCode: userUomCode,
         balanceType,
+
+        // Structured context (in addition to the message string)
         askingStoreName: currentRequestContext.askingStoreName,
         supplyingStoreName: currentRequestContext.supplyingStoreName,
         requestedByName: currentRequestContext.requestedByName,
+
         message: messageLines.join(" "),
+
         availableQuantity: effectiveAvailable,
         rawBalance,
         temelashClaimed: claims.temelashClaimed,
@@ -747,6 +692,7 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
         totalClaimed: claims.totalClaimed,
         blockingRequests,
         blockingTemelash,
+
         _debug: {
           rawBalance,
           temelashClaimed: claims.temelashClaimed,
@@ -783,19 +729,32 @@ async function createRequestNotifications(
   excludedDepartmentIds = []
 ) {
   try {
+    console.log(`📤 [STAGE 1] Creating ASKING STORE notifications for request ${requestId}`);
+    console.log(`   Asking store: ${askingStoreId}`);
+    console.log(`   Supplying store: ${supplyingStoreId} (will be notified AFTER asking approves)`);
+    console.log(`   Requesting user ID: ${requestingUserId}`);
+    console.log(`   🔥 Excluding requesting user's group ID: ${requestingUserGroupId}`);
+    console.log(`   🔥 Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
+
     let askStoreApprovalEnabled = true;
     try {
       askStoreApprovalEnabled = await db.SystemSetting.getAskStoreApprovalEnabled();
     } catch (err) {
+      console.warn('⚠️ Could not read ask_store_enabled setting — defaulting to ENABLED:', err.message);
       askStoreApprovalEnabled = true;
     }
 
+    console.log(`🔍 Stage 1 toggle (ask_store_enabled): ${askStoreApprovalEnabled ? 'ENABLED' : 'DISABLED'}`);
+
     if (!askStoreApprovalEnabled) {
+      console.log(`⏭️ Stage 1 is DISABLED — skipping to supplying stage`);
       await createSupplyingStageNotifications(
         requestId, supplyingStoreId, askingStoreId, isAsset, transaction, excludedDepartmentIds
       );
       return 0;
     }
+
+    console.log(`✅ Stage 1 is ENABLED — proceeding with asking store groups`);
 
     let allAskingGroups = await db.sequelize.query(
       `SELECT g.id, g.name, g.code, g.status
@@ -809,24 +768,44 @@ async function createRequestNotifications(
       }
     );
 
+    console.log(`📋 Found ${allAskingGroups.length} total asking store groups`);
+
     try {
       const storeGroupConfig = await getStoreGroupApprovalConfig();
       const allowedGroupIds = getAllowedApproverGroupIds(storeGroupConfig, askingStoreId);
 
       if (allowedGroupIds) {
+        console.log(`🔒 Store ${askingStoreId} has ${allowedGroupIds.length} allowed approver group(s): [${allowedGroupIds.join(', ')}]`);
         allAskingGroups = allAskingGroups.filter((g) => allowedGroupIds.includes(Number(g.id)));
+        console.log(`📋 Filtered down to ${allAskingGroups.length} allowed group(s)`);
+      } else {
+        console.log(`ℹ️ No store-group config for store ${askingStoreId} — allowing all groups`);
       }
     } catch (err) {
-      console.warn('⚠️ Could not apply store-group approval filter:', err.message);
+      console.warn('⚠️ Could not apply store-group approval filter — using all groups:', err.message);
     }
 
     let askingGroups = allAskingGroups;
+    let excludedGroup = null;
+
     if (requestingUserGroupId) {
       const targetGroupId = parseInt(requestingUserGroupId);
+      excludedGroup = allAskingGroups.find((g) => parseInt(g.id) === targetGroupId);
       askingGroups = allAskingGroups.filter((g) => parseInt(g.id) !== targetGroupId);
+
+      if (excludedGroup) {
+        console.log(`🚫 EXCLUDED group "${excludedGroup.name}" (ID ${excludedGroup.id}) — this is the requesting user's own group`);
+      } else {
+        console.log(`⚠️ Requesting user's group ID ${targetGroupId} not found — no exclusion applied`);
+      }
+    } else {
+      console.log(`ℹ️ No requesting user group ID provided — no group excluded`);
     }
 
+    console.log(`📋 Will create notifications for ${askingGroups.length} asking store groups`);
+
     if (askingGroups.length === 0) {
+      console.log(`⚠️ No asking store groups to notify (after exclusion) — advancing directly to supplying stage`);
       await createSupplyingStageNotifications(
         requestId, supplyingStoreId, askingStoreId, isAsset, transaction, excludedDepartmentIds
       );
@@ -854,6 +833,7 @@ async function createRequestNotifications(
         returning: true,
         transaction,
       });
+      console.log(`✅ [STAGE 1] Created ${result.length} asking store group notifications`);
       return result.length;
     }
 
@@ -872,12 +852,16 @@ async function createSupplyingStageNotifications(
   transaction = null, excludedDepartmentIds = []
 ) {
   try {
+    console.log(`📤 [STAGE 2] Creating SUPPLYING STORE notifications for request ${requestId}`);
+    console.log(`   Excluded department IDs: [${excludedDepartmentIds.join(', ')}]`);
+
     const existingCount = await RequestNotification.count({
       where: { request_id: requestId, stage: "supplying_store" },
       transaction,
     });
 
     if (existingCount > 0) {
+      console.log(`ℹ️ [STAGE 2] Supplying notifications already exist (${existingCount}) — skipping`);
       return { created: false, count: existingCount };
     }
 
@@ -894,6 +878,8 @@ async function createSupplyingStageNotifications(
         transaction,
       }
     );
+
+    console.log(`📋 Found ${supplyingGroups.length} supplying store groups`);
 
     const groupNotifications = supplyingGroups
       .filter((g) => g.id && !isNaN(parseInt(g.id)))
@@ -917,28 +903,45 @@ async function createSupplyingStageNotifications(
         transaction,
       });
       totalCount += result.length;
+      console.log(`✅ [STAGE 2] Created ${result.length} supplying store group notifications`);
     }
 
     if (isAsset) {
+      console.log(`📋 isAsset is true — checking department config...`);
+
       const askingStore = await Store.findByPk(askingStoreId, { transaction });
       if (!askingStore) {
+        console.log(`⚠️ Asking store ${askingStoreId} not found — skipping department notifications`);
         return { created: true, count: totalCount };
       }
 
       const config = await getApprovalDepartmentConfig();
 
-      if (config && config.departments && config.departments.length > 0) {
+      if (!config || !config.departments || config.departments.length === 0) {
+        console.log(`⚠️ No approval departments configured — skipping`);
+      } else {
         const excludedSet = new Set((excludedDepartmentIds || []).map((id) => Number(id)));
 
         const applicableDepartments = config.departments.filter((d) => {
           const matchesStore = Array.isArray(d.appliesTo) && d.appliesTo.includes(askingStore.code);
           const isExcluded = excludedSet.has(Number(d.departmentId));
+          if (matchesStore && isExcluded) {
+            console.log(`🚫 Skipping department ${d.departmentId} — excluded by requester`);
+          }
           return matchesStore && !isExcluded;
         });
 
+        console.log(
+          `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
+          `department(s) apply to store ${askingStore.code} (excluded: ${excludedSet.size})`
+        );
+
         for (const entry of applicableDepartments) {
           const department = await db.Department.findByPk(entry.departmentId, { transaction });
-          if (!department) continue;
+          if (!department) {
+            console.log(`⚠️ Department ${entry.departmentId} not found — skipping`);
+            continue;
+          }
 
           await RequestNotification.create(
             {
@@ -957,10 +960,14 @@ async function createSupplyingStageNotifications(
           );
 
           totalCount++;
+          console.log(`✅ [STAGE 2] Created department notification for ${department.name}`);
         }
       }
+    } else {
+      console.log(`ℹ️ isAsset is false — no department notifications`);
     }
 
+    console.log(`✅ [STAGE 2] Total supplying notifications created: ${totalCount}`);
     return { created: true, count: totalCount };
   } catch (error) {
     console.error("❌ Error creating supplying stage notifications:", error);
@@ -973,8 +980,11 @@ async function createSupplyingStageNotifications(
 // ================================================================
 async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
   try {
+    console.log(`🔄 Checking if request ${requestId} should advance to supplying stage`);
+
     const request = await ItemRequest.findByPk(requestId, { transaction });
     if (!request) {
+      console.log(`⚠️ Request ${requestId} not found`);
       return { advanced: false, reason: "request_not_found" };
     }
 
@@ -984,6 +994,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
     });
 
     if (existingSupplying > 0) {
+      console.log(`ℹ️ Supplying notifications already exist — no advancement needed`);
       return { advanced: false, reason: "already_advanced" };
     }
 
@@ -993,19 +1004,28 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
     });
 
     if (askingNotifications.length === 0) {
+      console.log(`⚠️ No asking notifications found for request ${requestId}`);
       return { advanced: false, reason: "no_asking_notifications" };
     }
 
+    const total = askingNotifications.length;
+    const accepted = askingNotifications.filter((n) => n.status === "accepted").length;
     const rejected = askingNotifications.filter((n) => n.status === "rejected").length;
     const pending = askingNotifications.filter((n) => n.status === "pending").length;
 
+    console.log(`📊 Asking store progress: ${accepted}/${total} accepted, ${rejected} rejected, ${pending} pending`);
+
     if (rejected > 0) {
+      console.log(`❌ Asking store has rejections — NOT advancing`);
       return { advanced: false, reason: "has_rejection" };
     }
 
     if (pending > 0) {
+      console.log(`⏳ Asking store still has ${pending} pending — waiting`);
       return { advanced: false, reason: "still_pending" };
     }
+
+    console.log(`✅ All asking store groups accepted — ADVANCING to supplying stage`);
 
     const excludedDepartmentIds = request.excludedDepartmentIds || [];
 
@@ -1018,6 +1038,7 @@ async function checkAndAdvanceToSupplyingStage(requestId, transaction = null) {
       excludedDepartmentIds
     );
 
+    console.log(`🚀 Advanced to supplying stage: ${result.count} notifications created`);
     return { advanced: true, count: result.count };
   } catch (error) {
     console.error("❌ Error advancing to supplying stage:", error);
@@ -1120,18 +1141,12 @@ exports.checkStockAvailability = async (req, res) => {
           itemCode: itemData?.code || "N/A",
           uomCode: itemData?.uom?.code || "Units",
           availableQuantity: stockInfo?.availableQuantity || 0,
-          rawBalance: stockInfo?.rawBalance || 0,
-          temelashClaimed: stockInfo?.temelashClaimed || 0,
-          activeRequestClaimed: stockInfo?.activeRequestClaimed || 0,
-          totalClaimed: stockInfo?.totalClaimed || 0,
-          activeRequestHits: stockInfo?.activeRequestHits || [],
-          temelashHits: stockInfo?.temelashHits || [],
           isAvailable: validationResult.validationSkipped
             ? true
-            : (stockInfo?.availableQuantity || 0) > 0,
+            : stockInfo?.availableQuantity > 0,
           hasEnoughStock: validationResult.validationSkipped
             ? true
-            : (stockInfo?.availableQuantity || 0) >= item.quantity,
+            : stockInfo?.availableQuantity >= item.quantity,
           shortage: validationResult.validationSkipped
             ? 0
             : stockInfo
@@ -1393,6 +1408,15 @@ exports.createRequest = async (req, res) => {
       excludedDepartmentIds = [],
     } = req.body;
 
+    console.log('📦 ===== ITEMS RECEIVED FROM FRONTEND =====');
+    console.log(JSON.stringify(items, null, 2));
+    console.log('👤 requestedById:', requestedById);
+    console.log('👤 requestedBy  :', requestedBy);
+    console.log('🚫 excludedDepartmentIds:', excludedDepartmentIds);
+    console.log('🔄 isTemelash:', isTemelash);
+    console.log('📅 temelashFromDate:', temelashFromDate);
+    console.log('📅 temelashToDate:', temelashToDate);
+
     if (!askingStoreId || !supplyingStoreId) {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Asking store and supplying store are required" });
@@ -1433,6 +1457,9 @@ exports.createRequest = async (req, res) => {
     }
 
     const skipNotifications = shouldSkipNotifications(supplyingStore.code);
+    if (skipNotifications) {
+      console.log(`⚠️ Store ${supplyingStore.code} (${supplyingStore.name}) - Notifications will be skipped`);
+    }
 
     if (requestedById) {
       const user = await User.findByPk(requestedById);
@@ -1499,6 +1526,10 @@ exports.createRequest = async (req, res) => {
       const selectedUom = item.selectedUom || "base";
       const isBaseUom = item.isBaseUom !== false;
 
+      console.log(
+        `📦 Item ${itemRecord.code}: uomCode=${uomCode}, selectedUom=${selectedUom}, isBaseUom=${isBaseUom}`
+      );
+
       validatedItems.push({
         ...item,
         itemRecord,
@@ -1523,6 +1554,7 @@ exports.createRequest = async (req, res) => {
       });
     }
 
+    // Store-wide stock validation — with context
     const stockValidation = await validateStockAvailability(
       supplyingStoreId,
       validatedItems,
@@ -1551,6 +1583,9 @@ exports.createRequest = async (req, res) => {
       });
     }
 
+    // ============================================================
+    // SAFE CREATE WITH RETRY
+    // ============================================================
     const requestCreateData = {
       askingStoreId: parseInt(askingStoreId),
       supplyingStoreId: parseInt(supplyingStoreId),
@@ -1580,6 +1615,9 @@ exports.createRequest = async (req, res) => {
         break;
       } catch (err) {
         if (err.name === "SequelizeUniqueConstraintError" && codeAttempt < 4) {
+          console.warn(
+            `⚠️ Request code collision (attempt ${codeAttempt + 1}), retrying...`
+          );
           codeAttempt++;
           continue;
         }
@@ -1610,6 +1648,7 @@ exports.createRequest = async (req, res) => {
     let notificationCount = 0;
 
     if (!skipNotifications) {
+      console.log(`📤 [STAGE 1] Creating asking store notifications for request ${request.requestId}, isAsset: ${isAsset}`);
       try {
         const requestingUserGroupId = await resolveRequestingUserGroupId(
           req,
@@ -1630,12 +1669,15 @@ exports.createRequest = async (req, res) => {
       } catch (notifError) {
         console.error("❌ Error creating notifications:", notifError);
       }
+    } else {
+      console.log(`⚠️ SKIPPED notifications for store: ${supplyingStore.code} (${supplyingStore.name}) - Foreign/Local Purchase`);
     }
 
     let printOverride = null;
     try {
       printOverride = await savePageSnapshot(request.requestId, req, t);
     } catch (snapErr) {
+      console.error("❌ [SNAPSHOT] Create snapshot failed — rolling back:", snapErr);
       await t.rollback();
       return res.status(500).json({
         success: false,
@@ -1674,29 +1716,19 @@ exports.createRequest = async (req, res) => {
           itemId: s.itemId, itemName: s.itemName, itemCode: s.itemCode,
           availableQuantity: Number.MAX_SAFE_INTEGER,
           availableQuantityDisplay: "Unlimited (SKIPPED)",
-          rawBalance: s.rawBalance,
-          temelashClaimed: s.temelashClaimed,
-          activeRequestClaimed: s.activeRequestClaimed,
-          totalClaimed: s.totalClaimed,
           requestedQuantity: s.requestedQuantity, uomCode: s.uomCode,
           hasStock: true, hasEnoughStock: true,
           stockValidationSkipped: true, skipReason: s.skipReason,
-          activeRequestHits: s.activeRequestHits || [],
         }))
       : stockValidation.stockInfo.map((s) => ({
           itemId: s.itemId, itemName: s.itemName || "Unknown",
           itemCode: s.itemCode || "N/A",
           availableQuantity: s.availableQuantity,
-          rawBalance: s.rawBalance,
-          temelashClaimed: s.temelashClaimed,
-          activeRequestClaimed: s.activeRequestClaimed,
-          totalClaimed: s.totalClaimed,
           requestedQuantity: s.requestedQuantity,
           uomCode: s.uomCode || "Units",
           hasStock: s.availableQuantity > 0,
           hasEnoughStock: s.requestedQuantity <= s.availableQuantity,
           stockValidationSkipped: false,
-          activeRequestHits: s.activeRequestHits || [],
         }));
 
     const responseMessage = skipNotifications
@@ -1766,6 +1798,12 @@ exports.updateRequest = async (req, res) => {
       excludedDepartmentIds = [],
     } = req.body;
 
+    console.log(`🔄 Updating request ${id} with data:`, {
+      askingStoreId, supplyingStoreId, itemCount: items?.length ?? 0,
+      requestedById, requestedBy, requestedDate, isAsset, isTemelash,
+      temelashFromDate, temelashToDate, excludedDepartmentIds,
+    });
+
     const request = await ItemRequest.findByPk(id, { transaction: t });
     if (!request) {
       await t.rollback();
@@ -1780,21 +1818,6 @@ exports.updateRequest = async (req, res) => {
     if (request.status === "finalized") {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Cannot edit finalized requests" });
-    }
-
-    // 🔒 Block edit if anything has already been processed
-    const alreadyProcessed = await RequestItemProcessing.count({
-      where: { requestId: request.requestId },
-      transaction: t,
-    });
-    if (alreadyProcessed > 0) {
-      await t.rollback();
-      return res.status(400).json({
-        success: false,
-        error:
-          "Cannot edit this request — one or more items have already been processed by the supplying store",
-        processedRecords: alreadyProcessed,
-      });
     }
 
     const nextAskingStoreId =
@@ -1936,6 +1959,8 @@ exports.updateRequest = async (req, res) => {
         });
       }
 
+      console.log(`📦 Running stock validation for store ${nextSupplyingStoreId} on ${validatedItems.length} item(s)`);
+
       stockValidation = await validateStockAvailability(
         nextSupplyingStoreId,
         validatedItems,
@@ -1947,6 +1972,7 @@ exports.updateRequest = async (req, res) => {
       );
 
       if (!stockValidation.validationSkipped && stockValidation.errors.length > 0) {
+        console.log(`❌ Stock validation FAILED — ${stockValidation.errors.length} error(s)`);
         await t.rollback();
 
         return res.status(400).json({
@@ -1965,6 +1991,10 @@ exports.updateRequest = async (req, res) => {
           },
         });
       }
+
+      console.log(`✅ Stock validation passed`);
+    } else {
+      console.log(`ℹ️ No items in payload — skipping item/stock validation`);
     }
 
     await request.update(
@@ -2013,9 +2043,13 @@ exports.updateRequest = async (req, res) => {
     const updatedIsAsset = isAsset !== undefined ? isAsset : request.isAsset;
     const updatedRequestedById = requestedById !== undefined ? requestedById : request.requestedById;
 
+    console.log(`🗑️ Deleting all notifications for request ${id}`);
     await RequestNotification.destroy({ where: { request_id: id }, transaction: t });
 
-    if (!skipNotifications) {
+    if (skipNotifications) {
+      console.log(`⚠️ SKIPPED notification recreation for store ${supplyingStore.code} (${supplyingStore.name}) — Foreign/Local Purchase`);
+    } else {
+      console.log(`📤 [STAGE 1] Recreating asking store notifications for request ${id}, isAsset: ${updatedIsAsset}`);
       try {
         const requestingUserGroupId = await resolveRequestingUserGroupId(req, updatedRequestedById, t);
 
@@ -2030,6 +2064,13 @@ exports.updateRequest = async (req, res) => {
           excludedDepartmentIds
         );
       } catch (notifError) {
+        console.error("❌ Notification recreation failed — rolling back:", {
+          name: notifError?.name,
+          message: notifError?.message,
+          sql: notifError?.sql,
+          parent: notifError?.parent?.message,
+          original: notifError?.original?.message,
+        });
         await t.rollback();
         return res.status(500).json({
           success: false,
@@ -2043,6 +2084,7 @@ exports.updateRequest = async (req, res) => {
     try {
       printOverride = await savePageSnapshot(request.requestId, req, t);
     } catch (snapErr) {
+      console.error("❌ [SNAPSHOT] Update snapshot failed — rolling back:", snapErr);
       await t.rollback();
       return res.status(500).json({
         success: false,
@@ -2052,6 +2094,8 @@ exports.updateRequest = async (req, res) => {
     }
 
     await t.commit();
+
+    console.log(`✅ Request ${id} updated successfully — status reset to pending`);
 
     const updatedRequest = await ItemRequest.findByPk(id, {
       include: [
@@ -2141,15 +2185,26 @@ exports.updateStatus = async (req, res) => {
 
     const request = await ItemRequest.findByPk(id);
     if (!request) {
-      return res.status(404).json({ success: false, error: "Request not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Request not found",
+      });
     }
 
     if (!isRequestCreator(req, request)) {
-      return res.status(403).json({ success: false, error: "Only the request creator can change status" });
+      return res.status(403).json({
+        success: false,
+        error: "Only the request creator can change status",
+      });
     }
+
     if (request.status === "finalized") {
-      return res.status(400).json({ success: false, error: "Cannot change status of finalized requests" });
+      return res.status(400).json({
+        success: false,
+        error: "Cannot change status of finalized requests",
+      });
     }
+
     if (request.status === "rejected" && status === "approved") {
       return res.status(400).json({
         success: false,
@@ -2158,41 +2213,6 @@ exports.updateStatus = async (req, res) => {
     }
 
     const previousStatus = request.status;
-
-    // 🔒 Block finalize unless every processing row is completed
-    if (status === "finalized") {
-      const openProcessing = await RequestItemProcessing.findAll({
-        where: {
-          requestId: request.requestId,
-          status: { [Op.ne]: "completed" },
-        },
-        attributes: ["id", "requestDetailId", "remainingQuantity", "status"],
-      });
-      if (openProcessing.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error: "Cannot finalize — some items are not fully processed",
-          openProcessing,
-        });
-      }
-    }
-
-    // 🔒 Block Temelash approval once processing has started
-    if (
-      status === "approved" &&
-      previousStatus !== "approved" &&
-      request.isTemelash === true
-    ) {
-      const processed = await RequestItemProcessing.count({
-        where: { requestId: request.requestId },
-      });
-      if (processed > 0) {
-        return res.status(400).json({
-          success: false,
-          error: "Cannot approve as Temelash after items have been processed",
-        });
-      }
-    }
 
     await request.update({ status });
 
@@ -2205,7 +2225,11 @@ exports.updateStatus = async (req, res) => {
       try {
         temelashRecord = await snapshotTemelashRecord(request.requestId);
       } catch (snapErr) {
-        console.error("⚠️ Failed to snapshot Temelash record:", request.requestId, snapErr);
+        console.error(
+          "⚠️ Failed to snapshot Temelash record for request",
+          request.requestId,
+          snapErr
+        );
       }
     }
 
@@ -2521,21 +2545,10 @@ exports.deleteRequest = async (req, res) => {
     const previousStatus = request.status;
     const requestCode = request.requestCode;
 
-    // 🔒 Block deletion if any processing has been recorded
-    const processed = await RequestItemProcessing.count({ where: { requestId: id } });
-    if (processed > 0 && !admin) {
-      return res.status(400).json({
-        success: false,
-        error: "Cannot delete — one or more items have already been processed",
-      });
-    }
-
     // Cleanup dependent rows
     await RequestNotification.destroy({
       where: { request_id: id },
     });
-
-    await RequestItemProcessing.destroy({ where: { requestId: id } });
 
     if (db.TemelashRecord) {
       await db.TemelashRecord.destroy({
@@ -2762,16 +2775,24 @@ exports.acceptNotification = async (req, res) => {
       { transaction: t }
     );
 
+    console.log(`✅ Notification ${notificationId} accepted (stage: ${notification.stage})`);
+
     let stageAdvanced = false;
     let advancementResult = null;
 
     if (notification.stage === "asking_store") {
+      console.log(`🔄 Asking store notification accepted — checking advancement...`);
+
       advancementResult = await checkAndAdvanceToSupplyingStage(
         notification.request_id,
         t
       );
 
       stageAdvanced = advancementResult.advanced;
+
+      if (stageAdvanced) {
+        console.log(`🚀 ADVANCED TO SUPPLYING STAGE!`);
+      }
     }
 
     await t.commit();
@@ -2840,6 +2861,11 @@ exports.rejectNotification = async (req, res) => {
       responded_by: userId,
       responded_at: new Date(),
     });
+
+    console.log(
+      `❌ Notification ${notificationId} REJECTED (stage: ${notification.stage}) — ` +
+      `request ${notification.request_id} will NOT advance`
+    );
 
     res.status(200).json({
       success: true,
@@ -2985,18 +3011,28 @@ exports.getStats = async (req, res) => {
     const currentUserRole = currentUser?.role;
     const userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
 
+    console.log("🔍 Stats - Current user:", {
+      userId: currentUserId,
+      role: currentUserRole,
+      storeId: userStoreId,
+    });
+
     let where = {};
 
     if (currentUserRole === "admin") {
-      // all
+      console.log("👑 Admin user - showing all requests for stats");
     } else if (currentUserRole === "storekeeper" || currentUserRole === "store_it") {
       if (userStoreId) {
         where[Op.or] = [
           { askingStoreId: userStoreId },
           { supplyingStoreId: userStoreId },
         ];
-      } else if (currentUserId) {
-        where.requestedById = currentUserId;
+        console.log(`📦 Store user (${currentUserRole}) - stats for store ${userStoreId}`);
+      } else {
+        if (currentUserId) {
+          where.requestedById = currentUserId;
+        }
+        console.log(`👤 Store user with no store - showing only their requests`);
       }
     } else if (currentUserRole === "checker" || currentUserRole === "finance") {
       where.status = { [Op.in]: ["approved", "finalized"] };
@@ -3006,52 +3042,70 @@ exports.getStats = async (req, res) => {
           { supplyingStoreId: userStoreId },
         ];
       }
-    } else if (currentUserId) {
-      where.requestedById = currentUserId;
-      if (userStoreId) {
-        where = {
-          [Op.or]: [
-            { requestedById: currentUserId },
-            { askingStoreId: userStoreId },
-            { supplyingStoreId: userStoreId },
-          ],
-        };
-      }
+      console.log(`📊 Checker/Finance user - showing approved/finalized requests`);
     } else {
-      return res.json({
-        success: true,
-        data: { total: 0, pending: 0, approved: 0, rejected: 0, finalized: 0 },
-      });
+      if (currentUserId) {
+        where.requestedById = currentUserId;
+        console.log(`👤 Non-store user - showing only their requests (userId: ${currentUserId})`);
+      } else {
+        return res.json({
+          success: true,
+          data: { total: 0, pending: 0, approved: 0, rejected: 0, finalized: 0 },
+        });
+      }
+
+      if (userStoreId) {
+        where[Op.or] = [
+          { requestedById: currentUserId },
+          { askingStoreId: userStoreId },
+          { supplyingStoreId: userStoreId },
+        ];
+        console.log(`📍 User also has store ${userStoreId} - showing store requests too`);
+      }
     }
 
+    console.log("📋 Stats WHERE clause:", JSON.stringify(where, null, 2));
+
     const total = await ItemRequest.count({ where });
-    const pending = await ItemRequest.count({ where: { ...where, status: "pending" } });
-    const approved = await ItemRequest.count({ where: { ...where, status: "approved" } });
-    const rejected = await ItemRequest.count({ where: { ...where, status: "rejected" } });
-    const finalized = await ItemRequest.count({ where: { ...where, status: "finalized" } });
+    const pending = await ItemRequest.count({ where: { ...where, status: 'pending' } });
+    const approved = await ItemRequest.count({ where: { ...where, status: 'approved' } });
+    const rejected = await ItemRequest.count({ where: { ...where, status: 'rejected' } });
+    const finalized = await ItemRequest.count({ where: { ...where, status: 'finalized' } });
 
     const statusBreakdown = await ItemRequest.findAll({
       attributes: [
-        "status",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
       where,
-      group: ["status"],
+      group: ['status']
+    });
+
+    console.log('📊 Stats result:', {
+      total, pending, approved, rejected, finalized,
+      breakdown: statusBreakdown.map(s => ({
+        status: s.status,
+        count: parseInt(s.dataValues.count)
+      }))
     });
 
     res.json({
       success: true,
       data: {
         total, pending, approved, rejected, finalized,
-        breakdown: statusBreakdown.map((s) => ({
+        breakdown: statusBreakdown.map(s => ({
           status: s.status,
-          count: parseInt(s.dataValues.count),
-        })),
-      },
+          count: parseInt(s.dataValues.count)
+        }))
+      }
     });
+
   } catch (error) {
-    console.error("❌ Get stats error:", error);
-    res.status(500).json({ success: false, error: "Failed to get statistics" });
+    console.error('❌ Get stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get statistics'
+    });
   }
 };
 
@@ -3080,7 +3134,7 @@ exports.getActiveStores = async (req, res) => {
 };
 
 // ================================================================
-// 20. GET ACTIVE ITEMS — returned as FAMILIES (unchanged logic)
+// 20. GET ACTIVE ITEMS — returned as FAMILIES
 // ================================================================
 exports.getActiveItems = async (req, res) => {
   try {
@@ -3089,9 +3143,10 @@ exports.getActiveItems = async (req, res) => {
     const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const offset = (pageNum - 1) * limitNum;
-    const searchTerm = (search || "").trim();
+    const searchTerm = (search || '').trim();
 
-    const where = { status: "Active" };
+    // ---- 1) Find candidate items ----
+    const where = { status: 'Active' };
     if (searchTerm) {
       const like = `%${searchTerm}%`;
       where[Op.or] = [
@@ -3106,14 +3161,14 @@ exports.getActiveItems = async (req, res) => {
     const candidates = await Item.findAll({
       where,
       attributes: [
-        "itemId", "code", "name", "standardName", "brand", "model",
-        "categoryId", "uomId", "conversionUomId", "conversionValue",
+        'itemId', 'code', 'name', 'standardName', 'brand', 'model',
+        'categoryId', 'uomId', 'conversionUomId', 'conversionValue',
       ],
       include: [
-        { model: UOM, as: "uom", attributes: ["uomId", "code", "name"] },
-        { model: UOM, as: "conversionUom", attributes: ["uomId", "code", "name"] },
+        { model: UOM, as: 'uom', attributes: ['uomId', 'code', 'name'] },
+        { model: UOM, as: 'conversionUom', attributes: ['uomId', 'code', 'name'] },
       ],
-      order: [["code", "ASC"]],
+      order: [['code', 'ASC']],
       limit: limitNum * 4,
     });
 
@@ -3125,16 +3180,18 @@ exports.getActiveItems = async (req, res) => {
       });
     }
 
+    // ---- 2) Build families via item_relationships ----
     const candidateIds = candidates.map((i) => i.itemId);
+
     const relations = await db.ItemRelationship.findAll({
       where: {
-        status: "Active",
+        status: 'Active',
         [Op.or]: [
           { itemAId: { [Op.in]: candidateIds } },
           { itemBId: { [Op.in]: candidateIds } },
         ],
       },
-      attributes: ["itemAId", "itemBId"],
+      attributes: ['itemAId', 'itemBId'],
     });
 
     const familyRoot = new Map();
@@ -3144,10 +3201,12 @@ exports.getActiveItems = async (req, res) => {
       const rootA = familyRoot.get(a) ?? a;
       const rootB = familyRoot.get(b) ?? b;
       if (rootA === rootB) return;
+
       const [newRoot, absorbed] = rootA < rootB ? [rootA, rootB] : [rootB, rootA];
       familyRoot.set(absorbed, newRoot);
       familyRoot.set(a, newRoot);
       familyRoot.set(b, newRoot);
+
       const absorbedMembers = familyMembers.get(absorbed) || new Set([absorbed]);
       if (!familyMembers.has(newRoot)) familyMembers.set(newRoot, new Set([newRoot]));
       absorbedMembers.forEach((m) => {
@@ -3165,24 +3224,26 @@ exports.getActiveItems = async (req, res) => {
       }
     });
 
+    // ---- 3) Collect every item in every matched family ----
     const allFamilyItemIds = new Set();
     candidateIds.forEach((id) => {
       const root = familyRoot.get(id);
-      (familyMembers.get(root) || new Set([root])).forEach((m) =>
-        allFamilyItemIds.add(m)
-      );
+      (familyMembers.get(root) || new Set([root])).forEach((m) => allFamilyItemIds.add(m));
     });
 
+    // ---- 4) Load full details for every family member ----
     const allItems = await Item.findAll({
-      where: { itemId: { [Op.in]: [...allFamilyItemIds] }, status: "Active" },
-      attributes: ["itemId", "code", "name", "standardName", "brand", "model", "categoryId"],
+      where: { itemId: { [Op.in]: [...allFamilyItemIds] }, status: 'Active' },
+      attributes: ['itemId', 'code', 'name', 'standardName', 'brand', 'model', 'categoryId'],
       include: [
-        { model: UOM, as: "uom", attributes: ["uomId", "code", "name"] },
-        { model: db.Category, as: "category", attributes: ["categoryId", "name"] },
+        { model: UOM, as: 'uom', attributes: ['uomId', 'code', 'name'] },
+        { model: db.Category, as: 'category', attributes: ['categoryId', 'name'] },
       ],
     });
+
     const itemById = new Map(allItems.map((i) => [i.itemId, i]));
 
+    // ---- 5) Optional stock per itemId for the current store+group ----
     let stockByItem = {};
     if (storeId && groupId) {
       const balances = await StoreBalance.findAll({
@@ -3190,15 +3251,16 @@ exports.getActiveItems = async (req, res) => {
           storeId: parseInt(storeId, 10),
           groupId: parseInt(groupId, 10),
           itemId: { [Op.in]: [...allFamilyItemIds] },
-          status: "Active",
+          status: 'Active',
         },
-        attributes: ["itemId", "balance"],
+        attributes: ['itemId', 'balance'],
       });
       balances.forEach((b) => {
         stockByItem[b.itemId] = parseFloat(b.balance) || 0;
       });
     }
 
+    // ---- 6) Assemble families ----
     const familiesSeen = new Set();
     const families = [];
 
@@ -3224,11 +3286,13 @@ exports.getActiveItems = async (req, res) => {
 
       if (members.length === 0) continue;
 
-      const displayItem = members.find((m) => m.itemId === anchor.itemId) || members[0];
+      const displayItem =
+        members.find((m) => m.itemId === anchor.itemId) || members[0];
 
       families.push({
         familyId: `family-${root}`,
-        displayName: displayItem.standardName || displayItem.name || displayItem.code,
+        displayName:
+          displayItem.standardName || displayItem.name || displayItem.code,
         code: displayItem.code,
         category: displayItem.category?.name || null,
         brand: displayItem.brand || null,
@@ -3237,8 +3301,8 @@ exports.getActiveItems = async (req, res) => {
           itemId: m.itemId,
           code: m.code,
           name: m.standardName || m.name,
-          uomCode: m.uom?.code || "—",
-          uomName: m.uom?.name || m.uom?.code || "—",
+          uomCode: m.uom?.code || '—',
+          uomName: m.uom?.name || m.uom?.code || '—',
           stock: stockByItem[m.itemId] ?? null,
         })),
       });
@@ -3260,7 +3324,10 @@ exports.getActiveItems = async (req, res) => {
     });
   } catch (error) {
     console.error("Get active items (families) error:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch active items" });
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch active items",
+    });
   }
 };
 
@@ -3303,7 +3370,9 @@ exports.getGroupNotifications = async (req, res) => {
       whereClause.status = status;
     }
 
-    const totalCount = await RequestNotification.count({ where: whereClause });
+    const totalCount = await RequestNotification.count({
+      where: whereClause,
+    });
 
     const notifications = await RequestNotification.findAll({
       where: whereClause,
@@ -3583,6 +3652,13 @@ exports.getPendingNotifications = async (req, res) => {
     const userGroupId = req.user?.groupId || req.user?.assignedGroupId;
     const departmentId = req.user?.departmentId;
 
+    console.log('📤 getPendingNotifications called:');
+    console.log('  userId:', userId);
+    console.log('  userRole:', userRole);
+    console.log('  userStoreId:', userStoreId);
+    console.log('  userGroupId:', userGroupId);
+    console.log('  departmentId:', departmentId);
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -3607,7 +3683,9 @@ exports.getPendingNotifications = async (req, res) => {
       is_department_approval: true
     };
 
-    if (!isAdmin && !isChecker) {
+    if (isAdmin || isChecker) {
+      console.log(`👑 ${userRole} user - showing ALL pending notifications`);
+    } else {
       if (userStoreId && userGroupId) {
         const storeGroupRelation = await StoreGroupRelation.findOne({
           where: {
@@ -3619,16 +3697,21 @@ exports.getPendingNotifications = async (req, res) => {
         if (storeGroupRelation) {
           groupWhere.group_id = parseInt(userGroupId);
           groupWhere.store_id = parseInt(userStoreId);
+          console.log('✅ Group notifications will be fetched for store:', userStoreId, 'group:', userGroupId);
         } else {
+          console.log('⚠️ Group not found in this store, skipping group notifications');
           groupWhere.id = -1;
         }
       } else {
+        console.log('⚠️ No store/group found, skipping group notifications');
         groupWhere.id = -1;
       }
 
       if (departmentId) {
         deptWhere.department_id = parseInt(departmentId);
+        console.log('✅ Department notifications will be fetched for department:', departmentId);
       } else {
+        console.log('⚠️ No department found, skipping department notifications');
         deptWhere.id = -1;
       }
     }
@@ -3684,6 +3767,7 @@ exports.getPendingNotifications = async (req, res) => {
       });
       groupNotifications = groupResult.rows || [];
       groupTotal = groupResult.count || 0;
+      console.log(`📊 Found ${groupTotal} group notifications`);
     }
 
     if (deptWhere.id !== -1) {
@@ -3736,6 +3820,7 @@ exports.getPendingNotifications = async (req, res) => {
       });
       deptNotifications = deptResult.rows || [];
       deptTotal = deptResult.count || 0;
+      console.log(`📊 Found ${deptTotal} department notifications`);
     }
 
     const allNotifications = [
@@ -3757,6 +3842,8 @@ exports.getPendingNotifications = async (req, res) => {
 
     const total = groupTotal + deptTotal;
     const pages = Math.ceil(total / limitVal);
+
+    console.log(`✅ Total pending notifications: ${total} (Group: ${groupTotal}, Dept: ${deptTotal})`);
 
     res.json({
       success: true,
@@ -3781,6 +3868,7 @@ exports.getPendingNotifications = async (req, res) => {
         },
       },
     });
+
   } catch (error) {
     console.error("❌ Error getting pending notifications:", error);
     res.status(500).json({
@@ -3804,6 +3892,8 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
       });
     }
 
+    console.log(`📤 Fetching approval departments for store: ${storeCode}`);
+
     const store = await Store.findOne({ where: { code: storeCode } });
     if (!store) {
       return res.status(404).json({
@@ -3815,6 +3905,7 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
     const config = await getApprovalDepartmentConfig();
 
     if (!config || !config.departments || config.departments.length === 0) {
+      console.log(`ℹ️ No approval departments configured`);
       return res.json({
         success: true,
         data: {
@@ -3828,6 +3919,11 @@ exports.getApprovalDepartmentsForStore = async (req, res) => {
 
     const applicableDepartments = config.departments.filter(
       (d) => Array.isArray(d.appliesTo) && d.appliesTo.includes(storeCode)
+    );
+
+    console.log(
+      `📋 ${applicableDepartments.length} of ${config.departments.length} ` +
+      `department(s) apply to store ${storeCode}`
     );
 
     const enriched = await Promise.all(
@@ -3962,69 +4058,66 @@ exports.getTemelashRecords = async (req, res) => {
 };
 
 // ================================================================
-// 27. RETURN A TEMELASH RECORD (supports partial returns)
+// 27. RETURN A TEMELASH RECORD
 // ================================================================
 exports.returnTemelash = async (req, res) => {
   try {
     const { recordId } = req.params;
-    const { remark, returns } = req.body;
+    const { remark } = req.body;
     const userId = req.user?.userId;
 
-    if (!userId) return res.status(401).json({ success: false, error: "User not authenticated" });
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
 
     const record = await TemelashRecord.findByPk(recordId);
-    if (!record) return res.status(404).json({ success: false, error: "Temelash record not found" });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: "Temelash record not found",
+      });
+    }
+
     if (record.status !== "out") {
-      return res.status(400).json({ success: false, error: `Temelash record is already ${record.status}` });
+      return res.status(400).json({
+        success: false,
+        error: `Temelash record is already ${record.status}`,
+      });
     }
-
-    const items = Array.isArray(record.items)
-      ? record.items.map((r) => ({ ...r }))
-      : [];
-
-    if (!Array.isArray(returns) || returns.length === 0) {
-      for (const row of items) {
-        row.returnedQuantity = Number(row.quantity) || 0;
-      }
-    } else {
-      for (const { itemId, quantity } of returns) {
-        const row = items.find((r) => Number(r.itemId) === Number(itemId));
-        if (!row) continue;
-        const requested = Number(row.quantity) || 0;
-        const prev = Number(row.returnedQuantity ?? 0) || 0;
-        const next = Math.min(requested, prev + Number(quantity || 0));
-        row.returnedQuantity = next;
-      }
-    }
-
-    const allReturned = items.every(
-      (r) => Number(r.returnedQuantity ?? 0) >= Number(r.quantity || 0)
-    );
 
     const now = new Date();
     const isLate = record.toDate ? now > new Date(record.toDate) : false;
 
     await record.update({
-      items,
-      status: allReturned ? "returned" : "out",
-      returnedAt: allReturned ? now : record.returnedAt,
-      returnedById: allReturned ? userId : record.returnedById,
+      status: "returned",
+      returnedAt: now,
+      returnedById: userId,
       returnRemark: remark || null,
-      returnedLate: allReturned ? isLate : record.returnedLate,
+      returnedLate: isLate,
     });
+
+    console.log(
+      `✅ [TEMELASH] Record ${recordId} (${record.requestCode}) returned` +
+      (isLate ? " [LATE]" : "")
+    );
 
     res.json({
       success: true,
-      message: allReturned
-        ? isLate
-          ? "Temelash fully returned (marked as LATE)"
-          : "Temelash fully returned"
-        : "Temelash partially returned — record still marked as OUT",
+      message: isLate
+        ? "Temelash returned successfully (marked as LATE)"
+        : "Temelash returned successfully",
       data: record,
     });
   } catch (error) {
     console.error("❌ Error returning temelash:", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to return temelash" });
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to return temelash",
+    });
   }
 };
 
@@ -4037,7 +4130,12 @@ exports.changeNotificationDecision = async (req, res) => {
     const { status, reason } = req.body;
     const userId = req.user?.userId;
 
-    if (!userId) return res.status(401).json({ success: false, error: "User not authenticated" });
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "User not authenticated",
+      });
+    }
 
     if (!["accepted", "rejected"].includes(status)) {
       return res.status(400).json({
@@ -4047,26 +4145,43 @@ exports.changeNotificationDecision = async (req, res) => {
     }
 
     if (status === "rejected" && (!reason || !reason.trim())) {
-      return res.status(400).json({ success: false, error: "Rejection reason is required" });
+      return res.status(400).json({
+        success: false,
+        error: "Rejection reason is required",
+      });
     }
 
     const notification = await RequestNotification.findByPk(notificationId);
-    if (!notification) return res.status(404).json({ success: false, error: "Notification not found" });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: "Notification not found",
+      });
+    }
 
     const request = await ItemRequest.findByPk(notification.request_id);
-    if (!request) return res.status(404).json({ success: false, error: "Parent request not found" });
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: "Parent request not found",
+      });
+    }
+
     if (request.status !== "pending") {
       return res.status(400).json({
         success: false,
         error: `Cannot change decision — request is already ${request.status}`,
       });
     }
+
     if (notification.status === "pending") {
       return res.status(400).json({
         success: false,
         error: "Notification has no decision yet — use accept/reject first",
       });
     }
+
     if (notification.status === status) {
       return res.status(400).json({
         success: false,
@@ -4081,15 +4196,42 @@ exports.changeNotificationDecision = async (req, res) => {
       responded_at: new Date(),
     });
 
-    res.status(200).json({ success: true, message: `Decision changed to ${status}`, data: notification });
+    console.log(
+      `🔁 Notification ${notificationId} decision flipped to ${status} (stage: ${notification.stage})`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Decision changed to ${status}`,
+      data: notification,
+    });
   } catch (error) {
     console.error("❌ Error changing notification decision:", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to change decision" });
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to change decision",
+    });
   }
 };
 
+
+
+
+
 // ================================================================
 // 29. GET AWAITING MY APPROVAL
+// ----------------------------------------------------------------
+// Returns pending requests where EVERY supplying-stage notification
+// (groups AND departments) has accepted, and none have rejected.
+//
+// Role scoping:
+//   - admin                     → all requests
+//   - storekeeper / store_it    → asking store OR supplying store = user's store
+//   - checker / finance         → allowed store scope (or all if no store)
+//   - everyone else             → requests they created
+//
+// Filters: search, storeId, departmentId, requesterId
+// Returns: array of requests, each with acceptedBy[] (per group/department)
 // ================================================================
 exports.getAwaitingMyApproval = async (req, res) => {
   try {
@@ -4112,6 +4254,7 @@ exports.getAwaitingMyApproval = async (req, res) => {
     const currentUserId = currentUser?.userId;
     const currentUserRole = currentUser?.role;
 
+    // Resolve user store + admin flag
     const { getUserStoreAndGroup } = require("../utils/userAccess");
     let userStoreId = currentUser?.storeId || currentUser?.assignedStoreId;
     let userIsAdmin = false;
@@ -4128,6 +4271,10 @@ exports.getAwaitingMyApproval = async (req, res) => {
       }
     }
 
+    // ------------------------------------------------------------
+    // 1) Aggregate supplying-stage notifications by request
+    //    → keep requests where accepted == total && rejected == 0
+    // ------------------------------------------------------------
     const allSupplying = await RequestNotification.findAll({
       where: { stage: "supplying_store" },
       attributes: ["request_id", "status"],
@@ -4163,6 +4310,9 @@ exports.getAwaitingMyApproval = async (req, res) => {
       });
     }
 
+    // ------------------------------------------------------------
+    // 2) WHERE clause — pending only
+    // ------------------------------------------------------------
     const where = {
       requestId: { [Op.in]: fullyAcceptedRequestIds },
       status: "pending",
@@ -4170,11 +4320,13 @@ exports.getAwaitingMyApproval = async (req, res) => {
 
     const andClauses = [];
 
+    // Role-based store scoping
     const isAdmin = currentUserRole === "admin" || currentUserRole === "Admin" || userIsAdmin;
     const isStorekeeper = currentUserRole === "storekeeper" || currentUserRole === "store_it";
     const isChecker = currentUserRole === "checker" || currentUserRole === "finance";
 
     if (isAdmin) {
+      // admins see everything — no extra scope unless caller sets storeId
       if (storeId !== "all") {
         andClauses.push({
           [Op.or]: [
@@ -4191,6 +4343,7 @@ exports.getAwaitingMyApproval = async (req, res) => {
             { supplyingStoreId: userStoreId },
           ],
         });
+        // Honour explicit store filter (intersect)
         if (storeId !== "all" && parseInt(storeId, 10) !== userStoreId) {
           andClauses.push({
             [Op.or]: [
@@ -4215,10 +4368,12 @@ exports.getAwaitingMyApproval = async (req, res) => {
       where.requestedById = currentUserId;
     }
 
+    // Explicit requester filter
     if (requesterId !== "all") {
       where.requestedById = parseInt(requesterId, 10);
     }
 
+    // Department filter — match the requester's department
     if (departmentId !== "all") {
       const deptUsers = await User.findAll({
         where: { departmentId: parseInt(departmentId, 10) },
@@ -4237,6 +4392,7 @@ exports.getAwaitingMyApproval = async (req, res) => {
       where.requestedById = { [Op.in]: ids };
     }
 
+    // Search — matches code, remark, requester name/username
     if (search && search.trim() !== "") {
       andClauses.push({
         [Op.or]: [
@@ -4253,6 +4409,9 @@ exports.getAwaitingMyApproval = async (req, res) => {
       where[Op.and] = andClauses;
     }
 
+    // ------------------------------------------------------------
+    // 3) Count + fetch with all needed relations
+    // ------------------------------------------------------------
     const totalCount = await ItemRequest.count({
       where,
       distinct: true,
@@ -4297,12 +4456,6 @@ exports.getAwaitingMyApproval = async (req, res) => {
               as: "item",
               include: [{ model: UOM, as: "uom" }],
             },
-            // ✅ ADDED processingRows HERE SO WE CAN CALCULATE REMAINING
-            {
-              model: RequestItemProcessing,
-              as: "processingRows",
-              required: false,
-            },
           ],
           attributes: [
             "id", "requestId", "itemId", "quantity", "remark",
@@ -4330,6 +4483,9 @@ exports.getAwaitingMyApproval = async (req, res) => {
       ],
     });
 
+    // ------------------------------------------------------------
+    // 4) Map to the shape the frontend expects
+    // ------------------------------------------------------------
     const requests = rows.map((r) => {
       const notifications = r.notifications || [];
 
@@ -4376,33 +4532,18 @@ exports.getAwaitingMyApproval = async (req, res) => {
         isAsset: r.isAsset,
         isTemelash: r.isTemelash,
         items: r.items?.length || 0,
-        itemsDetail: (r.items || []).map((it) => {
-          const requested = Number(it.quantity) || 0;
-          
-          // ✅ FIXED: Take the max, not the sum
-          const processed = Math.max(
-            0,
-            ...(it.processingRows || []).map((p) => Number(p.processedQuantity) || 0)
-          );
-          
-          const remaining = Math.max(0, requested - processed);
-          
-          return {
-            detailId: it.id,
-            itemId: it.itemId,
-            code: it.item?.code || "N/A",
-            name: it.item?.name || "Unknown",
-            quantity: requested,
-            processedQuantity: processed,
-            remainingQuantity: remaining,
-            isFullyProcessed: remaining === 0,
-            uom: it.uom_code || it.item?.uom?.code || "Units",
-            remark: it.remark || null,
-            specification: it.specification || null,
-            brand: it.brand || null,
-            model: it.model || null,
-          };
-        }),
+        itemsDetail: (r.items || []).map((it) => ({
+          detailId: it.id,
+          itemId: it.itemId,
+          code: it.item?.code || "N/A",
+          name: it.item?.name || "Unknown",
+          quantity: Number(it.quantity) || 0,
+          uom: it.uom_code || it.item?.uom?.code || "Units",
+          remark: it.remark || null,
+          specification: it.specification || null,
+          brand: it.brand || null,
+          model: it.model || null,
+        })),
         acceptedBy,
       };
     });
@@ -4427,3 +4568,4 @@ exports.getAwaitingMyApproval = async (req, res) => {
     });
   }
 };
+
