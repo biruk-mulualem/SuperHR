@@ -308,7 +308,6 @@
                 <span class="custom-cell-print">{{ getCustomCellValue(index, col.key) }}</span>
               </template>
 
-              <!-- ✅ UOM column: no more dropdown — the UOM is baked into the itemId -->
               <template v-else-if="col.key === 'uom'">
                 <span class="cell-print-inline">{{ getSelectedUomLabel(item) }}</span>
               </template>
@@ -366,175 +365,166 @@
             </td>
           </tr>
 
-          <!-- ============================================================ -->
-          <!-- DRAFT ROW — FAMILY SEARCH + UOM PICKER                        -->
-          <!-- ============================================================ -->
-      <!-- ---- DRAFT ROW ---- -->
-<tr class="draft-row">
-  <td v-if="isMergingRemarks" class="no-print cell-checkbox"></td>
+          <!-- DRAFT ROW — FAMILY SEARCH + UOM PICKER -->
+          <tr class="draft-row">
+            <td v-if="isMergingRemarks" class="no-print cell-checkbox"></td>
 
-  <!-- ➕ -->
-  <td class="row-number-cell draft-number-cell">
-    <button
-      type="button"
-      class="row-add-plus"
-      @click="commitDraft"
-      :disabled="!draftSelectedUom"
-      :title="draftSelectedUom ? 'Add this item' : 'Pick an item + UOM first'"
-    >➕</button>
-  </td>
+            <td class="row-number-cell draft-number-cell">
+              <button
+                type="button"
+                class="row-add-plus"
+                @click="commitDraft"
+                :disabled="!draftSelectedUom"
+                :title="draftSelectedUom ? 'Add this item' : 'Pick an item + UOM first'"
+              >➕</button>
+            </td>
 
-  <!-- Item cell — search + family pick (no UOM picker here) -->
-  <td class="text-left draft-item-cell">
-    <div class="draft-item-picker" ref="draftPickerRef">
-      <div v-if="!draftSelectedFamily" class="draft-search-wrap">
-        <span class="draft-search-icon">🔍</span>
-        <input
-          ref="draftSearchRef"
-          v-model="draftSearch"
-          type="text"
-          class="draft-search-input"
-          placeholder="Search item…"
-          autocomplete="off"
-          @focus="onDraftFocus"
-          @input="onDraftSearchInput"
-          @blur="onDraftBlur"
-          @keydown.esc="resetDraft"
-          @keydown.enter.prevent="onDraftSearchEnter"
-        />
-        <span v-if="isDraftSearching" class="draft-spinner">⏳</span>
-      </div>
+            <td class="text-left draft-item-cell">
+              <div class="draft-item-picker" ref="draftPickerRef">
+                <div v-if="!draftSelectedFamily" class="draft-search-wrap">
+                  <span class="draft-search-icon">🔍</span>
+                  <input
+                    ref="draftSearchRef"
+                    v-model="draftSearch"
+                    type="text"
+                    class="draft-search-input"
+                    placeholder="Search item…"
+                    autocomplete="off"
+                    @focus="onDraftFocus"
+                    @input="onDraftSearchInput"
+                    @blur="onDraftBlur"
+                    @keydown.esc="resetDraft"
+                    @keydown.enter.prevent="onDraftSearchEnter"
+                  />
+                  <span v-if="isDraftSearching" class="draft-spinner">⏳</span>
+                </div>
 
-      <div
-        v-if="showDraftDropdown && (draftOptions.length > 0 || isDraftSearching)"
-        class="draft-dropdown"
-      >
-        <div v-if="isDraftSearching && draftOptions.length === 0" class="draft-no-results">
-          Loading items…
-        </div>
-        <template v-else>
-         <div
-  v-for="family in draftOptions"
-  :key="family.familyId"
-  class="draft-option"
-  @mousedown.prevent="pickFamily(family)"
->
-  <span class="draft-option-code">{{ family.code }}</span>
+                <div
+                  v-if="showDraftDropdown && (draftOptions.length > 0 || isDraftSearching)"
+                  class="draft-dropdown"
+                >
+                  <div v-if="isDraftSearching && draftOptions.length === 0" class="draft-no-results">
+                    Loading items…
+                  </div>
+                  <template v-else>
+                    <div
+                      v-for="family in draftOptions"
+                      :key="family.familyId"
+                      class="draft-option"
+                      @mousedown.prevent="pickFamily(family)"
+                    >
+                      <span class="draft-option-code">{{ family.code }}</span>
 
-  <div class="draft-option-main">
-    <span class="draft-option-name">{{ family.displayName }}</span>
-    <span v-if="family.category" class="draft-option-category">
-      📂 {{ family.category }}
-    </span>
-  </div>
+                      <div class="draft-option-main">
+                        <span class="draft-option-name">{{ family.displayName }}</span>
+                        <span v-if="family.category" class="draft-option-category">
+                          📂 {{ family.category }}
+                        </span>
+                      </div>
 
-  <span class="draft-option-uom">
-    <template v-if="family.uoms.length === 1">
-      {{ family.uoms[0]?.uomCode }}
-    </template>
-    <template v-else>
-      {{ family.uoms.length }} UOMs: {{ family.uoms.map(u => u.uomCode).join(' · ') }}
-    </template>
-  </span>
-</div>
-          <div
-            v-if="hasMoreDraftItems"
-            class="draft-option draft-option-more"
-            @mousedown.prevent="loadMoreDraftItems"
-          >
-            {{ isDraftLoadingMore
-              ? 'Loading…'
-              : `Load more (${draftOptions.length}/${draftTotal})` }}
-          </div>
-        </template>
-      </div>
+                      <span class="draft-option-uom">
+                        <template v-if="family.uoms.length === 1">
+                          {{ family.uoms[0]?.uomCode }}
+                        </template>
+                        <template v-else>
+                          {{ family.uoms.length }} UOMs: {{ family.uoms.map(u => u.uomCode).join(' · ') }}
+                        </template>
+                      </span>
+                    </div>
+                    <div
+                      v-if="hasMoreDraftItems"
+                      class="draft-option draft-option-more"
+                      @mousedown.prevent="loadMoreDraftItems"
+                    >
+                      {{ isDraftLoadingMore
+                        ? 'Loading…'
+                        : `Load more (${draftOptions.length}/${draftTotal})` }}
+                    </div>
+                  </template>
+                </div>
 
-      <div
-        v-else-if="showDraftDropdown && draftSearch.trim() && !isDraftSearching && draftOptions.length === 0"
-        class="draft-no-results"
-      >
-        No items match "{{ draftSearch }}"
-      </div>
+                <div
+                  v-else-if="showDraftDropdown && draftSearch.trim() && !isDraftSearching && draftOptions.length === 0"
+                  class="draft-no-results"
+                >
+                  No items match "{{ draftSearch }}"
+                </div>
 
-      <!-- Picked family — just shows the name, no UOM buttons -->
-      <div v-if="draftSelectedFamily" class="draft-picked">
-        <span class="item-code-pill">{{ draftSelectedFamily.code }}</span>
-        <span class="item-name-text">{{ draftSelectedFamily.displayName }}</span>
-        <button
-          type="button"
-          class="draft-picked-clear"
-          @click="resetDraft"
-          title="Clear"
-        >✕</button>
-      </div>
-    </div>
-  </td>
+                <div v-if="draftSelectedFamily" class="draft-picked">
+                  <span class="item-code-pill">{{ draftSelectedFamily.code }}</span>
+                  <span class="item-name-text">{{ draftSelectedFamily.displayName }}</span>
+                  <button
+                    type="button"
+                    class="draft-picked-clear"
+                    @click="resetDraft"
+                    title="Clear"
+                  >✕</button>
+                </div>
+              </div>
+            </td>
 
-  <!-- Tail columns (Qty, Brand, Model, Spec, etc.) -->
-  <td
-    v-for="col in draftTailColumns"
-    :key="`draft-${col.key}`"
-    :class="{
-      'cell-qty': col.key === 'quantity',
-      'text-left': col.align === 'left',
-    }"
-  >
-    <!-- ✅ UOM cell — now a <select> populated from the picked family -->
-    <template v-if="col.key === 'uom'">
-   <select
-  :value="draftSelectedUom?.itemId ?? ''"
-  class="cell-select no-print"
-  :disabled="!draftSelectedFamily"
-  @change="onDraftUomSelect"
->
-  <option
-    v-for="u in (draftSelectedFamily?.uoms ?? [])"
-    :key="u.itemId"
-    :value="u.itemId"
-  >
-    {{ u.uomCode }}
-    <template v-if="u.stock !== null"> ({{ u.stock }} on hand)</template>
-  </option>
-</select>
-    </template>
+            <td
+              v-for="col in draftTailColumns"
+              :key="`draft-${col.key}`"
+              :class="{
+                'cell-qty': col.key === 'quantity',
+                'text-left': col.align === 'left',
+              }"
+            >
+              <template v-if="col.key === 'uom'">
+                <select
+                  :value="draftSelectedUom?.itemId ?? ''"
+                  class="cell-select no-print"
+                  :disabled="!draftSelectedFamily"
+                  @change="onDraftUomSelect"
+                >
+                  <option
+                    v-for="u in (draftSelectedFamily?.uoms ?? [])"
+                    :key="u.itemId"
+                    :value="u.itemId"
+                  >
+                    {{ u.uomCode }}
+                    <template v-if="u.stock !== null"> ({{ u.stock }} on hand)</template>
+                  </option>
+                </select>
+              </template>
 
-    <template v-else-if="col.key === 'quantity'">
-      <input
-        type="number"
-        v-model.number="draftQty"
-        min="0.01"
-        step="0.01"
-        class="qty-input no-print"
-      />
-    </template>
+              <template v-else-if="col.key === 'quantity'">
+                <input
+                  type="number"
+                  v-model.number="draftQty"
+                  min="0.01"
+                  step="0.01"
+                  class="qty-input no-print"
+                />
+              </template>
 
-    <template v-else-if="col.key === 'brand'">
-      <input type="text" v-model="draftBrand" class="cell-input no-print" placeholder=" "  />
-    </template>
+              <template v-else-if="col.key === 'brand'">
+                <input type="text" v-model="draftBrand" class="cell-input no-print" placeholder=" "  />
+              </template>
 
-    <template v-else-if="col.key === 'model'">
-      <input type="text" v-model="draftModel" class="cell-input no-print" placeholder=" "  />
-    </template>
+              <template v-else-if="col.key === 'model'">
+                <input type="text" v-model="draftModel" class="cell-input no-print" placeholder=" "  />
+              </template>
 
-    <template v-else-if="col.key === 'specification'">
-      <input type="text" v-model="draftSpecification" class="cell-input no-print" placeholder=" "  />
-    </template>
+              <template v-else-if="col.key === 'specification'">
+                <input type="text" v-model="draftSpecification" class="cell-input no-print" placeholder=" "  />
+              </template>
 
-    <template v-else>
-      <input
-        type="text"
-        class="cell-input no-print"
-        placeholder=" " 
-        v-model="draftFieldValues[col.key]"
-      />
-    </template>
-  </td>
+              <template v-else>
+                <input
+                  type="text"
+                  class="cell-input no-print"
+                  placeholder=" " 
+                  v-model="draftFieldValues[col.key]"
+                />
+              </template>
+            </td>
 
-  <!-- Remark -->
-  <td class="remark-cell">
-    <input v-model="draftRemark" type="text" class="cell-input no-print" placeholder=" "  />
-  </td>
-</tr>
+            <td class="remark-cell">
+              <input v-model="draftRemark" type="text" class="cell-input no-print" placeholder=" "  />
+            </td>
+          </tr>
 
           <tr v-if="requestItems.length === 0 && !draftSelectedFamily" class="empty-hint-row no-print">
             <td
@@ -841,9 +831,6 @@
                 </span>
               </div>
 
-              <!-- Stock math line -->
-             
-
               <!-- Open requests — TABLE -->
               <div
                 v-if="error.blockingRequests && error.blockingRequests.length > 0"
@@ -858,7 +845,7 @@
                       <tr>
                         <th>Request Code</th>
                         <th>Status</th>
-                        <th class="text-right">Qty</th>
+                        <th class="text-right">Remaining Qty</th>
                         <th>Asking Store</th>
                         <th>Supplying Store</th>
                         <th>Requested By</th>
@@ -878,7 +865,12 @@
                           </span>
                         </td>
                         <td class="text-right val-error-qty-cell">
-                          {{ br.quantity }} {{ br.uom }}
+                          <div style="font-weight: 700; color: #dc2626;">
+                            {{ br.quantity }} {{ br.uom }}
+                          </div>
+                          <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
+                            Requested: {{ br.requestedQuantity }} | Processed: {{ br.processedQuantity }}
+                          </div>
                         </td>
                         <td>{{ br.askingStoreName || '—' }}</td>
                         <td>{{ br.supplyingStoreName || '—' }}</td>
