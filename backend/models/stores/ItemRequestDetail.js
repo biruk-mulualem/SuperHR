@@ -14,6 +14,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'itemId',
         as: 'item',
       });
+
+      ItemRequestDetail.hasMany(models.RequestItemProcessing, {
+  foreignKey: 'requestDetailId',
+  as: 'processingRows',
+});
     }
 
     getFullInfo() {

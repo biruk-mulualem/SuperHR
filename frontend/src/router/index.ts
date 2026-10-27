@@ -439,6 +439,20 @@ const router = createRouter({
 
 
 {
+  path: "status-records", 
+  name: "status-records",
+  component: () =>
+    import("@/views/storemanagement/StatusRecords/ItemStatusRecordPage.vue"),
+  meta: {
+    title: "status-records",
+    roles: ["admin", "storekeeper", "store_it", "checker", "employee", "nebret", "cost"],
+  },
+},
+
+
+
+
+{
   path: "not-processed-request", 
   name: "not-processed-request",
   component: () =>

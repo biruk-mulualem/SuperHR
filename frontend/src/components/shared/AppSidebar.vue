@@ -209,6 +209,8 @@ const roleMenus = {
       icon: "CogIcon",
       badge: null,
     }, 
+
+     { name: "status-records", path: "/status-records", icon: "CogIcon", badge: null },
     // {
     //   name: "fleet Management",
     //   path: "/fleet-Management",
@@ -232,6 +234,8 @@ const roleMenus = {
       icon: "CalendarIcon",
       badge: null,
     },
+
+     
   ],
   finance: [
     { name: "Dashboard", path: "/dashboard", icon: "HomeIcon", badge: null },
