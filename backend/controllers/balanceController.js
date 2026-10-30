@@ -3364,10 +3364,6 @@ exports.getRequestGroupStatus = async (req, res) => {
 // PROCESS REQUEST FOR A SPECIFIC GROUP - WITH BASE & CONVERTED UOM SUPPORT
 // ================================================================
 
-// ================================================================
-// PROCESS REQUEST FOR A SPECIFIC GROUP
-// Uses StoreBalance only (converted balances are gone)
-// ================================================================
 exports.processRequestForGroup = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -3560,7 +3556,7 @@ exports.processRequestForGroup = async (req, res) => {
     }
 
     // ================================================================
-    // 10. PROCESS ITEMS — StoreBalance only
+    // 10. PROCESS ITEMS — StoreBalance + processed_quantity sync
     // ================================================================
     const autoInitializedItems = [];
     const results = [];
@@ -3579,6 +3575,7 @@ exports.processRequestForGroup = async (req, res) => {
         }
 
         const uomCode = item.uom_code || item.item.uom?.code || "PCS";
+        const itemDetailId = item.id ?? item.detailId;
 
         let balance = await StoreBalance.findOne({
           where: {
@@ -3653,6 +3650,27 @@ exports.processRequestForGroup = async (req, res) => {
         balance.balance = newBalance;
         await balance.save({ transaction });
 
+        // ✅ Persist processed qty on the detail row (clamped to avoid double-counting
+        //    if processRequests already partially processed this detail)
+        const currentDetail = await ItemRequestDetail.findByPk(itemDetailId, {
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        const alreadyProcessed = currentDetail
+          ? parseFloat(currentDetail.processed_quantity) || 0
+          : 0;
+        const remainingToAdd = Math.max(0, quantity - alreadyProcessed);
+
+        if (remainingToAdd > 0) {
+          await ItemRequestDetail.increment(
+            { processed_quantity: remainingToAdd },
+            {
+              where: { id: itemDetailId },
+              transaction,
+            }
+          );
+        }
+
         await StoreBalanceHistory.create(
           {
             balanceId: balance.id,
@@ -3687,11 +3705,14 @@ exports.processRequestForGroup = async (req, res) => {
           action: action === "STOCK_IN" ? "ADDED" : "REMOVED",
           uomUsed: uomCode,
           balanceId: balance.id,
+          processedAdded: remainingToAdd,
+          processedTotal: alreadyProcessed + remainingToAdd,
         });
 
         console.log(
           `✅ ${action === "STOCK_IN" ? "ADDED" : "REMOVED"} ${quantity} of ${item.item.code} ` +
-            `(${uomCode} - Balance: ${previousBalance} → ${newBalance})`
+            `(${uomCode} - Balance: ${previousBalance} → ${newBalance}) ` +
+            `[processed_quantity: +${remainingToAdd}]`
         );
 
         totalProcessed++;
@@ -3796,17 +3817,6 @@ exports.processRequestForGroup = async (req, res) => {
 // PROCESS REQUESTS - BATCH WITH PARTIAL PROCESSING SUPPORT
 // Honors itemsToProcess, records progress, keeps multi-group
 // finalization logic untouched.
-//
-// ✅ NOW SUPPORTS PER-ITEM DOCUMENT REFERENCES
-//    documentRefs is keyed by "requestId::itemId" (composite key).
-//    Falls back to "requestId::detailId" and finally the legacy
-//    "requestId" key for backward compatibility.
-// ================================================================
-// ================================================================
-// PROCESS REQUESTS — BATCH WITH PARTIAL PROCESSING SUPPORT
-// Uses StoreBalance only (converted balances are gone)
-// Supports per-item documentRefs via composite "requestId::itemId"
-// ================================================================
 exports.processRequests = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -4194,6 +4204,15 @@ exports.processRequests = async (req, res) => {
 
           balance.balance = newBalance;
           await balance.save({ transaction });
+
+          // ✅ Persist processed qty on the detail row (single source of truth)
+          await ItemRequestDetail.increment(
+            { processed_quantity: quantityToProcess },
+            {
+              where: { id: itemDetailIdForRecord },
+              transaction,
+            }
+          );
 
           await StoreBalanceHistory.create(
             {

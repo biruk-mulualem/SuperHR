@@ -844,57 +844,58 @@
               <!-- Stock math line -->
              
 
-              <!-- Open requests — TABLE -->
-              <div
-                v-if="error.blockingRequests && error.blockingRequests.length > 0"
-                class="val-error-table-block"
-              >
-                <div class="val-error-table-title">
-                  🔒 Open requests blocking this item ({{ error.blockingRequests.length }})
-                </div>
-                <div class="val-error-table-wrapper">
-                  <table class="val-error-table">
-                   <thead>
-  <tr>
-    <th>Request Code</th>
-    <th>Status</th>
-    <th class="text-right">Remaining Qty</th> <!-- ✅ NEW LABEL -->
-    <th>Asking Store</th>
-    <th>Supplying Store</th>
-    <th>Requested By</th>
-  </tr>
-</thead>
-                    <tbody>
-                      <tr
-                        v-for="(br, i) in error.blockingRequests"
-                        :key="i"
-                      >
-                        <td class="val-error-code-cell">
-                          {{ br.requestCode || `#${br.requestId}` }}
-                        </td>
-                        <td>
-                          <span :class="['val-error-status-badge', br.status]">
-                            {{ br.status }}
-                          </span>
-                        </td>
-                      <td class="text-right val-error-qty-cell">
-  <div style="font-weight: 700; color: #dc2626;">
-    {{ br.quantity }} {{ br.uom }} <!-- This is the REMAINING (3) -->
+         <!-- Open requests — TABLE -->
+<div
+  v-if="error.blockingRequests && error.blockingRequests.length > 0"
+  class="val-error-table-block"
+>
+  <div class="val-error-table-title">
+    🔒 Open requests blocking this item ({{ error.blockingRequests.length }})
   </div>
-  <!-- Optional: Show the math below it so the user understands WHY it's 3 -->
-  <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
-    Requested: {{ br.requestedQuantity }} | Processed: {{ br.processedQuantity }}
+  <div class="val-error-table-wrapper">
+    <table class="val-error-table">
+      <thead>
+        <tr>
+          <th>Request Code</th>
+          <th>Status</th>
+          <th class="text-right">Requested</th>
+          <th class="text-right">Processed</th>
+          <th class="text-right">Not&nbsp;Processed</th>
+          <th>Asking Store</th>
+          <th>Supplying Store</th>
+          <th>Requested By</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="(br, i) in error.blockingRequests"
+          :key="i"
+        >
+          <td class="val-error-code-cell">
+            {{ br.requestCode || `#${br.requestId}` }}
+          </td>
+          <td>
+            <span :class="['val-error-status-badge', br.status]">
+              {{ br.status }}
+            </span>
+          </td>
+          <td class="text-right val-error-qty-cell">
+            {{ formatQuantity(br.requestedQuantity) }} {{ br.uom }}
+          </td>
+          <td class="text-right val-error-qty-cell val-error-qty-processed">
+            {{ formatQuantity(br.processedQuantity) }} {{ br.uom }}
+          </td>
+          <td class="text-right val-error-qty-cell val-error-qty-remaining">
+            {{ formatQuantity(br.quantity) }} {{ br.uom }}
+          </td>
+          <td>{{ br.askingStoreName || '—' }}</td>
+          <td>{{ br.supplyingStoreName || '—' }}</td>
+          <td>{{ br.requestedByName || '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
-</td>
-                        <td>{{ br.askingStoreName || '—' }}</td>
-                        <td>{{ br.supplyingStoreName || '—' }}</td>
-                        <td>{{ br.requestedByName || '—' }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
+</div>
               <!-- Temelash — TABLE -->
               <div
                 v-if="error.blockingTemelash && error.blockingTemelash.length > 0"

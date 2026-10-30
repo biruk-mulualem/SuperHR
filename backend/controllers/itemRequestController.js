@@ -1,3 +1,8 @@
+
+
+
+
+
 // controllers/itemRequestController.js
 "use strict";
 const db = require("../models");
@@ -353,6 +358,7 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
 
   // ------------------------------------------------------------
   // 2) Active request claims (pending + approved)
+  //    Claim only the UNPROCESSED part: requested − processed
   // ------------------------------------------------------------
   let activeRequestClaimed = 0;
   const activeRequestHits = [];
@@ -378,6 +384,7 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
           'requestId',
           'itemId',
           'quantity',
+          'processed_quantity',
           'uom_code',
           'is_base_uom',
           'selected_uom',
@@ -397,15 +404,21 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
 
   for (const req of openRequests) {
     for (const detail of req.items || []) {
-      const qty = Number(detail.quantity) || 0;
-      if (qty <= 0) continue;
+      const requested = Number(detail.quantity) || 0;
+      if (requested <= 0) continue;
 
-      activeRequestClaimed += qty;
+      const processed = Number(detail.processed_quantity) || 0;
+      const remaining = Math.max(0, requested - processed);
+      if (remaining <= 0) continue;
+
+      activeRequestClaimed += remaining;
       activeRequestHits.push({
         requestId: req.requestId,
         requestCode: req.requestCode,
         status: req.status,
-        quantity: qty,
+        quantity: remaining,
+        requestedQuantity: requested,
+        processedQuantity: processed,
         uom: detail.uom_code || 'Units',
         itemId: Number(detail.itemId),
         askingStoreId: req.askingStoreId,
@@ -617,18 +630,20 @@ const validateStockAvailability = async (supplyingStoreId, items, options = {}) 
 
       // Enrich each blocking hit with store + requester names
       // (uses the shared resolveStoreName declared ABOVE the item loop)
-      const blockingRequests = await Promise.all(
-        (claims.activeRequestHits || []).map(async (h) => ({
-          requestId: h.requestId,
-          requestCode: h.requestCode,
-          status: h.status,
-          quantity: h.quantity,
-          uom: h.uom,
-          askingStoreName: await resolveStoreName(h.askingStoreId),
-          supplyingStoreName: await resolveStoreName(h.supplyingStoreId),
-          requestedByName: h.requestedBy || "Unknown",
-        })),
-      );
+    const blockingRequests = await Promise.all(
+  (claims.activeRequestHits || []).map(async (h) => ({
+    requestId: h.requestId,
+    requestCode: h.requestCode,
+    status: h.status,
+    quantity: h.quantity,                       // remaining (already sent)
+    requestedQuantity: h.requestedQuantity,     // ✅ ADDED — original requested
+    processedQuantity: h.processedQuantity,     // ✅ ADDED — already processed
+    uom: h.uom,
+    askingStoreName: await resolveStoreName(h.askingStoreId),
+    supplyingStoreName: await resolveStoreName(h.supplyingStoreId),
+    requestedByName: h.requestedBy || "Unknown",
+  })),
+);
 
       const blockingTemelash = (claims.temelashHits || []).map((h) => ({
         temelashRecordId: h.temelashRecordId,

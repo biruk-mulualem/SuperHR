@@ -15,31 +15,29 @@ module.exports = (sequelize, DataTypes) => {
         as: 'item',
       });
 
-      ItemRequestDetail.hasMany(models.RequestItemProcessing, {
-  foreignKey: 'requestDetailId',
-  as: 'processingRows',
-});
+      
     }
 
-    getFullInfo() {
-      return {
-        id: this.detailId,
-        requestId: this.requestId,
-        item: this.item,
-        quantity: this.quantity,
-        remark: this.remark,
-        // ✅ UOM fields
-        selectedUom: this.selected_uom,
-        uomCode: this.uom_code,
-        isBaseUom: this.is_base_uom,
-        // ✅ NEW: Spec fields
-        specification: this.specification,
-        brand: this.brand,
-        model: this.model,
-        createdAt: this.createdAt,
-        updatedAt: this.updatedAt,
-      };
-    }
+  getFullInfo() {
+  return {
+    id: this.detailId,
+    requestId: this.requestId,
+    item: this.item,
+    quantity: this.quantity,
+    remark: this.remark,
+    // ✅ UOM fields
+    selectedUom: this.selected_uom,
+    uomCode: this.uom_code,
+    isBaseUom: this.is_base_uom,
+    // ✅ NEW: Spec fields
+    specification: this.specification,
+    brand: this.brand,
+    model: this.model,
+    processed_quantity: this.processed_quantity,  // ← ADDED
+    createdAt: this.createdAt,
+    updatedAt: this.updatedAt,
+  };
+}
   }
 
   ItemRequestDetail.init(
@@ -112,6 +110,13 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         field: 'brand',
       },
+
+      processed_quantity: {
+  type: DataTypes.DECIMAL(15, 4),
+  allowNull: false,
+  defaultValue: 0,
+  field: 'processed_quantity',
+}, 
       model: {
         type: DataTypes.STRING(100),
         allowNull: true,
