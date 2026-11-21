@@ -24,7 +24,7 @@ const {
   sequelize,
 } = db;
 const { Op } = require("sequelize");
-
+const { getStatusInfoForRequest } = require("../utils/itemStatusInfo");
 // ================================================================
 // HELPER: Skip stock validation for specific stores
 // ================================================================
@@ -402,7 +402,67 @@ async function getItemClaims(supplyingStoreId, itemId, uomCode, options = {}) {
     ],
   });
 
+  // ------------------------------------------------------------
+  // 2a) ⚡ EXCLUDE requests whose supplying-store groups ALL skipped
+  //     (a request whose delivery side is entirely skipped must
+  //      not count as an active claim / must not block new requests)
+  // ------------------------------------------------------------
+  const RequestGroupProcessing = db.RequestGroupProcessing;
+  const filteredOpenRequests = [];
+
   for (const req of openRequests) {
+    if (!RequestGroupProcessing) {
+      // Model not available → fall back to counting every request
+      filteredOpenRequests.push(req);
+      continue;
+    }
+
+    const supplyingGroups = await sequelize.query(
+      `SELECT g.id
+         FROM groups g
+         INNER JOIN store_group_relations sgr ON sgr.group_id = g.id
+        WHERE sgr.store_id = :storeId
+          AND g.status = 'Active'`,
+      {
+        replacements: { storeId: req.supplyingStoreId },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const supplyingGroupIds = supplyingGroups
+      .map((g) => parseInt(g.id))
+      .filter((n) => !isNaN(n));
+
+    // No supplying groups → cannot determine skips → treat as blocking
+    if (supplyingGroupIds.length === 0) {
+      filteredOpenRequests.push(req);
+      continue;
+    }
+
+    const skippedCount = await RequestGroupProcessing.count({
+      where: {
+        requestId: req.requestId,
+        groupId: { [Op.in]: supplyingGroupIds },
+        status: 'skipped',
+      },
+    });
+
+    // All supplying groups skipped → request does NOT count as a claim
+    if (skippedCount === supplyingGroupIds.length) {
+      console.log(
+        `⏭️ getItemClaims: excluding ${req.requestCode} — all ` +
+        `${supplyingGroupIds.length} supplying group(s) skipped`
+      );
+      continue;
+    }
+
+    filteredOpenRequests.push(req);
+  }
+
+  // ------------------------------------------------------------
+  // 2b) Accumulate claims from non-skipped requests
+  // ------------------------------------------------------------
+  for (const req of filteredOpenRequests) {
     for (const detail of req.items || []) {
       const requested = Number(detail.quantity) || 0;
       if (requested <= 0) continue;
@@ -2185,6 +2245,9 @@ exports.updateRequest = async (req, res) => {
 // ================================================================
 // 6. UPDATE REQUEST STATUS
 // ================================================================
+// ================================================================
+// 6. UPDATE REQUEST STATUS
+// ================================================================
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2230,6 +2293,60 @@ exports.updateStatus = async (req, res) => {
     const previousStatus = request.status;
 
     await request.update({ status });
+
+    // ============================================================
+    // ✅ NEW: RECORD ITEM STATUS TAKES
+    // When a request is approved, we log the items into ItemStatusTake
+    // so the "Last Taken" and "Next Allowed" dates update.
+    // ============================================================
+    if (status === "approved" && previousStatus !== "approved") {
+      try {
+        // Fetch the request items and the requester's department
+        const fullRequest = await ItemRequest.findByPk(request.requestId, {
+          include: [
+            { model: ItemRequestDetail, as: "items" },
+            { model: User, as: "requestedByUser", attributes: ["departmentId"] }
+          ]
+        });
+
+        const requesterDeptId = fullRequest?.requestedByUser?.departmentId;
+
+        if (fullRequest && fullRequest.items) {
+          for (const item of fullRequest.items) {
+            // Find if there is an active rule for this item at this store OR department
+            const scopeClauses = [{ storeId: request.supplyingStoreId }];
+            if (requesterDeptId) scopeClauses.push({ departmentId: requesterDeptId });
+
+            const rule = await db.ItemStatusRule.findOne({
+              where: {
+                itemId: item.itemId,
+                status: "Active",
+                [Op.or]: scopeClauses,
+              },
+            });
+
+            // If a rule exists, record the take!
+            if (rule) {
+              await db.ItemStatusTake.create({
+                ruleId: rule.id,
+                requestId: request.requestId,
+                requestCode: request.requestCode,
+                quantity: item.quantity,
+                uomCode: item.uom_code || rule.uomCode || "Units",
+                status: "approved", // mark as approved
+                takenAt: new Date(),
+                takenBy: request.requestedById,
+              });
+              console.log(`📝 [STATUS TAKE] Recorded ${item.quantity} ${item.uom_code} for rule ${rule.id} (Item ${item.itemId})`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("⚠️ Failed to record ItemStatusTake during approval:", err);
+        // We don't throw here so the approval still succeeds even if take logging fails
+      }
+    }
+    // ============================================================
 
     let temelashRecord = null;
     if (
@@ -3447,6 +3564,22 @@ exports.getGroupNotifications = async (req, res) => {
       rejected: await RequestNotification.count({ where: { ...whereClause, status: "rejected" } }),
     };
 
+    // ── Attach item status info (store / department take history) ──
+    // NOTE: we mutate each ItemRequestDetail instance's dataValues with
+    // setDataValue("statusInfo", ...). Do NOT replace n.request.items with
+    // a plain-object array — Sequelize's toJSON() expects model instances
+    // and will throw "instance.get is not a function" on plain objects.
+    await Promise.all(
+      notifications.map(async (n) => {
+        if (!n.request) return;
+        const info = await getStatusInfoForRequest(n.request);
+        const detailItems = n.request.getDataValue("items") || [];
+        for (const it of detailItems) {
+          it.setDataValue("statusInfo", info[it.itemId] || []);
+        }
+      })
+    );
+
     res.json({
       success: true,
       data: {
@@ -3472,7 +3605,6 @@ exports.getGroupNotifications = async (req, res) => {
     });
   }
 };
-
 // ================================================================
 // 22. GET DEPARTMENT NOTIFICATIONS (for ASSET requests)
 // ================================================================
@@ -3596,6 +3728,20 @@ exports.getDepartmentNotifications = async (req, res) => {
         where: { ...whereClause, status: "rejected" },
       }),
     };
+
+    // ── Attach item status info (store / department take history) ──
+    // Mutate each detail instance's dataValues — see note in
+    // getGroupNotifications. Never replace n.request.items with plain objects.
+    await Promise.all(
+      notifications.map(async (n) => {
+        if (!n.request) return;
+        const info = await getStatusInfoForRequest(n.request);
+        const detailItems = n.request.getDataValue("items") || [];
+        for (const it of detailItems) {
+          it.setDataValue("statusInfo", info[it.itemId] || []);
+        }
+      })
+    );
 
     res.json({
       success: true,
@@ -3854,6 +4000,20 @@ exports.getPendingNotifications = async (req, res) => {
     allNotifications.sort((a, b) => {
       return new Date(b.created_at) - new Date(a.created_at);
     });
+
+    // ── Attach item status info (store / department take history) ──
+    // allNotifications entries are plain objects (already .toJSON()'d),
+    // so direct assignment on n.request.items works here.
+    await Promise.all(
+      allNotifications.map(async (n) => {
+        if (!n.request) return;
+        const info = await getStatusInfoForRequest(n.request);
+        n.request.items = (n.request.items || []).map((it) => ({
+          ...it,
+          statusInfo: info[it.itemId] || [],
+        }));
+      })
+    );
 
     const total = groupTotal + deptTotal;
     const pages = Math.ceil(total / limitVal);
@@ -4247,6 +4407,7 @@ exports.changeNotificationDecision = async (req, res) => {
 //
 // Filters: search, storeId, departmentId, requesterId
 // Returns: array of requests, each with acceptedBy[] (per group/department)
+//          and itemsDetail[].statusInfo[] (store / department take history)
 // ================================================================
 exports.getAwaitingMyApproval = async (req, res) => {
   try {
@@ -4500,68 +4661,83 @@ exports.getAwaitingMyApproval = async (req, res) => {
 
     // ------------------------------------------------------------
     // 4) Map to the shape the frontend expects
+    //    + attach per-item statusInfo (store / department take history)
     // ------------------------------------------------------------
-    const requests = rows.map((r) => {
-      const notifications = r.notifications || [];
+    const requests = await Promise.all(
+      rows.map(async (r) => {
+        const notifications = r.notifications || [];
 
-      const acceptedBy = notifications
-        .map((n) => {
-          const isDept = n.is_department_approval === true || n.approval_type === "department";
-          const name = isDept
-            ? n.department?.name || `Department #${n.department_id}`
-            : n.group?.name || `Group #${n.group_id}`;
+        const acceptedBy = notifications
+          .map((n) => {
+            const isDept = n.is_department_approval === true || n.approval_type === "department";
+            const name = isDept
+              ? n.department?.name || `Department #${n.department_id}`
+              : n.group?.name || `Group #${n.group_id}`;
 
-          return {
-            id: n.id,
-            name,
-            type: isDept ? "department" : "group",
-            at: n.responded_at,
-            respondedByName:
-              n.respondedByUser?.fullName ||
-              n.respondedByUser?.username ||
-              null,
-          };
-        })
-        .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+            return {
+              id: n.id,
+              name,
+              type: isDept ? "department" : "group",
+              at: n.responded_at,
+              respondedByName:
+                n.respondedByUser?.fullName ||
+                n.respondedByUser?.username ||
+                null,
+            };
+          })
+          .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-      const user = r.requestedByUser;
-      const dept = user?.Department;
+        // ── Status info lookup (store/department take history per item) ──
+        let statusInfoByItem = {};
+        try {
+          statusInfoByItem = await getStatusInfoForRequest(r);
+        } catch (err) {
+          console.warn(
+            `⚠️ getAwaitingMyApproval: statusInfo lookup failed for request ${r.requestId}:`,
+            err.message
+          );
+        }
 
-      return {
-        id: r.requestId,
-        code: r.requestCode,
-        askingStore: r.askingStore?.name || "Unknown Store",
-        askingStoreId: r.askingStoreId,
-        supplyingStore: r.supplyingStore?.name || "Unknown Store",
-        supplyingStoreId: r.supplyingStoreId,
-        department: dept?.name || null,
-        departmentId: dept?.department_id || user?.departmentId || null,
-        requestedBy:
-          r.requestedBy ||
-          user?.fullName ||
-          user?.username ||
-          "Unknown",
-        requestedById: r.requestedById || user?.userId || null,
-        requestedAt: r.requestedDate || r.createdAt,
-        status: r.status,
-        isAsset: r.isAsset,
-        isTemelash: r.isTemelash,
-        items: r.items?.length || 0,
-        itemsDetail: (r.items || []).map((it) => ({
-          detailId: it.id,
-          itemId: it.itemId,
-          code: it.item?.code || "N/A",
-          name: it.item?.name || "Unknown",
-          quantity: Number(it.quantity) || 0,
-          uom: it.uom_code || it.item?.uom?.code || "Units",
-          remark: it.remark || null,
-          specification: it.specification || null,
-          brand: it.brand || null,
-          model: it.model || null,
-        })),
-        acceptedBy,
-      };
-    });
+        const user = r.requestedByUser;
+        const dept = user?.Department;
+
+        return {
+          id: r.requestId,
+          code: r.requestCode,
+          askingStore: r.askingStore?.name || "Unknown Store",
+          askingStoreId: r.askingStoreId,
+          supplyingStore: r.supplyingStore?.name || "Unknown Store",
+          supplyingStoreId: r.supplyingStoreId,
+          department: dept?.name || null,
+          departmentId: dept?.department_id || user?.departmentId || null,
+          requestedBy:
+            r.requestedBy ||
+            user?.fullName ||
+            user?.username ||
+            "Unknown",
+          requestedById: r.requestedById || user?.userId || null,
+          requestedAt: r.requestedDate || r.createdAt,
+          status: r.status,
+          isAsset: r.isAsset,
+          isTemelash: r.isTemelash,
+          items: r.items?.length || 0,
+          itemsDetail: (r.items || []).map((it) => ({
+            detailId: it.id,
+            itemId: it.itemId,
+            code: it.item?.code || "N/A",
+            name: it.item?.name || "Unknown",
+            quantity: Number(it.quantity) || 0,
+            uom: it.uom_code || it.item?.uom?.code || "Units",
+            remark: it.remark || null,
+            specification: it.specification || null,
+            brand: it.brand || null,
+            model: it.model || null,
+            statusInfo: statusInfoByItem[it.itemId] || [],
+          })),
+          acceptedBy,
+        };
+      })
+    );
 
     return res.json({
       success: true,
@@ -4583,4 +4759,3 @@ exports.getAwaitingMyApproval = async (req, res) => {
     });
   }
 };
-

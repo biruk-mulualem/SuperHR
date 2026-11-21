@@ -2,7 +2,9 @@
 <template>
   <div class="top-actions no-print" v-if="requestData || !loading">
     <button class="btn-back-top" @click="goBack">← Back to Requests</button>
-    <button class="btn-print-top" @click="printPage">🖨️ Print Form</button>
+    <button class="btn-print-top" @click="printPage" :disabled="printing">
+      {{ printing ? 'Preparing...' : '🖨️ Print Form' }}
+    </button>
   </div>
 
   <div class="print-page" v-if="requestData">
@@ -74,7 +76,11 @@
         <tr
           v-for="(item, index) in requestData.items"
           :key="index"
-          :class="{ 'row-merged-absorbed': isRowAbsorbedByMerge(index) }"
+          :class="{
+            'row-merged-absorbed': isRowAbsorbedByMerge(index),
+            'row-merge-top': isFirstRowOfMerge(index),
+            'row-merge-bottom': isLastRowOfMerge(index),
+          }"
         >
           <td>{{ index + 1 }}</td>
 
@@ -223,7 +229,7 @@ import type {
 // ================================================================
 // STATE
 // ================================================================
-
+const printing = ref(false)
 
 // ================================================================
 // EDITABLE DATE (local-only)
@@ -295,6 +301,7 @@ const mergeGroups = ref<Array<{ start: number; size: number; text: string }>>([]
 // ================================================================
 
 type ColumnAlign = 'left' | 'center'
+type SnapshotColumnKind = 'number' | 'text'
 
 interface ColumnDef {
   key: string
@@ -306,7 +313,7 @@ interface ColumnDef {
   custom?: boolean
   editable?: boolean
   computed?: string
-  kind?: string
+  kind?: SnapshotColumnKind
   pairedKey?: string
   getValue: (item: any) => string
 }
@@ -466,15 +473,21 @@ const getColumnValue = (item: any, col: ColumnDef): string => {
 const getCustomCellValue = (rowIndex: number, colKey: string): string =>
   customCells.value[String(rowIndex)]?.[colKey] || ''
 
+// ✅ FIXED: prevent NaN / empty values from displaying "0.00" incorrectly
 const getComputedCellValue = (
   item: any,
   rowIndex: number,
   col: ColumnDef,
 ): string => {
   if (col.computed === 'totalPrice') {
-    const unit = parseFloat(getCustomCellValue(rowIndex, 'unitPrice')) || 0
-    const qty = parseFloat(String(item?.quantity ?? 0)) || 0
-    if (!unit || !qty) return ''
+    const unitRaw = getCustomCellValue(rowIndex, 'unitPrice')
+    if (unitRaw === '' || unitRaw === null || unitRaw === undefined) return ''
+
+    const unit = parseFloat(String(unitRaw))
+    const qty = parseFloat(String(item?.quantity ?? 0))
+
+    if (isNaN(unit) || isNaN(qty)) return ''
+
     return (unit * qty).toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -508,6 +521,13 @@ const isRowAbsorbedByMerge = (i: number) =>
 
 const isMergeStartRow = (i: number) =>
   mergeGroups.value.some((g) => g.start === i)
+
+// 🆕 Added: first / last row of a merge group
+const isFirstRowOfMerge = (i: number): boolean =>
+  mergeGroups.value.some((g) => g.start === i)
+
+const isLastRowOfMerge = (i: number): boolean =>
+  mergeGroups.value.some((g) => g.start + g.size - 1 === i)
 
 const getMergeSize = (start: number) => {
   const g = mergeGroups.value.find((grp) => grp.start === start)
@@ -782,15 +802,69 @@ const stripHtml = (htmlContent: string): string => {
 }
 
 // ================================================================
-// NAVIGATION
+// NAVIGATION & PRINT
 // ================================================================
 
 const goBack = (): void => {
   router.push({ name: 'item-requests' })
 }
 
-const printPage = (): void => {
-  setTimeout(() => window.print(), 50)
+// ✅ FIXED: Save state to backend, wait for render, then print
+const printPage = async (): Promise<void> => {
+  if (printing.value) return
+  printing.value = true
+
+  try {
+    // 1. Sync any focused input (so v-model updates its state)
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+
+    // 2. Let Vue flush any pending DOM updates
+    await nextTick()
+
+    // 3. Persist the current state to the backend so future reloads match what we print
+    if (requestData.value?.requestId) {
+      try {
+        await itemRequestService.savePageSnapshot(
+          requestData.value.requestId,
+          {
+            customHeader: customHeader.value,
+            department: departmentOverride.value,
+            approvedByName: approvedByNameOverride.value,
+            overrideDate: dateOverride.value,
+            sectionVisibility: sectionVisibility.value,
+            columnsConfig: columns.value.map(c => ({
+              key: c.key,
+              label: c.label,
+              width: c.width,
+              visible: c.visible,
+              align: c.align,
+              bold: c.bold,
+              custom: c.custom,
+              editable: c.editable,
+              computed: c.computed,
+              kind: c.kind,
+              pairedKey: c.pairedKey,
+            })),
+            customCells: customCells.value,
+            pageSnapshot: snapshot.value,
+          }
+        )
+      } catch (err) {
+        console.error('Failed to save snapshot before printing:', err)
+        // Don't block printing if the save fails
+      }
+    }
+
+    // 4. Wait one more frame so the print window sees the final painted DOM
+    await new Promise(resolve => requestAnimationFrame(resolve))
+
+    // 5. Trigger the print dialog
+    window.print()
+  } finally {
+    printing.value = false
+  }
 }
 
 // ================================================================
@@ -864,6 +938,10 @@ watch(
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+}
+.btn-print-top:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 /* ================================================================
@@ -983,6 +1061,13 @@ watch(
 }
 
 .row-merged-absorbed td { background: #fafafa; }
+
+/* 🆕 Remove the internal horizontal line inside a merge group.
+   The LAST row of each merge keeps its border so groups are separated. */
+.items-table tr.row-merge-top:not(.row-merge-bottom) > td,
+.items-table tr.row-merged-absorbed:not(.row-merge-bottom) > td {
+  border-bottom: 0 !important;
+}
 
 /* ================================================================
    COMPUTED / GRAND TOTAL
@@ -1242,127 +1327,11 @@ watch(
   .row-merged-absorbed td { background: #ffffff !important; }
   .computed-cell { background: #ffffff !important; }
 
-  .motto { font-size: 16px !important; }
-  .company-name { font-size: 18px !important; }
-  .form-subtitle-title { font-size: 13px !important; }
-
-  .meta-grid { gap: 15px !important; }
-  .dept-value { font-size: 18px !important; }
-
-  .meta-grid { page-break-inside: avoid !important; }
-  .items-table tr { page-break-inside: avoid !important; }
-  .items-table { page-break-after: avoid !important; }
-}
-
-/* ================================================================
-   RESPONSIVE
-   ================================================================ */
-@media (max-width: 768px) {
-  .print-page { padding: 10px; }
-  .meta-grid { flex-direction: column; gap: 15px; }
-  .top-actions {
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px;
+  /* 🆕 Duplicate of the merge-border suppression for print */
+  .items-table tr.row-merge-top:not(.row-merge-bottom) > td,
+  .items-table tr.row-merged-absorbed:not(.row-merge-bottom) > td {
+    border-bottom: 0 !important;
   }
-  .top-actions button {
-    width: 100%;
-    justify-content: center;
-  }
-  .items-table { font-size: 12px; }
-  .items-table th,
-  .items-table td {
-    padding: 5px 3px;
-    height: 26px;
-  }
-  .items-table th { font-size: 11.5px; }
-  .date-row { flex-direction: column; gap: 4px; font-size: 11px; }
-  .motto { font-size: 15px; }
-  .company-name { font-size: 16px; }
-  .form-subtitle-title { font-size: 12px; }
-  .dept-value { font-size: 16px !important; }
-
-  .input-row.short-width { width: 100%; }
-  .gray-label { width: 120px; font-size: 12px; }
-  .checked-by-section { width: 100%; }
-}
-
-/* ================================================================
-   PRINT OVERRIDES
-   ================================================================ */
-@media print {
-  .no-print { display: none !important; }
-  .top-actions { display: none !important; }
-  body { background-color: #fff !important; }
-
-  .print-page {
-    max-width: 100% !important;
-    padding: 10px !important;
-    margin: 0 !important;
-  }
-
-  .block-header,
-  .items-table th,
-  .grand-total-row td,
-  .gray-label {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  .items-table th {
-    background-color: #c0c0c0 !important;
-    color: #000000 !important;
-    font-size: 13px !important;
-    padding: 9px 5px !important;
-  }
-
-  .grand-total-row td {
-    background-color: #dcdcdc !important;
-    color: #000000 !important;
-    font-size: 13px !important;
-  }
-
-  .grand-total-label-cell,
-  .grand-total-value {
-    font-weight: 900 !important;
-    font-size: 13.5px !important;
-    color: #000000 !important;
-  }
-
-  .block-header {
-    background-color: #d9d9d9 !important;
-    color: #000000 !important;
-  }
-
-  .gray-label {
-    background-color: #d9d9d9 !important;
-    color: #000000 !important;
-  }
-
-  .items-table,
-  .items-table th,
-  .items-table td {
-    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif !important;
-    font-size: 12.5px !important;
-    letter-spacing: 0.2px !important;
-  }
-
-  .items-table td {
-    padding: 6px 4px !important;
-    height: 30px !important;
-  }
-
-  .items-table th,
-  .items-table td {
-    border-color: #000000 !important;
-  }
-
-  .merged-remark-cell {
-    background: #ffffff !important;
-    border: 1px solid #000000 !important;
-  }
-  .row-merged-absorbed td { background: #ffffff !important; }
-  .computed-cell { background: #ffffff !important; }
 
   .motto { font-size: 16px !important; }
   .company-name { font-size: 18px !important; }

@@ -119,6 +119,37 @@
                       }}
                     </strong>
                   </p>
+
+                  <!-- ✅ Status-rule indicator (only if any item has a rule) -->
+                  <div 
+                    v-if="statusRuleSummary(notif)" 
+                    class="notification-status-block"
+                    :class="{ 'is-blocked': statusRuleSummary(notif).isBlocked }"
+                  >
+                    <div 
+                      v-for="(line, idx) in statusRuleSummary(notif).lines" 
+                      :key="idx" 
+                      class="status-line-wrapper"
+                    >
+                      <div v-if="statusRuleSummary(notif).lines.length > 1" class="status-scope-name">
+                        {{ line.scope }}
+                      </div>
+                      
+                      <div class="status-row">
+                        <span class="status-label">Status:</span> 
+                        <strong class="status-val">{{ line.statusText }}</strong>
+                      </div>
+                      <div class="status-row">
+                        <span class="status-label">Last Taken:</span> 
+                        <span class="status-val">{{ line.lastText }}</span>
+                      </div>
+                      <div class="status-row">
+                        <span class="status-label">Next Allowed:</span> 
+                        <span class="status-val">{{ line.nextText }}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div class="notification-items">
                     <span
                       v-for="(item, idx) in (notif.request?.items || []).slice(0, 2)"
@@ -645,7 +676,6 @@
     </div>
   </header>
 </template>
-
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -801,6 +831,42 @@ const getUomDisplay = (item) => {
     return item.item.uom.code;
   }
   return 'units';
+};
+
+const statusRuleSummary = (notif) => {
+  const items = notif?.request?.items || [];
+  const entries = items.flatMap((it) => it?.statusInfo || []);
+  if (entries.length === 0) return null;
+
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  // Build the exact text lines you requested
+  const lines = entries.map((e) => {
+    const statusText = e.isBlocked ? "Not Due" : "Due";
+    const lastText = e.lastTakenAt 
+      ? `${fmtDate(e.lastTakenAt)} (${e.lastTakenQuantity} ${e.uomCode || 'units'})` 
+      : "None";
+    const nextText = e.isBlocked 
+      ? (e.nextAllowedAt ? fmtDate(e.nextAllowedAt) : "Pending") 
+      : "Now";
+
+    return {
+      scope: e.scope === "department" ? `Dept: ${e.scopeName}` : `Store: ${e.scopeName}`,
+      statusText,
+      lastText,
+      nextText,
+      isBlocked: e.isBlocked
+    };
+  });
+
+  return {
+    lines,
+    isBlocked: lines.every(l => l.isBlocked) // if all are blocked, make the block red
+  };
 };
 
 const getRoleTitle = () => {
@@ -1350,7 +1416,7 @@ onMounted(() => {
   // the refresh would clear the ref and the beep would read 0 before
   // the fetch resolved. 31s guarantees ~1s of separation after refresh.
   beepReminderInterval.value = setInterval(() => {
-    console.log("[reminder] TICK", {                              // ✅ ADDED
+    console.log("[reminder] TICK", {
       auth: authStore.isAuthenticated,
       pending: pendingCount.value,
       orderPending: orderPendingCount.value,
@@ -1364,7 +1430,7 @@ onMounted(() => {
     });
 
     if (!authStore.isAuthenticated) {
-      console.log("[reminder] skip — not authenticated");        // ✅ ADDED
+      console.log("[reminder] skip — not authenticated");
       return;
     }
 
@@ -1377,7 +1443,7 @@ onMounted(() => {
       showNotifications.value ||
       showOrderNotifications.value
     ) {
-      console.log("[reminder] skip — panel/modal open");          // ✅ ADDED
+      console.log("[reminder] skip — panel/modal open");
       return;
     }
 
@@ -1385,16 +1451,16 @@ onMounted(() => {
     const hasOrderPending = orderPendingCount.value > 0;
 
     if (hasItemPending || hasOrderPending) {
-      console.log("[reminder] firing playBeep()");                // ✅ ADDED
+      console.log("[reminder] firing playBeep()");
       playBeep({
         freq1: hasItemPending ? 880 : 1000,
         freq2: hasItemPending ? 660 : 750,
         dedupeMs: 25000,
       });
     } else {
-      console.log("[reminder] skip — nothing pending");           // ✅ ADDED
+      console.log("[reminder] skip — nothing pending");
     }
-  }, 31000);   // ✅ CHANGED: 31000 (was 30000)
+  }, 31000);
 });
 
 onUnmounted(() => {
@@ -1425,6 +1491,7 @@ onUnmounted(() => {
   margin-left: 6px;
   font-weight: 500;
 }
+
 /* ================================================================ */
 /* EXISTING STYLES */
 /* ================================================================ */
@@ -1887,6 +1954,68 @@ onUnmounted(() => {
   font-weight: 500;
 }
 .view-all:hover { text-decoration: underline; }
+
+/* ================================================================ */
+/* STATUS RULE BLOCK (NEW) */
+/* ================================================================ */
+.notification-status-block {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #10b981; /* Green for Due */
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0 8px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notification-status-block.is-blocked {
+  border-left: 3px solid #ef4444; /* Red for Not Due */
+  background: #fef2f2;
+}
+
+.status-line-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-line-wrapper + .status-line-wrapper {
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+.status-scope-name {
+  font-weight: 700;
+  color: #475569;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  line-height: 1.4;
+}
+
+.status-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.status-val {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.is-blocked .status-val {
+  color: #991b1b;
+}
 
 /* ================================================================ */
 /* DROPDOWN MENU */

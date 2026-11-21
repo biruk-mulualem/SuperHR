@@ -9,16 +9,16 @@ export interface RequestItem {
   itemId: number;
   quantity: number;
   remark?: string;
-  // ✅ UOM Fields
   selected_uom?: "base" | "conversion";
   uom_code?: string;
   is_base_uom?: boolean;
-  // ✅ Spec Fields
   specification?: string;
   brand?: string;
   model?: string;
-}
 
+  // ✅ Attached by the backend on approval-facing endpoints
+  statusInfo?: ItemStatusInfo[];
+}
 // ✅ NEW — Family search types
 export interface FamilySearchResultUom {
   itemId: number;
@@ -280,7 +280,24 @@ export interface RequestNotificationSummary {
     pending: number;
   };
 }
-
+// ================================================================
+// ITEM STATUS INFO (informational — attached by the backend to
+// every item on supplying-store notifications and approval queue)
+// ================================================================
+export interface ItemStatusInfo {
+  ruleId: number;
+  scope: "store" | "department";
+  scopeName: string;
+  maxQuantity: number;
+  frequencyDays: number;
+  totalInWindow: number;
+  isBlocked: boolean;
+  nextAllowedAt: string | null;
+  lastTakenAt: string | null;
+  lastTakenQuantity: number;
+  uomCode: string | null;
+  reason: string | null;
+}
 export interface ItemRequest {
   notifications: any;
   requestId: number;
@@ -1971,6 +1988,45 @@ class ItemRequestService {
 
     return `${fmt(from)} → ${fmt(to)}`;
   }
+
+  /** Human-readable one-liner for a statusInfo entry. */
+formatStatusInfo(si: ItemStatusInfo): string {
+  const scope =
+    si.scope === "department"
+      ? `Department ${si.scopeName}`
+      : `Store ${si.scopeName}`;
+
+  const uom = si.uomCode || "units";
+  const allowed = `${si.maxQuantity} / ${si.frequencyDays}d`;
+  const taken = `${si.totalInWindow} taken`;
+
+  let line = `${scope}: ${taken} of ${allowed} (${uom})`;
+
+  if (si.lastTakenAt) {
+    const d = new Date(si.lastTakenAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    line += ` · last ${si.lastTakenQuantity} ${uom} on ${d}`;
+  }
+
+  if (si.isBlocked) {
+    if (si.nextAllowedAt) {
+      const n = new Date(si.nextAllowedAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      line += ` · not due, next ${n}`;
+    } else {
+      line += ` · not due`;
+    }
+  } else {
+    line += ` · due`;
+  }
+
+  return line;
+}
 
   isTemelashOverdue(record: TemelashRecord): boolean {
     if (!record?.toDate || record.status !== "out") return false;

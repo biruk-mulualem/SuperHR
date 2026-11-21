@@ -133,6 +133,8 @@ const adminDeviceRoutes = require('./routes/adminDeviceRoutes');
 const printOverrideRoutes = require('./routes/printOverrideRoutes');
 const temelashRoutes = require("./routes/temelashRoutes");
 const itemRelationshipRoutes = require('./routes/itemRelationshipRoutes');
+
+const itemStatusRoutes = require("./routes/itemStatusRoutes");
 // ============================================================================
 // GLOBAL MIDDLEWARE
 // ============================================================================
@@ -215,6 +217,8 @@ app.use('/api/admin', adminDeviceRoutes);
 app.use('/api/print-overrides', printOverrideRoutes);
 app.use("/api/temelash", temelashRoutes);
 app.use('/api/item-relationships', itemRelationshipRoutes);
+
+app.use("/api/item-status", itemStatusRoutes);
 // ============================================================================
 // HEALTH CHECK ENDPOINT
 // ============================================================================

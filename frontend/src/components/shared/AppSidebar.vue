@@ -298,6 +298,7 @@ const roleMenus = {
       icon: "UserIcon",
       badge: null,
     },
+    
  {
       name: "store-transaction ",
       path: "/store-transaction",
@@ -305,6 +306,7 @@ const roleMenus = {
       badge: null,
     },
         { name: "Temelash Records", path: "/Temelash", icon: "CogIcon", badge: null },
+             { name: "status-records", path: "/status-records", icon: "CogIcon", badge: null },
         // { name: "purchase-requests", path: "/purchase-requests", icon: "CogIcon", badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
@@ -336,6 +338,7 @@ const roleMenus = {
       badge: null,
     },
         { name: "Temelash Records", path: "/Temelash", icon: "CogIcon", badge: null },
+             { name: "status-records", path: "/status-records", icon: "CogIcon", badge: null },
     //  { name: 'My Profile', path: '/profile', icon: 'UserIcon', badge: null },
     // { name: 'audit', path: '/audit', icon: 'ClockIcon', badge: null },
   ],

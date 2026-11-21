@@ -59,7 +59,7 @@
       <div v-else class="view-paper">
         <header class="paper-header">
           <h1 class="paper-motto">WE TRUST IN GOD!!!</h1>
-          <h1 class="paper-motto">እግዚአብሔር ይባርክ!!!</h1>
+          <h1 class="paper-motto">እግዚአብሔር ይባረክ!!!</h1>
           <h2 class="paper-company">SUPER DOUBLE "T" GENERAL TRADING PLC .</h2>
           <h3 class="paper-subtitle">{{ snapshotHeader(detailTarget.requestId) }}</h3>
 
@@ -99,71 +99,107 @@
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="(item, index) in snapshotItems(detailTarget.requestId)"
-              :key="`v-${index}-${item.itemId}`"
-              :class="{ 'row-merged-absorbed': isSnapshotAbsorbed(detailTarget.requestId, index) }"
-            >
-              <td
-                v-if="snapshotMergeGroups(detailTarget.requestId).length > 0"
-                class="no-print cell-checkbox"
-              ></td>
-
-              <td class="paper-row-number">{{ index + 1 }}</td>
-
-              <td
-                v-for="col in snapshotColumns(detailTarget.requestId)"
-                :key="col.key"
-                :class="{
-                  'text-left': col.align === 'left',
-                  'font-bold': col.bold,
-                  'spec-cell': col.key === 'specification',
-                }"
+            <template v-for="(item, index) in snapshotItems(detailTarget.requestId)" :key="`v-${index}-${item.itemId}`">
+              <tr
+                :class="{ 'row-merged-absorbed': isSnapshotAbsorbed(detailTarget.requestId, index) }"
               >
-                <template v-if="col.computed === 'totalPrice'">
-                  {{ getSnapshotComputedValue(detailTarget.requestId, item, index, col) }}
-                </template>
-                <template v-else-if="col.editable">
-                  {{ getSnapshotCustomCell(detailTarget.requestId, index, col.key) || '—' }}
-                </template>
-                <template v-else-if="col.key === 'uom'">
-                  {{ getSnapshotUom(item) }}
-                </template>
-                <template v-else-if="col.key === 'quantity'">
-                  {{ formatSnapshotQuantity(item.quantity) }}
-                </template>
-                <template v-else-if="col.key === 'brand'">
-                  {{ item.brand || '' }}
-                </template>
-                <template v-else-if="col.key === 'model'">
-                  {{ item.model || '' }}
-                </template>
-                <template v-else-if="col.key === 'specification'">
-                  {{ item.specification || '' }}
-                </template>
-                <template v-else>
-                  {{ getSnapshotColumnValue(item, col) }}
-                </template>
-              </td>
+                <td
+                  v-if="snapshotMergeGroups(detailTarget.requestId).length > 0"
+                  class="no-print cell-checkbox"
+                ></td>
 
-              <td
-                v-if="isSnapshotMergeStart(detailTarget.requestId, index)"
-                class="paper-remark-cell merged"
-                :rowspan="getSnapshotMergeSize(detailTarget.requestId, index)"
+                <td class="paper-row-number">{{ index + 1 }}</td>
+
+                <td
+                  v-for="col in snapshotColumns(detailTarget.requestId)"
+                  :key="col.key"
+                  :class="{
+                    'text-left': col.align === 'left',
+                    'font-bold': col.bold,
+                    'spec-cell': col.key === 'specification',
+                  }"
+                >
+                  <template v-if="col.computed === 'totalPrice'">
+                    {{ getSnapshotComputedValue(detailTarget.requestId, item, index, col) }}
+                  </template>
+                  <template v-else-if="col.editable">
+                    {{ getSnapshotCustomCell(detailTarget.requestId, index, col.key) || '—' }}
+                  </template>
+                  <template v-else-if="col.key === 'uom'">
+                    {{ getSnapshotUom(item) }}
+                  </template>
+                  <template v-else-if="col.key === 'quantity'">
+                    {{ formatSnapshotQuantity(item.quantity) }}
+                  </template>
+                  <template v-else-if="col.key === 'brand'">
+                    {{ item.brand || '' }}
+                  </template>
+                  <template v-else-if="col.key === 'model'">
+                    {{ item.model || '' }}
+                  </template>
+                  <template v-else-if="col.key === 'specification'">
+                    {{ item.specification || '' }}
+                  </template>
+                  <template v-else>
+                    {{ getSnapshotColumnValue(item, col) }}
+                  </template>
+                </td>
+
+                <td
+                  v-if="isSnapshotMergeStart(detailTarget.requestId, index)"
+                  class="paper-remark-cell merged"
+                  :rowspan="getSnapshotMergeSize(detailTarget.requestId, index)"
+                >
+                  <div class="merged-remark-content">
+                    <span class="merged-remark-text">
+                      {{ getSnapshotMergedRemark(detailTarget.requestId, index) || '—' }}
+                    </span>
+                  </div>
+                </td>
+                <td
+                  v-else-if="!isSnapshotAbsorbed(detailTarget.requestId, index)"
+                  class="paper-remark-cell"
+                >
+                  {{ item.remark || '' }}
+                </td>
+              </tr>
+
+              <!-- ✅ NEW: Per-item Status Info in Paper View -->
+              <tr 
+                v-if="(item.statusInfo || []).length > 0"
+                class="paper-status-row"
               >
-                <div class="merged-remark-content">
-                  <span class="merged-remark-text">
-                    {{ getSnapshotMergedRemark(detailTarget.requestId, index) || '—' }}
-                  </span>
-                </div>
-              </td>
-              <td
-                v-else-if="!isSnapshotAbsorbed(detailTarget.requestId, index)"
-                class="paper-remark-cell"
-              >
-                {{ item.remark || '' }}
-              </td>
-            </tr>
+                <td 
+                  :colspan="
+                    (snapshotMergeGroups(detailTarget.requestId).length > 0 ? 3 : 2) +
+                    snapshotColumns(detailTarget.requestId).length +
+                    1
+                  "
+                >
+                  <div class="paper-status-box" :class="{ 'is-blocked': item.statusInfo[0].isBlocked }">
+                    <div 
+                      v-for="(si, siIdx) in item.statusInfo" 
+                      :key="siIdx" 
+                      class="paper-status-line"
+                    >
+                      <strong>{{ si.scope === 'department' ? 'Department' : 'Store' }} ({{ si.scopeName }})</strong>
+                      <span class="paper-status-divider">|</span>
+                      <span>Status: <strong>{{ si.isBlocked ? 'Not Due' : 'Due' }}</strong></span>
+                      <span class="paper-status-divider">|</span>
+                      <span>
+                        Last Taken: 
+                        {{ si.lastTakenAt ? formatPaperDate(si.lastTakenAt) + ` (${si.lastTakenQuantity} ${si.uomCode || 'units'})` : 'None' }}
+                      </span>
+                      <span class="paper-status-divider">|</span>
+                      <span>
+                        Next Allowed: 
+                        {{ si.isBlocked ? (si.nextAllowedAt ? formatPaperDate(si.nextAllowedAt) : 'Pending') : 'Now' }}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
 
             <tr v-if="snapshotItems(detailTarget.requestId).length === 0">
               <td
@@ -493,6 +529,24 @@
                 {{ formatDate(getRequestedDate(req.request)) }}
               </span>
             </button>
+
+            <!-- ✅ NEW: Status Info in the List View -->
+            <div 
+              v-if="getRequestStatusSummary(req.request)" 
+              class="nt-list-status-info"
+              :class="{ 'is-blocked': getRequestStatusSummary(req.request).isBlocked }"
+            >
+              <div 
+                v-for="(line, idx) in getRequestStatusSummary(req.request).lines" 
+                :key="idx" 
+                class="nt-list-status-line"
+              >
+                <span class="nt-list-status-scope">{{ line.scope }}</span>
+                <span class="nt-list-status-text">Status: <strong>{{ line.statusText }}</strong></span>
+                <span class="nt-list-status-text">Last: {{ line.lastText }}</span>
+                <span class="nt-list-status-text">Next: {{ line.nextText }}</span>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -915,6 +969,7 @@ const restoreSnapshotFromPayload = (snap) => {
       specification: it.specification || '',
       brand: it.brand || '',
       model: it.model || '',
+      statusInfo: it.statusInfo || [] // ✅ NEW: keep the status info
     }))
   }
 
@@ -935,6 +990,7 @@ const makeFallbackSnapshot = (req) => {
     specification: it.specification || it.item?.specText || '',
     brand: it.brand || it.item?.brand || '',
     model: it.model || it.item?.model || '',
+    statusInfo: it.statusInfo || [] // ✅ NEW: keep the status info
   }))
   out.department =
     req.requestedByUser?.Department?.name ||
@@ -1091,6 +1147,42 @@ const getRequestedByName = (reqEntry) => {
   if (uname && String(uname).trim()) return String(uname).trim()
 
   return '—'
+}
+
+// ---------------- status rule summary (for the notification list) ----------------
+const getRequestStatusSummary = (request) => {
+  const items = request?.items || [];
+  const entries = items.flatMap((it) => it?.statusInfo || []);
+  if (entries.length === 0) return null;
+
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const lines = entries.map((e) => {
+    const statusText = e.isBlocked ? "Not Due" : "Due";
+    const lastText = e.lastTakenAt 
+      ? `${fmtDate(e.lastTakenAt)} (${e.lastTakenQuantity} ${e.uomCode || 'units'})` 
+      : "None";
+    const nextText = e.isBlocked 
+      ? (e.nextAllowedAt ? fmtDate(e.nextAllowedAt) : "Pending") 
+      : "Now";
+
+    return {
+      scope: e.scope === "department" ? `Dept: ${e.scopeName}` : `Store: ${e.scopeName}`,
+      statusText,
+      lastText,
+      nextText,
+      isBlocked: e.isBlocked
+    };
+  });
+
+  return {
+    lines,
+    isBlocked: lines.every(l => l.isBlocked) // if all are blocked, make the block red
+  };
 }
 
 // ---------------- grouping ----------------
@@ -2083,6 +2175,36 @@ watch([filterStatus], () => {
   text-align: right;
 }
 
+/* ✅ NEW: STATUS INFO (List View) */
+.nt-list-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  padding: 8px 14px;
+  width: 100%;
+  border-left: 3px solid #10b981;
+}
+.nt-list-status-info.is-blocked {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+}
+.nt-list-status-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: #475569;
+}
+.nt-list-status-scope {
+  font-weight: 700;
+  color: #0f172a;
+  min-width: 100px;
+}
+.nt-list-status-text strong { color: #059669; }
+.nt-list-status-info.is-blocked .nt-list-status-text strong { color: #dc2626; }
+
 /* ================= LOADING ================= */
 .nt-paper-loading {
   display: flex;
@@ -2373,6 +2495,47 @@ watch([filterStatus], () => {
   display: flex;
   align-items: baseline;
   gap: 6px;
+}
+
+/* ✅ NEW: STATUS INFO (Paper View) */
+.paper-status-row td {
+  background: #fffbeb !important;
+  border-color: #7f7f7f !important;
+  padding: 8px 10px !important;
+}
+
+.paper-status-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 4px;
+  border-left: 3px solid #10b981;
+}
+.paper-status-box.is-blocked {
+  border-left-color: #ef4444;
+}
+
+.paper-status-line {
+  font-size: 12.5px;
+  color: #92400e;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.paper-status-box.is-blocked .paper-status-line {
+  color: #991b1b;
+}
+
+.paper-status-line strong {
+  font-weight: 700;
+}
+
+.paper-status-divider {
+  color: #cbd5e1;
+  font-size: 10px;
+  margin: 0 2px;
 }
 
 /* ================= APPROVALS ================= */
